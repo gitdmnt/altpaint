@@ -44,6 +44,8 @@ const CANVAS_FRAME_BORDER: [u8; 4] = [0x2a, 0x2a, 0x2a, 0xff];
 const TEXT_PRIMARY: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
 const TEXT_SECONDARY: [u8; 4] = [0xd8, 0xd8, 0xd8, 0xff];
 const PERFORMANCE_SNAPSHOT_WINDOW: Duration = Duration::from_millis(1000);
+const INPUT_LATENCY_TARGET_MS: f64 = 10.0;
+const INPUT_SAMPLING_TARGET_HZ: f64 = 120.0;
 
 fn default_panel_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("ui")
@@ -109,6 +111,7 @@ impl Rect {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct PresentFrameUpdate {
     dirty_rect: Option<Rect>,
+    canvas_updated: bool,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -126,18 +129,35 @@ struct PerformanceSnapshot {
     ui_update_ms: f64,
     panel_surface_ms: f64,
     present_ms: f64,
+    canvas_latency_ms: f64,
+    canvas_sample_hz: f64,
 }
 
 impl PerformanceSnapshot {
     fn title_text(&self) -> String {
+        let latency_marker =
+            if self.canvas_latency_ms > 0.0 && self.canvas_latency_ms <= INPUT_LATENCY_TARGET_MS {
+                "ok"
+            } else {
+                "ng"
+            };
+        let sample_marker = if self.canvas_sample_hz >= INPUT_SAMPLING_TARGET_HZ {
+            "ok"
+        } else {
+            "ng"
+        };
         format!(
-            "{WINDOW_TITLE} | {:>5.1} fps | frame {:>5.2}ms | prep {:>5.2}ms | ui {:>5.2}ms | panel {:>5.2}ms | present {:>5.2}ms",
+            "{WINDOW_TITLE} | {:>5.1} fps | frame {:>5.2}ms | prep {:>5.2}ms | ui {:>5.2}ms | panel {:>5.2}ms | present {:>5.2}ms | ink {:>5.2}ms {} | sample {:>6.1}Hz {}",
             self.fps,
             self.frame_ms,
             self.prepare_ms,
             self.ui_update_ms,
             self.panel_surface_ms,
             self.present_ms,
+            self.canvas_latency_ms,
+            latency_marker,
+            self.canvas_sample_hz,
+            sample_marker,
         )
     }
 }
@@ -157,6 +177,12 @@ struct FrameSample {
     stages: FrameStageTotals,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TimedLatencySample {
+    recorded_at: Instant,
+    latency: Duration,
+}
+
 struct DesktopProfiler {
     logging_enabled: bool,
     stats: BTreeMap<&'static str, StageStats>,
@@ -167,6 +193,9 @@ struct DesktopProfiler {
     snapshot_window: Duration,
     current_frame: FrameStageTotals,
     recent_frames: VecDeque<FrameSample>,
+    recent_canvas_inputs: VecDeque<Instant>,
+    recent_canvas_latencies: VecDeque<TimedLatencySample>,
+    pending_canvas_input_at: Option<Instant>,
     latest_snapshot: Option<PerformanceSnapshot>,
 }
 
@@ -186,6 +215,9 @@ impl DesktopProfiler {
             snapshot_window: PERFORMANCE_SNAPSHOT_WINDOW,
             current_frame: FrameStageTotals::default(),
             recent_frames: VecDeque::new(),
+            recent_canvas_inputs: VecDeque::new(),
+            recent_canvas_latencies: VecDeque::new(),
+            pending_canvas_input_at: None,
             latest_snapshot: None,
         }
     }
@@ -244,6 +276,33 @@ impl DesktopProfiler {
         self.record("present_swap", timings.present);
     }
 
+    fn record_canvas_input(&mut self) {
+        self.record_canvas_input_at(Instant::now());
+    }
+
+    fn record_canvas_input_at(&mut self, now: Instant) {
+        self.pending_canvas_input_at = Some(now);
+        self.recent_canvas_inputs.push_back(now);
+        self.prune_recent_inputs(now);
+    }
+
+    fn record_canvas_present(&mut self) {
+        self.record_canvas_present_at(Instant::now());
+    }
+
+    fn record_canvas_present_at(&mut self, now: Instant) {
+        let Some(input_at) = self.pending_canvas_input_at.take() else {
+            self.prune_recent_inputs(now);
+            return;
+        };
+
+        self.recent_canvas_latencies.push_back(TimedLatencySample {
+            recorded_at: now,
+            latency: now.duration_since(input_at),
+        });
+        self.prune_recent_inputs(now);
+    }
+
     fn title_text(&self) -> String {
         self.latest_snapshot
             .map(|snapshot| snapshot.title_text())
@@ -256,6 +315,22 @@ impl DesktopProfiler {
                 break;
             }
             self.recent_frames.pop_front();
+        }
+    }
+
+    fn prune_recent_inputs(&mut self, now: Instant) {
+        while let Some(sample) = self.recent_canvas_inputs.front() {
+            if now.duration_since(*sample) <= self.snapshot_window {
+                break;
+            }
+            self.recent_canvas_inputs.pop_front();
+        }
+
+        while let Some(sample) = self.recent_canvas_latencies.front() {
+            if now.duration_since(sample.recorded_at) <= self.snapshot_window {
+                break;
+            }
+            self.recent_canvas_latencies.pop_front();
         }
     }
 
@@ -295,6 +370,38 @@ impl DesktopProfiler {
             self.latest_snapshot.map_or(0.0, |snapshot| snapshot.fps)
         };
 
+        let canvas_sample_hz = if self.recent_canvas_inputs.len() >= 2 {
+            let first = self
+                .recent_canvas_inputs
+                .front()
+                .expect("recent canvas input window is not empty");
+            let last = self
+                .recent_canvas_inputs
+                .back()
+                .expect("recent canvas input window is not empty");
+            let span_secs = last.duration_since(*first).as_secs_f64();
+            if span_secs > 0.0 {
+                (self.recent_canvas_inputs.len().saturating_sub(1)) as f64 / span_secs
+            } else {
+                self.latest_snapshot
+                    .map_or(0.0, |snapshot| snapshot.canvas_sample_hz)
+            }
+        } else {
+            self.latest_snapshot
+                .map_or(0.0, |snapshot| snapshot.canvas_sample_hz)
+        };
+
+        let canvas_latency_ms = if self.recent_canvas_latencies.is_empty() {
+            self.latest_snapshot
+                .map_or(0.0, |snapshot| snapshot.canvas_latency_ms)
+        } else {
+            self.recent_canvas_latencies
+                .iter()
+                .map(|sample| sample.latency.as_secs_f64() * 1000.0)
+                .sum::<f64>()
+                / self.recent_canvas_latencies.len() as f64
+        };
+
         Some(PerformanceSnapshot {
             fps,
             frame_ms: totals.frame_total.as_secs_f64() * 1000.0 / frame_count as f64,
@@ -302,6 +409,8 @@ impl DesktopProfiler {
             ui_update_ms: totals.ui_update.as_secs_f64() * 1000.0 / frame_count as f64,
             panel_surface_ms: totals.panel_surface.as_secs_f64() * 1000.0 / frame_count as f64,
             present_ms: totals.present_total.as_secs_f64() * 1000.0 / frame_count as f64,
+            canvas_latency_ms,
+            canvas_sample_hz,
         })
     }
 
@@ -321,7 +430,7 @@ impl DesktopProfiler {
             .as_secs_f64()
             .max(f64::EPSILON);
         eprintln!(
-            "[profile] ---- last {:.2}s | fps={:.1} frame={:.3}ms prep={:.3}ms ui={:.3}ms panel={:.3}ms present={:.3}ms ----",
+            "[profile] ---- last {:.2}s | fps={:.1} frame={:.3}ms prep={:.3}ms ui={:.3}ms panel={:.3}ms present={:.3}ms ink={:.3}ms target<={:.1}ms sample={:.1}Hz target>={:.1}Hz ----",
             now.duration_since(self.frame_interval_started)
                 .as_secs_f64(),
             self.frames as f64 / interval_secs,
@@ -330,6 +439,12 @@ impl DesktopProfiler {
             self.average_ms("ui_update"),
             self.average_ms("panel_surface"),
             self.average_ms("present_total"),
+            self.latest_snapshot
+                .map_or(0.0, |snapshot| snapshot.canvas_latency_ms),
+            INPUT_LATENCY_TARGET_MS,
+            self.latest_snapshot
+                .map_or(0.0, |snapshot| snapshot.canvas_sample_hz),
+            INPUT_SAMPLING_TARGET_HZ,
         );
         for (label, stat) in &self.stats {
             let avg = if stat.calls == 0 {
@@ -533,17 +648,24 @@ impl DesktopApp {
             self.pending_canvas_dirty_rect = None;
             self.needs_status_refresh = false;
             self.needs_full_present_rebuild = false;
-            return PresentFrameUpdate { dirty_rect: None };
+            return PresentFrameUpdate {
+                dirty_rect: None,
+                canvas_updated: true,
+            };
         }
 
         let layout = self.layout.clone().expect("layout exists");
         let status_text = self.needs_status_refresh.then(|| self.status_text());
         let Some(present_frame) = self.present_frame.as_mut() else {
             self.needs_full_present_rebuild = true;
-            return PresentFrameUpdate { dirty_rect: None };
+            return PresentFrameUpdate {
+                dirty_rect: None,
+                canvas_updated: false,
+            };
         };
 
         let mut dirty_rect = None;
+        let mut canvas_updated = false;
         if panel_surface_refreshed && let Some(panel_surface) = self.panel_surface.as_ref() {
             profiler.measure("compose_dirty_panel", || {
                 compose_panel_host_region(present_frame, &layout, panel_surface);
@@ -570,7 +692,10 @@ impl DesktopApp {
         if let Some(dirty) = self.pending_canvas_dirty_rect.take() {
             let Some(bitmap) = self.document.active_bitmap() else {
                 self.needs_full_present_rebuild = true;
-                return PresentFrameUpdate { dirty_rect: None };
+                return PresentFrameUpdate {
+                    dirty_rect: None,
+                    canvas_updated: false,
+                };
             };
             let canvas_dirty_rect = map_canvas_dirty_to_display(
                 dirty,
@@ -588,12 +713,16 @@ impl DesktopApp {
                     Some(canvas_dirty_rect),
                 );
             });
+            canvas_updated = true;
             dirty_rect = Some(dirty_rect.map_or(canvas_dirty_rect, |existing| {
                 existing.union(canvas_dirty_rect)
             }));
         }
 
-        PresentFrameUpdate { dirty_rect }
+        PresentFrameUpdate {
+            dirty_rect,
+            canvas_updated,
+        }
     }
 
     fn present_frame(&self) -> Option<&render::RenderFrame> {
@@ -912,6 +1041,10 @@ impl DesktopApp {
                 .sum::<usize>()
         )
     }
+
+    fn is_canvas_interacting(&self) -> bool {
+        self.canvas_input.is_drawing
+    }
 }
 
 struct DesktopRuntime {
@@ -954,7 +1087,11 @@ impl DesktopRuntime {
 
         let position = (x, y);
         self.last_cursor_position = Some(position);
-        self.app.handle_pointer_dragged(position.0, position.1)
+        let changed = self.app.handle_pointer_dragged(position.0, position.1);
+        if changed && self.app.is_canvas_interacting() {
+            self.profiler.record_canvas_input();
+        }
+        changed
     }
 
     fn handle_mouse_button(&mut self, state: ElementState) -> bool {
@@ -967,7 +1104,13 @@ impl DesktopRuntime {
         };
 
         match state {
-            ElementState::Pressed => self.app.handle_pointer_pressed(x, y),
+            ElementState::Pressed => {
+                let changed = self.app.handle_pointer_pressed(x, y);
+                if changed && self.app.is_canvas_interacting() {
+                    self.profiler.record_canvas_input();
+                }
+                changed
+            }
             ElementState::Released => self.app.handle_pointer_released(x, y),
         }
     }
@@ -983,7 +1126,11 @@ impl DesktopRuntime {
 
                 self.active_touch_id = Some(touch_id);
                 self.last_cursor_position = Some(position);
-                self.app.handle_pointer_pressed(position.0, position.1)
+                let changed = self.app.handle_pointer_pressed(position.0, position.1);
+                if changed && self.app.is_canvas_interacting() {
+                    self.profiler.record_canvas_input();
+                }
+                changed
             }
             TouchPhase::Moved => {
                 if self.active_touch_id != Some(touch_id) {
@@ -991,7 +1138,11 @@ impl DesktopRuntime {
                 }
 
                 self.last_cursor_position = Some(position);
-                self.app.handle_pointer_dragged(position.0, position.1)
+                let changed = self.app.handle_pointer_dragged(position.0, position.1);
+                if changed && self.app.is_canvas_interacting() {
+                    self.profiler.record_canvas_input();
+                }
+                changed
             }
             TouchPhase::Ended | TouchPhase::Cancelled => {
                 if self.active_touch_id != Some(touch_id) {
@@ -1173,8 +1324,14 @@ impl ApplicationHandler for DesktopRuntime {
                 self.profiler
                     .record("present_total", present_started.elapsed());
                 self.profiler.record_present(timings);
+                if update.canvas_updated {
+                    self.profiler.record_canvas_present();
+                }
                 self.profiler.finish_frame(frame_started.elapsed());
                 window.set_title(&self.profiler.title_text());
+                if self.app.is_canvas_interacting() {
+                    self.request_redraw();
+                }
             }
             _ => {}
         }
@@ -1828,6 +1985,7 @@ mod tests {
         assert!(!profiler.stats.contains_key("ui_update"));
         assert!(!profiler.stats.contains_key("compose_full_frame"));
         assert_eq!(update.dirty_rect, Some(layout.panel_host_rect));
+        assert!(!update.canvas_updated);
         assert_eq!(
             profiler.stats.get("panel_surface").map(|stat| stat.calls),
             Some(1)
@@ -1848,6 +2006,7 @@ mod tests {
         assert!(!profiler.stats.contains_key("ui_update"));
         assert!(!profiler.stats.contains_key("compose_full_frame"));
         assert_eq!(update.dirty_rect, Some(layout.panel_host_rect));
+        assert!(!update.canvas_updated);
         assert_eq!(
             profiler.stats.get("panel_surface").map(|stat| stat.calls),
             Some(1)
@@ -1870,6 +2029,7 @@ mod tests {
         assert!(!profiler.stats.contains_key("compose_full_frame"));
         assert!(profiler.stats.contains_key("compose_dirty_panel"));
         assert!(profiler.stats.contains_key("compose_dirty_status"));
+        assert!(!update.canvas_updated);
         assert_eq!(
             update.dirty_rect,
             Some(
@@ -1889,12 +2049,16 @@ mod tests {
             ui_update_ms: 0.42,
             panel_surface_ms: 0.77,
             present_ms: 1.26,
+            canvas_latency_ms: 8.40,
+            canvas_sample_hz: 123.4,
         }
         .title_text();
 
         assert!(title.contains("59.8 fps"));
         assert!(title.contains("prep  3.11ms"));
         assert!(title.contains("ui  0.42ms"));
+        assert!(title.contains("ink  8.40ms ok"));
+        assert!(title.contains("sample  123.4Hz ok"));
     }
 
     #[test]
@@ -1923,6 +2087,31 @@ mod tests {
         let snapshot = profiler.latest_snapshot.expect("snapshot exists");
         assert!(snapshot.fps > 60.0);
         assert!(snapshot.fps < 65.0);
+    }
+
+    #[test]
+    fn profiler_tracks_canvas_latency_and_sampling_rate() {
+        let start = Instant::now();
+        let mut profiler = DesktopProfiler::new_at(start);
+
+        for offset_ms in [0_u64, 8, 16] {
+            let input_at = start + Duration::from_millis(offset_ms);
+            let present_at = input_at + Duration::from_millis(8);
+
+            profiler.record_canvas_input_at(input_at);
+            profiler.record("prepare_frame", Duration::from_millis(2));
+            profiler.record("ui_update", Duration::from_millis(1));
+            profiler.record("panel_surface", Duration::from_millis(1));
+            profiler.record("present_total", Duration::from_millis(2));
+            profiler.record_canvas_present_at(present_at);
+            profiler.finish_frame_at(Duration::from_millis(8), present_at);
+        }
+
+        let snapshot = profiler.latest_snapshot.expect("snapshot exists");
+        assert!(snapshot.canvas_latency_ms >= 8.0);
+        assert!(snapshot.canvas_latency_ms < 9.0);
+        assert!(snapshot.canvas_sample_hz >= 120.0);
+        assert!(snapshot.canvas_sample_hz < 130.0);
     }
 
     #[test]

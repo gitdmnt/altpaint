@@ -76,6 +76,18 @@ pub struct WgpuPresenter {
     uploaded_frame: Option<UploadedFrameTexture>,
 }
 
+fn preferred_present_mode(modes: &[wgpu::PresentMode]) -> wgpu::PresentMode {
+    [
+        wgpu::PresentMode::Mailbox,
+        wgpu::PresentMode::Immediate,
+        wgpu::PresentMode::FifoRelaxed,
+        wgpu::PresentMode::Fifo,
+    ]
+    .into_iter()
+    .find(|mode| modes.contains(mode))
+    .unwrap_or(wgpu::PresentMode::Fifo)
+}
+
 impl WgpuPresenter {
     pub async fn new(window: Arc<Window>) -> Result<Self> {
         let size = window.inner_size();
@@ -110,15 +122,16 @@ impl WgpuPresenter {
             .copied()
             .find(|format| format.is_srgb())
             .unwrap_or(surface_capabilities.formats[0]);
+        let present_mode = preferred_present_mode(surface_capabilities.present_modes.as_slice());
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: size.width.max(1),
             height: size.height.max(1),
-            present_mode: wgpu::PresentMode::Fifo,
+            present_mode,
             alpha_mode: surface_capabilities.alpha_modes[0],
             view_formats: Vec::new(),
-            desired_maximum_frame_latency: 2,
+            desired_maximum_frame_latency: 1,
         };
         surface.configure(&device, &config);
 
@@ -423,6 +436,24 @@ impl WgpuPresenter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preferred_present_mode_prefers_low_latency_modes() {
+        let mode = preferred_present_mode(&[wgpu::PresentMode::Fifo, wgpu::PresentMode::Immediate]);
+
+        assert_eq!(mode, wgpu::PresentMode::Immediate);
+    }
+
+    #[test]
+    fn preferred_present_mode_uses_mailbox_when_available() {
+        let mode = preferred_present_mode(&[
+            wgpu::PresentMode::Fifo,
+            wgpu::PresentMode::Mailbox,
+            wgpu::PresentMode::Immediate,
+        ]);
+
+        assert_eq!(mode, wgpu::PresentMode::Mailbox);
+    }
 
     #[test]
     fn presenter_shader_mentions_texture_sampling() {
