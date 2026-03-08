@@ -1,0 +1,31 @@
+panel {
+  id: "builtin.snapshot-panel"
+  title: "Snapshots"
+  version: 1
+}
+
+permissions {
+  read.document
+}
+
+runtime {
+  wasm: "builtin_panel_snapshot_panel.wasm"
+}
+
+state {
+}
+
+view {
+  <column gap=8 padding=8>
+    <section title="Current">
+      <text tone="muted">Hosted via Rust SDK + Wasm</text>
+      <text>{host.document.title}</text>
+      <text>{host.document.page_count}</text>
+      <text>{host.document.panel_count}</text>
+      <text>{host.tool.active}</text>
+    </section>
+    <section title="Status">
+      <text>{host.snapshot.storage_status}</text>
+    </section>
+  </column>
+}

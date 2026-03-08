@@ -1,0 +1,27 @@
+panel {
+  id: "builtin.tool-palette"
+  title: "Tools"
+  version: 1
+}
+
+permissions {
+  read.document
+  write.command
+}
+
+runtime {
+  wasm: "builtin_panel_tool_palette.wasm"
+}
+
+state {
+}
+
+view {
+  <column gap=8 padding=8>
+    <section title="Tools">
+      <text tone="muted">Hosted via Rust SDK + Wasm</text>
+      <button id="tool.brush" on:click="activate_brush" active={host.tool.active == "brush"}>Brush</button>
+      <button id="tool.eraser" on:click="activate_eraser" active={host.tool.active == "eraser"}>Eraser</button>
+    </section>
+  </column>
+}

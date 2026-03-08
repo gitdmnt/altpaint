@@ -94,7 +94,7 @@
 - [AGENTS.md](AGENTS.md)
 - [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- `crates/plugin-api/`, `crates/ui-shell/`, `crates/builtin-plugins/`, `apps/desktop/` の関連コード
+- `crates/plugin-api/`, `crates/ui-shell/`, `crates/panel-sdk/`, `crates/plugin-host/`, `apps/desktop/`, `apps/desktop/ui/panels/` の関連コード
 
 ### 5. 保存形式や永続化の変更
 
@@ -119,8 +119,9 @@
   - レイアウト、ヒットテスト、簡易描画
 - `crates/plugin-api/`
   - パネル/ホスト間の契約
-- `crates/builtin-plugins/`
-  - 組み込み標準パネル
+- `apps/desktop/ui/panels/`
+  - 組み込み標準パネルごとの独立フォルダ
+  - `.altp-panel` / Rust SDK ソース / 生成 Wasm を同居
 - `crates/storage/`
   - 保存/読込
 - `docs/`
@@ -133,7 +134,7 @@
 最小実装としては次が既にある。
 
 - Cargo workspace 構成
-- `app-core` / `render` / `ui-shell` / `plugin-api` / `storage` / `builtin-plugins` / `apps/desktop`
+- `app-core` / `render` / `ui-shell` / `plugin-api` / `storage` / `plugin-host` / `panel-sdk` / `apps/desktop`
 - `winit` + `wgpu` の単一ウィンドウデスクトップ起動
 - 白キャンバス表示
 - マウス入力による最小ストローク描画

@@ -73,6 +73,7 @@ pub enum PanelNode {
     Slider {
         id: String,
         label: String,
+        action: HostAction,
         min: usize,
         max: usize,
         value: usize,
@@ -137,7 +138,10 @@ pub trait PanelPlugin {
 
     fn handle_event(&mut self, event: &PanelEvent) -> Vec<HostAction> {
         match event {
-            PanelEvent::Activate { panel_id, node_id } if panel_id == self.id() => {
+            PanelEvent::Activate { panel_id, node_id }
+            | PanelEvent::SetValue {
+                panel_id, node_id, ..
+            } if panel_id == self.id() => {
                 find_actions_in_nodes(&self.panel_tree().children, node_id)
             }
             _ => Vec::new(),
@@ -164,6 +168,7 @@ fn find_actions_in_node(node: &PanelNode, target_id: &str) -> Option<Vec<HostAct
         PanelNode::Text { .. } | PanelNode::ColorPreview { .. } => None,
         PanelNode::Button { id, action, .. } if id == target_id => Some(vec![action.clone()]),
         PanelNode::Button { .. } => None,
+        PanelNode::Slider { id, action, .. } if id == target_id => Some(vec![action.clone()]),
         PanelNode::Slider { .. } => None,
     }
 }
@@ -234,5 +239,45 @@ mod tests {
                 tool: ToolKind::Brush,
             })]
         );
+    }
+
+    #[test]
+    fn set_value_event_resolves_slider_action() {
+        struct SliderPanel;
+
+        impl PanelPlugin for SliderPanel {
+            fn id(&self) -> &'static str {
+                "test.slider"
+            }
+
+            fn title(&self) -> &'static str {
+                "Slider"
+            }
+
+            fn panel_tree(&self) -> PanelTree {
+                PanelTree {
+                    id: self.id(),
+                    title: self.title(),
+                    children: vec![PanelNode::Slider {
+                        id: "color.red".to_string(),
+                        label: "Red".to_string(),
+                        action: HostAction::DispatchCommand(Command::Noop),
+                        min: 0,
+                        max: 255,
+                        value: 0,
+                        fill_color: None,
+                    }],
+                }
+            }
+        }
+
+        let mut panel = SliderPanel;
+        let actions = panel.handle_event(&PanelEvent::SetValue {
+            panel_id: "test.slider".to_string(),
+            node_id: "color.red".to_string(),
+            value: 128,
+        });
+
+        assert_eq!(actions, vec![HostAction::DispatchCommand(Command::Noop)]);
     }
 }

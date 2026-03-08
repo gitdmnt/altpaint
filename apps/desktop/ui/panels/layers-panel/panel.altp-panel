@@ -1,0 +1,33 @@
+panel {
+  id: "builtin.layers-panel"
+  title: "Layers"
+  version: 1
+}
+
+permissions {
+  read.document
+}
+
+runtime {
+  wasm: "builtin_panel_layers_panel.wasm"
+}
+
+state {
+}
+
+view {
+  <column gap=8 padding=8>
+    <section title="Document">
+      <text tone="muted">Hosted via Rust SDK + Wasm</text>
+      <text>Work title</text>
+      <text>{host.document.title}</text>
+      <text>Page count</text>
+      <text>{host.document.page_count}</text>
+      <text>Panel count</text>
+      <text>{host.document.panel_count}</text>
+    </section>
+    <section title="Active Layer">
+      <text>{host.document.active_layer_name}</text>
+    </section>
+  </column>
+}

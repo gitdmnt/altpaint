@@ -11,7 +11,6 @@ pub use text::{
 };
 
 use app_core::{ColorRgba8, Command, Document, ToolKind};
-use builtin_plugins::default_builtin_panels;
 use panel_dsl::{AttrValue as DslAttrValue, PanelDefinition, StateField, ViewElement, ViewNode};
 use panel_schema::{
     CommandDescriptor, Diagnostic, PanelEventRequest, PanelInitRequest, StatePatch,
@@ -21,7 +20,7 @@ use plugin_host::{PluginHostError, WasmPanelRuntime};
 use render::{RenderContext, RenderFrame};
 use serde_json::{Map, Value, json};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const SIDEBAR_BACKGROUND: [u8; 4] = [0x2a, 0x2a, 0x2a, 0xff];
 const PANEL_BACKGROUND: [u8; 4] = [0x1f, 0x1f, 0x1f, 0xff];
@@ -159,7 +158,7 @@ pub struct UiShell {
 impl UiShell {
     /// 空のUIシェルを作成する。
     pub fn new() -> Self {
-        let mut shell = Self {
+        Self {
             render_context: RenderContext::new(),
             panels: Vec::new(),
             latest_document: None,
@@ -169,11 +168,7 @@ impl UiShell {
             panel_scroll_offset: 0,
             panel_content_height: 0,
             focused_target: None,
-        };
-        for panel in default_builtin_panels() {
-            shell.register_panel(panel);
         }
-        shell
     }
 
     /// パネルプラグインを1つ登録する。
@@ -181,6 +176,8 @@ impl UiShell {
         if let Some(document) = self.latest_document.as_ref() {
             panel.update(document);
         }
+        self.panels
+            .retain(|registered| registered.id() != panel.id());
         self.panels.push(panel);
         self.panel_content_dirty = true;
     }
@@ -189,15 +186,10 @@ impl UiShell {
         let directory = directory.as_ref();
         self.remove_loaded_panels();
 
-        let Ok(entries) = fs::read_dir(directory) else {
+        let mut panel_files = Vec::new();
+        if collect_panel_files_recursive(directory, &mut panel_files).is_err() {
             return Vec::new();
-        };
-
-        let mut panel_files = entries
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("altp-panel"))
-            .collect::<Vec<_>>();
+        }
         panel_files.sort();
 
         let mut diagnostics = Vec::new();
@@ -474,6 +466,22 @@ impl UiShell {
     }
 }
 
+fn collect_panel_files_recursive(
+    directory: &Path,
+    panel_files: &mut Vec<PathBuf>,
+) -> std::io::Result<()> {
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_panel_files_recursive(&path, panel_files)?;
+        } else if path.extension().and_then(|value| value.to_str()) == Some("altp-panel") {
+            panel_files.push(path);
+        }
+    }
+    Ok(())
+}
+
 struct DslPanelPlugin {
     id: &'static str,
     title: &'static str,
@@ -571,6 +579,7 @@ impl PanelPlugin for DslPanelPlugin {
 
     fn update(&mut self, document: &Document) {
         self.host_snapshot = build_host_snapshot(document);
+        sync_host_derived_state(&self.definition.state, &self.host_snapshot, &mut self.state);
     }
 
     fn debug_summary(&self) -> String {
@@ -682,6 +691,14 @@ fn convert_dsl_view_node(
                 id: node_id_for(element, context, "text"),
                 text: collect_dsl_text(&element.children, context),
             }],
+            "color-preview" => vec![PanelNode::ColorPreview {
+                id: node_id_for(element, context, "color-preview"),
+                label: attribute_string(&element.attributes, "label", context)
+                    .unwrap_or_else(|| collect_dsl_text(&element.children, context)),
+                color: attribute_string(&element.attributes, "color", context)
+                    .and_then(|value| parse_hex_color(&value))
+                    .unwrap_or_default(),
+            }],
             "button" => vec![PanelNode::Button {
                 id: node_id_for(element, context, "button"),
                 label: collect_dsl_text(&element.children, context),
@@ -722,6 +739,26 @@ fn convert_dsl_view_node(
                     fill_color: None,
                 }]
             }
+            "slider" => vec![PanelNode::Slider {
+                id: node_id_for(element, context, "slider"),
+                label: attribute_string(&element.attributes, "label", context)
+                    .unwrap_or_else(|| "Value".to_string()),
+                action: element
+                    .attributes
+                    .get("on:change")
+                    .and_then(DslAttrValue::as_string)
+                    .map(|handler_name| HostAction::InvokePanelHandler {
+                        panel_id: context.panel_id.clone(),
+                        handler_name: handler_name.to_string(),
+                        event_kind: "change".to_string(),
+                    })
+                    .unwrap_or(HostAction::DispatchCommand(Command::Noop)),
+                min: attribute_usize(&element.attributes, "min", context).unwrap_or(0),
+                max: attribute_usize(&element.attributes, "max", context).unwrap_or(100),
+                value: attribute_usize(&element.attributes, "value", context).unwrap_or(0),
+                fill_color: attribute_string(&element.attributes, "fill", context)
+                    .and_then(|value| parse_hex_color(&value)),
+            }],
             "separator" => vec![PanelNode::Text {
                 id: node_id_for(element, context, "separator"),
                 text: "────────".to_string(),
@@ -821,6 +858,31 @@ fn attr_value_to_bool(value: &DslAttrValue, context: &DslEvaluationContext<'_>) 
     }
 }
 
+fn attr_value_to_usize(value: &DslAttrValue, context: &DslEvaluationContext<'_>) -> Option<usize> {
+    match value {
+        DslAttrValue::Integer(number) => usize::try_from(*number).ok(),
+        DslAttrValue::Expression(expression) => match evaluate_expression(expression, context) {
+            Value::Number(number) => number
+                .as_u64()
+                .and_then(|value| usize::try_from(value).ok()),
+            Value::String(text) => text.parse::<usize>().ok(),
+            _ => None,
+        },
+        DslAttrValue::String(text) => text.parse::<usize>().ok(),
+        DslAttrValue::Float(_) | DslAttrValue::Bool(_) => None,
+    }
+}
+
+fn attribute_usize(
+    attributes: &std::collections::BTreeMap<String, DslAttrValue>,
+    key: &str,
+    context: &DslEvaluationContext<'_>,
+) -> Option<usize> {
+    attributes
+        .get(key)
+        .and_then(|value| attr_value_to_usize(value, context))
+}
+
 fn expression_to_string(expression: &str, context: &DslEvaluationContext<'_>) -> String {
     match evaluate_expression(expression, context) {
         Value::String(text) => text,
@@ -915,6 +977,31 @@ fn state_defaults_to_json(fields: &[StateField]) -> Value {
     Value::Object(object)
 }
 
+fn sync_host_derived_state(fields: &[StateField], host_snapshot: &Value, state: &mut Value) {
+    for field in fields {
+        if let DslAttrValue::Expression(expression) = &field.default {
+            let context = DslEvaluationContext {
+                panel_id: String::new(),
+                state,
+                host_snapshot,
+                generated_ids: 0,
+            };
+            let next = evaluate_expression(expression, &context);
+            set_top_level_state_field(state, &field.name, next);
+        }
+    }
+}
+
+fn set_top_level_state_field(state: &mut Value, key: &str, value: Value) {
+    if !state.is_object() {
+        *state = Value::Object(Map::new());
+    }
+    state
+        .as_object_mut()
+        .expect("object ensured")
+        .insert(key.to_string(), value);
+}
+
 fn default_attr_value_to_json(value: &DslAttrValue) -> Value {
     match value {
         DslAttrValue::String(text) => Value::String(text.clone()),
@@ -931,9 +1018,27 @@ fn default_attr_value_to_json(value: &DslAttrValue) -> Value {
 }
 
 fn build_host_snapshot(document: &Document) -> Value {
+    let page_count = document.work.pages.len();
+    let panel_count = document
+        .work
+        .pages
+        .iter()
+        .map(|page| page.panels.len())
+        .sum::<usize>();
+    let active_layer_name = document
+        .work
+        .pages
+        .first()
+        .and_then(|page| page.panels.first())
+        .map(|panel| panel.root_layer.name.clone())
+        .unwrap_or_else(|| "<no layer>".to_string());
+
     json!({
         "document": {
             "title": document.work.title,
+            "page_count": page_count,
+            "panel_count": panel_count,
+            "active_layer_name": active_layer_name,
         },
         "tool": {
             "active": match document.active_tool {
@@ -943,6 +1048,17 @@ fn build_host_snapshot(document: &Document) -> Value {
         },
         "color": {
             "active": document.active_color.hex_rgb(),
+            "red": document.active_color.r,
+            "green": document.active_color.g,
+            "blue": document.active_color.b,
+        },
+        "jobs": {
+            "active": 0,
+            "queued": 0,
+            "status": format!("idle / work={}", document.work.title),
+        },
+        "snapshot": {
+            "storage_status": "pending",
         },
     })
 }
@@ -1059,10 +1175,11 @@ fn find_panel_action(nodes: &[PanelNode], target_id: &str) -> Option<HostAction>
                 }
             }
             PanelNode::Button { id, action, .. } if id == target_id => return Some(action.clone()),
+            PanelNode::Slider { id, action, .. } if id == target_id => return Some(action.clone()),
             PanelNode::Text { .. }
             | PanelNode::ColorPreview { .. }
-            | PanelNode::Slider { .. }
-            | PanelNode::Button { .. } => {}
+            | PanelNode::Button { .. }
+            | PanelNode::Slider { .. } => {}
         }
     }
     None
@@ -1417,6 +1534,7 @@ fn draw_node(
             max,
             value,
             fill_color,
+            ..
         } => {
             let clamped_value = (*value).clamp(*min, *max);
             let accent = fill_color.unwrap_or(ColorRgba8::new(0x9f, 0xb7, 0xff, 0xff));
@@ -1681,6 +1799,57 @@ view {
         i32.const 5
         call $command_string))"#;
 
+    const BUILTIN_APP_ACTIONS_PANEL: &str = r#"
+panel {
+    id: "builtin.app-actions"
+    title: "App"
+    version: 1
+}
+
+permissions {
+    read.document
+    write.command
+}
+
+runtime {
+    wasm: "builtin-app-actions.wasm"
+}
+
+state {
+}
+
+view {
+    <column gap=8 padding=8>
+        <section title="Project">
+            <text tone="muted">Hosted via DSL + Wasm</text>
+            <button id="app.new" on:click="new_project">New</button>
+            <button id="app.save" on:click="save_project">Save</button>
+            <button id="app.load" on:click="load_project">Load</button>
+        </section>
+    </column>
+}
+"#;
+
+    const BUILTIN_APP_ACTIONS_WAT: &str = r#"(module
+    (import "host" "command" (func $command (param i32 i32)))
+    (memory (export "memory") 1)
+    (data (i32.const 0) "project.new")
+    (data (i32.const 16) "project.save")
+    (data (i32.const 32) "project.load")
+    (func (export "panel_init"))
+    (func (export "panel_handle_new_project")
+        i32.const 0
+        i32.const 11
+        call $command)
+    (func (export "panel_handle_save_project")
+        i32.const 16
+        i32.const 12
+        call $command)
+    (func (export "panel_handle_load_project")
+        i32.const 32
+        i32.const 12
+        call $command))"#;
+
     /// `UiShell` の更新配送を確認するためのダミーパネル。
     struct TestPanel {
         updates: usize,
@@ -1735,34 +1904,35 @@ view {
 
     #[test]
     fn default_shell_registers_builtin_layers_panel() {
-        let mut shell = UiShell::new();
-        shell.update(&Document::default());
+        let shell = shell_with_builtin_panels();
+        let panels = shell.panel_trees();
+        let layers_panel = panels
+            .iter()
+            .find(|panel| panel.id == "builtin.layers-panel")
+            .expect("layers panel exists");
 
-        let summaries = shell.panel_debug_summaries();
-        assert!(summaries.iter().any(|(id, title, summary)| {
-            *id == "builtin.layers-panel"
-                && *title == "Layers"
-                && summary.contains("active_layer=Layer 1")
-        }));
+        assert!(tree_contains_text(&layers_panel.children, "Layer 1"));
     }
 
     #[test]
     fn default_shell_registers_builtin_tool_palette() {
-        let mut shell = UiShell::new();
-        shell.update(&Document::default());
+        let shell = shell_with_builtin_panels();
+        let panels = shell.panel_trees();
+        let tool_panel = panels
+            .iter()
+            .find(|panel| panel.id == "builtin.tool-palette")
+            .expect("tool panel exists");
 
-        let views = shell.panel_views();
-        assert!(views.iter().any(|view| {
-            view.id == "builtin.tool-palette"
-                && view.title == "Tools"
-                && view.lines.iter().any(|line| line.contains("Brush"))
-        }));
+        assert!(tree_contains_button_label(
+            &tool_panel.children,
+            "Brush",
+            true
+        ));
     }
 
     #[test]
     fn shell_exposes_panel_tree_buttons() {
-        let mut shell = UiShell::new();
-        shell.update(&Document::default());
+        let shell = shell_with_builtin_panels();
 
         let panels = shell.panel_trees();
         let tool_panel = panels
@@ -1787,8 +1957,7 @@ view {
 
     #[test]
     fn panel_event_returns_command_action() {
-        let mut shell = UiShell::new();
-        shell.update(&Document::default());
+        let mut shell = shell_with_builtin_panels();
 
         let actions = shell.handle_panel_event(&PanelEvent::Activate {
             panel_id: "builtin.tool-palette".to_string(),
@@ -1805,21 +1974,19 @@ view {
 
     #[test]
     fn default_shell_registers_builtin_color_palette() {
-        let mut shell = UiShell::new();
-        shell.update(&Document::default());
+        let shell = shell_with_builtin_panels();
+        let panels = shell.panel_trees();
+        let color_panel = panels
+            .iter()
+            .find(|panel| panel.id == "builtin.color-palette")
+            .expect("color panel exists");
 
-        let summaries = shell.panel_debug_summaries();
-        assert!(summaries.iter().any(|(id, title, summary)| {
-            *id == "builtin.color-palette"
-                && *title == "Colors"
-                && summary.contains("active_color=#000000")
-        }));
+        assert!(tree_contains_text(&color_panel.children, "#000000"));
     }
 
     #[test]
     fn color_palette_slider_event_returns_color_command_action() {
-        let mut shell = UiShell::new();
-        shell.update(&Document::default());
+        let mut shell = shell_with_builtin_panels();
 
         let actions = shell.handle_panel_event(&PanelEvent::SetValue {
             panel_id: "builtin.color-palette".to_string(),
@@ -1837,8 +2004,7 @@ view {
 
     #[test]
     fn color_palette_tree_contains_live_preview() {
-        let mut shell = UiShell::new();
-        shell.update(&Document::default());
+        let shell = shell_with_builtin_panels();
 
         let panels = shell.panel_trees();
         let color_panel = panels
@@ -1863,8 +2029,7 @@ view {
 
     #[test]
     fn rendered_panel_surface_maps_slider_region_to_value_event() {
-        let mut shell = UiShell::new();
-        shell.update(&Document::default());
+        let mut shell = shell_with_builtin_panels();
         let surface = shell.render_panel_surface(280, 800);
 
         let mut found = None;
@@ -1889,9 +2054,8 @@ view {
 
     #[test]
     fn rendered_panel_surface_contains_clickable_button_region() {
-        let mut shell = UiShell::new();
-        shell.update(&Document::default());
-        let surface = shell.render_panel_surface(280, 800);
+        let mut shell = shell_with_builtin_panels();
+        let surface = shell.render_panel_surface(280, 1600);
 
         let mut found = None;
         'outer: for y in 0..surface.height {
@@ -1911,8 +2075,7 @@ view {
 
     #[test]
     fn focus_navigation_can_activate_focused_button() {
-        let mut shell = UiShell::new();
-        shell.update(&Document::default());
+        let mut shell = shell_with_builtin_panels();
 
         assert!(shell.focus_next());
         assert_eq!(
@@ -1927,8 +2090,7 @@ view {
 
     #[test]
     fn scrolling_panels_updates_scroll_offset() {
-        let mut shell = UiShell::new();
-        shell.update(&Document::default());
+        let mut shell = shell_with_builtin_panels();
         let _ = shell.render_panel_surface(280, 96);
 
         assert!(shell.scroll_panels(6, 96));
@@ -1937,8 +2099,7 @@ view {
 
     #[test]
     fn scrolling_panels_keeps_cached_panel_content() {
-        let mut shell = UiShell::new();
-        shell.update(&Document::default());
+        let mut shell = shell_with_builtin_panels();
         let _ = shell.render_panel_surface(280, 96);
 
         assert!(!shell.panel_content_dirty);
@@ -1948,8 +2109,7 @@ view {
 
     #[test]
     fn focus_change_invalidates_cached_panel_content() {
-        let mut shell = UiShell::new();
-        shell.update(&Document::default());
+        let mut shell = shell_with_builtin_panels();
         let _ = shell.render_panel_surface(280, 96);
 
         assert!(!shell.panel_content_dirty);
@@ -2072,6 +2232,97 @@ view {
         assert_eq!(matching[0].title, "DSL Reloaded");
     }
 
+    #[test]
+    fn loading_dsl_panel_replaces_builtin_panel_with_same_id() {
+        let temp_dir = unique_test_dir();
+        fs::create_dir_all(&temp_dir).expect("temp dir created");
+        fs::write(
+            temp_dir.join("builtin-app-actions.altp-panel"),
+            BUILTIN_APP_ACTIONS_PANEL,
+        )
+        .expect("app actions panel written");
+        fs::write(
+            temp_dir.join("builtin-app-actions.wasm"),
+            BUILTIN_APP_ACTIONS_WAT,
+        )
+        .expect("app actions wasm written");
+
+        let mut shell = shell_with_builtin_panels();
+        assert!(shell.load_panel_directory(&temp_dir).is_empty());
+
+        let panels = shell.panel_trees();
+        let matching = panels
+            .iter()
+            .filter(|panel| panel.id == "builtin.app-actions")
+            .collect::<Vec<_>>();
+        assert_eq!(matching.len(), 1);
+        assert!(tree_contains_text(
+            &matching[0].children,
+            "Hosted via DSL + Wasm"
+        ));
+        assert_eq!(
+            shell.handle_panel_event(&PanelEvent::Activate {
+                panel_id: "builtin.app-actions".to_string(),
+                node_id: "app.save".to_string(),
+            }),
+            vec![HostAction::DispatchCommand(Command::SaveProject)]
+        );
+    }
+
+    #[test]
+    fn migrated_builtin_dsl_panels_use_host_snapshot_data() {
+        let mut shell = UiShell::new();
+        let mut document = Document::default();
+        document.set_active_tool(ToolKind::Eraser);
+        assert!(
+            shell
+                .load_panel_directory(default_builtin_panel_dir())
+                .is_empty()
+        );
+        shell.update(&document);
+
+        let panels = shell.panel_trees();
+        let tool_panel = panels
+            .iter()
+            .find(|panel| panel.id == "builtin.tool-palette")
+            .expect("tool panel exists");
+        let layers_panel = panels
+            .iter()
+            .find(|panel| panel.id == "builtin.layers-panel")
+            .expect("layers panel exists");
+
+        assert!(tree_contains_button_label(
+            &tool_panel.children,
+            "Eraser",
+            true
+        ));
+        assert!(tree_contains_text(&layers_panel.children, "Untitled"));
+        assert!(tree_contains_text(&layers_panel.children, "1"));
+        assert!(tree_contains_text(&layers_panel.children, "Layer 1"));
+    }
+
+    #[test]
+    fn load_panel_directory_discovers_nested_panel_files() {
+        let temp_dir = unique_test_dir();
+        let nested_dir = temp_dir.join("nested").join("plugin");
+        fs::create_dir_all(&nested_dir).expect("nested temp dir created");
+        fs::write(nested_dir.join("sample.altp-panel"), SAMPLE_DSL_PANEL)
+            .expect("dsl panel written");
+        fs::write(nested_dir.join("sample_test.wasm"), SAMPLE_DSL_WAT)
+            .expect("wasm sample written");
+
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+        assert!(shell.load_panel_directory(&temp_dir).is_empty());
+
+        assert!(
+            shell
+                .panel_trees()
+                .iter()
+                .any(|panel| panel.id == "builtin.dsl-test")
+        );
+    }
+
     fn tree_contains_text(nodes: &[PanelNode], target: &str) -> bool {
         nodes.iter().any(|node| match node {
             PanelNode::Text { text, .. } => text == target,
@@ -2081,6 +2332,24 @@ view {
             PanelNode::ColorPreview { .. }
             | PanelNode::Button { .. }
             | PanelNode::Slider { .. } => false,
+        })
+    }
+
+    fn tree_contains_button_label(nodes: &[PanelNode], target: &str, active: bool) -> bool {
+        nodes.iter().any(|node| match node {
+            PanelNode::Button {
+                label,
+                active: is_active,
+                ..
+            } => label == target && *is_active == active,
+            PanelNode::Column { children, .. }
+            | PanelNode::Row { children, .. }
+            | PanelNode::Section { children, .. } => {
+                tree_contains_button_label(children, target, active)
+            }
+            PanelNode::ColorPreview { .. } | PanelNode::Slider { .. } | PanelNode::Text { .. } => {
+                false
+            }
         })
     }
 
@@ -2112,5 +2381,25 @@ view {
             .expect("system time available")
             .as_nanos();
         std::env::temp_dir().join(format!("altpaint-ui-shell-{suffix}"))
+    }
+
+    fn default_builtin_panel_dir() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("apps")
+            .join("desktop")
+            .join("ui")
+    }
+
+    fn shell_with_builtin_panels() -> UiShell {
+        let mut shell = UiShell::new();
+        let diagnostics = shell.load_panel_directory(default_builtin_panel_dir());
+        assert!(
+            diagnostics.is_empty(),
+            "expected builtin panels to load: {diagnostics:?}"
+        );
+        shell.update(&Document::default());
+        shell
     }
 }

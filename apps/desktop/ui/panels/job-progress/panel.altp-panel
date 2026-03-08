@@ -1,0 +1,29 @@
+panel {
+  id: "builtin.job-progress"
+  title: "Jobs"
+  version: 1
+}
+
+permissions {
+  read.document
+}
+
+runtime {
+  wasm: "builtin_panel_job_progress.wasm"
+}
+
+state {
+}
+
+view {
+  <column gap=8 padding=8>
+    <section title="Queue">
+      <text tone="muted">Hosted via Rust SDK + Wasm</text>
+      <text>Active jobs</text>
+      <text>{host.jobs.active}</text>
+      <text>Queued jobs</text>
+      <text>{host.jobs.queued}</text>
+      <text>{host.jobs.status}</text>
+    </section>
+  </column>
+}

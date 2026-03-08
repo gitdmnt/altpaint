@@ -1962,6 +1962,39 @@ mod tests {
     }
 
     #[test]
+    fn desktop_app_replaces_builtin_panels_with_phase7_dsl_variants() {
+        let app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+        let panels = app.ui_shell.panel_trees();
+
+        for panel_id in [
+            "builtin.app-actions",
+            "builtin.tool-palette",
+            "builtin.layers-panel",
+        ] {
+            assert_eq!(
+                panels.iter().filter(|panel| panel.id == panel_id).count(),
+                1,
+                "expected a single panel for {panel_id}"
+            );
+        }
+
+        let app_actions = panels
+            .iter()
+            .find(|panel| panel.id == "builtin.app-actions")
+            .expect("app actions panel exists");
+        let layers = panels
+            .iter()
+            .find(|panel| panel.id == "builtin.layers-panel")
+            .expect("layers panel exists");
+
+        assert!(tree_contains_text(
+            &app_actions.children,
+            "Hosted via Rust SDK + Wasm"
+        ));
+        assert!(tree_contains_text(&layers.children, "Untitled"));
+    }
+
+    #[test]
     fn panel_scroll_requests_surface_offset_change() {
         let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
         let mut profiler = DesktopProfiler::new();
@@ -2274,5 +2307,19 @@ mod tests {
             &frame.pixels[untouched_index..untouched_index + 4],
             &[0, 0, 0, 0]
         );
+    }
+
+    fn tree_contains_text(nodes: &[plugin_api::PanelNode], target: &str) -> bool {
+        nodes.iter().any(|node| match node {
+            plugin_api::PanelNode::Text { text, .. } => text == target,
+            plugin_api::PanelNode::Column { children, .. }
+            | plugin_api::PanelNode::Row { children, .. }
+            | plugin_api::PanelNode::Section { children, .. } => {
+                tree_contains_text(children, target)
+            }
+            plugin_api::PanelNode::ColorPreview { .. }
+            | plugin_api::PanelNode::Button { .. }
+            | plugin_api::PanelNode::Slider { .. } => false,
+        })
     }
 }

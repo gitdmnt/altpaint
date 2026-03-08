@@ -1,0 +1,28 @@
+panel {
+  id: "builtin.app-actions"
+  title: "App"
+  version: 1
+}
+
+permissions {
+  read.document
+  write.command
+}
+
+runtime {
+  wasm: "builtin_panel_app_actions.wasm"
+}
+
+state {
+}
+
+view {
+  <column gap=8 padding=8>
+    <section title="Project">
+      <text tone="muted">Hosted via Rust SDK + Wasm</text>
+      <button id="app.new" on:click="new_project">New</button>
+      <button id="app.save" on:click="save_project">Save</button>
+      <button id="app.load" on:click="load_project">Load</button>
+    </section>
+  </column>
+}

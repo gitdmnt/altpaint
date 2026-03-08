@@ -21,11 +21,13 @@ pub enum PluginHostError {
 #[derive(Debug, Default)]
 struct RuntimeCollector {
     result: HandlerResult,
+    current_request: Option<PanelEventRequest>,
 }
 
 impl RuntimeCollector {
     fn clear(&mut self) {
         self.result = HandlerResult::default();
+        self.current_request = None;
     }
 }
 
@@ -86,6 +88,32 @@ impl WasmPanelRuntime {
                             .diagnostics
                             .push(Diagnostic::error("failed to read state path for bool set"));
                     }
+                },
+            )
+            .map_err(|error| PluginHostError::Instantiate {
+                path: path.clone(),
+                message: error.to_string(),
+            })?;
+        linker
+            .func_wrap(
+                "host",
+                "state_get_i32",
+                |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| -> i32 {
+                    let Some(path) = read_utf8(&mut caller, ptr, len) else {
+                        caller
+                            .data_mut()
+                            .result
+                            .diagnostics
+                            .push(Diagnostic::error("failed to read state path for i32 get"));
+                        return 0;
+                    };
+                    caller
+                        .data()
+                        .current_request
+                        .as_ref()
+                        .and_then(|request| lookup_json_path(&request.state_snapshot, &path))
+                        .and_then(Value::as_i64)
+                        .unwrap_or_default() as i32
                 },
             )
             .map_err(|error| PluginHostError::Instantiate {
@@ -221,6 +249,7 @@ impl WasmPanelRuntime {
         request: &PanelEventRequest,
     ) -> Result<HandlerResult, PluginHostError> {
         self.store.data_mut().clear();
+        self.store.data_mut().current_request = Some(request.clone());
         let export_name = format!(
             "panel_handle_{}",
             sanitize_handler_name(&request.handler_name)
@@ -321,6 +350,14 @@ fn apply_state_patch(state: &mut Value, patch: &StatePatch) {
             .entry(segment.to_string())
             .or_insert_with(|| Value::Object(Map::new()));
     }
+}
+
+fn lookup_json_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
+    let mut current = value;
+    for segment in path.split('.') {
+        current = current.get(segment)?;
+    }
+    Some(current)
 }
 
 fn sanitize_handler_name(handler_name: &str) -> String {

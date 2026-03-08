@@ -8,7 +8,6 @@ authors.workspace = true
 [dependencies]
 ab_glyph.workspace = true
 app-core = { path = "../app-core" }
-builtin-plugins = { path = "../builtin-plugins" }
 font8x8.workspace = true
 fontdb.workspace = true
 panel-dsl = { path = "../panel-dsl" }

@@ -1,7 +1,6 @@
 [workspace]
 members = [
   "crates/app-core",
-  "crates/builtin-plugins",
   "crates/panel-dsl",
   "crates/panel-schema",
   "crates/panel-sdk",
@@ -11,6 +10,7 @@ members = [
   "crates/ui-shell",
   "crates/plugin-api",
   "apps/desktop",
+  "apps/desktop/ui/panels/*",
 ]
 resolver = "2"
 

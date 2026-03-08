@@ -2,6 +2,7 @@
 target/
 Cargo.lock
 apps/desktop/ui/**/*.wasm
+apps/desktop/ui/*.wasm
 *.log
 *.tmp
 *.bak
