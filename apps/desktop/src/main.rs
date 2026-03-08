@@ -229,6 +229,12 @@ struct CanvasCompositeSource<'a> {
     pixels: &'a [u8],
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PanelDragState {
+    panel_id: String,
+    node_id: String,
+}
+
 struct DesktopApp {
     document: Document,
     ui_shell: UiShell,
@@ -238,6 +244,7 @@ struct DesktopApp {
     layout: Option<DesktopLayout>,
     present_frame: Option<render::RenderFrame>,
     pending_canvas_dirty_rect: Option<DirtyRect>,
+    active_panel_drag: Option<PanelDragState>,
     needs_panel_refresh: bool,
     needs_full_present_rebuild: bool,
 }
@@ -257,6 +264,7 @@ impl DesktopApp {
             layout: None,
             present_frame: None,
             pending_canvas_dirty_rect: None,
+            active_panel_drag: None,
             needs_panel_refresh: true,
             needs_full_present_rebuild: true,
         }
@@ -373,12 +381,15 @@ impl DesktopApp {
             return self.handle_canvas_pointer("down", x, y);
         }
 
-        false
+        self.begin_panel_interaction(x, y)
     }
 
     fn handle_pointer_released(&mut self, x: i32, y: i32) -> bool {
         if self.canvas_input.is_drawing {
             return self.handle_canvas_pointer("up", x, y);
+        }
+        if self.active_panel_drag.take().is_some() {
+            return false;
         }
         self.handle_panel_pointer(x, y)
     }
@@ -388,40 +399,59 @@ impl DesktopApp {
             return self.handle_canvas_pointer("drag", x, y);
         }
 
+        if self.active_panel_drag.is_some() {
+            return self.drag_panel_interaction(x, y);
+        }
+
         false
     }
 
-    fn handle_panel_pointer(&mut self, x: i32, y: i32) -> bool {
-        let Some(layout) = self.layout.as_ref() else {
-            return false;
-        };
-        let Some(panel_surface) = self.panel_surface.as_ref() else {
-            return false;
-        };
-
-        let Some((surface_x, surface_y)) = map_view_to_surface(
-            panel_surface.width,
-            panel_surface.height,
-            layout.panel_surface_rect,
-            x,
-            y,
-        ) else {
+    fn begin_panel_interaction(&mut self, x: i32, y: i32) -> bool {
+        let Some(event) = self.panel_event_from_window(x, y) else {
+            self.active_panel_drag = None;
             return false;
         };
 
-        let Some(event) = panel_surface.hit_test(surface_x, surface_y) else {
+        match &event {
+            PanelEvent::SetValue { panel_id, node_id, .. } => {
+                self.active_panel_drag = Some(PanelDragState {
+                    panel_id: panel_id.clone(),
+                    node_id: node_id.clone(),
+                });
+                self.dispatch_panel_event(event)
+            }
+            PanelEvent::Activate { .. } => false,
+        }
+    }
+
+    fn drag_panel_interaction(&mut self, x: i32, y: i32) -> bool {
+        let Some(state) = self.active_panel_drag.clone() else {
             return false;
         };
+        let Some(event) = self.panel_drag_event_from_window(&state, x, y) else {
+            return false;
+        };
+        self.dispatch_panel_event(event)
+    }
 
+    fn dispatch_panel_event(&mut self, event: PanelEvent) -> bool {
         let mut changed = false;
-        let PanelEvent::Activate { panel_id, node_id } = &event;
-        changed |= self.ui_shell.focus_panel_node(panel_id, node_id);
+        if let PanelEvent::Activate { panel_id, node_id } = &event {
+            changed |= self.ui_shell.focus_panel_node(panel_id, node_id);
+        }
 
         for action in self.ui_shell.handle_panel_event(&event) {
             changed |= self.execute_host_action(action);
         }
 
         changed
+    }
+
+    fn handle_panel_pointer(&mut self, x: i32, y: i32) -> bool {
+        let Some(event) = self.panel_event_from_window(x, y) else {
+            return false;
+        };
+        self.dispatch_panel_event(event)
     }
 
     fn focus_next_panel_control(&mut self) -> bool {
@@ -543,6 +573,7 @@ impl DesktopApp {
                     self.document = document;
                     self.canvas_input = CanvasInputState::default();
                     self.pending_canvas_dirty_rect = None;
+                    self.active_panel_drag = None;
                     self.needs_panel_refresh = true;
                     self.needs_full_present_rebuild = true;
                     true
@@ -580,6 +611,7 @@ impl DesktopApp {
                     Command::NewDocument => {
                         self.canvas_input = CanvasInputState::default();
                         self.pending_canvas_dirty_rect = None;
+                        self.active_panel_drag = None;
                         self.needs_panel_refresh = true;
                         self.needs_full_present_rebuild = true;
                         true
@@ -601,6 +633,32 @@ impl DesktopApp {
             .active_bitmap()
             .map(|bitmap| (bitmap.width, bitmap.height))
             .unwrap_or((1, 1))
+    }
+
+    fn panel_event_from_window(&self, x: i32, y: i32) -> Option<PanelEvent> {
+        let layout = self.layout.as_ref()?;
+        let panel_surface = self.panel_surface.as_ref()?;
+        let (surface_x, surface_y) = map_view_to_surface(
+            panel_surface.width,
+            panel_surface.height,
+            layout.panel_surface_rect,
+            x,
+            y,
+        )?;
+        panel_surface.hit_test(surface_x, surface_y)
+    }
+
+    fn panel_drag_event_from_window(&self, state: &PanelDragState, x: i32, y: i32) -> Option<PanelEvent> {
+        let layout = self.layout.as_ref()?;
+        let panel_surface = self.panel_surface.as_ref()?;
+        let (surface_x, surface_y) = map_view_to_surface_clamped(
+            panel_surface.width,
+            panel_surface.height,
+            layout.panel_surface_rect,
+            x,
+            y,
+        )?;
+        panel_surface.drag_event(&state.panel_id, &state.node_id, surface_x, surface_y)
     }
 
     fn status_text(&self) -> String {
@@ -980,6 +1038,22 @@ fn map_view_to_surface(
     ))
 }
 
+fn map_view_to_surface_clamped(
+    surface_width: usize,
+    surface_height: usize,
+    rect: Rect,
+    x: i32,
+    y: i32,
+) -> Option<(usize, usize)> {
+    if surface_width == 0 || surface_height == 0 || rect.width == 0 || rect.height == 0 {
+        return None;
+    }
+
+    let clamped_x = x.clamp(rect.x as i32, (rect.x + rect.width.saturating_sub(1)) as i32);
+    let clamped_y = y.clamp(rect.y as i32, (rect.y + rect.height.saturating_sub(1)) as i32);
+    map_view_to_surface(surface_width, surface_height, rect, clamped_x, clamped_y)
+}
+
 fn draw_text(frame: &mut render::RenderFrame, x: usize, y: usize, text: &str, color: [u8; 4]) {
     draw_text_rgba(
         frame.pixels.as_mut_slice(),
@@ -1138,6 +1212,24 @@ mod tests {
         );
 
         assert_eq!(mapped, Some((263, 799)));
+    }
+
+    #[test]
+    fn map_view_to_surface_clamped_limits_outside_coordinates() {
+        let mapped = map_view_to_surface_clamped(
+            264,
+            800,
+            Rect {
+                x: 8,
+                y: 40,
+                width: 264,
+                height: 800,
+            },
+            500,
+            -10,
+        );
+
+        assert_eq!(mapped, Some((263, 0)));
     }
 
     #[test]
@@ -1305,6 +1397,46 @@ mod tests {
 
         assert!(app.scroll_panel_surface(6));
         assert!(app.ui_shell.panel_scroll_offset() > 0);
+    }
+
+    #[test]
+    fn panel_slider_drag_updates_document_color() {
+        let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+        let mut profiler = DesktopProfiler::new();
+        let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+        let layout = app.layout.clone().expect("layout exists");
+        let surface = app.panel_surface.clone().expect("panel surface exists");
+
+        let mut start = None;
+        let mut end = None;
+        'outer: for y in 0..surface.height {
+            for x in 0..surface.width {
+                if let Some(PanelEvent::SetValue {
+                    panel_id,
+                    node_id,
+                    value,
+                }) = surface.hit_test(x, y)
+                    && panel_id == "builtin.color-palette"
+                    && node_id == "color.slider.red"
+                {
+                    start = Some((x, y, value));
+                    end = Some((surface.width - 1, y));
+                    break 'outer;
+                }
+            }
+        }
+
+        let (start_x, start_y, _) = start.expect("slider hit region exists");
+        let (end_x, end_y) = end.expect("slider end exists");
+        let window_start_x = layout.panel_surface_rect.x as i32 + start_x as i32;
+        let window_start_y = layout.panel_surface_rect.y as i32 + start_y as i32;
+        let window_end_x = layout.panel_surface_rect.x as i32 + end_x as i32;
+        let window_end_y = layout.panel_surface_rect.y as i32 + end_y as i32;
+
+        assert!(app.handle_pointer_pressed(window_start_x, window_start_y));
+        assert!(app.handle_pointer_dragged(window_end_x, window_end_y));
+        assert!(!app.handle_pointer_released(window_end_x, window_end_y));
+        assert_eq!(app.document.active_color.r, 255);
     }
 
     #[test]

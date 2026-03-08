@@ -28,12 +28,27 @@ const BUTTON_ACTIVE_BORDER: [u8; 4] = [0xc6, 0xd4, 0xff, 0xff];
 const BUTTON_FOCUS_BORDER: [u8; 4] = [0x9f, 0xb7, 0xff, 0xff];
 const BUTTON_TEXT: [u8; 4] = [0xf0, 0xf0, 0xf0, 0xff];
 const BUTTON_TEXT_DARK: [u8; 4] = [0x14, 0x14, 0x14, 0xff];
+const SLIDER_TRACK_BACKGROUND: [u8; 4] = [0x2c, 0x2c, 0x2c, 0xff];
+const SLIDER_TRACK_BORDER: [u8; 4] = [0x5f, 0x5f, 0x5f, 0xff];
+const SLIDER_KNOB: [u8; 4] = [0xf0, 0xf0, 0xf0, 0xff];
+const PREVIEW_SWATCH_BORDER: [u8; 4] = [0x74, 0x74, 0x74, 0xff];
 const PANEL_OUTER_PADDING: usize = 8;
 const PANEL_INNER_PADDING: usize = 8;
 const NODE_GAP: usize = 6;
 const SECTION_GAP: usize = 4;
 const SECTION_INDENT: usize = 10;
 const BUTTON_HEIGHT: usize = 24;
+const COLOR_PREVIEW_HEIGHT: usize = 52;
+const SLIDER_HEIGHT: usize = 32;
+const SLIDER_TRACK_HEIGHT: usize = 8;
+const SLIDER_TRACK_TOP: usize = 20;
+const SLIDER_KNOB_WIDTH: usize = 8;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PanelHitKind {
+    Activate,
+    Slider { min: usize, max: usize },
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PanelHitRegion {
@@ -43,6 +58,7 @@ struct PanelHitRegion {
     height: usize,
     panel_id: String,
     node_id: String,
+    kind: PanelHitKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,11 +86,51 @@ impl PanelSurface {
                     && x < region.x + region.width
                     && y < region.y + region.height
             })
-            .map(|region| PanelEvent::Activate {
-                panel_id: region.panel_id.clone(),
-                node_id: region.node_id.clone(),
-            })
+            .map(|region| panel_event_for_region(region, x, y))
     }
+
+    pub fn drag_event(
+        &self,
+        panel_id: &str,
+        node_id: &str,
+        x: usize,
+        y: usize,
+    ) -> Option<PanelEvent> {
+        self.hit_regions
+            .iter()
+            .rev()
+            .find(|region| region.panel_id == panel_id && region.node_id == node_id)
+            .map(|region| panel_event_for_region(region, x, y))
+    }
+}
+
+fn panel_event_for_region(region: &PanelHitRegion, x: usize, y: usize) -> PanelEvent {
+    match region.kind {
+        PanelHitKind::Activate => PanelEvent::Activate {
+            panel_id: region.panel_id.clone(),
+            node_id: region.node_id.clone(),
+        },
+        PanelHitKind::Slider { min, max } => PanelEvent::SetValue {
+            panel_id: region.panel_id.clone(),
+            node_id: region.node_id.clone(),
+            value: slider_value_for_position(region, min, max, x, y),
+        },
+    }
+}
+
+fn slider_value_for_position(
+    region: &PanelHitRegion,
+    min: usize,
+    max: usize,
+    x: usize,
+    _y: usize,
+) -> usize {
+    if max <= min || region.width <= 1 {
+        return min;
+    }
+
+    let local_x = x.clamp(region.x, region.x + region.width - 1) - region.x;
+    min + ((max - min) * local_x) / (region.width - 1)
 }
 
 /// パネルホストとして振る舞う最小UIシェル。
@@ -207,8 +263,9 @@ impl UiShell {
     }
 
     pub fn handle_panel_event(&mut self, event: &PanelEvent) -> Vec<HostAction> {
-        let PanelEvent::Activate { panel_id, node_id } = event;
-        let _ = self.focus_panel_node(panel_id, node_id);
+        if let PanelEvent::Activate { panel_id, node_id } = event {
+            let _ = self.focus_panel_node(panel_id, node_id);
+        }
         self.panels
             .iter_mut()
             .flat_map(|panel| panel.handle_event(event))
@@ -311,6 +368,7 @@ impl UiShell {
                 height: bottom - top,
                 panel_id: region.panel_id,
                 node_id: region.node_id,
+                kind: region.kind,
             });
         }
 
@@ -367,7 +425,7 @@ fn collect_focus_targets(panel_id: &str, nodes: &[PanelNode], targets: &mut Vec<
                 panel_id: panel_id.to_string(),
                 node_id: id.clone(),
             }),
-            PanelNode::Text { .. } => {}
+            PanelNode::Text { .. } | PanelNode::ColorPreview { .. } | PanelNode::Slider { .. } => {}
         }
     }
 }
@@ -436,7 +494,9 @@ fn measure_node(node: &PanelNode, available_width: usize) -> usize {
             title_height + SECTION_GAP + children_height
         }
         PanelNode::Text { text, .. } => measure_text(text, available_width),
+        PanelNode::ColorPreview { .. } => COLOR_PREVIEW_HEIGHT,
         PanelNode::Button { .. } => BUTTON_HEIGHT,
+        PanelNode::Slider { .. } => SLIDER_HEIGHT,
     }
 }
 
@@ -554,6 +614,30 @@ fn draw_node(
         PanelNode::Text { text, .. } => {
             draw_wrapped_text(surface, x, y, text, BODY_TEXT, available_width)
         }
+        PanelNode::ColorPreview { label, color, .. } => {
+            let label_height = draw_wrapped_text(surface, x, y, label, BODY_TEXT, available_width);
+            let swatch_y = y + label_height + 4;
+            let swatch_height = COLOR_PREVIEW_HEIGHT
+                .saturating_sub(label_height + 4)
+                .max(12);
+            fill_rect(
+                surface,
+                x,
+                swatch_y,
+                available_width,
+                swatch_height,
+                color.to_rgba8(),
+            );
+            stroke_rect(
+                surface,
+                x,
+                swatch_y,
+                available_width,
+                swatch_height,
+                PREVIEW_SWATCH_BORDER,
+            );
+            COLOR_PREVIEW_HEIGHT
+        }
         PanelNode::Button {
             id,
             label,
@@ -609,8 +693,102 @@ fn draw_node(
                 height: BUTTON_HEIGHT,
                 panel_id: panel_id.to_string(),
                 node_id: id.clone(),
+                kind: PanelHitKind::Activate,
             });
             BUTTON_HEIGHT
+        }
+        PanelNode::Slider {
+            id,
+            label,
+            min,
+            max,
+            value,
+            fill_color,
+        } => {
+            let clamped_value = (*value).clamp(*min, *max);
+            let accent = fill_color.unwrap_or(ColorRgba8::new(0x9f, 0xb7, 0xff, 0xff));
+            let track_y = y + SLIDER_TRACK_TOP;
+            let track_width = available_width.max(1);
+            let track_inner_width = track_width.saturating_sub(2);
+            let range = max.saturating_sub(*min).max(1);
+            let progress = clamped_value.saturating_sub(*min);
+            let fill_width = if track_inner_width == 0 {
+                0
+            } else {
+                ((progress * track_inner_width) / range).max(1)
+            };
+            let knob_offset = if track_inner_width <= 1 {
+                0
+            } else {
+                (progress * (track_inner_width - 1)) / range
+            };
+            let knob_x = (x + 1 + knob_offset)
+                .saturating_sub(SLIDER_KNOB_WIDTH / 2)
+                .min(x + track_width.saturating_sub(SLIDER_KNOB_WIDTH.min(track_width)));
+
+            draw_wrapped_text(
+                surface,
+                x,
+                y,
+                &format!("{label}: {clamped_value}"),
+                BODY_TEXT,
+                available_width,
+            );
+            fill_rect(
+                surface,
+                x,
+                track_y,
+                track_width,
+                SLIDER_TRACK_HEIGHT,
+                SLIDER_TRACK_BACKGROUND,
+            );
+            stroke_rect(
+                surface,
+                x,
+                track_y,
+                track_width,
+                SLIDER_TRACK_HEIGHT,
+                SLIDER_TRACK_BORDER,
+            );
+            if fill_width > 0 {
+                fill_rect(
+                    surface,
+                    x + 1,
+                    track_y + 1,
+                    fill_width.min(track_inner_width),
+                    SLIDER_TRACK_HEIGHT.saturating_sub(2).max(1),
+                    accent.to_rgba8(),
+                );
+            }
+            fill_rect(
+                surface,
+                knob_x,
+                track_y.saturating_sub(3),
+                SLIDER_KNOB_WIDTH.min(track_width),
+                SLIDER_TRACK_HEIGHT + 6,
+                SLIDER_KNOB,
+            );
+            stroke_rect(
+                surface,
+                knob_x,
+                track_y.saturating_sub(3),
+                SLIDER_KNOB_WIDTH.min(track_width),
+                SLIDER_TRACK_HEIGHT + 6,
+                SLIDER_TRACK_BORDER,
+            );
+            surface.hit_regions.push(PanelHitRegion {
+                x,
+                y,
+                width: track_width,
+                height: SLIDER_HEIGHT,
+                panel_id: panel_id.to_string(),
+                node_id: id.clone(),
+                kind: PanelHitKind::Slider {
+                    min: *min,
+                    max: *max,
+                },
+            });
+            SLIDER_HEIGHT
         }
     }
 }
@@ -815,7 +993,9 @@ mod tests {
                 PanelNode::Column { children, .. }
                 | PanelNode::Row { children, .. }
                 | PanelNode::Section { children, .. } => has_brush_button(children),
-                PanelNode::Text { .. } => false,
+                PanelNode::Text { .. }
+                | PanelNode::ColorPreview { .. }
+                | PanelNode::Slider { .. } => false,
             })
         }
 
@@ -854,21 +1034,74 @@ mod tests {
     }
 
     #[test]
-    fn color_palette_event_returns_color_command_action() {
+    fn color_palette_slider_event_returns_color_command_action() {
         let mut shell = UiShell::new();
         shell.update(&Document::default());
 
-        let actions = shell.handle_panel_event(&PanelEvent::Activate {
+        let actions = shell.handle_panel_event(&PanelEvent::SetValue {
             panel_id: "builtin.color-palette".to_string(),
-            node_id: "color.red".to_string(),
+            node_id: "color.slider.red".to_string(),
+            value: 128,
         });
 
         assert_eq!(
             actions,
             vec![HostAction::DispatchCommand(Command::SetActiveColor {
-                color: app_core::ColorRgba8::new(0xe5, 0x39, 0x35, 0xff),
+                color: app_core::ColorRgba8::new(128, 0x00, 0x00, 0xff),
             })]
         );
+    }
+
+    #[test]
+    fn color_palette_tree_contains_live_preview() {
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+
+        let panels = shell.panel_trees();
+        let color_panel = panels
+            .iter()
+            .find(|panel| panel.id == "builtin.color-palette")
+            .expect("color panel exists");
+
+        fn has_preview(items: &[PanelNode]) -> bool {
+            items.iter().any(|item| match item {
+                PanelNode::ColorPreview { .. } => true,
+                PanelNode::Column { children, .. }
+                | PanelNode::Row { children, .. }
+                | PanelNode::Section { children, .. } => has_preview(children),
+                PanelNode::Text { .. } | PanelNode::Button { .. } | PanelNode::Slider { .. } => {
+                    false
+                }
+            })
+        }
+
+        assert!(has_preview(&color_panel.children));
+    }
+
+    #[test]
+    fn rendered_panel_surface_maps_slider_region_to_value_event() {
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+        let surface = shell.render_panel_surface(280, 800);
+
+        let mut found = None;
+        'outer: for y in 0..surface.height {
+            for x in 0..surface.width {
+                if let Some(PanelEvent::SetValue {
+                    panel_id,
+                    node_id,
+                    value,
+                }) = surface.hit_test(x, y)
+                    && panel_id == "builtin.color-palette"
+                    && node_id == "color.slider.red"
+                {
+                    found = Some(value);
+                    break 'outer;
+                }
+            }
+        }
+
+        assert!(found.is_some());
     }
 
     #[test]

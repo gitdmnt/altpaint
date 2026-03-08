@@ -2,7 +2,7 @@
 
 ## 概要
 
-Color Palette は、現在のブラシ色を切り替える最小のビルトインパネルです。
+Color Palette は、現在のブラシ色を RGB スライダーで調整し、結果をライブプレビューする最小のビルトインパネルです。
 
 - panel id: builtin.color-palette
 - title: Colors
@@ -11,6 +11,7 @@ Color Palette は、現在のブラシ色を切り替える最小のビルトイ
 ## 目的
 
 ホスト側パネルからブラシ色を変更し、その結果がキャンバス描画へ反映される導線を確認するためのパネルです。
+プリセット色パレットは持たず、現在色のプレビューを見ながら直接調整します。
 
 ## 内部状態
 
@@ -26,35 +27,33 @@ update(...) のたびに Document.active_color を読み取り、現在選択中
 
 PanelTree 上では 1 つの Section を持ちます。
 
-- Section: Palette
-  - Row: Black / Red / Blue
-  - Row: Green / Gold / Violet
+- Section: Custom
+  - ColorPreview: Live Preview #RRGGBB
+  - Text: R:.. G:.. B:..
+  - Slider: Red
+  - Slider: Green
+  - Slider: Blue
 
-各ボタンは色付きの塗りで描画され、選択中の色は active=true になります。
-ホスト側では active 状態を強調枠として描画します。
+ColorPreview は現在の `Document.active_color` をそのまま矩形で表示するライブプレビューです。
+RGB スライダーは 0〜255 の範囲で現在色の各チャンネルを直接変更できます。
+スライダー操作中も `Command::SetActiveColor` が継続発行され、プレビュー表示も即時に追従します。
 
 ## 発行する HostAction
 
-- Black → Command::SetActiveColor { color: #000000 }
-- Red → Command::SetActiveColor { color: #E53935 }
-- Blue → Command::SetActiveColor { color: #1E88E5 }
-- Green → Command::SetActiveColor { color: #43A047 }
-- Gold → Command::SetActiveColor { color: #FB8C00 }
-- Violet → Command::SetActiveColor { color: #8E24AA }
+- Red slider / Green slider / Blue slider → Command::SetActiveColor { color: 現在色の該当チャンネルだけ更新した値 }
 
 ## view() での補助表示
 
-簡易行表示では、現在選択中の色に > マーカーを付けます。
+簡易行表示では、現在色と RGB 値を 1 行で表示します。
 
 例:
 
-- > Black (#000000)
--   Red (#E53935)
+- Preview #000000 / R:0 G:0 B:0
 
 ## 既知の制約
 
-- 色は 6 色の固定プリセットです
-- カスタム色選択、HSV スライダー、不透明度変更はまだありません
+- 現在のスライダーは RGB 3 本だけです
+- HSV スライダー、不透明度変更はまだありません
 - 現時点ではブラシ色のみが変わり、消しゴム色は常に白です
 
 ## 今後の拡張候補

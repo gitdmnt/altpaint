@@ -23,7 +23,15 @@ pub enum HostAction {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PanelEvent {
-    Activate { panel_id: String, node_id: String },
+    Activate {
+        panel_id: String,
+        node_id: String,
+    },
+    SetValue {
+        panel_id: String,
+        node_id: String,
+        value: usize,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,11 +53,24 @@ pub enum PanelNode {
         id: String,
         text: String,
     },
+    ColorPreview {
+        id: String,
+        label: String,
+        color: ColorRgba8,
+    },
     Button {
         id: String,
         label: String,
         action: HostAction,
         active: bool,
+        fill_color: Option<ColorRgba8>,
+    },
+    Slider {
+        id: String,
+        label: String,
+        min: usize,
+        max: usize,
+        value: usize,
         fill_color: Option<ColorRgba8>,
     },
 }
@@ -135,9 +156,10 @@ fn find_actions_in_node(node: &PanelNode, target_id: &str) -> Option<Vec<HostAct
         | PanelNode::Section { children, .. } => children
             .iter()
             .find_map(|child| find_actions_in_node(child, target_id)),
-        PanelNode::Text { .. } => None,
+        PanelNode::Text { .. } | PanelNode::ColorPreview { .. } => None,
         PanelNode::Button { id, action, .. } if id == target_id => Some(vec![action.clone()]),
         PanelNode::Button { .. } => None,
+        PanelNode::Slider { .. } => None,
     }
 }
 

@@ -1,14 +1,10 @@
 use app_core::{ColorRgba8, Command, Document};
 use plugin_api::{HostAction, PanelNode, PanelPlugin, PanelTree, PanelView};
 
-const PALETTE_COLORS: [(&str, ColorRgba8); 6] = [
-    ("Black", ColorRgba8::new(0x00, 0x00, 0x00, 0xff)),
-    ("Red", ColorRgba8::new(0xe5, 0x39, 0x35, 0xff)),
-    ("Blue", ColorRgba8::new(0x1e, 0x88, 0xe5, 0xff)),
-    ("Green", ColorRgba8::new(0x43, 0xa0, 0x47, 0xff)),
-    ("Gold", ColorRgba8::new(0xfb, 0x8c, 0x00, 0xff)),
-    ("Violet", ColorRgba8::new(0x8e, 0x24, 0xaa, 0xff)),
-];
+const RED_SLIDER_ID: &str = "color.slider.red";
+const GREEN_SLIDER_ID: &str = "color.slider.green";
+const BLUE_SLIDER_ID: &str = "color.slider.blue";
+const PREVIEW_NODE_ID: &str = "color.preview";
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ColorPaletteSnapshot {
@@ -23,6 +19,18 @@ pub struct ColorPalettePlugin {
 impl ColorPalettePlugin {
     pub fn snapshot(&self) -> &ColorPaletteSnapshot {
         &self.snapshot
+    }
+
+    fn updated_color_for_slider(&self, node_id: &str, value: usize) -> Option<ColorRgba8> {
+        let value = value.min(u8::MAX as usize) as u8;
+        let mut color = self.snapshot.active_color;
+        match node_id {
+            RED_SLIDER_ID => color.r = value,
+            GREEN_SLIDER_ID => color.g = value,
+            BLUE_SLIDER_ID => color.b = value,
+            _ => return None,
+        }
+        Some(color)
     }
 }
 
@@ -47,48 +55,83 @@ impl PanelPlugin for ColorPalettePlugin {
         PanelView {
             id: self.id(),
             title: self.title(),
-            lines: PALETTE_COLORS
-                .iter()
-                .map(|(label, color)| {
-                    let marker = if self.snapshot.active_color == *color {
-                        ">"
-                    } else {
-                        " "
-                    };
-                    format!("{marker} {label} ({})", color.hex_rgb())
-                })
-                .collect(),
+            lines: vec![format!(
+                "Preview {} / R:{} G:{} B:{}",
+                self.snapshot.active_color.hex_rgb(),
+                self.snapshot.active_color.r,
+                self.snapshot.active_color.g,
+                self.snapshot.active_color.b,
+            )],
         }
     }
 
     fn panel_tree(&self) -> PanelTree {
-        let mut rows = Vec::new();
-        for (row_index, chunk) in PALETTE_COLORS.chunks(3).enumerate() {
-            rows.push(PanelNode::Row {
-                id: format!("palette.row.{row_index}"),
-                children: chunk
-                    .iter()
-                    .map(|(label, color)| PanelNode::Button {
-                        id: format!("color.{}", label.to_ascii_lowercase()),
-                        label: (*label).to_string(),
-                        action: HostAction::DispatchCommand(Command::SetActiveColor {
-                            color: *color,
-                        }),
-                        active: self.snapshot.active_color == *color,
-                        fill_color: Some(*color),
-                    })
-                    .collect(),
-            });
-        }
-
         PanelTree {
             id: self.id(),
             title: self.title(),
             children: vec![PanelNode::Section {
-                id: "palette".to_string(),
-                title: "Palette".to_string(),
-                children: rows,
+                id: "custom".to_string(),
+                title: "Custom".to_string(),
+                children: vec![
+                    PanelNode::ColorPreview {
+                        id: PREVIEW_NODE_ID.to_string(),
+                        label: format!("Live Preview {}", self.snapshot.active_color.hex_rgb()),
+                        color: self.snapshot.active_color,
+                    },
+                    PanelNode::Text {
+                        id: "color.current".to_string(),
+                        text: format!(
+                            "R:{} G:{} B:{}",
+                            self.snapshot.active_color.r,
+                            self.snapshot.active_color.g,
+                            self.snapshot.active_color.b,
+                        ),
+                    },
+                    PanelNode::Slider {
+                        id: RED_SLIDER_ID.to_string(),
+                        label: "Red".to_string(),
+                        min: 0,
+                        max: 255,
+                        value: self.snapshot.active_color.r as usize,
+                        fill_color: Some(ColorRgba8::new(0xd3, 0x2f, 0x2f, 0xff)),
+                    },
+                    PanelNode::Slider {
+                        id: GREEN_SLIDER_ID.to_string(),
+                        label: "Green".to_string(),
+                        min: 0,
+                        max: 255,
+                        value: self.snapshot.active_color.g as usize,
+                        fill_color: Some(ColorRgba8::new(0x38, 0x8e, 0x3c, 0xff)),
+                    },
+                    PanelNode::Slider {
+                        id: BLUE_SLIDER_ID.to_string(),
+                        label: "Blue".to_string(),
+                        min: 0,
+                        max: 255,
+                        value: self.snapshot.active_color.b as usize,
+                        fill_color: Some(ColorRgba8::new(0x19, 0x76, 0xd2, 0xff)),
+                    },
+                ],
             }],
+        }
+    }
+
+    fn handle_event(&mut self, event: &plugin_api::PanelEvent) -> Vec<HostAction> {
+        match event {
+            plugin_api::PanelEvent::SetValue {
+                panel_id,
+                node_id,
+                value,
+            } if panel_id == self.id() => {
+                let Some(color) = self.updated_color_for_slider(node_id, *value) else {
+                    return Vec::new();
+                };
+                self.snapshot.active_color = color;
+                vec![HostAction::DispatchCommand(Command::SetActiveColor {
+                    color,
+                })]
+            }
+            _ => Vec::new(),
         }
     }
 }
@@ -105,12 +148,21 @@ mod tests {
 
         plugin.update(&document);
 
-        assert_eq!(plugin.snapshot().active_color, ColorRgba8::new(0x1e, 0x88, 0xe5, 0xff));
-        assert!(plugin.view().lines.iter().any(|line| line.contains("> Blue")));
+        assert_eq!(
+            plugin.snapshot().active_color,
+            ColorRgba8::new(0x1e, 0x88, 0xe5, 0xff)
+        );
+        assert!(
+            plugin
+                .view()
+                .lines
+                .iter()
+                .any(|line| line.contains("Preview #1E88E5 / R:30 G:136 B:229"))
+        );
     }
 
     #[test]
-    fn color_palette_exposes_color_command_buttons() {
+    fn color_palette_exposes_live_preview_node() {
         let plugin = ColorPalettePlugin::default();
 
         let tree = plugin.panel_tree();
@@ -120,19 +172,47 @@ mod tests {
             PanelNode::Section { children, .. }
                 if matches!(
                     &children[0],
-                    PanelNode::Row { children, .. }
-                        if matches!(
-                            &children[1],
-                            PanelNode::Button {
-                                label,
-                                action: HostAction::DispatchCommand(Command::SetActiveColor { color }),
-                                fill_color: Some(fill_color),
-                                ..
-                            } if label == "Red"
-                                && *color == ColorRgba8::new(0xe5, 0x39, 0x35, 0xff)
-                                && *fill_color == ColorRgba8::new(0xe5, 0x39, 0x35, 0xff)
-                        )
+                    PanelNode::ColorPreview { label, color, .. }
+                        if label == "Live Preview #000000"
+                            && *color == ColorRgba8::new(0x00, 0x00, 0x00, 0xff)
                 )
         ));
+    }
+
+    #[test]
+    fn color_palette_ignores_activate_events() {
+        let mut plugin = ColorPalettePlugin::default();
+
+        let actions = plugin.handle_event(&plugin_api::PanelEvent::Activate {
+            panel_id: "builtin.color-palette".to_string(),
+            node_id: PREVIEW_NODE_ID.to_string(),
+        });
+
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn color_palette_slider_event_updates_single_channel() {
+        let mut plugin = ColorPalettePlugin::default();
+        let mut document = Document::default();
+        document.set_active_color(ColorRgba8::new(10, 20, 30, 255));
+        plugin.update(&document);
+
+        let actions = plugin.handle_event(&plugin_api::PanelEvent::SetValue {
+            panel_id: "builtin.color-palette".to_string(),
+            node_id: RED_SLIDER_ID.to_string(),
+            value: 128,
+        });
+
+        assert_eq!(
+            plugin.snapshot().active_color,
+            ColorRgba8::new(128, 20, 30, 255)
+        );
+        assert_eq!(
+            actions,
+            vec![HostAction::DispatchCommand(Command::SetActiveColor {
+                color: ColorRgba8::new(128, 20, 30, 255),
+            })]
+        );
     }
 }
