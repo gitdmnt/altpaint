@@ -139,6 +139,8 @@ pub struct UiShell {
     render_context: RenderContext,
     /// 登録済みのパネルプラグイン一覧。
     panels: Vec<Box<dyn PanelPlugin>>,
+    panel_content_cache: Option<PanelSurface>,
+    panel_content_dirty: bool,
     panel_scroll_offset: usize,
     panel_content_height: usize,
     focused_target: Option<FocusTarget>,
@@ -150,6 +152,8 @@ impl UiShell {
         let mut shell = Self {
             render_context: RenderContext::new(),
             panels: Vec::new(),
+            panel_content_cache: None,
+            panel_content_dirty: true,
             panel_scroll_offset: 0,
             panel_content_height: 0,
             focused_target: None,
@@ -163,6 +167,7 @@ impl UiShell {
     /// パネルプラグインを1つ登録する。
     pub fn register_panel(&mut self, panel: Box<dyn PanelPlugin>) {
         self.panels.push(panel);
+        self.panel_content_dirty = true;
     }
 
     /// ドキュメント更新をレンダラと各パネルへ配送する。
@@ -171,6 +176,7 @@ impl UiShell {
         for panel in &mut self.panels {
             panel.update(document);
         }
+        self.panel_content_dirty = true;
     }
 
     /// 現在のドキュメントからキャンバス用フレームを生成する。
@@ -227,6 +233,7 @@ impl UiShell {
         }
 
         self.focused_target = Some(next);
+        self.panel_content_dirty = true;
         true
     }
 
@@ -266,21 +273,52 @@ impl UiShell {
         if let PanelEvent::Activate { panel_id, node_id } = event {
             let _ = self.focus_panel_node(panel_id, node_id);
         }
-        self.panels
+        let actions = self
+            .panels
             .iter_mut()
             .flat_map(|panel| panel.handle_event(event))
-            .collect()
+            .collect();
+        self.panel_content_dirty = true;
+        actions
     }
 
     pub fn render_panel_surface(&mut self, width: usize, height: usize) -> PanelSurface {
-        let trees = self.panel_trees();
+        let width = width.max(1);
+        let height = height.max(1);
         let panel_width = width.saturating_sub(PANEL_OUTER_PADDING * 2);
-        self.panel_content_height = measure_panel_content_height(&trees, panel_width);
+        let needs_rebuild = self.panel_content_dirty
+            || self
+                .panel_content_cache
+                .as_ref()
+                .is_none_or(|content| content.width != width);
+        if needs_rebuild {
+            self.panel_content_cache = Some(self.build_panel_content_surface(width, panel_width));
+            self.panel_content_dirty = false;
+        }
+
+        self.panel_content_height = self
+            .panel_content_cache
+            .as_ref()
+            .map(|content| content.height)
+            .unwrap_or(0);
         self.panel_scroll_offset = self
             .panel_scroll_offset
             .min(self.max_panel_scroll_offset(height));
 
-        let content_height = self.panel_content_height.max(height).max(1);
+        viewport_panel_surface(
+            self.panel_content_cache
+                .as_ref()
+                .expect("panel content cache exists"),
+            height,
+            self.panel_scroll_offset,
+        )
+    }
+
+    fn build_panel_content_surface(&mut self, width: usize, panel_width: usize) -> PanelSurface {
+        let trees = self.panel_trees();
+        self.panel_content_height = measure_panel_content_height(&trees, panel_width);
+
+        let content_height = self.panel_content_height.max(1);
         let mut content = PanelSurface {
             width,
             height: content_height,
@@ -326,53 +364,7 @@ impl UiShell {
             cursor_y += panel_height + PANEL_OUTER_PADDING;
         }
 
-        if self.panel_scroll_offset == 0 && content.height == height {
-            return content;
-        }
-
-        let mut surface = PanelSurface {
-            width,
-            height,
-            pixels: vec![0; width * height * 4],
-            hit_regions: Vec::new(),
-        };
-
-        let start_row = self
-            .panel_scroll_offset
-            .min(content.height.saturating_sub(1));
-        let visible_rows = height.min(content.height.saturating_sub(start_row));
-        let row_bytes = width * 4;
-        for row in 0..visible_rows {
-            let src_start = (start_row + row) * row_bytes;
-            let dst_start = row * row_bytes;
-            surface.pixels[dst_start..dst_start + row_bytes]
-                .copy_from_slice(&content.pixels[src_start..src_start + row_bytes]);
-        }
-
-        for region in content.hit_regions {
-            let region_bottom = region.y + region.height;
-            if region_bottom <= self.panel_scroll_offset
-                || region.y >= self.panel_scroll_offset + height
-            {
-                continue;
-            }
-            let top = region.y.saturating_sub(self.panel_scroll_offset);
-            let bottom = (region_bottom.saturating_sub(self.panel_scroll_offset)).min(height);
-            if bottom <= top {
-                continue;
-            }
-            surface.hit_regions.push(PanelHitRegion {
-                x: region.x,
-                y: top,
-                width: region.width,
-                height: bottom - top,
-                panel_id: region.panel_id,
-                node_id: region.node_id,
-                kind: region.kind,
-            });
-        }
-
-        surface
+        content
     }
 
     fn move_focus(&mut self, step: isize) -> bool {
@@ -397,6 +389,7 @@ impl UiShell {
         }
 
         self.focused_target = Some(next);
+        self.panel_content_dirty = true;
         true
     }
 
@@ -428,6 +421,64 @@ fn collect_focus_targets(panel_id: &str, nodes: &[PanelNode], targets: &mut Vec<
             PanelNode::Text { .. } | PanelNode::ColorPreview { .. } | PanelNode::Slider { .. } => {}
         }
     }
+}
+
+fn viewport_panel_surface(
+    content: &PanelSurface,
+    height: usize,
+    scroll_offset: usize,
+) -> PanelSurface {
+    if scroll_offset == 0 && content.height == height {
+        return content.clone();
+    }
+
+    let mut surface = PanelSurface {
+        width: content.width,
+        height,
+        pixels: vec![0; content.width * height * 4],
+        hit_regions: Vec::new(),
+    };
+    fill_rect(
+        &mut surface,
+        0,
+        0,
+        content.width,
+        height,
+        SIDEBAR_BACKGROUND,
+    );
+
+    let start_row = scroll_offset.min(content.height.saturating_sub(1));
+    let visible_rows = height.min(content.height.saturating_sub(start_row));
+    let row_bytes = content.width * 4;
+    for row in 0..visible_rows {
+        let src_start = (start_row + row) * row_bytes;
+        let dst_start = row * row_bytes;
+        surface.pixels[dst_start..dst_start + row_bytes]
+            .copy_from_slice(&content.pixels[src_start..src_start + row_bytes]);
+    }
+
+    for region in &content.hit_regions {
+        let region_bottom = region.y + region.height;
+        if region_bottom <= scroll_offset || region.y >= scroll_offset + height {
+            continue;
+        }
+        let top = region.y.saturating_sub(scroll_offset);
+        let bottom = (region_bottom.saturating_sub(scroll_offset)).min(height);
+        if bottom <= top {
+            continue;
+        }
+        surface.hit_regions.push(PanelHitRegion {
+            x: region.x,
+            y: top,
+            width: region.width,
+            height: bottom - top,
+            panel_id: region.panel_id.clone(),
+            node_id: region.node_id.clone(),
+            kind: region.kind.clone(),
+        });
+    }
+
+    surface
 }
 
 fn measure_panel_content_height(trees: &[PanelTree], width: usize) -> usize {
@@ -1150,6 +1201,28 @@ mod tests {
 
         assert!(shell.scroll_panels(6, 96));
         assert!(shell.panel_scroll_offset() > 0);
+    }
+
+    #[test]
+    fn scrolling_panels_keeps_cached_panel_content() {
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+        let _ = shell.render_panel_surface(280, 96);
+
+        assert!(!shell.panel_content_dirty);
+        assert!(shell.scroll_panels(6, 96));
+        assert!(!shell.panel_content_dirty);
+    }
+
+    #[test]
+    fn focus_change_invalidates_cached_panel_content() {
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+        let _ = shell.render_panel_surface(280, 96);
+
+        assert!(!shell.panel_content_dirty);
+        assert!(shell.focus_next());
+        assert!(shell.panel_content_dirty);
     }
 
     #[test]

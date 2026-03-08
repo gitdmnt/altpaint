@@ -23,7 +23,12 @@ impl SnapshotPanelPlugin {
         SnapshotPanelSnapshot {
             work_title: document.work.title.clone(),
             page_count: document.work.pages.len(),
-            panel_count: document.work.pages.iter().map(|page| page.panels.len()).sum(),
+            panel_count: document
+                .work
+                .pages
+                .iter()
+                .map(|page| page.panels.len())
+                .sum(),
             active_tool: document.active_tool,
         }
     }
@@ -58,7 +63,10 @@ impl PanelPlugin for SnapshotPanelPlugin {
             title: self.title(),
             lines: vec![
                 format!("work: {}", self.snapshot.work_title),
-                format!("pages: {} / panels: {}", self.snapshot.page_count, self.snapshot.panel_count),
+                format!(
+                    "pages: {} / panels: {}",
+                    self.snapshot.page_count, self.snapshot.panel_count
+                ),
                 format!("current tool: {:?}", self.snapshot.active_tool),
                 "snapshot storage: pending".to_string(),
             ],

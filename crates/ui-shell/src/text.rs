@@ -310,15 +310,41 @@ impl SystemFontRenderer {
 fn candidate_font_ids(database: &Database) -> Vec<ID> {
     let mut ids = Vec::new();
 
-    push_query(database, &mut ids, &[Family::Name("Segoe UI"), Family::SansSerif]);
-    push_query(database, &mut ids, &[Family::Name("Yu Gothic UI"), Family::SansSerif]);
-    push_query(database, &mut ids, &[Family::Name("Meiryo UI"), Family::SansSerif]);
-    push_query(database, &mut ids, &[Family::Name("Noto Sans"), Family::SansSerif]);
-    push_query(database, &mut ids, &[Family::Name("DejaVu Sans"), Family::SansSerif]);
-    push_query(database, &mut ids, &[Family::Name("Arial"), Family::SansSerif]);
+    push_query(
+        database,
+        &mut ids,
+        &[Family::Name("Segoe UI"), Family::SansSerif],
+    );
+    push_query(
+        database,
+        &mut ids,
+        &[Family::Name("Yu Gothic UI"), Family::SansSerif],
+    );
+    push_query(
+        database,
+        &mut ids,
+        &[Family::Name("Meiryo UI"), Family::SansSerif],
+    );
+    push_query(
+        database,
+        &mut ids,
+        &[Family::Name("Noto Sans"), Family::SansSerif],
+    );
+    push_query(
+        database,
+        &mut ids,
+        &[Family::Name("DejaVu Sans"), Family::SansSerif],
+    );
+    push_query(
+        database,
+        &mut ids,
+        &[Family::Name("Arial"), Family::SansSerif],
+    );
     push_query(database, &mut ids, &[Family::SansSerif]);
 
-    if ids.is_empty() && let Some(face) = database.faces().next() {
+    if ids.is_empty()
+        && let Some(face) = database.faces().next()
+    {
         ids.push(face.id);
     }
 
@@ -339,7 +365,9 @@ fn push_query(database: &Database, ids: &mut Vec<ID>, families: &[Family<'_>]) {
 
 fn load_font(database: &Database, id: ID) -> Option<LoadedFont> {
     database
-        .with_face_data(id, |data, index| FontVec::try_from_vec_and_index(data.to_vec(), index).ok())
+        .with_face_data(id, |data, index| {
+            FontVec::try_from_vec_and_index(data.to_vec(), index).ok()
+        })
         .flatten()
         .map(|font| LoadedFont { font })
 }
@@ -383,7 +411,14 @@ fn draw_bitmap_glyph(
     for (row, bits) in glyph.iter().enumerate().take(BITMAP_FONT_HEIGHT) {
         for col in 0..BITMAP_FONT_WIDTH {
             if ((bits >> col) & 1) == 1 {
-                write_pixel(pixels, surface_width, surface_height, x + col, y + row, color);
+                write_pixel(
+                    pixels,
+                    surface_width,
+                    surface_height,
+                    x + col,
+                    y + row,
+                    color,
+                );
             }
         }
     }
@@ -445,7 +480,15 @@ mod tests {
         let y = 20;
         let mut pixels = vec![0; width * height * 4];
 
-        draw_text_rgba(&mut pixels, width, height, x, y, "H", [0xff, 0xff, 0xff, 0xff]);
+        draw_text_rgba(
+            &mut pixels,
+            width,
+            height,
+            x,
+            y,
+            "H",
+            [0xff, 0xff, 0xff, 0xff],
+        );
 
         let mut min_x = usize::MAX;
         let mut min_y = usize::MAX;

@@ -27,6 +27,7 @@ use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Window, WindowAttributes, WindowId};
 
 const DEFAULT_PROJECT_PATH: &str = "altpaint-project.altp.json";
+const WINDOW_TITLE: &str = "altpaint";
 const WINDOW_WIDTH: u32 = 1280;
 const WINDOW_HEIGHT: u32 = 800;
 const SIDEBAR_WIDTH: usize = 280;
@@ -67,6 +68,20 @@ impl Rect {
             && y < (self.y + self.height) as i32
     }
 
+    fn union(&self, other: Rect) -> Rect {
+        let left = self.x.min(other.x);
+        let top = self.y.min(other.y);
+        let right = (self.x + self.width).max(other.x + other.width);
+        let bottom = (self.y + self.height).max(other.y + other.height);
+
+        Rect {
+            x: left,
+            y: top,
+            width: right.saturating_sub(left),
+            height: bottom.saturating_sub(top),
+        }
+    }
+
     fn intersect(&self, other: Rect) -> Option<Rect> {
         let left = self.x.max(other.x);
         let top = self.y.max(other.y);
@@ -98,28 +113,59 @@ struct StageStats {
     max: Duration,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+struct PerformanceSnapshot {
+    fps: f64,
+    frame_ms: f64,
+    prepare_ms: f64,
+    ui_update_ms: f64,
+    panel_surface_ms: f64,
+    present_ms: f64,
+}
+
+impl PerformanceSnapshot {
+    fn title_text(&self) -> String {
+        format!(
+            "{WINDOW_TITLE} | {:>5.1} fps | frame {:>5.2}ms | prep {:>5.2}ms | ui {:>5.2}ms | panel {:>5.2}ms | present {:>5.2}ms",
+            self.fps,
+            self.frame_ms,
+            self.prepare_ms,
+            self.ui_update_ms,
+            self.panel_surface_ms,
+            self.present_ms,
+        )
+    }
+}
+
 struct DesktopProfiler {
-    enabled: bool,
+    logging_enabled: bool,
     stats: BTreeMap<&'static str, StageStats>,
+    frames: u64,
+    frame_interval_started: Instant,
     last_report: Instant,
     report_interval: Duration,
+    last_snapshot_refresh: Instant,
+    snapshot_refresh_interval: Duration,
+    latest_snapshot: Option<PerformanceSnapshot>,
 }
 
 impl DesktopProfiler {
     fn new() -> Self {
+        let now = Instant::now();
         Self {
-            enabled: env::var_os("ALTPAINT_PROFILE").is_some(),
+            logging_enabled: env::var_os("ALTPAINT_PROFILE").is_some(),
             stats: BTreeMap::new(),
-            last_report: Instant::now(),
+            frames: 0,
+            frame_interval_started: now,
+            last_report: now,
             report_interval: Duration::from_secs(2),
+            last_snapshot_refresh: now,
+            snapshot_refresh_interval: Duration::from_millis(250),
+            latest_snapshot: None,
         }
     }
 
     fn measure<T>(&mut self, label: &'static str, f: impl FnOnce() -> T) -> T {
-        if !self.enabled {
-            return f();
-        }
-
         let started = Instant::now();
         let value = f();
         self.record(label, started.elapsed());
@@ -127,38 +173,27 @@ impl DesktopProfiler {
     }
 
     fn record(&mut self, label: &'static str, elapsed: Duration) {
-        if !self.enabled {
-            return;
-        }
-
         let stat = self.stats.entry(label).or_default();
         stat.calls += 1;
         stat.total += elapsed;
         stat.max = stat.max.max(elapsed);
+    }
+
+    fn finish_frame(&mut self, elapsed: Duration) {
+        self.record("frame_total", elapsed);
+        self.frames += 1;
 
         let now = Instant::now();
-        if now.duration_since(self.last_report) >= self.report_interval {
-            eprintln!(
-                "[profile] ---- last {}s ----",
-                self.report_interval.as_secs()
-            );
-            for (label, stat) in &self.stats {
-                let avg = if stat.calls == 0 {
-                    0.0
-                } else {
-                    stat.total.as_secs_f64() * 1000.0 / stat.calls as f64
-                };
-                eprintln!(
-                    "[profile] {:>18} calls={:>5} avg={:>8.3}ms max={:>8.3}ms total={:>8.3}ms",
-                    label,
-                    stat.calls,
-                    avg,
-                    stat.max.as_secs_f64() * 1000.0,
-                    stat.total.as_secs_f64() * 1000.0,
-                );
-            }
-            self.stats.clear();
-            self.last_report = now;
+        if self.latest_snapshot.is_none()
+            || now.duration_since(self.last_snapshot_refresh) >= self.snapshot_refresh_interval
+        {
+            self.latest_snapshot = Some(self.build_snapshot(now));
+            self.last_snapshot_refresh = now;
+        }
+
+        if self.logging_enabled && now.duration_since(self.last_report) >= self.report_interval {
+            self.print_report(now);
+            self.reset_interval(now);
         }
     }
 
@@ -166,6 +201,74 @@ impl DesktopProfiler {
         self.record("present_upload", timings.upload);
         self.record("present_encode", timings.encode_and_submit);
         self.record("present_swap", timings.present);
+    }
+
+    fn title_text(&self) -> String {
+        self.latest_snapshot
+            .map(|snapshot| snapshot.title_text())
+            .unwrap_or_else(|| WINDOW_TITLE.to_string())
+    }
+
+    fn build_snapshot(&self, now: Instant) -> PerformanceSnapshot {
+        let interval_secs = now
+            .duration_since(self.frame_interval_started)
+            .as_secs_f64()
+            .max(f64::EPSILON);
+        PerformanceSnapshot {
+            fps: self.frames as f64 / interval_secs,
+            frame_ms: self.average_ms("frame_total"),
+            prepare_ms: self.average_ms("prepare_frame"),
+            ui_update_ms: self.average_ms("ui_update"),
+            panel_surface_ms: self.average_ms("panel_surface"),
+            present_ms: self.average_ms("present_total"),
+        }
+    }
+
+    fn average_ms(&self, label: &'static str) -> f64 {
+        self.stats.get(label).map_or(0.0, |stat| {
+            if stat.calls == 0 {
+                0.0
+            } else {
+                stat.total.as_secs_f64() * 1000.0 / stat.calls as f64
+            }
+        })
+    }
+
+    fn print_report(&self, now: Instant) {
+        let snapshot = self.build_snapshot(now);
+        eprintln!(
+            "[profile] ---- last {:.2}s | fps={:.1} frame={:.3}ms prep={:.3}ms ui={:.3}ms panel={:.3}ms present={:.3}ms ----",
+            now.duration_since(self.frame_interval_started)
+                .as_secs_f64(),
+            snapshot.fps,
+            snapshot.frame_ms,
+            snapshot.prepare_ms,
+            snapshot.ui_update_ms,
+            snapshot.panel_surface_ms,
+            snapshot.present_ms,
+        );
+        for (label, stat) in &self.stats {
+            let avg = if stat.calls == 0 {
+                0.0
+            } else {
+                stat.total.as_secs_f64() * 1000.0 / stat.calls as f64
+            };
+            eprintln!(
+                "[profile] {:>18} calls={:>5} avg={:>8.3}ms max={:>8.3}ms total={:>8.3}ms",
+                label,
+                stat.calls,
+                avg,
+                stat.max.as_secs_f64() * 1000.0,
+                stat.total.as_secs_f64() * 1000.0,
+            );
+        }
+    }
+
+    fn reset_interval(&mut self, now: Instant) {
+        self.stats.clear();
+        self.frames = 0;
+        self.frame_interval_started = now;
+        self.last_report = now;
     }
 }
 
@@ -245,7 +348,9 @@ struct DesktopApp {
     present_frame: Option<render::RenderFrame>,
     pending_canvas_dirty_rect: Option<DirtyRect>,
     active_panel_drag: Option<PanelDragState>,
-    needs_panel_refresh: bool,
+    needs_ui_sync: bool,
+    needs_panel_surface_refresh: bool,
+    needs_status_refresh: bool,
     needs_full_present_rebuild: bool,
 }
 
@@ -265,7 +370,9 @@ impl DesktopApp {
             present_frame: None,
             pending_canvas_dirty_rect: None,
             active_panel_drag: None,
-            needs_panel_refresh: true,
+            needs_ui_sync: true,
+            needs_panel_surface_refresh: true,
+            needs_status_refresh: false,
             needs_full_present_rebuild: true,
         }
     }
@@ -283,12 +390,17 @@ impl DesktopApp {
 
         if self.layout.as_ref() != Some(&next_layout) {
             self.layout = Some(next_layout.clone());
-            self.needs_panel_refresh = true;
+            self.needs_panel_surface_refresh = true;
             self.needs_full_present_rebuild = true;
         }
 
-        if self.needs_panel_refresh {
+        if self.needs_ui_sync {
             profiler.measure("ui_update", || self.ui_shell.update(&self.document));
+            self.needs_ui_sync = false;
+        }
+
+        let mut panel_surface_refreshed = false;
+        if self.needs_panel_surface_refresh {
             let panel_surface_size = self
                 .layout
                 .as_ref()
@@ -304,8 +416,8 @@ impl DesktopApp {
                     .render_panel_surface(panel_surface_size.0, panel_surface_size.1)
             });
             self.panel_surface = Some(panel_surface);
-            self.needs_panel_refresh = false;
-            self.needs_full_present_rebuild = true;
+            self.needs_panel_surface_refresh = false;
+            panel_surface_refreshed = true;
         }
 
         if self.needs_full_present_rebuild || self.present_frame.is_none() {
@@ -334,21 +446,48 @@ impl DesktopApp {
             });
             self.present_frame = Some(present_frame);
             self.pending_canvas_dirty_rect = None;
+            self.needs_status_refresh = false;
             self.needs_full_present_rebuild = false;
             return PresentFrameUpdate { dirty_rect: None };
         }
 
+        let layout = self.layout.clone().expect("layout exists");
+        let status_text = self.needs_status_refresh.then(|| self.status_text());
+        let Some(present_frame) = self.present_frame.as_mut() else {
+            self.needs_full_present_rebuild = true;
+            return PresentFrameUpdate { dirty_rect: None };
+        };
+
+        let mut dirty_rect = None;
+        if panel_surface_refreshed && let Some(panel_surface) = self.panel_surface.as_ref() {
+            profiler.measure("compose_dirty_panel", || {
+                compose_panel_host_region(present_frame, &layout, panel_surface);
+            });
+            dirty_rect = Some(layout.panel_host_rect);
+        }
+
+        if let Some(status_text) = status_text.as_deref() {
+            let status_rect = status_text_rect(window_width, window_height, &layout);
+            profiler.measure("compose_dirty_status", || {
+                compose_status_region(
+                    present_frame,
+                    window_width,
+                    window_height,
+                    &layout,
+                    status_text,
+                );
+            });
+            dirty_rect =
+                Some(dirty_rect.map_or(status_rect, |existing| existing.union(status_rect)));
+            self.needs_status_refresh = false;
+        }
+
         if let Some(dirty) = self.pending_canvas_dirty_rect.take() {
-            let layout = self.layout.as_ref().expect("layout exists");
-            let Some(present_frame) = self.present_frame.as_mut() else {
-                self.needs_full_present_rebuild = true;
-                return PresentFrameUpdate { dirty_rect: None };
-            };
             let Some(bitmap) = self.document.active_bitmap() else {
                 self.needs_full_present_rebuild = true;
                 return PresentFrameUpdate { dirty_rect: None };
             };
-            let dirty_rect = map_canvas_dirty_to_display(
+            let canvas_dirty_rect = map_canvas_dirty_to_display(
                 dirty,
                 layout.canvas_display_rect,
                 bitmap.width,
@@ -361,15 +500,15 @@ impl DesktopApp {
                     bitmap.width,
                     bitmap.height,
                     bitmap.pixels.as_slice(),
-                    Some(dirty_rect),
+                    Some(canvas_dirty_rect),
                 );
             });
-            return PresentFrameUpdate {
-                dirty_rect: Some(dirty_rect),
-            };
+            dirty_rect = Some(dirty_rect.map_or(canvas_dirty_rect, |existing| {
+                existing.union(canvas_dirty_rect)
+            }));
         }
 
-        PresentFrameUpdate::default()
+        PresentFrameUpdate { dirty_rect }
     }
 
     fn present_frame(&self) -> Option<&render::RenderFrame> {
@@ -413,7 +552,9 @@ impl DesktopApp {
         };
 
         match &event {
-            PanelEvent::SetValue { panel_id, node_id, .. } => {
+            PanelEvent::SetValue {
+                panel_id, node_id, ..
+            } => {
                 self.active_panel_drag = Some(PanelDragState {
                     panel_id: panel_id.clone(),
                     node_id: node_id.clone(),
@@ -440,11 +581,14 @@ impl DesktopApp {
             changed |= self.ui_shell.focus_panel_node(panel_id, node_id);
         }
 
+        self.needs_panel_surface_refresh = true;
+        let mut needs_redraw = true;
+
         for action in self.ui_shell.handle_panel_event(&event) {
-            changed |= self.execute_host_action(action);
+            needs_redraw |= self.execute_host_action(action);
         }
 
-        changed
+        changed || needs_redraw
     }
 
     fn handle_panel_pointer(&mut self, x: i32, y: i32) -> bool {
@@ -457,8 +601,7 @@ impl DesktopApp {
     fn focus_next_panel_control(&mut self) -> bool {
         let changed = self.ui_shell.focus_next();
         if changed {
-            self.needs_panel_refresh = true;
-            self.needs_full_present_rebuild = true;
+            self.needs_panel_surface_refresh = true;
         }
         changed
     }
@@ -466,8 +609,7 @@ impl DesktopApp {
     fn focus_previous_panel_control(&mut self) -> bool {
         let changed = self.ui_shell.focus_previous();
         if changed {
-            self.needs_panel_refresh = true;
-            self.needs_full_present_rebuild = true;
+            self.needs_panel_surface_refresh = true;
         }
         changed
     }
@@ -497,8 +639,7 @@ impl DesktopApp {
 
         let changed = self.ui_shell.scroll_panels(delta_lines, viewport_height);
         if changed {
-            self.needs_panel_refresh = true;
-            self.needs_full_present_rebuild = true;
+            self.needs_panel_surface_refresh = true;
         }
         changed
     }
@@ -574,7 +715,8 @@ impl DesktopApp {
                     self.canvas_input = CanvasInputState::default();
                     self.pending_canvas_dirty_rect = None;
                     self.active_panel_drag = None;
-                    self.needs_panel_refresh = true;
+                    self.needs_ui_sync = true;
+                    self.needs_panel_surface_refresh = true;
                     self.needs_full_present_rebuild = true;
                     true
                 }
@@ -599,20 +741,23 @@ impl DesktopApp {
                         dirty.is_some()
                     }
                     Command::SetActiveTool { .. } => {
-                        self.needs_panel_refresh = true;
-                        self.needs_full_present_rebuild = true;
+                        self.needs_ui_sync = true;
+                        self.needs_panel_surface_refresh = true;
+                        self.needs_status_refresh = true;
                         true
                     }
                     Command::SetActiveColor { .. } => {
-                        self.needs_panel_refresh = true;
-                        self.needs_full_present_rebuild = true;
+                        self.needs_ui_sync = true;
+                        self.needs_panel_surface_refresh = true;
+                        self.needs_status_refresh = true;
                         true
                     }
                     Command::NewDocument => {
                         self.canvas_input = CanvasInputState::default();
                         self.pending_canvas_dirty_rect = None;
                         self.active_panel_drag = None;
-                        self.needs_panel_refresh = true;
+                        self.needs_ui_sync = true;
+                        self.needs_panel_surface_refresh = true;
                         self.needs_full_present_rebuild = true;
                         true
                     }
@@ -648,7 +793,12 @@ impl DesktopApp {
         panel_surface.hit_test(surface_x, surface_y)
     }
 
-    fn panel_drag_event_from_window(&self, state: &PanelDragState, x: i32, y: i32) -> Option<PanelEvent> {
+    fn panel_drag_event_from_window(
+        &self,
+        state: &PanelDragState,
+        x: i32,
+        y: i32,
+    ) -> Option<PanelEvent> {
         let layout = self.layout.as_ref()?;
         let panel_surface = self.panel_surface.as_ref()?;
         let (surface_x, surface_y) = map_view_to_surface_clamped(
@@ -716,7 +866,7 @@ impl ApplicationHandler for DesktopRuntime {
         }
 
         let attributes = WindowAttributes::default()
-            .with_title("altpaint")
+            .with_title(WINDOW_TITLE)
             .with_inner_size(LogicalSize::new(WINDOW_WIDTH as f64, WINDOW_HEIGHT as f64));
 
         let window = match event_loop.create_window(attributes) {
@@ -847,11 +997,15 @@ impl ApplicationHandler for DesktopRuntime {
                 };
 
                 let size = window.inner_size();
+                let frame_started = Instant::now();
+                let prepare_started = Instant::now();
                 let update = self.app.prepare_present_frame(
                     size.width as usize,
                     size.height as usize,
                     &mut self.profiler,
                 );
+                self.profiler
+                    .record("prepare_frame", prepare_started.elapsed());
                 let Some(frame) = self.app.present_frame() else {
                     return;
                 };
@@ -861,6 +1015,7 @@ impl ApplicationHandler for DesktopRuntime {
                     width: rect.width as u32,
                     height: rect.height as u32,
                 });
+                let present_started = Instant::now();
                 let timings = match presenter.render(frame, upload_region) {
                     Ok(timings) => timings,
                     Err(error) => {
@@ -869,7 +1024,11 @@ impl ApplicationHandler for DesktopRuntime {
                         return;
                     }
                 };
+                self.profiler
+                    .record("present_total", present_started.elapsed());
                 self.profiler.record_present(timings);
+                self.profiler.finish_frame(frame_started.elapsed());
+                window.set_title(&self.profiler.title_text());
             }
             _ => {}
         }
@@ -1014,6 +1173,49 @@ fn compose_desktop_frame(
     frame
 }
 
+fn compose_panel_host_region(
+    frame: &mut render::RenderFrame,
+    layout: &DesktopLayout,
+    panel_surface: &PanelSurface,
+) {
+    fill_rect(frame, layout.panel_host_rect, PANEL_FRAME_BACKGROUND);
+    stroke_rect(frame, layout.panel_host_rect, PANEL_FRAME_BORDER);
+    blit_scaled_rgba(
+        frame,
+        layout.panel_surface_rect,
+        panel_surface.width,
+        panel_surface.height,
+        panel_surface.pixels.as_slice(),
+    );
+}
+
+fn compose_status_region(
+    frame: &mut render::RenderFrame,
+    width: usize,
+    height: usize,
+    layout: &DesktopLayout,
+    status_text: &str,
+) {
+    let status_rect = status_text_rect(width, height, layout);
+    fill_rect(frame, status_rect, APP_BACKGROUND);
+    draw_text(
+        frame,
+        layout.canvas_host_rect.x,
+        height.saturating_sub(FOOTER_HEIGHT) + 6,
+        status_text,
+        TEXT_SECONDARY,
+    );
+}
+
+fn status_text_rect(width: usize, height: usize, layout: &DesktopLayout) -> Rect {
+    Rect {
+        x: layout.canvas_host_rect.x,
+        y: height.saturating_sub(FOOTER_HEIGHT),
+        width: width.saturating_sub(layout.canvas_host_rect.x),
+        height: FOOTER_HEIGHT,
+    }
+}
+
 fn map_view_to_surface(
     surface_width: usize,
     surface_height: usize,
@@ -1049,8 +1251,14 @@ fn map_view_to_surface_clamped(
         return None;
     }
 
-    let clamped_x = x.clamp(rect.x as i32, (rect.x + rect.width.saturating_sub(1)) as i32);
-    let clamped_y = y.clamp(rect.y as i32, (rect.y + rect.height.saturating_sub(1)) as i32);
+    let clamped_x = x.clamp(
+        rect.x as i32,
+        (rect.x + rect.width.saturating_sub(1)) as i32,
+    );
+    let clamped_y = y.clamp(
+        rect.y as i32,
+        (rect.y + rect.height.saturating_sub(1)) as i32,
+    );
     map_view_to_surface(surface_width, surface_height, rect, clamped_x, clamped_y)
 }
 
@@ -1270,7 +1478,10 @@ mod tests {
             color: ColorRgba8::new(0x1e, 0x88, 0xe5, 0xff),
         });
 
-        assert_eq!(app.document.active_color, ColorRgba8::new(0x1e, 0x88, 0xe5, 0xff));
+        assert_eq!(
+            app.document.active_color,
+            ColorRgba8::new(0x1e, 0x88, 0xe5, 0xff)
+        );
     }
 
     #[test]
@@ -1397,6 +1608,89 @@ mod tests {
 
         assert!(app.scroll_panel_surface(6));
         assert!(app.ui_shell.panel_scroll_offset() > 0);
+    }
+
+    #[test]
+    fn scroll_refresh_does_not_trigger_ui_update() {
+        let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+        let mut profiler = DesktopProfiler::new();
+        let _ = app.prepare_present_frame(1280, 120, &mut profiler);
+        profiler.stats.clear();
+        let layout = app.layout.clone().expect("layout exists");
+
+        assert!(app.scroll_panel_surface(6));
+        let update = app.prepare_present_frame(1280, 120, &mut profiler);
+
+        assert!(!profiler.stats.contains_key("ui_update"));
+        assert!(!profiler.stats.contains_key("compose_full_frame"));
+        assert_eq!(update.dirty_rect, Some(layout.panel_host_rect));
+        assert_eq!(
+            profiler.stats.get("panel_surface").map(|stat| stat.calls),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn focus_refresh_does_not_trigger_ui_update() {
+        let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+        let mut profiler = DesktopProfiler::new();
+        let _ = app.prepare_present_frame(1280, 200, &mut profiler);
+        profiler.stats.clear();
+        let layout = app.layout.clone().expect("layout exists");
+
+        assert!(app.focus_next_panel_control());
+        let update = app.prepare_present_frame(1280, 200, &mut profiler);
+
+        assert!(!profiler.stats.contains_key("ui_update"));
+        assert!(!profiler.stats.contains_key("compose_full_frame"));
+        assert_eq!(update.dirty_rect, Some(layout.panel_host_rect));
+        assert_eq!(
+            profiler.stats.get("panel_surface").map(|stat| stat.calls),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn tool_change_updates_status_without_full_recompose() {
+        let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+        let mut profiler = DesktopProfiler::new();
+        let _ = app.prepare_present_frame(1280, 200, &mut profiler);
+        profiler.stats.clear();
+        let layout = app.layout.clone().expect("layout exists");
+
+        assert!(app.execute_command(Command::SetActiveTool {
+            tool: ToolKind::Eraser,
+        }));
+        let update = app.prepare_present_frame(1280, 200, &mut profiler);
+
+        assert!(!profiler.stats.contains_key("compose_full_frame"));
+        assert!(profiler.stats.contains_key("compose_dirty_panel"));
+        assert!(profiler.stats.contains_key("compose_dirty_status"));
+        assert_eq!(
+            update.dirty_rect,
+            Some(
+                layout
+                    .panel_host_rect
+                    .union(status_text_rect(1280, 200, &layout))
+            )
+        );
+    }
+
+    #[test]
+    fn performance_snapshot_formats_window_title() {
+        let title = PerformanceSnapshot {
+            fps: 59.8,
+            frame_ms: 16.72,
+            prepare_ms: 3.11,
+            ui_update_ms: 0.42,
+            panel_surface_ms: 0.77,
+            present_ms: 1.26,
+        }
+        .title_text();
+
+        assert!(title.contains("59.8 fps"));
+        assert!(title.contains("prep  3.11ms"));
+        assert!(title.contains("ui  0.42ms"));
     }
 
     #[test]
