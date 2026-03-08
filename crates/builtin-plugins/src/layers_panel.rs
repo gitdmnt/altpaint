@@ -1,5 +1,5 @@
 use app_core::Document;
-use plugin_api::{PanelPlugin, PanelUi, PanelUiNode, PanelView};
+use plugin_api::{PanelNode, PanelPlugin, PanelTree, PanelView};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LayersPanelSnapshot {
@@ -80,25 +80,36 @@ impl PanelPlugin for LayersPanelPlugin {
         }
     }
 
-    fn ui(&self) -> PanelUi {
-        PanelUi {
+    fn panel_tree(&self) -> PanelTree {
+        PanelTree {
             id: self.id(),
             title: self.title(),
-            nodes: vec![
-                PanelUiNode::Section {
+            children: vec![
+                PanelNode::Section {
+                    id: "document".to_string(),
                     title: "Document".to_string(),
                     children: vec![
-                        PanelUiNode::Text(format!("work: {}", self.snapshot.work_title)),
-                        PanelUiNode::Text(format!("pages: {}", self.snapshot.page_count)),
-                        PanelUiNode::Text(format!("panels: {}", self.snapshot.panel_count)),
+                        PanelNode::Text {
+                            id: "document.work".to_string(),
+                            text: format!("work: {}", self.snapshot.work_title),
+                        },
+                        PanelNode::Text {
+                            id: "document.pages".to_string(),
+                            text: format!("pages: {}", self.snapshot.page_count),
+                        },
+                        PanelNode::Text {
+                            id: "document.panels".to_string(),
+                            text: format!("panels: {}", self.snapshot.panel_count),
+                        },
                     ],
                 },
-                PanelUiNode::Section {
+                PanelNode::Section {
+                    id: "active-layer".to_string(),
                     title: "Active Layer".to_string(),
-                    children: vec![PanelUiNode::Text(format!(
-                        "layer: {}",
-                        self.snapshot.active_panel_layer_name
-                    ))],
+                    children: vec![PanelNode::Text {
+                        id: "active-layer.name".to_string(),
+                        text: format!("layer: {}", self.snapshot.active_panel_layer_name),
+                    }],
                 },
             ],
         }
@@ -129,11 +140,11 @@ mod tests {
         let document = Document::default();
         plugin.update(&document);
 
-        let ui = plugin.ui();
+        let tree = plugin.panel_tree();
 
         assert!(matches!(
-            &ui.nodes[0],
-            PanelUiNode::Section { title, .. } if title == "Document"
+            &tree.children[0],
+            PanelNode::Section { title, .. } if title == "Document"
         ));
     }
 }

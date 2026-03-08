@@ -18,16 +18,10 @@ authors = ["Naoto"]
 
 [workspace.dependencies]
 anyhow = "1.0"
+font8x8 = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
 winit = "0.30"
 pixels = "0.15"
 wgpu = "28.0"
 pollster = "0.4"
-slint = { version = "1.15.1", default-features = true, features = [
-  "backend-winit",
-  "renderer-femtovg",
-  "renderer-femtovg-wgpu",
-  "unstable-wgpu-28",
-] }
-slint-build = "1.15.1"

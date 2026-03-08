@@ -1,5 +1,5 @@
 use app_core::{Command, Document, ToolKind};
-use plugin_api::{PanelPlugin, PanelUi, PanelUiNode, PanelView};
+use plugin_api::{HostAction, PanelNode, PanelPlugin, PanelTree, PanelView};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolPaletteSnapshot {
@@ -64,33 +64,32 @@ impl PanelPlugin for ToolPalettePlugin {
         }
     }
 
-    fn ui(&self) -> PanelUi {
-        PanelUi {
+    fn panel_tree(&self) -> PanelTree {
+        PanelTree {
             id: self.id(),
             title: self.title(),
-            nodes: vec![
-                PanelUiNode::Section {
-                    title: "Tools".to_string(),
-                    children: vec![
-                        PanelUiNode::CommandButton {
-                            id: "tool.brush".to_string(),
-                            label: "Brush".to_string(),
-                            command: Command::SetActiveTool {
-                                tool: ToolKind::Brush,
-                            },
-                            active: self.snapshot.active_tool == ToolKind::Brush,
-                        },
-                        PanelUiNode::CommandButton {
-                            id: "tool.eraser".to_string(),
-                            label: "Eraser".to_string(),
-                            command: Command::SetActiveTool {
-                                tool: ToolKind::Eraser,
-                            },
-                            active: self.snapshot.active_tool == ToolKind::Eraser,
-                        },
-                    ],
-                },
-            ],
+            children: vec![PanelNode::Section {
+                id: "tools".to_string(),
+                title: "Tools".to_string(),
+                children: vec![
+                    PanelNode::Button {
+                        id: "tool.brush".to_string(),
+                        label: "Brush".to_string(),
+                        action: HostAction::DispatchCommand(Command::SetActiveTool {
+                            tool: ToolKind::Brush,
+                        }),
+                        active: self.snapshot.active_tool == ToolKind::Brush,
+                    },
+                    PanelNode::Button {
+                        id: "tool.eraser".to_string(),
+                        label: "Eraser".to_string(),
+                        action: HostAction::DispatchCommand(Command::SetActiveTool {
+                            tool: ToolKind::Eraser,
+                        }),
+                        active: self.snapshot.active_tool == ToolKind::Eraser,
+                    },
+                ],
+            }],
         }
     }
 }
@@ -116,16 +115,16 @@ mod tests {
     fn tool_palette_exposes_command_buttons() {
         let plugin = ToolPalettePlugin::default();
 
-        let ui = plugin.ui();
+        let tree = plugin.panel_tree();
 
         assert!(matches!(
-            &ui.nodes[0],
-            PanelUiNode::Section { children, .. }
+            &tree.children[0],
+            PanelNode::Section { children, .. }
                 if matches!(
                     &children[0],
-                    PanelUiNode::CommandButton {
+                    PanelNode::Button {
                         label,
-                        command: Command::SetActiveTool { tool: ToolKind::Brush },
+                        action: HostAction::DispatchCommand(Command::SetActiveTool { tool: ToolKind::Brush }),
                         ..
                     } if label == "Brush"
                 )

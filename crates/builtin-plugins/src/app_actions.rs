@@ -1,5 +1,5 @@
 use app_core::{Command, Document};
-use plugin_api::{PanelPlugin, PanelUi, PanelUiNode, PanelView};
+use plugin_api::{HostAction, PanelNode, PanelPlugin, PanelTree, PanelView};
 
 #[derive(Debug, Default)]
 pub struct AppActionsPlugin;
@@ -23,29 +23,30 @@ impl PanelPlugin for AppActionsPlugin {
         }
     }
 
-    fn ui(&self) -> PanelUi {
-        PanelUi {
+    fn panel_tree(&self) -> PanelTree {
+        PanelTree {
             id: self.id(),
             title: self.title(),
-            nodes: vec![PanelUiNode::Section {
+            children: vec![PanelNode::Section {
+                id: "project".to_string(),
                 title: "Project".to_string(),
                 children: vec![
-                    PanelUiNode::CommandButton {
+                    PanelNode::Button {
                         id: "app.new".to_string(),
                         label: "New".to_string(),
-                        command: Command::NewDocument,
+                        action: HostAction::DispatchCommand(Command::NewDocument),
                         active: false,
                     },
-                    PanelUiNode::CommandButton {
+                    PanelNode::Button {
                         id: "app.save".to_string(),
                         label: "Save".to_string(),
-                        command: Command::SaveProject,
+                        action: HostAction::DispatchCommand(Command::SaveProject),
                         active: false,
                     },
-                    PanelUiNode::CommandButton {
+                    PanelNode::Button {
                         id: "app.load".to_string(),
                         label: "Load".to_string(),
-                        command: Command::LoadProject,
+                        action: HostAction::DispatchCommand(Command::LoadProject),
                         active: false,
                     },
                 ],
@@ -61,14 +62,18 @@ mod tests {
     #[test]
     fn app_actions_exposes_save_load_commands() {
         let plugin = AppActionsPlugin;
-        let ui = plugin.ui();
+        let tree = plugin.panel_tree();
 
         assert!(matches!(
-            &ui.nodes[0],
-            PanelUiNode::Section { children, .. }
+            &tree.children[0],
+            PanelNode::Section { children, .. }
                 if children.iter().any(|child| matches!(
                     child,
-                    PanelUiNode::CommandButton { label, command: Command::SaveProject, .. }
+                    PanelNode::Button {
+                        label,
+                        action: HostAction::DispatchCommand(Command::SaveProject),
+                        ..
+                    }
                         if label == "Save"
                 ))
         ));

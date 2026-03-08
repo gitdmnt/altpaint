@@ -1,203 +1,331 @@
-use anyhow::Result;
-use app_core::CanvasViewTransform;
+use anyhow::{Context, Result};
 use render::RenderFrame;
-use slint::{GraphicsAPI, RenderingState};
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::Arc;
+use winit::dpi::PhysicalSize;
+use winit::window::Window;
 
-#[derive(Debug)]
-struct GpuCanvasResources {
-    texture: wgpu::Texture,
-    texture_view: wgpu::TextureView,
-    sampler: wgpu::Sampler,
-    frame_width: u32,
-    frame_height: u32,
+const PRESENT_SHADER: &str = r#"
+@group(0) @binding(0)
+var present_texture: texture_2d<f32>;
+
+@group(0) @binding(1)
+var present_sampler: sampler;
+
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
 }
 
-#[derive(Debug, Default)]
-pub struct WgpuCanvasState {
-    pub clear_color: wgpu::Color,
-    pub device_ready: bool,
-    pub active_tool_label: String,
-    pub frame: Option<RenderFrame>,
-    pub upload_pending: bool,
-    pub transform: CanvasViewTransform,
-    gpu: Option<GpuCanvasResources>,
-}
-
-impl WgpuCanvasState {
-    pub fn new() -> Self {
-        Self {
-            clear_color: wgpu::Color {
-                r: 0.35,
-                g: 0.35,
-                b: 0.35,
-                a: 1.0,
-            },
-            device_ready: false,
-            active_tool_label: "Brush".to_string(),
-            frame: None,
-            upload_pending: false,
-            transform: CanvasViewTransform::default(),
-            gpu: None,
-        }
-    }
-}
-
-pub fn install_wgpu_underlay(window: &slint::Window) -> Result<Rc<RefCell<WgpuCanvasState>>> {
-    let state = Rc::new(RefCell::new(WgpuCanvasState::new()));
-    let state_for_notifier = state.clone();
-
-    window.set_rendering_notifier(move |state_info, graphics_api| {
-        match state_info {
-            RenderingState::RenderingTeardown => {}
-            RenderingState::BeforeRendering => {
-                if let GraphicsAPI::WGPU28 { queue, .. } = graphics_api {
-                    if let Some(command_buffer) = graphics_api_command_encoder(graphics_api, &state_for_notifier) {
-                        queue.submit([command_buffer]);
-                    }
-                }
-            }
-            RenderingState::AfterRendering => {}
-            RenderingState::RenderingSetup => {
-                if let GraphicsAPI::WGPU28 { device, .. } = graphics_api {
-                    let mut state = state_for_notifier.borrow_mut();
-                    state.device_ready = true;
-                    ensure_gpu_resources(device, &mut state);
-                }
-            }
-            _ => {}
-        }
-    })?;
-
-    Ok(state)
-}
-
-pub fn update_canvas_state_from_document(
-    state: &Rc<RefCell<WgpuCanvasState>>,
-    tool_label: String,
-    clear_color: wgpu::Color,
-    frame: RenderFrame,
-    transform: CanvasViewTransform,
-) {
-    let mut state = state.borrow_mut();
-    state.active_tool_label = tool_label;
-    state.clear_color = clear_color;
-    state.frame = Some(frame);
-    state.transform = transform;
-    state.upload_pending = true;
-}
-
-fn graphics_api_command_encoder(
-    graphics_api: &GraphicsAPI<'_>,
-    state: &Rc<RefCell<WgpuCanvasState>>,
-) -> Option<wgpu::CommandBuffer> {
-    let GraphicsAPI::WGPU28 { device, queue, .. } = graphics_api else {
-        return None;
-    };
-
-    let mut state = state.borrow_mut();
-    ensure_gpu_resources(device, &mut state);
-    upload_frame_if_needed(device, queue, &mut state);
-
-    let encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("altpaint-canvas-underlay"),
-    });
-
-    let gpu = state.gpu.as_ref()?;
-    let _ = state.transform;
-    let _ = (&gpu.texture_view, &gpu.sampler);
-
-    Some(encoder.finish())
-}
-
-fn ensure_gpu_resources(device: &wgpu::Device, state: &mut WgpuCanvasState) {
-    let Some(frame) = state.frame.as_ref() else {
-        return;
-    };
-
-    let width = frame.width as u32;
-    let height = frame.height as u32;
-    let needs_rebuild = state.gpu.as_ref().is_none_or(|gpu| {
-        gpu.frame_width != width || gpu.frame_height != height
-    });
-
-    if !needs_rebuild {
-        return;
-    }
-
-    let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("altpaint-canvas-texture"),
-        size: wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8UnormSrgb,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
-    });
-
-    let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        label: Some("altpaint-canvas-sampler"),
-        mag_filter: wgpu::FilterMode::Nearest,
-        min_filter: wgpu::FilterMode::Nearest,
-        mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-        ..Default::default()
-    });
-
-    state.gpu = Some(GpuCanvasResources {
-        texture,
-        texture_view,
-        sampler,
-        frame_width: width,
-        frame_height: height,
-    });
-    state.upload_pending = true;
-}
-
-fn upload_frame_if_needed(device: &wgpu::Device, queue: &wgpu::Queue, state: &mut WgpuCanvasState) {
-    if !state.upload_pending {
-        return;
-    }
-    let (Some(frame), Some(gpu)) = (state.frame.as_ref(), state.gpu.as_ref()) else {
-        return;
-    };
-
-    queue.write_texture(
-        wgpu::TexelCopyTextureInfo {
-            texture: &gpu.texture,
-            mip_level: 0,
-            origin: wgpu::Origin3d::ZERO,
-            aspect: wgpu::TextureAspect::All,
-        },
-        frame_to_bgra_pixels(frame).as_slice(),
-        wgpu::TexelCopyBufferLayout {
-            offset: 0,
-            bytes_per_row: Some((frame.width * 4) as u32),
-            rows_per_image: Some(frame.height as u32),
-        },
-        wgpu::Extent3d {
-            width: frame.width as u32,
-            height: frame.height as u32,
-            depth_or_array_layers: 1,
-        },
+@vertex
+fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+    var positions = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -3.0),
+        vec2<f32>(-1.0, 1.0),
+        vec2<f32>(3.0, 1.0)
+    );
+    var uvs = array<vec2<f32>, 3>(
+        vec2<f32>(0.0, 2.0),
+        vec2<f32>(0.0, 0.0),
+        vec2<f32>(2.0, 0.0)
     );
 
-    let _ = device;
-    state.upload_pending = false;
+    var output: VertexOutput;
+    output.position = vec4<f32>(positions[vertex_index], 0.0, 1.0);
+    output.uv = uvs[vertex_index];
+    return output;
 }
 
-pub fn frame_to_bgra_pixels(frame: &RenderFrame) -> Vec<u8> {
-    let mut pixels = frame.pixels.clone();
-    for chunk in pixels.chunks_exact_mut(4) {
-        chunk.swap(0, 2);
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
+    return textureSample(present_texture, present_sampler, input.uv);
+}
+"#;
+
+#[derive(Debug)]
+struct UploadedFrameTexture {
+    texture: wgpu::Texture,
+    bind_group: wgpu::BindGroup,
+    width: u32,
+    height: u32,
+}
+
+pub struct WgpuPresenter {
+    surface: wgpu::Surface<'static>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    config: wgpu::SurfaceConfiguration,
+    pipeline: wgpu::RenderPipeline,
+    sampler: wgpu::Sampler,
+    bind_group_layout: wgpu::BindGroupLayout,
+    uploaded_frame: Option<UploadedFrameTexture>,
+}
+
+impl WgpuPresenter {
+    pub async fn new(window: Arc<Window>) -> Result<Self> {
+        let size = window.inner_size();
+        let instance = wgpu::Instance::default();
+        let surface = instance
+            .create_surface(window)
+            .context("failed to create surface")?;
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            })
+            .await
+            .context("failed to acquire adapter")?;
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("altpaint-device"),
+                required_features: wgpu::Features::empty(),
+                experimental_features: Default::default(),
+                required_limits: wgpu::Limits::default(),
+                memory_hints: wgpu::MemoryHints::Performance,
+                trace: wgpu::Trace::default(),
+            })
+            .await
+            .context("failed to create device")?;
+
+        let surface_capabilities = surface.get_capabilities(&adapter);
+        let surface_format = surface_capabilities
+            .formats
+            .iter()
+            .copied()
+            .find(|format| format.is_srgb())
+            .unwrap_or(surface_capabilities.formats[0]);
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: surface_format,
+            width: size.width.max(1),
+            height: size.height.max(1),
+            present_mode: wgpu::PresentMode::Fifo,
+            alpha_mode: surface_capabilities.alpha_modes[0],
+            view_formats: Vec::new(),
+            desired_maximum_frame_latency: 2,
+        };
+        surface.configure(&device, &config);
+
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("altpaint-present-bind-group-layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("altpaint-present-sampler"),
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            ..Default::default()
+        });
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("altpaint-present-shader"),
+            source: wgpu::ShaderSource::Wgsl(PRESENT_SHADER.into()),
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("altpaint-present-pipeline-layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            immediate_size: 0,
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("altpaint-present-pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        Ok(Self {
+            surface,
+            device,
+            queue,
+            config,
+            pipeline,
+            sampler,
+            bind_group_layout,
+            uploaded_frame: None,
+        })
     }
-    pixels
+
+    pub fn resize(&mut self, size: PhysicalSize<u32>) {
+        if size.width == 0 || size.height == 0 {
+            return;
+        }
+
+        self.config.width = size.width;
+        self.config.height = size.height;
+        self.surface.configure(&self.device, &self.config);
+    }
+
+    pub fn render(&mut self, frame: &RenderFrame) -> Result<()> {
+        if self.config.width == 0 || self.config.height == 0 {
+            return Ok(());
+        }
+
+        self.ensure_uploaded_frame(frame.width as u32, frame.height as u32);
+        self.upload_frame(frame);
+
+        let surface_texture = match self.surface.get_current_texture() {
+            Ok(surface_texture) => surface_texture,
+            Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                self.surface.configure(&self.device, &self.config);
+                self.surface
+                    .get_current_texture()
+                    .context("failed to acquire surface texture after reconfigure")?
+            }
+            Err(wgpu::SurfaceError::Timeout) => return Ok(()),
+            Err(wgpu::SurfaceError::OutOfMemory) => {
+                anyhow::bail!("out of memory while acquiring surface texture")
+            }
+            Err(other) => return Err(other).context("failed to acquire surface texture"),
+        };
+
+        let view = surface_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let uploaded_frame = self
+            .uploaded_frame
+            .as_ref()
+            .context("uploaded frame texture is missing")?;
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("altpaint-present-encoder"),
+            });
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("altpaint-present-pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(&self.pipeline);
+            pass.set_bind_group(0, &uploaded_frame.bind_group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+
+        self.queue.submit([encoder.finish()]);
+        surface_texture.present();
+        Ok(())
+    }
+
+    fn ensure_uploaded_frame(&mut self, width: u32, height: u32) {
+        let needs_rebuild = self
+            .uploaded_frame
+            .as_ref()
+            .is_none_or(|frame| frame.width != width || frame.height != height);
+        if !needs_rebuild {
+            return;
+        }
+
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("altpaint-present-texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("altpaint-present-bind-group"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+
+        self.uploaded_frame = Some(UploadedFrameTexture {
+            texture,
+            bind_group,
+            width,
+            height,
+        });
+    }
+
+    fn upload_frame(&mut self, frame: &RenderFrame) {
+        let Some(uploaded_frame) = self.uploaded_frame.as_ref() else {
+            return;
+        };
+
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &uploaded_frame.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            frame.pixels.as_slice(),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some((frame.width * 4) as u32),
+                rows_per_image: Some(frame.height as u32),
+            },
+            wgpu::Extent3d {
+                width: frame.width as u32,
+                height: frame.height as u32,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
 }
 
 #[cfg(test)]
@@ -205,13 +333,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn frame_to_bgra_swaps_red_and_blue_channels() {
-        let frame = RenderFrame {
-            width: 2,
-            height: 1,
-            pixels: vec![10, 20, 30, 255, 1, 2, 3, 255],
-        };
-
-        assert_eq!(frame_to_bgra_pixels(&frame), vec![30, 20, 10, 255, 3, 2, 1, 255]);
+    fn presenter_shader_mentions_texture_sampling() {
+        assert!(PRESENT_SHADER.contains("textureSample"));
+        assert!(PRESENT_SHADER.contains("vs_main"));
+        assert!(PRESENT_SHADER.contains("fs_main"));
     }
 }

@@ -10,23 +10,45 @@ pub struct PanelView {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PanelUi {
+pub struct PanelTree {
     pub id: &'static str,
     pub title: &'static str,
-    pub nodes: Vec<PanelUiNode>,
+    pub children: Vec<PanelNode>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PanelUiNode {
-    Section {
-        title: String,
-        children: Vec<PanelUiNode>,
+pub enum HostAction {
+    DispatchCommand(Command),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PanelEvent {
+    Activate { panel_id: String, node_id: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PanelNode {
+    Column {
+        id: String,
+        children: Vec<PanelNode>,
     },
-    Text(String),
-    CommandButton {
+    Row {
+        id: String,
+        children: Vec<PanelNode>,
+    },
+    Section {
+        id: String,
+        title: String,
+        children: Vec<PanelNode>,
+    },
+    Text {
+        id: String,
+        text: String,
+    },
+    Button {
         id: String,
         label: String,
-        command: Command,
+        action: HostAction,
         active: bool,
     },
 }
@@ -69,17 +91,52 @@ pub trait PanelPlugin {
         }
     }
 
-    fn ui(&self) -> PanelUi {
-        PanelUi {
+    fn panel_tree(&self) -> PanelTree {
+        PanelTree {
             id: self.id(),
             title: self.title(),
-            nodes: self
+            children: self
                 .view()
                 .lines
                 .into_iter()
-                .map(PanelUiNode::Text)
+                .enumerate()
+                .map(|(index, text)| PanelNode::Text {
+                    id: format!("line.{index}"),
+                    text,
+                })
                 .collect(),
         }
+    }
+
+    fn handle_event(&mut self, event: &PanelEvent) -> Vec<HostAction> {
+        match event {
+            PanelEvent::Activate { panel_id, node_id } if panel_id == self.id() => {
+                find_actions_in_nodes(&self.panel_tree().children, node_id)
+            }
+            _ => Vec::new(),
+        }
+    }
+}
+
+fn find_actions_in_nodes(nodes: &[PanelNode], target_id: &str) -> Vec<HostAction> {
+    for node in nodes {
+        if let Some(actions) = find_actions_in_node(node, target_id) {
+            return actions;
+        }
+    }
+    Vec::new()
+}
+
+fn find_actions_in_node(node: &PanelNode, target_id: &str) -> Option<Vec<HostAction>> {
+    match node {
+        PanelNode::Column { children, .. }
+        | PanelNode::Row { children, .. }
+        | PanelNode::Section { children, .. } => children
+            .iter()
+            .find_map(|child| find_actions_in_node(child, target_id)),
+        PanelNode::Text { .. } => None,
+        PanelNode::Button { id, action, .. } if id == target_id => Some(vec![action.clone()]),
+        PanelNode::Button { .. } => None,
     }
 }
 
@@ -99,16 +156,16 @@ mod tests {
             "Test"
         }
 
-        fn ui(&self) -> PanelUi {
-            PanelUi {
+        fn panel_tree(&self) -> PanelTree {
+            PanelTree {
                 id: self.id(),
                 title: self.title(),
-                nodes: vec![PanelUiNode::CommandButton {
+                children: vec![PanelNode::Button {
                     id: "tool.brush".to_string(),
                     label: "Brush".to_string(),
-                    command: Command::SetActiveTool {
+                    action: HostAction::DispatchCommand(Command::SetActiveTool {
                         tool: ToolKind::Brush,
-                    },
+                    }),
                     active: true,
                 }],
             }
@@ -116,19 +173,36 @@ mod tests {
     }
 
     #[test]
-    fn panel_plugin_ui_can_expose_command_button() {
+    fn panel_plugin_tree_can_expose_button_action() {
         let panel = TestPanel;
-        let ui = panel.ui();
+        let tree = panel.panel_tree();
 
-        assert_eq!(ui.id, "test.panel");
+        assert_eq!(tree.id, "test.panel");
         assert!(matches!(
-            &ui.nodes[0],
-            PanelUiNode::CommandButton {
+            &tree.children[0],
+            PanelNode::Button {
                 label,
-                command: Command::SetActiveTool { tool: ToolKind::Brush },
+                action: HostAction::DispatchCommand(Command::SetActiveTool { tool: ToolKind::Brush }),
                 active: true,
                 ..
             } if label == "Brush"
         ));
+    }
+
+    #[test]
+    fn activate_event_resolves_button_action() {
+        let mut panel = TestPanel;
+
+        let actions = panel.handle_event(&PanelEvent::Activate {
+            panel_id: "test.panel".to_string(),
+            node_id: "tool.brush".to_string(),
+        });
+
+        assert_eq!(
+            actions,
+            vec![HostAction::DispatchCommand(Command::SetActiveTool {
+                tool: ToolKind::Brush,
+            })]
+        );
     }
 }

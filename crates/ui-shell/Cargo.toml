@@ -8,5 +8,6 @@ authors.workspace = true
 [dependencies]
 app-core = { path = "../app-core" }
 builtin-plugins = { path = "../builtin-plugins" }
+font8x8.workspace = true
 plugin-api = { path = "../plugin-api" }
 render = { path = "../render" }

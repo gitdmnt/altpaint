@@ -8,13 +8,11 @@ authors.workspace = true
 [dependencies]
 anyhow.workspace = true
 app-core = { path = "../../crates/app-core" }
+font8x8.workspace = true
 plugin-api = { path = "../../crates/plugin-api" }
 pollster.workspace = true
 render = { path = "../../crates/render" }
-slint.workspace = true
 storage = { path = "../../crates/storage" }
 ui-shell = { path = "../../crates/ui-shell" }
 wgpu.workspace = true
-
-[build-dependencies]
-slint-build.workspace = true
+winit.workspace = true

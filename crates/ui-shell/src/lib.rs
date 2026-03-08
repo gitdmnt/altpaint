@@ -5,31 +5,64 @@
 
 use app_core::Document;
 use builtin_plugins::default_builtin_panels;
-use plugin_api::{PanelPlugin, PanelUi, PanelUiNode, PanelView};
+use font8x8::{BASIC_FONTS, UnicodeFonts};
+use plugin_api::{HostAction, PanelEvent, PanelNode, PanelPlugin, PanelTree, PanelView};
 use render::{RenderContext, RenderFrame};
 
+const SIDEBAR_BACKGROUND: [u8; 4] = [0x2a, 0x2a, 0x2a, 0xff];
+const PANEL_BACKGROUND: [u8; 4] = [0x1f, 0x1f, 0x1f, 0xff];
+const PANEL_BORDER: [u8; 4] = [0x3f, 0x3f, 0x3f, 0xff];
+const PANEL_TITLE: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
+const SECTION_TITLE: [u8; 4] = [0x9f, 0xb7, 0xff, 0xff];
+const BODY_TEXT: [u8; 4] = [0xd8, 0xd8, 0xd8, 0xff];
+const BUTTON_FILL: [u8; 4] = [0x32, 0x32, 0x32, 0xff];
+const BUTTON_ACTIVE_FILL: [u8; 4] = [0x44, 0x5f, 0xb0, 0xff];
+const BUTTON_BORDER: [u8; 4] = [0x56, 0x56, 0x56, 0xff];
+const BUTTON_TEXT: [u8; 4] = [0xf0, 0xf0, 0xf0, 0xff];
+const FONT_WIDTH: usize = 8;
+const FONT_HEIGHT: usize = 8;
+const LINE_HEIGHT: usize = 10;
+const PANEL_OUTER_PADDING: usize = 8;
+const PANEL_INNER_PADDING: usize = 8;
+const NODE_GAP: usize = 6;
+const SECTION_GAP: usize = 4;
+const SECTION_INDENT: usize = 10;
+const BUTTON_HEIGHT: usize = 24;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SlintPanelModel {
-    pub id: String,
-    pub title: String,
-    pub items: Vec<SlintPanelItem>,
+struct PanelHitRegion {
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    panel_id: String,
+    node_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SlintPanelItem {
-    Text {
-        text: String,
-    },
-    Button {
-        id: String,
-        label: String,
-        command: app_core::Command,
-        active: bool,
-    },
-    Section {
-        title: String,
-        text: String,
-    },
+pub struct PanelSurface {
+    pub width: usize,
+    pub height: usize,
+    pub pixels: Vec<u8>,
+    hit_regions: Vec<PanelHitRegion>,
+}
+
+impl PanelSurface {
+    pub fn hit_test(&self, x: usize, y: usize) -> Option<PanelEvent> {
+        self.hit_regions
+            .iter()
+            .rev()
+            .find(|region| {
+                x >= region.x
+                    && y >= region.y
+                    && x < region.x + region.width
+                    && y < region.y + region.height
+            })
+            .map(|region| PanelEvent::Activate {
+                panel_id: region.panel_id.clone(),
+                node_id: region.node_id.clone(),
+            })
+    }
 }
 
 /// パネルホストとして振る舞う最小UIシェル。
@@ -88,62 +121,338 @@ impl UiShell {
         self.panels.iter().map(|panel| panel.view()).collect()
     }
 
-    pub fn panel_uis(&self) -> Vec<PanelUi> {
-        self.panels.iter().map(|panel| panel.ui()).collect()
+    pub fn panel_trees(&self) -> Vec<PanelTree> {
+        self.panels.iter().map(|panel| panel.panel_tree()).collect()
     }
 
-    pub fn slint_panels(&self) -> Vec<SlintPanelModel> {
-        self.panel_uis()
-            .into_iter()
-            .map(|panel| SlintPanelModel {
-                id: panel.id.to_string(),
-                title: panel.title.to_string(),
-                items: flatten_panel_ui_nodes(panel.nodes),
-            })
+    pub fn handle_panel_event(&mut self, event: &PanelEvent) -> Vec<HostAction> {
+        self.panels
+            .iter_mut()
+            .flat_map(|panel| panel.handle_event(event))
             .collect()
     }
+
+    pub fn render_panel_surface(&self, width: usize, height: usize) -> PanelSurface {
+        let mut surface = PanelSurface {
+            width,
+            height,
+            pixels: vec![0; width * height * 4],
+            hit_regions: Vec::new(),
+        };
+        fill_rect(&mut surface, 0, 0, width, height, SIDEBAR_BACKGROUND);
+
+        let mut cursor_y = PANEL_OUTER_PADDING;
+        let panel_width = width.saturating_sub(PANEL_OUTER_PADDING * 2);
+
+        for tree in self.panel_trees() {
+            let panel_height = measure_panel_tree(&tree, panel_width);
+            if cursor_y >= height {
+                break;
+            }
+
+            let clamped_height = panel_height.min(height.saturating_sub(cursor_y));
+            fill_rect(
+                &mut surface,
+                PANEL_OUTER_PADDING,
+                cursor_y,
+                panel_width,
+                clamped_height,
+                PANEL_BACKGROUND,
+            );
+            stroke_rect(
+                &mut surface,
+                PANEL_OUTER_PADDING,
+                cursor_y,
+                panel_width,
+                clamped_height,
+                PANEL_BORDER,
+            );
+            draw_panel_tree(&mut surface, &tree, PANEL_OUTER_PADDING, cursor_y, panel_width);
+            cursor_y += panel_height + PANEL_OUTER_PADDING;
+        }
+
+        surface
+    }
 }
 
-fn flatten_panel_ui_nodes(nodes: Vec<PanelUiNode>) -> Vec<SlintPanelItem> {
-    nodes
-        .into_iter()
-        .flat_map(flatten_panel_ui_node)
-        .collect()
-}
-
-fn flatten_panel_ui_node(node: PanelUiNode) -> Vec<SlintPanelItem> {
-    match node {
-        PanelUiNode::Text(text) => vec![SlintPanelItem::Text { text }],
-        PanelUiNode::CommandButton {
-            id,
-            label,
-            command,
-            active,
-        } => vec![SlintPanelItem::Button {
-            id,
-            label,
-            command,
-            active,
-        }],
-        PanelUiNode::Section { title, children } => {
-            let summary = children
-                .iter()
-                .filter_map(|child| match child {
-                    PanelUiNode::Text(text) => Some(text.clone()),
-                    PanelUiNode::CommandButton { label, .. } => Some(label.clone()),
-                    PanelUiNode::Section { .. } => None,
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            let mut items = vec![SlintPanelItem::Section {
-                title,
-                text: summary,
-            }];
-            items.extend(children.into_iter().flat_map(flatten_panel_ui_node));
-            items
+fn measure_panel_tree(tree: &PanelTree, width: usize) -> usize {
+    let title_width = width.saturating_sub(PANEL_INNER_PADDING * 2);
+    let title_height = measure_text(&tree.title, title_width);
+    let mut content_height = 0;
+    for (index, child) in tree.children.iter().enumerate() {
+        content_height += measure_node(child, title_width);
+        if index + 1 != tree.children.len() {
+            content_height += NODE_GAP;
         }
     }
+
+    PANEL_INNER_PADDING * 2 + title_height + 6 + content_height
+}
+
+fn measure_node(node: &PanelNode, available_width: usize) -> usize {
+    match node {
+        PanelNode::Column { children, .. } => children
+            .iter()
+            .enumerate()
+            .map(|(index, child)| {
+                measure_node(child, available_width)
+                    + usize::from(index + 1 != children.len()) * NODE_GAP
+            })
+            .sum(),
+        PanelNode::Row { children, .. } => {
+            let width_per_child = if children.is_empty() {
+                available_width
+            } else {
+                available_width.saturating_sub(NODE_GAP * children.len().saturating_sub(1))
+                    / children.len()
+            };
+            children
+                .iter()
+                .map(|child| measure_node(child, width_per_child))
+                .max()
+                .unwrap_or(0)
+        }
+        PanelNode::Section { children, title, .. } => {
+            let title_height = measure_text(title, available_width);
+            let child_width = available_width.saturating_sub(SECTION_INDENT);
+            let mut children_height = 0;
+            for (index, child) in children.iter().enumerate() {
+                children_height += measure_node(child, child_width);
+                if index + 1 != children.len() {
+                    children_height += SECTION_GAP;
+                }
+            }
+            title_height + SECTION_GAP + children_height
+        }
+        PanelNode::Text { text, .. } => measure_text(text, available_width),
+        PanelNode::Button { .. } => BUTTON_HEIGHT,
+    }
+}
+
+fn draw_panel_tree(
+    surface: &mut PanelSurface,
+    tree: &PanelTree,
+    x: usize,
+    y: usize,
+    width: usize,
+) {
+    let inner_x = x + PANEL_INNER_PADDING;
+    let inner_width = width.saturating_sub(PANEL_INNER_PADDING * 2);
+    let title_height = draw_wrapped_text(surface, inner_x, y + PANEL_INNER_PADDING, tree.title, PANEL_TITLE, inner_width);
+    let mut cursor_y = y + PANEL_INNER_PADDING + title_height + 6;
+
+    for child in &tree.children {
+        let used = draw_node(surface, child, tree.id, inner_x, cursor_y, inner_width);
+        cursor_y += used + NODE_GAP;
+    }
+}
+
+fn draw_node(
+    surface: &mut PanelSurface,
+    node: &PanelNode,
+    panel_id: &str,
+    x: usize,
+    y: usize,
+    available_width: usize,
+) -> usize {
+    match node {
+        PanelNode::Column { children, .. } => {
+            let mut cursor_y = y;
+            for (index, child) in children.iter().enumerate() {
+                cursor_y += draw_node(surface, child, panel_id, x, cursor_y, available_width);
+                if index + 1 != children.len() {
+                    cursor_y += NODE_GAP;
+                }
+            }
+            cursor_y.saturating_sub(y)
+        }
+        PanelNode::Row { children, .. } => {
+            let child_gap = NODE_GAP;
+            let child_width = if children.is_empty() {
+                available_width
+            } else {
+                available_width.saturating_sub(child_gap * children.len().saturating_sub(1))
+                    / children.len()
+            };
+            let mut cursor_x = x;
+            let mut max_height = 0;
+            for child in children {
+                let used = draw_node(surface, child, panel_id, cursor_x, y, child_width);
+                max_height = max_height.max(used);
+                cursor_x += child_width + child_gap;
+            }
+            max_height
+        }
+        PanelNode::Section {
+            title, children, ..
+        } => {
+            let title_height = draw_wrapped_text(surface, x, y, title, SECTION_TITLE, available_width);
+            let child_x = x + SECTION_INDENT;
+            let child_width = available_width.saturating_sub(SECTION_INDENT);
+            let mut cursor_y = y + title_height + SECTION_GAP;
+            for (index, child) in children.iter().enumerate() {
+                cursor_y += draw_node(surface, child, panel_id, child_x, cursor_y, child_width);
+                if index + 1 != children.len() {
+                    cursor_y += SECTION_GAP;
+                }
+            }
+            cursor_y.saturating_sub(y)
+        }
+        PanelNode::Text { text, .. } => {
+            draw_wrapped_text(surface, x, y, text, BODY_TEXT, available_width)
+        }
+        PanelNode::Button {
+            id,
+            label,
+            active,
+            ..
+        } => {
+            let fill = if *active { BUTTON_ACTIVE_FILL } else { BUTTON_FILL };
+            fill_rect(surface, x, y, available_width, BUTTON_HEIGHT, fill);
+            stroke_rect(surface, x, y, available_width, BUTTON_HEIGHT, BUTTON_BORDER);
+            draw_wrapped_text(
+                surface,
+                x + 6,
+                y + 7,
+                label,
+                BUTTON_TEXT,
+                available_width.saturating_sub(12),
+            );
+            surface.hit_regions.push(PanelHitRegion {
+                x,
+                y,
+                width: available_width,
+                height: BUTTON_HEIGHT,
+                panel_id: panel_id.to_string(),
+                node_id: id.clone(),
+            });
+            BUTTON_HEIGHT
+        }
+    }
+}
+
+fn measure_text(text: &str, available_width: usize) -> usize {
+    let lines = wrap_text(text, available_width);
+    lines.len().max(1) * LINE_HEIGHT
+}
+
+fn draw_wrapped_text(
+    surface: &mut PanelSurface,
+    x: usize,
+    y: usize,
+    text: &str,
+    color: [u8; 4],
+    available_width: usize,
+) -> usize {
+    let lines = wrap_text(text, available_width);
+    for (index, line) in lines.iter().enumerate() {
+        draw_text_line(surface, x, y + index * LINE_HEIGHT, line, color);
+    }
+    lines.len().max(1) * LINE_HEIGHT
+}
+
+fn wrap_text(text: &str, available_width: usize) -> Vec<String> {
+    let max_chars = (available_width / FONT_WIDTH).max(1);
+    let mut lines = Vec::new();
+
+    for raw_line in text.split('\n') {
+        let mut current = String::new();
+        for word in raw_line.split_whitespace() {
+            let next_len = if current.is_empty() {
+                word.chars().count()
+            } else {
+                current.chars().count() + 1 + word.chars().count()
+            };
+
+            if next_len > max_chars && !current.is_empty() {
+                lines.push(current.clone());
+                current.clear();
+            }
+
+            if word.chars().count() > max_chars {
+                if !current.is_empty() {
+                    lines.push(current.clone());
+                    current.clear();
+                }
+                let mut chunk = String::new();
+                for ch in word.chars() {
+                    chunk.push(ch);
+                    if chunk.chars().count() >= max_chars {
+                        lines.push(chunk.clone());
+                        chunk.clear();
+                    }
+                }
+                current = chunk;
+                continue;
+            }
+
+            if !current.is_empty() {
+                current.push(' ');
+            }
+            current.push_str(word);
+        }
+
+        if current.is_empty() {
+            lines.push(String::new());
+        } else {
+            lines.push(current);
+        }
+    }
+
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+
+    lines
+}
+
+fn draw_text_line(surface: &mut PanelSurface, x: usize, y: usize, text: &str, color: [u8; 4]) {
+    for (index, ch) in text.chars().enumerate() {
+        draw_glyph(surface, x + index * FONT_WIDTH, y, ch, color);
+    }
+}
+
+fn draw_glyph(surface: &mut PanelSurface, x: usize, y: usize, ch: char, color: [u8; 4]) {
+    let glyph = BASIC_FONTS.get(ch).or_else(|| BASIC_FONTS.get('?'));
+    let Some(glyph) = glyph else {
+        return;
+    };
+
+    for (row, bits) in glyph.iter().enumerate().take(FONT_HEIGHT) {
+        for col in 0..FONT_WIDTH {
+            if ((bits >> col) & 1) == 1 {
+                write_pixel(surface, x + col, y + row, color);
+            }
+        }
+    }
+}
+
+fn fill_rect(surface: &mut PanelSurface, x: usize, y: usize, width: usize, height: usize, color: [u8; 4]) {
+    let max_x = (x + width).min(surface.width);
+    let max_y = (y + height).min(surface.height);
+    for yy in y..max_y {
+        for xx in x..max_x {
+            write_pixel(surface, xx, yy, color);
+        }
+    }
+}
+
+fn stroke_rect(surface: &mut PanelSurface, x: usize, y: usize, width: usize, height: usize, color: [u8; 4]) {
+    if width == 0 || height == 0 {
+        return;
+    }
+    fill_rect(surface, x, y, width, 1, color);
+    fill_rect(surface, x, y + height.saturating_sub(1), width, 1, color);
+    fill_rect(surface, x, y, 1, height, color);
+    fill_rect(surface, x + width.saturating_sub(1), y, 1, height, color);
+}
+
+fn write_pixel(surface: &mut PanelSurface, x: usize, y: usize, color: [u8; 4]) {
+    if x >= surface.width || y >= surface.height {
+        return;
+    }
+    let index = (y * surface.width + x) * 4;
+    surface.pixels[index..index + 4].copy_from_slice(&color);
 }
 
 impl Default for UiShell {
@@ -155,6 +464,7 @@ impl Default for UiShell {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use app_core::{Command, ToolKind};
     use plugin_api::PanelPlugin;
 
     /// `UiShell` の更新配送を確認するためのダミーパネル。
@@ -236,24 +546,65 @@ mod tests {
     }
 
     #[test]
-    fn shell_exposes_slint_panels_with_button_commands() {
+    fn shell_exposes_panel_tree_buttons() {
         let mut shell = UiShell::new();
         shell.update(&Document::default());
 
-        let panels = shell.slint_panels();
+        let panels = shell.panel_trees();
         let tool_panel = panels
             .iter()
             .find(|panel| panel.id == "builtin.tool-palette")
             .expect("tool panel exists");
 
-        fn has_brush_button(items: &[SlintPanelItem]) -> bool {
+        fn has_brush_button(items: &[PanelNode]) -> bool {
             items.iter().any(|item| match item {
-                SlintPanelItem::Button { label, .. } => label == "Brush",
-                SlintPanelItem::Section { .. } => false,
-                SlintPanelItem::Text { .. } => false,
+                PanelNode::Button { label, .. } => label == "Brush",
+                PanelNode::Column { children, .. }
+                | PanelNode::Row { children, .. }
+                | PanelNode::Section { children, .. } => has_brush_button(children),
+                PanelNode::Text { .. } => false,
             })
         }
 
-        assert!(has_brush_button(&tool_panel.items));
+        assert!(has_brush_button(&tool_panel.children));
+    }
+
+    #[test]
+    fn panel_event_returns_command_action() {
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+
+        let actions = shell.handle_panel_event(&PanelEvent::Activate {
+            panel_id: "builtin.tool-palette".to_string(),
+            node_id: "tool.eraser".to_string(),
+        });
+
+        assert_eq!(
+            actions,
+            vec![HostAction::DispatchCommand(Command::SetActiveTool {
+                tool: ToolKind::Eraser,
+            })]
+        );
+    }
+
+    #[test]
+    fn rendered_panel_surface_contains_clickable_button_region() {
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+        let surface = shell.render_panel_surface(280, 800);
+
+        let mut found = None;
+        'outer: for y in 0..surface.height {
+            for x in 0..surface.width {
+                if let Some(PanelEvent::Activate { panel_id, node_id }) = surface.hit_test(x, y) {
+                    if panel_id == "builtin.tool-palette" && node_id == "tool.brush" {
+                        found = Some((x, y));
+                        break 'outer;
+                    }
+                }
+            }
+        }
+
+        assert!(found.is_some());
     }
 }
