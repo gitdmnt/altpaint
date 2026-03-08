@@ -21,7 +21,7 @@ use ui_shell::{PanelSurface, UiShell, draw_text_rgba};
 use wgpu_canvas::{PresentTimings, UploadRegion, WgpuPresenter};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Window, WindowAttributes, WindowId};
@@ -839,6 +839,7 @@ struct DesktopRuntime {
     window: Option<Arc<Window>>,
     presenter: Option<WgpuPresenter>,
     last_cursor_position: Option<(i32, i32)>,
+    active_touch_id: Option<u64>,
     profiler: DesktopProfiler,
     modifiers: ModifiersState,
 }
@@ -850,6 +851,7 @@ impl DesktopRuntime {
             window: None,
             presenter: None,
             last_cursor_position: None,
+            active_touch_id: None,
             profiler: DesktopProfiler::new(),
             modifiers: ModifiersState::default(),
         }
@@ -863,6 +865,64 @@ impl DesktopRuntime {
 
     fn active_window_id(&self) -> Option<WindowId> {
         self.window.as_ref().map(|window| window.id())
+    }
+
+    fn handle_mouse_cursor_moved(&mut self, x: i32, y: i32) -> bool {
+        if self.active_touch_id.is_some() {
+            return false;
+        }
+
+        let position = (x, y);
+        self.last_cursor_position = Some(position);
+        self.app.handle_pointer_dragged(position.0, position.1)
+    }
+
+    fn handle_mouse_button(&mut self, state: ElementState) -> bool {
+        if self.active_touch_id.is_some() {
+            return false;
+        }
+
+        let Some((x, y)) = self.last_cursor_position else {
+            return false;
+        };
+
+        match state {
+            ElementState::Pressed => self.app.handle_pointer_pressed(x, y),
+            ElementState::Released => self.app.handle_pointer_released(x, y),
+        }
+    }
+
+    fn handle_touch_phase(&mut self, touch_id: u64, phase: TouchPhase, x: i32, y: i32) -> bool {
+        let position = (x, y);
+
+        match phase {
+            TouchPhase::Started => {
+                if matches!(self.active_touch_id, Some(active_id) if active_id != touch_id) {
+                    return false;
+                }
+
+                self.active_touch_id = Some(touch_id);
+                self.last_cursor_position = Some(position);
+                self.app.handle_pointer_pressed(position.0, position.1)
+            }
+            TouchPhase::Moved => {
+                if self.active_touch_id != Some(touch_id) {
+                    return false;
+                }
+
+                self.last_cursor_position = Some(position);
+                self.app.handle_pointer_dragged(position.0, position.1)
+            }
+            TouchPhase::Ended | TouchPhase::Cancelled => {
+                if self.active_touch_id != Some(touch_id) {
+                    return false;
+                }
+
+                self.last_cursor_position = Some(position);
+                self.active_touch_id = None;
+                self.app.handle_pointer_released(position.0, position.1)
+            }
+        }
     }
 }
 
@@ -930,8 +990,13 @@ impl ApplicationHandler for DesktopRuntime {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let position = (position.x as i32, position.y as i32);
-                self.last_cursor_position = Some(position);
-                if self.app.handle_pointer_dragged(position.0, position.1) {
+                if self.handle_mouse_cursor_moved(position.0, position.1) {
+                    self.request_redraw();
+                }
+            }
+            WindowEvent::Touch(touch) => {
+                let position = (touch.location.x as i32, touch.location.y as i32);
+                if self.handle_touch_phase(touch.id, touch.phase, position.0, position.1) {
                     self.request_redraw();
                 }
             }
@@ -985,14 +1050,8 @@ impl ApplicationHandler for DesktopRuntime {
                 button: MouseButton::Left,
                 ..
             } => {
-                if let Some((x, y)) = self.last_cursor_position {
-                    let changed = match state {
-                        ElementState::Pressed => self.app.handle_pointer_pressed(x, y),
-                        ElementState::Released => self.app.handle_pointer_released(x, y),
-                    };
-                    if changed {
-                        self.request_redraw();
-                    }
+                if self.handle_mouse_button(state) {
+                    self.request_redraw();
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -1410,6 +1469,7 @@ mod tests {
     };
     use app_core::{ColorRgba8, ToolKind};
     use render::RenderFrame;
+    use winit::event::TouchPhase;
 
     #[test]
     fn map_view_to_surface_maps_bottom_right_corner() {
@@ -1559,6 +1619,46 @@ mod tests {
     }
 
     #[test]
+    fn touch_started_and_moved_draws_black_pixels() {
+        let mut runtime = DesktopRuntime::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+        let mut profiler = DesktopProfiler::new();
+        let _ = runtime.app.prepare_present_frame(1280, 800, &mut profiler);
+        let layout = runtime.app.layout.clone().expect("layout exists");
+        let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
+        let center_y =
+            (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
+
+        assert!(runtime.handle_touch_phase(1, TouchPhase::Started, center_x, center_y));
+        assert!(runtime.handle_touch_phase(1, TouchPhase::Moved, center_x + 20, center_y));
+        assert!(!runtime.handle_touch_phase(1, TouchPhase::Ended, center_x + 20, center_y));
+
+        let frame = runtime.app.ui_shell.render_frame(&runtime.app.document);
+        assert!(
+            frame
+                .pixels
+                .chunks_exact(4)
+                .any(|pixel| pixel == [0, 0, 0, 255])
+        );
+    }
+
+    #[test]
+    fn touch_cancelled_stops_active_touch_tracking() {
+        let mut runtime = DesktopRuntime::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+        let mut profiler = DesktopProfiler::new();
+        let _ = runtime.app.prepare_present_frame(1280, 800, &mut profiler);
+        let layout = runtime.app.layout.clone().expect("layout exists");
+        let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
+        let center_y =
+            (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
+
+        assert!(runtime.handle_touch_phase(7, TouchPhase::Started, center_x, center_y));
+        assert_eq!(runtime.active_touch_id, Some(7));
+
+        assert!(!runtime.handle_touch_phase(7, TouchPhase::Cancelled, center_x, center_y));
+        assert_eq!(runtime.active_touch_id, None);
+    }
+
+    #[test]
     fn canvas_drag_draws_using_selected_color() {
         let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
         let mut profiler = DesktopProfiler::new();
@@ -1611,7 +1711,11 @@ mod tests {
     fn desktop_app_loads_phase6_sample_panel_from_default_ui_directory() {
         let app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
 
-        assert!(default_panel_dir().join("phase6-sample.altp-panel").exists());
+        assert!(
+            default_panel_dir()
+                .join("phase6-sample.altp-panel")
+                .exists()
+        );
         assert!(
             app.ui_shell
                 .panel_trees()
