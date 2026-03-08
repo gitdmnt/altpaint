@@ -2,6 +2,12 @@
 
 use app_core::{ColorRgba8, Command, Document};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PanelMoveDirection {
+    Up,
+    Down,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PanelView {
     pub id: &'static str,
@@ -23,6 +29,14 @@ pub enum HostAction {
         panel_id: String,
         handler_name: String,
         event_kind: String,
+    },
+    MovePanel {
+        panel_id: String,
+        direction: PanelMoveDirection,
+    },
+    SetPanelVisibility {
+        panel_id: String,
+        visible: bool,
     },
 }
 

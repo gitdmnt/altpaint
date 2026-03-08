@@ -14,6 +14,11 @@ pub extern "C" fn panel_handle_save_project() {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn panel_handle_save_project_as() {
+    emit_command_descriptor(&command("project.save_as").build());
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn panel_handle_load_project() {
     emit_command_descriptor(&command("project.load").build());
 }

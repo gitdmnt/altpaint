@@ -6,6 +6,7 @@
 pub mod command;
 pub mod document;
 pub mod error;
+pub mod workspace;
 
 pub use command::Command;
 pub use document::{
@@ -13,3 +14,4 @@ pub use document::{
     Page, PageId, Panel, PanelId, ToolKind, Work, WorkId,
 };
 pub use error::CoreError;
+pub use workspace::{WorkspaceLayout, WorkspacePanelState};

@@ -22,7 +22,8 @@ view {
       <text tone="muted">Hosted via Rust SDK + Wasm</text>
       <button id="app.new" on:click="new_project">New</button>
       <button id="app.save" on:click="save_project">Save</button>
-      <button id="app.load" on:click="load_project">Load</button>
+      <button id="app.save_as" on:click="save_project_as">Save As</button>
+      <button id="app.load" on:click="load_project">Open...</button>
     </section>
   </column>
 }

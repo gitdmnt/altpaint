@@ -33,8 +33,12 @@ pub enum Command {
     SetActiveColor { color: ColorRgba8 },
     /// 新規ドキュメントを作成する。
     NewDocument,
+    /// 指定サイズで新規ドキュメントを作成する。
+    NewDocumentSized { width: usize, height: usize },
     /// 現在のドキュメントを保存する。
     SaveProject,
+    /// 保存先を選んで現在のドキュメントを保存する。
+    SaveProjectAs,
     /// 既定パスからドキュメントを読み込む。
     LoadProject,
 }

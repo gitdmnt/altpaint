@@ -1,23 +1,32 @@
 use std::fs;
 use std::path::Path;
 
-use app_core::Document;
+use app_core::{Document, WorkspaceLayout};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub const CURRENT_FORMAT_VERSION: u32 = 1;
+pub const CURRENT_FORMAT_VERSION: u32 = 2;
+
+#[derive(Debug, Clone)]
+pub struct LoadedProject {
+    pub document: Document,
+    pub workspace_layout: WorkspaceLayout,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AltpaintProjectFile {
     pub format_version: u32,
     pub document: Document,
+    #[serde(default)]
+    pub workspace_layout: WorkspaceLayout,
 }
 
 impl AltpaintProjectFile {
-    pub fn new(document: &Document) -> Self {
+    pub fn new(document: &Document, workspace_layout: &WorkspaceLayout) -> Self {
         Self {
             format_version: CURRENT_FORMAT_VERSION,
             document: document.clone(),
+            workspace_layout: workspace_layout.clone(),
         }
     }
 }
@@ -38,25 +47,40 @@ pub fn save_document_to_path(
     path: impl AsRef<Path>,
     document: &Document,
 ) -> Result<(), StorageError> {
+    save_project_to_path(path, document, &WorkspaceLayout::default())
+}
+
+pub fn save_project_to_path(
+    path: impl AsRef<Path>,
+    document: &Document,
+    workspace_layout: &WorkspaceLayout,
+) -> Result<(), StorageError> {
     let path = path.as_ref();
-    let project = AltpaintProjectFile::new(document);
+    let project = AltpaintProjectFile::new(document, workspace_layout);
     let serialized = serde_json::to_vec_pretty(&project).map_err(StorageError::Serialize)?;
     fs::write(path, serialized)?;
     Ok(())
 }
 
 pub fn load_document_from_path(path: impl AsRef<Path>) -> Result<Document, StorageError> {
+    load_project_from_path(path).map(|project| project.document)
+}
+
+pub fn load_project_from_path(path: impl AsRef<Path>) -> Result<LoadedProject, StorageError> {
     let bytes = fs::read(path)?;
     let project: AltpaintProjectFile =
         serde_json::from_slice(&bytes).map_err(StorageError::Deserialize)?;
 
-    if project.format_version != CURRENT_FORMAT_VERSION {
+    if !(1..=CURRENT_FORMAT_VERSION).contains(&project.format_version) {
         return Err(StorageError::UnsupportedFormatVersion(
             project.format_version,
         ));
     }
 
-    Ok(project.document)
+    Ok(LoadedProject {
+        document: project.document,
+        workspace_layout: project.workspace_layout,
+    })
 }
 
 #[cfg(test)]
@@ -94,11 +118,56 @@ mod tests {
     }
 
     #[test]
+    fn save_and_load_roundtrip_preserves_workspace_layout() {
+        let path = temp_path("workspace");
+        let document = Document::default();
+        let workspace_layout = WorkspaceLayout {
+            panels: vec![
+                app_core::WorkspacePanelState {
+                    id: "builtin.layers-panel".to_string(),
+                    visible: true,
+                },
+                app_core::WorkspacePanelState {
+                    id: "builtin.tool-palette".to_string(),
+                    visible: false,
+                },
+            ],
+        };
+
+        save_project_to_path(&path, &document, &workspace_layout).expect("save should succeed");
+        let loaded = load_project_from_path(&path).expect("load should succeed");
+
+        assert_eq!(loaded.workspace_layout, workspace_layout);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn load_version_1_file_defaults_workspace_layout() {
+        let path = temp_path("version1");
+        let project = serde_json::json!({
+            "format_version": 1,
+            "document": Document::default(),
+        });
+        fs::write(
+            &path,
+            serde_json::to_vec(&project).expect("serialize should succeed"),
+        )
+        .expect("write should succeed");
+
+        let loaded = load_project_from_path(&path).expect("load should succeed");
+        assert!(loaded.workspace_layout.panels.is_empty());
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn load_rejects_unknown_format_version() {
         let path = temp_path("version");
         let project = AltpaintProjectFile {
             format_version: CURRENT_FORMAT_VERSION + 1,
             document: Document::default(),
+            workspace_layout: WorkspaceLayout::default(),
         };
         let serialized = serde_json::to_vec(&project).expect("serialize should succeed");
         fs::write(&path, serialized).expect("write should succeed");

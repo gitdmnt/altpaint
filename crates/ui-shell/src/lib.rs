@@ -10,12 +10,14 @@ pub use text::{
     wrap_text_lines,
 };
 
-use app_core::{ColorRgba8, Command, Document, ToolKind};
+use app_core::{ColorRgba8, Command, Document, ToolKind, WorkspaceLayout, WorkspacePanelState};
 use panel_dsl::{AttrValue as DslAttrValue, PanelDefinition, StateField, ViewElement, ViewNode};
 use panel_schema::{
     CommandDescriptor, Diagnostic, PanelEventRequest, PanelInitRequest, StatePatch,
 };
-use plugin_api::{HostAction, PanelEvent, PanelNode, PanelPlugin, PanelTree, PanelView};
+use plugin_api::{
+    HostAction, PanelEvent, PanelMoveDirection, PanelNode, PanelPlugin, PanelTree, PanelView,
+};
 use plugin_host::{PluginHostError, WasmPanelRuntime};
 use render::{RenderContext, RenderFrame};
 use serde_json::{Map, Value, json};
@@ -50,6 +52,7 @@ const SLIDER_HEIGHT: usize = 32;
 const SLIDER_TRACK_HEIGHT: usize = 8;
 const SLIDER_TRACK_TOP: usize = 20;
 const SLIDER_KNOB_WIDTH: usize = 8;
+const WORKSPACE_PANEL_ID: &str = "builtin.workspace-layout";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PanelHitKind {
@@ -148,6 +151,7 @@ pub struct UiShell {
     panels: Vec<Box<dyn PanelPlugin>>,
     latest_document: Option<Document>,
     loaded_panel_ids: Vec<String>,
+    workspace_layout: WorkspaceLayout,
     panel_content_cache: Option<PanelSurface>,
     panel_content_dirty: bool,
     panel_scroll_offset: usize,
@@ -163,6 +167,7 @@ impl UiShell {
             panels: Vec::new(),
             latest_document: None,
             loaded_panel_ids: Vec::new(),
+            workspace_layout: WorkspaceLayout::default(),
             panel_content_cache: None,
             panel_content_dirty: true,
             panel_scroll_offset: 0,
@@ -176,9 +181,11 @@ impl UiShell {
         if let Some(document) = self.latest_document.as_ref() {
             panel.update(document);
         }
+        self.ensure_workspace_panel_entry(panel.id());
         self.panels
             .retain(|registered| registered.id() != panel.id());
         self.panels.push(panel);
+        self.reconcile_workspace_layout();
         self.panel_content_dirty = true;
     }
 
@@ -247,7 +254,22 @@ impl UiShell {
     }
 
     pub fn panel_trees(&self) -> Vec<PanelTree> {
-        self.panels.iter().map(|panel| panel.panel_tree()).collect()
+        let mut trees = vec![self.workspace_manager_tree()];
+        trees.extend(
+            self.visible_panels_in_order()
+                .map(|panel| panel.panel_tree()),
+        );
+        trees
+    }
+
+    pub fn workspace_layout(&self) -> WorkspaceLayout {
+        self.workspace_layout.clone()
+    }
+
+    pub fn set_workspace_layout(&mut self, workspace_layout: WorkspaceLayout) {
+        self.workspace_layout = workspace_layout;
+        self.reconcile_workspace_layout();
+        self.panel_content_dirty = true;
     }
 
     pub fn focused_target(&self) -> Option<(&str, &str)> {
@@ -318,6 +340,12 @@ impl UiShell {
         if let PanelEvent::Activate { panel_id, node_id } = event {
             let _ = self.focus_panel_node(panel_id, node_id);
         }
+        if event_panel_id(event) == WORKSPACE_PANEL_ID {
+            let actions =
+                workspace_panel_actions(self.workspace_manager_tree().children.as_slice(), event);
+            self.panel_content_dirty = true;
+            return actions;
+        }
         let actions = self
             .panels
             .iter_mut()
@@ -325,6 +353,58 @@ impl UiShell {
             .collect();
         self.panel_content_dirty = true;
         actions
+    }
+
+    pub fn move_panel(&mut self, panel_id: &str, direction: PanelMoveDirection) -> bool {
+        let Some(index) = self
+            .workspace_layout
+            .panels
+            .iter()
+            .position(|entry| entry.id == panel_id)
+        else {
+            return false;
+        };
+
+        let target_index = match direction {
+            PanelMoveDirection::Up if index > 0 => index - 1,
+            PanelMoveDirection::Down if index + 1 < self.workspace_layout.panels.len() => index + 1,
+            _ => return false,
+        };
+
+        self.workspace_layout.panels.swap(index, target_index);
+        self.panel_content_dirty = true;
+        true
+    }
+
+    pub fn set_panel_visibility(&mut self, panel_id: &str, visible: bool) -> bool {
+        if panel_id == WORKSPACE_PANEL_ID {
+            return false;
+        }
+
+        let Some(entry) = self
+            .workspace_layout
+            .panels
+            .iter_mut()
+            .find(|entry| entry.id == panel_id)
+        else {
+            return false;
+        };
+
+        if entry.visible == visible {
+            return false;
+        }
+
+        entry.visible = visible;
+        if !visible
+            && self
+                .focused_target
+                .as_ref()
+                .is_some_and(|target| target.panel_id == panel_id)
+        {
+            self.focused_target = None;
+        }
+        self.panel_content_dirty = true;
+        true
     }
 
     pub fn render_panel_surface(&mut self, width: usize, height: usize) -> PanelSurface {
@@ -463,6 +543,189 @@ impl UiShell {
         });
         self.loaded_panel_ids.clear();
         self.panel_content_dirty = true;
+    }
+
+    fn ensure_workspace_panel_entry(&mut self, panel_id: &str) {
+        if panel_id == WORKSPACE_PANEL_ID
+            || self
+                .workspace_layout
+                .panels
+                .iter()
+                .any(|entry| entry.id == panel_id)
+        {
+            return;
+        }
+
+        self.workspace_layout.panels.push(WorkspacePanelState {
+            id: panel_id.to_string(),
+            visible: true,
+        });
+    }
+
+    fn reconcile_workspace_layout(&mut self) {
+        let panel_ids = self
+            .panels
+            .iter()
+            .map(|panel| panel.id())
+            .collect::<Vec<_>>();
+        for panel_id in panel_ids {
+            self.ensure_workspace_panel_entry(panel_id);
+        }
+
+        if self
+            .focused_target
+            .as_ref()
+            .is_some_and(|target| !self.panel_is_visible(&target.panel_id))
+        {
+            self.focused_target = None;
+        }
+    }
+
+    fn visible_panels_in_order(&self) -> impl Iterator<Item = &dyn PanelPlugin> {
+        let ordered_ids = self
+            .workspace_layout
+            .panels
+            .iter()
+            .map(|entry| entry.id.as_str())
+            .collect::<Vec<_>>();
+
+        ordered_ids.into_iter().filter_map(|panel_id| {
+            self.panels
+                .iter()
+                .find(|panel| panel.id() == panel_id && self.panel_is_visible(panel_id))
+                .map(|panel| panel.as_ref())
+        })
+    }
+
+    fn panel_is_visible(&self, panel_id: &str) -> bool {
+        if panel_id == WORKSPACE_PANEL_ID {
+            return true;
+        }
+
+        self.workspace_layout
+            .panels
+            .iter()
+            .find(|entry| entry.id == panel_id)
+            .map(|entry| entry.visible)
+            .unwrap_or(true)
+    }
+
+    fn workspace_manager_tree(&self) -> PanelTree {
+        let panel_titles = self
+            .panels
+            .iter()
+            .map(|panel| (panel.id(), panel.title()))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let ordered_entries = self
+            .workspace_layout
+            .panels
+            .iter()
+            .filter(|entry| panel_titles.contains_key(entry.id.as_str()))
+            .collect::<Vec<_>>();
+
+        let rows = ordered_entries
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| {
+                let title = panel_titles
+                    .get(entry.id.as_str())
+                    .copied()
+                    .unwrap_or(entry.id.as_str());
+                PanelNode::Row {
+                    id: format!("workspace.row.{}", entry.id),
+                    children: vec![
+                        PanelNode::Text {
+                            id: format!("workspace.title.{}", entry.id),
+                            text: title.to_string(),
+                        },
+                        PanelNode::Button {
+                            id: format!("workspace.move-up.{}", entry.id),
+                            label: "Up".to_string(),
+                            action: HostAction::MovePanel {
+                                panel_id: entry.id.clone(),
+                                direction: PanelMoveDirection::Up,
+                            },
+                            active: index > 0,
+                            fill_color: None,
+                        },
+                        PanelNode::Button {
+                            id: format!("workspace.move-down.{}", entry.id),
+                            label: "Down".to_string(),
+                            action: HostAction::MovePanel {
+                                panel_id: entry.id.clone(),
+                                direction: PanelMoveDirection::Down,
+                            },
+                            active: index + 1 < ordered_entries.len(),
+                            fill_color: None,
+                        },
+                        PanelNode::Button {
+                            id: format!("workspace.visibility.{}", entry.id),
+                            label: if entry.visible {
+                                "Hide".to_string()
+                            } else {
+                                "Show".to_string()
+                            },
+                            action: HostAction::SetPanelVisibility {
+                                panel_id: entry.id.clone(),
+                                visible: !entry.visible,
+                            },
+                            active: !entry.visible,
+                            fill_color: None,
+                        },
+                    ],
+                }
+            })
+            .collect::<Vec<_>>();
+
+        PanelTree {
+            id: WORKSPACE_PANEL_ID,
+            title: "Workspace",
+            children: vec![PanelNode::Column {
+                id: "workspace.root".to_string(),
+                children: vec![PanelNode::Section {
+                    id: "workspace.panels".to_string(),
+                    title: "Panels".to_string(),
+                    children: rows,
+                }],
+            }],
+        }
+    }
+}
+
+fn event_panel_id(event: &PanelEvent) -> &str {
+    match event {
+        PanelEvent::Activate { panel_id, .. } | PanelEvent::SetValue { panel_id, .. } => panel_id,
+    }
+}
+
+fn workspace_panel_actions(nodes: &[PanelNode], event: &PanelEvent) -> Vec<HostAction> {
+    let target_id = match event {
+        PanelEvent::Activate { node_id, .. } | PanelEvent::SetValue { node_id, .. } => node_id,
+    };
+    find_actions_in_nodes_local(nodes, target_id)
+}
+
+fn find_actions_in_nodes_local(nodes: &[PanelNode], target_id: &str) -> Vec<HostAction> {
+    for node in nodes {
+        if let Some(actions) = find_actions_in_node_local(node, target_id) {
+            return actions;
+        }
+    }
+    Vec::new()
+}
+
+fn find_actions_in_node_local(node: &PanelNode, target_id: &str) -> Option<Vec<HostAction>> {
+    match node {
+        PanelNode::Column { children, .. }
+        | PanelNode::Row { children, .. }
+        | PanelNode::Section { children, .. } => children
+            .iter()
+            .find_map(|child| find_actions_in_node_local(child, target_id)),
+        PanelNode::Text { .. } | PanelNode::ColorPreview { .. } => None,
+        PanelNode::Button { id, action, .. } if id == target_id => Some(vec![action.clone()]),
+        PanelNode::Button { .. } => None,
+        PanelNode::Slider { id, action, .. } if id == target_id => Some(vec![action.clone()]),
+        PanelNode::Slider { .. } => None,
     }
 }
 
@@ -1125,6 +1388,7 @@ fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, St
     match descriptor.name.as_str() {
         "project.new" => Ok(Command::NewDocument),
         "project.save" => Ok(Command::SaveProject),
+        "project.save_as" => Ok(Command::SaveProjectAs),
         "project.load" => Ok(Command::LoadProject),
         "tool.set_active" => {
             let tool = descriptor
@@ -2080,12 +2344,78 @@ view {
         assert!(shell.focus_next());
         assert_eq!(
             shell.focused_target(),
-            Some(("builtin.app-actions", "app.new"))
+            Some((
+                "builtin.workspace-layout",
+                "workspace.move-up.builtin.app-actions"
+            ))
         );
+
+        assert!(shell.focus_panel_node("builtin.app-actions", "app.new"));
         assert_eq!(
             shell.activate_focused(),
             vec![HostAction::DispatchCommand(Command::NewDocument)]
         );
+    }
+
+    #[test]
+    fn workspace_manager_panel_can_emit_reorder_action() {
+        let mut shell = shell_with_builtin_panels();
+
+        let actions = shell.handle_panel_event(&PanelEvent::Activate {
+            panel_id: WORKSPACE_PANEL_ID.to_string(),
+            node_id: "workspace.move-down.builtin.app-actions".to_string(),
+        });
+
+        assert_eq!(
+            actions,
+            vec![HostAction::MovePanel {
+                panel_id: "builtin.app-actions".to_string(),
+                direction: PanelMoveDirection::Down,
+            }]
+        );
+    }
+
+    #[test]
+    fn workspace_layout_hides_panel_from_rendered_tree() {
+        let mut shell = shell_with_builtin_panels();
+
+        assert!(shell.set_panel_visibility("builtin.tool-palette", false));
+
+        assert!(
+            shell
+                .panel_trees()
+                .iter()
+                .all(|panel| panel.id != "builtin.tool-palette")
+        );
+    }
+
+    #[test]
+    fn workspace_layout_reorders_visible_panels() {
+        let mut shell = shell_with_builtin_panels();
+
+        let before_ids = shell
+            .panel_trees()
+            .iter()
+            .map(|panel| panel.id)
+            .collect::<Vec<_>>();
+        let before_index = before_ids
+            .iter()
+            .position(|panel_id| *panel_id == "builtin.layers-panel")
+            .expect("layers panel visible");
+
+        assert!(shell.move_panel("builtin.layers-panel", PanelMoveDirection::Up));
+        assert!(shell.move_panel("builtin.layers-panel", PanelMoveDirection::Up));
+
+        let visible_ids = shell
+            .panel_trees()
+            .iter()
+            .map(|panel| panel.id)
+            .collect::<Vec<_>>();
+        let layers_index = visible_ids
+            .iter()
+            .position(|panel_id| *panel_id == "builtin.layers-panel")
+            .expect("layers panel visible");
+        assert!(layers_index < before_index);
     }
 
     #[test]

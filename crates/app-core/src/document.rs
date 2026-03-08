@@ -58,7 +58,7 @@ pub struct LayerNodeId(pub u64);
 /// アプリケーションの永続状態全体を表すルートドキュメント。
 ///
 /// フェーズ0では単一の `Work` のみを保持する。
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
     /// 現在編集中の作品。
     pub work: Work,
@@ -395,7 +395,34 @@ impl Default for CanvasBitmap {
     }
 }
 
+impl Default for Document {
+    fn default() -> Self {
+        Self::new(64, 64)
+    }
+}
+
 impl Document {
+    pub fn new(width: usize, height: usize) -> Self {
+        let width = width.max(1);
+        let height = height.max(1);
+
+        Self {
+            work: Work {
+                pages: vec![Page {
+                    panels: vec![Panel {
+                        bitmap: CanvasBitmap::new(width, height),
+                        ..Panel::default()
+                    }],
+                    ..Page::default()
+                }],
+                ..Work::default()
+            },
+            active_tool: ToolKind::default(),
+            active_color: ColorRgba8::default(),
+            view_transform: CanvasViewTransform::default(),
+        }
+    }
+
     pub fn active_bitmap(&self) -> Option<&CanvasBitmap> {
         self.work
             .pages
@@ -445,7 +472,11 @@ impl Document {
                 *self = Document::default();
                 None
             }
-            Command::SaveProject | Command::LoadProject => None,
+            Command::NewDocumentSized { width, height } => {
+                *self = Document::new(*width, *height);
+                None
+            }
+            Command::SaveProject | Command::SaveProjectAs | Command::LoadProject => None,
         }
     }
 
@@ -699,6 +730,28 @@ mod tests {
         let bitmap = &document.work.pages[0].panels[0].bitmap;
         let index = (bitmap.width + 2) * 4;
         assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
+    }
+
+    #[test]
+    fn document_new_uses_requested_canvas_size() {
+        let document = Document::new(320, 240);
+
+        let bitmap = document.active_bitmap().expect("bitmap exists");
+        assert_eq!((bitmap.width, bitmap.height), (320, 240));
+    }
+
+    #[test]
+    fn apply_command_new_document_sized_replaces_bitmap_dimensions() {
+        let mut document = Document::default();
+
+        let dirty = document.apply_command(&Command::NewDocumentSized {
+            width: 512,
+            height: 384,
+        });
+
+        assert_eq!(dirty, None);
+        let bitmap = document.active_bitmap().expect("bitmap exists");
+        assert_eq!((bitmap.width, bitmap.height), (512, 384));
     }
 
     #[test]

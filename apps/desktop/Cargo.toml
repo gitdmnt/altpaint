@@ -11,7 +11,9 @@ app-core = { path = "../../crates/app-core" }
 plugin-api = { path = "../../crates/plugin-api" }
 pollster.workspace = true
 render = { path = "../../crates/render" }
+rfd.workspace = true
 storage = { path = "../../crates/storage" }
+tinyfiledialogs.workspace = true
 ui-shell = { path = "../../crates/ui-shell" }
 wgpu.workspace = true
 winit.workspace = true
