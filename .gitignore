@@ -1,0 +1,9 @@
+.vscode/
+target/
+Cargo.lock
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*.DS_Store
