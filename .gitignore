@@ -1,8 +1,7 @@
 .vscode/
 target/
 Cargo.lock
-apps/desktop/ui/**/*.wasm
-apps/desktop/ui/*.wasm
+plugins/**/*.wasm
 *.log
 *.tmp
 *.bak

@@ -48,7 +48,10 @@ const INPUT_LATENCY_TARGET_MS: f64 = 10.0;
 const INPUT_SAMPLING_TARGET_HZ: f64 = 120.0;
 
 fn default_panel_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("ui")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("plugins")
 }
 
 fn main() -> Result<()> {
@@ -1950,7 +1953,8 @@ mod tests {
 
         assert!(
             default_panel_dir()
-                .join("phase6-sample.altp-panel")
+                .join("phase6-sample")
+                .join("panel.altp-panel")
                 .exists()
         );
         assert!(

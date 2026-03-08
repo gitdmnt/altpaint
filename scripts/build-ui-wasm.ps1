@@ -18,12 +18,12 @@ try {
     }
 
     $panelPackages = @(
-        @{ Package = 'builtin-panel-app-actions'; Destination = 'apps/desktop/ui/panels/app-actions/builtin_panel_app_actions.wasm' },
-        @{ Package = 'builtin-panel-tool-palette'; Destination = 'apps/desktop/ui/panels/tool-palette/builtin_panel_tool_palette.wasm' },
-        @{ Package = 'builtin-panel-layers-panel'; Destination = 'apps/desktop/ui/panels/layers-panel/builtin_panel_layers_panel.wasm' },
-        @{ Package = 'builtin-panel-color-palette'; Destination = 'apps/desktop/ui/panels/color-palette/builtin_panel_color_palette.wasm' },
-        @{ Package = 'builtin-panel-job-progress'; Destination = 'apps/desktop/ui/panels/job-progress/builtin_panel_job_progress.wasm' },
-        @{ Package = 'builtin-panel-snapshot-panel'; Destination = 'apps/desktop/ui/panels/snapshot-panel/builtin_panel_snapshot_panel.wasm' }
+        @{ Package = 'builtin-panel-app-actions'; Destination = 'plugins/app-actions/builtin_panel_app_actions.wasm' },
+        @{ Package = 'builtin-panel-tool-palette'; Destination = 'plugins/tool-palette/builtin_panel_tool_palette.wasm' },
+        @{ Package = 'builtin-panel-layers-panel'; Destination = 'plugins/layers-panel/builtin_panel_layers_panel.wasm' },
+        @{ Package = 'builtin-panel-color-palette'; Destination = 'plugins/color-palette/builtin_panel_color_palette.wasm' },
+        @{ Package = 'builtin-panel-job-progress'; Destination = 'plugins/job-progress/builtin_panel_job_progress.wasm' },
+        @{ Package = 'builtin-panel-snapshot-panel'; Destination = 'plugins/snapshot-panel/builtin_panel_snapshot_panel.wasm' }
     )
 
     if (-not $SkipTargetInstall) {
@@ -56,10 +56,10 @@ try {
         Write-Host "Copied $artifactName -> $($panel.Destination)"
     }
 
-    $phase6Wat = Join-Path $repoRoot 'apps/desktop/ui/phase6-sample.wat'
-    $phase6Wasm = Join-Path $repoRoot 'apps/desktop/ui/phase6-sample.wasm'
+    $phase6Wat = Join-Path $repoRoot 'plugins/phase6-sample/phase6-sample.wat'
+    $phase6Wasm = Join-Path $repoRoot 'plugins/phase6-sample/phase6-sample.wasm'
     Copy-Item $phase6Wat $phase6Wasm -Force
-    Write-Host 'Copied phase6-sample.wat -> apps/desktop/ui/phase6-sample.wasm'
+    Write-Host 'Copied phase6-sample.wat -> plugins/phase6-sample/phase6-sample.wasm'
     Write-Host 'UI Wasm artifacts are ready.'
 }
 finally {

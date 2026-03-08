@@ -1,5 +1,5 @@
 [package]
-name = "builtin-panel-app-actions"
+name = "builtin-panel-layers-panel"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,4 +9,4 @@ authors.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-panel-sdk = { path = "../../../../../crates/panel-sdk" }
+panel-sdk = { path = "../../crates/panel-sdk" }

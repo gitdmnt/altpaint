@@ -33,6 +33,8 @@
   → [docs/ROADMAP.md](docs/ROADMAP.md)
 - 描画、dirty rect、ビュー変換、レンダリング分割を触る  
   → [docs/RENDERING-ENGINE.md](docs/RENDERING-ENGINE.md)
+- プラグインの開発場所、Rust SDK、Wasm ビルド手順を確認したい  
+  → [docs/PLUGIN_DEVELOPMENT.md](docs/PLUGIN_DEVELOPMENT.md)
 - プロダクト意図、MVP、非目標、要求背景を確認したい  
   → [docs/SKETCH.md](docs/SKETCH.md)
 
@@ -94,7 +96,7 @@
 - [AGENTS.md](AGENTS.md)
 - [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- `crates/plugin-api/`, `crates/ui-shell/`, `crates/panel-sdk/`, `crates/plugin-host/`, `apps/desktop/`, `apps/desktop/ui/panels/` の関連コード
+- `crates/plugin-api/`, `crates/ui-shell/`, `crates/panel-sdk/`, `crates/plugin-host/`, `apps/desktop/`, `plugins/` の関連コード
 
 ### 5. 保存形式や永続化の変更
 
@@ -119,7 +121,7 @@
   - レイアウト、ヒットテスト、簡易描画
 - `crates/plugin-api/`
   - パネル/ホスト間の契約
-- `apps/desktop/ui/panels/`
+- `plugins/`
   - 組み込み標準パネルごとの独立フォルダ
   - `.altp-panel` / Rust SDK ソース / 生成 Wasm を同居
 - `crates/storage/`

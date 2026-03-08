@@ -10,7 +10,12 @@ members = [
   "crates/ui-shell",
   "crates/plugin-api",
   "apps/desktop",
-  "apps/desktop/ui/panels/*",
+  "plugins/app-actions",
+  "plugins/tool-palette",
+  "plugins/layers-panel",
+  "plugins/color-palette",
+  "plugins/job-progress",
+  "plugins/snapshot-panel",
 ]
 resolver = "2"
 

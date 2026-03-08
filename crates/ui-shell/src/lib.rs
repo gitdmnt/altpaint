@@ -2387,9 +2387,7 @@ view {
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..")
-            .join("apps")
-            .join("desktop")
-            .join("ui")
+            .join("plugins")
     }
 
     fn shell_with_builtin_panels() -> UiShell {

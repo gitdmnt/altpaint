@@ -199,7 +199,7 @@
 - `ui-shell` → `app-core`, `plugin-api`
 - `render` → `app-core`
 - `storage` → `app-core`
-- `apps/desktop/ui/panels/*` → `panel-sdk`
+- `plugins/*` → `panel-sdk`
 
 将来的に `plugin-host` クレートを追加する場合は以下とする。
 
@@ -337,7 +337,7 @@ MVPでは権限は粗くてよいが、宣言は必須にする。
 - `crates/render`
 - `crates/storage`
 - `crates/plugin-api`
-- `apps/desktop/ui/panels/*`
+- `plugins/*`
 - `crates/ui-shell`
 - `apps/desktop`
 
@@ -377,7 +377,7 @@ MVPでは権限は粗くてよいが、宣言は必須にする。
 - 状態スナップショット
 - 権限宣言
 
-#### `apps/desktop/ui/panels/*`
+#### `plugins/*`
 
 - 標準パネルごとの独立フォルダ
 - `.altp-panel` / Rust SDK ソース / 生成 Wasm の同居場所
