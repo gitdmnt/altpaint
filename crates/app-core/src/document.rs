@@ -348,6 +348,14 @@ impl Default for CanvasBitmap {
 }
 
 impl Document {
+    pub fn active_bitmap(&self) -> Option<&CanvasBitmap> {
+        self.work
+            .pages
+            .first()
+            .and_then(|page| page.panels.first())
+            .map(|panel| &panel.bitmap)
+    }
+
     pub fn set_view_transform(&mut self, transform: CanvasViewTransform) {
         self.view_transform = transform;
     }

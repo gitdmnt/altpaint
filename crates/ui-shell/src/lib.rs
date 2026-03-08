@@ -3,9 +3,18 @@
 //! フェーズ0では、個々のパネル機能そのものは持たず、`RenderContext` と
 //! `PanelPlugin` 群を束ねる薄い境界として機能する。
 
+mod text;
+
+pub use text::{
+    draw_text_rgba,
+    line_height as text_line_height,
+    measure_text_width,
+    text_backend_name,
+    wrap_text_lines,
+};
+
 use app_core::Document;
 use builtin_plugins::default_builtin_panels;
-use font8x8::{BASIC_FONTS, UnicodeFonts};
 use plugin_api::{HostAction, PanelEvent, PanelNode, PanelPlugin, PanelTree, PanelView};
 use render::{RenderContext, RenderFrame};
 
@@ -19,9 +28,6 @@ const BUTTON_FILL: [u8; 4] = [0x32, 0x32, 0x32, 0xff];
 const BUTTON_ACTIVE_FILL: [u8; 4] = [0x44, 0x5f, 0xb0, 0xff];
 const BUTTON_BORDER: [u8; 4] = [0x56, 0x56, 0x56, 0xff];
 const BUTTON_TEXT: [u8; 4] = [0xf0, 0xf0, 0xf0, 0xff];
-const FONT_WIDTH: usize = 8;
-const FONT_HEIGHT: usize = 8;
-const LINE_HEIGHT: usize = 10;
 const PANEL_OUTER_PADDING: usize = 8;
 const PANEL_INNER_PADDING: usize = 8;
 const NODE_GAP: usize = 6;
@@ -167,7 +173,13 @@ impl UiShell {
                 clamped_height,
                 PANEL_BORDER,
             );
-            draw_panel_tree(&mut surface, &tree, PANEL_OUTER_PADDING, cursor_y, panel_width);
+            draw_panel_tree(
+                &mut surface,
+                &tree,
+                PANEL_OUTER_PADDING,
+                cursor_y,
+                panel_width,
+            );
             cursor_y += panel_height + PANEL_OUTER_PADDING;
         }
 
@@ -177,7 +189,7 @@ impl UiShell {
 
 fn measure_panel_tree(tree: &PanelTree, width: usize) -> usize {
     let title_width = width.saturating_sub(PANEL_INNER_PADDING * 2);
-    let title_height = measure_text(&tree.title, title_width);
+    let title_height = measure_text(tree.title, title_width);
     let mut content_height = 0;
     for (index, child) in tree.children.iter().enumerate() {
         content_height += measure_node(child, title_width);
@@ -212,7 +224,9 @@ fn measure_node(node: &PanelNode, available_width: usize) -> usize {
                 .max()
                 .unwrap_or(0)
         }
-        PanelNode::Section { children, title, .. } => {
+        PanelNode::Section {
+            children, title, ..
+        } => {
             let title_height = measure_text(title, available_width);
             let child_width = available_width.saturating_sub(SECTION_INDENT);
             let mut children_height = 0;
@@ -229,16 +243,17 @@ fn measure_node(node: &PanelNode, available_width: usize) -> usize {
     }
 }
 
-fn draw_panel_tree(
-    surface: &mut PanelSurface,
-    tree: &PanelTree,
-    x: usize,
-    y: usize,
-    width: usize,
-) {
+fn draw_panel_tree(surface: &mut PanelSurface, tree: &PanelTree, x: usize, y: usize, width: usize) {
     let inner_x = x + PANEL_INNER_PADDING;
     let inner_width = width.saturating_sub(PANEL_INNER_PADDING * 2);
-    let title_height = draw_wrapped_text(surface, inner_x, y + PANEL_INNER_PADDING, tree.title, PANEL_TITLE, inner_width);
+    let title_height = draw_wrapped_text(
+        surface,
+        inner_x,
+        y + PANEL_INNER_PADDING,
+        tree.title,
+        PANEL_TITLE,
+        inner_width,
+    );
     let mut cursor_y = y + PANEL_INNER_PADDING + title_height + 6;
 
     for child in &tree.children {
@@ -286,7 +301,8 @@ fn draw_node(
         PanelNode::Section {
             title, children, ..
         } => {
-            let title_height = draw_wrapped_text(surface, x, y, title, SECTION_TITLE, available_width);
+            let title_height =
+                draw_wrapped_text(surface, x, y, title, SECTION_TITLE, available_width);
             let child_x = x + SECTION_INDENT;
             let child_width = available_width.saturating_sub(SECTION_INDENT);
             let mut cursor_y = y + title_height + SECTION_GAP;
@@ -302,12 +318,13 @@ fn draw_node(
             draw_wrapped_text(surface, x, y, text, BODY_TEXT, available_width)
         }
         PanelNode::Button {
-            id,
-            label,
-            active,
-            ..
+            id, label, active, ..
         } => {
-            let fill = if *active { BUTTON_ACTIVE_FILL } else { BUTTON_FILL };
+            let fill = if *active {
+                BUTTON_ACTIVE_FILL
+            } else {
+                BUTTON_FILL
+            };
             fill_rect(surface, x, y, available_width, BUTTON_HEIGHT, fill);
             stroke_rect(surface, x, y, available_width, BUTTON_HEIGHT, BUTTON_BORDER);
             draw_wrapped_text(
@@ -333,7 +350,7 @@ fn draw_node(
 
 fn measure_text(text: &str, available_width: usize) -> usize {
     let lines = wrap_text(text, available_width);
-    lines.len().max(1) * LINE_HEIGHT
+    lines.len().max(1) * text_line_height()
 }
 
 fn draw_wrapped_text(
@@ -346,88 +363,35 @@ fn draw_wrapped_text(
 ) -> usize {
     let lines = wrap_text(text, available_width);
     for (index, line) in lines.iter().enumerate() {
-        draw_text_line(surface, x, y + index * LINE_HEIGHT, line, color);
+        draw_text_line(surface, x, y + index * text_line_height(), line, color);
     }
-    lines.len().max(1) * LINE_HEIGHT
+    lines.len().max(1) * text_line_height()
 }
 
 fn wrap_text(text: &str, available_width: usize) -> Vec<String> {
-    let max_chars = (available_width / FONT_WIDTH).max(1);
-    let mut lines = Vec::new();
-
-    for raw_line in text.split('\n') {
-        let mut current = String::new();
-        for word in raw_line.split_whitespace() {
-            let next_len = if current.is_empty() {
-                word.chars().count()
-            } else {
-                current.chars().count() + 1 + word.chars().count()
-            };
-
-            if next_len > max_chars && !current.is_empty() {
-                lines.push(current.clone());
-                current.clear();
-            }
-
-            if word.chars().count() > max_chars {
-                if !current.is_empty() {
-                    lines.push(current.clone());
-                    current.clear();
-                }
-                let mut chunk = String::new();
-                for ch in word.chars() {
-                    chunk.push(ch);
-                    if chunk.chars().count() >= max_chars {
-                        lines.push(chunk.clone());
-                        chunk.clear();
-                    }
-                }
-                current = chunk;
-                continue;
-            }
-
-            if !current.is_empty() {
-                current.push(' ');
-            }
-            current.push_str(word);
-        }
-
-        if current.is_empty() {
-            lines.push(String::new());
-        } else {
-            lines.push(current);
-        }
-    }
-
-    if lines.is_empty() {
-        lines.push(String::new());
-    }
-
-    lines
+    wrap_text_lines(text, available_width)
 }
 
 fn draw_text_line(surface: &mut PanelSurface, x: usize, y: usize, text: &str, color: [u8; 4]) {
-    for (index, ch) in text.chars().enumerate() {
-        draw_glyph(surface, x + index * FONT_WIDTH, y, ch, color);
-    }
+    draw_text_rgba(
+        surface.pixels.as_mut_slice(),
+        surface.width,
+        surface.height,
+        x,
+        y,
+        text,
+        color,
+    );
 }
 
-fn draw_glyph(surface: &mut PanelSurface, x: usize, y: usize, ch: char, color: [u8; 4]) {
-    let glyph = BASIC_FONTS.get(ch).or_else(|| BASIC_FONTS.get('?'));
-    let Some(glyph) = glyph else {
-        return;
-    };
-
-    for (row, bits) in glyph.iter().enumerate().take(FONT_HEIGHT) {
-        for col in 0..FONT_WIDTH {
-            if ((bits >> col) & 1) == 1 {
-                write_pixel(surface, x + col, y + row, color);
-            }
-        }
-    }
-}
-
-fn fill_rect(surface: &mut PanelSurface, x: usize, y: usize, width: usize, height: usize, color: [u8; 4]) {
+fn fill_rect(
+    surface: &mut PanelSurface,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    color: [u8; 4],
+) {
     let max_x = (x + width).min(surface.width);
     let max_y = (y + height).min(surface.height);
     for yy in y..max_y {
@@ -437,7 +401,14 @@ fn fill_rect(surface: &mut PanelSurface, x: usize, y: usize, width: usize, heigh
     }
 }
 
-fn stroke_rect(surface: &mut PanelSurface, x: usize, y: usize, width: usize, height: usize, color: [u8; 4]) {
+fn stroke_rect(
+    surface: &mut PanelSurface,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    color: [u8; 4],
+) {
     if width == 0 || height == 0 {
         return;
     }
@@ -466,6 +437,7 @@ mod tests {
     use super::*;
     use app_core::{Command, ToolKind};
     use plugin_api::PanelPlugin;
+    use crate::text::{draw_text_rgba, text_backend_name, wrap_text_lines};
 
     /// `UiShell` の更新配送を確認するためのダミーパネル。
     struct TestPanel {
@@ -596,15 +568,38 @@ mod tests {
         let mut found = None;
         'outer: for y in 0..surface.height {
             for x in 0..surface.width {
-                if let Some(PanelEvent::Activate { panel_id, node_id }) = surface.hit_test(x, y) {
-                    if panel_id == "builtin.tool-palette" && node_id == "tool.brush" {
-                        found = Some((x, y));
-                        break 'outer;
-                    }
+                if let Some(PanelEvent::Activate { panel_id, node_id }) = surface.hit_test(x, y)
+                    && panel_id == "builtin.tool-palette"
+                    && node_id == "tool.brush"
+                {
+                    found = Some((x, y));
+                    break 'outer;
                 }
             }
         }
 
         assert!(found.is_some());
+    }
+
+    #[test]
+    fn text_renderer_draws_visible_pixels() {
+        let mut pixels = vec![0; 160 * 40 * 4];
+
+        draw_text_rgba(&mut pixels, 160, 40, 4, 4, "Aa", [0xff, 0xff, 0xff, 0xff]);
+
+        assert!(pixels.chunks_exact(4).any(|pixel| pixel != [0, 0, 0, 0]));
+        if text_backend_name() == "system" {
+            assert!(pixels.chunks_exact(4).any(|pixel| {
+                pixel[0] != 0 && pixel[0] != 0xff && pixel[0] == pixel[1] && pixel[1] == pixel[2]
+            }));
+        }
+    }
+
+    #[test]
+    fn wrap_text_lines_preserves_long_words() {
+        let lines = wrap_text_lines("antidisestablishmentarianism", 24);
+
+        assert!(lines.len() > 1);
+        assert_eq!(lines.concat(), "antidisestablishmentarianism");
     }
 }

@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use render::RenderFrame;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
@@ -47,6 +48,21 @@ struct UploadedFrameTexture {
     bind_group: wgpu::BindGroup,
     width: u32,
     height: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UploadRegion {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PresentTimings {
+    pub upload: Duration,
+    pub encode_and_submit: Duration,
+    pub present: Duration,
 }
 
 pub struct WgpuPresenter {
@@ -191,13 +207,26 @@ impl WgpuPresenter {
         self.surface.configure(&self.device, &self.config);
     }
 
-    pub fn render(&mut self, frame: &RenderFrame) -> Result<()> {
+    pub fn render(
+        &mut self,
+        frame: &RenderFrame,
+        upload_region: Option<UploadRegion>,
+    ) -> Result<PresentTimings> {
         if self.config.width == 0 || self.config.height == 0 {
-            return Ok(());
+            return Ok(PresentTimings {
+                upload: Duration::default(),
+                encode_and_submit: Duration::default(),
+                present: Duration::default(),
+            });
         }
 
         self.ensure_uploaded_frame(frame.width as u32, frame.height as u32);
-        self.upload_frame(frame);
+        let upload_started = Instant::now();
+        match upload_region {
+            Some(region) => self.upload_frame_region(frame, region),
+            None => self.upload_frame(frame),
+        }
+        let upload = upload_started.elapsed();
 
         let surface_texture = match self.surface.get_current_texture() {
             Ok(surface_texture) => surface_texture,
@@ -207,7 +236,13 @@ impl WgpuPresenter {
                     .get_current_texture()
                     .context("failed to acquire surface texture after reconfigure")?
             }
-            Err(wgpu::SurfaceError::Timeout) => return Ok(()),
+            Err(wgpu::SurfaceError::Timeout) => {
+                return Ok(PresentTimings {
+                    upload,
+                    encode_and_submit: Duration::default(),
+                    present: Duration::default(),
+                });
+            }
             Err(wgpu::SurfaceError::OutOfMemory) => {
                 anyhow::bail!("out of memory while acquiring surface texture")
             }
@@ -227,6 +262,7 @@ impl WgpuPresenter {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("altpaint-present-encoder"),
             });
+        let encode_started = Instant::now();
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("altpaint-present-pass"),
@@ -250,8 +286,14 @@ impl WgpuPresenter {
         }
 
         self.queue.submit([encoder.finish()]);
+        let encode_and_submit = encode_started.elapsed();
+        let present_started = Instant::now();
         surface_texture.present();
-        Ok(())
+        Ok(PresentTimings {
+            upload,
+            encode_and_submit,
+            present: present_started.elapsed(),
+        })
     }
 
     fn ensure_uploaded_frame(&mut self, width: u32, height: u32) {
@@ -322,6 +364,56 @@ impl WgpuPresenter {
             wgpu::Extent3d {
                 width: frame.width as u32,
                 height: frame.height as u32,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+
+    fn upload_frame_region(&mut self, frame: &RenderFrame, region: UploadRegion) {
+        let Some(uploaded_frame) = self.uploaded_frame.as_ref() else {
+            return;
+        };
+        if region.width == 0 || region.height == 0 {
+            return;
+        }
+
+        let max_width = (frame.width as u32).saturating_sub(region.x);
+        let max_height = (frame.height as u32).saturating_sub(region.y);
+        let copy_width = region.width.min(max_width);
+        let copy_height = region.height.min(max_height);
+        if copy_width == 0 || copy_height == 0 {
+            return;
+        }
+
+        let mut packed = vec![0; (copy_width * copy_height * 4) as usize];
+        for row in 0..copy_height as usize {
+            let src_start = (((region.y as usize + row) * frame.width) + region.x as usize) * 4;
+            let src_end = src_start + copy_width as usize * 4;
+            let dst_start = row * copy_width as usize * 4;
+            let dst_end = dst_start + copy_width as usize * 4;
+            packed[dst_start..dst_end].copy_from_slice(&frame.pixels[src_start..src_end]);
+        }
+
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &uploaded_frame.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: region.x,
+                    y: region.y,
+                    z: 0,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
+            packed.as_slice(),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(copy_width * 4),
+                rows_per_image: Some(copy_height),
+            },
+            wgpu::Extent3d {
+                width: copy_width,
+                height: copy_height,
                 depth_or_array_layers: 1,
             },
         );
