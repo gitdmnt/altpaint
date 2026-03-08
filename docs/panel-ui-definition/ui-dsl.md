@@ -159,6 +159,74 @@ view {
 - `input`
 - `select`
 
+## 既存ビルトイン移植を前提にした必要機能
+
+この DSL は、次の次の段階で既存ビルトインプラグインを移植する前提で詰める。
+
+対象 panel:
+
+- `app-actions`
+- `tool-palette`
+- `color-palette`
+- `layers-panel`
+- `job-progress`
+- `snapshot-panel`
+
+この前提から、MVP の次に必要になる UI 機能を先に固定しておく。
+
+### 移植初期に必須の機能
+
+- `section` / `row` / `column`
+- `text`
+- `button`
+- `toggle`
+- `active` 表示
+- `disabled` 表示
+- `on:click`
+- `on:change`
+
+### ビルトイン移植時に追加で必要になる機能
+
+- ボタン塗り色
+  - `color-palette` 用
+- 反復表示
+  - `layers-panel`、`snapshot-panel` 用
+- 空状態表示
+  - 読み取り専用 panel 用
+- 読み取り専用リスト行
+  - `job-progress`、`snapshot-panel` 用
+
+このため、`list` と `for` は「後で追加」ではあるが、ビルトイン移植前には導入する前提で考える。
+
+## ビルトイン移植向け node / 属性拡張方針
+
+既存 panel を UI DSL へ移すため、次の拡張を優先候補とする。
+
+### `button`
+
+追加候補属性:
+
+- `active={expr}`
+- `disabled={expr}`
+- `fill={expr}`
+- `variant="default" | "primary" | "danger" | "color"`
+
+### `text`
+
+追加候補属性:
+
+- `tone="normal" | "muted" | "accent" | "danger"`
+- `weight="normal" | "bold"`
+
+### `list`
+
+`layers-panel` や `snapshot-panel` を見据え、最終的には次のどちらかを導入する。
+
+- `<for each={host.layers.items} item="layer"> ... </for>`
+- `<list items={host.layers.items}> ... </list>`
+
+MVP の実装容易性を優先するなら、まずは `for` の方が単純である。
+
 ## state モデル
 
 state はパネルローカル state に限定する。
@@ -222,6 +290,15 @@ MVP では最小限に絞る。
 - `host.tool.active`
 - `host.document.title`
 - `host.layers.items`
+
+ビルトイン移植前には、少なくとも次が必要になる。
+
+- `host.color.active`
+- `host.layers.active_id`
+- `host.layers.items[*].id`
+- `host.layers.items[*].label`
+- `host.jobs.items`
+- `host.snapshots.items`
 
 また、`runtime` ブロックでは対応する Wasm module を指す。
 
@@ -324,7 +401,45 @@ identifier      = letter, { letter | digit | "_" | "-" } ;
 - `host.*` 参照に必要権限がある
 - `on:*` の handler 名が解決できる
 
+ビルトイン移植前には次も確認対象にする。
+
+- `for` / `list` の参照先が配列型である
+- `fill` 属性が `color` または host 側色型へ解決できる
+- `active` / `disabled` が `bool` へ解決できる
+
 Wasm の戻り値 schema と SDK 方針は [docs/panel-ui-definition/wasm-runtime.md](docs/panel-ui-definition/wasm-runtime.md) で扱う。
+
+## 次の段階で実装するもの
+
+次の段階では、まず DSL 基盤そのものを成立させる。
+
+- `crates/panel-dsl` の追加
+- lexer / parser / AST / validator
+- `.altp-panel` のロード / 再ロード
+- static panel の描画
+- handler binding の解決
+
+この段階では、既存ビルトインの全面移植はまだ行わない。
+
+## その次の段階で移植するもの
+
+その次の段階で、既存ビルトインを新基盤へ移植する。
+
+### 優先順
+
+1. `app-actions`
+2. `tool-palette`
+3. `color-palette`
+4. `layers-panel`
+5. `job-progress`
+6. `snapshot-panel`
+
+### 移植完了の目安
+
+- UI が `.altp-panel` から構築される
+- handler が Wasm module から実行される
+- host snapshot 参照で現状態を表示できる
+- 既存 Rust 実装と同等の `Command` 発行結果を確認できる
 
 ## フェーズ別の実装順
 

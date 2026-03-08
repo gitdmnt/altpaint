@@ -2,7 +2,7 @@
 
 ## この文書の役割
 
-この文書は、フェーズ6後半からフェーズ7にかけて導入する Wasm runtime 側の正本である。
+この文書は、フェーズ6後半からフェーズ8にかけて導入する Wasm runtime 側の正本である。
 
 対象は次である。
 
@@ -82,6 +82,28 @@ MVP では export を少数に絞る。
 
 内部形式は最初は JSON でもよいが、DTO は host から分離しておく。
 
+## 次の段階で実装する crate
+
+次の段階では、まず Wasm runtime と DSL をつなぐ基盤 crate を追加する。
+
+想定する最小構成:
+
+- `crates/panel-dsl`
+  - UI DSL parser / AST / validator / normalized IR
+- `crates/panel-schema`
+  - ABI DTO
+  - state patch DTO
+  - command descriptor DTO
+  - diagnostics DTO
+- `crates/panel-sdk`
+  - Rust から Wasm handler を書くための helper
+- `crates/plugin-host`
+  - `wasmtime` 実行
+  - Wasm module ロード
+  - DTO encode / decode
+
+この段階では、外部 plugin 公開より先に、**組み込み panel を将来この基盤へ移せること**を成功条件に置く。
+
 ## ABI 表
 
 MVP の ABI は次を最小形とする。
@@ -91,6 +113,16 @@ MVP の ABI は次を最小形とする。
 | `panel_init`         | 初期化 payload bytes | 初期 state bytes または diagnostics bytes | 初期 state と runtime 初期化             |
 | `panel_handle_event` | event payload bytes  | handler result bytes                      | state patch と command descriptor の返却 |
 | `panel_dispose`      | なしまたは空 bytes   | なし                                      | 後始末                                   |
+
+### ABI 設計で固定すること
+
+ビルトイン移植を前提に、次は最初から固定しておく。
+
+- UI 側から見える handler 名は文字列で扱う
+- Wasm 側は `Command` enum を知らない
+- host は DTO を decode して `Command` へ変換する
+- built-in / external のどちらも同じ handler result 形式を使う
+- built-in だからという理由で別 ABI を作らない
 
 ### `panel_handle_event` 入力 DTO
 
@@ -109,6 +141,12 @@ MVP の ABI は次を最小形とする。
 | `state_patch` | array | local state に対する patch 列 |
 | `commands`    | array | command descriptor 列         |
 | `diagnostics` | array | エラー、警告、補足情報        |
+
+ビルトイン移植を見据え、将来的には次の補助項目も許容できる形にしておく。
+
+| フィールド   | 型    | 説明                                          |
+| ------------ | ----- | --------------------------------------------- |
+| `view_hints` | array | host が描画最適化やフォーカス補助に使うヒント |
 
 ### command descriptor DTO
 
@@ -134,6 +172,10 @@ MVP の ABI は次を最小形とする。
 5. host が state を適用する
 6. host が command descriptor を `Command` に変換する
 7. host が panel を再評価し `PanelTree` を更新する
+
+この流れは、次の次の段階でビルトイン panel を移植した後も変えない。
+
+つまり `app-actions` や `tool-palette` も、最終的にはこの流れに乗せる。
 
 ## コマンド境界
 
@@ -185,12 +227,14 @@ plugin 作者には host 内部 crate を直接依存させない。
 
 ### 推奨 crate 構成
 
-- `altpaint-panel-schema`
-  - host / Wasm 間の共有 DTO
-- `altpaint-panel-sdk`
-  - plugin 作者向け高水準 API
-- `altpaint-panel-macros`
-  - 必要なら macro 補助
+- workspace 上の想定 crate は次とする。
+  - `crates/panel-schema`
+  - `crates/panel-sdk`
+  - 必要なら `crates/panel-macros`
+- 公開 package 名は必要なら次のように付けてもよい。
+  - `altpaint-panel-schema`
+  - `altpaint-panel-sdk`
+  - `altpaint-panel-macros`
 
 ### plugin 作者が使う型
 
@@ -206,6 +250,46 @@ plugin 作者には host 内部 crate を直接依存させない。
 - `.string("tool", "brush")`
 - `StatePatch::set("selectedTool", "brush")`
 - `StatePatch::toggle("showAdvanced")`
+
+ビルトイン移植前には、少なくとも次の helper も必要になる。
+
+- `.bool("value", true)`
+- `.color("color", "#1E88E5")`
+- `StatePatch::set_bool("expanded", true)`
+- `StatePatch::replace("selected_id", "layer-1")`
+
+## ビルトイン移植を前提にした実装方針
+
+その次の段階では、既存ビルトインプラグインを UI DSL + Wasm へ再構成する。
+
+ここで重要なのは、built-in 専用の近道を増やしすぎないことだ。
+
+守るべき方針:
+
+- built-in も `.altp-panel` + Wasm module の組で持つ
+- built-in も `panel-schema` / `panel-sdk` を使う
+- built-in も handler result DTO を返す
+- host だけが `Command` を適用する
+
+### 移植順の推奨
+
+1. `app-actions`
+2. `tool-palette`
+3. `color-palette`
+4. `layers-panel`
+5. `job-progress`
+6. `snapshot-panel`
+
+### 各 panel で最低限必要な Wasm 能力
+
+| Panel            | 必要な能力                                |
+| ---------------- | ----------------------------------------- |
+| `app-actions`    | command descriptor 返却                   |
+| `tool-palette`   | active tool に応じた state / command 切替 |
+| `color-palette`  | color payload 返却                        |
+| `layers-panel`   | host snapshot の配列参照と選択 command    |
+| `job-progress`   | 読み取り専用 diagnostics / snapshot 表示  |
+| `snapshot-panel` | 読み取り専用リスト表示                    |
 
 ## 依存ライブラリの許容方針
 
@@ -251,6 +335,7 @@ Rust から Wasm を作る以上、plugin 作者が crates.io のライブラリ
 
 ### フェーズ6後半
 
+- `crates/panel-schema` / `crates/panel-sdk` / `crates/plugin-host` の最小追加
 - `runtime { wasm: ... }` の導入
 - handler binding
 - `wasmtime` 実行の最小接続
@@ -259,11 +344,17 @@ Rust から Wasm を作る以上、plugin 作者が crates.io のライブラリ
 
 ### フェーズ7
 
-- `plugin-host` 導入
-- 権限管理
+- 既存ビルトイン panel の UI DSL + Wasm 移植
+- built-in panel の command 経路検証
+- host snapshot 参照の不足分補完
+- 外部 plugin 化に向けた ABI 安定化
+
+### フェーズ8
+
+- 権限管理の本格化
 - 外部 Wasm panel ロード
 - エラー隔離
-- SDK / schema の整備
+- SDK / schema の整備拡張
 
 ## MVP スコープ
 
@@ -276,6 +367,12 @@ MVP では次で十分である。
 - command: descriptor 経由
 - 権限: deny by default
 - SDK: Rust 向け最小版を1つ用意
+
+さらに、次の次の段階の built-in 移植に向けて次を満たす。
+
+- built-in panel が同一 ABI を使って動かせる
+- built-in 専用 ABI を追加しない
+- SDK だけで最初の 3 panel を記述できる
 
 ## 結論
 
