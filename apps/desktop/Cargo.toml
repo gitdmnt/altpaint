@@ -1,0 +1,20 @@
+[package]
+name = "desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+app-core = { path = "../../crates/app-core" }
+plugin-api = { path = "../../crates/plugin-api" }
+pollster.workspace = true
+render = { path = "../../crates/render" }
+slint.workspace = true
+storage = { path = "../../crates/storage" }
+ui-shell = { path = "../../crates/ui-shell" }
+wgpu.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true
