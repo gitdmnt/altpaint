@@ -11,5 +11,9 @@ app-core = { path = "../app-core" }
 builtin-plugins = { path = "../builtin-plugins" }
 font8x8.workspace = true
 fontdb.workspace = true
+panel-dsl = { path = "../panel-dsl" }
+panel-schema = { path = "../panel-schema" }
+plugin-host = { path = "../plugin-host" }
 plugin-api = { path = "../plugin-api" }
 render = { path = "../render" }
+serde_json.workspace = true

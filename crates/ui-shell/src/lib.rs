@@ -10,10 +10,18 @@ pub use text::{
     wrap_text_lines,
 };
 
-use app_core::{ColorRgba8, Document};
+use app_core::{ColorRgba8, Command, Document, ToolKind};
 use builtin_plugins::default_builtin_panels;
+use panel_dsl::{AttrValue as DslAttrValue, PanelDefinition, StateField, ViewElement, ViewNode};
+use panel_schema::{
+    CommandDescriptor, Diagnostic, PanelEventRequest, PanelInitRequest, StatePatch,
+};
 use plugin_api::{HostAction, PanelEvent, PanelNode, PanelPlugin, PanelTree, PanelView};
+use plugin_host::{PluginHostError, WasmPanelRuntime};
 use render::{RenderContext, RenderFrame};
+use serde_json::{Map, Value, json};
+use std::fs;
+use std::path::Path;
 
 const SIDEBAR_BACKGROUND: [u8; 4] = [0x2a, 0x2a, 0x2a, 0xff];
 const PANEL_BACKGROUND: [u8; 4] = [0x1f, 0x1f, 0x1f, 0xff];
@@ -139,6 +147,8 @@ pub struct UiShell {
     render_context: RenderContext,
     /// 登録済みのパネルプラグイン一覧。
     panels: Vec<Box<dyn PanelPlugin>>,
+    latest_document: Option<Document>,
+    loaded_panel_ids: Vec<String>,
     panel_content_cache: Option<PanelSurface>,
     panel_content_dirty: bool,
     panel_scroll_offset: usize,
@@ -152,6 +162,8 @@ impl UiShell {
         let mut shell = Self {
             render_context: RenderContext::new(),
             panels: Vec::new(),
+            latest_document: None,
+            loaded_panel_ids: Vec::new(),
             panel_content_cache: None,
             panel_content_dirty: true,
             panel_scroll_offset: 0,
@@ -165,13 +177,54 @@ impl UiShell {
     }
 
     /// パネルプラグインを1つ登録する。
-    pub fn register_panel(&mut self, panel: Box<dyn PanelPlugin>) {
+    pub fn register_panel(&mut self, mut panel: Box<dyn PanelPlugin>) {
+        if let Some(document) = self.latest_document.as_ref() {
+            panel.update(document);
+        }
         self.panels.push(panel);
         self.panel_content_dirty = true;
     }
 
+    pub fn load_panel_directory(&mut self, directory: impl AsRef<Path>) -> Vec<String> {
+        let directory = directory.as_ref();
+        self.remove_loaded_panels();
+
+        let Ok(entries) = fs::read_dir(directory) else {
+            return Vec::new();
+        };
+
+        let mut panel_files = entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("altp-panel"))
+            .collect::<Vec<_>>();
+        panel_files.sort();
+
+        let mut diagnostics = Vec::new();
+        for path in panel_files {
+            match panel_dsl::load_panel_file(&path) {
+                Ok(definition) => {
+                    let panel_id = definition.manifest.id.clone();
+                    match DslPanelPlugin::from_definition(definition) {
+                        Ok(panel) => {
+                            self.loaded_panel_ids.push(panel_id);
+                            self.register_panel(Box::new(panel));
+                        }
+                        Err(error) => {
+                            diagnostics.push(format!("{}: {error}", path.display()));
+                        }
+                    }
+                }
+                Err(error) => diagnostics.push(format!("{}: {error}", path.display())),
+            }
+        }
+
+        diagnostics
+    }
+
     /// ドキュメント更新をレンダラと各パネルへ配送する。
     pub fn update(&mut self, document: &Document) {
+        self.latest_document = Some(document.clone());
         let _ = self.render_context.document(document);
         for panel in &mut self.panels {
             panel.update(document);
@@ -404,6 +457,615 @@ impl UiShell {
     fn max_panel_scroll_offset(&self, viewport_height: usize) -> usize {
         self.panel_content_height.saturating_sub(viewport_height)
     }
+
+    fn remove_loaded_panels(&mut self) {
+        if self.loaded_panel_ids.is_empty() {
+            return;
+        }
+
+        self.panels.retain(|panel| {
+            !self
+                .loaded_panel_ids
+                .iter()
+                .any(|loaded_id| loaded_id == panel.id())
+        });
+        self.loaded_panel_ids.clear();
+        self.panel_content_dirty = true;
+    }
+}
+
+struct DslPanelPlugin {
+    id: &'static str,
+    title: &'static str,
+    definition: PanelDefinition,
+    runtime: WasmPanelRuntime,
+    state: Value,
+    host_snapshot: Value,
+    diagnostics: Vec<Diagnostic>,
+}
+
+impl DslPanelPlugin {
+    fn from_definition(definition: PanelDefinition) -> Result<Self, String> {
+        let id = leak_string(definition.manifest.id.clone());
+        let title = leak_string(definition.manifest.title.clone());
+        let runtime_path = definition
+            .source_path
+            .parent()
+            .map(|directory| directory.join(&definition.runtime.wasm))
+            .unwrap_or_else(|| definition.source_path.clone());
+        let mut runtime = WasmPanelRuntime::load(&runtime_path)
+            .map_err(|error: PluginHostError| error.to_string())?;
+        let initial_state = state_defaults_to_json(&definition.state);
+        let init = runtime
+            .initialize(&PanelInitRequest {
+                initial_state,
+                host_snapshot: json!({}),
+            })
+            .map_err(|error: PluginHostError| error.to_string())?;
+
+        Ok(Self {
+            id,
+            title,
+            definition,
+            runtime,
+            state: init.state,
+            host_snapshot: json!({}),
+            diagnostics: init.diagnostics,
+        })
+    }
+
+    fn evaluate_tree(&self) -> PanelTree {
+        let mut context = DslEvaluationContext {
+            panel_id: self.id.to_string(),
+            state: &self.state,
+            host_snapshot: &self.host_snapshot,
+            generated_ids: 0,
+        };
+        let mut children = self
+            .definition
+            .view
+            .iter()
+            .flat_map(|node| convert_dsl_view_node(node, &mut context))
+            .collect::<Vec<_>>();
+        if !self.diagnostics.is_empty() {
+            children.push(PanelNode::Section {
+                id: "dsl.diagnostics".to_string(),
+                title: "Diagnostics".to_string(),
+                children: self
+                    .diagnostics
+                    .iter()
+                    .enumerate()
+                    .map(|(index, diagnostic)| PanelNode::Text {
+                        id: format!("dsl.diagnostics.{index}"),
+                        text: format!("{:?}: {}", diagnostic.level, diagnostic.message),
+                    })
+                    .collect(),
+            });
+        }
+
+        PanelTree {
+            id: self.id,
+            title: self.title,
+            children,
+        }
+    }
+
+    fn resolve_handler_action(&self, event: &PanelEvent) -> Option<HostAction> {
+        let tree = self.evaluate_tree();
+        match event {
+            PanelEvent::Activate { node_id, .. } | PanelEvent::SetValue { node_id, .. } => {
+                find_panel_action(&tree.children, node_id)
+            }
+        }
+    }
+}
+
+impl PanelPlugin for DslPanelPlugin {
+    fn id(&self) -> &'static str {
+        self.id
+    }
+
+    fn title(&self) -> &'static str {
+        self.title
+    }
+
+    fn update(&mut self, document: &Document) {
+        self.host_snapshot = build_host_snapshot(document);
+    }
+
+    fn debug_summary(&self) -> String {
+        format!(
+            "dsl runtime={} handlers={} diagnostics={} state={}",
+            self.runtime.path().display(),
+            self.definition.handler_bindings.len(),
+            self.diagnostics.len(),
+            self.state
+        )
+    }
+
+    fn view(&self) -> PanelView {
+        let mut lines = vec![format!("runtime: {}", self.definition.runtime.wasm)];
+        if !self.diagnostics.is_empty() {
+            lines.push(format!("diagnostics: {}", self.diagnostics.len()));
+        }
+        PanelView {
+            id: self.id,
+            title: self.title,
+            lines,
+        }
+    }
+
+    fn panel_tree(&self) -> PanelTree {
+        self.evaluate_tree()
+    }
+
+    fn handle_event(&mut self, event: &PanelEvent) -> Vec<HostAction> {
+        let Some(HostAction::InvokePanelHandler {
+            panel_id,
+            handler_name,
+            event_kind,
+        }) = self.resolve_handler_action(event)
+        else {
+            return Vec::new();
+        };
+        if panel_id != self.id {
+            return Vec::new();
+        }
+
+        let event_payload = match event {
+            PanelEvent::Activate { .. } => json!({}),
+            PanelEvent::SetValue { value, .. } => json!({ "value": value }),
+        };
+        let result = match self.runtime.handle_event(&PanelEventRequest {
+            handler_name,
+            event_kind,
+            event_payload,
+            state_snapshot: self.state.clone(),
+            host_snapshot: self.host_snapshot.clone(),
+        }) {
+            Ok(result) => result,
+            Err(error) => {
+                self.diagnostics = vec![Diagnostic::error(error.to_string())];
+                return Vec::new();
+            }
+        };
+
+        apply_state_patches(&mut self.state, &result.state_patch);
+        self.diagnostics = result.diagnostics.clone();
+        command_descriptors_to_actions(result.commands, &mut self.diagnostics)
+    }
+}
+
+fn leak_string(value: String) -> &'static str {
+    Box::leak(value.into_boxed_str())
+}
+
+struct DslEvaluationContext<'a> {
+    panel_id: String,
+    state: &'a Value,
+    host_snapshot: &'a Value,
+    generated_ids: usize,
+}
+
+fn convert_dsl_view_node(
+    node: &ViewNode,
+    context: &mut DslEvaluationContext<'_>,
+) -> Vec<PanelNode> {
+    match node {
+        ViewNode::Text(text) => {
+            let text = evaluate_text_content(text, context);
+            if text.is_empty() {
+                Vec::new()
+            } else {
+                vec![PanelNode::Text {
+                    id: next_generated_node_id(context, "text"),
+                    text,
+                }]
+            }
+        }
+        ViewNode::Element(element) => match element.tag.as_str() {
+            "column" => vec![PanelNode::Column {
+                id: node_id_for(element, context, "column"),
+                children: convert_dsl_children(&element.children, context),
+            }],
+            "row" => vec![PanelNode::Row {
+                id: node_id_for(element, context, "row"),
+                children: convert_dsl_children(&element.children, context),
+            }],
+            "section" => vec![PanelNode::Section {
+                id: node_id_for(element, context, "section"),
+                title: attribute_string(&element.attributes, "title", context)
+                    .unwrap_or_else(|| "Section".to_string()),
+                children: convert_dsl_children(&element.children, context),
+            }],
+            "text" => vec![PanelNode::Text {
+                id: node_id_for(element, context, "text"),
+                text: collect_dsl_text(&element.children, context),
+            }],
+            "button" => vec![PanelNode::Button {
+                id: node_id_for(element, context, "button"),
+                label: collect_dsl_text(&element.children, context),
+                action: element
+                    .attributes
+                    .get("on:click")
+                    .and_then(DslAttrValue::as_string)
+                    .map(|handler_name| HostAction::InvokePanelHandler {
+                        panel_id: context.panel_id.clone(),
+                        handler_name: handler_name.to_string(),
+                        event_kind: "click".to_string(),
+                    })
+                    .unwrap_or(HostAction::DispatchCommand(Command::Noop)),
+                active: attribute_bool(&element.attributes, "active", context).unwrap_or(false),
+                fill_color: None,
+            }],
+            "toggle" => {
+                let checked =
+                    attribute_bool(&element.attributes, "checked", context).unwrap_or(false);
+                vec![PanelNode::Button {
+                    id: node_id_for(element, context, "toggle"),
+                    label: format!(
+                        "[{}] {}",
+                        if checked { "x" } else { " " },
+                        collect_dsl_text(&element.children, context)
+                    ),
+                    action: element
+                        .attributes
+                        .get("on:change")
+                        .and_then(DslAttrValue::as_string)
+                        .map(|handler_name| HostAction::InvokePanelHandler {
+                            panel_id: context.panel_id.clone(),
+                            handler_name: handler_name.to_string(),
+                            event_kind: "change".to_string(),
+                        })
+                        .unwrap_or(HostAction::DispatchCommand(Command::Noop)),
+                    active: checked,
+                    fill_color: None,
+                }]
+            }
+            "separator" => vec![PanelNode::Text {
+                id: node_id_for(element, context, "separator"),
+                text: "────────".to_string(),
+            }],
+            "spacer" => vec![PanelNode::Text {
+                id: node_id_for(element, context, "spacer"),
+                text: String::new(),
+            }],
+            "when" => {
+                if attribute_bool(&element.attributes, "test", context).unwrap_or(false) {
+                    convert_dsl_children(&element.children, context)
+                } else {
+                    Vec::new()
+                }
+            }
+            _ => Vec::new(),
+        },
+    }
+}
+
+fn convert_dsl_children(
+    children: &[ViewNode],
+    context: &mut DslEvaluationContext<'_>,
+) -> Vec<PanelNode> {
+    children
+        .iter()
+        .flat_map(|child| convert_dsl_view_node(child, context))
+        .collect()
+}
+
+fn collect_dsl_text(children: &[ViewNode], context: &DslEvaluationContext<'_>) -> String {
+    let text = children
+        .iter()
+        .filter_map(|child| match child {
+            ViewNode::Text(text) => Some(evaluate_text_content(text, context)),
+            _ => None,
+        })
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if text.is_empty() {
+        String::from("Unnamed")
+    } else {
+        text
+    }
+}
+
+fn evaluate_text_content(text: &str, context: &DslEvaluationContext<'_>) -> String {
+    let trimmed = text.trim();
+    if let Some(expression) = trimmed
+        .strip_prefix('{')
+        .and_then(|value| value.strip_suffix('}'))
+    {
+        expression_to_string(expression.trim(), context)
+    } else {
+        text.to_string()
+    }
+}
+
+fn attribute_string(
+    attributes: &std::collections::BTreeMap<String, DslAttrValue>,
+    key: &str,
+    context: &DslEvaluationContext<'_>,
+) -> Option<String> {
+    attributes
+        .get(key)
+        .map(|value| attr_value_to_string(value, context))
+}
+
+fn attribute_bool(
+    attributes: &std::collections::BTreeMap<String, DslAttrValue>,
+    key: &str,
+    context: &DslEvaluationContext<'_>,
+) -> Option<bool> {
+    attributes
+        .get(key)
+        .map(|value| attr_value_to_bool(value, context))
+}
+
+fn attr_value_to_string(value: &DslAttrValue, context: &DslEvaluationContext<'_>) -> String {
+    match value {
+        DslAttrValue::String(text) => text.clone(),
+        DslAttrValue::Integer(number) => number.to_string(),
+        DslAttrValue::Float(number) => number.clone(),
+        DslAttrValue::Bool(value) => value.to_string(),
+        DslAttrValue::Expression(expression) => expression_to_string(expression, context),
+    }
+}
+
+fn attr_value_to_bool(value: &DslAttrValue, context: &DslEvaluationContext<'_>) -> bool {
+    match value {
+        DslAttrValue::Bool(value) => *value,
+        DslAttrValue::Expression(expression) => expression_to_bool(expression, context),
+        DslAttrValue::String(text) => !text.is_empty(),
+        DslAttrValue::Integer(number) => *number != 0,
+        DslAttrValue::Float(number) => number != "0" && number != "0.0",
+    }
+}
+
+fn expression_to_string(expression: &str, context: &DslEvaluationContext<'_>) -> String {
+    match evaluate_expression(expression, context) {
+        Value::String(text) => text,
+        Value::Bool(value) => value.to_string(),
+        Value::Number(value) => value.to_string(),
+        Value::Null => String::new(),
+        other => other.to_string(),
+    }
+}
+
+fn expression_to_bool(expression: &str, context: &DslEvaluationContext<'_>) -> bool {
+    match evaluate_expression(expression, context) {
+        Value::Bool(value) => value,
+        Value::String(text) => !text.is_empty() && text != "false",
+        Value::Number(number) => number.as_i64().unwrap_or_default() != 0,
+        Value::Null => false,
+        Value::Array(items) => !items.is_empty(),
+        Value::Object(object) => !object.is_empty(),
+    }
+}
+
+fn evaluate_expression(expression: &str, context: &DslEvaluationContext<'_>) -> Value {
+    let expression = expression.trim();
+    if let Some(inner) = expression.strip_prefix('!') {
+        return Value::Bool(!expression_to_bool(inner, context));
+    }
+    if let Some((left, right)) = expression.split_once("==") {
+        return Value::Bool(
+            evaluate_expression(left.trim(), context) == evaluate_expression(right.trim(), context),
+        );
+    }
+    if expression.eq_ignore_ascii_case("true") {
+        return Value::Bool(true);
+    }
+    if expression.eq_ignore_ascii_case("false") {
+        return Value::Bool(false);
+    }
+    if expression.starts_with('"') && expression.ends_with('"') && expression.len() >= 2 {
+        return Value::String(expression[1..expression.len() - 1].to_string());
+    }
+    if let Ok(number) = expression.parse::<i64>() {
+        return Value::Number(number.into());
+    }
+    if let Some(path) = expression.strip_prefix("state.") {
+        return lookup_json_path(context.state, path)
+            .cloned()
+            .unwrap_or(Value::Null);
+    }
+    if let Some(path) = expression.strip_prefix("host.") {
+        return lookup_json_path(context.host_snapshot, path)
+            .cloned()
+            .unwrap_or(Value::Null);
+    }
+
+    Value::String(expression.to_string())
+}
+
+fn lookup_json_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
+    let mut current = value;
+    for segment in path.split('.') {
+        current = current.get(segment)?;
+    }
+    Some(current)
+}
+
+fn node_id_for(
+    element: &ViewElement,
+    context: &mut DslEvaluationContext<'_>,
+    prefix: &str,
+) -> String {
+    element
+        .attributes
+        .get("id")
+        .map(|value| attr_value_to_string(value, context))
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| next_generated_node_id(context, prefix))
+}
+
+fn next_generated_node_id(context: &mut DslEvaluationContext<'_>, prefix: &str) -> String {
+    context.generated_ids += 1;
+    format!("dsl.{prefix}.{}", context.generated_ids)
+}
+
+fn state_defaults_to_json(fields: &[StateField]) -> Value {
+    let mut object = Map::new();
+    for field in fields {
+        object.insert(
+            field.name.clone(),
+            default_attr_value_to_json(&field.default),
+        );
+    }
+    Value::Object(object)
+}
+
+fn default_attr_value_to_json(value: &DslAttrValue) -> Value {
+    match value {
+        DslAttrValue::String(text) => Value::String(text.clone()),
+        DslAttrValue::Integer(number) => Value::Number((*number).into()),
+        DslAttrValue::Float(number) => number
+            .parse::<f64>()
+            .ok()
+            .and_then(serde_json::Number::from_f64)
+            .map(Value::Number)
+            .unwrap_or(Value::Null),
+        DslAttrValue::Bool(value) => Value::Bool(*value),
+        DslAttrValue::Expression(_) => Value::Null,
+    }
+}
+
+fn build_host_snapshot(document: &Document) -> Value {
+    json!({
+        "document": {
+            "title": document.work.title,
+        },
+        "tool": {
+            "active": match document.active_tool {
+                ToolKind::Brush => "brush",
+                ToolKind::Eraser => "eraser",
+            },
+        },
+        "color": {
+            "active": document.active_color.hex_rgb(),
+        },
+    })
+}
+
+fn apply_state_patches(state: &mut Value, patches: &[StatePatch]) {
+    if !state.is_object() {
+        *state = Value::Object(Map::new());
+    }
+    for patch in patches {
+        apply_state_patch(state, patch);
+    }
+}
+
+fn apply_state_patch(state: &mut Value, patch: &StatePatch) {
+    let mut current = state;
+    let mut segments = patch.path.split('.').peekable();
+    while let Some(segment) = segments.next() {
+        let is_last = segments.peek().is_none();
+        if !current.is_object() {
+            *current = Value::Object(Map::new());
+        }
+        let object = current.as_object_mut().expect("object ensured");
+        if is_last {
+            match patch.op {
+                panel_schema::StatePatchOp::Set | panel_schema::StatePatchOp::Replace => {
+                    object.insert(
+                        segment.to_string(),
+                        patch.value.clone().unwrap_or(Value::Null),
+                    );
+                }
+                panel_schema::StatePatchOp::Toggle => {
+                    let next = !object
+                        .get(segment)
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
+                    object.insert(segment.to_string(), Value::Bool(next));
+                }
+            }
+            return;
+        }
+        current = object
+            .entry(segment.to_string())
+            .or_insert_with(|| Value::Object(Map::new()));
+    }
+}
+
+fn command_descriptors_to_actions(
+    commands: Vec<CommandDescriptor>,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Vec<HostAction> {
+    commands
+        .into_iter()
+        .filter_map(|descriptor| match command_from_descriptor(&descriptor) {
+            Ok(command) => Some(HostAction::DispatchCommand(command)),
+            Err(message) => {
+                diagnostics.push(Diagnostic::warning(message));
+                None
+            }
+        })
+        .collect()
+}
+
+fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, String> {
+    match descriptor.name.as_str() {
+        "project.new" => Ok(Command::NewDocument),
+        "project.save" => Ok(Command::SaveProject),
+        "project.load" => Ok(Command::LoadProject),
+        "tool.set_active" => {
+            let tool = descriptor
+                .payload
+                .get("tool")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "tool.set_active is missing payload.tool".to_string())?;
+            let tool = match tool {
+                "brush" => ToolKind::Brush,
+                "eraser" => ToolKind::Eraser,
+                other => return Err(format!("unsupported tool kind: {other}")),
+            };
+            Ok(Command::SetActiveTool { tool })
+        }
+        "tool.set_color" => {
+            let color = descriptor
+                .payload
+                .get("color")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "tool.set_color is missing payload.color".to_string())?;
+            parse_hex_color(color)
+                .map(|color| Command::SetActiveColor { color })
+                .ok_or_else(|| format!("invalid color payload: {color}"))
+        }
+        other => Err(format!("unsupported command descriptor: {other}")),
+    }
+}
+
+fn parse_hex_color(input: &str) -> Option<ColorRgba8> {
+    let hex = input.strip_prefix('#')?;
+    if hex.len() != 6 {
+        return None;
+    }
+    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    Some(ColorRgba8::new(r, g, b, 0xff))
+}
+
+fn find_panel_action(nodes: &[PanelNode], target_id: &str) -> Option<HostAction> {
+    for node in nodes {
+        match node {
+            PanelNode::Column { children, .. }
+            | PanelNode::Row { children, .. }
+            | PanelNode::Section { children, .. } => {
+                if let Some(action) = find_panel_action(children, target_id) {
+                    return Some(action);
+                }
+            }
+            PanelNode::Button { id, action, .. } if id == target_id => return Some(action.clone()),
+            PanelNode::Text { .. }
+            | PanelNode::ColorPreview { .. }
+            | PanelNode::Slider { .. }
+            | PanelNode::Button { .. } => {}
+        }
+    }
+    None
 }
 
 fn collect_focus_targets(panel_id: &str, nodes: &[PanelNode], targets: &mut Vec<FocusTarget>) {
@@ -948,6 +1610,76 @@ mod tests {
     use crate::text::{draw_text_rgba, text_backend_name, wrap_text_lines};
     use app_core::{Command, ToolKind};
     use plugin_api::PanelPlugin;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    const SAMPLE_DSL_PANEL: &str = r#"
+panel {
+    id: "builtin.dsl-test"
+    title: "Phase 6 Test"
+    version: 1
+}
+
+permissions {
+    read.document
+    write.command
+}
+
+runtime {
+    wasm: "sample_test.wasm"
+}
+
+state {
+    expanded: bool = false
+}
+
+view {
+    <column gap=8 padding=8>
+        <section title="Runtime">
+                        <text tone="muted">Loaded from disk</text>
+                        <button id="dsl.save" on:click="save_project">Save</button>
+                        <button id="dsl.brush" on:click="activate_brush" active={host.tool.active == "brush"}>Brush</button>
+                        <toggle id="dsl.expanded" checked={state.expanded} on:change="toggle_expanded">Expanded</toggle>
+                        <when test={state.expanded}>
+                                <text>{host.document.title}</text>
+                        </when>
+        </section>
+    </column>
+}
+"#;
+
+    const SAMPLE_DSL_WAT: &str = r#"(module
+    (import "host" "state_toggle" (func $state_toggle (param i32 i32)))
+    (import "host" "state_set_bool" (func $state_set_bool (param i32 i32 i32)))
+    (import "host" "command" (func $command (param i32 i32)))
+    (import "host" "command_string" (func $command_string (param i32 i32 i32 i32 i32 i32)))
+    (memory (export "memory") 1)
+    (data (i32.const 0) "expanded")
+    (data (i32.const 16) "project.save")
+    (data (i32.const 32) "tool.set_active")
+    (data (i32.const 64) "tool")
+    (data (i32.const 80) "brush")
+    (func (export "panel_init")
+        i32.const 0
+        i32.const 8
+        i32.const 0
+        call $state_set_bool)
+    (func (export "panel_handle_toggle_expanded")
+        i32.const 0
+        i32.const 8
+        call $state_toggle)
+    (func (export "panel_handle_save_project")
+        i32.const 16
+        i32.const 12
+        call $command)
+    (func (export "panel_handle_activate_brush")
+        i32.const 32
+        i32.const 15
+        i32.const 64
+        i32.const 4
+        i32.const 80
+        i32.const 5
+        call $command_string))"#;
 
     /// `UiShell` の更新配送を確認するためのダミーパネル。
     struct TestPanel {
@@ -1226,6 +1958,133 @@ mod tests {
     }
 
     #[test]
+    fn loading_panel_directory_registers_dsl_panel() {
+        let temp_dir = unique_test_dir();
+        fs::create_dir_all(&temp_dir).expect("temp dir created");
+        fs::write(temp_dir.join("sample.altp-panel"), SAMPLE_DSL_PANEL).expect("dsl panel written");
+        fs::write(temp_dir.join("sample_test.wasm"), SAMPLE_DSL_WAT).expect("wasm sample written");
+
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+        let diagnostics = shell.load_panel_directory(&temp_dir);
+
+        assert!(diagnostics.is_empty());
+        let panels = shell.panel_trees();
+        let dsl_panel = panels
+            .iter()
+            .find(|panel| panel.id == "builtin.dsl-test")
+            .expect("dsl panel exists");
+        assert!(matches!(
+            &dsl_panel.children[0],
+            PanelNode::Column { children, .. }
+                if matches!(
+                    &children[0],
+                    PanelNode::Section { title, .. } if title == "Runtime"
+                )
+        ));
+        assert_eq!(
+            shell.handle_panel_event(&PanelEvent::Activate {
+                panel_id: "builtin.dsl-test".to_string(),
+                node_id: "dsl.save".to_string(),
+            }),
+            vec![HostAction::DispatchCommand(Command::SaveProject)]
+        );
+    }
+
+    #[test]
+    fn runtime_backed_dsl_panel_applies_state_patch_and_host_snapshot() {
+        let temp_dir = unique_test_dir();
+        fs::create_dir_all(&temp_dir).expect("temp dir created");
+        fs::write(temp_dir.join("sample.altp-panel"), SAMPLE_DSL_PANEL).expect("dsl panel written");
+        fs::write(temp_dir.join("sample_test.wasm"), SAMPLE_DSL_WAT).expect("wasm sample written");
+
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+        assert!(shell.load_panel_directory(&temp_dir).is_empty());
+
+        let before = shell
+            .panel_trees()
+            .into_iter()
+            .find(|panel| panel.id == "builtin.dsl-test")
+            .expect("dsl panel exists");
+        assert!(!tree_contains_text(&before.children, "Untitled"));
+
+        let _ = shell.handle_panel_event(&PanelEvent::Activate {
+            panel_id: "builtin.dsl-test".to_string(),
+            node_id: "dsl.expanded".to_string(),
+        });
+
+        let after = shell
+            .panel_trees()
+            .into_iter()
+            .find(|panel| panel.id == "builtin.dsl-test")
+            .expect("dsl panel exists");
+        assert!(tree_contains_text(&after.children, "Untitled"));
+    }
+
+    #[test]
+    fn runtime_backed_dsl_panel_converts_command_descriptor_to_command() {
+        let temp_dir = unique_test_dir();
+        fs::create_dir_all(&temp_dir).expect("temp dir created");
+        fs::write(temp_dir.join("sample.altp-panel"), SAMPLE_DSL_PANEL).expect("dsl panel written");
+        fs::write(temp_dir.join("sample_test.wasm"), SAMPLE_DSL_WAT).expect("wasm sample written");
+
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+        assert!(shell.load_panel_directory(&temp_dir).is_empty());
+
+        let actions = shell.handle_panel_event(&PanelEvent::Activate {
+            panel_id: "builtin.dsl-test".to_string(),
+            node_id: "dsl.brush".to_string(),
+        });
+
+        assert_eq!(
+            actions,
+            vec![HostAction::DispatchCommand(Command::SetActiveTool {
+                tool: ToolKind::Brush,
+            })]
+        );
+    }
+
+    #[test]
+    fn reloading_panel_directory_replaces_previous_dsl_panel() {
+        let temp_dir = unique_test_dir();
+        fs::create_dir_all(&temp_dir).expect("temp dir created");
+        fs::write(temp_dir.join("sample_test.wasm"), SAMPLE_DSL_WAT).expect("wasm sample written");
+        fs::write(temp_dir.join("sample.altp-panel"), SAMPLE_DSL_PANEL)
+            .expect("first dsl panel written");
+
+        let mut shell = UiShell::new();
+        assert!(shell.load_panel_directory(&temp_dir).is_empty());
+
+        let updated_panel = SAMPLE_DSL_PANEL.replace("Phase 6 Test", "DSL Reloaded");
+        fs::write(temp_dir.join("sample.altp-panel"), updated_panel)
+            .expect("updated dsl panel written");
+
+        assert!(shell.load_panel_directory(&temp_dir).is_empty());
+
+        let panels = shell.panel_trees();
+        let matching = panels
+            .iter()
+            .filter(|panel| panel.id == "builtin.dsl-test")
+            .collect::<Vec<_>>();
+        assert_eq!(matching.len(), 1);
+        assert_eq!(matching[0].title, "DSL Reloaded");
+    }
+
+    fn tree_contains_text(nodes: &[PanelNode], target: &str) -> bool {
+        nodes.iter().any(|node| match node {
+            PanelNode::Text { text, .. } => text == target,
+            PanelNode::Column { children, .. }
+            | PanelNode::Row { children, .. }
+            | PanelNode::Section { children, .. } => tree_contains_text(children, target),
+            PanelNode::ColorPreview { .. }
+            | PanelNode::Button { .. }
+            | PanelNode::Slider { .. } => false,
+        })
+    }
+
+    #[test]
     fn text_renderer_draws_visible_pixels() {
         let mut pixels = vec![0; 160 * 40 * 4];
 
@@ -1245,5 +2104,13 @@ mod tests {
 
         assert!(lines.len() > 1);
         assert_eq!(lines.concat(), "antidisestablishmentarianism");
+    }
+
+    fn unique_test_dir() -> std::path::PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time available")
+            .as_nanos();
+        std::env::temp_dir().join(format!("altpaint-ui-shell-{suffix}"))
     }
 }

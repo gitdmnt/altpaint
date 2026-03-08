@@ -44,6 +44,10 @@ const CANVAS_FRAME_BORDER: [u8; 4] = [0x2a, 0x2a, 0x2a, 0xff];
 const TEXT_PRIMARY: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
 const TEXT_SECONDARY: [u8; 4] = [0xd8, 0xd8, 0xd8, 0xff];
 
+fn default_panel_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("ui")
+}
+
 fn main() -> Result<()> {
     let event_loop = EventLoop::new().context("failed to create event loop")?;
     let mut runtime = DesktopRuntime::new(PathBuf::from(DEFAULT_PROJECT_PATH));
@@ -358,6 +362,7 @@ impl DesktopApp {
     fn new(project_path: PathBuf) -> Self {
         let document = load_document_from_path(&project_path).unwrap_or_default();
         let mut ui_shell = UiShell::new();
+        let _ = ui_shell.load_panel_directory(default_panel_dir());
         ui_shell.update(&document);
 
         Self {
@@ -618,8 +623,9 @@ impl DesktopApp {
         let actions = self.ui_shell.activate_focused();
         let mut dispatched = None;
         for action in actions {
-            let HostAction::DispatchCommand(command) = &action;
-            if dispatched.is_none() {
+            if let HostAction::DispatchCommand(command) = &action
+                && dispatched.is_none()
+            {
                 dispatched = Some(command.clone());
             }
             let _ = self.execute_host_action(action);
@@ -770,6 +776,7 @@ impl DesktopApp {
     fn execute_host_action(&mut self, action: HostAction) -> bool {
         match action {
             HostAction::DispatchCommand(command) => self.execute_command(command),
+            HostAction::InvokePanelHandler { .. } => false,
         }
     }
 
@@ -1597,6 +1604,19 @@ mod tests {
         assert_eq!(
             app.activate_focused_panel_control(),
             Some(Command::NewDocument)
+        );
+    }
+
+    #[test]
+    fn desktop_app_loads_phase6_sample_panel_from_default_ui_directory() {
+        let app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+
+        assert!(default_panel_dir().join("phase6-sample.altp-panel").exists());
+        assert!(
+            app.ui_shell
+                .panel_trees()
+                .iter()
+                .any(|panel| panel.id == "builtin.dsl-sample")
         );
     }
 

@@ -16,6 +16,17 @@
 
 処理実装、Wasm ABI、SDK 方針は [docs/panel-ui-definition/wasm-runtime.md](docs/panel-ui-definition/wasm-runtime.md) を正本とする。
 
+## 2026-03-09 時点の実装状況
+
+フェーズ6は、この文書で定義した最小スコープについては完了している。
+
+- `.altp-panel` の parser / validator / normalized IR は実装済み
+- `runtime { wasm: ... }` と handler binding は実装済み
+- `ui-shell` は DSL panel をロードし、`PanelTree` へ正規化して表示できる
+- `apps/desktop/ui/phase6-sample.altp-panel` で sample panel の表示と操作を確認できる
+
+一方で、より広い式評価、追加 widget、外部 plugin 向け権限本格化はフェーズ7以降の作業である。
+
 ## 結論
 
 `altpaint` の UI 側は、**JSX 風の制限付き DSL** として定義する。
@@ -450,12 +461,16 @@ Wasm の戻り値 schema と SDK 方針は [docs/panel-ui-definition/wasm-runtim
 - static panel 表示
 - `column` / `row` / `section` / `text` / `button`
 
+この範囲は実装済みである。
+
 ### フェーズ6後半
 
 - `runtime { wasm: ... }`
 - handler binding
 - Wasm handler 実行との接続
 - state patch 反映
+
+この範囲も sample panel まで含めて実装済みである。
 
 ## MVP スコープ
 

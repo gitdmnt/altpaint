@@ -1,0 +1,43 @@
+panel {
+  id: "builtin.dsl-sample"
+  title: "Phase 6 Sample"
+  version: 1
+}
+
+permissions {
+  read.document
+  write.command
+}
+
+runtime {
+  wasm: "phase6-sample.wasm"
+}
+
+state {
+  expanded: bool = false
+}
+
+view {
+  <column gap=8 padding=8>
+    <section title="Phase 6 Sample">
+      <text tone="muted">UI DSL + Wasm handler runtime</text>
+      <text>Current document</text>
+      <text>{host.document.title}</text>
+      <row gap=6>
+        <button id="dsl.sample.save" on:click="save_project">Save</button>
+        <button id="dsl.sample.load" on:click="load_project">Load</button>
+      </row>
+      <row gap=6>
+        <button id="dsl.sample.brush" on:click="activate_brush" active={host.tool.active == "brush"}>Brush</button>
+        <button id="dsl.sample.eraser" on:click="activate_eraser" active={host.tool.active == "eraser"}>Eraser</button>
+      </row>
+      <toggle id="dsl.sample.expanded" checked={state.expanded} on:change="toggle_expanded">Show details</toggle>
+      <when test={state.expanded}>
+        <text>Active tool</text>
+        <text>{host.tool.active}</text>
+        <text>Active color</text>
+        <text>{host.color.active}</text>
+      </when>
+    </section>
+  </column>
+}

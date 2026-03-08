@@ -19,6 +19,11 @@ pub struct PanelTree {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostAction {
     DispatchCommand(Command),
+    InvokePanelHandler {
+        panel_id: String,
+        handler_name: String,
+        event_kind: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

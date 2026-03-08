@@ -15,6 +15,20 @@
 
 UI 構文と `.altp-panel` の設計は [docs/panel-ui-definition/ui-dsl.md](docs/panel-ui-definition/ui-dsl.md) を正本とする。
 
+## 2026-03-09 時点の実装状況
+
+フェーズ6後半の最小 runtime 接続は実装済みである。
+
+- `crates/panel-schema` / `crates/panel-sdk` / `crates/plugin-host` は追加済み
+- `plugin-host` は `wasmtime` で sample Wasm/WAT module をロードできる
+- `ui-shell` は handler 実行結果の state patch / command descriptor / diagnostics を反映できる
+
+ただし、現時点の ABI は**フェーズ6向けの最小実装**であり、将来の外部 plugin 公開用にそのまま固定する段階ではない。
+
+- 現行 export は `panel_init` と `panel_handle_<handler_name>` 命名である
+- host import を通じて state patch / command descriptor / diagnostics を収集している
+- bytes DTO ベースの単一 `panel_handle_event` ABI は今後の安定化対象である
+
 ## 結論
 
 処理側は次の方針で固定する。
@@ -57,30 +71,20 @@ Wasm は Rust 等からコンパイルする処理モジュールである。
 - network なし
 - env なし
 
-## 最小 export
+## フェーズ6時点の最小 export
 
-MVP では export を少数に絞る。
+フェーズ6で実装した最小 export は次である。
 
 - `panel_init`
-- `panel_handle_event`
-- `panel_dispose`
+- `panel_handle_<handler_name>`
 
-入出力は、まずはシリアライズ済み bytes で十分である。
-
-入力:
-
-- handler 名
-- event payload
-- current state snapshot
-- host snapshot
-
-出力:
+フェーズ6では、host が handler ごとの export を呼び出し、Wasm から host import を通じて次を収集する。
 
 - state patch
 - command descriptors
 - diagnostics
 
-内部形式は最初は JSON でもよいが、DTO は host から分離しておく。
+`panel_dispose` と bytes DTO ベースの単一 event ABI は、今後の安定化対象として残している。
 
 ## 次の段階で実装する crate
 
@@ -106,7 +110,14 @@ MVP では export を少数に絞る。
 
 ## ABI 表
 
-MVP の ABI は次を最小形とする。
+フェーズ6時点の実装 ABI は次である。
+
+| Export                         | 入力                                  | 出力                         | 役割                                     |
+| ------------------------------ | ------------------------------------- | ---------------------------- | ---------------------------------------- |
+| `panel_init`                   | なし                                  | host import 経由の patch 群  | 初期 state の最小セットアップ            |
+| `panel_handle_<handler_name>`  | なし または `i32` 1つ                 | host import 経由の result 群 | state patch と command descriptor の返却 |
+
+将来の安定化候補 ABI は次である。
 
 | Export               | 入力                 | 出力                                      | 役割                                     |
 | -------------------- | -------------------- | ----------------------------------------- | ---------------------------------------- |
@@ -124,7 +135,7 @@ MVP の ABI は次を最小形とする。
 - built-in / external のどちらも同じ handler result 形式を使う
 - built-in だからという理由で別 ABI を作らない
 
-### `panel_handle_event` 入力 DTO
+### 将来の `panel_handle_event` 入力 DTO
 
 | フィールド       | 型       | 説明                               |
 | ---------------- | -------- | ---------------------------------- |
@@ -134,7 +145,7 @@ MVP の ABI は次を最小形とする。
 | `state_snapshot` | object   | 現在の panel local state           |
 | `host_snapshot`  | object   | host が渡す読み取り専用 snapshot   |
 
-### `panel_handle_event` 出力 DTO
+### 将来の `panel_handle_event` 出力 DTO
 
 | フィールド    | 型    | 説明                          |
 | ------------- | ----- | ----------------------------- |
@@ -167,7 +178,7 @@ MVP の ABI は次を最小形とする。
 
 1. host が `PanelEvent` を作る
 2. UI 定義から handler 名を解決する
-3. host が `panel_handle_event` を呼ぶ
+3. host が `panel_handle_<handler_name>` を呼ぶ
 4. Wasm が state patch と command descriptors を返す
 5. host が state を適用する
 6. host が command descriptor を `Command` に変換する
@@ -342,6 +353,8 @@ Rust から Wasm を作る以上、plugin 作者が crates.io のライブラリ
 - state patch 反映
 - command descriptor 反映
 
+この範囲は sample panel 動作まで含めて実装済みである。
+
 ### フェーズ7
 
 - 既存ビルトイン panel の UI DSL + Wasm 移植
@@ -361,11 +374,11 @@ Rust から Wasm を作る以上、plugin 作者が crates.io のライブラリ
 MVP では次で十分である。
 
 - runtime: `wasmtime`
-- handler: `panel_handle_event`
-- payload: bytes ベース
+- handler: `panel_init` と `panel_handle_<handler_name>`
+- payload: まずは export 引数最小 + host import 経由
 - state: local patch のみ
 - command: descriptor 経由
-- 権限: deny by default
+- 権限: deny by default を設計原則とし、本格 enforcement は後続フェーズ
 - SDK: Rust 向け最小版を1つ用意
 
 さらに、次の次の段階の built-in 移植に向けて次を満たす。
