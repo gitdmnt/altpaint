@@ -601,7 +601,7 @@ mod tests {
 
         assert_eq!(dirty, Some(DirtyRect::from_inclusive_points(1, 1, 3, 1)));
         let bitmap = &document.work.pages[0].panels[0].bitmap;
-        let index = (1 * bitmap.width + 2) * 4;
+        let index = (bitmap.width + 2) * 4;
         assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
     }
 

@@ -1,0 +1,20 @@
+# builtin-plugins
+
+このディレクトリは、altpaint に同梱されているビルトインパネルプラグインの個別メモをまとめる場所です。
+
+現在の対象は以下の5つです。
+
+- [app-actions.md](app-actions.md)
+- [tool-palette.md](tool-palette.md)
+- [layers-panel.md](layers-panel.md)
+- [job-progress.md](job-progress.md)
+- [snapshot-panel.md](snapshot-panel.md)
+
+いずれの文書も、2026-03-09 時点の最小実装を前提にしています。
+
+共通事項:
+
+- 実装本体は crates/builtin-plugins/src/ にあります
+- ホストとの契約は crates/plugin-api/src/lib.rs にあります
+- 実際の描画、ヒットテスト、フォーカス、スクロールは crates/ui-shell/src/lib.rs 側で行います
+- パネル由来の状態変更は HostAction::DispatchCommand(Command) を通じて desktop 側へ渡されます

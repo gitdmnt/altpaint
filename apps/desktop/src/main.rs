@@ -10,7 +10,7 @@ use app_core::{Command, DirtyRect, Document};
 use canvas_bridge::{
     CanvasInputState, CanvasPointerEvent, command_for_canvas_gesture, map_view_to_canvas,
 };
-use plugin_api::HostAction;
+use plugin_api::{HostAction, PanelEvent};
 use std::collections::BTreeMap;
 use std::env;
 use std::path::PathBuf;
@@ -21,8 +21,9 @@ use ui_shell::{PanelSurface, UiShell, draw_text_rgba};
 use wgpu_canvas::{PresentTimings, UploadRegion, WgpuPresenter};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, MouseButton, WindowEvent};
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Window, WindowAttributes, WindowId};
 
 const DEFAULT_PROJECT_PATH: &str = "altpaint-project.altp.json";
@@ -222,6 +223,12 @@ impl DesktopLayout {
     }
 }
 
+struct CanvasCompositeSource<'a> {
+    width: usize,
+    height: usize,
+    pixels: &'a [u8],
+}
+
 struct DesktopApp {
     document: Document,
     ui_shell: UiShell,
@@ -309,9 +316,11 @@ impl DesktopApp {
                     window_height,
                     &layout,
                     &panel_surface,
-                    bitmap.map_or(1, |bitmap| bitmap.width),
-                    bitmap.map_or(1, |bitmap| bitmap.height),
-                    bitmap.map_or(&[][..], |bitmap| bitmap.pixels.as_slice()),
+                    CanvasCompositeSource {
+                        width: bitmap.map_or(1, |bitmap| bitmap.width),
+                        height: bitmap.map_or(1, |bitmap| bitmap.height),
+                        pixels: bitmap.map_or(&[][..], |bitmap| bitmap.pixels.as_slice()),
+                    },
                     &status_text,
                 )
             });
@@ -405,11 +414,62 @@ impl DesktopApp {
         };
 
         let mut changed = false;
+        let PanelEvent::Activate { panel_id, node_id } = &event;
+        changed |= self.ui_shell.focus_panel_node(panel_id, node_id);
 
         for action in self.ui_shell.handle_panel_event(&event) {
             changed |= self.execute_host_action(action);
         }
 
+        changed
+    }
+
+    fn focus_next_panel_control(&mut self) -> bool {
+        let changed = self.ui_shell.focus_next();
+        if changed {
+            self.needs_panel_refresh = true;
+            self.needs_full_present_rebuild = true;
+        }
+        changed
+    }
+
+    fn focus_previous_panel_control(&mut self) -> bool {
+        let changed = self.ui_shell.focus_previous();
+        if changed {
+            self.needs_panel_refresh = true;
+            self.needs_full_present_rebuild = true;
+        }
+        changed
+    }
+
+    fn activate_focused_panel_control(&mut self) -> Option<Command> {
+        let actions = self.ui_shell.activate_focused();
+        let mut dispatched = None;
+        for action in actions {
+            let HostAction::DispatchCommand(command) = &action;
+            if dispatched.is_none() {
+                dispatched = Some(command.clone());
+            }
+            let _ = self.execute_host_action(action);
+        }
+        dispatched
+    }
+
+    fn scroll_panel_surface(&mut self, delta_lines: i32) -> bool {
+        let viewport_height = self
+            .layout
+            .as_ref()
+            .map(|layout| layout.panel_surface_rect.height)
+            .unwrap_or(0);
+        if viewport_height == 0 {
+            return false;
+        }
+
+        let changed = self.ui_shell.scroll_panels(delta_lines, viewport_height);
+        if changed {
+            self.needs_panel_refresh = true;
+            self.needs_full_present_rebuild = true;
+        }
         changed
     }
 
@@ -559,6 +619,7 @@ struct DesktopRuntime {
     presenter: Option<WgpuPresenter>,
     last_cursor_position: Option<(i32, i32)>,
     profiler: DesktopProfiler,
+    modifiers: ModifiersState,
 }
 
 impl DesktopRuntime {
@@ -569,6 +630,7 @@ impl DesktopRuntime {
             presenter: None,
             last_cursor_position: None,
             profiler: DesktopProfiler::new(),
+            modifiers: ModifiersState::default(),
         }
     }
 
@@ -649,6 +711,51 @@ impl ApplicationHandler for DesktopRuntime {
                 let position = (position.x as i32, position.y as i32);
                 self.last_cursor_position = Some(position);
                 if self.app.handle_pointer_dragged(position.0, position.1) {
+                    self.request_redraw();
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let Some((x, y)) = self.last_cursor_position else {
+                    return;
+                };
+                let Some(layout) = self.app.layout.as_ref() else {
+                    return;
+                };
+                if !layout.panel_host_rect.contains(x, y) {
+                    return;
+                }
+
+                let delta_lines = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => -(y.round() as i32),
+                    MouseScrollDelta::PixelDelta(position) => {
+                        let lines = position.y / ui_shell::text_line_height() as f64;
+                        -(lines.round() as i32)
+                    }
+                };
+                if delta_lines != 0 && self.app.scroll_panel_surface(delta_lines) {
+                    self.request_redraw();
+                }
+            }
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.modifiers = modifiers.state();
+            }
+            WindowEvent::KeyboardInput { event, .. } => {
+                if event.state != ElementState::Pressed || event.repeat {
+                    return;
+                }
+
+                let changed = match &event.logical_key {
+                    Key::Named(NamedKey::Tab) if self.modifiers.shift_key() => {
+                        self.app.focus_previous_panel_control()
+                    }
+                    Key::Named(NamedKey::Tab) => self.app.focus_next_panel_control(),
+                    Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
+                        self.app.activate_focused_panel_control().is_some()
+                    }
+                    _ => false,
+                };
+
+                if changed {
                     self.request_redraw();
                 }
             }
@@ -761,9 +868,7 @@ fn compose_desktop_frame(
     height: usize,
     layout: &DesktopLayout,
     panel_surface: &PanelSurface,
-    canvas_width: usize,
-    canvas_height: usize,
-    canvas_pixels: &[u8],
+    canvas: CanvasCompositeSource<'_>,
     status_text: &str,
 ) -> render::RenderFrame {
     let mut frame = render::RenderFrame {
@@ -808,9 +913,9 @@ fn compose_desktop_frame(
     blit_scaled_rgba(
         &mut frame,
         layout.canvas_display_rect,
-        canvas_width,
-        canvas_height,
-        canvas_pixels,
+        canvas.width,
+        canvas.height,
+        canvas.pixels,
     );
 
     draw_text(
@@ -1138,18 +1243,43 @@ mod tests {
     }
 
     #[test]
+    fn keyboard_panel_focus_can_activate_app_action() {
+        let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+        let mut profiler = DesktopProfiler::new();
+        let _ = app.prepare_present_frame(1280, 200, &mut profiler);
+
+        assert!(app.focus_next_panel_control());
+        assert_eq!(
+            app.activate_focused_panel_control(),
+            Some(Command::NewDocument)
+        );
+    }
+
+    #[test]
+    fn panel_scroll_requests_surface_offset_change() {
+        let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+        let mut profiler = DesktopProfiler::new();
+        let _ = app.prepare_present_frame(1280, 120, &mut profiler);
+
+        assert!(app.scroll_panel_surface(6));
+        assert!(app.ui_shell.panel_scroll_offset() > 0);
+    }
+
+    #[test]
     fn compose_desktop_frame_writes_panel_and_canvas_regions() {
         let layout = DesktopLayout::new(640, 480, 64, 64);
-        let shell = UiShell::new();
+        let mut shell = UiShell::new();
         let panel_surface = shell.render_panel_surface(264, 800);
         let frame = compose_desktop_frame(
             640,
             480,
             &layout,
             &panel_surface,
-            2,
-            2,
-            &vec![16; 16],
+            CanvasCompositeSource {
+                width: 2,
+                height: 2,
+                pixels: &[16; 16],
+            },
             "status",
         );
 

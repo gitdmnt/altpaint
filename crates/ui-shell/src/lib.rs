@@ -6,10 +6,7 @@
 mod text;
 
 pub use text::{
-    draw_text_rgba,
-    line_height as text_line_height,
-    measure_text_width,
-    text_backend_name,
+    draw_text_rgba, line_height as text_line_height, measure_text_width, text_backend_name,
     wrap_text_lines,
 };
 
@@ -27,6 +24,7 @@ const BODY_TEXT: [u8; 4] = [0xd8, 0xd8, 0xd8, 0xff];
 const BUTTON_FILL: [u8; 4] = [0x32, 0x32, 0x32, 0xff];
 const BUTTON_ACTIVE_FILL: [u8; 4] = [0x44, 0x5f, 0xb0, 0xff];
 const BUTTON_BORDER: [u8; 4] = [0x56, 0x56, 0x56, 0xff];
+const BUTTON_FOCUS_BORDER: [u8; 4] = [0x9f, 0xb7, 0xff, 0xff];
 const BUTTON_TEXT: [u8; 4] = [0xf0, 0xf0, 0xf0, 0xff];
 const PANEL_OUTER_PADDING: usize = 8;
 const PANEL_INNER_PADDING: usize = 8;
@@ -41,6 +39,12 @@ struct PanelHitRegion {
     y: usize,
     width: usize,
     height: usize,
+    panel_id: String,
+    node_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FocusTarget {
     panel_id: String,
     node_id: String,
 }
@@ -77,6 +81,9 @@ pub struct UiShell {
     render_context: RenderContext,
     /// 登録済みのパネルプラグイン一覧。
     panels: Vec<Box<dyn PanelPlugin>>,
+    panel_scroll_offset: usize,
+    panel_content_height: usize,
+    focused_target: Option<FocusTarget>,
 }
 
 impl UiShell {
@@ -85,6 +92,9 @@ impl UiShell {
         let mut shell = Self {
             render_context: RenderContext::new(),
             panels: Vec::new(),
+            panel_scroll_offset: 0,
+            panel_content_height: 0,
+            focused_target: None,
         };
         for panel in default_builtin_panels() {
             shell.register_panel(panel);
@@ -131,60 +141,245 @@ impl UiShell {
         self.panels.iter().map(|panel| panel.panel_tree()).collect()
     }
 
+    pub fn focused_target(&self) -> Option<(&str, &str)> {
+        self.focused_target
+            .as_ref()
+            .map(|target| (target.panel_id.as_str(), target.node_id.as_str()))
+    }
+
+    pub fn panel_scroll_offset(&self) -> usize {
+        self.panel_scroll_offset
+    }
+
+    pub fn focus_panel_node(&mut self, panel_id: &str, node_id: &str) -> bool {
+        let exists = self
+            .focusable_targets()
+            .iter()
+            .any(|target| target.panel_id == panel_id && target.node_id == node_id);
+        if !exists {
+            return false;
+        }
+
+        let next = FocusTarget {
+            panel_id: panel_id.to_string(),
+            node_id: node_id.to_string(),
+        };
+        if self.focused_target.as_ref() == Some(&next) {
+            return false;
+        }
+
+        self.focused_target = Some(next);
+        true
+    }
+
+    pub fn focus_next(&mut self) -> bool {
+        self.move_focus(1)
+    }
+
+    pub fn focus_previous(&mut self) -> bool {
+        self.move_focus(-1)
+    }
+
+    pub fn activate_focused(&mut self) -> Vec<HostAction> {
+        let Some(target) = self.focused_target.clone() else {
+            return Vec::new();
+        };
+
+        self.handle_panel_event(&PanelEvent::Activate {
+            panel_id: target.panel_id,
+            node_id: target.node_id,
+        })
+    }
+
+    pub fn scroll_panels(&mut self, delta_lines: i32, viewport_height: usize) -> bool {
+        let delta_pixels = delta_lines.saturating_mul(text_line_height() as i32);
+        let max_offset = self.max_panel_scroll_offset(viewport_height) as i32;
+        let next_offset = (self.panel_scroll_offset as i32 + delta_pixels).clamp(0, max_offset);
+        let next_offset = next_offset as usize;
+        if next_offset == self.panel_scroll_offset {
+            return false;
+        }
+
+        self.panel_scroll_offset = next_offset;
+        true
+    }
+
     pub fn handle_panel_event(&mut self, event: &PanelEvent) -> Vec<HostAction> {
+        let PanelEvent::Activate { panel_id, node_id } = event;
+        let _ = self.focus_panel_node(panel_id, node_id);
         self.panels
             .iter_mut()
             .flat_map(|panel| panel.handle_event(event))
             .collect()
     }
 
-    pub fn render_panel_surface(&self, width: usize, height: usize) -> PanelSurface {
+    pub fn render_panel_surface(&mut self, width: usize, height: usize) -> PanelSurface {
+        let trees = self.panel_trees();
+        let panel_width = width.saturating_sub(PANEL_OUTER_PADDING * 2);
+        self.panel_content_height = measure_panel_content_height(&trees, panel_width);
+        self.panel_scroll_offset = self
+            .panel_scroll_offset
+            .min(self.max_panel_scroll_offset(height));
+
+        let content_height = self.panel_content_height.max(height).max(1);
+        let mut content = PanelSurface {
+            width,
+            height: content_height,
+            pixels: vec![0; width * content_height * 4],
+            hit_regions: Vec::new(),
+        };
+        fill_rect(
+            &mut content,
+            0,
+            0,
+            width,
+            content_height,
+            SIDEBAR_BACKGROUND,
+        );
+
+        let mut cursor_y = PANEL_OUTER_PADDING;
+        for tree in trees {
+            let panel_height = measure_panel_tree(&tree, panel_width);
+            fill_rect(
+                &mut content,
+                PANEL_OUTER_PADDING,
+                cursor_y,
+                panel_width,
+                panel_height,
+                PANEL_BACKGROUND,
+            );
+            stroke_rect(
+                &mut content,
+                PANEL_OUTER_PADDING,
+                cursor_y,
+                panel_width,
+                panel_height,
+                PANEL_BORDER,
+            );
+            draw_panel_tree(
+                &mut content,
+                &tree,
+                PANEL_OUTER_PADDING,
+                cursor_y,
+                panel_width,
+                self.focused_target.as_ref(),
+            );
+            cursor_y += panel_height + PANEL_OUTER_PADDING;
+        }
+
+        if self.panel_scroll_offset == 0 && content.height == height {
+            return content;
+        }
+
         let mut surface = PanelSurface {
             width,
             height,
             pixels: vec![0; width * height * 4],
             hit_regions: Vec::new(),
         };
-        fill_rect(&mut surface, 0, 0, width, height, SIDEBAR_BACKGROUND);
 
-        let mut cursor_y = PANEL_OUTER_PADDING;
-        let panel_width = width.saturating_sub(PANEL_OUTER_PADDING * 2);
+        let start_row = self
+            .panel_scroll_offset
+            .min(content.height.saturating_sub(1));
+        let visible_rows = height.min(content.height.saturating_sub(start_row));
+        let row_bytes = width * 4;
+        for row in 0..visible_rows {
+            let src_start = (start_row + row) * row_bytes;
+            let dst_start = row * row_bytes;
+            surface.pixels[dst_start..dst_start + row_bytes]
+                .copy_from_slice(&content.pixels[src_start..src_start + row_bytes]);
+        }
 
-        for tree in self.panel_trees() {
-            let panel_height = measure_panel_tree(&tree, panel_width);
-            if cursor_y >= height {
-                break;
+        for region in content.hit_regions {
+            let region_bottom = region.y + region.height;
+            if region_bottom <= self.panel_scroll_offset
+                || region.y >= self.panel_scroll_offset + height
+            {
+                continue;
             }
-
-            let clamped_height = panel_height.min(height.saturating_sub(cursor_y));
-            fill_rect(
-                &mut surface,
-                PANEL_OUTER_PADDING,
-                cursor_y,
-                panel_width,
-                clamped_height,
-                PANEL_BACKGROUND,
-            );
-            stroke_rect(
-                &mut surface,
-                PANEL_OUTER_PADDING,
-                cursor_y,
-                panel_width,
-                clamped_height,
-                PANEL_BORDER,
-            );
-            draw_panel_tree(
-                &mut surface,
-                &tree,
-                PANEL_OUTER_PADDING,
-                cursor_y,
-                panel_width,
-            );
-            cursor_y += panel_height + PANEL_OUTER_PADDING;
+            let top = region.y.saturating_sub(self.panel_scroll_offset);
+            let bottom = (region_bottom.saturating_sub(self.panel_scroll_offset)).min(height);
+            if bottom <= top {
+                continue;
+            }
+            surface.hit_regions.push(PanelHitRegion {
+                x: region.x,
+                y: top,
+                width: region.width,
+                height: bottom - top,
+                panel_id: region.panel_id,
+                node_id: region.node_id,
+            });
         }
 
         surface
     }
+
+    fn move_focus(&mut self, step: isize) -> bool {
+        let targets = self.focusable_targets();
+        if targets.is_empty() {
+            return false;
+        }
+
+        let current_index = self.focused_target.as_ref().and_then(|current| {
+            targets.iter().position(|target| {
+                target.panel_id == current.panel_id && target.node_id == current.node_id
+            })
+        });
+        let next_index = match current_index {
+            Some(index) => (index as isize + step).rem_euclid(targets.len() as isize) as usize,
+            None if step >= 0 => 0,
+            None => targets.len() - 1,
+        };
+        let next = targets[next_index].clone();
+        if self.focused_target.as_ref() == Some(&next) {
+            return false;
+        }
+
+        self.focused_target = Some(next);
+        true
+    }
+
+    fn focusable_targets(&self) -> Vec<FocusTarget> {
+        let mut targets = Vec::new();
+        for tree in self.panel_trees() {
+            collect_focus_targets(tree.id, &tree.children, &mut targets);
+        }
+        targets
+    }
+
+    fn max_panel_scroll_offset(&self, viewport_height: usize) -> usize {
+        self.panel_content_height.saturating_sub(viewport_height)
+    }
+}
+
+fn collect_focus_targets(panel_id: &str, nodes: &[PanelNode], targets: &mut Vec<FocusTarget>) {
+    for node in nodes {
+        match node {
+            PanelNode::Column { children, .. }
+            | PanelNode::Row { children, .. }
+            | PanelNode::Section { children, .. } => {
+                collect_focus_targets(panel_id, children, targets);
+            }
+            PanelNode::Button { id, .. } => targets.push(FocusTarget {
+                panel_id: panel_id.to_string(),
+                node_id: id.clone(),
+            }),
+            PanelNode::Text { .. } => {}
+        }
+    }
+}
+
+fn measure_panel_content_height(trees: &[PanelTree], width: usize) -> usize {
+    if trees.is_empty() {
+        return PANEL_OUTER_PADDING * 2;
+    }
+
+    let panels_height: usize = trees
+        .iter()
+        .map(|tree| measure_panel_tree(tree, width) + PANEL_OUTER_PADDING)
+        .sum();
+    PANEL_OUTER_PADDING + panels_height
 }
 
 fn measure_panel_tree(tree: &PanelTree, width: usize) -> usize {
@@ -243,7 +438,14 @@ fn measure_node(node: &PanelNode, available_width: usize) -> usize {
     }
 }
 
-fn draw_panel_tree(surface: &mut PanelSurface, tree: &PanelTree, x: usize, y: usize, width: usize) {
+fn draw_panel_tree(
+    surface: &mut PanelSurface,
+    tree: &PanelTree,
+    x: usize,
+    y: usize,
+    width: usize,
+    focused_target: Option<&FocusTarget>,
+) {
     let inner_x = x + PANEL_INNER_PADDING;
     let inner_width = width.saturating_sub(PANEL_INNER_PADDING * 2);
     let title_height = draw_wrapped_text(
@@ -257,7 +459,15 @@ fn draw_panel_tree(surface: &mut PanelSurface, tree: &PanelTree, x: usize, y: us
     let mut cursor_y = y + PANEL_INNER_PADDING + title_height + 6;
 
     for child in &tree.children {
-        let used = draw_node(surface, child, tree.id, inner_x, cursor_y, inner_width);
+        let used = draw_node(
+            surface,
+            child,
+            tree.id,
+            inner_x,
+            cursor_y,
+            inner_width,
+            focused_target,
+        );
         cursor_y += used + NODE_GAP;
     }
 }
@@ -269,12 +479,21 @@ fn draw_node(
     x: usize,
     y: usize,
     available_width: usize,
+    focused_target: Option<&FocusTarget>,
 ) -> usize {
     match node {
         PanelNode::Column { children, .. } => {
             let mut cursor_y = y;
             for (index, child) in children.iter().enumerate() {
-                cursor_y += draw_node(surface, child, panel_id, x, cursor_y, available_width);
+                cursor_y += draw_node(
+                    surface,
+                    child,
+                    panel_id,
+                    x,
+                    cursor_y,
+                    available_width,
+                    focused_target,
+                );
                 if index + 1 != children.len() {
                     cursor_y += NODE_GAP;
                 }
@@ -292,7 +511,15 @@ fn draw_node(
             let mut cursor_x = x;
             let mut max_height = 0;
             for child in children {
-                let used = draw_node(surface, child, panel_id, cursor_x, y, child_width);
+                let used = draw_node(
+                    surface,
+                    child,
+                    panel_id,
+                    cursor_x,
+                    y,
+                    child_width,
+                    focused_target,
+                );
                 max_height = max_height.max(used);
                 cursor_x += child_width + child_gap;
             }
@@ -307,7 +534,15 @@ fn draw_node(
             let child_width = available_width.saturating_sub(SECTION_INDENT);
             let mut cursor_y = y + title_height + SECTION_GAP;
             for (index, child) in children.iter().enumerate() {
-                cursor_y += draw_node(surface, child, panel_id, child_x, cursor_y, child_width);
+                cursor_y += draw_node(
+                    surface,
+                    child,
+                    panel_id,
+                    child_x,
+                    cursor_y,
+                    child_width,
+                    focused_target,
+                );
                 if index + 1 != children.len() {
                     cursor_y += SECTION_GAP;
                 }
@@ -325,8 +560,20 @@ fn draw_node(
             } else {
                 BUTTON_FILL
             };
+            let is_focused = focused_target
+                .is_some_and(|target| target.panel_id == panel_id && target.node_id == id.as_str());
             fill_rect(surface, x, y, available_width, BUTTON_HEIGHT, fill);
             stroke_rect(surface, x, y, available_width, BUTTON_HEIGHT, BUTTON_BORDER);
+            if is_focused && available_width > 2 && BUTTON_HEIGHT > 2 {
+                stroke_rect(
+                    surface,
+                    x + 1,
+                    y + 1,
+                    available_width - 2,
+                    BUTTON_HEIGHT - 2,
+                    BUTTON_FOCUS_BORDER,
+                );
+            }
             draw_wrapped_text(
                 surface,
                 x + 6,
@@ -435,9 +682,9 @@ impl Default for UiShell {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::text::{draw_text_rgba, text_backend_name, wrap_text_lines};
     use app_core::{Command, ToolKind};
     use plugin_api::PanelPlugin;
-    use crate::text::{draw_text_rgba, text_backend_name, wrap_text_lines};
 
     /// `UiShell` の更新配送を確認するためのダミーパネル。
     struct TestPanel {
@@ -579,6 +826,32 @@ mod tests {
         }
 
         assert!(found.is_some());
+    }
+
+    #[test]
+    fn focus_navigation_can_activate_focused_button() {
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+
+        assert!(shell.focus_next());
+        assert_eq!(
+            shell.focused_target(),
+            Some(("builtin.app-actions", "app.new"))
+        );
+        assert_eq!(
+            shell.activate_focused(),
+            vec![HostAction::DispatchCommand(Command::NewDocument)]
+        );
+    }
+
+    #[test]
+    fn scrolling_panels_updates_scroll_offset() {
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+        let _ = shell.render_panel_surface(280, 96);
+
+        assert!(shell.scroll_panels(6, 96));
+        assert!(shell.panel_scroll_offset() > 0);
     }
 
     #[test]
