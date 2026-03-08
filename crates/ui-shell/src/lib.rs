@@ -10,7 +10,7 @@ pub use text::{
     wrap_text_lines,
 };
 
-use app_core::Document;
+use app_core::{ColorRgba8, Document};
 use builtin_plugins::default_builtin_panels;
 use plugin_api::{HostAction, PanelEvent, PanelNode, PanelPlugin, PanelTree, PanelView};
 use render::{RenderContext, RenderFrame};
@@ -24,8 +24,10 @@ const BODY_TEXT: [u8; 4] = [0xd8, 0xd8, 0xd8, 0xff];
 const BUTTON_FILL: [u8; 4] = [0x32, 0x32, 0x32, 0xff];
 const BUTTON_ACTIVE_FILL: [u8; 4] = [0x44, 0x5f, 0xb0, 0xff];
 const BUTTON_BORDER: [u8; 4] = [0x56, 0x56, 0x56, 0xff];
+const BUTTON_ACTIVE_BORDER: [u8; 4] = [0xc6, 0xd4, 0xff, 0xff];
 const BUTTON_FOCUS_BORDER: [u8; 4] = [0x9f, 0xb7, 0xff, 0xff];
 const BUTTON_TEXT: [u8; 4] = [0xf0, 0xf0, 0xf0, 0xff];
+const BUTTON_TEXT_DARK: [u8; 4] = [0x14, 0x14, 0x14, 0xff];
 const PANEL_OUTER_PADDING: usize = 8;
 const PANEL_INNER_PADDING: usize = 8;
 const NODE_GAP: usize = 6;
@@ -553,17 +555,35 @@ fn draw_node(
             draw_wrapped_text(surface, x, y, text, BODY_TEXT, available_width)
         }
         PanelNode::Button {
-            id, label, active, ..
+            id,
+            label,
+            active,
+            fill_color,
+            ..
         } => {
-            let fill = if *active {
-                BUTTON_ACTIVE_FILL
-            } else {
-                BUTTON_FILL
-            };
+            let fill = fill_color.map_or(
+                if *active {
+                    BUTTON_ACTIVE_FILL
+                } else {
+                    BUTTON_FILL
+                },
+                ColorRgba8::to_rgba8,
+            );
             let is_focused = focused_target
                 .is_some_and(|target| target.panel_id == panel_id && target.node_id == id.as_str());
             fill_rect(surface, x, y, available_width, BUTTON_HEIGHT, fill);
-            stroke_rect(surface, x, y, available_width, BUTTON_HEIGHT, BUTTON_BORDER);
+            stroke_rect(
+                surface,
+                x,
+                y,
+                available_width,
+                BUTTON_HEIGHT,
+                if *active {
+                    BUTTON_ACTIVE_BORDER
+                } else {
+                    BUTTON_BORDER
+                },
+            );
             if is_focused && available_width > 2 && BUTTON_HEIGHT > 2 {
                 stroke_rect(
                     surface,
@@ -579,7 +599,7 @@ fn draw_node(
                 x + 6,
                 y + 7,
                 label,
-                BUTTON_TEXT,
+                button_text_color(*fill_color),
                 available_width.saturating_sub(12),
             );
             surface.hit_regions.push(PanelHitRegion {
@@ -592,6 +612,20 @@ fn draw_node(
             });
             BUTTON_HEIGHT
         }
+    }
+}
+
+fn button_text_color(fill_color: Option<ColorRgba8>) -> [u8; 4] {
+    let Some(fill_color) = fill_color else {
+        return BUTTON_TEXT;
+    };
+    let luminance = 0.2126 * f32::from(fill_color.r)
+        + 0.7152 * f32::from(fill_color.g)
+        + 0.0722 * f32::from(fill_color.b);
+    if luminance >= 140.0 {
+        BUTTON_TEXT_DARK
+    } else {
+        BUTTON_TEXT
     }
 }
 
@@ -802,6 +836,37 @@ mod tests {
             actions,
             vec![HostAction::DispatchCommand(Command::SetActiveTool {
                 tool: ToolKind::Eraser,
+            })]
+        );
+    }
+
+    #[test]
+    fn default_shell_registers_builtin_color_palette() {
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+
+        let summaries = shell.panel_debug_summaries();
+        assert!(summaries.iter().any(|(id, title, summary)| {
+            *id == "builtin.color-palette"
+                && *title == "Colors"
+                && summary.contains("active_color=#000000")
+        }));
+    }
+
+    #[test]
+    fn color_palette_event_returns_color_command_action() {
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+
+        let actions = shell.handle_panel_event(&PanelEvent::Activate {
+            panel_id: "builtin.color-palette".to_string(),
+            node_id: "color.red".to_string(),
+        });
+
+        assert_eq!(
+            actions,
+            vec![HostAction::DispatchCommand(Command::SetActiveColor {
+                color: app_core::ColorRgba8::new(0xe5, 0x39, 0x35, 0xff),
             })]
         );
     }

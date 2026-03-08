@@ -2,10 +2,11 @@
 
 このディレクトリは、altpaint に同梱されているビルトインパネルプラグインの個別メモをまとめる場所です。
 
-現在の対象は以下の5つです。
+現在の対象は以下の6つです。
 
 - [app-actions.md](app-actions.md)
 - [tool-palette.md](tool-palette.md)
+- [color-palette.md](color-palette.md)
 - [layers-panel.md](layers-panel.md)
 - [job-progress.md](job-progress.md)
 - [snapshot-panel.md](snapshot-panel.md)

@@ -9,7 +9,7 @@ pub mod error;
 
 pub use command::Command;
 pub use document::{
-    CanvasBitmap, CanvasViewTransform, DirtyRect, Document, LayerNode, LayerNodeId, Page, PageId,
-    Panel, PanelId, ToolKind, Work, WorkId,
+    CanvasBitmap, CanvasViewTransform, ColorRgba8, DirtyRect, Document, LayerNode, LayerNodeId,
+    Page, PageId, Panel, PanelId, ToolKind, Work, WorkId,
 };
 pub use error::CoreError;

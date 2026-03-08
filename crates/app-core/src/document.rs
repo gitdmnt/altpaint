@@ -2,6 +2,35 @@ use serde::{Deserialize, Serialize};
 
 use crate::Command;
 
+/// ホストと保存形式の間で共有する最小RGBA色。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ColorRgba8 {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
+}
+
+impl ColorRgba8 {
+    pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
+        Self { r, g, b, a }
+    }
+
+    pub const fn to_rgba8(self) -> [u8; 4] {
+        [self.r, self.g, self.b, self.a]
+    }
+
+    pub fn hex_rgb(self) -> String {
+        format!("#{:02X}{:02X}{:02X}", self.r, self.g, self.b)
+    }
+}
+
+impl Default for ColorRgba8 {
+    fn default() -> Self {
+        Self::new(0, 0, 0, 255)
+    }
+}
+
 /// 現在の描画ツール。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ToolKind {
@@ -35,6 +64,9 @@ pub struct Document {
     pub work: Work,
     /// 現在の最小ツール状態。
     pub active_tool: ToolKind,
+    /// 現在のブラシ色。
+    #[serde(default)]
+    pub active_color: ColorRgba8,
     /// キャンバスの表示変換状態。
     pub view_transform: CanvasViewTransform,
 }
@@ -228,7 +260,12 @@ impl CanvasBitmap {
     /// ビットマップ内の1点を黒で塗る。
     /// ここで与えられる座標はビットマップのローカル座標で、(0, 0) が左上隅を指すものとする。
     pub fn draw_point(&mut self, x: usize, y: usize) -> DirtyRect {
-        self.write_pixel(x, y, [0, 0, 0, 255])
+        self.draw_point_rgba(x, y, [0, 0, 0, 255])
+    }
+
+    /// ビットマップ内の1点を任意色で塗る。
+    pub fn draw_point_rgba(&mut self, x: usize, y: usize, rgba: [u8; 4]) -> DirtyRect {
+        self.write_pixel(x, y, rgba)
     }
 
     /// ビットマップ内の1点を白で塗る。
@@ -265,6 +302,17 @@ impl CanvasBitmap {
         to_x: usize,
         to_y: usize,
     ) -> DirtyRect {
+        self.draw_line_rgba(from_x, from_y, to_x, to_y, [0, 0, 0, 255])
+    }
+
+    pub fn draw_line_rgba(
+        &mut self,
+        from_x: usize,
+        from_y: usize,
+        to_x: usize,
+        to_y: usize,
+        rgba: [u8; 4],
+    ) -> DirtyRect {
         let mut x0 = from_x as isize;
         let mut y0 = from_y as isize;
         let x1 = to_x as isize;
@@ -278,7 +326,7 @@ impl CanvasBitmap {
 
         loop {
             if x0 >= 0 && y0 >= 0 {
-                let _ = self.draw_point(x0 as usize, y0 as usize);
+                let _ = self.draw_point_rgba(x0 as usize, y0 as usize, rgba);
             }
 
             if x0 == x1 && y0 == y1 {
@@ -364,6 +412,10 @@ impl Document {
         self.active_tool = tool;
     }
 
+    pub fn set_active_color(&mut self, color: ColorRgba8) {
+        self.active_color = color;
+    }
+
     pub fn apply_command(&mut self, command: &Command) -> Option<DirtyRect> {
         match command {
             Command::Noop => None,
@@ -385,6 +437,10 @@ impl Document {
                 self.set_active_tool(*tool);
                 None
             }
+            Command::SetActiveColor { color } => {
+                self.set_active_color(*color);
+                None
+            }
             Command::NewDocument => {
                 *self = Document::default();
                 None
@@ -398,13 +454,14 @@ impl Document {
     /// フェーズ2では対象は常に最初のページ・最初のコマに固定する。
     /// ここで与えられる座標はコマのローカル座標で、(0, 0) が左上隅を指すものとする。
     pub fn draw_point(&mut self, x: usize, y: usize) -> Option<DirtyRect> {
+        let color = self.active_color.to_rgba8();
         if let Some(panel) = self
             .work
             .pages
             .first_mut()
             .and_then(|page| page.panels.first_mut())
         {
-            return Some(panel.bitmap.draw_point(x, y));
+            return Some(panel.bitmap.draw_point_rgba(x, y, color));
         }
 
         None
@@ -418,13 +475,18 @@ impl Document {
         to_x: usize,
         to_y: usize,
     ) -> Option<DirtyRect> {
+        let color = self.active_color.to_rgba8();
         if let Some(panel) = self
             .work
             .pages
             .first_mut()
             .and_then(|page| page.panels.first_mut())
         {
-            return Some(panel.bitmap.draw_line(from_x, from_y, to_x, to_y));
+            return Some(
+                panel
+                    .bitmap
+                    .draw_line_rgba(from_x, from_y, to_x, to_y, color),
+            );
         }
 
         None
@@ -551,6 +613,25 @@ mod tests {
         assert_eq!(document.active_tool, ToolKind::Brush);
     }
 
+    #[test]
+    fn active_color_defaults_to_black() {
+        let document = Document::default();
+
+        assert_eq!(document.active_color, ColorRgba8::new(0, 0, 0, 255));
+    }
+
+    #[test]
+    fn draw_point_uses_active_color() {
+        let mut document = Document::default();
+        document.set_active_color(ColorRgba8::new(0xe5, 0x39, 0x35, 0xff));
+
+        let _ = document.draw_point(3, 4);
+
+        let bitmap = &document.work.pages[0].panels[0].bitmap;
+        let index = (4 * bitmap.width + 3) * 4;
+        assert_eq!(&bitmap.pixels[index..index + 4], &[0xe5, 0x39, 0x35, 0xff]);
+    }
+
     /// dirty矩形のunionが両方を含む最小矩形になることを確認する。
     #[test]
     fn dirty_rect_union_merges_bounds() {
@@ -586,6 +667,21 @@ mod tests {
 
         assert_eq!(dirty, None);
         assert_eq!(document.active_tool, ToolKind::Eraser);
+    }
+
+    #[test]
+    fn apply_command_switches_active_color() {
+        let mut document = Document::default();
+
+        let dirty = document.apply_command(&Command::SetActiveColor {
+            color: ColorRgba8::new(0x43, 0xa0, 0x47, 0xff),
+        });
+
+        assert_eq!(dirty, None);
+        assert_eq!(
+            document.active_color,
+            ColorRgba8::new(0x43, 0xa0, 0x47, 0xff)
+        );
     }
 
     #[test]

@@ -79,6 +79,7 @@ impl PanelPlugin for ToolPalettePlugin {
                             tool: ToolKind::Brush,
                         }),
                         active: self.snapshot.active_tool == ToolKind::Brush,
+                        fill_color: None,
                     },
                     PanelNode::Button {
                         id: "tool.eraser".to_string(),
@@ -87,6 +88,7 @@ impl PanelPlugin for ToolPalettePlugin {
                             tool: ToolKind::Eraser,
                         }),
                         active: self.snapshot.active_tool == ToolKind::Eraser,
+                        fill_color: None,
                     },
                 ],
             }],

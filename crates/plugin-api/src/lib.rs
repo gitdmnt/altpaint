@@ -1,6 +1,6 @@
 //! `plugin-api` は、標準パネルや将来の拡張機能が従う最小インターフェースを定義する。
 
-use app_core::{Command, Document};
+use app_core::{ColorRgba8, Command, Document};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PanelView {
@@ -50,6 +50,7 @@ pub enum PanelNode {
         label: String,
         action: HostAction,
         active: bool,
+        fill_color: Option<ColorRgba8>,
     },
 }
 
@@ -167,6 +168,7 @@ mod tests {
                         tool: ToolKind::Brush,
                     }),
                     active: true,
+                    fill_color: None,
                 }],
             }
         }
@@ -184,6 +186,7 @@ mod tests {
                 label,
                 action: HostAction::DispatchCommand(Command::SetActiveTool { tool: ToolKind::Brush }),
                 active: true,
+                fill_color: None,
                 ..
             } if label == "Brush"
         ));

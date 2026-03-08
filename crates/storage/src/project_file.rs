@@ -62,7 +62,7 @@ pub fn load_document_from_path(path: impl AsRef<Path>) -> Result<Document, Stora
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::Document;
+    use app_core::{ColorRgba8, Document};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_path(name: &str) -> std::path::PathBuf {
@@ -77,12 +77,14 @@ mod tests {
     fn save_and_load_roundtrip_preserves_document() {
         let path = temp_path("roundtrip");
         let mut document = Document::default();
+        document.set_active_color(ColorRgba8::new(0x8e, 0x24, 0xaa, 0xff));
         let _ = document.draw_point(5, 6);
 
         save_document_to_path(&path, &document).expect("save should succeed");
         let loaded = load_document_from_path(&path).expect("load should succeed");
 
         assert_eq!(loaded.work.title, document.work.title);
+        assert_eq!(loaded.active_color, document.active_color);
         assert_eq!(
             loaded.work.pages[0].panels[0].bitmap.pixels,
             document.work.pages[0].panels[0].bitmap.pixels

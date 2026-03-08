@@ -1,3 +1,4 @@
+use crate::document::ColorRgba8;
 use crate::document::ToolKind;
 
 /// アプリケーション状態を変更するための最小コマンド列挙型。
@@ -28,6 +29,8 @@ pub enum Command {
     },
     /// 現在のアクティブツールを切り替える。
     SetActiveTool { tool: ToolKind },
+    /// 現在のブラシ色を切り替える。
+    SetActiveColor { color: ColorRgba8 },
     /// 新規ドキュメントを作成する。
     NewDocument,
     /// 現在のドキュメントを保存する。

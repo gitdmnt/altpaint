@@ -572,6 +572,11 @@ impl DesktopApp {
                         self.needs_full_present_rebuild = true;
                         true
                     }
+                    Command::SetActiveColor { .. } => {
+                        self.needs_panel_refresh = true;
+                        self.needs_full_present_rebuild = true;
+                        true
+                    }
                     Command::NewDocument => {
                         self.canvas_input = CanvasInputState::default();
                         self.pending_canvas_dirty_rect = None;
@@ -600,8 +605,9 @@ impl DesktopApp {
 
     fn status_text(&self) -> String {
         format!(
-            "tool={:?} / pages={} / panels={}",
+            "tool={:?} / color={} / pages={} / panels={}",
             self.document.active_tool,
+            self.document.active_color.hex_rgb(),
             self.document.work.pages.len(),
             self.document
                 .work
@@ -1113,7 +1119,7 @@ mod tests {
     use crate::canvas_bridge::{
         CanvasPointerEvent, command_for_canvas_gesture, map_view_to_canvas,
     };
-    use app_core::ToolKind;
+    use app_core::{ColorRgba8, ToolKind};
     use render::RenderFrame;
 
     #[test]
@@ -1162,6 +1168,17 @@ mod tests {
         });
 
         assert_eq!(app.document.active_tool, ToolKind::Eraser);
+    }
+
+    #[test]
+    fn execute_command_updates_document_color() {
+        let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+
+        let _ = app.execute_command(Command::SetActiveColor {
+            color: ColorRgba8::new(0x1e, 0x88, 0xe5, 0xff),
+        });
+
+        assert_eq!(app.document.active_color, ColorRgba8::new(0x1e, 0x88, 0xe5, 0xff));
     }
 
     #[test]
@@ -1228,6 +1245,31 @@ mod tests {
                 .pixels
                 .chunks_exact(4)
                 .any(|pixel| pixel == [0, 0, 0, 255])
+        );
+    }
+
+    #[test]
+    fn canvas_drag_draws_using_selected_color() {
+        let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+        let mut profiler = DesktopProfiler::new();
+        let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+        let layout = app.layout.clone().expect("layout exists");
+        let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
+        let center_y =
+            (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
+
+        let _ = app.execute_command(Command::SetActiveColor {
+            color: ColorRgba8::new(0x43, 0xa0, 0x47, 0xff),
+        });
+        app.handle_canvas_pointer("down", center_x, center_y);
+        app.handle_canvas_pointer("up", center_x, center_y);
+
+        let frame = app.ui_shell.render_frame(&app.document);
+        assert!(
+            frame
+                .pixels
+                .chunks_exact(4)
+                .any(|pixel| pixel == [0x43, 0xa0, 0x47, 0xff])
         );
     }
 
