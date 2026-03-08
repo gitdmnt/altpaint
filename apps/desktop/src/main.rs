@@ -11,7 +11,7 @@ use canvas_bridge::{
     CanvasInputState, CanvasPointerEvent, command_for_canvas_gesture, map_view_to_canvas,
 };
 use plugin_api::{HostAction, PanelEvent};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -43,6 +43,7 @@ const CANVAS_FRAME_BACKGROUND: [u8; 4] = [0x40, 0x40, 0x40, 0xff];
 const CANVAS_FRAME_BORDER: [u8; 4] = [0x2a, 0x2a, 0x2a, 0xff];
 const TEXT_PRIMARY: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
 const TEXT_SECONDARY: [u8; 4] = [0xd8, 0xd8, 0xd8, 0xff];
+const PERFORMANCE_SNAPSHOT_WINDOW: Duration = Duration::from_millis(1000);
 
 fn default_panel_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("ui")
@@ -141,6 +142,21 @@ impl PerformanceSnapshot {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct FrameStageTotals {
+    frame_total: Duration,
+    prepare_frame: Duration,
+    ui_update: Duration,
+    panel_surface: Duration,
+    present_total: Duration,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FrameSample {
+    finished_at: Instant,
+    stages: FrameStageTotals,
+}
+
 struct DesktopProfiler {
     logging_enabled: bool,
     stats: BTreeMap<&'static str, StageStats>,
@@ -148,14 +164,18 @@ struct DesktopProfiler {
     frame_interval_started: Instant,
     last_report: Instant,
     report_interval: Duration,
-    last_snapshot_refresh: Instant,
-    snapshot_refresh_interval: Duration,
+    snapshot_window: Duration,
+    current_frame: FrameStageTotals,
+    recent_frames: VecDeque<FrameSample>,
     latest_snapshot: Option<PerformanceSnapshot>,
 }
 
 impl DesktopProfiler {
     fn new() -> Self {
-        let now = Instant::now();
+        Self::new_at(Instant::now())
+    }
+
+    fn new_at(now: Instant) -> Self {
         Self {
             logging_enabled: env::var_os("ALTPAINT_PROFILE").is_some(),
             stats: BTreeMap::new(),
@@ -163,8 +183,9 @@ impl DesktopProfiler {
             frame_interval_started: now,
             last_report: now,
             report_interval: Duration::from_secs(2),
-            last_snapshot_refresh: now,
-            snapshot_refresh_interval: Duration::from_millis(250),
+            snapshot_window: PERFORMANCE_SNAPSHOT_WINDOW,
+            current_frame: FrameStageTotals::default(),
+            recent_frames: VecDeque::new(),
             latest_snapshot: None,
         }
     }
@@ -181,18 +202,34 @@ impl DesktopProfiler {
         stat.calls += 1;
         stat.total += elapsed;
         stat.max = stat.max.max(elapsed);
+
+        match label {
+            "frame_total" => self.current_frame.frame_total += elapsed,
+            "prepare_frame" => self.current_frame.prepare_frame += elapsed,
+            "ui_update" => self.current_frame.ui_update += elapsed,
+            "panel_surface" => self.current_frame.panel_surface += elapsed,
+            "present_total" => self.current_frame.present_total += elapsed,
+            _ => {}
+        }
     }
 
     fn finish_frame(&mut self, elapsed: Duration) {
+        self.finish_frame_at(elapsed, Instant::now());
+    }
+
+    fn finish_frame_at(&mut self, elapsed: Duration, now: Instant) {
         self.record("frame_total", elapsed);
         self.frames += 1;
 
-        let now = Instant::now();
-        if self.latest_snapshot.is_none()
-            || now.duration_since(self.last_snapshot_refresh) >= self.snapshot_refresh_interval
-        {
-            self.latest_snapshot = Some(self.build_snapshot(now));
-            self.last_snapshot_refresh = now;
+        self.recent_frames.push_back(FrameSample {
+            finished_at: now,
+            stages: self.current_frame,
+        });
+        self.current_frame = FrameStageTotals::default();
+        self.prune_recent_frames(now);
+
+        if let Some(snapshot) = self.build_snapshot() {
+            self.latest_snapshot = Some(snapshot);
         }
 
         if self.logging_enabled && now.duration_since(self.last_report) >= self.report_interval {
@@ -213,19 +250,59 @@ impl DesktopProfiler {
             .unwrap_or_else(|| WINDOW_TITLE.to_string())
     }
 
-    fn build_snapshot(&self, now: Instant) -> PerformanceSnapshot {
-        let interval_secs = now
-            .duration_since(self.frame_interval_started)
-            .as_secs_f64()
-            .max(f64::EPSILON);
-        PerformanceSnapshot {
-            fps: self.frames as f64 / interval_secs,
-            frame_ms: self.average_ms("frame_total"),
-            prepare_ms: self.average_ms("prepare_frame"),
-            ui_update_ms: self.average_ms("ui_update"),
-            panel_surface_ms: self.average_ms("panel_surface"),
-            present_ms: self.average_ms("present_total"),
+    fn prune_recent_frames(&mut self, now: Instant) {
+        while let Some(sample) = self.recent_frames.front() {
+            if now.duration_since(sample.finished_at) <= self.snapshot_window {
+                break;
+            }
+            self.recent_frames.pop_front();
         }
+    }
+
+    fn build_snapshot(&self) -> Option<PerformanceSnapshot> {
+        let frame_count = self.recent_frames.len();
+        if frame_count == 0 {
+            return None;
+        }
+
+        let mut totals = FrameStageTotals::default();
+        for sample in &self.recent_frames {
+            totals.frame_total += sample.stages.frame_total;
+            totals.prepare_frame += sample.stages.prepare_frame;
+            totals.ui_update += sample.stages.ui_update;
+            totals.panel_surface += sample.stages.panel_surface;
+            totals.present_total += sample.stages.present_total;
+        }
+
+        let fps = if frame_count >= 2 {
+            let first = self
+                .recent_frames
+                .front()
+                .expect("recent frame window is not empty")
+                .finished_at;
+            let last = self
+                .recent_frames
+                .back()
+                .expect("recent frame window is not empty")
+                .finished_at;
+            let span_secs = last.duration_since(first).as_secs_f64();
+            if span_secs > 0.0 {
+                (frame_count.saturating_sub(1)) as f64 / span_secs
+            } else {
+                self.latest_snapshot.map_or(0.0, |snapshot| snapshot.fps)
+            }
+        } else {
+            self.latest_snapshot.map_or(0.0, |snapshot| snapshot.fps)
+        };
+
+        Some(PerformanceSnapshot {
+            fps,
+            frame_ms: totals.frame_total.as_secs_f64() * 1000.0 / frame_count as f64,
+            prepare_ms: totals.prepare_frame.as_secs_f64() * 1000.0 / frame_count as f64,
+            ui_update_ms: totals.ui_update.as_secs_f64() * 1000.0 / frame_count as f64,
+            panel_surface_ms: totals.panel_surface.as_secs_f64() * 1000.0 / frame_count as f64,
+            present_ms: totals.present_total.as_secs_f64() * 1000.0 / frame_count as f64,
+        })
     }
 
     fn average_ms(&self, label: &'static str) -> f64 {
@@ -239,17 +316,20 @@ impl DesktopProfiler {
     }
 
     fn print_report(&self, now: Instant) {
-        let snapshot = self.build_snapshot(now);
+        let interval_secs = now
+            .duration_since(self.frame_interval_started)
+            .as_secs_f64()
+            .max(f64::EPSILON);
         eprintln!(
             "[profile] ---- last {:.2}s | fps={:.1} frame={:.3}ms prep={:.3}ms ui={:.3}ms panel={:.3}ms present={:.3}ms ----",
             now.duration_since(self.frame_interval_started)
                 .as_secs_f64(),
-            snapshot.fps,
-            snapshot.frame_ms,
-            snapshot.prepare_ms,
-            snapshot.ui_update_ms,
-            snapshot.panel_surface_ms,
-            snapshot.present_ms,
+            self.frames as f64 / interval_secs,
+            self.average_ms("frame_total"),
+            self.average_ms("prepare_frame"),
+            self.average_ms("ui_update"),
+            self.average_ms("panel_surface"),
+            self.average_ms("present_total"),
         );
         for (label, stat) in &self.stats {
             let avg = if stat.calls == 0 {
@@ -1611,7 +1691,11 @@ mod tests {
     fn desktop_app_loads_phase6_sample_panel_from_default_ui_directory() {
         let app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
 
-        assert!(default_panel_dir().join("phase6-sample.altp-panel").exists());
+        assert!(
+            default_panel_dir()
+                .join("phase6-sample.altp-panel")
+                .exists()
+        );
         assert!(
             app.ui_shell
                 .panel_trees()
@@ -1711,6 +1795,63 @@ mod tests {
         assert!(title.contains("59.8 fps"));
         assert!(title.contains("prep  3.11ms"));
         assert!(title.contains("ui  0.42ms"));
+    }
+
+    #[test]
+    fn profiler_uses_recent_window_for_snapshot_fps() {
+        let start = Instant::now();
+        let mut profiler = DesktopProfiler::new_at(start);
+
+        profiler.record("prepare_frame", Duration::from_millis(2));
+        profiler.record("ui_update", Duration::from_millis(1));
+        profiler.record("panel_surface", Duration::from_millis(1));
+        profiler.record("present_total", Duration::from_millis(2));
+        profiler.finish_frame_at(Duration::from_millis(16), start + Duration::from_millis(0));
+
+        profiler.record("prepare_frame", Duration::from_millis(2));
+        profiler.record("ui_update", Duration::from_millis(1));
+        profiler.record("panel_surface", Duration::from_millis(1));
+        profiler.record("present_total", Duration::from_millis(2));
+        profiler.finish_frame_at(Duration::from_millis(16), start + Duration::from_millis(16));
+
+        profiler.record("prepare_frame", Duration::from_millis(2));
+        profiler.record("ui_update", Duration::from_millis(1));
+        profiler.record("panel_surface", Duration::from_millis(1));
+        profiler.record("present_total", Duration::from_millis(2));
+        profiler.finish_frame_at(Duration::from_millis(16), start + Duration::from_millis(32));
+
+        let snapshot = profiler.latest_snapshot.expect("snapshot exists");
+        assert!(snapshot.fps > 60.0);
+        assert!(snapshot.fps < 65.0);
+    }
+
+    #[test]
+    fn profiler_does_not_drop_to_one_fps_after_idle_gap() {
+        let start = Instant::now();
+        let mut profiler = DesktopProfiler::new_at(start);
+
+        for offset_ms in [0_u64, 16, 32, 48] {
+            profiler.record("prepare_frame", Duration::from_millis(2));
+            profiler.record("ui_update", Duration::from_millis(1));
+            profiler.record("panel_surface", Duration::from_millis(1));
+            profiler.record("present_total", Duration::from_millis(2));
+            profiler.finish_frame_at(
+                Duration::from_millis(16),
+                start + Duration::from_millis(offset_ms),
+            );
+        }
+
+        let fps_before_idle = profiler.latest_snapshot.expect("snapshot exists").fps;
+
+        profiler.record("prepare_frame", Duration::from_millis(2));
+        profiler.record("ui_update", Duration::from_millis(1));
+        profiler.record("panel_surface", Duration::from_millis(1));
+        profiler.record("present_total", Duration::from_millis(2));
+        profiler.finish_frame_at(Duration::from_millis(16), start + Duration::from_secs(3));
+
+        let fps_after_idle = profiler.latest_snapshot.expect("snapshot exists").fps;
+        assert!(fps_before_idle > 50.0);
+        assert!(fps_after_idle > 50.0);
     }
 
     #[test]
