@@ -26,8 +26,6 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowAttributes, WindowId};
 
 const DEFAULT_PROJECT_PATH: &str = "altpaint-project.altp.json";
-const PANEL_SURFACE_WIDTH: usize = 264;
-const PANEL_SURFACE_HEIGHT: usize = 800;
 const WINDOW_WIDTH: u32 = 1280;
 const WINDOW_HEIGHT: u32 = 800;
 const SIDEBAR_WIDTH: usize = 280;
@@ -197,8 +195,7 @@ impl DesktopLayout {
                 .saturating_sub(WINDOW_PADDING * 3)
                 .max(1),
         };
-        let panel_surface_rect =
-            fit_rect(PANEL_SURFACE_WIDTH, PANEL_SURFACE_HEIGHT, panel_host_rect);
+        let panel_surface_rect = panel_host_rect;
 
         let canvas_host_rect = Rect {
             x: sidebar_width + WINDOW_PADDING,
@@ -271,14 +268,25 @@ impl DesktopApp {
 
         if self.layout.as_ref() != Some(&next_layout) {
             self.layout = Some(next_layout.clone());
+            self.needs_panel_refresh = true;
             self.needs_full_present_rebuild = true;
         }
 
         if self.needs_panel_refresh {
             profiler.measure("ui_update", || self.ui_shell.update(&self.document));
+            let panel_surface_size = self
+                .layout
+                .as_ref()
+                .map(|layout| {
+                    (
+                        layout.panel_surface_rect.width,
+                        layout.panel_surface_rect.height,
+                    )
+                })
+                .unwrap_or((1, 1));
             let panel_surface = profiler.measure("panel_surface", || {
                 self.ui_shell
-                    .render_panel_surface(PANEL_SURFACE_WIDTH, PANEL_SURFACE_HEIGHT)
+                    .render_panel_surface(panel_surface_size.0, panel_surface_size.1)
             });
             self.panel_surface = Some(panel_surface);
             self.needs_panel_refresh = false;
@@ -288,8 +296,10 @@ impl DesktopApp {
         if self.needs_full_present_rebuild || self.present_frame.is_none() {
             let layout = self.layout.clone().expect("layout exists");
             let panel_surface = self.panel_surface.clone().unwrap_or_else(|| {
-                self.ui_shell
-                    .render_panel_surface(PANEL_SURFACE_WIDTH, PANEL_SURFACE_HEIGHT)
+                self.ui_shell.render_panel_surface(
+                    layout.panel_surface_rect.width,
+                    layout.panel_surface_rect.height,
+                )
             });
             let status_text = self.status_text();
             let bitmap = self.document.active_bitmap();
@@ -1029,6 +1039,13 @@ mod tests {
             layout.canvas_display_rect.x as i32,
             layout.canvas_display_rect.y as i32,
         ));
+    }
+
+    #[test]
+    fn panel_surface_fills_panel_host_rect() {
+        let layout = DesktopLayout::new(1280, 800, 64, 64);
+
+        assert_eq!(layout.panel_surface_rect, layout.panel_host_rect);
     }
 
     #[test]
