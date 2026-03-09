@@ -16,9 +16,12 @@ runtime {
 state {
   show_new: bool = false
   show_shortcuts: bool = false
-  new_width: string = "64"
-  new_height: string = "64"
+  new_width: string = "2894"
+  new_height: string = "4093"
+  selected_template: string = "2894x4093"
   session.capture_target: string = ""
+  config.template_options: string = "2894x4093:A4 350dpi (2894×4093)"
+  config.default_template_size: string = "2894x4093"
   config.new_shortcut: string = "Ctrl+N"
   config.save_shortcut: string = "Ctrl+S"
   config.save_as_shortcut: string = "Ctrl+Shift+S"
@@ -51,8 +54,10 @@ view {
       </when>
       <when test={state.show_new}>
         <section title="New Document">
-          <input id="app.new.width" label="Width" value={state.new_width} bind="new_width" mode="numeric" placeholder="64" />
-          <input id="app.new.height" label="Height" value={state.new_height} bind="new_height" mode="numeric" placeholder="64" />
+          <text tone="muted">Templates are loaded from canvas-templates.json.</text>
+          <dropdown id="app.new.template" label="Template" value={state.selected_template} options={state.config.template_options} on:change="select_template" />
+          <input id="app.new.width" label="Width" value={state.new_width} bind="new_width" mode="numeric" placeholder="2894" />
+          <input id="app.new.height" label="Height" value={state.new_height} bind="new_height" mode="numeric" placeholder="4093" />
           <row>
             <button id="app.new.submit" on:click="new_project">Create</button>
             <button id="app.new.cancel" on:click="cancel_forms">Cancel</button>

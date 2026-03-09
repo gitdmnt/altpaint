@@ -1,6 +1,6 @@
 panel {
   id: "builtin.pen-settings"
-  title: "Pen"
+  title: "Stroke"
   version: 1
 }
 
@@ -16,6 +16,8 @@ runtime {
 state {
   pen_name: string = ""
   size: int = 1
+  size_slider: int = 0
+  tool_label: string = "Pen / Eraser Width"
   pressure_enabled: bool = true
   antialias: bool = true
   stabilization: int = 0
@@ -23,11 +25,11 @@ state {
 
 view {
   <column gap=8 padding=8>
-    <section title="Pen Width">
-      <text tone="muted">Loaded from pens/ and adjustable in host.</text>
+    <section title="Stroke Width">
+      <text tone="muted">Loaded from pens/ and shared by Pen / Eraser.</text>
       <text>{state.pen_name}</text>
-      <text>{state.size}px</text>
-      <slider id="pen.size" label="Size" min={1} max={10000} value={state.size} fill="#90CAF9" on:change="set_pen_size"></slider>
+      <text>{state.tool_label}: {state.size}px</text>
+      <slider id="pen.size" label="Size" min={0} max={1000} value={state.size_slider} fill="#90CAF9" on:change="set_pen_size"></slider>
     </section>
     <section title="Dynamics">
       <button id="pen.pressure" on:click="toggle_pressure" active={state.pressure_enabled}>Pressure</button>

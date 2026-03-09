@@ -12,6 +12,7 @@ desktop-support = { path = "../../crates/desktop-support" }
 plugin-api = { path = "../../crates/plugin-api" }
 pollster.workspace = true
 render = { path = "../../crates/render" }
+serde_json.workspace = true
 storage = { path = "../../crates/storage" }
 ui-shell = { path = "../../crates/ui-shell" }
 workspace-persistence = { path = "../../crates/workspace-persistence" }
@@ -19,4 +20,3 @@ wgpu.workspace = true
 winit.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true

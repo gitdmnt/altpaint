@@ -302,10 +302,10 @@ mod tests {
                 id: self.id(),
                 title: self.title(),
                 children: vec![PanelNode::Button {
-                    id: "tool.brush".to_string(),
-                    label: "Brush".to_string(),
+                    id: "tool.pen".to_string(),
+                    label: "Pen".to_string(),
                     action: HostAction::DispatchCommand(Command::SetActiveTool {
-                        tool: ToolKind::Brush,
+                        tool: ToolKind::Pen,
                     }),
                     active: true,
                     fill_color: None,
@@ -324,11 +324,11 @@ mod tests {
             &tree.children[0],
             PanelNode::Button {
                 label,
-                action: HostAction::DispatchCommand(Command::SetActiveTool { tool: ToolKind::Brush }),
+                action: HostAction::DispatchCommand(Command::SetActiveTool { tool: ToolKind::Pen }),
                 active: true,
                 fill_color: None,
                 ..
-            } if label == "Brush"
+            } if label == "Pen"
         ));
     }
 
@@ -338,13 +338,13 @@ mod tests {
 
         let actions = panel.handle_event(&PanelEvent::Activate {
             panel_id: "test.panel".to_string(),
-            node_id: "tool.brush".to_string(),
+            node_id: "tool.pen".to_string(),
         });
 
         assert_eq!(
             actions,
             vec![HostAction::DispatchCommand(Command::SetActiveTool {
-                tool: ToolKind::Brush,
+                tool: ToolKind::Pen,
             })]
         );
     }

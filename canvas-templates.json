@@ -1,0 +1,26 @@
+[
+  {
+    "id": "a4-350dpi",
+    "label": "A4 350dpi (2894×4093)",
+    "width": 2894,
+    "height": 4093
+  },
+  {
+    "id": "a4-300dpi",
+    "label": "A4 300dpi (2480×3508)",
+    "width": 2480,
+    "height": 3508
+  },
+  {
+    "id": "square-2048",
+    "label": "Square 2048 (2048×2048)",
+    "width": 2048,
+    "height": 2048
+  },
+  {
+    "id": "hd-1080p",
+    "label": "HD Landscape (1920×1080)",
+    "width": 1920,
+    "height": 1080
+  }
+]

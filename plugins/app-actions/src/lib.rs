@@ -1,6 +1,9 @@
 use panel_sdk::{
     CommandDescriptor, commands,
-    runtime::{emit_command, error, event_string, set_state_bool, set_state_string, state_string, toggle_state},
+    runtime::{
+        StatePatchBuffer, emit_command, error, event_string, set_state_bool, set_state_string,
+        state_string, toggle_state,
+    },
     state,
 };
 
@@ -8,7 +11,9 @@ const SHOW_NEW: state::BoolKey = state::bool("show_new");
 const SHOW_SHORTCUTS: state::BoolKey = state::bool("show_shortcuts");
 const NEW_WIDTH: state::StringKey = state::string("new_width");
 const NEW_HEIGHT: state::StringKey = state::string("new_height");
+const SELECTED_TEMPLATE: state::StringKey = state::string("selected_template");
 const CAPTURE_TARGET: state::StringKey = state::string("session.capture_target");
+const DEFAULT_TEMPLATE_SIZE: state::StringKey = state::string("config.default_template_size");
 const NEW_SHORTCUT: state::StringKey = state::string("config.new_shortcut");
 const SAVE_SHORTCUT: state::StringKey = state::string("config.save_shortcut");
 const SAVE_AS_SHORTCUT: state::StringKey = state::string("config.save_as_shortcut");
@@ -32,6 +37,21 @@ fn build_new_project_command(
     let width = parse_dimension(width)?;
     let height = parse_dimension(height)?;
     Ok(commands::project::new_sized(width, height))
+}
+
+fn apply_template_size(size: &str) -> Result<(), &'static str> {
+    let normalized = size.trim();
+    let (width, height) = normalized
+        .split_once('x')
+        .ok_or("template size must be WIDTHxHEIGHT")?;
+    let width = parse_dimension(width)?;
+    let height = parse_dimension(height)?;
+    let mut batch = StatePatchBuffer::new();
+    batch.set_string(NEW_WIDTH.as_ref(), width.to_string());
+    batch.set_string(NEW_HEIGHT.as_ref(), height.to_string());
+    batch.set_string(SELECTED_TEMPLATE.as_ref(), normalized);
+    batch.apply();
+    Ok(())
 }
 
 #[panel_sdk::panel_init]
@@ -62,6 +82,14 @@ fn shortcut_matches(configured: &str, incoming: &str) -> bool {
 
 #[panel_sdk::panel_handler]
 fn show_new_form() {
+    let selected = state_string(SELECTED_TEMPLATE);
+    let fallback = state_string(DEFAULT_TEMPLATE_SIZE);
+    let template_size = if selected.trim().is_empty() {
+        fallback
+    } else {
+        selected
+    };
+    let _ = apply_template_size(&template_size);
     set_state_bool(SHOW_NEW, true);
 }
 
@@ -106,6 +134,18 @@ fn new_project() {
 
     emit_command(&command);
     cancel_forms();
+}
+
+#[panel_sdk::panel_handler]
+fn select_template() {
+    let value = event_string("value");
+    if value.is_empty() {
+        return;
+    }
+
+    if let Err(message) = apply_template_size(&value) {
+        error(message);
+    }
 }
 
 #[panel_sdk::panel_handler]
@@ -199,6 +239,7 @@ mod tests {
         show_new_form();
         cancel_forms();
         toggle_shortcuts();
+        select_template();
         capture_new_shortcut();
         capture_save_shortcut();
         capture_save_as_shortcut();
@@ -214,5 +255,10 @@ mod tests {
     fn shortcut_match_is_case_insensitive() {
         assert!(shortcut_matches("Ctrl+S", "ctrl+s"));
         assert!(!shortcut_matches("", "Ctrl+S"));
+    }
+
+    #[test]
+    fn template_size_updates_width_and_height() {
+        apply_template_size("2894x4093").expect("template size should parse");
     }
 }

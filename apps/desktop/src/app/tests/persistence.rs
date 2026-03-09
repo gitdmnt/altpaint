@@ -90,7 +90,9 @@ fn save_and_load_restore_plugin_shortcut_configs() {
     assert_eq!(
         loaded.ui_state.plugin_configs.get("builtin.app-actions"),
         Some(&json!({
+            "default_template_size": "2894x4093",
             "new_shortcut": "Ctrl+Alt+N",
+            "template_options": "2894x4093:A4 350dpi (2894×4093)|2480x3508:A4 300dpi (2480×3508)|2048x2048:Square 2048 (2048×2048)|1920x1080:HD Landscape (1920×1080)",
             "save_shortcut": "Ctrl+S",
             "save_as_shortcut": "Ctrl+Shift+S",
             "open_shortcut": "Ctrl+O"
@@ -104,7 +106,9 @@ fn save_and_load_restore_plugin_shortcut_configs() {
             .persistent_panel_configs()
             .get("builtin.app-actions"),
         Some(&json!({
+            "default_template_size": "2894x4093",
             "new_shortcut": "Ctrl+Alt+N",
+            "template_options": "2894x4093:A4 350dpi (2894×4093)|2480x3508:A4 300dpi (2480×3508)|2048x2048:Square 2048 (2048×2048)|1920x1080:HD Landscape (1920×1080)",
             "save_shortcut": "Ctrl+S",
             "save_as_shortcut": "Ctrl+Shift+S",
             "open_shortcut": "Ctrl+O"

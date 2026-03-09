@@ -785,7 +785,6 @@ fn default_attr_value_to_json(value: &DslAttrValue) -> Value {
 }
 fn active_tool_name(tool: ToolKind) -> &'static str {
     match tool {
-        ToolKind::Brush => "brush",
         ToolKind::Pen => "pen",
         ToolKind::Eraser => "eraser",
         ToolKind::Bucket => "bucket",
@@ -854,6 +853,7 @@ fn build_host_snapshot(document: &Document) -> Value {
             "zoom_milli": (document.view_transform.zoom * 1000.0).round() as i32,
             "pan_x": document.view_transform.pan_x.round() as i32,
             "pan_y": document.view_transform.pan_y.round() as i32,
+            "rotation_degrees": document.view_transform.rotation_degrees.round() as i32,
             "quarter_turns": ((document.view_transform.rotation_degrees / 90.0).round() as i32).rem_euclid(4),
             "flip_x": document.view_transform.flip_x,
             "flip_y": document.view_transform.flip_y,
@@ -959,7 +959,6 @@ pub(super) fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<
                 .and_then(Value::as_str)
                 .ok_or_else(|| "tool.set_active is missing payload.tool".to_string())?;
             let tool = match tool {
-                "brush" => ToolKind::Brush,
                 "pen" => ToolKind::Pen,
                 "eraser" => ToolKind::Eraser,
                 "bucket" => ToolKind::Bucket,
@@ -1094,6 +1093,22 @@ pub(super) fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<
                 delta_y: delta_y as f32,
             })
         }
+        "view.set_pan" => {
+            let pan_x = descriptor
+                .payload
+                .get("pan_x")
+                .and_then(payload_f64)
+                .ok_or_else(|| "view.set_pan is missing payload.pan_x".to_string())?;
+            let pan_y = descriptor
+                .payload
+                .get("pan_y")
+                .and_then(payload_f64)
+                .ok_or_else(|| "view.set_pan is missing payload.pan_y".to_string())?;
+            Ok(Command::SetViewPan {
+                pan_x: pan_x as f32,
+                pan_y: pan_y as f32,
+            })
+        }
         "view.rotate" => {
             let quarter_turns = descriptor
                 .payload
@@ -1101,6 +1116,18 @@ pub(super) fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<
                 .and_then(payload_i32)
                 .ok_or_else(|| "view.rotate is missing payload.quarter_turns".to_string())?;
             Ok(Command::RotateView { quarter_turns })
+        }
+        "view.set_rotation" => {
+            let rotation_degrees = descriptor
+                .payload
+                .get("rotation_degrees")
+                .and_then(payload_f64)
+                .ok_or_else(|| {
+                    "view.set_rotation is missing payload.rotation_degrees".to_string()
+                })?;
+            Ok(Command::SetViewRotation {
+                rotation_degrees: rotation_degrees as f32,
+            })
         }
         "view.flip_horizontal" => Ok(Command::FlipViewHorizontally),
         "view.flip_vertical" => Ok(Command::FlipViewVertically),

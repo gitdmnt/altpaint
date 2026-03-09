@@ -13,8 +13,8 @@ use ui_shell::PanelSurface;
 
 use super::geometry::canvas_scene;
 use super::raster::{
-    blit_canvas_with_transform, blit_scaled_rgba, draw_brush_preview, draw_text, fill_rect,
-    measured_status_width, stroke_rect, stroke_rect_region,
+    blit_canvas_with_transform, blit_scaled_rgba, draw_brush_preview, draw_lasso_preview,
+    draw_text, fill_rect, measured_status_width, stroke_rect, stroke_rect_region,
 };
 use super::{CanvasCompositeSource, CanvasOverlayState, DesktopLayout, Rect};
 
@@ -57,7 +57,13 @@ pub(crate) fn compose_base_frame(
     );
     fill_rect(&mut frame, layout.panel_host_rect, PANEL_FRAME_BACKGROUND);
     stroke_rect(&mut frame, layout.panel_host_rect, PANEL_FRAME_BORDER);
-    fill_canvas_host_background(&mut frame, layout, canvas, transform, layout.canvas_host_rect);
+    fill_canvas_host_background(
+        &mut frame,
+        layout,
+        canvas,
+        transform,
+        layout.canvas_host_rect,
+    );
     stroke_rect(&mut frame, layout.canvas_host_rect, CANVAS_FRAME_BORDER);
 
     blit_scaled_rgba(
@@ -189,7 +195,12 @@ pub(crate) fn clear_canvas_host_region(
 ) {
     if let Some(dirty_rect) = dirty_rect {
         fill_canvas_host_background(frame, layout, canvas, transform, dirty_rect);
-        stroke_rect_region(frame, layout.canvas_host_rect, dirty_rect, CANVAS_FRAME_BORDER);
+        stroke_rect_region(
+            frame,
+            layout.canvas_host_rect,
+            dirty_rect,
+            CANVAS_FRAME_BORDER,
+        );
     } else {
         fill_canvas_host_background(frame, layout, canvas, transform, layout.canvas_host_rect);
         stroke_rect(frame, layout.canvas_host_rect, CANVAS_FRAME_BORDER);
@@ -255,7 +266,12 @@ fn fill_canvas_host_background(
 }
 
 /// 除外矩形を避けつつ背景色を塗る。
-fn fill_rect_excluding(frame: &mut render::RenderFrame, target: Rect, exclude: Rect, color: [u8; 4]) {
+fn fill_rect_excluding(
+    frame: &mut render::RenderFrame,
+    target: Rect,
+    exclude: Rect,
+    color: [u8; 4],
+) {
     let Some(overlap) = target.intersect(exclude) else {
         fill_rect(frame, target, color);
         return;
@@ -304,7 +320,13 @@ pub(crate) fn blit_canvas_content(
     transform: CanvasViewTransform,
     dirty_rect: Option<Rect>,
 ) {
-    blit_canvas_with_transform(frame, layout.canvas_host_rect, canvas, transform, dirty_rect);
+    blit_canvas_with_transform(
+        frame,
+        layout.canvas_host_rect,
+        canvas,
+        transform,
+        dirty_rect,
+    );
 }
 
 /// オーバーレイ状態をホスト上へ描画する。
@@ -323,6 +345,16 @@ pub(crate) fn draw_canvas_overlay(
             canvas,
             transform,
             position,
+            dirty_rect,
+        );
+    }
+    if overlay.lasso_points.len() >= 2 {
+        draw_lasso_preview(
+            frame,
+            layout.canvas_host_rect,
+            canvas,
+            transform,
+            overlay.lasso_points.as_slice(),
             dirty_rect,
         );
     }

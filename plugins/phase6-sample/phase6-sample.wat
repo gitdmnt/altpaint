@@ -20,7 +20,7 @@
 	(data (i32.const 144) "project.load")
 	(data (i32.const 160) "tool.set_active")
 	(data (i32.const 192) "tool")
-	(data (i32.const 208) "brush")
+	(data (i32.const 208) "pen")
 	(data (i32.const 224) "eraser")
 
 	(func (export "panel_init")
@@ -91,13 +91,13 @@
 		i32.const 12
 		call $command)
 
-	(func (export "panel_handle_activate_brush")
+	(func (export "panel_handle_activate_pen")
 		i32.const 160
 		i32.const 15
 		i32.const 192
 		i32.const 4
 		i32.const 208
-		i32.const 5
+		i32.const 3
 		call $command_string)
 
 	(func (export "panel_handle_activate_eraser")

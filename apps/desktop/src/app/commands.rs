@@ -81,6 +81,7 @@ impl DesktopApp {
                     .set_workspace_layout(project.ui_state.workspace_layout);
                 self.ui_shell
                     .set_persistent_panel_configs(project.ui_state.plugin_configs);
+                self.refresh_new_document_templates();
                 self.reset_active_interactions();
                 self.sync_ui_from_document();
                 self.mark_status_dirty();

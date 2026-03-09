@@ -6,7 +6,7 @@
 use app_core::CanvasViewTransform;
 use ui_shell::{draw_text_rgba, measure_text_width};
 
-use super::geometry::{brush_preview_rect, canvas_scene};
+use super::geometry::{brush_preview_rect, canvas_scene, map_canvas_point_to_display};
 use super::{CanvasCompositeSource, Rect};
 
 /// ビットマップ文字描画を `RenderFrame` 向けに薄くラップする。
@@ -163,7 +163,8 @@ pub(crate) fn blit_scaled_rgba_region(
     source_pixels: &[u8],
     dirty_rect: Option<Rect>,
 ) {
-    if destination.width == 0 || destination.height == 0 || source_width == 0 || source_height == 0 {
+    if destination.width == 0 || destination.height == 0 || source_width == 0 || source_height == 0
+    {
         return;
     }
 
@@ -244,8 +245,20 @@ pub(super) fn blit_canvas_with_transform(
     }
 
     let (offset_x, offset_y) = scene.offset();
-    let src_x_runs = build_source_axis_runs(target.x, target.width, offset_x, scene.scale(), source.width);
-    let src_y_runs = build_source_axis_runs(target.y, target.height, offset_y, scene.scale(), source.height);
+    let src_x_runs = build_source_axis_runs(
+        target.x,
+        target.width,
+        offset_x,
+        scene.scale(),
+        source.width,
+    );
+    let src_y_runs = build_source_axis_runs(
+        target.y,
+        target.height,
+        offset_y,
+        scene.scale(),
+        source.height,
+    );
 
     for y_run in &src_y_runs {
         let src_row_start = y_run.src_index * source.width * 4;
@@ -293,7 +306,9 @@ pub(super) fn build_source_axis_runs(
         let src = {
             let dst = destination_start + index;
             let src = ((dst as f32 + 0.5 - offset) / scale).floor();
-            (0.0..source_len as f32).contains(&src).then_some(src as usize)
+            (0.0..source_len as f32)
+                .contains(&src)
+                .then_some(src as usize)
         };
 
         let Some(src_index) = src else {
@@ -356,7 +371,9 @@ pub(crate) fn scroll_canvas_region(
     let shift_x = delta_x.clamp(-(region.width as i32), region.width as i32);
     let shift_y = delta_y.clamp(-(region.height as i32), region.height as i32);
     let overlap_width = region.width.saturating_sub(shift_x.unsigned_abs() as usize);
-    let overlap_height = region.height.saturating_sub(shift_y.unsigned_abs() as usize);
+    let overlap_height = region
+        .height
+        .saturating_sub(shift_y.unsigned_abs() as usize);
 
     if overlap_width == 0 || overlap_height == 0 {
         return region;
@@ -372,8 +389,16 @@ pub(crate) fn scroll_canvas_region(
     } else {
         region.y + shift_y.unsigned_abs() as usize
     };
-    let dst_x = if shift_x >= 0 { region.x + shift_x as usize } else { region.x };
-    let dst_y = if shift_y >= 0 { region.y + shift_y as usize } else { region.y };
+    let dst_x = if shift_x >= 0 {
+        region.x + shift_x as usize
+    } else {
+        region.x
+    };
+    let dst_y = if shift_y >= 0 {
+        region.y + shift_y as usize
+    } else {
+        region.y
+    };
 
     let mut copied = vec![0; overlap_width * overlap_height * 4];
     for row in 0..overlap_height {
@@ -397,7 +422,9 @@ pub(crate) fn scroll_canvas_region(
 /// スクロール後に新たに露出した矩形を返す。
 #[cfg_attr(not(test), allow(dead_code))]
 fn exposed_scroll_rect(region: Rect, shift_x: i32, shift_y: i32) -> Rect {
-    if shift_x.unsigned_abs() as usize >= region.width || shift_y.unsigned_abs() as usize >= region.height {
+    if shift_x.unsigned_abs() as usize >= region.width
+        || shift_y.unsigned_abs() as usize >= region.height
+    {
         return region;
     }
 
@@ -456,9 +483,9 @@ pub(super) fn draw_brush_preview(
     let Some(scene) = canvas_scene(destination, source.width, source.height, transform) else {
         return;
     };
-    let (offset_x, offset_y) = scene.offset();
-    let center_x = offset_x + (canvas_position.0 as f32 + 0.5) * scene.scale();
-    let center_y = offset_y + (canvas_position.1 as f32 + 0.5) * scene.scale();
+    let Some((center_x, center_y)) = scene.map_canvas_point_to_display(canvas_position) else {
+        return;
+    };
     let radius = scene.scale().max(4.0);
     let Some(target) = brush_preview_rect(
         destination,
@@ -482,6 +509,90 @@ pub(super) fn draw_brush_preview(
             if (distance - radius).abs() <= 1.0 {
                 let index = row_start + x * 4;
                 frame.pixels[index..index + 4].copy_from_slice(&[0x9f, 0xb7, 0xff, 0xff]);
+            }
+        }
+    }
+}
+
+/// 投げ縄のプレビュー線を overlay frame に描く。
+pub(super) fn draw_lasso_preview(
+    frame: &mut render::RenderFrame,
+    destination: Rect,
+    source: CanvasCompositeSource<'_>,
+    transform: CanvasViewTransform,
+    points: &[(usize, usize)],
+    dirty_rect: Option<Rect>,
+) {
+    if points.len() < 2 || source.width == 0 || source.height == 0 {
+        return;
+    }
+
+    for window in points.windows(2) {
+        let Some(start) = map_canvas_point_to_display(
+            destination,
+            source.width,
+            source.height,
+            transform,
+            window[0],
+        ) else {
+            continue;
+        };
+        let Some(end) = map_canvas_point_to_display(
+            destination,
+            source.width,
+            source.height,
+            transform,
+            window[1],
+        ) else {
+            continue;
+        };
+        draw_overlay_line(frame, start, end, dirty_rect, [0xff, 0xc1, 0x07, 0xff]);
+    }
+}
+
+fn draw_overlay_line(
+    frame: &mut render::RenderFrame,
+    start: (f32, f32),
+    end: (f32, f32),
+    dirty_rect: Option<Rect>,
+    color: [u8; 4],
+) {
+    let min_x = start.0.min(end.0).floor().max(0.0) as usize;
+    let min_y = start.1.min(end.1).floor().max(0.0) as usize;
+    let max_x = start.0.max(end.0).ceil().min(frame.width as f32) as usize;
+    let max_y = start.1.max(end.1).ceil().min(frame.height as f32) as usize;
+    let bounds = Rect {
+        x: min_x.saturating_sub(2),
+        y: min_y.saturating_sub(2),
+        width: max_x.saturating_sub(min_x).saturating_add(4),
+        height: max_y.saturating_sub(min_y).saturating_add(4),
+    };
+    let Some(target) = (match dirty_rect {
+        Some(dirty) => bounds.intersect(dirty),
+        None => Some(bounds),
+    }) else {
+        return;
+    };
+
+    let dx = end.0 - start.0;
+    let dy = end.1 - start.1;
+    let length_sq = dx * dx + dy * dy;
+    if length_sq <= f32::EPSILON {
+        return;
+    }
+
+    for y in target.y..target.y + target.height {
+        let row_start = y * frame.width * 4;
+        for x in target.x..target.x + target.width {
+            let px = x as f32 + 0.5;
+            let py = y as f32 + 0.5;
+            let t = (((px - start.0) * dx + (py - start.1) * dy) / length_sq).clamp(0.0, 1.0);
+            let closest_x = start.0 + dx * t;
+            let closest_y = start.1 + dy * t;
+            let distance = ((px - closest_x).powi(2) + (py - closest_y).powi(2)).sqrt();
+            if distance <= 1.25 {
+                let index = row_start + x * 4;
+                frame.pixels[index..index + 4].copy_from_slice(&color);
             }
         }
     }

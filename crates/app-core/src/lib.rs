@@ -12,7 +12,7 @@ pub use command::Command;
 pub use document::{
     BlendMode, CanvasBitmap, CanvasViewTransform, ColorRgba8, DirtyRect, Document, LayerMask,
     LayerNode, LayerNodeId, Page, PageId, Panel, PanelId, PenPreset, RasterLayer, ToolKind,
-    Work, WorkId,
+    Work, WorkId, DEFAULT_DOCUMENT_HEIGHT, DEFAULT_DOCUMENT_WIDTH,
 };
 pub use error::CoreError;
 pub use workspace::{WorkspaceLayout, WorkspacePanelState};

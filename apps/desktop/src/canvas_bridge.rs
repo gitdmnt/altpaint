@@ -71,23 +71,11 @@ pub fn command_for_canvas_gesture(
             to_y: current.1,
             pressure,
         },
-        (ToolKind::Brush, Some((from_x, from_y))) => Command::DrawStroke {
-            from_x,
-            from_y,
-            to_x: current.0,
-            to_y: current.1,
-            pressure,
-        },
         (ToolKind::Eraser, Some((from_x, from_y))) => Command::EraseStroke {
             from_x,
             from_y,
             to_x: current.0,
             to_y: current.1,
-            pressure,
-        },
-        (ToolKind::Brush, None) => Command::DrawPoint {
-            x: current.0,
-            y: current.1,
             pressure,
         },
         (ToolKind::Pen, None) => Command::DrawPoint {
@@ -174,8 +162,8 @@ mod tests {
     }
 
     #[test]
-    fn brush_drag_becomes_draw_stroke() {
-        let command = command_for_canvas_gesture(ToolKind::Brush, (4, 5), Some((1, 2)), 1.0);
+    fn pen_drag_becomes_draw_stroke() {
+        let command = command_for_canvas_gesture(ToolKind::Pen, (4, 5), Some((1, 2)), 1.0);
 
         assert_eq!(
             command,

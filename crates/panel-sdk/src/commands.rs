@@ -3,7 +3,6 @@
 /// ツール識別子を型として表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
-    Brush,
     Pen,
     Eraser,
     Bucket,
@@ -14,7 +13,6 @@ impl Tool {
     /// SDK が使う文字列表現へ変換する。
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Brush => "brush",
             Self::Pen => "pen",
             Self::Eraser => "eraser",
             Self::Bucket => "bucket",
@@ -199,12 +197,30 @@ pub mod view {
         descriptor
     }
 
+    /// キャンバス表示パン位置を絶対値で設定する。
+    pub fn set_pan(pan_x: f32, pan_y: f32) -> CommandDescriptor {
+        let mut descriptor = CommandDescriptor::new("view.set_pan");
+        descriptor.payload.insert("pan_x".to_string(), json!(pan_x));
+        descriptor.payload.insert("pan_y".to_string(), json!(pan_y));
+        descriptor
+    }
+
     /// 90 度単位の回転コマンドを返す。
     pub fn rotate(quarter_turns: i32) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("view.rotate");
         descriptor
             .payload
             .insert("quarter_turns".to_string(), json!(quarter_turns));
+        descriptor
+    }
+
+    /// キャンバス表示回転角を度単位で設定する。
+    pub fn set_rotation_degrees(rotation_degrees: f32) -> CommandDescriptor {
+        let mut descriptor = CommandDescriptor::new("view.set_rotation");
+        descriptor.payload.insert(
+            "rotation_degrees".to_string(),
+            json!(rotation_degrees),
+        );
         descriptor
     }
 

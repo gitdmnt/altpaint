@@ -281,6 +281,7 @@ impl DesktopApp {
             }
             Command::SetViewZoom { .. }
             | Command::RotateView { .. }
+            | Command::SetViewRotation { .. }
             | Command::FlipViewHorizontally
             | Command::FlipViewVertically
             | Command::ResetView => {
@@ -288,7 +289,9 @@ impl DesktopApp {
                 self.mark_status_dirty();
                 true
             }
-            Command::PanView { .. } => self.mark_canvas_transform_dirty(previous_transform),
+            Command::PanView { .. } | Command::SetViewPan { .. } => {
+                self.mark_canvas_transform_dirty(previous_transform)
+            }
             Command::AddRasterLayer
             | Command::RemoveActiveLayer
             | Command::SelectLayer { .. }

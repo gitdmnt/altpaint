@@ -247,7 +247,7 @@ Wasm は `Command` を直接返さない。
 
 例:
 
-- `tool.set_active` + `{ tool: "brush" }`
+- `tool.set_active` + `{ tool: "pen" }`
 - `tool.set_color` + `{ color: "#1E88E5" }`
 - `project.save` + `{}`
 
@@ -258,13 +258,13 @@ host がこれを `Command` に変換する。
 plugin 作者が次のようなコードを書くことは、今後は推奨しない。
 
 ```rust
-command("tool.set_active").string("tool", "brush")
+command("tool.set_active").string("tool", "pen")
 ```
 
 この API は escape hatch として残してよいが、第一選択肢は型付き helper とする。
 
 ```rust
-panel_sdk::commands::tool::set_active(panel_sdk::commands::Tool::Brush)
+panel_sdk::commands::tool::set_active(panel_sdk::commands::Tool::Pen)
 panel_sdk::commands::project::save()
 panel_sdk::commands::project::new_sized(320, 240)
 ```
@@ -336,7 +336,7 @@ plugin 作者には host 内部 crate を直接依存させない。
 
 ### SDK が提供すべき helper
 
-- `commands::tool::set_active(Tool::Brush)`
+- `commands::tool::set_active(Tool::Pen)`
 - `commands::tool::set_color_rgb(RgbColor::new(...))`
 - `commands::project::save()`
 - `commands::project::new_sized(width, height)`
@@ -366,8 +366,8 @@ use panel_sdk::{
 };
 
 #[panel_sdk::panel_handler]
-fn activate_brush() {
-  emit_command(&commands::tool::set_active(Tool::Brush));
+fn activate_pen() {
+  emit_command(&commands::tool::set_active(Tool::Pen));
 }
 ```
 

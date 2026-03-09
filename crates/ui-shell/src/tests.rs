@@ -34,7 +34,7 @@ view {
         <section title="Runtime">
                         <text tone="muted">Loaded from disk</text>
                         <button id="dsl.save" on:click="save_project">Save</button>
-                        <button id="dsl.brush" on:click="activate_brush" active={state.active_tool == "brush"}>Brush</button>
+                        <button id="dsl.pen" on:click="activate_pen" active={state.active_tool == "pen"}>Pen</button>
                         <toggle id="dsl.expanded" checked={state.expanded} on:change="toggle_expanded">Expanded</toggle>
                         <when test={state.expanded}>
                                 <text>{state.document_title}</text>
@@ -61,7 +61,7 @@ const SAMPLE_DSL_WAT: &str = r#"(module
     (data (i32.const 96) "project.save")
     (data (i32.const 112) "tool.set_active")
     (data (i32.const 144) "tool")
-    (data (i32.const 160) "brush")
+    (data (i32.const 160) "pen")
     (func (export "panel_init")
         i32.const 0
         i32.const 8
@@ -105,13 +105,13 @@ const SAMPLE_DSL_WAT: &str = r#"(module
         i32.const 96
         i32.const 12
         call $command)
-    (func (export "panel_handle_activate_brush")
+    (func (export "panel_handle_activate_pen")
         i32.const 112
         i32.const 15
         i32.const 144
         i32.const 4
         i32.const 160
-        i32.const 5
+        i32.const 3
         call $command_string))"#;
 
 const BUILTIN_APP_ACTIONS_PANEL: &str = r#"
@@ -286,9 +286,9 @@ fn update_dispatches_to_registered_panels() {
 #[test]
 fn default_shell_registers_builtin_layers_panel() { let shell = shell_with_builtin_panels(); let panels = shell.panel_trees(); let layers_panel = panels.iter().find(|panel| panel.id == "builtin.layers-panel").expect("layers panel exists"); assert!(tree_contains_text(&layers_panel.children, "Layer 1")); }
 #[test]
-fn default_shell_registers_builtin_tool_palette() { let shell = shell_with_builtin_panels(); let panels = shell.panel_trees(); let tool_panel = panels.iter().find(|panel| panel.id == "builtin.tool-palette").expect("tool panel exists"); assert!(tree_contains_button_label(&tool_panel.children, "Brush", true)); }
+fn default_shell_registers_builtin_tool_palette() { let shell = shell_with_builtin_panels(); let panels = shell.panel_trees(); let tool_panel = panels.iter().find(|panel| panel.id == "builtin.tool-palette").expect("tool panel exists"); assert!(tree_contains_button_label(&tool_panel.children, "Pen", true)); }
 #[test]
-fn shell_exposes_panel_tree_buttons() { let shell = shell_with_builtin_panels(); let panels = shell.panel_trees(); let tool_panel = panels.iter().find(|panel| panel.id == "builtin.tool-palette").expect("tool panel exists"); fn has_brush_button(items: &[PanelNode]) -> bool { items.iter().any(|item| match item { PanelNode::Button { label, .. } => label == "Brush", PanelNode::Column { children, .. } | PanelNode::Row { children, .. } | PanelNode::Section { children, .. } => has_brush_button(children), PanelNode::Text { .. } | PanelNode::ColorPreview { .. } | PanelNode::ColorWheel { .. } | PanelNode::Slider { .. } | PanelNode::TextInput { .. } | PanelNode::Dropdown { .. } | PanelNode::LayerList { .. } => false, }) } assert!(has_brush_button(&tool_panel.children)); }
+fn shell_exposes_panel_tree_buttons() { let shell = shell_with_builtin_panels(); let panels = shell.panel_trees(); let tool_panel = panels.iter().find(|panel| panel.id == "builtin.tool-palette").expect("tool panel exists"); fn has_pen_button(items: &[PanelNode]) -> bool { items.iter().any(|item| match item { PanelNode::Button { label, .. } => label == "Pen", PanelNode::Column { children, .. } | PanelNode::Row { children, .. } | PanelNode::Section { children, .. } => has_pen_button(children), PanelNode::Text { .. } | PanelNode::ColorPreview { .. } | PanelNode::ColorWheel { .. } | PanelNode::Slider { .. } | PanelNode::TextInput { .. } | PanelNode::Dropdown { .. } | PanelNode::LayerList { .. } => false, }) } assert!(has_pen_button(&tool_panel.children)); }
 #[test]
 fn panel_event_returns_command_action() { let mut shell = shell_with_builtin_panels(); let actions = shell.handle_panel_event(&PanelEvent::Activate { panel_id: "builtin.tool-palette".to_string(), node_id: "tool.eraser".to_string(), }); assert_eq!(actions, vec![HostAction::DispatchCommand(Command::SetActiveTool { tool: ToolKind::Eraser })]); }
 #[test]
@@ -300,7 +300,7 @@ fn color_palette_tree_contains_live_preview() { let shell = shell_with_builtin_p
 #[test]
 fn rendered_panel_surface_maps_color_wheel_region_to_text_event() { let mut shell = shell_with_builtin_panels(); let surface = shell.render_panel_surface(280, 800); let mut found = None; 'outer: for y in 0..surface.height { for x in 0..surface.width { if let Some(PanelEvent::SetText { panel_id, node_id, value }) = surface.hit_test(x, y) && panel_id == "builtin.color-palette" && node_id == "color.wheel" { found = Some(value); break 'outer; } } } assert!(found.is_some()); }
 #[test]
-fn rendered_panel_surface_contains_clickable_button_region() { let mut shell = shell_with_builtin_panels(); let surface = shell.render_panel_surface(280, 3200); let mut found = None; 'outer: for y in 0..surface.height { for x in 0..surface.width { if let Some(PanelEvent::Activate { panel_id, node_id }) = surface.hit_test(x, y) && panel_id == "builtin.tool-palette" && node_id == "tool.brush" { found = Some((x, y)); break 'outer; } } } assert!(found.is_some()); }
+fn rendered_panel_surface_contains_clickable_button_region() { let mut shell = shell_with_builtin_panels(); let surface = shell.render_panel_surface(280, 3200); let mut found = None; 'outer: for y in 0..surface.height { for x in 0..surface.width { if let Some(PanelEvent::Activate { panel_id, node_id }) = surface.hit_test(x, y) && panel_id == "builtin.tool-palette" && node_id == "tool.pen" { found = Some((x, y)); break 'outer; } } } assert!(found.is_some()); }
 #[test]
 fn rendered_layer_list_drag_maps_to_drag_value_event() {
     let mut shell = UiShell::new();
@@ -373,7 +373,7 @@ fn loading_panel_directory_registers_dsl_panel() { let temp_dir = unique_test_di
 #[test]
 fn runtime_backed_dsl_panel_applies_state_patch_and_host_snapshot() { let temp_dir = unique_test_dir(); fs::create_dir_all(&temp_dir).expect("temp dir created"); fs::write(temp_dir.join("sample.altp-panel"), SAMPLE_DSL_PANEL).expect("dsl panel written"); fs::write(temp_dir.join("sample_test.wasm"), SAMPLE_DSL_WAT).expect("wasm sample written"); let mut shell = UiShell::new(); shell.update(&Document::default()); assert!(shell.load_panel_directory(&temp_dir).is_empty()); let before = shell.panel_trees().into_iter().find(|panel| panel.id == "builtin.dsl-test").expect("dsl panel exists"); assert!(!tree_contains_text(&before.children, "Untitled")); let _ = shell.handle_panel_event(&PanelEvent::Activate { panel_id: "builtin.dsl-test".to_string(), node_id: "dsl.expanded".to_string(), }); let after = shell.panel_trees().into_iter().find(|panel| panel.id == "builtin.dsl-test").expect("dsl panel exists"); assert!(tree_contains_text(&after.children, "Untitled")); }
 #[test]
-fn runtime_backed_dsl_panel_converts_command_descriptor_to_command() { let temp_dir = unique_test_dir(); fs::create_dir_all(&temp_dir).expect("temp dir created"); fs::write(temp_dir.join("sample.altp-panel"), SAMPLE_DSL_PANEL).expect("dsl panel written"); fs::write(temp_dir.join("sample_test.wasm"), SAMPLE_DSL_WAT).expect("wasm sample written"); let mut shell = UiShell::new(); shell.update(&Document::default()); assert!(shell.load_panel_directory(&temp_dir).is_empty()); let actions = shell.handle_panel_event(&PanelEvent::Activate { panel_id: "builtin.dsl-test".to_string(), node_id: "dsl.brush".to_string(), }); assert_eq!(actions, vec![HostAction::DispatchCommand(Command::SetActiveTool { tool: ToolKind::Brush })]); }
+fn runtime_backed_dsl_panel_converts_command_descriptor_to_command() { let temp_dir = unique_test_dir(); fs::create_dir_all(&temp_dir).expect("temp dir created"); fs::write(temp_dir.join("sample.altp-panel"), SAMPLE_DSL_PANEL).expect("dsl panel written"); fs::write(temp_dir.join("sample_test.wasm"), SAMPLE_DSL_WAT).expect("wasm sample written"); let mut shell = UiShell::new(); shell.update(&Document::default()); assert!(shell.load_panel_directory(&temp_dir).is_empty()); let actions = shell.handle_panel_event(&PanelEvent::Activate { panel_id: "builtin.dsl-test".to_string(), node_id: "dsl.pen".to_string(), }); assert_eq!(actions, vec![HostAction::DispatchCommand(Command::SetActiveTool { tool: ToolKind::Pen })]); }
 #[test]
 fn reloading_panel_directory_replaces_previous_dsl_panel() { let temp_dir = unique_test_dir(); fs::create_dir_all(&temp_dir).expect("temp dir created"); fs::write(temp_dir.join("sample_test.wasm"), SAMPLE_DSL_WAT).expect("wasm sample written"); fs::write(temp_dir.join("sample.altp-panel"), SAMPLE_DSL_PANEL).expect("first dsl panel written"); let mut shell = UiShell::new(); assert!(shell.load_panel_directory(&temp_dir).is_empty()); let updated_panel = SAMPLE_DSL_PANEL.replace("Phase 6 Test", "DSL Reloaded"); fs::write(temp_dir.join("sample.altp-panel"), updated_panel).expect("updated dsl panel written"); assert!(shell.load_panel_directory(&temp_dir).is_empty()); let panels = shell.panel_trees(); let matching = panels.iter().filter(|panel| panel.id == "builtin.dsl-test").collect::<Vec<_>>(); assert_eq!(matching.len(), 1); assert_eq!(matching[0].title, "DSL Reloaded"); }
 #[test]

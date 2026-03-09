@@ -52,7 +52,6 @@ impl Document {
     pub(super) fn active_draw_size_with_pressure(&self, pressure: f32) -> u32 {
         let clamped_pressure = pressure.clamp(0.0, 1.0);
         match self.active_tool {
-            ToolKind::Brush => 1,
             ToolKind::Eraser => self.active_pen_size.max(1),
             ToolKind::Pen => {
                 let Some(preset) = self.active_pen_preset() else {

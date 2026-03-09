@@ -22,13 +22,13 @@ fn slider_for_macro_test(value: i32) {
 #[test]
 fn command_builder_collects_payload_fields() {
     let descriptor = command("tool.set_active")
-        .string("tool", "brush")
+        .string("tool", "pen")
         .bool("pinned", true)
         .value("weight", json!(1))
         .build();
 
     assert_eq!(descriptor.name, "tool.set_active");
-    assert_eq!(descriptor.payload.get("tool"), Some(&json!("brush")));
+    assert_eq!(descriptor.payload.get("tool"), Some(&json!("pen")));
     assert_eq!(descriptor.payload.get("pinned"), Some(&json!(true)));
     assert_eq!(descriptor.payload.get("weight"), Some(&json!(1)));
 }
@@ -81,7 +81,6 @@ fn typed_tool_commands_hide_payload_keys() {
 
 #[test]
 fn typed_tool_commands_cover_remaining_variants() {
-    assert_eq!(commands::Tool::Brush.as_str(), "brush");
     assert_eq!(commands::Tool::Pen.as_str(), "pen");
     assert_eq!(
         commands::tool::set_color_hex("#ABCDEF")
@@ -105,13 +104,21 @@ fn typed_tool_commands_cover_remaining_variants() {
 fn typed_view_commands_hide_payload_keys() {
     let zoom = commands::view::zoom(1.5);
     let pan = commands::view::pan(4.0, -2.0);
+    let set_pan = commands::view::set_pan(12.0, -6.0);
     let rotate = commands::view::rotate(-1);
+    let set_rotation = commands::view::set_rotation_degrees(270.0);
 
     assert_eq!(zoom.name, "view.zoom");
     assert_eq!(zoom.payload.get("zoom"), Some(&json!(1.5)));
     assert_eq!(pan.payload.get("delta_x"), Some(&json!(4.0)));
     assert_eq!(pan.payload.get("delta_y"), Some(&json!(-2.0)));
+    assert_eq!(set_pan.payload.get("pan_x"), Some(&json!(12.0)));
+    assert_eq!(set_pan.payload.get("pan_y"), Some(&json!(-6.0)));
     assert_eq!(rotate.payload.get("quarter_turns"), Some(&json!(-1)));
+    assert_eq!(
+        set_rotation.payload.get("rotation_degrees"),
+        Some(&json!(270.0))
+    );
     assert_eq!(commands::view::flip_horizontal().name, "view.flip_horizontal");
     assert_eq!(commands::view::flip_vertical().name, "view.flip_vertical");
     assert_eq!(commands::view::reset().name, "view.reset");
@@ -176,7 +183,7 @@ fn typed_host_helpers_are_callable_on_native_targets() {
     assert!(!host::document::active_layer_visible());
     assert!(!host::document::active_layer_masked());
     assert_eq!(host::document::layers_json(), "");
-    assert!(!host::tool::is_active(commands::Tool::Brush));
+    assert!(!host::tool::is_active(commands::Tool::Pen));
     assert_eq!(host::tool::active_name(), "");
     assert_eq!(host::tool::pen_name(), "");
     assert_eq!(host::tool::pen_id(), "");
@@ -201,10 +208,20 @@ fn typed_host_helpers_are_callable_on_native_targets() {
 
 #[test]
 fn native_runtime_helpers_are_safe_noops() {
+    let mut batch = runtime::StatePatchBuffer::new();
+    batch.set_bool("flag", true);
+    batch.set_i32("count", 3);
+    batch.set_string("name", "demo");
+    batch.set_json("config", json!({"enabled": true}));
+    batch.toggle("expanded");
+    batch.apply();
+
     runtime::toggle_state("flag");
     runtime::set_state_bool("flag", true);
     runtime::set_state_i32("count", 3);
     runtime::set_state_string("name", "demo");
+    runtime::set_state_json("config", json!({"enabled": true}));
+    runtime::replace_state_json("config", json!({"enabled": false}));
     runtime::emit_command(&command("project.save").build());
     runtime::emit_command_descriptor(&command("project.load").build());
     runtime::info("info");
@@ -218,6 +235,27 @@ fn native_runtime_helpers_are_safe_noops() {
     assert!(!runtime::host_bool("host.bool"));
     assert_eq!(runtime::host_i32("host.int"), 0);
     assert_eq!(runtime::host_string("host.string"), "");
+}
+
+#[test]
+fn state_patch_buffer_collects_expected_patch_sequence() {
+    let mut batch = runtime::StatePatchBuffer::new();
+    batch.set_bool("show", true);
+    batch.set_i32("count", 7);
+    batch.set_string("name", "demo");
+    batch.replace_json("config", json!({"mode": "advanced"}));
+    batch.toggle("expanded");
+
+    assert_eq!(
+        batch.into_vec(),
+        vec![
+            panel_schema::StatePatch::set("show", true),
+            panel_schema::StatePatch::set("count", 7),
+            panel_schema::StatePatch::set("name", "demo"),
+            panel_schema::StatePatch::replace("config", json!({"mode": "advanced"})),
+            panel_schema::StatePatch::toggle("expanded"),
+        ]
+    );
 }
 
 #[test]

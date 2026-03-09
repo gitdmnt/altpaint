@@ -159,6 +159,11 @@ pub mod view {
         host_i32("view.quarter_turns")
     }
 
+    /// 現在の回転角を度単位で返す。
+    pub fn rotation_degrees() -> i32 {
+        host_i32("view.rotation_degrees")
+    }
+
     /// 左右反転中なら true を返す。
     pub fn flipped_x() -> bool {
         host_bool("view.flip_x")

@@ -1,6 +1,7 @@
 //! Wasm パネルから host ABI を呼び出すランタイム関数群を提供する。
 
 use panel_schema::CommandDescriptor;
+use panel_schema::StatePatch;
 #[cfg(target_arch = "wasm32")]
 use serde_json::Value;
 
@@ -11,6 +12,7 @@ unsafe extern "C" {
     fn state_set_bool(ptr: i32, len: i32, value: i32);
     fn state_set_i32(ptr: i32, len: i32, value: i32);
     fn state_set_string(path_ptr: i32, path_len: i32, value_ptr: i32, value_len: i32);
+    fn state_apply_json(ptr: i32, len: i32);
     fn state_get_bool(ptr: i32, len: i32) -> i32;
     fn state_get_i32(ptr: i32, len: i32) -> i32;
     fn state_get_string_len(ptr: i32, len: i32) -> i32;
@@ -82,6 +84,84 @@ pub fn set_state_string(path: impl AsRef<str>, value: impl AsRef<str>) {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn set_state_string(_path: impl AsRef<str>, _value: impl AsRef<str>) {}
+
+/// JSON 値で state を設定する。
+pub fn set_state_json(path: impl Into<String>, value: impl Into<serde_json::Value>) {
+    apply_state_patches(&[StatePatch::set(path.into(), value.into())]);
+}
+
+/// JSON 値で state を置換する。
+pub fn replace_state_json(path: impl Into<String>, value: impl Into<serde_json::Value>) {
+    apply_state_patches(&[StatePatch::replace(path.into(), value.into())]);
+}
+
+/// 複数 state patch をまとめて適用する。
+#[cfg(target_arch = "wasm32")]
+pub fn apply_state_patches(patches: &[StatePatch]) {
+    let Ok(serialized) = serde_json::to_string(patches) else {
+        error("failed to serialize state patch batch in panel-sdk runtime");
+        return;
+    };
+    with_bytes(&serialized, |ptr, len| unsafe {
+        state_apply_json(ptr, len)
+    });
+}
+
+/// 複数 state patch をまとめて適用する。
+#[cfg(not(target_arch = "wasm32"))]
+pub fn apply_state_patches(_patches: &[StatePatch]) {}
+
+/// まとめて適用する state patch バッファ。
+#[derive(Debug, Default, Clone)]
+pub struct StatePatchBuffer {
+    patches: Vec<StatePatch>,
+}
+
+impl StatePatchBuffer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.patches.is_empty()
+    }
+
+    pub fn push(&mut self, patch: StatePatch) {
+        self.patches.push(patch);
+    }
+
+    pub fn set_bool(&mut self, path: impl Into<String>, value: bool) {
+        self.push(StatePatch::set(path.into(), value));
+    }
+
+    pub fn set_i32(&mut self, path: impl Into<String>, value: i32) {
+        self.push(StatePatch::set(path.into(), value));
+    }
+
+    pub fn set_string(&mut self, path: impl Into<String>, value: impl Into<String>) {
+        self.push(StatePatch::set(path.into(), value.into()));
+    }
+
+    pub fn set_json(&mut self, path: impl Into<String>, value: impl Into<serde_json::Value>) {
+        self.push(StatePatch::set(path.into(), value.into()));
+    }
+
+    pub fn replace_json(&mut self, path: impl Into<String>, value: impl Into<serde_json::Value>) {
+        self.push(StatePatch::replace(path.into(), value.into()));
+    }
+
+    pub fn toggle(&mut self, path: impl Into<String>) {
+        self.push(StatePatch::toggle(path.into()));
+    }
+
+    pub fn apply(&self) {
+        apply_state_patches(&self.patches);
+    }
+
+    pub fn into_vec(self) -> Vec<StatePatch> {
+        self.patches
+    }
+}
 
 /// 真偽値 state を取得する。
 #[cfg(target_arch = "wasm32")]

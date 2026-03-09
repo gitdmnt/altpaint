@@ -9,14 +9,21 @@ fn default_document_has_single_page_single_panel_single_layer() {
     assert_eq!(document.work.pages.len(), 1);
     assert_eq!(document.work.pages[0].panels.len(), 1);
     assert_eq!(document.work.pages[0].panels[0].root_layer.name, "Layer 1");
-    assert_eq!(document.work.pages[0].panels[0].bitmap.width, 64);
-    assert_eq!(document.work.pages[0].panels[0].bitmap.height, 64);
+    assert_eq!(
+        document.work.pages[0].panels[0].bitmap.width,
+        DEFAULT_DOCUMENT_WIDTH
+    );
+    assert_eq!(
+        document.work.pages[0].panels[0].bitmap.height,
+        DEFAULT_DOCUMENT_HEIGHT
+    );
 }
 
 /// 点描画が対象ピクセルを黒に変えることを確認する。
 #[test]
 fn draw_point_marks_target_pixel_black() {
     let mut document = Document::default();
+    document.set_active_pen_size(1);
 
     let dirty = document.draw_point(3, 4).expect("panel should exist");
 
@@ -30,6 +37,7 @@ fn draw_point_marks_target_pixel_black() {
 #[test]
 fn draw_stroke_draws_continuous_line() {
     let mut document = Document::default();
+    document.set_active_pen_size(1);
 
     let dirty = document.draw_stroke(2, 2, 6, 2).expect("panel should exist");
 
@@ -44,6 +52,7 @@ fn draw_stroke_draws_continuous_line() {
 #[test]
 fn erase_point_marks_target_pixel_white() {
     let mut document = Document::default();
+    document.set_active_pen_size(1);
     let _ = document.draw_point(3, 4);
 
     let dirty = document.erase_point(3, 4).expect("panel should exist");
@@ -55,10 +64,10 @@ fn erase_point_marks_target_pixel_white() {
 }
 
 #[test]
-fn active_tool_defaults_to_brush() {
+fn active_tool_defaults_to_pen() {
     let document = Document::default();
 
-    assert_eq!(document.active_tool, ToolKind::Brush);
+    assert_eq!(document.active_tool, ToolKind::Pen);
 }
 
 #[test]
@@ -149,6 +158,7 @@ fn apply_command_switches_active_color() {
 #[test]
 fn apply_command_draw_stroke_returns_dirty_rect() {
     let mut document = Document::default();
+    let _ = document.apply_command(&Command::SetActivePenSize { size: 1 });
 
     let dirty = document.apply_command(&Command::DrawStroke {
         from_x: 1,
@@ -165,7 +175,7 @@ fn apply_command_draw_stroke_returns_dirty_rect() {
 }
 
 #[test]
-fn pen_draws_wider_than_single_pixel_brush() {
+fn pen_draws_wider_than_single_pixel_default_stroke() {
     let mut document = Document::default();
     let _ = document.apply_command(&Command::SetActiveTool { tool: ToolKind::Pen });
     let _ = document.apply_command(&Command::SetActivePenSize { size: 5 });

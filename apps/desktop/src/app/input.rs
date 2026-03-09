@@ -313,6 +313,9 @@ impl DesktopApp {
                 if active_tool == ToolKind::LassoBucket {
                     self.canvas_input.lasso_points.clear();
                     self.canvas_input.lasso_points.push((canvas_x, canvas_y));
+                    if let Some(layout) = self.layout.as_ref() {
+                        self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
+                    }
                     return false;
                 }
                 self.execute_canvas_command(canvas_x, canvas_y, None, pressure)
@@ -321,6 +324,9 @@ impl DesktopApp {
                 if active_tool == ToolKind::LassoBucket {
                     if self.canvas_input.lasso_points.last().copied() != Some((canvas_x, canvas_y)) {
                         self.canvas_input.lasso_points.push((canvas_x, canvas_y));
+                        if let Some(layout) = self.layout.as_ref() {
+                            self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
+                        }
                     }
                     self.canvas_input.last_position = Some((canvas_x, canvas_y));
                     return false;
@@ -344,6 +350,9 @@ impl DesktopApp {
                     } else {
                         false
                     };
+                    if let Some(layout) = self.layout.as_ref() {
+                        self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
+                    }
                     self.canvas_input = CanvasInputState::default();
                     return changed;
                 }

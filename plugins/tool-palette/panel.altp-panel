@@ -14,13 +14,12 @@ runtime {
 }
 
 state {
-  active_tool: string = "brush"
+  active_tool: string = "pen"
   pen_name: string = ""
   pen_size: int = 1
   pen_count: int = 0
   show_shortcuts: bool = false
   session.capture_target: string = ""
-  config.brush_shortcut: string = "B"
   config.pen_shortcut: string = "P"
   config.eraser_shortcut: string = "E"
   config.bucket_shortcut: string = "G"
@@ -31,7 +30,6 @@ view {
   <column gap=8 padding=8>
     <section title="Tools">
       <text tone="muted">Hosted via Rust SDK + Wasm</text>
-      <button id="tool.brush" on:click="activate_brush" active={state.active_tool == "brush"}>Brush</button>
       <button id="tool.pen" on:click="activate_pen" active={state.active_tool == "pen"}>Pen</button>
       <button id="tool.eraser" on:click="activate_eraser" active={state.active_tool == "eraser"}>Eraser</button>
       <button id="tool.bucket" on:click="activate_bucket" active={state.active_tool == "bucket"}>Bucket</button>
@@ -47,8 +45,6 @@ view {
       <button id="tool.shortcuts" on:click="toggle_shortcuts" active={state.show_shortcuts}>Keyboard...</button>
       <when test={state.show_shortcuts}>
         <section title="Shortcuts">
-          <text>Brush: {state.config.brush_shortcut}</text>
-          <button id="tool.shortcut.brush" on:click="capture_brush_shortcut" active={state.session.capture_target == "brush"}>Capture Brush</button>
           <text>Pen: {state.config.pen_shortcut}</text>
           <button id="tool.shortcut.pen" on:click="capture_pen_shortcut" active={state.session.capture_target == "pen"}>Capture Pen</button>
           <text>Eraser: {state.config.eraser_shortcut}</text>

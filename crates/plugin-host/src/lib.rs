@@ -156,6 +156,34 @@ impl WasmPanelRuntime {
         linker
             .func_wrap(
                 "host",
+                "state_apply_json",
+                |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| {
+                    let Some(payload_text) = read_utf8(&mut caller, ptr, len) else {
+                        caller
+                            .data_mut()
+                            .result
+                            .diagnostics
+                            .push(Diagnostic::error("failed to read state patch batch json"));
+                        return;
+                    };
+                    let Ok(patches) = serde_json::from_str::<Vec<StatePatch>>(&payload_text) else {
+                        caller
+                            .data_mut()
+                            .result
+                            .diagnostics
+                            .push(Diagnostic::error("failed to parse state patch batch json"));
+                        return;
+                    };
+                    caller.data_mut().result.state_patch.extend(patches);
+                },
+            )
+            .map_err(|error| PluginHostError::Instantiate {
+                path: path.clone(),
+                message: error.to_string(),
+            })?;
+        linker
+            .func_wrap(
+                "host",
                 "state_get_bool",
                 |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| -> i32 {
                     let Some(path) = read_utf8(&mut caller, ptr, len) else {
@@ -844,6 +872,7 @@ mod tests {
     const SAMPLE_WAT: &str = r#"(module
   (import "host" "state_toggle" (func $state_toggle (param i32 i32)))
   (import "host" "state_set_bool" (func $state_set_bool (param i32 i32 i32)))
+    (import "host" "state_apply_json" (func $state_apply_json (param i32 i32)))
     (import "host" "state_get_string_len" (func $state_get_string_len (param i32 i32) (result i32)))
     (import "host" "state_get_string_copy" (func $state_get_string_copy (param i32 i32 i32 i32)))
   (import "host" "command" (func $command (param i32 i32)))
@@ -854,10 +883,11 @@ mod tests {
   (data (i32.const 16) "project.save")
   (data (i32.const 32) "tool.set_active")
   (data (i32.const 64) "tool")
-  (data (i32.const 80) "brush")
+    (data (i32.const 80) "pen")
     (data (i32.const 96) "save_path")
     (data (i32.const 128) "layer.move")
     (data (i32.const 160) "{\22from_index\22:2,\22to_index\22:0}")
+        (data (i32.const 224) "[{\22op\22:\22set\22,\22path\22:\22batched.value\22,\22value\22:7},{\22op\22:\22toggle\22,\22path\22:\22batched.enabled\22}]")
   (func (export "panel_init")
     i32.const 0
     i32.const 8
@@ -871,13 +901,13 @@ mod tests {
     i32.const 16
     i32.const 12
     call $command)
-  (func (export "panel_handle_activate_brush")
+    (func (export "panel_handle_activate_pen")
     i32.const 32
     i32.const 15
     i32.const 64
     i32.const 4
     i32.const 80
-    i32.const 5
+        i32.const 3
         call $command_string)
     (func (export "panel_handle_move_layer")
         i32.const 128
@@ -885,6 +915,10 @@ mod tests {
         i32.const 160
         i32.const 29
         call $command_json)
+    (func (export "panel_handle_apply_batch")
+        i32.const 224
+        i32.const 88
+        call $state_apply_json)
     (func (export "panel_handle_save_path_len")
         i32.const 96
         i32.const 9
@@ -973,9 +1007,9 @@ mod tests {
             .expect("save handler runs");
         assert_eq!(saved.commands, vec![CommandDescriptor::new("project.save")]);
 
-        let brush = runtime
+        let pen = runtime
             .handle_event(&PanelEventRequest {
-                handler_name: "activate_brush".to_string(),
+                handler_name: "activate_pen".to_string(),
                 event_kind: "click".to_string(),
                 event_payload: json!({}),
                 state_snapshot: init.state,
@@ -985,8 +1019,8 @@ mod tests {
         let mut expected = CommandDescriptor::new("tool.set_active");
         expected
             .payload
-            .insert("tool".to_string(), Value::String("brush".to_string()));
-        assert_eq!(brush.commands, vec![expected]);
+            .insert("tool".to_string(), Value::String("pen".to_string()));
+        assert_eq!(pen.commands, vec![expected]);
 
         let string_len = runtime
             .handle_event(&PanelEventRequest {
@@ -1016,6 +1050,23 @@ mod tests {
             .payload
             .insert("to_index".to_string(), json!(0));
         assert_eq!(moved.commands, vec![expected_move]);
+
+        let batched = runtime
+            .handle_event(&PanelEventRequest {
+                handler_name: "apply_batch".to_string(),
+                event_kind: "change".to_string(),
+                event_payload: json!({}),
+                state_snapshot: json!({}),
+                host_snapshot: json!({}),
+            })
+            .expect("state batch handler runs");
+        assert_eq!(
+            batched.state_patch,
+            vec![
+                StatePatch::set("batched.value", 7),
+                StatePatch::toggle("batched.enabled"),
+            ]
+        );
     }
 
     #[test]

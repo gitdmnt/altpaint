@@ -1,19 +1,25 @@
 use panel_sdk::{
     commands,
     host,
-    runtime::{emit_command, set_state_bool, set_state_string},
+    runtime::{emit_command, set_state_bool, set_state_i32, set_state_string},
     state,
 };
 
 const ZOOM_LABEL: state::StringKey = state::string("zoom_label");
+const ZOOM_SLIDER: state::IntKey = state::int("zoom_slider");
 const PAN_LABEL: state::StringKey = state::string("pan_label");
+const PAN_X_SLIDER: state::IntKey = state::int("pan_x_slider");
+const PAN_Y_SLIDER: state::IntKey = state::int("pan_y_slider");
 const ROTATION_LABEL: state::StringKey = state::string("rotation_label");
+const ROTATION_SLIDER: state::IntKey = state::int("rotation_slider");
 const FLIP_X: state::BoolKey = state::bool("flip_x");
 const FLIP_Y: state::BoolKey = state::bool("flip_y");
 
-const PAN_STEP: f32 = 32.0;
-const ZOOM_IN_FACTOR: f32 = 1.25;
-const ZOOM_OUT_FACTOR: f32 = 0.8;
+const MIN_ZOOM_PERCENT: i32 = 25;
+const MAX_ZOOM_PERCENT: i32 = 1600;
+const PAN_SLIDER_CENTER: i32 = 2000;
+const PAN_SLIDER_MIN: i32 = 0;
+const PAN_SLIDER_MAX: i32 = 4000;
 
 #[panel_sdk::panel_init]
 fn init() {}
@@ -23,74 +29,71 @@ fn sync_host() {
     let zoom_milli = host::view::zoom_milli().max(1);
     let zoom_percent = zoom_milli as f32 / 10.0;
     set_state_string(ZOOM_LABEL, format!("{zoom_percent:.1}%"));
+    set_state_i32(
+        ZOOM_SLIDER,
+        ((zoom_milli + 5) / 10).clamp(MIN_ZOOM_PERCENT, MAX_ZOOM_PERCENT),
+    );
     set_state_string(
         PAN_LABEL,
         format!("{}, {}", host::view::pan_x(), host::view::pan_y()),
     );
+    set_state_i32(
+        PAN_X_SLIDER,
+        (host::view::pan_x() + PAN_SLIDER_CENTER).clamp(PAN_SLIDER_MIN, PAN_SLIDER_MAX),
+    );
+    set_state_i32(
+        PAN_Y_SLIDER,
+        (host::view::pan_y() + PAN_SLIDER_CENTER).clamp(PAN_SLIDER_MIN, PAN_SLIDER_MAX),
+    );
     set_state_string(
         ROTATION_LABEL,
-        format!("{}°", normalized_rotation_degrees(host::view::quarter_turns())),
+        format!("{}°", host::view::rotation_degrees().rem_euclid(360)),
+    );
+    set_state_i32(
+        ROTATION_SLIDER,
+        host::view::rotation_degrees().rem_euclid(360),
     );
     set_state_bool(FLIP_X, host::view::flipped_x());
     set_state_bool(FLIP_Y, host::view::flipped_y());
 }
 
-fn zoom_with_factor(factor: f32) {
-    let current = host::view::zoom_milli().max(1) as f32 / 1000.0;
-    emit_command(&commands::view::zoom((current * factor).clamp(0.25, 16.0)));
-}
-
-fn pan(delta_x: f32, delta_y: f32) {
-    emit_command(&commands::view::pan(delta_x, delta_y));
-}
-
+#[cfg(test)]
 fn normalized_rotation_degrees(quarter_turns: i32) -> i32 {
     quarter_turns.rem_euclid(4) * 90
 }
 
 #[panel_sdk::panel_handler]
-fn zoom_in() {
-    zoom_with_factor(ZOOM_IN_FACTOR);
+fn set_zoom(value: i32) {
+    let zoom_percent = value.clamp(MIN_ZOOM_PERCENT, MAX_ZOOM_PERCENT) as f32;
+    emit_command(&commands::view::zoom(zoom_percent / 100.0));
 }
 
 #[panel_sdk::panel_handler]
-fn zoom_out() {
-    zoom_with_factor(ZOOM_OUT_FACTOR);
+fn set_pan_x(value: i32) {
+    emit_command(&commands::view::set_pan(
+        (value - PAN_SLIDER_CENTER) as f32,
+        host::view::pan_y() as f32,
+    ));
+}
+
+#[panel_sdk::panel_handler]
+fn set_pan_y(value: i32) {
+    emit_command(&commands::view::set_pan(
+        host::view::pan_x() as f32,
+        (value - PAN_SLIDER_CENTER) as f32,
+    ));
+}
+
+#[panel_sdk::panel_handler]
+fn set_rotation(value: i32) {
+    emit_command(&commands::view::set_rotation_degrees(
+        value.rem_euclid(360) as f32,
+    ));
 }
 
 #[panel_sdk::panel_handler]
 fn reset_view() {
     emit_command(&commands::view::reset());
-}
-
-#[panel_sdk::panel_handler]
-fn pan_left() {
-    pan(-PAN_STEP, 0.0);
-}
-
-#[panel_sdk::panel_handler]
-fn pan_right() {
-    pan(PAN_STEP, 0.0);
-}
-
-#[panel_sdk::panel_handler]
-fn pan_up() {
-    pan(0.0, -PAN_STEP);
-}
-
-#[panel_sdk::panel_handler]
-fn pan_down() {
-    pan(0.0, PAN_STEP);
-}
-
-#[panel_sdk::panel_handler]
-fn rotate_left() {
-    emit_command(&commands::view::rotate(-1));
-}
-
-#[panel_sdk::panel_handler]
-fn rotate_right() {
-    emit_command(&commands::view::rotate(1));
 }
 
 #[panel_sdk::panel_handler]
@@ -117,15 +120,11 @@ mod tests {
     fn panel_entrypoints_are_callable_on_native_targets() {
         init();
         sync_host();
-        zoom_in();
-        zoom_out();
+        set_zoom(125);
+        set_pan_x(2100);
+        set_pan_y(1950);
+        set_rotation(270);
         reset_view();
-        pan_left();
-        pan_right();
-        pan_up();
-        pan_down();
-        rotate_left();
-        rotate_right();
         flip_horizontal();
         flip_vertical();
     }

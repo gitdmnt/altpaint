@@ -144,9 +144,10 @@ pub(crate) struct CanvasCompositeSource<'a> {
 }
 
 /// キャンバス上の一時オーバーレイ状態を保持する。
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct CanvasOverlayState {
     pub(crate) brush_preview: Option<(usize, usize)>,
+    pub(crate) lasso_points: Vec<(usize, usize)>,
 }
 
 /// GPU 上で提示するテクスチャ付き矩形を表す。

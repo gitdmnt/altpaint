@@ -41,12 +41,14 @@ impl Default for ColorRgba8 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ToolKind {
     #[default]
-    Brush,
     Pen,
     Eraser,
     Bucket,
     LassoBucket,
 }
+
+pub const DEFAULT_DOCUMENT_WIDTH: usize = 2894;
+pub const DEFAULT_DOCUMENT_HEIGHT: usize = 4093;
 
 /// 外部読込可能な最小ペンプリセットを表す。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -456,7 +458,7 @@ pub struct CanvasBitmap {
 
 impl Default for Document {
     fn default() -> Self {
-        Self::new(64, 64)
+        Self::new(DEFAULT_DOCUMENT_WIDTH, DEFAULT_DOCUMENT_HEIGHT)
     }
 }
 
@@ -655,10 +657,19 @@ impl Document {
                 self.view_transform.pan_y += delta_y;
                 None
             }
+            Command::SetViewPan { pan_x, pan_y } => {
+                self.view_transform.pan_x = *pan_x;
+                self.view_transform.pan_y = *pan_y;
+                None
+            }
             Command::RotateView { quarter_turns } => {
                 self.view_transform.rotation_degrees = (self.view_transform.rotation_degrees
                     + (*quarter_turns as f32 * 90.0))
                     .rem_euclid(360.0);
+                None
+            }
+            Command::SetViewRotation { rotation_degrees } => {
+                self.view_transform.rotation_degrees = rotation_degrees.rem_euclid(360.0);
                 None
             }
             Command::FlipViewHorizontally => {

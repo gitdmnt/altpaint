@@ -178,6 +178,11 @@ impl CanvasScene {
         })
     }
 
+    /// キャンバス座標を表示座標へ変換する。
+    pub fn map_canvas_point_to_display(&self, canvas_position: (usize, usize)) -> Option<(f32, f32)> {
+        self.map_source_point_to_display(canvas_position)
+    }
+
     /// ビュー座標をキャンバスビットマップ座標へ変換する。
     pub fn map_view_to_canvas(&self, x: i32, y: i32) -> Option<(usize, usize)> {
         let drawn_width = self.rotated_width as f32 * self.scale;
@@ -436,6 +441,18 @@ pub fn brush_preview_rect(
 ) -> Option<PixelRect> {
     prepare_canvas_scene(viewport, source_width, source_height, transform)
         .and_then(|scene| scene.brush_preview_rect(canvas_position))
+}
+
+/// キャンバス座標を表示座標へ変換する。
+pub fn map_canvas_point_to_display(
+    viewport: PixelRect,
+    source_width: usize,
+    source_height: usize,
+    transform: CanvasViewTransform,
+    canvas_position: (usize, usize),
+) -> Option<(f32, f32)> {
+    prepare_canvas_scene(viewport, source_width, source_height, transform)
+        .and_then(|scene| scene.map_canvas_point_to_display(canvas_position))
 }
 
 /// キャンバス quad を返す。

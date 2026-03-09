@@ -94,6 +94,7 @@ impl DesktopApp {
                     self.document.view_transform,
                     CanvasOverlayState {
                         brush_preview: self.hover_canvas_position,
+                        lasso_points: self.canvas_input.lasso_points.clone(),
                     },
                 )
             });
@@ -205,6 +206,7 @@ impl DesktopApp {
                     self.document.view_transform,
                     CanvasOverlayState {
                         brush_preview: self.hover_canvas_position,
+                        lasso_points: self.canvas_input.lasso_points.clone(),
                     },
                     Some(dirty_rect),
                 );

@@ -17,10 +17,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use app_core::Document;
 use desktop_support::{
-    DEFAULT_PROJECT_PATH, DesktopDialogs, NativeDesktopDialogs, default_panel_dir,
-    load_session_state,
+    DEFAULT_PROJECT_PATH, DesktopDialogs, NativeDesktopDialogs, default_canvas_template_path,
+    default_canvas_templates, default_panel_dir, load_canvas_templates, load_session_state,
+    save_canvas_templates,
 };
 use render::RenderFrame;
+use serde_json::{Map, Value, json};
 use ui_shell::{PanelSurface, UiShell};
 
 use self::state::{PanelDragState, PendingSaveTask, PresentFrameUpdate};
@@ -116,7 +118,7 @@ impl DesktopApp {
         Self::reload_pen_presets_into_document(&mut document);
         ui_shell.update(&document);
 
-        Self {
+        let mut app = Self {
             document,
             ui_shell,
             project_path,
@@ -138,6 +140,51 @@ impl DesktopApp {
             needs_status_refresh: false,
             needs_full_present_rebuild: true,
             pending_save_tasks: Vec::new(),
+        };
+        app.ensure_canvas_templates_file();
+        app.refresh_new_document_templates();
+        app
+    }
+
+    pub(crate) fn refresh_new_document_templates(&mut self) {
+        let templates = load_canvas_templates(default_canvas_template_path());
+        let default_template = templates
+            .first()
+            .cloned()
+            .or_else(|| default_canvas_templates().into_iter().next());
+        let options = templates
+            .iter()
+            .map(|template| template.dropdown_option())
+            .collect::<Vec<_>>()
+            .join("|");
+
+        let mut configs = self.ui_shell.persistent_panel_configs();
+        let entry = configs
+            .entry("builtin.app-actions".to_string())
+            .or_insert_with(|| Value::Object(Map::new()));
+        if !entry.is_object() {
+            *entry = Value::Object(Map::new());
+        }
+        let object = entry.as_object_mut().expect("config object created");
+        object.insert("template_options".to_string(), json!(options));
+        object.insert(
+            "default_template_size".to_string(),
+            json!(default_template
+                .as_ref()
+                .map(|template| template.size_string())
+                .unwrap_or_else(|| "2894x4093".to_string())),
+        );
+        self.ui_shell.set_persistent_panel_configs(configs);
+    }
+
+    fn ensure_canvas_templates_file(&self) {
+        let path = default_canvas_template_path();
+        if path.exists() {
+            return;
+        }
+
+        if let Err(error) = save_canvas_templates(&path, &default_canvas_templates()) {
+            eprintln!("failed to create canvas templates file: {error}");
         }
     }
 }

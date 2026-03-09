@@ -2,6 +2,7 @@ mod config;
 mod dialogs;
 mod profiler;
 mod session;
+mod templates;
 
 pub use config::{
     APP_BACKGROUND, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND, CANVAS_FRAME_BORDER,
@@ -16,4 +17,8 @@ pub use profiler::{DesktopProfiler, PerformanceSnapshot, PresentTimings, StageSt
 pub use session::{
     DesktopSessionState, default_session_path, load_session_state, save_session_state,
     startup_project_path,
+};
+pub use templates::{
+    CanvasTemplate, default_canvas_template_path, default_canvas_templates,
+    load_canvas_templates, save_canvas_templates,
 };

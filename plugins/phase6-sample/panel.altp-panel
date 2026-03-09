@@ -31,7 +31,7 @@ view {
         <button id="dsl.sample.load" on:click="load_project">Load</button>
       </row>
       <row gap=6>
-        <button id="dsl.sample.brush" on:click="activate_brush" active={state.active_tool == "brush"}>Brush</button>
+        <button id="dsl.sample.pen" on:click="activate_pen" active={state.active_tool == "pen"}>Pen</button>
         <button id="dsl.sample.eraser" on:click="activate_eraser" active={state.active_tool == "eraser"}>Eraser</button>
       </row>
       <toggle id="dsl.sample.expanded" checked={state.expanded} on:change="toggle_expanded">Show details</toggle>

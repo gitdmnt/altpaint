@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use app_core::{ColorRgba8, Command, ToolKind};
+use app_core::{ColorRgba8, Command, ToolKind, DEFAULT_DOCUMENT_HEIGHT, DEFAULT_DOCUMENT_WIDTH};
 use desktop_support::{DesktopProfiler, default_panel_dir, parse_document_size};
 use plugin_api::HostAction;
 use serde_json::json;
@@ -44,7 +44,7 @@ fn execute_command_new_document_resets_tool_to_default() {
         height: 64,
     });
 
-    assert_eq!(app.document.active_tool, ToolKind::Brush);
+    assert_eq!(app.document.active_tool, ToolKind::Pen);
 }
 
 /// ホストアクション経由でもツール切替が同じ経路で適用されることを確認する。
@@ -74,6 +74,10 @@ fn keyboard_panel_focus_can_activate_app_action() {
 #[test]
 fn parse_document_size_accepts_common_formats() {
     assert_eq!(parse_document_size("64x64"), Some((64, 64)));
+    assert_eq!(
+        parse_document_size("2894x4093"),
+        Some((DEFAULT_DOCUMENT_WIDTH, DEFAULT_DOCUMENT_HEIGHT))
+    );
     assert_eq!(parse_document_size("320 240"), Some((320, 240)));
     assert_eq!(parse_document_size("800,600"), Some((800, 600)));
     assert_eq!(parse_document_size("0x600"), None);
@@ -92,16 +96,6 @@ fn plugin_keyboard_shortcut_can_switch_tool() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
     app.document.set_active_tool(ToolKind::Eraser);
 
-    assert!(app.dispatch_keyboard_shortcut("B", "B", false));
-
-    assert_eq!(app.document.active_tool, ToolKind::Brush);
-}
-
-#[test]
-fn plugin_keyboard_shortcut_can_switch_to_pen() {
-    let mut app = test_app_with_dialogs(TestDialogs::default());
-    app.document.set_active_tool(ToolKind::Brush);
-
     assert!(app.dispatch_keyboard_shortcut("P", "P", false));
 
     assert_eq!(app.document.active_tool, ToolKind::Pen);
@@ -119,7 +113,9 @@ fn plugin_keyboard_capture_updates_persistent_config() {
     assert_eq!(
         configs.get("builtin.app-actions"),
         Some(&json!({
+            "default_template_size": "2894x4093",
             "new_shortcut": "Ctrl+Alt+N",
+            "template_options": "2894x4093:A4 350dpi (2894×4093)|2480x3508:A4 300dpi (2480×3508)|2048x2048:Square 2048 (2048×2048)|1920x1080:HD Landscape (1920×1080)",
             "save_shortcut": "Ctrl+S",
             "save_as_shortcut": "Ctrl+Shift+S",
             "open_shortcut": "Ctrl+O"

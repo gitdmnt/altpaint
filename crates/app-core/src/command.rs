@@ -63,8 +63,12 @@ pub enum Command {
     SetViewZoom { zoom: f32 },
     /// キャンバス表示を平行移動する。
     PanView { delta_x: f32, delta_y: f32 },
+    /// キャンバス表示のパン位置を絶対値で設定する。
+    SetViewPan { pan_x: f32, pan_y: f32 },
     /// キャンバス表示を 90 度単位で回転する。
     RotateView { quarter_turns: i32 },
+    /// キャンバス表示の回転角を度単位で設定する。
+    SetViewRotation { rotation_degrees: f32 },
     /// キャンバス表示を左右反転する。
     FlipViewHorizontally,
     /// キャンバス表示を上下反転する。

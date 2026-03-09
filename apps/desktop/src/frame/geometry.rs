@@ -131,6 +131,23 @@ pub(crate) fn brush_preview_rect(
     .map(from_render_rect)
 }
 
+/// キャンバス座標を表示座標へ変換する。
+pub(crate) fn map_canvas_point_to_display(
+    destination: Rect,
+    source_width: usize,
+    source_height: usize,
+    transform: CanvasViewTransform,
+    canvas_position: (usize, usize),
+) -> Option<(f32, f32)> {
+    render::map_canvas_point_to_display(
+        to_render_rect(destination),
+        source_width,
+        source_height,
+        transform,
+        canvas_position,
+    )
+}
+
 /// ビュー変換後に実際に描かれるキャンバス領域を返す。
 #[allow(dead_code)]
 pub(crate) fn canvas_drawn_rect(
