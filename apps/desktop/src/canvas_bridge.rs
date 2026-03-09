@@ -1,12 +1,19 @@
+//! キャンバス表示座標と編集コマンドの橋渡しを担当する。
+//!
+//! ランタイムやアプリ状態から独立した純粋関数として、
+//! ポインタイベント解釈とツール別コマンド生成を提供する。
+
 use app_core::{Command, ToolKind};
 use render::RenderFrame;
 
+/// キャンバス入力中の最小状態を表す。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CanvasInputState {
     pub is_drawing: bool,
     pub last_position: Option<(usize, usize)>,
 }
 
+/// ビュー空間で受け取ったキャンバスポインタイベントを表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CanvasPointerEvent {
     pub x: i32,
@@ -15,6 +22,7 @@ pub struct CanvasPointerEvent {
     pub height: i32,
 }
 
+/// 表示座標をビットマップ座標へ変換する。
 pub fn map_view_to_canvas(
     frame: &RenderFrame,
     event: CanvasPointerEvent,
@@ -50,6 +58,7 @@ pub fn map_view_to_canvas(
     ))
 }
 
+/// ツール種別と前回位置からキャンバス編集コマンドを生成する。
 pub fn command_for_canvas_gesture(
     tool: ToolKind,
     current: (usize, usize),

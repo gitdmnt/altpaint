@@ -1,3 +1,8 @@
+//! `wgpu` を使ってソフトウェア合成フレームを画面へ提示する。
+//!
+//! フレームアップロード、差分転送、最終プレゼントの責務をここへ閉じ込め、
+//! アプリ本体が GPU API 詳細へ依存しないようにする。
+
 use anyhow::{Context, Result};
 use render::RenderFrame;
 use std::sync::Arc;
@@ -5,6 +10,7 @@ use std::time::{Duration, Instant};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
+/// フルスクリーントライアングルで提示テクスチャを描画する WGSL シェーダを表す。
 const PRESENT_SHADER: &str = r#"
 @group(0) @binding(0)
 var present_texture: texture_2d<f32>;
@@ -42,6 +48,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 }
 "#;
 
+/// GPU 上へアップロード済みのフレームテクスチャ一式を保持する。
 #[derive(Debug)]
 struct UploadedFrameTexture {
     texture: wgpu::Texture,
@@ -50,6 +57,7 @@ struct UploadedFrameTexture {
     height: u32,
 }
 
+/// 差分アップロードする矩形領域を表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UploadRegion {
     pub x: u32,
@@ -58,6 +66,7 @@ pub struct UploadRegion {
     pub height: u32,
 }
 
+/// 1 回の提示処理にかかった時間内訳を表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PresentTimings {
     pub upload: Duration,
@@ -65,6 +74,7 @@ pub struct PresentTimings {
     pub present: Duration,
 }
 
+/// ソフトウェア合成フレームを `wgpu` サーフェスへ提示するプレゼンタを表す。
 pub struct WgpuPresenter {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
@@ -76,6 +86,7 @@ pub struct WgpuPresenter {
     uploaded_frame: Option<UploadedFrameTexture>,
 }
 
+/// 使用可能なモードから低遅延寄りの present mode を選ぶ。
 fn preferred_present_mode(modes: &[wgpu::PresentMode]) -> wgpu::PresentMode {
     [
         wgpu::PresentMode::Mailbox,
@@ -89,6 +100,7 @@ fn preferred_present_mode(modes: &[wgpu::PresentMode]) -> wgpu::PresentMode {
 }
 
 impl WgpuPresenter {
+    /// ウィンドウに紐づく `wgpu` デバイス・サーフェス一式を初期化する。
     pub async fn new(window: Arc<Window>) -> Result<Self> {
         let size = window.inner_size();
         let instance = wgpu::Instance::default();
@@ -210,6 +222,7 @@ impl WgpuPresenter {
         })
     }
 
+    /// サーフェスサイズ変更に追従して再設定する。
     pub fn resize(&mut self, size: PhysicalSize<u32>) {
         if size.width == 0 || size.height == 0 {
             return;
@@ -220,6 +233,7 @@ impl WgpuPresenter {
         self.surface.configure(&self.device, &self.config);
     }
 
+    /// 合成フレームをアップロードして現在サーフェスへ提示する。
     pub fn render(
         &mut self,
         frame: &RenderFrame,
@@ -309,6 +323,7 @@ impl WgpuPresenter {
         })
     }
 
+    /// 現在のフレーム寸法に対応したアップロード用テクスチャを確保する。
     fn ensure_uploaded_frame(&mut self, width: u32, height: u32) {
         let needs_rebuild = self
             .uploaded_frame
@@ -356,6 +371,7 @@ impl WgpuPresenter {
         });
     }
 
+    /// フレーム全体をテクスチャへアップロードする。
     fn upload_frame(&mut self, frame: &RenderFrame) {
         let Some(uploaded_frame) = self.uploaded_frame.as_ref() else {
             return;
@@ -382,6 +398,7 @@ impl WgpuPresenter {
         );
     }
 
+    /// 指定領域だけをパックしてテクスチャへアップロードする。
     fn upload_frame_region(&mut self, frame: &RenderFrame, region: UploadRegion) {
         let Some(uploaded_frame) = self.uploaded_frame.as_ref() else {
             return;

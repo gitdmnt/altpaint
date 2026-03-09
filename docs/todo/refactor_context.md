@@ -62,3 +62,29 @@
 - Regions: 77.16% → 79.02% (+1.86pt)
 - Functions: 76.40% → 80.80% (+4.40pt)
 - Lines: 75.83% → 77.65% (+1.82pt)
+
+## 2026-03-09 第二段階の責務分割
+
+- `apps/desktop/src/main.rs` を薄い起動ファイルへ縮小
+- `apps/desktop/src/config.rs` へ共有定数とテスト用寸法パーサを移動
+- `apps/desktop/src/dialogs.rs` へダイアログ境界とパス正規化を移動
+- `apps/desktop/src/app/` を新設し、状態本体・描画更新・入力解釈・コマンド副作用を分離
+- `apps/desktop/src/runtime.rs` へ `winit` / `wgpu` の実行時副作用を集約
+- `apps/desktop/src/frame/tests.rs` と `apps/desktop/src/runtime/tests.rs` へテストを分離
+- `apps/desktop/src/frame.rs` / `profiler.rs` / `canvas_bridge.rs` / `wgpu_canvas.rs` にモジュールドキュメントと関数 doc comment を追加
+
+## 2026-03-09 第二段階の検証結果
+
+- `cargo test --workspace`: 成功
+- `cargo clippy --workspace --all-targets`: 成功
+- `cargo llvm-cov --workspace --summary-only`: 成功
+- 最新総カバレッジ
+  - Regions: 77.59%
+  - Functions: 79.56%
+  - Lines: 76.36%
+
+## 第二段階の補足
+
+- デスクトップ側の巨大テストモジュールは `app/tests/`、`frame/tests.rs`、`runtime/tests.rs` へ分散済み
+- `main.rs` は 20 行前後まで縮小し、エントリポイント以外の責務を持たない形に整理済み
+- 主要ファイルの行数は 2000 行級から解消したが、`runtime.rs` と `frame.rs` はまだ 500 行前後であり、今後さらにイベント種別や描画補助ごとの分割余地がある

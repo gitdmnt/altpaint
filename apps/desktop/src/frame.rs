@@ -1,10 +1,15 @@
+//! デスクトップ UI の固定レイアウト計算とソフトウェア合成を担当する。
+//!
+//! `DesktopApp` や `runtime` から純粋に近い描画計算を切り離し、
+//! フレーム差分更新の基礎部品を提供する。
+
 use app_core::DirtyRect;
 use ui_shell::{PanelSurface, draw_text_rgba};
 
-use crate::{
-    APP_BACKGROUND, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND, CANVAS_FRAME_BORDER,
-    FOOTER_HEIGHT, HEADER_HEIGHT, PANEL_FRAME_BACKGROUND, PANEL_FRAME_BORDER, SIDEBAR_BACKGROUND,
-    SIDEBAR_WIDTH, TEXT_PRIMARY, TEXT_SECONDARY, WINDOW_PADDING,
+use crate::config::{
+    APP_BACKGROUND, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND, CANVAS_FRAME_BORDER, FOOTER_HEIGHT,
+    HEADER_HEIGHT, PANEL_FRAME_BACKGROUND, PANEL_FRAME_BORDER, SIDEBAR_BACKGROUND, SIDEBAR_WIDTH,
+    TEXT_PRIMARY, TEXT_SECONDARY, WINDOW_PADDING,
 };
 
 /// 合成対象の矩形を表す軽量な座標型。
@@ -17,6 +22,7 @@ pub(crate) struct Rect {
 }
 
 impl Rect {
+    /// 指定座標が矩形内に入っているかを判定する。
     pub(crate) fn contains(&self, x: i32, y: i32) -> bool {
         x >= self.x as i32
             && y >= self.y as i32
@@ -24,6 +30,7 @@ impl Rect {
             && y < (self.y + self.height) as i32
     }
 
+    /// 2 つの矩形を包む最小の矩形を返す。
     pub(crate) fn union(&self, other: Rect) -> Rect {
         let left = self.x.min(other.x);
         let top = self.y.min(other.y);
@@ -38,6 +45,7 @@ impl Rect {
         }
     }
 
+    /// 2 つの矩形の共通部分を返す。
     fn intersect(&self, other: Rect) -> Option<Rect> {
         let left = self.x.max(other.x);
         let top = self.y.max(other.y);
@@ -67,6 +75,7 @@ pub(crate) struct DesktopLayout {
 }
 
 impl DesktopLayout {
+    /// ウィンドウ寸法とキャンバス寸法から固定レイアウトを構築する。
     pub(crate) fn new(
         window_width: usize,
         window_height: usize,
@@ -119,6 +128,7 @@ pub(crate) struct CanvasCompositeSource<'a> {
     pub(crate) pixels: &'a [u8],
 }
 
+/// 元画像を target 内へアスペクト比維持で収めた矩形を返す。
 pub(crate) fn fit_rect(source_width: usize, source_height: usize, target: Rect) -> Rect {
     if source_width == 0 || source_height == 0 || target.width == 0 || target.height == 0 {
         return Rect {
@@ -143,6 +153,7 @@ pub(crate) fn fit_rect(source_width: usize, source_height: usize, target: Rect) 
     }
 }
 
+/// ビットマップ dirty rect を表示先の矩形へ写像する。
 pub(crate) fn map_canvas_dirty_to_display(
     dirty: DirtyRect,
     destination: Rect,
@@ -258,6 +269,7 @@ pub(crate) fn compose_desktop_frame(
     frame
 }
 
+/// パネルホスト領域だけを差分再合成する。
 pub(crate) fn compose_panel_host_region(
     frame: &mut render::RenderFrame,
     layout: &DesktopLayout,
@@ -274,6 +286,7 @@ pub(crate) fn compose_panel_host_region(
     );
 }
 
+/// ステータス行だけを差分再合成する。
 pub(crate) fn compose_status_region(
     frame: &mut render::RenderFrame,
     width: usize,
@@ -292,6 +305,7 @@ pub(crate) fn compose_status_region(
     );
 }
 
+/// フッター右側のステータス表示領域を返す。
 pub(crate) fn status_text_rect(width: usize, height: usize, layout: &DesktopLayout) -> Rect {
     Rect {
         x: layout.canvas_host_rect.x,
@@ -301,6 +315,7 @@ pub(crate) fn status_text_rect(width: usize, height: usize, layout: &DesktopLayo
     }
 }
 
+/// ビュー座標をパネルサーフェス座標へ変換する。
 pub(crate) fn map_view_to_surface(
     surface_width: usize,
     surface_height: usize,
@@ -325,6 +340,7 @@ pub(crate) fn map_view_to_surface(
     ))
 }
 
+/// ビュー外座標もクランプしたうえでサーフェス座標へ変換する。
 pub(crate) fn map_view_to_surface_clamped(
     surface_width: usize,
     surface_height: usize,
@@ -347,6 +363,7 @@ pub(crate) fn map_view_to_surface_clamped(
     map_view_to_surface(surface_width, surface_height, rect, clamped_x, clamped_y)
 }
 
+/// ビットマップ文字描画を `RenderFrame` 向けに薄くラップする。
 fn draw_text(frame: &mut render::RenderFrame, x: usize, y: usize, text: &str, color: [u8; 4]) {
     draw_text_rgba(
         frame.pixels.as_mut_slice(),
@@ -359,6 +376,7 @@ fn draw_text(frame: &mut render::RenderFrame, x: usize, y: usize, text: &str, co
     );
 }
 
+/// 単色矩形をフレームへ塗り込む。
 fn fill_rect(frame: &mut render::RenderFrame, rect: Rect, color: [u8; 4]) {
     let max_x = (rect.x + rect.width).min(frame.width);
     let max_y = (rect.y + rect.height).min(frame.height);
@@ -369,6 +387,7 @@ fn fill_rect(frame: &mut render::RenderFrame, rect: Rect, color: [u8; 4]) {
     }
 }
 
+/// 単色枠線をフレームへ描画する。
 fn stroke_rect(frame: &mut render::RenderFrame, rect: Rect, color: [u8; 4]) {
     if rect.width == 0 || rect.height == 0 {
         return;
@@ -416,6 +435,7 @@ fn stroke_rect(frame: &mut render::RenderFrame, rect: Rect, color: [u8; 4]) {
     );
 }
 
+/// RGBA ソースをスケーリングしつつ dirty rect 範囲だけ転送する。
 pub(crate) fn blit_scaled_rgba_region(
     frame: &mut render::RenderFrame,
     destination: Rect,
@@ -455,6 +475,7 @@ pub(crate) fn blit_scaled_rgba_region(
     }
 }
 
+/// RGBA ソース全体を destination へスケーリング転送する。
 fn blit_scaled_rgba(
     frame: &mut render::RenderFrame,
     destination: Rect,
@@ -472,6 +493,7 @@ fn blit_scaled_rgba(
     );
 }
 
+/// 単一ピクセルを書き込む。
 fn write_pixel(frame: &mut render::RenderFrame, x: usize, y: usize, color: [u8; 4]) {
     if x >= frame.width || y >= frame.height {
         return;
@@ -479,3 +501,6 @@ fn write_pixel(frame: &mut render::RenderFrame, x: usize, y: usize, color: [u8; 
     let index = (y * frame.width + x) * 4;
     frame.pixels[index..index + 4].copy_from_slice(&color);
 }
+
+#[cfg(test)]
+mod tests;

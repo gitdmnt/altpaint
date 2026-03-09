@@ -1,12 +1,18 @@
+//! フレーム時間とキャンバス入力レイテンシを集計する軽量プロファイラ。
+//!
+//! 実行時の計測責務を `runtime` から分離し、タイトル更新やテストが
+//! 純粋な集計ロジックへ依存できるようにする。
+
 use std::collections::{BTreeMap, VecDeque};
 use std::env;
 use std::time::{Duration, Instant};
 
-use crate::{
-    INPUT_LATENCY_TARGET_MS, INPUT_SAMPLING_TARGET_HZ, PERFORMANCE_SNAPSHOT_WINDOW,
-    WINDOW_TITLE, wgpu_canvas::PresentTimings,
+use crate::config::{
+    INPUT_LATENCY_TARGET_MS, INPUT_SAMPLING_TARGET_HZ, PERFORMANCE_SNAPSHOT_WINDOW, WINDOW_TITLE,
 };
+use crate::wgpu_canvas::PresentTimings;
 
+/// 計測ラベルごとの回数・合計・最大値を保持する。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct StageStats {
     pub(crate) calls: u64,
@@ -14,6 +20,7 @@ pub(crate) struct StageStats {
     pub(crate) max: Duration,
 }
 
+/// ウィンドウタイトルへ表示する集計済みスナップショットを表す。
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub(crate) struct PerformanceSnapshot {
     pub(crate) fps: f64,
@@ -27,14 +34,14 @@ pub(crate) struct PerformanceSnapshot {
 }
 
 impl PerformanceSnapshot {
+    /// ウィンドウタイトル向けの短い表示文字列を生成する。
     pub(crate) fn title_text(&self) -> String {
-        let latency_marker = if self.canvas_latency_ms > 0.0
-            && self.canvas_latency_ms <= INPUT_LATENCY_TARGET_MS
-        {
-            "ok"
-        } else {
-            "ng"
-        };
+        let latency_marker =
+            if self.canvas_latency_ms > 0.0 && self.canvas_latency_ms <= INPUT_LATENCY_TARGET_MS {
+                "ok"
+            } else {
+                "ng"
+            };
         let sample_marker = if self.canvas_sample_hz >= INPUT_SAMPLING_TARGET_HZ {
             "ok"
         } else {
@@ -56,6 +63,7 @@ impl PerformanceSnapshot {
     }
 }
 
+/// 単一フレームで集計した主要区間の合計時間を表す。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct FrameStageTotals {
     frame_total: Duration,
@@ -65,12 +73,14 @@ struct FrameStageTotals {
     present_total: Duration,
 }
 
+/// スナップショット窓内に保持するフレーム計測サンプルを表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FrameSample {
     finished_at: Instant,
     stages: FrameStageTotals,
 }
 
+/// キャンバス入力から表示までの遅延サンプルを時刻付きで保持する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TimedLatencySample {
     recorded_at: Instant,
@@ -95,10 +105,12 @@ pub(crate) struct DesktopProfiler {
 }
 
 impl DesktopProfiler {
+    /// 現在時刻基準でプロファイラを初期化する。
     pub(crate) fn new() -> Self {
         Self::new_at(Instant::now())
     }
 
+    /// 指定時刻基準でプロファイラを初期化する。
     pub(crate) fn new_at(now: Instant) -> Self {
         Self {
             logging_enabled: env::var_os("ALTPAINT_PROFILE").is_some(),
@@ -117,6 +129,7 @@ impl DesktopProfiler {
         }
     }
 
+    /// ラベル付き計測としてクロージャを実行する。
     pub(crate) fn measure<T>(&mut self, label: &'static str, f: impl FnOnce() -> T) -> T {
         let started = Instant::now();
         let value = f();
@@ -124,6 +137,7 @@ impl DesktopProfiler {
         value
     }
 
+    /// 既知ラベルへ経過時間を加算する。
     pub(crate) fn record(&mut self, label: &'static str, elapsed: Duration) {
         let stat = self.stats.entry(label).or_default();
         stat.calls += 1;
@@ -140,10 +154,12 @@ impl DesktopProfiler {
         }
     }
 
+    /// 現在時刻でフレームを完了する。
     pub(crate) fn finish_frame(&mut self, elapsed: Duration) {
         self.finish_frame_at(elapsed, Instant::now());
     }
 
+    /// 指定時刻でフレームを完了し、スナップショットを更新する。
     pub(crate) fn finish_frame_at(&mut self, elapsed: Duration, now: Instant) {
         self.record("frame_total", elapsed);
         self.frames += 1;
@@ -165,26 +181,31 @@ impl DesktopProfiler {
         }
     }
 
+    /// GPU 提示の内訳をラベル別に記録する。
     pub(crate) fn record_present(&mut self, timings: PresentTimings) {
         self.record("present_upload", timings.upload);
         self.record("present_encode", timings.encode_and_submit);
         self.record("present_swap", timings.present);
     }
 
+    /// 現在時刻でキャンバス入力サンプルを記録する。
     pub(crate) fn record_canvas_input(&mut self) {
         self.record_canvas_input_at(Instant::now());
     }
 
+    /// 指定時刻でキャンバス入力サンプルを記録する。
     pub(crate) fn record_canvas_input_at(&mut self, now: Instant) {
         self.pending_canvas_input_at = Some(now);
         self.recent_canvas_inputs.push_back(now);
         self.prune_recent_inputs(now);
     }
 
+    /// 現在時刻でキャンバス提示完了を記録する。
     pub(crate) fn record_canvas_present(&mut self) {
         self.record_canvas_present_at(Instant::now());
     }
 
+    /// 指定時刻でキャンバス提示完了を記録し、入力遅延を確定する。
     pub(crate) fn record_canvas_present_at(&mut self, now: Instant) {
         let Some(input_at) = self.pending_canvas_input_at.take() else {
             self.prune_recent_inputs(now);
@@ -198,17 +219,20 @@ impl DesktopProfiler {
         self.prune_recent_inputs(now);
     }
 
+    /// 最新スナップショットからウィンドウタイトル文字列を返す。
     pub(crate) fn title_text(&self) -> String {
         self.latest_snapshot
             .map(|snapshot| snapshot.title_text())
             .unwrap_or_else(|| WINDOW_TITLE.to_string())
     }
 
+    /// テスト用に最新スナップショットを返す。
     #[cfg(test)]
     pub(crate) fn latest_snapshot(&self) -> Option<PerformanceSnapshot> {
         self.latest_snapshot
     }
 
+    /// フレームサンプル窓から期限切れ要素を削除する。
     fn prune_recent_frames(&mut self, now: Instant) {
         while let Some(sample) = self.recent_frames.front() {
             if now.duration_since(sample.finished_at) <= self.snapshot_window {
@@ -218,6 +242,7 @@ impl DesktopProfiler {
         }
     }
 
+    /// 入力サンプル窓から期限切れ要素を削除する。
     fn prune_recent_inputs(&mut self, now: Instant) {
         while let Some(sample) = self.recent_canvas_inputs.front() {
             if now.duration_since(*sample) <= self.snapshot_window {
@@ -234,6 +259,7 @@ impl DesktopProfiler {
         }
     }
 
+    /// 直近窓からスナップショットを再構築する。
     fn build_snapshot(&self) -> Option<PerformanceSnapshot> {
         let frame_count = self.recent_frames.len();
         if frame_count == 0 {
@@ -314,6 +340,7 @@ impl DesktopProfiler {
         })
     }
 
+    /// ラベル別の平均時間をミリ秒で返す。
     fn average_ms(&self, label: &'static str) -> f64 {
         self.stats.get(label).map_or(0.0, |stat| {
             if stat.calls == 0 {
@@ -324,6 +351,7 @@ impl DesktopProfiler {
         })
     }
 
+    /// 環境変数有効時に標準エラーへ集計レポートを出力する。
     fn print_report(&self, now: Instant) {
         let interval_secs = now
             .duration_since(self.frame_interval_started)
@@ -363,10 +391,125 @@ impl DesktopProfiler {
         }
     }
 
+    /// ログ用集計区間をリセットする。
     fn reset_interval(&mut self, now: Instant) {
         self.stats.clear();
         self.frames = 0;
         self.frame_interval_started = now;
         self.last_report = now;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! プロファイラ集計ロジックの回帰テストをまとめる。
+
+    use super::*;
+
+    /// タイトル文字列へ主要指標が埋め込まれることを確認する。
+    #[test]
+    fn performance_snapshot_formats_window_title() {
+        let title = PerformanceSnapshot {
+            fps: 59.8,
+            frame_ms: 16.72,
+            prepare_ms: 3.11,
+            ui_update_ms: 0.42,
+            panel_surface_ms: 0.77,
+            present_ms: 1.26,
+            canvas_latency_ms: 8.40,
+            canvas_sample_hz: 123.4,
+        }
+        .title_text();
+
+        assert!(title.contains("59.8 fps"));
+        assert!(title.contains("prep  3.11ms"));
+        assert!(title.contains("ui  0.42ms"));
+        assert!(title.contains("ink  8.40ms ok"));
+        assert!(title.contains("sample  123.4Hz ok"));
+    }
+
+    /// スナップショット fps が直近窓のフレームから計算されることを確認する。
+    #[test]
+    fn profiler_uses_recent_window_for_snapshot_fps() {
+        let start = Instant::now();
+        let mut profiler = DesktopProfiler::new_at(start);
+
+        profiler.record("prepare_frame", Duration::from_millis(2));
+        profiler.record("ui_update", Duration::from_millis(1));
+        profiler.record("panel_surface", Duration::from_millis(1));
+        profiler.record("present_total", Duration::from_millis(2));
+        profiler.finish_frame_at(Duration::from_millis(16), start + Duration::from_millis(0));
+
+        profiler.record("prepare_frame", Duration::from_millis(2));
+        profiler.record("ui_update", Duration::from_millis(1));
+        profiler.record("panel_surface", Duration::from_millis(1));
+        profiler.record("present_total", Duration::from_millis(2));
+        profiler.finish_frame_at(Duration::from_millis(16), start + Duration::from_millis(16));
+
+        profiler.record("prepare_frame", Duration::from_millis(2));
+        profiler.record("ui_update", Duration::from_millis(1));
+        profiler.record("panel_surface", Duration::from_millis(1));
+        profiler.record("present_total", Duration::from_millis(2));
+        profiler.finish_frame_at(Duration::from_millis(16), start + Duration::from_millis(32));
+
+        let snapshot = profiler.latest_snapshot().expect("snapshot exists");
+        assert!(snapshot.fps > 60.0);
+        assert!(snapshot.fps < 65.0);
+    }
+
+    /// キャンバス入力レイテンシとサンプル周波数が計算されることを確認する。
+    #[test]
+    fn profiler_tracks_canvas_latency_and_sampling_rate() {
+        let start = Instant::now();
+        let mut profiler = DesktopProfiler::new_at(start);
+
+        for offset_ms in [0_u64, 8, 16] {
+            let input_at = start + Duration::from_millis(offset_ms);
+            let present_at = input_at + Duration::from_millis(8);
+
+            profiler.record_canvas_input_at(input_at);
+            profiler.record("prepare_frame", Duration::from_millis(2));
+            profiler.record("ui_update", Duration::from_millis(1));
+            profiler.record("panel_surface", Duration::from_millis(1));
+            profiler.record("present_total", Duration::from_millis(2));
+            profiler.record_canvas_present_at(present_at);
+            profiler.finish_frame_at(Duration::from_millis(8), present_at);
+        }
+
+        let snapshot = profiler.latest_snapshot().expect("snapshot exists");
+        assert!(snapshot.canvas_latency_ms >= 8.0);
+        assert!(snapshot.canvas_latency_ms < 9.0);
+        assert!(snapshot.canvas_sample_hz >= 120.0);
+        assert!(snapshot.canvas_sample_hz < 130.0);
+    }
+
+    /// アイドルギャップ後も fps が直近窓基準で維持されることを確認する。
+    #[test]
+    fn profiler_does_not_drop_to_one_fps_after_idle_gap() {
+        let start = Instant::now();
+        let mut profiler = DesktopProfiler::new_at(start);
+
+        for offset_ms in [0_u64, 16, 32, 48] {
+            profiler.record("prepare_frame", Duration::from_millis(2));
+            profiler.record("ui_update", Duration::from_millis(1));
+            profiler.record("panel_surface", Duration::from_millis(1));
+            profiler.record("present_total", Duration::from_millis(2));
+            profiler.finish_frame_at(
+                Duration::from_millis(16),
+                start + Duration::from_millis(offset_ms),
+            );
+        }
+
+        let fps_before_idle = profiler.latest_snapshot().expect("snapshot exists").fps;
+
+        profiler.record("prepare_frame", Duration::from_millis(2));
+        profiler.record("ui_update", Duration::from_millis(1));
+        profiler.record("panel_surface", Duration::from_millis(1));
+        profiler.record("present_total", Duration::from_millis(2));
+        profiler.finish_frame_at(Duration::from_millis(16), start + Duration::from_secs(3));
+
+        let fps_after_idle = profiler.latest_snapshot().expect("snapshot exists").fps;
+        assert!(fps_before_idle > 50.0);
+        assert!(fps_after_idle > 50.0);
     }
 }
