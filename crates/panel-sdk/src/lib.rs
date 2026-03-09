@@ -302,12 +302,18 @@ pub mod runtime {
     unsafe extern "C" {
         fn state_toggle(ptr: i32, len: i32);
         fn state_set_bool(ptr: i32, len: i32, value: i32);
+        fn state_set_i32(ptr: i32, len: i32, value: i32);
         fn state_set_string(path_ptr: i32, path_len: i32, value_ptr: i32, value_len: i32);
+        fn state_get_bool(ptr: i32, len: i32) -> i32;
         fn state_get_i32(ptr: i32, len: i32) -> i32;
         fn state_get_string_len(ptr: i32, len: i32) -> i32;
         fn state_get_string_copy(path_ptr: i32, path_len: i32, buffer_ptr: i32, buffer_len: i32);
         fn event_get_string_len(ptr: i32, len: i32) -> i32;
         fn event_get_string_copy(path_ptr: i32, path_len: i32, buffer_ptr: i32, buffer_len: i32);
+        fn host_get_bool(ptr: i32, len: i32) -> i32;
+        fn host_get_i32(ptr: i32, len: i32) -> i32;
+        fn host_get_string_len(ptr: i32, len: i32) -> i32;
+        fn host_get_string_copy(path_ptr: i32, path_len: i32, buffer_ptr: i32, buffer_len: i32);
         fn command(ptr: i32, len: i32);
         fn command_string(
             name_ptr: i32,
@@ -344,6 +350,14 @@ pub mod runtime {
     pub fn set_state_bool(_path: impl AsRef<str>, _value: bool) {}
 
     #[cfg(target_arch = "wasm32")]
+    pub fn set_state_i32(path: impl AsRef<str>, value: i32) {
+        with_bytes(path.as_ref(), |ptr, len| unsafe { state_set_i32(ptr, len, value) });
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_state_i32(_path: impl AsRef<str>, _value: i32) {}
+
+    #[cfg(target_arch = "wasm32")]
     pub fn set_state_string(path: impl AsRef<str>, value: impl AsRef<str>) {
         with_bytes(path.as_ref(), |path_ptr, path_len| {
             with_bytes(value.as_ref(), |value_ptr, value_len| unsafe {
@@ -354,6 +368,16 @@ pub mod runtime {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn set_state_string(_path: impl AsRef<str>, _value: impl AsRef<str>) {}
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn state_bool(path: impl AsRef<str>) -> bool {
+        with_bytes(path.as_ref(), |ptr, len| unsafe { state_get_bool(ptr, len) != 0 })
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn state_bool(_path: impl AsRef<str>) -> bool {
+        false
+    }
 
     #[cfg(target_arch = "wasm32")]
     pub fn state_i32(path: impl AsRef<str>) -> i32 {
@@ -412,6 +436,51 @@ pub mod runtime {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn event_string(_path: impl AsRef<str>) -> String {
+        String::new()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn host_bool(path: impl AsRef<str>) -> bool {
+        with_bytes(path.as_ref(), |ptr, len| unsafe { host_get_bool(ptr, len) != 0 })
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn host_bool(_path: impl AsRef<str>) -> bool {
+        false
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn host_i32(path: impl AsRef<str>) -> i32 {
+        with_bytes(path.as_ref(), |ptr, len| unsafe { host_get_i32(ptr, len) })
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn host_i32(_path: impl AsRef<str>) -> i32 {
+        0
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn host_string(path: impl AsRef<str>) -> String {
+        let path = path.as_ref();
+        let length = with_bytes(path, |ptr, len| unsafe { host_get_string_len(ptr, len) });
+        if length <= 0 {
+            return String::new();
+        }
+
+        let mut buffer = vec![0u8; length as usize];
+        with_bytes(path, |path_ptr, path_len| unsafe {
+            host_get_string_copy(
+                path_ptr,
+                path_len,
+                buffer.as_mut_ptr() as i32,
+                buffer.len() as i32,
+            )
+        });
+        String::from_utf8(buffer).unwrap_or_default()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn host_string(_path: impl AsRef<str>) -> String {
         String::new()
     }
 
@@ -476,6 +545,129 @@ pub mod runtime {
     pub fn error(_message: &str) {}
 }
 
+pub mod host {
+    use crate::{
+        commands::Tool,
+        runtime::{host_bool, host_i32, host_string},
+    };
+
+    pub mod document {
+        use super::{host_bool, host_i32, host_string};
+
+        pub fn title() -> String {
+            host_string("document.title")
+        }
+
+        pub fn page_count() -> i32 {
+            host_i32("document.page_count")
+        }
+
+        pub fn panel_count() -> i32 {
+            host_i32("document.panel_count")
+        }
+
+        pub fn layer_count() -> i32 {
+            host_i32("document.layer_count")
+        }
+
+        pub fn active_layer_name() -> String {
+            host_string("document.active_layer_name")
+        }
+
+        pub fn active_layer_index() -> i32 {
+            host_i32("document.active_layer_index")
+        }
+
+        pub fn active_layer_blend_mode() -> String {
+            host_string("document.active_layer_blend_mode")
+        }
+
+        pub fn active_layer_visible() -> bool {
+            host_bool("document.active_layer_visible")
+        }
+
+        pub fn active_layer_masked() -> bool {
+            host_bool("document.active_layer_masked")
+        }
+    }
+
+    pub mod tool {
+        use super::{host_i32, host_string, Tool};
+
+        pub fn active_name() -> String {
+            host_string("tool.active")
+        }
+
+        pub fn is_active(tool: Tool) -> bool {
+            active_name().eq_ignore_ascii_case(tool.as_str())
+        }
+
+        pub fn pen_name() -> String {
+            host_string("tool.pen_name")
+        }
+
+        pub fn pen_id() -> String {
+            host_string("tool.pen_id")
+        }
+
+        pub fn pen_index() -> i32 {
+            host_i32("tool.pen_index")
+        }
+
+        pub fn pen_count() -> i32 {
+            host_i32("tool.pen_count")
+        }
+
+        pub fn pen_size() -> i32 {
+            host_i32("tool.pen_size")
+        }
+    }
+
+    pub mod color {
+        use super::{host_i32, host_string};
+
+        pub fn active_hex() -> String {
+            host_string("color.active")
+        }
+
+        pub fn red() -> i32 {
+            host_i32("color.red")
+        }
+
+        pub fn green() -> i32 {
+            host_i32("color.green")
+        }
+
+        pub fn blue() -> i32 {
+            host_i32("color.blue")
+        }
+    }
+
+    pub mod jobs {
+        use super::{host_i32, host_string};
+
+        pub fn active() -> i32 {
+            host_i32("jobs.active")
+        }
+
+        pub fn queued() -> i32 {
+            host_i32("jobs.queued")
+        }
+
+        pub fn status() -> String {
+            host_string("jobs.status")
+        }
+    }
+
+    pub mod snapshot {
+        use super::host_string;
+
+        pub fn storage_status() -> String {
+            host_string("snapshot.storage_status")
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -534,6 +726,17 @@ mod tests {
         assert_eq!(SHOW_NEW.as_ref(), "show_new");
         assert_eq!(RED.as_ref(), "red");
         assert_eq!(NAME.as_ref(), "name");
+    }
+
+    #[test]
+    fn typed_host_helpers_are_callable_on_native_targets() {
+        assert_eq!(host::document::title(), "");
+        assert_eq!(host::document::page_count(), 0);
+        assert!(!host::tool::is_active(commands::Tool::Brush));
+        assert_eq!(host::tool::pen_name(), "");
+        assert_eq!(host::color::active_hex(), "");
+        assert_eq!(host::jobs::status(), "");
+        assert_eq!(host::snapshot::storage_status(), "");
     }
 
     #[test]

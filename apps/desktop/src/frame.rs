@@ -4,13 +4,12 @@
 //! フレーム差分更新の基礎部品を提供する。
 
 use app_core::{CanvasViewTransform, DirtyRect};
-use ui_shell::{PanelSurface, draw_text_rgba, measure_text_width};
-
-use crate::config::{
-    APP_BACKGROUND, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND, CANVAS_FRAME_BORDER, FOOTER_HEIGHT,
-    HEADER_HEIGHT, PANEL_FRAME_BACKGROUND, PANEL_FRAME_BORDER, SIDEBAR_BACKGROUND, SIDEBAR_WIDTH,
-    TEXT_PRIMARY, TEXT_SECONDARY, WINDOW_PADDING,
+use desktop_support::{
+    APP_BACKGROUND, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND, CANVAS_FRAME_BORDER,
+    FOOTER_HEIGHT, HEADER_HEIGHT, PANEL_FRAME_BACKGROUND, PANEL_FRAME_BORDER,
+    SIDEBAR_BACKGROUND, SIDEBAR_WIDTH, TEXT_PRIMARY, TEXT_SECONDARY, WINDOW_PADDING,
 };
+use ui_shell::{PanelSurface, draw_text_rgba, measure_text_width};
 
 /// 合成対象の矩形を表す軽量な座標型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

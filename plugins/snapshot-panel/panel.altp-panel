@@ -13,19 +13,24 @@ runtime {
 }
 
 state {
+  title: string = ""
+  page_count: int = 0
+  panel_count: int = 0
+  active_tool: string = ""
+  storage_status: string = ""
 }
 
 view {
   <column gap=8 padding=8>
     <section title="Current">
       <text tone="muted">Hosted via Rust SDK + Wasm</text>
-      <text>{host.document.title}</text>
-      <text>{host.document.page_count}</text>
-      <text>{host.document.panel_count}</text>
-      <text>{host.tool.active}</text>
+      <text>{state.title}</text>
+      <text>{state.page_count}</text>
+      <text>{state.panel_count}</text>
+      <text>{state.active_tool}</text>
     </section>
     <section title="Status">
-      <text>{host.snapshot.storage_status}</text>
+      <text>{state.storage_status}</text>
     </section>
   </column>
 }

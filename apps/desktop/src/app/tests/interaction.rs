@@ -3,11 +3,11 @@
 use std::path::PathBuf;
 
 use app_core::{ColorRgba8, Command, ToolKind};
+use desktop_support::DesktopProfiler;
 
-use super::TestDialogs;
+use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::DesktopApp;
 use crate::canvas_bridge::{CanvasPointerEvent, command_for_canvas_gesture, map_view_to_canvas};
-use crate::profiler::DesktopProfiler;
 
 /// ビュー中央がキャンバス中央へ変換されることを確認する。
 #[test]
@@ -107,7 +107,7 @@ fn panel_scroll_requests_surface_offset_change() {
 /// カラースライダードラッグでドキュメント色が更新されることを確認する。
 #[test]
 fn panel_slider_drag_updates_document_color() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut app = test_app_with_dialogs(TestDialogs::default());
     let mut profiler = DesktopProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");

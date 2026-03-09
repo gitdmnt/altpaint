@@ -9,6 +9,7 @@ use std::time::Instant;
 
 use anyhow::Context;
 use app_core::Command;
+use desktop_support::{DesktopProfiler, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{
@@ -19,8 +20,6 @@ use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::app::DesktopApp;
-use crate::config::{WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
-use crate::profiler::DesktopProfiler;
 use crate::wgpu_canvas::{
     CanvasLayer, FrameLayer, PresentScene, TextureSource, UploadRegion, WgpuPresenter,
 };

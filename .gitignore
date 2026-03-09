@@ -9,3 +9,4 @@ plugins/**/*.wasm
 *.swo
 *.DS_Store
 *.altp.json
+altpaint-session.json

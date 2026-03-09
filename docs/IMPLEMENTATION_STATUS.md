@@ -15,10 +15,10 @@
 
 ## 現在の要約
 
-2026-03-09 時点で、`altpaint` は以下まで到達している。
+2026-03-10 時点で、`altpaint` は以下まで到達している。
 
 - Cargo workspace 構成がある
-- 最小クレートとして `app-core`、`render`、`ui-shell`、`plugin-api`、`storage`、`plugin-host`、`panel-sdk`、`panel-dsl`、`panel-schema`、`panel-macros`、`apps/desktop` がある
+- 最小クレートとして `app-core`、`render`、`ui-shell`、`plugin-api`、`storage`、`plugin-host`、`panel-sdk`、`panel-dsl`、`panel-schema`、`panel-macros`、`desktop-support`、`apps/desktop` がある
 - 単一ウィンドウのデスクトップアプリが起動する
 - 単一ページ、単一コマ、単一ラスタレイヤーの最小 `Document` がある
 - 白いキャンバスを灰色背景の上に表示できる
@@ -73,6 +73,7 @@
 - キャンバスはホイールによる zoom/pan、ブラシプレビュー overlay、最小複数レイヤー、blend mode 循環、デモ mask 切替を持つようになった
 - `builtin.layers-panel` は最小レイヤー操作 UI を持ち、フェーズ9のキャンバス機能を panel 経由で操作できる
 - `pens/` 配下の `*.altp-pen.json` を起動時/再読込時に読める
+- ペンプリセット読込は `storage`、セッション/ダイアログ/プロファイラ/既定設定は `desktop-support` へ分離済みである
 - `builtin.tool-palette` は Pen ツール、前/次ペン切替、Reload Pens を持つ
 - `builtin.pen-settings` は現在ペンの幅スライダーを持つ
 - `Document` はペンプリセット列、アクティブペン、可変幅ペンサイズを保持する

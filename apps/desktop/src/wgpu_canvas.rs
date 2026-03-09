@@ -1,6 +1,7 @@
 //! `wgpu` を使って UI ベースフレーム・GPU キャンバス・オーバーレイを提示する。
 
 use anyhow::{Context, Result};
+use desktop_support::PresentTimings;
 use render::RenderFrame;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -122,19 +123,6 @@ struct UploadedLayerTexture {
 struct LayerUploadStats {
     duration: Duration,
     bytes: u64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PresentTimings {
-    pub upload: Duration,
-    pub encode_and_submit: Duration,
-    pub present: Duration,
-    pub base_upload: Duration,
-    pub overlay_upload: Duration,
-    pub canvas_upload: Duration,
-    pub base_upload_bytes: u64,
-    pub overlay_upload_bytes: u64,
-    pub canvas_upload_bytes: u64,
 }
 
 pub struct WgpuPresenter {

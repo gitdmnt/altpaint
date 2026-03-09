@@ -10,7 +10,7 @@
 - JSX 風構文の範囲
 - state schema
 - handler binding
-- host snapshot 参照
+- Wasm runtime と state の責務境界
 - validation
 - EBNF
 
@@ -53,7 +53,6 @@ UI DSL は `.altp-panel` で表現する。
 - レイアウト構造
 - atomic node の構成
 - state schema
-- host snapshot 参照
 - handler 名の binding
 
 持たない責務:
@@ -236,8 +235,8 @@ view {
 
 `layers-panel` や `snapshot-panel` を見据え、最終的には次のどちらかを導入する。
 
-- `<for each={host.layers.items} item="layer"> ... </for>`
-- `<list items={host.layers.items}> ... </list>`
+- `<for each={state.layers.items} item="layer"> ... </for>`
+- `<list items={state.layers.items}> ... </list>`
 
 MVP の実装容易性を優先するなら、まずは `for` の方が単純である。
 
@@ -328,29 +327,17 @@ const NEW_WIDTH: panel_sdk::state::StringKey = panel_sdk::state::string("new_wid
 
 ## host snapshot と runtime 参照
 
-UI DSL は host 側が渡す読み取り専用 snapshot を参照する。
+host snapshot は **Wasm runtime にだけ渡す**。
 
-想定名前空間:
+`.altp-panel` から `host.*` を直接参照してはいけない。
+UI DSL で参照できる動的値は `state.*` のみとし、host 由来の値は Rust SDK を使う Wasm handler が取得して local state へ mirror する。
 
-- `host.document.*`
-- `host.tool.*`
-- `host.layers.*`
-- `host.jobs.*`
+想定フロー:
 
-MVP では最小限に絞る。
-
-- `host.tool.active`
-- `host.document.title`
-- `host.layers.items`
-
-ビルトイン移植前には、少なくとも次が必要になる。
-
-- `host.color.active`
-- `host.layers.active_id`
-- `host.layers.items[*].id`
-- `host.layers.items[*].label`
-- `host.jobs.items`
-- `host.snapshots.items`
+1. host が読み取り専用 snapshot を Wasm runtime へ渡す
+2. Wasm handler が `panel_sdk::host::*` helper で必要値を取得する
+3. Wasm handler が `set_state_*` で local state を更新する
+4. `.altp-panel` は `state.*` を描画する
 
 また、`runtime` ブロックでは対応する Wasm module を指す。
 
@@ -423,15 +410,13 @@ attr-value      = string | integer | boolean | expr ;
 expr            = "{", expr-body, "}" ;
 expr-body       = literal
                 | state-ref
-                | host-ref
                 | comparison-expr
                 | logical-expr ;
 
 state-ref       = "state", ".", identifier ;
-host-ref        = "host", ".", identifier, { ".", identifier } ;
 comparison-expr = expr-atom, ("==" | "!="), expr-atom ;
 logical-expr    = expr-atom, ("&&" | "||"), expr-atom ;
-expr-atom       = literal | state-ref | host-ref ;
+expr-atom       = literal | state-ref ;
 
 literal         = string | integer | boolean ;
 boolean         = "true" | "false" ;
@@ -450,7 +435,7 @@ identifier      = letter, { letter | digit | "_" | "-" } ;
 - node `id` が一意
 - 未知属性がない
 - `state.*` 参照先が存在する
-- `host.*` 参照に必要権限がある
+- `host.*` 直参照が含まれていない
 - `on:*` の handler 名が解決できる
 
 ビルトイン移植前には次も確認対象にする。
@@ -490,7 +475,7 @@ Wasm の戻り値 schema と SDK 方針は [docs/panel-ui-definition/wasm-runtim
 
 - UI が `.altp-panel` から構築される
 - handler が Wasm module から実行される
-- host snapshot 参照で現状態を表示できる
+- Wasm が host snapshot を読み、`state.*` へ反映した結果を表示できる
 - 既存 Rust 実装と同等の `Command` 発行結果を確認できる
 
 ## フェーズ別の実装順
@@ -521,7 +506,7 @@ MVP では次で十分である。
 - UI: JSX 風制限 DSL
 - handler: `on:click`, `on:change`
 - state: `bool`, `enum`, `string`
-- host snapshot: `host.tool.active`, `host.document.title` 程度
+- host 参照: Wasm SDK 経由のみ
 - reload: 手動または file watch
 
 ## 結論

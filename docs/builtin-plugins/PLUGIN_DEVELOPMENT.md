@@ -196,7 +196,7 @@ release 生成したい場合:
 
 - Wasm 側は `Command` enum を直接知らず、command descriptor を返します
 - ドキュメント本体は host が持ち、Wasm は local state と command 発行だけを行います
-- `state` の既定値に `{host.*}` を使うと、host snapshot 由来の値で同期できます
+- host の現在値は `.altp-panel` から直接読まず、`panel_sdk::host::*` で取得して `sync_host` などの handler から `state.*` へ反映します
 - `.wasm` を直接編集せず、必ず Rust ソースか `.wat` から再生成します
 
 ## 新しい組み込みパネルを足す手順

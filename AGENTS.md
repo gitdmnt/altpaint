@@ -126,6 +126,8 @@
   - `.altp-panel` / Rust SDK ソース / 生成 Wasm を同居
 - `crates/storage/`
   - 保存/読込
+- `crates/desktop-support/`
+  - デスクトップ既定設定、セッション、ダイアログ、プロファイラ
 - `docs/`
   - 設計・要件・進捗の文書
 - `target/`
@@ -136,7 +138,7 @@
 最小実装としては次が既にある。
 
 - Cargo workspace 構成
-- `app-core` / `render` / `ui-shell` / `plugin-api` / `storage` / `plugin-host` / `panel-sdk` / `apps/desktop`
+- `app-core` / `render` / `ui-shell` / `plugin-api` / `storage` / `desktop-support` / `plugin-host` / `panel-sdk` / `apps/desktop`
 - `winit` + `wgpu` の単一ウィンドウデスクトップ起動
 - 白キャンバス表示
 - マウス入力による最小ストローク描画

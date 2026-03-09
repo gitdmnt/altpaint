@@ -14,16 +14,17 @@ runtime {
 }
 
 state {
-  size: int = {host.tool.pen_size}
+  pen_name: string = ""
+  size: int = 1
 }
 
 view {
   <column gap=8 padding=8>
     <section title="Pen Width">
       <text tone="muted">Loaded from pens/ and adjustable in host.</text>
-      <text>{host.tool.pen_name}</text>
-      <text>{host.tool.pen_size}px</text>
-      <slider id="pen.size" label="Size" min={host.tool.pen_min_size} max={host.tool.pen_max_size} value={state.size} fill="#90CAF9" on:change="set_pen_size"></slider>
+      <text>{state.pen_name}</text>
+      <text>{state.size}px</text>
+      <slider id="pen.size" label="Size" min={1} max={10000} value={state.size} fill="#90CAF9" on:change="set_pen_size"></slider>
     </section>
   </column>
 }

@@ -13,6 +13,9 @@ runtime {
 }
 
 state {
+  active: int = 0
+  queued: int = 0
+  status: string = ""
 }
 
 view {
@@ -20,10 +23,10 @@ view {
     <section title="Queue">
       <text tone="muted">Hosted via Rust SDK + Wasm</text>
       <text>Active jobs</text>
-      <text>{host.jobs.active}</text>
+      <text>{state.active}</text>
       <text>Queued jobs</text>
-      <text>{host.jobs.queued}</text>
-      <text>{host.jobs.status}</text>
+      <text>{state.queued}</text>
+      <text>{state.status}</text>
     </section>
   </column>
 }

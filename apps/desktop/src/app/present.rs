@@ -3,13 +3,14 @@
 //! CPU 側ではパネル UI・背景・ステータス・オーバーレイを保持し、
 //! キャンバス本体は GPU テクスチャとして別経路で提示する。
 
+use desktop_support::DesktopProfiler;
+
 use super::{DesktopApp, PresentFrameUpdate};
 use crate::frame::{
     CanvasCompositeSource, CanvasOverlayState, DesktopLayout, Rect, clear_canvas_host_region,
     compose_base_frame, compose_overlay_frame, compose_overlay_region,
     compose_panel_host_region, compose_status_region, status_text_bounds,
 };
-use crate::profiler::DesktopProfiler;
 
 impl DesktopApp {
     /// 現在状態から次に提示すべきフレームと差分更新情報を生成する。

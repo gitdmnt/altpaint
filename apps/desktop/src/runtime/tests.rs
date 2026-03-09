@@ -2,11 +2,11 @@
 
 use std::path::PathBuf;
 
+use desktop_support::DesktopProfiler;
 use winit::event::MouseScrollDelta;
 use winit::event::TouchPhase;
 
 use super::DesktopRuntime;
-use crate::profiler::DesktopProfiler;
 
 /// タッチ開始と移動でキャンバス描画が行われることを確認する。
 #[test]

@@ -13,6 +13,15 @@ runtime {
 }
 
 state {
+  title: string = ""
+  page_count: int = 0
+  panel_count: int = 0
+  layer_count: int = 0
+  active_layer_name: string = ""
+  active_layer_index: int = 0
+  active_layer_blend_mode: string = "normal"
+  active_layer_visible: bool = true
+  active_layer_masked: bool = false
 }
 
 view {
@@ -20,20 +29,20 @@ view {
     <section title="Document">
       <text tone="muted">Hosted via Rust SDK + Wasm</text>
       <text>Work title</text>
-      <text>{host.document.title}</text>
+      <text>{state.title}</text>
       <text>Page count</text>
-      <text>{host.document.page_count}</text>
+      <text>{state.page_count}</text>
       <text>Panel count</text>
-      <text>{host.document.panel_count}</text>
+      <text>{state.panel_count}</text>
       <text>Layer count</text>
-      <text>{host.document.layer_count}</text>
+      <text>{state.layer_count}</text>
     </section>
     <section title="Active Layer">
-      <text>{host.document.active_layer_name}</text>
-      <text>index: {host.document.active_layer_index}</text>
-      <text>blend: {host.document.active_layer_blend_mode}</text>
-      <text>visible: {host.document.active_layer_visible}</text>
-      <text>mask: {host.document.active_layer_masked}</text>
+      <text>{state.active_layer_name}</text>
+      <text>index: {state.active_layer_index}</text>
+      <text>blend: {state.active_layer_blend_mode}</text>
+      <text>visible: {state.active_layer_visible}</text>
+      <text>mask: {state.active_layer_masked}</text>
       <button id="layers.add" on:click="add_layer">Add Layer</button>
       <button id="layers.next" on:click="select_next_layer">Next Layer</button>
       <button id="layers.blend" on:click="cycle_blend_mode">Cycle Blend</button>

@@ -7,12 +7,12 @@ use std::path::PathBuf;
 use std::thread;
 
 use app_core::Command;
+use desktop_support::normalize_project_path;
 use plugin_api::HostAction;
 use storage::{load_project_from_path, save_project_to_path};
 
 use super::DesktopApp;
 use crate::canvas_bridge::command_for_canvas_gesture;
-use crate::dialogs::normalize_project_path;
 
 impl DesktopApp {
     /// キャンバス入力から編集コマンドを組み立てて適用する。

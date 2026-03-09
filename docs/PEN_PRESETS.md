@@ -37,12 +37,12 @@
   "id": "builtin.round-pen",
   "name": "Round Pen",
   "size": 4,
-  "min_size": 1,
-  "max_size": 64
 }
 ```
 
 ## フィールド
+
+### ver.1
 
 - `format_version`
   - 現在は `1` 固定
@@ -52,10 +52,6 @@
   - UI 表示名
 - `size`
   - 初期幅
-- `min_size`
-  - UI で許可する最小幅
-- `max_size`
-  - UI で許可する最大幅
 
 ## Photoshop / CSP 調査まとめ
 

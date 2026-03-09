@@ -322,8 +322,9 @@ plugin 作者には host 内部 crate を直接依存させない。
 - `#[panel_sdk::panel_init]`
 - `#[panel_sdk::panel_handler]`
 - `panel_sdk::commands::*`
+- `panel_sdk::host::*`
 - `panel_sdk::state::*Key`
-- `panel_sdk::runtime::{emit_command, state_i32, state_string, set_state_bool, ...}`
+- `panel_sdk::runtime::{emit_command, state_i32, state_string, set_state_bool, set_state_i32, ...}`
 
 ### SDK が提供すべき helper
 
@@ -331,10 +332,14 @@ plugin 作者には host 内部 crate を直接依存させない。
 - `commands::tool::set_color_rgb(RgbColor::new(...))`
 - `commands::project::save()`
 - `commands::project::new_sized(width, height)`
+- `host::tool::pen_name()`
+- `host::document::title()`
 - `StatePatch::set("selectedTool", "brush")`
 - `StatePatch::toggle("showAdvanced")`
 - `state::bool("show_new")`
 - `state::string("new_width")`
+
+重要なのは、plugin 作者が `.altp-panel` から `host.*` を直接読むのではなく、Wasm handler 内で `panel_sdk::host::*` を使って取得し、その値を local state へ mirror することだ。
 
 escape hatch としては、必要に応じて従来の `command("...")` builder も残してよい。
 

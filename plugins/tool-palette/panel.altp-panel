@@ -14,6 +14,10 @@ runtime {
 }
 
 state {
+  active_tool: string = "brush"
+  pen_name: string = ""
+  pen_size: int = 1
+  pen_count: int = 0
   show_shortcuts: bool = false
   session.capture_target: string = ""
   config.brush_shortcut: string = "B"
@@ -25,12 +29,12 @@ view {
   <column gap=8 padding=8>
     <section title="Tools">
       <text tone="muted">Hosted via Rust SDK + Wasm</text>
-      <button id="tool.brush" on:click="activate_brush" active={host.tool.active == "brush"}>Brush</button>
-      <button id="tool.pen" on:click="activate_pen" active={host.tool.active == "pen"}>Pen</button>
-      <button id="tool.eraser" on:click="activate_eraser" active={host.tool.active == "eraser"}>Eraser</button>
+      <button id="tool.brush" on:click="activate_brush" active={state.active_tool == "brush"}>Brush</button>
+      <button id="tool.pen" on:click="activate_pen" active={state.active_tool == "pen"}>Pen</button>
+      <button id="tool.eraser" on:click="activate_eraser" active={state.active_tool == "eraser"}>Eraser</button>
       <separator></separator>
-      <text>Preset: {host.tool.pen_name}</text>
-      <text>Size: {host.tool.pen_size}px / presets: {host.tool.pen_count}</text>
+      <text>Preset: {state.pen_name}</text>
+      <text>Size: {state.pen_size}px / presets: {state.pen_count}</text>
       <row gap=6>
         <button id="tool.pen.prev" on:click="previous_pen">Prev Pen</button>
         <button id="tool.pen.next" on:click="next_pen">Next Pen</button>

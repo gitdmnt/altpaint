@@ -1,6 +1,6 @@
 //! フレーム時間とキャンバス入力レイテンシを集計する軽量プロファイラ。
 //!
-//! 実行時の計測責務を `runtime` から分離し、タイトル更新やテストが
+//! 実行時の計測責務をデスクトップバイナリから分離し、タイトル更新やテストが
 //! 純粋な集計ロジックへ依存できるようにする。
 
 use std::collections::{BTreeMap, VecDeque};
@@ -10,41 +10,54 @@ use std::time::{Duration, Instant};
 use crate::config::{
     INPUT_LATENCY_TARGET_MS, INPUT_SAMPLING_TARGET_HZ, PERFORMANCE_SNAPSHOT_WINDOW, WINDOW_TITLE,
 };
-use crate::wgpu_canvas::PresentTimings;
+
+/// GPU 提示の内訳時間を表す。
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct PresentTimings {
+    pub upload: Duration,
+    pub encode_and_submit: Duration,
+    pub present: Duration,
+    pub base_upload: Duration,
+    pub overlay_upload: Duration,
+    pub canvas_upload: Duration,
+    pub base_upload_bytes: u64,
+    pub overlay_upload_bytes: u64,
+    pub canvas_upload_bytes: u64,
+}
 
 /// 計測ラベルごとの回数・合計・最大値を保持する。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StageStats {
-    pub(crate) calls: u64,
-    pub(crate) total: Duration,
-    pub(crate) max: Duration,
+pub struct StageStats {
+    pub calls: u64,
+    pub total: Duration,
+    pub max: Duration,
 }
 
 /// 数値メトリクスのサンプル数・合計・最大値を保持する。
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub(crate) struct ValueStats {
-    pub(crate) samples: u64,
-    pub(crate) total: f64,
-    pub(crate) max: f64,
+pub struct ValueStats {
+    pub samples: u64,
+    pub total: f64,
+    pub max: f64,
 }
 
 /// ウィンドウタイトルへ表示する集計済みスナップショットを表す。
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub(crate) struct PerformanceSnapshot {
-    pub(crate) fps: f64,
-    pub(crate) frame_ms: f64,
-    pub(crate) prepare_ms: f64,
-    pub(crate) ui_update_ms: f64,
-    pub(crate) panel_surface_ms: f64,
-    pub(crate) present_ms: f64,
-    pub(crate) canvas_latency_ms: f64,
-    pub(crate) canvas_present_hz: f64,
-    pub(crate) canvas_sample_hz: f64,
+pub struct PerformanceSnapshot {
+    pub fps: f64,
+    pub frame_ms: f64,
+    pub prepare_ms: f64,
+    pub ui_update_ms: f64,
+    pub panel_surface_ms: f64,
+    pub present_ms: f64,
+    pub canvas_latency_ms: f64,
+    pub canvas_present_hz: f64,
+    pub canvas_sample_hz: f64,
 }
 
 impl PerformanceSnapshot {
     /// ウィンドウタイトル向けの短い表示文字列を生成する。
-    pub(crate) fn title_text(&self) -> String {
+    pub fn title_text(&self) -> String {
         let latency_marker =
             if self.canvas_latency_ms > 0.0 && self.canvas_latency_ms <= INPUT_LATENCY_TARGET_MS {
                 "ok"
@@ -104,10 +117,10 @@ struct TimedLatencySample {
 }
 
 /// レンダリング区間と入力レイテンシを窓付きで集計する軽量プロファイラ。
-pub(crate) struct DesktopProfiler {
+pub struct DesktopProfiler {
     logging_enabled: bool,
-    pub(crate) stats: BTreeMap<&'static str, StageStats>,
-    pub(crate) value_stats: BTreeMap<&'static str, ValueStats>,
+    pub stats: BTreeMap<&'static str, StageStats>,
+    pub value_stats: BTreeMap<&'static str, ValueStats>,
     frames: u64,
     frame_interval_started: Instant,
     last_report: Instant,
@@ -122,14 +135,20 @@ pub(crate) struct DesktopProfiler {
     latest_snapshot: Option<PerformanceSnapshot>,
 }
 
+impl Default for DesktopProfiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DesktopProfiler {
     /// 現在時刻基準でプロファイラを初期化する。
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::new_at(Instant::now())
     }
 
     /// 指定時刻基準でプロファイラを初期化する。
-    pub(crate) fn new_at(now: Instant) -> Self {
+    pub fn new_at(now: Instant) -> Self {
         Self {
             logging_enabled: env::var_os("ALTPAINT_PROFILE").is_some(),
             stats: BTreeMap::new(),
@@ -150,7 +169,7 @@ impl DesktopProfiler {
     }
 
     /// ラベル付き計測としてクロージャを実行する。
-    pub(crate) fn measure<T>(&mut self, label: &'static str, f: impl FnOnce() -> T) -> T {
+    pub fn measure<T>(&mut self, label: &'static str, f: impl FnOnce() -> T) -> T {
         let started = Instant::now();
         let value = f();
         self.record(label, started.elapsed());
@@ -158,7 +177,7 @@ impl DesktopProfiler {
     }
 
     /// 既知ラベルへ経過時間を加算する。
-    pub(crate) fn record(&mut self, label: &'static str, elapsed: Duration) {
+    pub fn record(&mut self, label: &'static str, elapsed: Duration) {
         let stat = self.stats.entry(label).or_default();
         stat.calls += 1;
         stat.total += elapsed;
@@ -175,7 +194,7 @@ impl DesktopProfiler {
     }
 
     /// 数値メトリクスをサンプルとして記録する。
-    pub(crate) fn record_value(&mut self, label: &'static str, value: f64) {
+    pub fn record_value(&mut self, label: &'static str, value: f64) {
         let stat = self.value_stats.entry(label).or_default();
         stat.samples += 1;
         stat.total += value;
@@ -183,12 +202,12 @@ impl DesktopProfiler {
     }
 
     /// 現在時刻でフレームを完了する。
-    pub(crate) fn finish_frame(&mut self, elapsed: Duration) {
+    pub fn finish_frame(&mut self, elapsed: Duration) {
         self.finish_frame_at(elapsed, Instant::now());
     }
 
     /// 指定時刻でフレームを完了し、スナップショットを更新する。
-    pub(crate) fn finish_frame_at(&mut self, elapsed: Duration, now: Instant) {
+    pub fn finish_frame_at(&mut self, elapsed: Duration, now: Instant) {
         self.record("frame_total", elapsed);
         self.frames += 1;
 
@@ -210,17 +229,14 @@ impl DesktopProfiler {
     }
 
     /// GPU 提示の内訳をラベル別に記録する。
-    pub(crate) fn record_present(&mut self, timings: PresentTimings) {
+    pub fn record_present(&mut self, timings: PresentTimings) {
         self.record("present_upload", timings.upload);
         self.record("present_encode", timings.encode_and_submit);
         self.record("present_swap", timings.present);
         self.record("present_upload_base", timings.base_upload);
         self.record("present_upload_overlay", timings.overlay_upload);
         self.record("present_upload_canvas", timings.canvas_upload);
-        self.record_value(
-            "present_upload_base_bytes",
-            timings.base_upload_bytes as f64,
-        );
+        self.record_value("present_upload_base_bytes", timings.base_upload_bytes as f64);
         self.record_value(
             "present_upload_overlay_bytes",
             timings.overlay_upload_bytes as f64,
@@ -232,24 +248,24 @@ impl DesktopProfiler {
     }
 
     /// 現在時刻でキャンバス入力サンプルを記録する。
-    pub(crate) fn record_canvas_input(&mut self) {
+    pub fn record_canvas_input(&mut self) {
         self.record_canvas_input_at(Instant::now());
     }
 
     /// 指定時刻でキャンバス入力サンプルを記録する。
-    pub(crate) fn record_canvas_input_at(&mut self, now: Instant) {
+    pub fn record_canvas_input_at(&mut self, now: Instant) {
         self.pending_canvas_input_at = Some(now);
         self.recent_canvas_inputs.push_back(now);
         self.prune_recent_inputs(now);
     }
 
     /// 現在時刻でキャンバス提示完了を記録する。
-    pub(crate) fn record_canvas_present(&mut self) {
+    pub fn record_canvas_present(&mut self) {
         self.record_canvas_present_at(Instant::now());
     }
 
     /// 指定時刻でキャンバス提示完了を記録し、入力遅延を確定する。
-    pub(crate) fn record_canvas_present_at(&mut self, now: Instant) {
+    pub fn record_canvas_present_at(&mut self, now: Instant) {
         self.recent_canvas_presents.push_back(now);
         let Some(input_at) = self.pending_canvas_input_at.take() else {
             self.prune_recent_inputs(now);
@@ -264,15 +280,14 @@ impl DesktopProfiler {
     }
 
     /// 最新スナップショットからウィンドウタイトル文字列を返す。
-    pub(crate) fn title_text(&self) -> String {
+    pub fn title_text(&self) -> String {
         self.latest_snapshot
             .map(|snapshot| snapshot.title_text())
             .unwrap_or_else(|| WINDOW_TITLE.to_string())
     }
 
-    /// テスト用に最新スナップショットを返す。
-    #[cfg(test)]
-    pub(crate) fn latest_snapshot(&self) -> Option<PerformanceSnapshot> {
+    /// テストや外部観測向けに最新スナップショットを返す。
+    pub fn latest_snapshot(&self) -> Option<PerformanceSnapshot> {
         self.latest_snapshot
     }
 

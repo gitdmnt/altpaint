@@ -12,21 +12,22 @@ mod tests;
 use std::path::PathBuf;
 use std::thread::JoinHandle;
 
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use app_core::{Command, DirtyRect, Document};
+use desktop_support::{
+    DEFAULT_PROJECT_PATH, DesktopDialogs, DesktopSessionState, NativeDesktopDialogs,
+    default_panel_dir, default_pen_dir, load_session_state, save_session_state,
+};
 use render::RenderFrame;
-use storage::load_project_from_path;
+use storage::{load_pen_directory, load_project_from_path};
 use ui_shell::{PanelSurface, UiShell};
 
 use crate::canvas_bridge::CanvasInputState;
-use crate::config::{DEFAULT_PROJECT_PATH, default_panel_dir, default_pen_dir};
-use crate::dialogs::{DesktopDialogs, NativeDesktopDialogs};
 use crate::frame::{
     DesktopLayout, Rect, TextureQuad, brush_preview_rect, canvas_texture_quad,
     exposed_canvas_background_rect,
-};
-use crate::pens::load_pen_directory;
-use crate::session::{
-    DesktopSessionState, default_session_path, load_session_state, save_session_state,
 };
 
 /// 差分提示のために更新領域を集約した結果を表す。
@@ -50,6 +51,9 @@ struct PanelDragState {
 struct PendingSaveTask {
     handle: JoinHandle<Result<(), String>>,
 }
+
+#[cfg(test)]
+static TEST_SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// ランタイムから利用されるデスクトップアプリ本体を表す。
 pub(crate) struct DesktopApp {
@@ -82,7 +86,7 @@ impl DesktopApp {
         Self::new_with_dialogs_and_session_path(
             project_path,
             Box::new(NativeDesktopDialogs),
-            default_session_path(),
+            default_desktop_session_path(),
         )
     }
 
@@ -92,7 +96,7 @@ impl DesktopApp {
         project_path: PathBuf,
         dialogs: Box<dyn DesktopDialogs>,
     ) -> Self {
-        Self::new_with_dialogs_and_session_path(project_path, dialogs, default_session_path())
+        Self::new_with_dialogs_and_session_path(project_path, dialogs, default_desktop_session_path())
     }
 
     /// ダイアログ実装とセッション保存先を差し替えてアプリ本体を生成する。
@@ -489,5 +493,21 @@ impl DesktopApp {
     /// キャンバス描画中かどうかを返す。
     pub(crate) fn is_canvas_interacting(&self) -> bool {
         self.canvas_input.is_drawing
+    }
+}
+
+fn default_desktop_session_path() -> PathBuf {
+    #[cfg(test)]
+    {
+        let unique = TEST_SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "altpaint-test-session-{}-{unique}.json",
+            std::process::id()
+        ))
+    }
+
+    #[cfg(not(test))]
+    {
+        desktop_support::default_session_path()
     }
 }

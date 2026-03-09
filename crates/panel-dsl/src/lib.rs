@@ -193,6 +193,10 @@ pub fn validate_panel_ast(
         ));
     }
 
+    for field in &ast.state {
+        validate_attr_value(&field.default)?;
+    }
+
     let mut handler_bindings = BTreeSet::new();
     for node in &ast.view {
         validate_view_node(node, &mut handler_bindings)?;
@@ -261,7 +265,7 @@ fn validate_view_node(
     handler_bindings: &mut BTreeSet<String>,
 ) -> Result<(), PanelDslError> {
     match node {
-        ViewNodeAst::Text(_) => Ok(()),
+        ViewNodeAst::Text(text) => validate_text_expressions(text),
         ViewNodeAst::Element(element) => {
             let allowed = [
                 "column",
@@ -282,6 +286,9 @@ fn validate_view_node(
                     "unsupported view tag: {}",
                     element.tag
                 )));
+            }
+            for value in element.attributes.values() {
+                validate_attr_value(value)?;
             }
             if element.tag == "button"
                 && let Some(handler) = element
@@ -321,6 +328,35 @@ fn validate_view_node(
             Ok(())
         }
     }
+}
+
+fn validate_attr_value(value: &AttrValue) -> Result<(), PanelDslError> {
+    if let AttrValue::Expression(expression) = value {
+        validate_expression_usage(expression)?;
+    }
+    Ok(())
+}
+
+fn validate_text_expressions(text: &str) -> Result<(), PanelDslError> {
+    let mut rest = text;
+    while let Some(start) = rest.find('{') {
+        let after_start = &rest[start + 1..];
+        let Some(end) = after_start.find('}') else {
+            return Ok(());
+        };
+        validate_expression_usage(after_start[..end].trim())?;
+        rest = &after_start[end + 1..];
+    }
+    Ok(())
+}
+
+fn validate_expression_usage(expression: &str) -> Result<(), PanelDslError> {
+    if expression.contains("host.") {
+        return Err(PanelDslError::Validation(
+            "direct host.* expressions are not allowed in .altp-panel; read host data via Wasm panel-sdk and mirror it into state.*".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn parse_panel_header(body: &str) -> Result<PanelHeaderAst, PanelDslError> {
@@ -889,6 +925,28 @@ view {
         assert!(
             matches!(error, PanelDslError::Validation(message) if message.contains("unsupported view tag"))
         );
+    }
+
+    #[test]
+    fn validation_rejects_direct_host_snapshot_expressions() {
+        let temp_dir = unique_test_dir();
+        fs::create_dir_all(&temp_dir).expect("temp dir created");
+        let source_path = temp_dir.join("sample.altp-panel");
+        fs::write(temp_dir.join("sample_panel.wasm"), []).expect("wasm placeholder created");
+        let source = SAMPLE_PANEL.replace(
+            "<text tone=\"muted\">Loaded from .altp-panel</text>",
+            "<text>{host.document.title}</text>",
+        );
+
+        let error = parse_panel_source(&source)
+            .and_then(|ast| validate_panel_ast(ast, source_path))
+            .expect_err("host.* expression should fail validation");
+
+        assert!(matches!(
+            error,
+            PanelDslError::Validation(message)
+                if message.contains("direct host.* expressions are not allowed")
+        ));
     }
 
     fn unique_test_dir() -> PathBuf {

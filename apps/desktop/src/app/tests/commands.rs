@@ -3,12 +3,11 @@
 use std::path::PathBuf;
 
 use app_core::{ColorRgba8, Command, ToolKind};
+use desktop_support::{DesktopProfiler, default_panel_dir, parse_document_size};
 use plugin_api::HostAction;
 use serde_json::json;
 
 use super::{TestDialogs, test_app_with_dialogs, tree_contains_text};
-use crate::config::{default_panel_dir, parse_document_size};
-use crate::profiler::DesktopProfiler;
 
 /// ツール切替コマンドがドキュメントへ反映されることを確認する。
 #[test]
@@ -152,7 +151,7 @@ fn execute_command_new_document_sized_replaces_bitmap() {
 /// 既定 UI ディレクトリから DSL サンプルパネルが読み込まれることを確認する。
 #[test]
 fn desktop_app_loads_phase6_sample_panel_from_default_ui_directory() {
-    let app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let app = test_app_with_dialogs(TestDialogs::default());
 
     assert!(default_panel_dir().join("phase6-sample").join("panel.altp-panel").exists());
     assert!(app.ui_shell.panel_trees().iter().any(|panel| panel.id == "builtin.dsl-sample"));
@@ -161,7 +160,7 @@ fn desktop_app_loads_phase6_sample_panel_from_default_ui_directory() {
 /// 組み込みパネルが DSL / Wasm 実装へ置換されていることを確認する。
 #[test]
 fn desktop_app_replaces_builtin_panels_with_phase7_dsl_variants() {
-    let app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let app = test_app_with_dialogs(TestDialogs::default());
     let panels = app.ui_shell.panel_trees();
 
     for panel_id in [

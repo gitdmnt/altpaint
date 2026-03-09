@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/app-core",
+  "crates/desktop-support",
   "crates/panel-dsl",
   "crates/panel-macros",
   "crates/panel-schema",

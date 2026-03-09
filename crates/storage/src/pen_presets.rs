@@ -44,7 +44,10 @@ impl TryFrom<PenPresetFile> for PenPreset {
 
     fn try_from(value: PenPresetFile) -> Result<Self, Self::Error> {
         if value.format_version != 1 {
-            return Err(format!("unsupported pen preset format version: {}", value.format_version));
+            return Err(format!(
+                "unsupported pen preset format version: {}",
+                value.format_version
+            ));
         }
         if value.id.trim().is_empty() {
             return Err("pen preset id must not be empty".to_string());
@@ -58,13 +61,11 @@ impl TryFrom<PenPresetFile> for PenPreset {
             id: value.id,
             name: value.name,
             size: value.size.clamp(min_size, max_size),
-            min_size,
-            max_size,
         })
     }
 }
 
-pub(crate) fn load_pen_directory(directory: impl AsRef<Path>) -> (Vec<PenPreset>, Vec<String>) {
+pub fn load_pen_directory(directory: impl AsRef<Path>) -> (Vec<PenPreset>, Vec<String>) {
     let mut files = Vec::new();
     let mut diagnostics = Vec::new();
     collect_pen_files(directory.as_ref(), &mut files, &mut diagnostics);

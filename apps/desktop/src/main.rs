@@ -5,20 +5,14 @@
 
 mod app;
 mod canvas_bridge;
-mod config;
-mod dialogs;
 mod frame;
-mod pens;
-mod profiler;
 mod runtime;
-mod session;
 mod wgpu_canvas;
 
 use anyhow::Result;
+use desktop_support::{DEFAULT_PROJECT_PATH, startup_project_path};
 
-use crate::config::DEFAULT_PROJECT_PATH;
 use crate::runtime::DesktopRuntime;
-use crate::session::startup_project_path;
 
 /// デスクトップアプリケーションを既定プロジェクトパスで起動する。
 fn main() -> Result<()> {

@@ -1,10 +1,18 @@
 use panel_sdk::{
     CommandDescriptor,
     commands::{self, Tool},
-    runtime::{emit_command, event_string, set_state_bool, set_state_string, state_string, toggle_state},
+    host,
+    runtime::{
+        emit_command, event_string, set_state_bool, set_state_i32, set_state_string,
+        state_string, toggle_state,
+    },
     state,
 };
 
+const ACTIVE_TOOL: state::StringKey = state::string("active_tool");
+const PEN_NAME: state::StringKey = state::string("pen_name");
+const PEN_SIZE: state::IntKey = state::int("pen_size");
+const PEN_COUNT: state::IntKey = state::int("pen_count");
 const SHOW_SHORTCUTS: state::BoolKey = state::bool("show_shortcuts");
 const CAPTURE_TARGET: state::StringKey = state::string("session.capture_target");
 const BRUSH_SHORTCUT: state::StringKey = state::string("config.brush_shortcut");
@@ -17,6 +25,14 @@ fn build_tool_command(tool: Tool) -> CommandDescriptor {
 
 #[panel_sdk::panel_init]
 fn init() {}
+
+#[panel_sdk::panel_handler]
+fn sync_host() {
+    set_state_string(ACTIVE_TOOL, host::tool::active_name());
+    set_state_string(PEN_NAME, host::tool::pen_name());
+    set_state_i32(PEN_SIZE, host::tool::pen_size());
+    set_state_i32(PEN_COUNT, host::tool::pen_count());
+}
 
 fn capture_shortcut(target: &str) {
     set_state_string(CAPTURE_TARGET, target);
@@ -134,6 +150,7 @@ mod tests {
     #[test]
     fn panel_entrypoints_are_callable_on_native_targets() {
         init();
+        sync_host();
         activate_brush();
         activate_pen();
         activate_eraser();

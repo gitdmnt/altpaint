@@ -47,15 +47,13 @@ pub struct PenPreset {
     pub name: String,
     #[serde(default = "default_pen_size")]
     pub size: u32,
-    #[serde(default = "default_pen_min_size")]
-    pub min_size: u32,
-    #[serde(default = "default_pen_max_size")]
-    pub max_size: u32,
 }
 
 impl PenPreset {
     pub fn clamp_size(&self, size: u32) -> u32 {
-        size.clamp(self.min_size.max(1), self.max_size.max(self.min_size.max(1)))
+        size.clamp(
+            1, 10000, // 将来の拡大に備えて大きな上限を許す
+        )
     }
 }
 
@@ -65,22 +63,12 @@ impl Default for PenPreset {
             id: "builtin.round-pen".to_string(),
             name: "Round Pen".to_string(),
             size: default_pen_size(),
-            min_size: default_pen_min_size(),
-            max_size: default_pen_max_size(),
         }
     }
 }
 
 fn default_pen_size() -> u32 {
     4
-}
-
-fn default_pen_min_size() -> u32 {
-    1
-}
-
-fn default_pen_max_size() -> u32 {
-    64
 }
 
 fn default_pen_presets() -> Vec<PenPreset> {
@@ -646,7 +634,13 @@ impl CanvasBitmap {
         dirty
     }
 
-    fn paint_disk(&mut self, center_x: isize, center_y: isize, size: u32, rgba: [u8; 4]) -> DirtyRect {
+    fn paint_disk(
+        &mut self,
+        center_x: isize,
+        center_y: isize,
+        size: u32,
+        rgba: [u8; 4],
+    ) -> DirtyRect {
         let radius = (size.max(1) as f32) * 0.5;
         let left = (center_x as f32 - radius).floor().max(0.0) as usize;
         let top = (center_y as f32 - radius).floor().max(0.0) as usize;
@@ -689,7 +683,8 @@ impl Document {
     pub fn new(width: usize, height: usize) -> Self {
         let width = width.max(1);
         let height = height.max(1);
-        let background = RasterLayer::background(LayerNodeId(1), "Layer 1".to_string(), width, height);
+        let background =
+            RasterLayer::background(LayerNodeId(1), "Layer 1".to_string(), width, height);
         let pen_presets = default_pen_presets();
         let active_pen_preset_id = pen_presets
             .first()
@@ -1129,7 +1124,9 @@ fn ensure_panel_layers(panel: &mut Panel) {
         }
         repaired = true;
     }
-    panel.active_layer_index = panel.active_layer_index.min(panel.layers.len().saturating_sub(1));
+    panel.active_layer_index = panel
+        .active_layer_index
+        .min(panel.layers.len().saturating_sub(1));
     sync_root_layer_summary(panel);
     if repaired {
         panel.bitmap = composite_panel_bitmap(panel);
@@ -1151,7 +1148,9 @@ fn draw_on_active_layer(
     erase: bool,
     size: u32,
 ) -> DirtyRect {
-    let active_index = panel.active_layer_index.min(panel.layers.len().saturating_sub(1));
+    let active_index = panel
+        .active_layer_index
+        .min(panel.layers.len().saturating_sub(1));
     let is_background = active_index == 0;
     let layer = &mut panel.layers[active_index];
     if erase {
@@ -1176,12 +1175,16 @@ fn draw_line_on_active_layer(
     erase: bool,
     size: u32,
 ) -> DirtyRect {
-    let active_index = panel.active_layer_index.min(panel.layers.len().saturating_sub(1));
+    let active_index = panel
+        .active_layer_index
+        .min(panel.layers.len().saturating_sub(1));
     let is_background = active_index == 0;
     let layer = &mut panel.layers[active_index];
     if erase {
         if is_background {
-            layer.bitmap.erase_line_sized(from_x, from_y, to_x, to_y, size)
+            layer
+                .bitmap
+                .erase_line_sized(from_x, from_y, to_x, to_y, size)
         } else {
             layer
                 .bitmap
@@ -1512,15 +1515,11 @@ mod tests {
                 id: "fine".to_string(),
                 name: "Fine".to_string(),
                 size: 2,
-                min_size: 1,
-                max_size: 16,
             },
             PenPreset {
                 id: "bold".to_string(),
                 name: "Bold".to_string(),
                 size: 9,
-                min_size: 1,
-                max_size: 32,
             },
         ]);
 
@@ -1611,7 +1610,10 @@ mod tests {
 
         let index = (5 * visible_bitmap.width + 5) * 4;
         assert_eq!(&visible_bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
-        assert_eq!(&hidden_bitmap.pixels[index..index + 4], &[255, 255, 255, 255]);
+        assert_eq!(
+            &hidden_bitmap.pixels[index..index + 4],
+            &[255, 255, 255, 255]
+        );
     }
 
     #[test]

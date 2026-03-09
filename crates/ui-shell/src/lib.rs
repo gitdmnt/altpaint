@@ -1055,6 +1055,7 @@ struct DslPanelPlugin {
     host_snapshot: Value,
     diagnostics: Vec<Diagnostic>,
     has_keyboard_handler: bool,
+    has_sync_host_handler: bool,
 }
 
 impl DslPanelPlugin {
@@ -1069,6 +1070,7 @@ impl DslPanelPlugin {
         let mut runtime = WasmPanelRuntime::load(&runtime_path)
             .map_err(|error: PluginHostError| error.to_string())?;
         let has_keyboard_handler = runtime.has_handler("keyboard");
+        let has_sync_host_handler = runtime.has_handler("sync_host");
         let initial_state = state_defaults_to_json(&definition.state);
         let init = runtime
             .initialize(&PanelInitRequest {
@@ -1086,6 +1088,7 @@ impl DslPanelPlugin {
             host_snapshot: json!({}),
             diagnostics: init.diagnostics,
             has_keyboard_handler,
+            has_sync_host_handler,
         })
     }
 
@@ -1093,7 +1096,6 @@ impl DslPanelPlugin {
         let mut context = DslEvaluationContext {
             panel_id: self.id.to_string(),
             state: &self.state,
-            host_snapshot: &self.host_snapshot,
             generated_ids: 0,
         };
         let mut children = self
@@ -1152,6 +1154,29 @@ impl DslPanelPlugin {
         apply_state_patch(&mut self.state, &StatePatch::set(binding, next_value));
         true
     }
+
+    fn sync_host_state(&mut self) {
+        if !self.has_sync_host_handler {
+            return;
+        }
+
+        let result = match self.runtime.handle_event(&PanelEventRequest {
+            handler_name: "sync_host".to_string(),
+            event_kind: "sync_host".to_string(),
+            event_payload: json!({}),
+            state_snapshot: self.state.clone(),
+            host_snapshot: self.host_snapshot.clone(),
+        }) {
+            Ok(result) => result,
+            Err(error) => {
+                self.diagnostics = vec![Diagnostic::error(error.to_string())];
+                return;
+            }
+        };
+
+        apply_state_patches(&mut self.state, &result.state_patch);
+        self.diagnostics = result.diagnostics;
+    }
 }
 
 impl PanelPlugin for DslPanelPlugin {
@@ -1165,7 +1190,7 @@ impl PanelPlugin for DslPanelPlugin {
 
     fn update(&mut self, document: &Document) {
         self.host_snapshot = build_host_snapshot(document);
-        sync_host_derived_state(&self.definition.state, &self.host_snapshot, &mut self.state);
+        self.sync_host_state();
     }
 
     fn debug_summary(&self) -> String {
@@ -1271,7 +1296,6 @@ fn leak_string(value: String) -> &'static str {
 struct DslEvaluationContext<'a> {
     panel_id: String,
     state: &'a Value,
-    host_snapshot: &'a Value,
     generated_ids: usize,
 }
 
@@ -1570,6 +1594,11 @@ fn evaluate_expression(expression: &str, context: &DslEvaluationContext<'_>) -> 
     if let Some(inner) = expression.strip_prefix('!') {
         return Value::Bool(!expression_to_bool(inner, context));
     }
+    if let Some((left, right)) = expression.split_once("!=") {
+        return Value::Bool(
+            evaluate_expression(left.trim(), context) != evaluate_expression(right.trim(), context),
+        );
+    }
     if let Some((left, right)) = expression.split_once("==") {
         return Value::Bool(
             evaluate_expression(left.trim(), context) == evaluate_expression(right.trim(), context),
@@ -1589,11 +1618,6 @@ fn evaluate_expression(expression: &str, context: &DslEvaluationContext<'_>) -> 
     }
     if let Some(path) = expression.strip_prefix("state.") {
         return lookup_json_path(context.state, path)
-            .cloned()
-            .unwrap_or(Value::Null);
-    }
-    if let Some(path) = expression.strip_prefix("host.") {
-        return lookup_json_path(context.host_snapshot, path)
             .cloned()
             .unwrap_or(Value::Null);
     }
@@ -1632,25 +1656,13 @@ fn state_defaults_to_json(fields: &[StateField]) -> Value {
     for field in fields {
         apply_state_patch(
             &mut state,
-            &StatePatch::set(field.name.clone(), default_attr_value_to_json(&field.default)),
+            &StatePatch::set(
+                field.name.clone(),
+                default_attr_value_to_json(&field.default),
+            ),
         );
     }
     state
-}
-
-fn sync_host_derived_state(fields: &[StateField], host_snapshot: &Value, state: &mut Value) {
-    for field in fields {
-        if let DslAttrValue::Expression(expression) = &field.default {
-            let context = DslEvaluationContext {
-                panel_id: String::new(),
-                state,
-                host_snapshot,
-                generated_ids: 0,
-            };
-            let next = evaluate_expression(expression, &context);
-            apply_state_patch(state, &StatePatch::replace(field.name.clone(), next));
-        }
-    }
 }
 
 fn default_attr_value_to_json(value: &DslAttrValue) -> Value {
@@ -1669,9 +1681,15 @@ fn default_attr_value_to_json(value: &DslAttrValue) -> Value {
 }
 
 fn build_host_snapshot(document: &Document) -> Value {
-    let active_panel = document.work.pages.first().and_then(|page| page.panels.first());
+    let active_panel = document
+        .work
+        .pages
+        .first()
+        .and_then(|page| page.panels.first());
     let layer_count = active_panel.map(|panel| panel.layers.len()).unwrap_or(1);
-    let active_layer_index = active_panel.map(|panel| panel.active_layer_index).unwrap_or(0);
+    let active_layer_index = active_panel
+        .map(|panel| panel.active_layer_index)
+        .unwrap_or(0);
     let active_layer = active_panel.and_then(|panel| panel.layers.get(panel.active_layer_index));
     let page_count = document.work.pages.len();
     let panel_count = document
@@ -1710,8 +1728,6 @@ fn build_host_snapshot(document: &Document) -> Value {
             "pen_index": document.active_pen_index(),
             "pen_count": document.pen_presets.len(),
             "pen_size": document.active_pen_size,
-            "pen_min_size": active_pen.min_size,
-            "pen_max_size": active_pen.max_size,
         },
         "color": {
             "active": document.active_color.hex_rgb(),
@@ -2790,6 +2806,8 @@ runtime {
 
 state {
     expanded: bool = false
+    active_tool: string = ""
+    document_title: string = ""
 }
 
 view {
@@ -2797,10 +2815,10 @@ view {
         <section title="Runtime">
                         <text tone="muted">Loaded from disk</text>
                         <button id="dsl.save" on:click="save_project">Save</button>
-                        <button id="dsl.brush" on:click="activate_brush" active={host.tool.active == "brush"}>Brush</button>
+                        <button id="dsl.brush" on:click="activate_brush" active={state.active_tool == "brush"}>Brush</button>
                         <toggle id="dsl.expanded" checked={state.expanded} on:change="toggle_expanded">Expanded</toggle>
                         <when test={state.expanded}>
-                                <text>{host.document.title}</text>
+                                <text>{state.document_title}</text>
                         </when>
         </section>
     </column>
@@ -2810,33 +2828,70 @@ view {
     const SAMPLE_DSL_WAT: &str = r#"(module
     (import "host" "state_toggle" (func $state_toggle (param i32 i32)))
     (import "host" "state_set_bool" (func $state_set_bool (param i32 i32 i32)))
+    (import "host" "state_set_string" (func $state_set_string (param i32 i32 i32 i32)))
+    (import "host" "host_get_string_len" (func $host_get_string_len (param i32 i32) (result i32)))
+    (import "host" "host_get_string_copy" (func $host_get_string_copy (param i32 i32 i32 i32)))
     (import "host" "command" (func $command (param i32 i32)))
     (import "host" "command_string" (func $command_string (param i32 i32 i32 i32 i32 i32)))
     (memory (export "memory") 1)
     (data (i32.const 0) "expanded")
-    (data (i32.const 16) "project.save")
-    (data (i32.const 32) "tool.set_active")
-    (data (i32.const 64) "tool")
-    (data (i32.const 80) "brush")
+    (data (i32.const 16) "active_tool")
+    (data (i32.const 32) "document_title")
+    (data (i32.const 64) "tool.active")
+    (data (i32.const 80) "document.title")
+    (data (i32.const 96) "project.save")
+    (data (i32.const 112) "tool.set_active")
+    (data (i32.const 144) "tool")
+    (data (i32.const 160) "brush")
     (func (export "panel_init")
         i32.const 0
         i32.const 8
         i32.const 0
         call $state_set_bool)
+    (func (export "panel_handle_sync_host")
+        (local $len i32)
+        i32.const 64
+        i32.const 11
+        call $host_get_string_len
+        local.set $len
+        i32.const 64
+        i32.const 11
+        i32.const 256
+        local.get $len
+        call $host_get_string_copy
+        i32.const 16
+        i32.const 11
+        i32.const 256
+        local.get $len
+        call $state_set_string
+        i32.const 80
+        i32.const 14
+        call $host_get_string_len
+        local.set $len
+        i32.const 80
+        i32.const 14
+        i32.const 320
+        local.get $len
+        call $host_get_string_copy
+        i32.const 32
+        i32.const 14
+        i32.const 320
+        local.get $len
+        call $state_set_string)
     (func (export "panel_handle_toggle_expanded")
         i32.const 0
         i32.const 8
         call $state_toggle)
     (func (export "panel_handle_save_project")
-        i32.const 16
+        i32.const 96
         i32.const 12
         call $command)
     (func (export "panel_handle_activate_brush")
-        i32.const 32
+        i32.const 112
         i32.const 15
-        i32.const 64
+        i32.const 144
         i32.const 4
-        i32.const 80
+        i32.const 160
         i32.const 5
         call $command_string))"#;
 
@@ -3594,8 +3649,14 @@ view {
             .find(|panel| panel.id == "builtin.pen-settings")
             .expect("pen panel exists");
 
-        assert!(tree_contains_text(&tool_panel.children, "Preset: Round Pen"));
-        assert!(tree_contains_text(&tool_panel.children, "Size: 4px / presets: 1"));
+        assert!(tree_contains_text(
+            &tool_panel.children,
+            "Preset: Round Pen"
+        ));
+        assert!(tree_contains_text(
+            &tool_panel.children,
+            "Size: 4px / presets: 1"
+        ));
         assert!(tree_contains_text(&layers_panel.children, "index: 0"));
         assert!(tree_contains_text(&layers_panel.children, "blend: normal"));
         assert!(tree_contains_text(&layers_panel.children, "visible: true"));

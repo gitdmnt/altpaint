@@ -1,13 +1,15 @@
 use panel_sdk::{
     CommandDescriptor,
     commands::{self, RgbColor},
-    runtime::{emit_command, state_i32},
+    host,
+    runtime::{emit_command, set_state_i32, set_state_string, state_i32},
     state,
 };
 
 const RED: state::IntKey = state::int("red");
 const GREEN: state::IntKey = state::int("green");
 const BLUE: state::IntKey = state::int("blue");
+const ACTIVE_HEX: state::StringKey = state::string("active_hex");
 
 fn format_color(red: i32, green: i32, blue: i32) -> String {
     rgb_color(red, green, blue).to_hex_string()
@@ -27,6 +29,14 @@ fn rgb_color(red: i32, green: i32, blue: i32) -> RgbColor {
 
 #[panel_sdk::panel_init]
 fn init() {}
+
+#[panel_sdk::panel_handler]
+fn sync_host() {
+    set_state_i32(RED, host::color::red());
+    set_state_i32(GREEN, host::color::green());
+    set_state_i32(BLUE, host::color::blue());
+    set_state_string(ACTIVE_HEX, host::color::active_hex());
+}
 
 #[panel_sdk::panel_handler]
 fn set_red(value: i32) {
@@ -87,6 +97,7 @@ mod tests {
     #[test]
     fn panel_entrypoints_are_callable_on_native_targets() {
         init();
+        sync_host();
         set_red(12);
         set_green(34);
         set_blue(56);

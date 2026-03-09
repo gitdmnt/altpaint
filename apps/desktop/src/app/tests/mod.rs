@@ -10,8 +10,9 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use desktop_support::DesktopDialogs;
+
 use super::DesktopApp;
-use crate::dialogs::DesktopDialogs;
 
 static TEST_FILE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 

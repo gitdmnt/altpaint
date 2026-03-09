@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use app_core::Command;
+use desktop_support::{DEFAULT_PROJECT_PATH, DesktopProfiler};
 use plugin_api::HostAction;
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -12,9 +13,7 @@ use super::{
     TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_session_path, unique_test_path,
 };
 use crate::app::DesktopApp;
-use crate::config::DEFAULT_PROJECT_PATH;
 use crate::frame::status_text_bounds;
-use crate::profiler::DesktopProfiler;
 
 /// open ダイアログ経由の読込でワークスペース状態も復元されることを確認する。
 #[test]
@@ -210,7 +209,7 @@ fn move_panel_host_action_updates_status_without_full_recompose() {
 /// パネル表示切替が全面再構成ではなく差分更新で反映されることを確認する。
 #[test]
 fn set_panel_visibility_updates_status_without_full_recompose() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut app = test_app_with_dialogs(TestDialogs::default());
     let mut profiler = DesktopProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();

@@ -14,17 +14,18 @@ runtime {
 }
 
 state {
-  red: int = {host.color.red}
-  green: int = {host.color.green}
-  blue: int = {host.color.blue}
+  red: int = 0
+  green: int = 0
+  blue: int = 0
+  active_hex: string = "#000000"
 }
 
 view {
   <column gap=8 padding=8>
     <section title="Custom">
       <text tone="muted">Hosted via Rust SDK + Wasm</text>
-      <color-preview id="color.preview" label="Live Preview" color={host.color.active}></color-preview>
-      <text>{host.color.active}</text>
+      <color-preview id="color.preview" label="Live Preview" color={state.active_hex}></color-preview>
+      <text>{state.active_hex}</text>
       <slider id="color.slider.red" label="Red" min=0 max=255 value={state.red} fill="#D32F2F" on:change="set_red"></slider>
       <slider id="color.slider.green" label="Green" min=0 max=255 value={state.green} fill="#388E3C" on:change="set_green"></slider>
       <slider id="color.slider.blue" label="Blue" min=0 max=255 value={state.blue} fill="#1976D2" on:change="set_blue"></slider>

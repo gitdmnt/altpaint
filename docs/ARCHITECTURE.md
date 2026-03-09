@@ -80,11 +80,17 @@
    - パネル/入出力/フィルタ/自動化プラグインの起動
 5. `storage`
    - プロジェクト読込/保存
+  - ペンプリセット読込のようなファイルベース資産 I/O
    - タイル・スナップショット・メタデータ永続化
-6. `apps/desktop`
+6. `desktop-support`
+  - デスクトップ固有設定
+  - セッション永続化
+  - ダイアログ境界
+  - 実行時プロファイラ
+7. `apps/desktop`
    - `winit` ウィンドウ
    - `wgpu` 初期化とフレーム駆動
-  - UI ベース層 / GPU キャンバス層 / オーバーレイ層の合成
+   - UI ベース層 / GPU キャンバス層 / オーバーレイ層の合成
    - 入力収集
    - メインループとスケジューリング
 
@@ -213,14 +219,31 @@
 - UI ベース層 / GPU キャンバス層 / オーバーレイ層の合成
 - OS 入力をパネルランタイム/キャンバスへルーティング
 
+持たない責務:
+
+- セッションファイル永続化の詳細
+- プロジェクトダイアログの実装詳細
+- プロファイラ集計ロジックの詳細
+- ペンプリセット探索のようなファイル列挙 I/O
+
+### `desktop-support`
+
+責務:
+
+- デスクトップ既定設定とパス解決
+- セッション保存/読込
+- ネイティブダイアログ境界
+- フレーム計測とタイトル表示向け集計
+
 ## 依存方向
 
 依存方向は原則として以下を守る。
 
-- `apps/desktop` → `app-core`, `render`, `ui-shell`, `plugin-api`, `storage`
+- `apps/desktop` → `app-core`, `render`, `ui-shell`, `plugin-api`, `storage`, `desktop-support`
 - `ui-shell` → `app-core`, `plugin-api`
 - `render` → `app-core`
 - `storage` → `app-core`
+- `desktop-support` → `app-core`
 - `plugins/*` → `panel-sdk`
 
 将来的に `plugin-host` クレートを追加する場合は以下とする。

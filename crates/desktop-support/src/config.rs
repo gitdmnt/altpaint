@@ -1,58 +1,56 @@
-//! `desktop` クレート全体で共有する定数と軽量ユーティリティを定義する。
+//! デスクトップ周辺で共有する定数と軽量ユーティリティを定義する。
 //!
-//! ウィンドウ寸法、配色、既定パスのような設定値を一箇所へ集約し、
-//! 実行系と描画系の双方が同じ前提で動けるようにする。
+//! 起動設定、配色、既定パスのような設定値を一箇所へ集約し、
+//! バイナリ側が実行配線だけへ集中できるようにする。
 
 use std::path::PathBuf;
 use std::time::Duration;
 
 /// 既定のプロジェクト保存先ファイル名を返す。
-pub(crate) const DEFAULT_PROJECT_PATH: &str = "altpaint-project.altp.json";
+pub const DEFAULT_PROJECT_PATH: &str = "altpaint-project.altp.json";
 /// ウィンドウタイトルのベース文字列を表す。
-pub(crate) const WINDOW_TITLE: &str = "altpaint";
+pub const WINDOW_TITLE: &str = "altpaint";
 /// 起動時の既定ウィンドウ幅を表す。
-pub(crate) const WINDOW_WIDTH: u32 = 1280;
+pub const WINDOW_WIDTH: u32 = 1280;
 /// 起動時の既定ウィンドウ高さを表す。
-pub(crate) const WINDOW_HEIGHT: u32 = 800;
+pub const WINDOW_HEIGHT: u32 = 800;
 /// サイドバーの基準幅を表す。
-pub(crate) const SIDEBAR_WIDTH: usize = 280;
+pub const SIDEBAR_WIDTH: usize = 280;
 /// 各領域で共有する余白量を表す。
-pub(crate) const WINDOW_PADDING: usize = 8;
+pub const WINDOW_PADDING: usize = 8;
 /// ヘッダー領域の高さを表す。
-pub(crate) const HEADER_HEIGHT: usize = 24;
+pub const HEADER_HEIGHT: usize = 24;
 /// フッター領域の高さを表す。
-pub(crate) const FOOTER_HEIGHT: usize = 24;
+pub const FOOTER_HEIGHT: usize = 24;
 /// アプリ全体の背景色を表す。
-pub(crate) const APP_BACKGROUND: [u8; 4] = [0x18, 0x18, 0x18, 0xff];
+pub const APP_BACKGROUND: [u8; 4] = [0x18, 0x18, 0x18, 0xff];
 /// サイドバー背景色を表す。
-pub(crate) const SIDEBAR_BACKGROUND: [u8; 4] = [0x2a, 0x2a, 0x2a, 0xff];
+pub const SIDEBAR_BACKGROUND: [u8; 4] = [0x2a, 0x2a, 0x2a, 0xff];
 /// パネル枠内の背景色を表す。
-pub(crate) const PANEL_FRAME_BACKGROUND: [u8; 4] = [0x1f, 0x1f, 0x1f, 0xff];
+pub const PANEL_FRAME_BACKGROUND: [u8; 4] = [0x1f, 0x1f, 0x1f, 0xff];
 /// パネル枠線色を表す。
-pub(crate) const PANEL_FRAME_BORDER: [u8; 4] = [0x3f, 0x3f, 0x3f, 0xff];
+pub const PANEL_FRAME_BORDER: [u8; 4] = [0x3f, 0x3f, 0x3f, 0xff];
 /// キャンバス表示部の背景色を表す。
-pub(crate) const CANVAS_BACKGROUND: [u8; 4] = [0x60, 0x60, 0x60, 0xff];
+pub const CANVAS_BACKGROUND: [u8; 4] = [0x60, 0x60, 0x60, 0xff];
 /// キャンバスホスト枠内の背景色を表す。
-pub(crate) const CANVAS_FRAME_BACKGROUND: [u8; 4] = [0x40, 0x40, 0x40, 0xff];
+pub const CANVAS_FRAME_BACKGROUND: [u8; 4] = [0x40, 0x40, 0x40, 0xff];
 /// キャンバス枠線色を表す。
-pub(crate) const CANVAS_FRAME_BORDER: [u8; 4] = [0x2a, 0x2a, 0x2a, 0xff];
+pub const CANVAS_FRAME_BORDER: [u8; 4] = [0x2a, 0x2a, 0x2a, 0xff];
 /// 主要ラベル用テキスト色を表す。
-pub(crate) const TEXT_PRIMARY: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
+pub const TEXT_PRIMARY: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
 /// 補助情報用テキスト色を表す。
-pub(crate) const TEXT_SECONDARY: [u8; 4] = [0xd8, 0xd8, 0xd8, 0xff];
+pub const TEXT_SECONDARY: [u8; 4] = [0xd8, 0xd8, 0xd8, 0xff];
 /// パフォーマンス表示を集計する時間窓を表す。
-pub(crate) const PERFORMANCE_SNAPSHOT_WINDOW: Duration = Duration::from_millis(1000);
+pub const PERFORMANCE_SNAPSHOT_WINDOW: Duration = Duration::from_millis(1000);
 /// 入力レイテンシの目標値を表す。
-pub(crate) const INPUT_LATENCY_TARGET_MS: f64 = 10.0;
+pub const INPUT_LATENCY_TARGET_MS: f64 = 10.0;
 /// 入力サンプリング周波数の目標値を表す。
-pub(crate) const INPUT_SAMPLING_TARGET_HZ: f64 = 120.0;
-#[cfg(test)]
+pub const INPUT_SAMPLING_TARGET_HZ: f64 = 120.0;
 const MAX_DOCUMENT_DIMENSION: usize = 8192;
-#[cfg(test)]
 const MAX_DOCUMENT_PIXELS: usize = 16_777_216;
 
 /// 既定のパネル DSL / Wasm ディレクトリを返す。
-pub(crate) fn default_panel_dir() -> PathBuf {
+pub fn default_panel_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
@@ -60,16 +58,15 @@ pub(crate) fn default_panel_dir() -> PathBuf {
 }
 
 /// 既定のペンプリセットディレクトリを返す。
-pub(crate) fn default_pen_dir() -> PathBuf {
+pub fn default_pen_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .join("pens")
 }
 
-/// テスト用に文字列からドキュメント寸法を解釈する。
-#[cfg(test)]
-pub(crate) fn parse_document_size(input: &str) -> Option<(usize, usize)> {
+/// 文字列からドキュメント寸法を解釈する。
+pub fn parse_document_size(input: &str) -> Option<(usize, usize)> {
     let normalized = input.replace(['×', ',', ';'], "x");
     let parts = normalized
         .split(|ch: char| ch == 'x' || ch.is_whitespace())
@@ -91,4 +88,23 @@ pub(crate) fn parse_document_size(input: &str) -> Option<(usize, usize)> {
     }
 
     Some((width, height))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_document_size_accepts_common_formats() {
+        assert_eq!(parse_document_size("64x64"), Some((64, 64)));
+        assert_eq!(parse_document_size("320 240"), Some((320, 240)));
+        assert_eq!(parse_document_size("800,600"), Some((800, 600)));
+    }
+
+    #[test]
+    fn parse_document_size_rejects_invalid_dimensions() {
+        assert_eq!(parse_document_size("0x600"), None);
+        assert_eq!(parse_document_size("99999x1"), None);
+        assert_eq!(parse_document_size("foo"), None);
+    }
 }
