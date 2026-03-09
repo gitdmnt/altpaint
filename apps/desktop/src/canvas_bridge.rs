@@ -39,35 +39,19 @@ pub fn map_view_to_canvas_with_transform(
     event: CanvasPointerEvent,
     transform: CanvasViewTransform,
 ) -> Option<(usize, usize)> {
-    if frame.width == 0 || frame.height == 0 || event.width <= 0 || event.height <= 0 {
-        return None;
-    }
-
-    let scale_x = event.width as f32 / frame.width as f32;
-    let scale_y = event.height as f32 / frame.height as f32;
-    let scale = (scale_x.min(scale_y) * transform.zoom.max(0.25)).max(f32::EPSILON);
-    if scale <= 0.0 {
-        return None;
-    }
-
-    let drawn_width = frame.width as f32 * scale;
-    let drawn_height = frame.height as f32 * scale;
-    let offset_x = (event.width as f32 - drawn_width) * 0.5 + transform.pan_x;
-    let offset_y = (event.height as f32 - drawn_height) * 0.5 + transform.pan_y;
-
-    let local_x = event.x as f32 - offset_x;
-    let local_y = event.y as f32 - offset_y;
-    if local_x < 0.0 || local_y < 0.0 || local_x >= drawn_width || local_y >= drawn_height {
-        return None;
-    }
-
-    let canvas_x = (local_x / scale).floor() as usize;
-    let canvas_y = (local_y / scale).floor() as usize;
-
-    Some((
-        canvas_x.min(frame.width.saturating_sub(1)),
-        canvas_y.min(frame.height.saturating_sub(1)),
-    ))
+    render::map_view_to_canvas_with_transform(
+        render::PixelRect {
+            x: 0,
+            y: 0,
+            width: event.width.max(0) as usize,
+            height: event.height.max(0) as usize,
+        },
+        frame.width,
+        frame.height,
+        event.x,
+        event.y,
+        transform,
+    )
 }
 
 /// ツール種別と前回位置からキャンバス編集コマンドを生成する。

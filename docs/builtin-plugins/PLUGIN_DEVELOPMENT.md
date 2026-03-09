@@ -64,6 +64,8 @@ plugins/my-panel/
 
 Wasm 側は `crates/panel-sdk` を使って実装します。
 
+plugin 作者向けの正面入口は `panel-sdk` のみで、`panel-macros` へ直接依存する必要はありません。
+
 依存は次です。
 
 ```toml

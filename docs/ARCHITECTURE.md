@@ -40,9 +40,10 @@
 - `panel-dsl` / `panel-schema` / `panel-sdk` / `panel-macros` が panel 基盤
 - `storage` が project I/O
 - `desktop-support` が desktop 固有 I/O と profiler
-- `render` は存在するが、まだ最小レンダ入口の段階
+- `workspace-persistence` が project / session 共有の UI 永続化 DTO を持つ
+- `render` は `RenderFrame` と canvas scene 計画を持つ
 
-つまり、理想図としての「render 中心の描画エンジン」はまだ途中であり、**現在の実装では desktop 側が描画責務をかなり持っている**。
+つまり、理想図としての「render 中心の描画エンジン」はまだ途中だが、**canvas quad / dirty 写像 / view 座標変換の責務は `render` へ寄せ始めている**。
 
 ## 層構造
 
@@ -116,6 +117,7 @@
 #### `panel-sdk`
 
 - plugin author 向け安定 API
+- plugin 作者が唯一直接依存する正面入口
 
 #### `panel-macros`
 
@@ -144,7 +146,7 @@
 現在の実態:
 
 - 名前は `ui-shell` だが、実際には **panel runtime 統合層** である
-- `render` への依存も持ち、最小 `RenderContext` を内部保持している
+- `render` 依存は解消したが、runtime と presentation を同居させる facade である
 
 設計上の判断:
 
@@ -158,6 +160,7 @@
 現状の責務:
 
 - `Document` から `RenderFrame` を作る最小入口
+- `CanvasViewTransform` から canvas scene / quad / dirty 写像 / view 座標変換を導く
 
 #### `apps/desktop`
 
@@ -184,9 +187,10 @@
 ### 守る方向
 
 - `apps/desktop` -> `app-core`, `render`, `ui-shell`, `storage`, `desktop-support`, `plugin-api`
-- `ui-shell` -> `app-core`, `plugin-api`, `panel-dsl`, `panel-schema`, `plugin-host`, `render`
+- `ui-shell` -> `app-core`, `plugin-api`, `panel-dsl`, `panel-schema`, `plugin-host`
 - `storage` -> `app-core`
 - `desktop-support` -> `app-core`
+- `workspace-persistence` -> `app-core`
 - `plugin-api` -> `app-core`
 - `render` -> `app-core`
 - `plugin-host` -> `panel-schema`
@@ -234,12 +238,12 @@
 #### project 保存
 
 - `storage` が扱う
-- `Document` + `WorkspaceLayout` + `plugin_configs` を保存する
+- `Document` + `WorkspaceUiState` を保存する
 
 #### session 保存
 
 - `desktop-support` が扱う
-- 最後に開いたファイルや desktop session を扱う
+- 最後に開いたファイルと `WorkspaceUiState` を扱う
 
 この分離は今後も崩さない。
 
@@ -291,7 +295,7 @@
 
 そのため、`storage` に寄せると「作品形式」と「デスクトップ起動状態」が混ざりやすい。
 
-ただし実装上は `workspace_layout` と `plugin_configs` が project/session の両方に現れているため、**将来はシリアライズ補助を共有化する余地がある**。それでも ownership は `storage` ではなく `desktop-support` 側に残す。
+現在は `workspace-persistence::WorkspaceUiState` でシリアライズ形だけを共有した。ownership は引き続き `storage` と `desktop-support` に残す。
 
 ### 3. `panel-macros` は `panel-sdk` の一部か
 
@@ -319,7 +323,6 @@
 - panel local state / persistent config 管理
 - layout / hit-test / focus / scroll / text input
 - software panel rendering
-- 最小 `RenderContext` の保持
 
 問題は、これらが1つのクレートに同居すると、次の変更が互いに巻き込まれることである。
 
@@ -409,8 +412,8 @@
 
 ### 2. `ui-shell` が `render` を知っている
 
-理想的には panel runtime と render はさらに分けられる。
-ただし現時点では `UiShell` が最小 render 入口も抱えており、この構成を前提に設計判断する。
+この問題は解消した。
+現在の論点は `ui-shell` 内の runtime / presentation 分離であり、方針は [docs/tmp/ui-shell-runtime-presentation-split-2026-03-10.md](docs/tmp/ui-shell-runtime-presentation-split-2026-03-10.md) を正とする。
 
 ### 3. `render` の責務は将来拡大余地が大きい
 

@@ -14,5 +14,4 @@ panel-dsl = { path = "../panel-dsl" }
 panel-schema = { path = "../panel-schema" }
 plugin-host = { path = "../plugin-host" }
 plugin-api = { path = "../plugin-api" }
-render = { path = "../render" }
 serde_json.workspace = true

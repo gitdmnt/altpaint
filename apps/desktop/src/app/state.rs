@@ -12,9 +12,24 @@ use storage::load_pen_directory;
 
 use super::DesktopApp;
 use crate::canvas_bridge::CanvasInputState;
-use crate::frame::{
-    Rect, TextureQuad, brush_preview_rect, canvas_texture_quad, exposed_canvas_background_rect,
-};
+use crate::frame::{Rect, TextureQuad, brush_preview_rect};
+
+fn from_render_rect(rect: render::PixelRect) -> Rect {
+    Rect {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+    }
+}
+
+fn from_render_quad(quad: render::TextureQuad) -> TextureQuad {
+    TextureQuad {
+        destination: from_render_rect(quad.destination),
+        uv_min: quad.uv_min,
+        uv_max: quad.uv_max,
+    }
+}
 
 /// 差分提示のために更新領域を集約した結果を表す。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -45,8 +60,10 @@ impl DesktopApp {
     pub(super) fn session_state(&self) -> DesktopSessionState {
         DesktopSessionState {
             last_project_path: Some(self.project_path.clone()),
-            workspace_layout: self.ui_shell.workspace_layout(),
-            plugin_configs: self.ui_shell.persistent_panel_configs(),
+            ui_state: workspace_persistence::WorkspaceUiState::new(
+                self.ui_shell.workspace_layout(),
+                self.ui_shell.persistent_panel_configs(),
+            ),
         }
     }
 
@@ -184,13 +201,19 @@ impl DesktopApp {
             self.layout.as_ref().map(|layout| layout.canvas_host_rect)
         {
             let (canvas_width, canvas_height) = self.canvas_dimensions();
-            let background_dirty = exposed_canvas_background_rect(
-                canvas_viewport_rect,
+            let background_dirty = render::exposed_canvas_background_rect(
+                render::PixelRect {
+                    x: canvas_viewport_rect.x,
+                    y: canvas_viewport_rect.y,
+                    width: canvas_viewport_rect.width,
+                    height: canvas_viewport_rect.height,
+                },
                 canvas_width,
                 canvas_height,
                 previous_transform,
                 self.document.view_transform,
             )
+            .map(from_render_rect)
             .unwrap_or(canvas_viewport_rect);
             self.append_canvas_background_dirty_rect(background_dirty);
             if let Some(hover_position) = self.hover_canvas_position {
@@ -299,10 +322,22 @@ impl DesktopApp {
 
     /// 現在のキャンバスを描画する GPU 四角形を返す。
     pub(crate) fn canvas_texture_quad(&self) -> Option<TextureQuad> {
+        self.canvas_scene()
+            .and_then(|scene| scene.texture_quad())
+            .map(from_render_quad)
+    }
+
+    /// 現在のキャンバス表示計画を返す。
+    pub(crate) fn canvas_scene(&self) -> Option<render::CanvasScene> {
         let layout = self.layout.as_ref()?;
         let bitmap = self.document.active_bitmap()?;
-        canvas_texture_quad(
-            layout.canvas_host_rect,
+        render::prepare_canvas_scene(
+            render::PixelRect {
+                x: layout.canvas_host_rect.x,
+                y: layout.canvas_host_rect.y,
+                width: layout.canvas_host_rect.width,
+                height: layout.canvas_host_rect.height,
+            },
             bitmap.width,
             bitmap.height,
             self.document.view_transform,

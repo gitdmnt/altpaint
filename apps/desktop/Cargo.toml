@@ -14,6 +14,7 @@ pollster.workspace = true
 render = { path = "../../crates/render" }
 storage = { path = "../../crates/storage" }
 ui-shell = { path = "../../crates/ui-shell" }
+workspace-persistence = { path = "../../crates/workspace-persistence" }
 wgpu.workspace = true
 winit.workspace = true
 

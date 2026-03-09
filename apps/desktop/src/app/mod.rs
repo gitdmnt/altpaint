@@ -101,15 +101,15 @@ impl DesktopApp {
         let mut ui_shell = UiShell::new();
         let _ = ui_shell.load_panel_directory(default_panel_dir());
         if let Some(project) = loaded_project {
-            ui_shell.set_workspace_layout(project.workspace_layout);
-            ui_shell.set_persistent_panel_configs(project.plugin_configs);
+            ui_shell.set_workspace_layout(project.ui_state.workspace_layout);
+            ui_shell.set_persistent_panel_configs(project.ui_state.plugin_configs);
         }
         if let Some(session) = session.as_ref() {
-            if !session.workspace_layout.panels.is_empty() {
-                ui_shell.set_workspace_layout(session.workspace_layout.clone());
+            if !session.workspace_layout().panels.is_empty() {
+                ui_shell.set_workspace_layout(session.workspace_layout().clone());
             }
-            if !session.plugin_configs.is_empty() {
-                ui_shell.set_persistent_panel_configs(session.plugin_configs.clone());
+            if !session.plugin_configs().is_empty() {
+                ui_shell.set_persistent_panel_configs(session.plugin_configs().clone());
             }
         }
         let mut document = document;

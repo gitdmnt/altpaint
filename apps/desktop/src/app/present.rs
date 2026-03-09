@@ -240,7 +240,9 @@ impl DesktopApp {
             profiler.record_value("overlay_upload_height_px", overlay_dirty_rect.height as f64);
         }
         if canvas_dirty_rect.is_some() || canvas_transform_changed {
-            profiler.measure("prepare_canvas_scene", || {});
+            profiler.measure("prepare_canvas_scene", || {
+                let _ = self.canvas_scene();
+            });
         }
 
         PresentFrameUpdate {

@@ -1,8 +1,9 @@
 //! `ui-shell` はアプリケーションウィンドウ上でパネルをホストする最小UI層。
 //!
-//! フェーズ0では、個々のパネル機能そのものは持たず、`RenderContext` と
+//! フェーズ0では、個々のパネル機能そのものは持たず、
 //! `PanelPlugin` 群を束ねる薄い境界として機能する。
 
+mod presentation;
 mod text;
 
 pub use text::{
@@ -20,7 +21,8 @@ use plugin_api::{
     PanelPlugin, PanelTree, PanelView, TextInputMode,
 };
 use plugin_host::{PluginHostError, WasmPanelRuntime};
-use render::{RenderContext, RenderFrame};
+pub use presentation::PanelSurface;
+use presentation::{FocusTarget, PanelHitKind, PanelHitRegion, PanelRenderState, TextInputEditorState};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::fs;
@@ -67,167 +69,8 @@ const MAX_DOCUMENT_DIMENSION: usize = 8192;
 const MAX_DOCUMENT_PIXELS: usize = 16_777_216;
 const PANEL_SCROLL_PIXELS_PER_LINE: i32 = 48;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum PanelHitKind {
-    Activate,
-    Slider { min: usize, max: usize },
-    LayerListItem { value: usize },
-    DropdownOption { value: String },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PanelHitRegion {
-    x: usize,
-    y: usize,
-    width: usize,
-    height: usize,
-    panel_id: String,
-    node_id: String,
-    kind: PanelHitKind,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct FocusTarget {
-    panel_id: String,
-    node_id: String,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct TextInputEditorState {
-    cursor_chars: usize,
-    preedit: Option<String>,
-}
-
-#[derive(Clone, Copy)]
-struct PanelRenderState<'a> {
-    focused_target: Option<&'a FocusTarget>,
-    expanded_dropdown: Option<&'a FocusTarget>,
-    text_input_states: &'a BTreeMap<(String, String), TextInputEditorState>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PanelSurface {
-    pub width: usize,
-    pub height: usize,
-    pub pixels: Vec<u8>,
-    hit_regions: Vec<PanelHitRegion>,
-}
-
-impl PanelSurface {
-    pub fn hit_test(&self, x: usize, y: usize) -> Option<PanelEvent> {
-        self.hit_regions
-            .iter()
-            .rev()
-            .find(|region| {
-                x >= region.x
-                    && y >= region.y
-                    && x < region.x + region.width
-                    && y < region.y + region.height
-            })
-            .map(|region| panel_event_for_region(region, x, y))
-    }
-
-    pub fn drag_event(
-        &self,
-        panel_id: &str,
-        node_id: &str,
-        source_value: usize,
-        x: usize,
-        y: usize,
-    ) -> Option<PanelEvent> {
-        let source_region = self
-            .hit_regions
-            .iter()
-            .rev()
-            .find(|region| {
-                region.panel_id == panel_id
-                    && region.node_id == node_id
-                    && (
-                        matches!(&region.kind, PanelHitKind::Slider { .. })
-                            || matches!(
-                                &region.kind,
-                                PanelHitKind::LayerListItem { value } if *value == source_value
-                            )
-                    )
-            })?;
-
-        match &source_region.kind {
-            PanelHitKind::Slider { .. } => self
-                .hit_regions
-                .iter()
-                .rev()
-                .find(|region| region.panel_id == panel_id && region.node_id == node_id)
-                .map(|region| panel_event_for_region(region, x, y)),
-            PanelHitKind::LayerListItem { .. } => self
-                .hit_regions
-                .iter()
-                .rev()
-                .find(|region| {
-                    region.panel_id == panel_id
-                        && region.node_id == node_id
-                        && x >= region.x
-                        && y >= region.y
-                        && x < region.x + region.width
-                        && y < region.y + region.height
-                        && matches!(&region.kind, PanelHitKind::LayerListItem { .. })
-                })
-                .and_then(|region| match &region.kind {
-                    PanelHitKind::LayerListItem { value } => Some(PanelEvent::DragValue {
-                        panel_id: panel_id.to_string(),
-                        node_id: node_id.to_string(),
-                        from: source_value,
-                        to: *value,
-                    }),
-                    _ => None,
-                }),
-            PanelHitKind::Activate | PanelHitKind::DropdownOption { .. } => None,
-        }
-    }
-}
-
-fn panel_event_for_region(region: &PanelHitRegion, x: usize, y: usize) -> PanelEvent {
-    match &region.kind {
-        PanelHitKind::Activate => PanelEvent::Activate {
-            panel_id: region.panel_id.clone(),
-            node_id: region.node_id.clone(),
-        },
-        PanelHitKind::Slider { min, max } => PanelEvent::SetValue {
-            panel_id: region.panel_id.clone(),
-            node_id: region.node_id.clone(),
-            value: slider_value_for_position(region, *min, *max, x, y),
-        },
-        PanelHitKind::LayerListItem { value } => PanelEvent::SetValue {
-            panel_id: region.panel_id.clone(),
-            node_id: region.node_id.clone(),
-            value: *value,
-        },
-        PanelHitKind::DropdownOption { value } => PanelEvent::SetText {
-            panel_id: region.panel_id.clone(),
-            node_id: region.node_id.clone(),
-            value: value.clone(),
-        },
-    }
-}
-
-fn slider_value_for_position(
-    region: &PanelHitRegion,
-    min: usize,
-    max: usize,
-    x: usize,
-    _y: usize,
-) -> usize {
-    if max <= min || region.width <= 1 {
-        return min;
-    }
-
-    let local_x = x.clamp(region.x, region.x + region.width - 1) - region.x;
-    min + ((max - min) * local_x) / (region.width - 1)
-}
-
 /// パネルホストとして振る舞う最小UIシェル。
 pub struct UiShell {
-    /// キャンバス描画側への入口。
-    render_context: RenderContext,
     /// 登録済みのパネルプラグイン一覧。
     panels: Vec<Box<dyn PanelPlugin>>,
     latest_document: Option<Document>,
@@ -247,7 +90,6 @@ impl UiShell {
     /// 空のUIシェルを作成する。
     pub fn new() -> Self {
         Self {
-            render_context: RenderContext::new(),
             panels: Vec::new(),
             latest_document: None,
             loaded_panel_ids: Vec::new(),
@@ -314,16 +156,10 @@ impl UiShell {
     /// ドキュメント更新をレンダラと各パネルへ配送する。
     pub fn update(&mut self, document: &Document) {
         self.latest_document = Some(document.clone());
-        let _ = self.render_context.document(document);
         for panel in &mut self.panels {
             panel.update(document);
         }
         self.panel_content_dirty = true;
-    }
-
-    /// 現在のドキュメントからキャンバス用フレームを生成する。
-    pub fn render_frame(&self, document: &Document) -> RenderFrame {
-        self.render_context.render_frame(document)
     }
 
     /// 現在登録されているパネル数を返す。
@@ -3694,17 +3530,6 @@ view {
         shell.update(&Document::default());
 
         assert_eq!(shell.panel_count(), initial_count + 1);
-    }
-
-    /// `UiShell` がレンダラ経由でフレームを取得できることを確認する。
-    #[test]
-    fn render_frame_returns_canvas_bitmap() {
-        let shell = UiShell::new();
-        let frame = shell.render_frame(&Document::default());
-
-        assert_eq!(frame.width, 64);
-        assert_eq!(frame.height, 64);
-        assert_eq!(frame.pixels.len(), 64 * 64 * 4);
     }
 
     #[test]

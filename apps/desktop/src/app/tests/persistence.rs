@@ -66,6 +66,7 @@ fn save_project_as_updates_project_path_and_persists_workspace_layout() {
     assert_eq!(app.project_path, path);
     assert!(
         loaded
+            .ui_state
             .workspace_layout
             .panels
             .iter()
@@ -87,7 +88,7 @@ fn save_and_load_restore_plugin_shortcut_configs() {
 
     let loaded = load_project_from_path(&path).expect("saved project should load");
     assert_eq!(
-        loaded.plugin_configs.get("builtin.app-actions"),
+        loaded.ui_state.plugin_configs.get("builtin.app-actions"),
         Some(&json!({
             "new_shortcut": "Ctrl+Alt+N",
             "save_shortcut": "Ctrl+S",

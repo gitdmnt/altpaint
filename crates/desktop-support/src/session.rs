@@ -2,21 +2,27 @@
 //!
 //! プロジェクト本体とは別に、最後に開いたファイルや UI レイアウトを保持する。
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use app_core::WorkspaceLayout;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use workspace_persistence::WorkspaceUiState;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct DesktopSessionState {
     #[serde(default)]
     pub last_project_path: Option<PathBuf>,
     #[serde(default)]
-    pub workspace_layout: WorkspaceLayout,
-    #[serde(default)]
-    pub plugin_configs: BTreeMap<String, Value>,
+    pub ui_state: WorkspaceUiState,
+}
+
+impl DesktopSessionState {
+    pub fn workspace_layout(&self) -> &app_core::WorkspaceLayout {
+        &self.ui_state.workspace_layout
+    }
+
+    pub fn plugin_configs(&self) -> &workspace_persistence::PluginConfigs {
+        &self.ui_state.plugin_configs
+    }
 }
 
 pub fn default_session_path() -> PathBuf {
@@ -47,6 +53,7 @@ pub fn startup_project_path(default_project_path: impl Into<PathBuf>) -> PathBuf
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static TEST_SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -64,16 +71,18 @@ mod tests {
         let path = unique_test_path("session-roundtrip");
         let state = DesktopSessionState {
             last_project_path: Some(PathBuf::from("custom.altp.json")),
-            workspace_layout: WorkspaceLayout {
-                panels: vec![app_core::WorkspacePanelState {
-                    id: "builtin.tool-palette".to_string(),
-                    visible: false,
-                }],
+            ui_state: WorkspaceUiState {
+                workspace_layout: app_core::WorkspaceLayout {
+                    panels: vec![app_core::WorkspacePanelState {
+                        id: "builtin.tool-palette".to_string(),
+                        visible: false,
+                    }],
+                },
+                plugin_configs: BTreeMap::from([(
+                    "builtin.app-actions".to_string(),
+                    serde_json::json!({"new_shortcut": "Ctrl+Alt+N"}),
+                )]),
             },
-            plugin_configs: BTreeMap::from([(
-                "builtin.app-actions".to_string(),
-                serde_json::json!({"new_shortcut": "Ctrl+Alt+N"}),
-            )]),
         };
 
         save_session_state(&path, &state).expect("session save should succeed");

@@ -36,6 +36,7 @@
 - `desktop-support`
 - `plugin-api`
 - `ui-shell`
+- `workspace-persistence`
 - `plugin-host`
 - `panel-dsl`
 - `panel-schema`
@@ -65,6 +66,7 @@ graph TD
     desktop --> pluginapi[plugin-api]
     desktop --> storage[storage]
     desktop --> dsupport[desktop-support]
+    desktop --> wpersist[workspace-persistence]
 
     render --> appcore
     storage --> appcore
@@ -72,11 +74,12 @@ graph TD
     pluginapi --> appcore
 
     uishell --> appcore
-    uishell --> render
     uishell --> pluginapi
     uishell --> pds[panel-dsl]
     uishell --> pschema[panel-schema]
     uishell --> phost[plugin-host]
+
+    wpersist[workspace-persistence] --> appcore
 
     phost --> pschema
     psdk[panel-sdk] --> pmacros[panel-macros]
@@ -94,10 +97,10 @@ graph TD
 ### 依存関係の要点
 
 - `app-core` は workspace 内の土台であり、ローカル依存を持たない
-- `render` / `storage` / `desktop-support` / `plugin-api` は `app-core` に依存する薄い周辺クレートである
+- `render` / `storage` / `desktop-support` / `plugin-api` / `workspace-persistence` は `app-core` に依存する周辺クレートである
 - `ui-shell` が現在の**パネルランタイム統合点**であり、DSL 読み込み・Wasm 実行・Panel 描画をまとめて持っている
 - `plugin-host` は `ui-shell` の内側で使われ、`apps/desktop` は直接依存していない
-- `panel-sdk` は plugin author 向け表面 API であり、組み込みパネル crate はここだけへ依存する
+- `panel-sdk` は plugin author 向け表面 API であり、macro を含む唯一の作者向け入口である
 
 ## クレート別の実責務
 
@@ -129,7 +132,7 @@ graph TD
 担当:
 
 - `Document` から `RenderFrame` を得る最小描画入口
-- `RenderContext` の保持
+- `CanvasViewTransform` から canvas scene / quad / dirty 写像 / view 座標変換を得る
 
 現状の実態:
 
@@ -187,6 +190,7 @@ graph TD
 意味:
 
 - plugin author が `extern "C"` や export 名を直接書かなくても済むようにする proc-macro 層
+- plugin 作者は通常この crate を直接依存せず、`panel-sdk` から使う
 
 ### `panel-sdk`
 
@@ -234,11 +238,24 @@ graph TD
 
 - `DslPanelPlugin` を内部に持つ
 - `plugin-host` を内部利用して Wasm handler を実行する
-- `RenderContext` と `RenderFrame` も抱えており、キャンバス側の最小レンダ入口を兼ねている
+- runtime / presentation の両方を 1 crate の facade に集めている
 
 補足:
 
-- アーキテクチャ上は panel runtime と render の分離を強く意識しているが、現実のコードでは `ui-shell` が `render` に依存している
+- `render` 依存は解消した
+- ただし runtime / presentation の同居は残っており、分離方針は [docs/tmp/ui-shell-runtime-presentation-split-2026-03-10.md](docs/tmp/ui-shell-runtime-presentation-split-2026-03-10.md) に置いた
+
+### `workspace-persistence`
+
+担当:
+
+- `WorkspaceUiState`
+- `PluginConfigs`
+
+意味:
+
+- project 保存と session 保存で共有する UI 永続化 DTO
+- ownership は `storage` / `desktop-support` に残したまま、重複したシリアライズ形だけを共通化する
 
 ### `storage`
 
@@ -246,7 +263,7 @@ graph TD
 
 - project save/load
 - `format_version` 管理
-- `WorkspaceLayout` と `plugin_configs` の永続化
+- `WorkspaceUiState` の永続化
 - ペンプリセットファイル群の読込
 
 主要モジュール:
@@ -325,8 +342,8 @@ apps/desktop/main.rs
 
 - `runtime.rs`: OS イベントと再描画サイクル
 - `app/*`: 状態変化と副作用
-- `canvas_bridge.rs`: view 座標 <-> canvas 座標変換、gesture -> `Command`
-- `frame.rs`: CPU 側フレーム構築と差分矩形計算
+- `canvas_bridge.rs`: gesture -> `Command` と desktop 側の薄い入力橋渡し
+- `frame.rs`: CPU 側フレーム構築と desktop 固有の差分矩形計算
 - `wgpu_canvas.rs`: 実 GPU 提示
 
 ### 2. パネルランタイム側
@@ -351,7 +368,7 @@ panel.altp-panel
 ```text
 DesktopApp
   -> storage::save_project_to_path / load_project_from_path
-  -> Document + WorkspaceLayout + plugin_configs
+  -> Document + WorkspaceUiState
 
 DesktopApp
   -> desktop-support::save_session_state / load_session_state
@@ -420,7 +437,7 @@ project file と session file は役割が異なる。
 - DSL evaluation
 - Wasm runtime bridge
 - focus / text input / config persistence
-- `RenderContext` 保持
+- runtime / presentation の二軸同居
 
 そのため、現在の `ui-shell` は「単なる UI shell」より広く、**panel runtime 統合クレート**として読む方が実態に近い。
 

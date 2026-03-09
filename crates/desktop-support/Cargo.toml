@@ -10,3 +10,4 @@ app-core = { path = "../app-core" }
 serde.workspace = true
 serde_json.workspace = true
 tinyfiledialogs.workspace = true
+workspace-persistence = { path = "../workspace-persistence" }

@@ -59,7 +59,7 @@ fn canvas_drag_draws_black_pixels() {
     app.handle_canvas_pointer("drag", center_x + 20, center_y);
     app.handle_canvas_pointer("up", center_x + 20, center_y);
 
-    let frame = app.ui_shell.render_frame(&app.document);
+    let frame = render::RenderContext::new().render_frame(&app.document);
     assert!(
         frame
             .pixels
@@ -84,7 +84,7 @@ fn canvas_drag_draws_using_selected_color() {
     app.handle_canvas_pointer("down", center_x, center_y);
     app.handle_canvas_pointer("up", center_x, center_y);
 
-    let frame = app.ui_shell.render_frame(&app.document);
+    let frame = render::RenderContext::new().render_frame(&app.document);
     assert!(
         frame
             .pixels

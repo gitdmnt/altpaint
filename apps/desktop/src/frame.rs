@@ -5,9 +5,9 @@
 
 use app_core::{CanvasViewTransform, DirtyRect};
 use desktop_support::{
-    APP_BACKGROUND, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND, CANVAS_FRAME_BORDER,
-    FOOTER_HEIGHT, HEADER_HEIGHT, PANEL_FRAME_BACKGROUND, PANEL_FRAME_BORDER,
-    SIDEBAR_BACKGROUND, SIDEBAR_WIDTH, TEXT_PRIMARY, TEXT_SECONDARY, WINDOW_PADDING,
+    APP_BACKGROUND, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND, CANVAS_FRAME_BORDER, FOOTER_HEIGHT,
+    HEADER_HEIGHT, PANEL_FRAME_BACKGROUND, PANEL_FRAME_BORDER, SIDEBAR_BACKGROUND, SIDEBAR_WIDTH,
+    TEXT_PRIMARY, TEXT_SECONDARY, WINDOW_PADDING,
 };
 use ui_shell::{PanelSurface, draw_text_rgba, measure_text_width};
 
@@ -142,6 +142,47 @@ pub(crate) struct TextureQuad {
     pub(crate) uv_max: [f32; 2],
 }
 
+fn to_render_rect(rect: Rect) -> render::PixelRect {
+    render::PixelRect {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+    }
+}
+
+fn from_render_rect(rect: render::PixelRect) -> Rect {
+    Rect {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+    }
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn from_render_quad(quad: render::TextureQuad) -> TextureQuad {
+    TextureQuad {
+        destination: from_render_rect(quad.destination),
+        uv_min: quad.uv_min,
+        uv_max: quad.uv_max,
+    }
+}
+
+fn canvas_scene(
+    destination: Rect,
+    source_width: usize,
+    source_height: usize,
+    transform: CanvasViewTransform,
+) -> Option<render::CanvasScene> {
+    render::prepare_canvas_scene(
+        to_render_rect(destination),
+        source_width,
+        source_height,
+        transform,
+    )
+}
+
 /// 元画像を target 内へアスペクト比維持で収めた矩形を返す。
 pub(crate) fn fit_rect(source_width: usize, source_height: usize, target: Rect) -> Rect {
     if source_width == 0 || source_height == 0 || target.width == 0 || target.height == 0 {
@@ -191,38 +232,13 @@ pub(crate) fn map_canvas_dirty_to_display_with_transform(
     source_height: usize,
     transform: CanvasViewTransform,
 ) -> Rect {
-    if destination.width == 0 || destination.height == 0 || source_width == 0 || source_height == 0
-    {
-        return destination;
-    }
-
-    let clamped = dirty.clamp_to_bitmap(source_width, source_height);
-    let metrics = canvas_transform_metrics(destination, source_width, source_height, transform);
-    let start_x = (metrics.offset_x + clamped.x as f32 * metrics.scale).floor();
-    let start_y = (metrics.offset_y + clamped.y as f32 * metrics.scale).floor();
-    let end_x = (metrics.offset_x + (clamped.x + clamped.width) as f32 * metrics.scale).ceil();
-    let end_y = (metrics.offset_y + (clamped.y + clamped.height) as f32 * metrics.scale).ceil();
-
-    let clipped_left = start_x.max(destination.x as f32);
-    let clipped_top = start_y.max(destination.y as f32);
-    let clipped_right = end_x.min((destination.x + destination.width) as f32);
-    let clipped_bottom = end_y.min((destination.y + destination.height) as f32);
-
-    if clipped_left >= clipped_right || clipped_top >= clipped_bottom {
-        return Rect {
-            x: destination.x,
-            y: destination.y,
-            width: 0,
-            height: 0,
-        };
-    }
-
-    Rect {
-        x: clipped_left as usize,
-        y: clipped_top as usize,
-        width: (clipped_right - clipped_left) as usize,
-        height: (clipped_bottom - clipped_top) as usize,
-    }
+    from_render_rect(render::map_canvas_dirty_to_display_with_transform(
+        dirty,
+        to_render_rect(destination),
+        source_width,
+        source_height,
+        transform,
+    ))
 }
 
 pub(crate) fn brush_preview_rect(
@@ -232,62 +248,33 @@ pub(crate) fn brush_preview_rect(
     transform: CanvasViewTransform,
     canvas_position: (usize, usize),
 ) -> Option<Rect> {
-    if source_width == 0 || source_height == 0 || destination.width == 0 || destination.height == 0
-    {
-        return None;
-    }
-
-    let metrics = canvas_transform_metrics(destination, source_width, source_height, transform);
-    let center_x = metrics.offset_x + (canvas_position.0 as f32 + 0.5) * metrics.scale;
-    let center_y = metrics.offset_y + (canvas_position.1 as f32 + 0.5) * metrics.scale;
-    let radius = metrics.scale.max(4.0);
-
-    destination.intersect(Rect {
-        x: (center_x - radius - 2.0).floor().max(destination.x as f32) as usize,
-        y: (center_y - radius - 2.0).floor().max(destination.y as f32) as usize,
-        width: ((center_x + radius + 2.0)
-            .ceil()
-            .min((destination.x + destination.width) as f32)
-            - (center_x - radius - 2.0).floor().max(destination.x as f32))
-        .max(1.0) as usize,
-        height: ((center_y + radius + 2.0)
-            .ceil()
-            .min((destination.y + destination.height) as f32)
-            - (center_y - radius - 2.0).floor().max(destination.y as f32))
-        .max(1.0) as usize,
-    })
+    render::brush_preview_rect(
+        to_render_rect(destination),
+        source_width,
+        source_height,
+        transform,
+        canvas_position,
+    )
+    .map(from_render_rect)
 }
 
+#[allow(dead_code)]
 pub(crate) fn canvas_drawn_rect(
     destination: Rect,
     source_width: usize,
     source_height: usize,
     transform: CanvasViewTransform,
 ) -> Option<Rect> {
-    if source_width == 0 || source_height == 0 || destination.width == 0 || destination.height == 0
-    {
-        return None;
-    }
-
-    let metrics = canvas_transform_metrics(destination, source_width, source_height, transform);
-    let left = metrics.offset_x.floor();
-    let top = metrics.offset_y.floor();
-    let right = (metrics.offset_x + source_width as f32 * metrics.scale).ceil();
-    let bottom = (metrics.offset_y + source_height as f32 * metrics.scale).ceil();
-
-    let clipped_left = left.max(destination.x as f32);
-    let clipped_top = top.max(destination.y as f32);
-    let clipped_right = right.min((destination.x + destination.width) as f32);
-    let clipped_bottom = bottom.min((destination.y + destination.height) as f32);
-
-    (clipped_left < clipped_right && clipped_top < clipped_bottom).then_some(Rect {
-        x: clipped_left as usize,
-        y: clipped_top as usize,
-        width: (clipped_right - clipped_left) as usize,
-        height: (clipped_bottom - clipped_top) as usize,
-    })
+    render::canvas_drawn_rect(
+        to_render_rect(destination),
+        source_width,
+        source_height,
+        transform,
+    )
+    .map(from_render_rect)
 }
 
+#[allow(dead_code)]
 pub(crate) fn exposed_canvas_background_rect(
     destination: Rect,
     source_width: usize,
@@ -295,116 +282,30 @@ pub(crate) fn exposed_canvas_background_rect(
     previous_transform: CanvasViewTransform,
     current_transform: CanvasViewTransform,
 ) -> Option<Rect> {
-    let previous = canvas_drawn_rect(destination, source_width, source_height, previous_transform)?;
-    let current = canvas_drawn_rect(destination, source_width, source_height, current_transform);
-
-    let Some(current) = current else {
-        return Some(previous);
-    };
-
-    if previous == current {
-        return None;
-    }
-
-    let overlap = previous.intersect(current);
-    let mut exposed = Vec::with_capacity(4);
-    match overlap {
-        None => exposed.push(previous),
-        Some(overlap) => {
-            let candidates = [
-                Rect {
-                    x: previous.x,
-                    y: previous.y,
-                    width: previous.width,
-                    height: overlap.y.saturating_sub(previous.y),
-                },
-                Rect {
-                    x: previous.x,
-                    y: overlap.y + overlap.height,
-                    width: previous.width,
-                    height: (previous.y + previous.height)
-                        .saturating_sub(overlap.y + overlap.height),
-                },
-                Rect {
-                    x: previous.x,
-                    y: overlap.y,
-                    width: overlap.x.saturating_sub(previous.x),
-                    height: overlap.height,
-                },
-                Rect {
-                    x: overlap.x + overlap.width,
-                    y: overlap.y,
-                    width: (previous.x + previous.width).saturating_sub(overlap.x + overlap.width),
-                    height: overlap.height,
-                },
-            ];
-            for rect in candidates {
-                if rect.width > 0 && rect.height > 0 {
-                    exposed.push(rect);
-                }
-            }
-        }
-    }
-
-    exposed.into_iter().reduce(|acc, rect| acc.union(rect))
+    render::exposed_canvas_background_rect(
+        to_render_rect(destination),
+        source_width,
+        source_height,
+        previous_transform,
+        current_transform,
+    )
+    .map(from_render_rect)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn canvas_texture_quad(
     destination: Rect,
     source_width: usize,
     source_height: usize,
     transform: CanvasViewTransform,
 ) -> Option<TextureQuad> {
-    if source_width == 0 || source_height == 0 || destination.width == 0 || destination.height == 0
-    {
-        return None;
-    }
-
-    let metrics = canvas_transform_metrics(destination, source_width, source_height, transform);
-    let drawn_rect = canvas_drawn_rect(destination, source_width, source_height, transform)?;
-    let left =
-        ((drawn_rect.x as f32 - metrics.offset_x) / metrics.scale).clamp(0.0, source_width as f32);
-    let top =
-        ((drawn_rect.y as f32 - metrics.offset_y) / metrics.scale).clamp(0.0, source_height as f32);
-    let right = (((drawn_rect.x + drawn_rect.width) as f32 - metrics.offset_x) / metrics.scale)
-        .clamp(0.0, source_width as f32);
-    let bottom = (((drawn_rect.y + drawn_rect.height) as f32 - metrics.offset_y) / metrics.scale)
-        .clamp(0.0, source_height as f32);
-
-    Some(TextureQuad {
-        destination: drawn_rect,
-        uv_min: [left / source_width as f32, top / source_height as f32],
-        uv_max: [right / source_width as f32, bottom / source_height as f32],
-    })
-}
-
-struct CanvasTransformMetrics {
-    scale: f32,
-    offset_x: f32,
-    offset_y: f32,
-}
-
-fn canvas_transform_metrics(
-    destination: Rect,
-    source_width: usize,
-    source_height: usize,
-    transform: CanvasViewTransform,
-) -> CanvasTransformMetrics {
-    let scale_x = destination.width as f32 / source_width as f32;
-    let scale_y = destination.height as f32 / source_height as f32;
-    let scale = (scale_x.min(scale_y) * transform.zoom.max(0.25)).max(f32::EPSILON);
-    let drawn_width = source_width as f32 * scale;
-    let drawn_height = source_height as f32 * scale;
-
-    CanvasTransformMetrics {
-        scale,
-        offset_x: destination.x as f32
-            + (destination.width as f32 - drawn_width) * 0.5
-            + transform.pan_x,
-        offset_y: destination.y as f32
-            + (destination.height as f32 - drawn_height) * 0.5
-            + transform.pan_y,
-    }
+    render::canvas_texture_quad(
+        to_render_rect(destination),
+        source_width,
+        source_height,
+        transform,
+    )
+    .map(from_render_quad)
 }
 
 /// パネル面・キャンバス面・ステータス表示をまとめて最終フレームへ合成する。
@@ -600,7 +501,9 @@ fn fill_canvas_host_background(
 ) {
     let display = layout.canvas_host_rect;
     if let Some(display_region) = display.intersect(dirty_rect) {
-        if let Some(drawn_rect) = canvas_drawn_rect(display, canvas.width, canvas.height, transform)
+        if let Some(drawn_rect) = canvas_scene(display, canvas.width, canvas.height, transform)
+            .and_then(|scene| scene.drawn_rect())
+            .map(from_render_rect)
         {
             fill_rect_excluding(frame, display_region, drawn_rect, CANVAS_BACKGROUND);
         } else {
@@ -1039,9 +942,10 @@ fn blit_canvas_with_transform(
         return;
     }
 
-    let metrics = canvas_transform_metrics(destination, source.width, source.height, transform);
-    let Some(drawn_rect) = canvas_drawn_rect(destination, source.width, source.height, transform)
-    else {
+    let Some(scene) = canvas_scene(destination, source.width, source.height, transform) else {
+        return;
+    };
+    let Some(drawn_rect) = scene.drawn_rect().map(from_render_rect) else {
         return;
     };
     let target = dirty_rect
@@ -1059,18 +963,20 @@ fn blit_canvas_with_transform(
         return;
     }
 
+    let (offset_x, offset_y) = scene.offset();
+
     let src_x_runs = build_source_axis_runs(
         target.x,
         target.width,
-        metrics.offset_x,
-        metrics.scale,
+        offset_x,
+        scene.scale(),
         source.width,
     );
     let src_y_runs = build_source_axis_runs(
         target.y,
         target.height,
-        metrics.offset_y,
-        metrics.scale,
+        offset_y,
+        scene.scale(),
         source.height,
     );
 
@@ -1288,10 +1194,13 @@ fn draw_brush_preview(
     if source.width == 0 || source.height == 0 {
         return;
     }
-    let metrics = canvas_transform_metrics(destination, source.width, source.height, transform);
-    let center_x = metrics.offset_x + (canvas_position.0 as f32 + 0.5) * metrics.scale;
-    let center_y = metrics.offset_y + (canvas_position.1 as f32 + 0.5) * metrics.scale;
-    let radius = metrics.scale.max(4.0);
+    let Some(scene) = canvas_scene(destination, source.width, source.height, transform) else {
+        return;
+    };
+    let (offset_x, offset_y) = scene.offset();
+    let center_x = offset_x + (canvas_position.0 as f32 + 0.5) * scene.scale();
+    let center_y = offset_y + (canvas_position.1 as f32 + 0.5) * scene.scale();
+    let radius = scene.scale().max(4.0);
     let Some(target) = brush_preview_rect(
         destination,
         source.width,

@@ -6,14 +6,28 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use thiserror::Error;
+use workspace_persistence::{PluginConfigs, WorkspaceUiState};
 
-pub const CURRENT_FORMAT_VERSION: u32 = 3;
+fn workspace_layout_is_empty(layout: &WorkspaceLayout) -> bool {
+    layout.panels.is_empty()
+}
+
+pub const CURRENT_FORMAT_VERSION: u32 = 4;
 
 #[derive(Debug, Clone)]
 pub struct LoadedProject {
     pub document: Document,
-    pub workspace_layout: WorkspaceLayout,
-    pub plugin_configs: BTreeMap<String, Value>,
+    pub ui_state: WorkspaceUiState,
+}
+
+impl LoadedProject {
+    pub fn workspace_layout(&self) -> &WorkspaceLayout {
+        &self.ui_state.workspace_layout
+    }
+
+    pub fn plugin_configs(&self) -> &PluginConfigs {
+        &self.ui_state.plugin_configs
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,9 +35,11 @@ pub struct AltpaintProjectFile {
     pub format_version: u32,
     pub document: Document,
     #[serde(default)]
+    pub ui_state: WorkspaceUiState,
+    #[serde(default, skip_serializing_if = "workspace_layout_is_empty")]
     pub workspace_layout: WorkspaceLayout,
-    #[serde(default)]
-    pub plugin_configs: BTreeMap<String, Value>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub plugin_configs: PluginConfigs,
 }
 
 impl AltpaintProjectFile {
@@ -35,8 +51,9 @@ impl AltpaintProjectFile {
         Self {
             format_version: CURRENT_FORMAT_VERSION,
             document: document.clone(),
-            workspace_layout: workspace_layout.clone(),
-            plugin_configs: plugin_configs.clone(),
+            ui_state: WorkspaceUiState::new(workspace_layout.clone(), plugin_configs.clone()),
+            workspace_layout: WorkspaceLayout::default(),
+            plugin_configs: BTreeMap::new(),
         }
     }
 }
@@ -91,10 +108,15 @@ pub fn load_project_from_path(path: impl AsRef<Path>) -> Result<LoadedProject, S
     let mut document = project.document;
     document.normalize_phase9_state();
 
+    let ui_state = if project.ui_state != WorkspaceUiState::default() {
+        project.ui_state
+    } else {
+        WorkspaceUiState::new(project.workspace_layout, project.plugin_configs)
+    };
+
     Ok(LoadedProject {
         document,
-        workspace_layout: project.workspace_layout,
-        plugin_configs: project.plugin_configs,
+        ui_state,
     })
 }
 
@@ -153,7 +175,7 @@ mod tests {
             .expect("save should succeed");
         let loaded = load_project_from_path(&path).expect("load should succeed");
 
-        assert_eq!(loaded.workspace_layout, workspace_layout);
+        assert_eq!(loaded.ui_state.workspace_layout, workspace_layout);
 
         let _ = fs::remove_file(path);
     }
@@ -172,7 +194,7 @@ mod tests {
             .expect("save should succeed");
         let loaded = load_project_from_path(&path).expect("load should succeed");
 
-        assert_eq!(loaded.plugin_configs, plugin_configs);
+        assert_eq!(loaded.ui_state.plugin_configs, plugin_configs);
 
         let _ = fs::remove_file(path);
     }
@@ -191,8 +213,8 @@ mod tests {
         .expect("write should succeed");
 
         let loaded = load_project_from_path(&path).expect("load should succeed");
-        assert!(loaded.workspace_layout.panels.is_empty());
-        assert!(loaded.plugin_configs.is_empty());
+        assert!(loaded.ui_state.workspace_layout.panels.is_empty());
+        assert!(loaded.ui_state.plugin_configs.is_empty());
 
         let _ = fs::remove_file(path);
     }
@@ -203,6 +225,7 @@ mod tests {
         let project = AltpaintProjectFile {
             format_version: CURRENT_FORMAT_VERSION + 1,
             document: Document::default(),
+            ui_state: WorkspaceUiState::default(),
             workspace_layout: WorkspaceLayout::default(),
             plugin_configs: BTreeMap::new(),
         };

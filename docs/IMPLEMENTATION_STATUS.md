@@ -35,6 +35,7 @@
 - `desktop-support`
 - `plugin-api`
 - `ui-shell`
+- `workspace-persistence`
 - `plugin-host`
 - `panel-dsl`
 - `panel-schema`
@@ -87,10 +88,10 @@
 - `plugin-api`: `PanelTree`, `PanelNode`, `PanelEvent`, `HostAction`
 - `panel-dsl`: `.altp-panel` parser / validator / normalized IR
 - `panel-schema`: Wasm runtime DTO
-- `panel-sdk`: plugin author API
-- `panel-macros`: safe export macro
+- `panel-sdk`: plugin author API。plugin 作者の正面入口
+- `panel-macros`: `panel-sdk` から再 export される proc-macro 実装 crate
 - `plugin-host`: `wasmtime` ベース runtime
-- `ui-shell`: panel runtime 統合、panel draw、focus、text input、persistent config
+- `ui-shell`: panel runtime 統合と panel presentation を束ねる facade
 
 ### 4. 永続化
 
@@ -137,16 +138,17 @@
 
 - `app-core` はローカル依存を持たない
 - `render`, `storage`, `desktop-support`, `plugin-api` は `app-core` に依存する
-- `ui-shell` は `panel-*`, `plugin-host`, `plugin-api`, `render`, `app-core` に依存する
+- `workspace-persistence` は `storage` / `desktop-support` が共有する UI 永続化 DTO を持つ
+- `ui-shell` は `panel-*`, `plugin-host`, `plugin-api`, `app-core` に依存する
 - `apps/desktop` は desktop host 全体を束ねる
 - built-in panel crate は `panel-sdk` のみへ依存する
 
 ### 現時点での実装上の特徴
 
-1. `ui-shell` が panel runtime の中心である
-2. `render` はまだ薄く、描画 orchestration の多くは `apps/desktop` にある
+1. `ui-shell` が panel runtime の中心であり、runtime / presentation 分離メモは [docs/tmp/ui-shell-runtime-presentation-split-2026-03-10.md](docs/tmp/ui-shell-runtime-presentation-split-2026-03-10.md) に置いた
+2. `render` は `RenderFrame` に加えて canvas scene / transform 計画 API を持ち、desktop から canvas 幾何計算を受け始めた
 3. `plugin-host` は `ui-shell` の内側で使われる
-4. project 保存と session 保存は既に分離されている
+4. project 保存と session 保存は既に分離され、共有 UI 永続化 DTO は `workspace-persistence` へ寄せた
 
 ## 到達済みフェーズの整理
 

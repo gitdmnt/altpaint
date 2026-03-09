@@ -24,7 +24,7 @@ fn touch_started_and_moved_draws_black_pixels() {
     assert!(runtime.handle_touch_phase(1, TouchPhase::Moved, center_x + 20, center_y));
     assert!(!runtime.handle_touch_phase(1, TouchPhase::Ended, center_x + 20, center_y));
 
-    let frame = runtime.app.ui_shell.render_frame(&runtime.app.document);
+    let frame = render::RenderContext::new().render_frame(&runtime.app.document);
     assert!(frame.pixels.chunks_exact(4).any(|pixel| pixel == [0, 0, 0, 255]));
 }
 
@@ -61,7 +61,7 @@ fn raw_mouse_motion_draws_between_cursor_events() {
     assert!(runtime.handle_raw_mouse_motion(40.0, 0.0));
     assert!(!runtime.handle_mouse_button(winit::event::ElementState::Released));
 
-    let frame = runtime.app.ui_shell.render_frame(&runtime.app.document);
+    let frame = render::RenderContext::new().render_frame(&runtime.app.document);
     assert!(frame.pixels.chunks_exact(4).any(|pixel| pixel == [0, 0, 0, 255]));
 }
 
