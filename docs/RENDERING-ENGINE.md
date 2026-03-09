@@ -206,6 +206,26 @@ MVPで対象にする合成モード:
 7. `apps/desktop` がパン・ズームを quad / UV として GPU へ渡す
 8. GPU が base → canvas → overlay の順に合成提示する
 
+## 責務分割の現在地
+
+### `app-core`
+
+- `CanvasViewTransform` のような**ユーザー操作で変化する view state** を保持する
+- `Command` の意味論として zoom/pan/reset を受け持つ
+
+### `render`
+
+- 上記 view state を受け取り、可視範囲、dirty の表示先、quad / UV、overlay 幾何を計算する方向へ拡張する
+- 将来の中心はここに置く
+
+### `apps/desktop`
+
+- `winit` / `wgpu` 所有
+- desktop 固定 chrome の合成
+- 最終提示
+
+したがって、view transform を renderer へ完全移管するのではなく、**state は `app-core`、表示計算は `render`** という分割を正とする。
+
 ## CPU と GPU の役割分担
 
 ### MVP段階

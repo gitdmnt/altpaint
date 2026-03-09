@@ -259,6 +259,110 @@
 
 この方針の目的は、パン/ズーム時に CPU 側でキャンバス全体を焼き直さないことにある。
 
+## 責務境界の補足
+
+### 1. `CanvasViewTransform` はどこに置くべきか
+
+結論:
+
+- **ユーザー操作としての view state は `app-core` に置く**
+- **その state から導く表示計算は `render` に寄せる**
+
+理由:
+
+- 現在の `zoom` / `pan_x` / `pan_y` は `Command` で変更されるアプリ状態である
+- panel host snapshot や保存対象と整合しやすい
+- 一方で、quad / UV、可視範囲、dirty の表示先写像、画面座標との相互変換は render の責務である
+
+つまり、`CanvasViewTransform` 全体を renderer 専用型へ移すより、**状態そのものは `app-core`、その利用ロジックは `render`** という分割を維持する。
+
+### 2. なぜ session 保存は `desktop-support` なのか
+
+結論:
+
+- **project 保存は `storage`**
+- **desktop 起動補助としての session 保存は `desktop-support`**
+
+現在の session は、作品ファイルそのものではなく、次を扱う。
+
+- 最後に開いた project path
+- desktop 起動時に復元する workspace 状態
+- desktop 実行の補助的な panel config
+
+そのため、`storage` に寄せると「作品形式」と「デスクトップ起動状態」が混ざりやすい。
+
+ただし実装上は `workspace_layout` と `plugin_configs` が project/session の両方に現れているため、**将来はシリアライズ補助を共有化する余地がある**。それでも ownership は `storage` ではなく `desktop-support` 側に残す。
+
+### 3. `panel-macros` は `panel-sdk` の一部か
+
+結論:
+
+- **論理的には `panel-sdk` の authoring surface の一部**
+- **物理的には別 crate のまま維持する**
+
+理由:
+
+- Rust の proc-macro は通常 crate と分離が必要
+- そのため `panel-sdk` に完全統合はしない
+- 代わりに `panel-sdk` が `panel-macros` を再 export し、plugin 作者の入口を一つにする
+
+したがって設計上の扱いは「別実装 crate だが、外向き API としては `panel-sdk` 配下」である。
+
+### 4. `ui-shell` の責務が重いとは何か
+
+現在の `ui-shell` は少なくとも次の変更軸を同時に持っている。
+
+- panel 探索と registry
+- `.altp-panel` 読み込みと DSL 評価
+- Wasm runtime 実行と host snapshot 同期
+- `CommandDescriptor` から `Command` への変換
+- panel local state / persistent config 管理
+- layout / hit-test / focus / scroll / text input
+- software panel rendering
+- 最小 `RenderContext` の保持
+
+問題は、これらが1つのクレートに同居すると、次の変更が互いに巻き込まれることである。
+
+- Wasm ABI を直したいだけでも panel 描画と同じ場所を触る
+- テキスト入力やフォーカスを変えたいだけでも DSL/Wasm 側のテスト境界をまたぐ
+- panel performance 改善が runtime state 管理と分離されていない
+- host snapshot の shape 変更が UI tree 評価・描画・入力経路へ波及しやすい
+
+今後の理想は次の二分割である。
+
+- panel runtime 側
+   - panel discovery
+   - DSL evaluation
+   - Wasm bridge
+   - state / host snapshot / command mapping
+- panel presentation 側
+   - layout
+   - hit-test
+   - focus
+   - text input
+   - software rendering
+
+### 5. `apps/desktop` から `render` へ寄せたい責務
+
+現時点で `apps/desktop` にあるが、将来 `render` 側へ寄せたい候補は次である。
+
+- canvas 変換メトリクスの計算
+- 画面座標 <-> canvas 座標変換
+- dirty rect の表示先への写像
+- パン/ズーム時の露出背景計算
+- ブラシプレビュー矩形の計算
+- canvas quad / UV の計算
+- 「何を base / canvas / overlay 更新にするか」の scene 判定
+
+逆に、次は `apps/desktop` に残す。
+
+- `winit` event loop
+- `wgpu` device / queue / surface / presenter
+- native window / IME / pointer / keyboard の収集
+- desktop 固定レイアウトや status bar などのホスト固有 chrome
+
+つまり、`render` は「canvas 表示計算と更新計画」、`apps/desktop` は「OS/GPU 所有と最終提示 orchestration」へ寄せる。
+
 ## 追加クレート判断基準
 
 新しい責務を増やすときは、まず次を確認する。

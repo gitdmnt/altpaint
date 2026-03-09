@@ -182,6 +182,7 @@ graph TD
 
 - `#[panel_init]`
 - `#[panel_handler]`
+- `#[panel_sync_host]`
 
 意味:
 
@@ -200,6 +201,7 @@ graph TD
 意味:
 
 - plugin 側は `panel-schema` の DTO と ABI 事情を直接知らなくても実装できる
+- 物理的には別 crate だが、論理的には `panel-macros` を含む authoring surface である
 
 ### `plugin-host`
 

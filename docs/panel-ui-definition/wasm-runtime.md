@@ -121,6 +121,12 @@ Wasm は Rust 等からコンパイルする処理モジュールである。
 - plugin 作者が直接触る層
 - 安全な Rust 関数、attribute macro、typed helper を置く
 - 今回の改訂ではここを優先的に安定化する
+- 実装上は `panel-sdk` と `panel-macros` に分かれるが、plugin 作者から見た入口は `panel-sdk` に集約する
+
+補足:
+
+- `panel-macros` は proc-macro crate 制約のため物理的に分離する
+- ただし `panel-sdk` が再 export するため、論理的には `panel-sdk` の一部として扱う
 
 ### 3. DSL / manifest 層
 
@@ -156,10 +162,10 @@ Wasm は Rust 等からコンパイルする処理モジュールである。
 
 フェーズ6時点の実装 ABI は次である。
 
-| Export                        | 入力                  | 出力                         | 役割                                            |
-| ----------------------------- | --------------------- | ---------------------------- | ----------------------------------------------- |
-| `panel_init`                  | なし                  | host import 経由の patch 群  | 初期 state の最小セットアップ                   |
-| `panel_sync_host`             | なし                  | host import 経由の patch 群  | host snapshot を panel local state へ同期する   |
+| Export                        | 入力                  | 出力                         | 役割                                           |
+| ----------------------------- | --------------------- | ---------------------------- | ---------------------------------------------- |
+| `panel_init`                  | なし                  | host import 経由の patch 群  | 初期 state の最小セットアップ                  |
+| `panel_sync_host`             | なし                  | host import 経由の patch 群  | host snapshot を panel local state へ同期する  |
 | `panel_handle_<handler_name>` | なし または `i32` 1つ | host import 経由の result 群 | UI event に応じて state patch / command を返却 |
 
 将来の安定化候補 ABI は次である。
