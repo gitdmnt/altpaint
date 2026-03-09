@@ -3,6 +3,8 @@
 //! `winit` がウィンドウと入力を受け持ち、`wgpu` が合成済みフレームを提示する。
 
 mod canvas_bridge;
+mod frame;
+mod profiler;
 mod wgpu_canvas;
 
 use anyhow::{Context, Result};
@@ -10,16 +12,20 @@ use app_core::{Command, DirtyRect, Document};
 use canvas_bridge::{
     CanvasInputState, CanvasPointerEvent, command_for_canvas_gesture, map_view_to_canvas,
 };
+use frame::{
+    CanvasCompositeSource, DesktopLayout, Rect, blit_scaled_rgba_region,
+    compose_desktop_frame, compose_panel_host_region, compose_status_region, map_canvas_dirty_to_display,
+    map_view_to_surface, map_view_to_surface_clamped, status_text_rect,
+};
 use plugin_api::{HostAction, PanelEvent};
-use std::collections::{BTreeMap, VecDeque};
-use std::env;
+use profiler::DesktopProfiler;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use storage::{load_project_from_path, save_project_to_path};
-use ui_shell::{PanelSurface, UiShell, draw_text_rgba};
-use wgpu_canvas::{PresentTimings, UploadRegion, WgpuPresenter};
+use ui_shell::{PanelSurface, UiShell};
+use wgpu_canvas::{UploadRegion, WgpuPresenter};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent};
@@ -133,476 +139,10 @@ fn main() -> Result<()> {
         .context("failed to run desktop runtime")
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Rect {
-    x: usize,
-    y: usize,
-    width: usize,
-    height: usize,
-}
-
-impl Rect {
-    fn contains(&self, x: i32, y: i32) -> bool {
-        x >= self.x as i32
-            && y >= self.y as i32
-            && x < (self.x + self.width) as i32
-            && y < (self.y + self.height) as i32
-    }
-
-    fn union(&self, other: Rect) -> Rect {
-        let left = self.x.min(other.x);
-        let top = self.y.min(other.y);
-        let right = (self.x + self.width).max(other.x + other.width);
-        let bottom = (self.y + self.height).max(other.y + other.height);
-
-        Rect {
-            x: left,
-            y: top,
-            width: right.saturating_sub(left),
-            height: bottom.saturating_sub(top),
-        }
-    }
-
-    fn intersect(&self, other: Rect) -> Option<Rect> {
-        let left = self.x.max(other.x);
-        let top = self.y.max(other.y);
-        let right = (self.x + self.width).min(other.x + other.width);
-        let bottom = (self.y + self.height).min(other.y + other.height);
-
-        if left >= right || top >= bottom {
-            return None;
-        }
-
-        Some(Rect {
-            x: left,
-            y: top,
-            width: right - left,
-            height: bottom - top,
-        })
-    }
-}
-
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct PresentFrameUpdate {
     dirty_rect: Option<Rect>,
     canvas_updated: bool,
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-struct StageStats {
-    calls: u64,
-    total: Duration,
-    max: Duration,
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-struct PerformanceSnapshot {
-    fps: f64,
-    frame_ms: f64,
-    prepare_ms: f64,
-    ui_update_ms: f64,
-    panel_surface_ms: f64,
-    present_ms: f64,
-    canvas_latency_ms: f64,
-    canvas_sample_hz: f64,
-}
-
-impl PerformanceSnapshot {
-    fn title_text(&self) -> String {
-        let latency_marker =
-            if self.canvas_latency_ms > 0.0 && self.canvas_latency_ms <= INPUT_LATENCY_TARGET_MS {
-                "ok"
-            } else {
-                "ng"
-            };
-        let sample_marker = if self.canvas_sample_hz >= INPUT_SAMPLING_TARGET_HZ {
-            "ok"
-        } else {
-            "ng"
-        };
-        format!(
-            "{WINDOW_TITLE} | {:>5.1} fps | frame {:>5.2}ms | prep {:>5.2}ms | ui {:>5.2}ms | panel {:>5.2}ms | present {:>5.2}ms | ink {:>5.2}ms {} | sample {:>6.1}Hz {}",
-            self.fps,
-            self.frame_ms,
-            self.prepare_ms,
-            self.ui_update_ms,
-            self.panel_surface_ms,
-            self.present_ms,
-            self.canvas_latency_ms,
-            latency_marker,
-            self.canvas_sample_hz,
-            sample_marker,
-        )
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-struct FrameStageTotals {
-    frame_total: Duration,
-    prepare_frame: Duration,
-    ui_update: Duration,
-    panel_surface: Duration,
-    present_total: Duration,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct FrameSample {
-    finished_at: Instant,
-    stages: FrameStageTotals,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct TimedLatencySample {
-    recorded_at: Instant,
-    latency: Duration,
-}
-
-struct DesktopProfiler {
-    logging_enabled: bool,
-    stats: BTreeMap<&'static str, StageStats>,
-    frames: u64,
-    frame_interval_started: Instant,
-    last_report: Instant,
-    report_interval: Duration,
-    snapshot_window: Duration,
-    current_frame: FrameStageTotals,
-    recent_frames: VecDeque<FrameSample>,
-    recent_canvas_inputs: VecDeque<Instant>,
-    recent_canvas_latencies: VecDeque<TimedLatencySample>,
-    pending_canvas_input_at: Option<Instant>,
-    latest_snapshot: Option<PerformanceSnapshot>,
-}
-
-impl DesktopProfiler {
-    fn new() -> Self {
-        Self::new_at(Instant::now())
-    }
-
-    fn new_at(now: Instant) -> Self {
-        Self {
-            logging_enabled: env::var_os("ALTPAINT_PROFILE").is_some(),
-            stats: BTreeMap::new(),
-            frames: 0,
-            frame_interval_started: now,
-            last_report: now,
-            report_interval: Duration::from_secs(2),
-            snapshot_window: PERFORMANCE_SNAPSHOT_WINDOW,
-            current_frame: FrameStageTotals::default(),
-            recent_frames: VecDeque::new(),
-            recent_canvas_inputs: VecDeque::new(),
-            recent_canvas_latencies: VecDeque::new(),
-            pending_canvas_input_at: None,
-            latest_snapshot: None,
-        }
-    }
-
-    fn measure<T>(&mut self, label: &'static str, f: impl FnOnce() -> T) -> T {
-        let started = Instant::now();
-        let value = f();
-        self.record(label, started.elapsed());
-        value
-    }
-
-    fn record(&mut self, label: &'static str, elapsed: Duration) {
-        let stat = self.stats.entry(label).or_default();
-        stat.calls += 1;
-        stat.total += elapsed;
-        stat.max = stat.max.max(elapsed);
-
-        match label {
-            "frame_total" => self.current_frame.frame_total += elapsed,
-            "prepare_frame" => self.current_frame.prepare_frame += elapsed,
-            "ui_update" => self.current_frame.ui_update += elapsed,
-            "panel_surface" => self.current_frame.panel_surface += elapsed,
-            "present_total" => self.current_frame.present_total += elapsed,
-            _ => {}
-        }
-    }
-
-    fn finish_frame(&mut self, elapsed: Duration) {
-        self.finish_frame_at(elapsed, Instant::now());
-    }
-
-    fn finish_frame_at(&mut self, elapsed: Duration, now: Instant) {
-        self.record("frame_total", elapsed);
-        self.frames += 1;
-
-        self.recent_frames.push_back(FrameSample {
-            finished_at: now,
-            stages: self.current_frame,
-        });
-        self.current_frame = FrameStageTotals::default();
-        self.prune_recent_frames(now);
-
-        if let Some(snapshot) = self.build_snapshot() {
-            self.latest_snapshot = Some(snapshot);
-        }
-
-        if self.logging_enabled && now.duration_since(self.last_report) >= self.report_interval {
-            self.print_report(now);
-            self.reset_interval(now);
-        }
-    }
-
-    fn record_present(&mut self, timings: PresentTimings) {
-        self.record("present_upload", timings.upload);
-        self.record("present_encode", timings.encode_and_submit);
-        self.record("present_swap", timings.present);
-    }
-
-    fn record_canvas_input(&mut self) {
-        self.record_canvas_input_at(Instant::now());
-    }
-
-    fn record_canvas_input_at(&mut self, now: Instant) {
-        self.pending_canvas_input_at = Some(now);
-        self.recent_canvas_inputs.push_back(now);
-        self.prune_recent_inputs(now);
-    }
-
-    fn record_canvas_present(&mut self) {
-        self.record_canvas_present_at(Instant::now());
-    }
-
-    fn record_canvas_present_at(&mut self, now: Instant) {
-        let Some(input_at) = self.pending_canvas_input_at.take() else {
-            self.prune_recent_inputs(now);
-            return;
-        };
-
-        self.recent_canvas_latencies.push_back(TimedLatencySample {
-            recorded_at: now,
-            latency: now.duration_since(input_at),
-        });
-        self.prune_recent_inputs(now);
-    }
-
-    fn title_text(&self) -> String {
-        self.latest_snapshot
-            .map(|snapshot| snapshot.title_text())
-            .unwrap_or_else(|| WINDOW_TITLE.to_string())
-    }
-
-    fn prune_recent_frames(&mut self, now: Instant) {
-        while let Some(sample) = self.recent_frames.front() {
-            if now.duration_since(sample.finished_at) <= self.snapshot_window {
-                break;
-            }
-            self.recent_frames.pop_front();
-        }
-    }
-
-    fn prune_recent_inputs(&mut self, now: Instant) {
-        while let Some(sample) = self.recent_canvas_inputs.front() {
-            if now.duration_since(*sample) <= self.snapshot_window {
-                break;
-            }
-            self.recent_canvas_inputs.pop_front();
-        }
-
-        while let Some(sample) = self.recent_canvas_latencies.front() {
-            if now.duration_since(sample.recorded_at) <= self.snapshot_window {
-                break;
-            }
-            self.recent_canvas_latencies.pop_front();
-        }
-    }
-
-    fn build_snapshot(&self) -> Option<PerformanceSnapshot> {
-        let frame_count = self.recent_frames.len();
-        if frame_count == 0 {
-            return None;
-        }
-
-        let mut totals = FrameStageTotals::default();
-        for sample in &self.recent_frames {
-            totals.frame_total += sample.stages.frame_total;
-            totals.prepare_frame += sample.stages.prepare_frame;
-            totals.ui_update += sample.stages.ui_update;
-            totals.panel_surface += sample.stages.panel_surface;
-            totals.present_total += sample.stages.present_total;
-        }
-
-        let fps = if frame_count >= 2 {
-            let first = self
-                .recent_frames
-                .front()
-                .expect("recent frame window is not empty")
-                .finished_at;
-            let last = self
-                .recent_frames
-                .back()
-                .expect("recent frame window is not empty")
-                .finished_at;
-            let span_secs = last.duration_since(first).as_secs_f64();
-            if span_secs > 0.0 {
-                (frame_count.saturating_sub(1)) as f64 / span_secs
-            } else {
-                self.latest_snapshot.map_or(0.0, |snapshot| snapshot.fps)
-            }
-        } else {
-            self.latest_snapshot.map_or(0.0, |snapshot| snapshot.fps)
-        };
-
-        let canvas_sample_hz = if self.recent_canvas_inputs.len() >= 2 {
-            let first = self
-                .recent_canvas_inputs
-                .front()
-                .expect("recent canvas input window is not empty");
-            let last = self
-                .recent_canvas_inputs
-                .back()
-                .expect("recent canvas input window is not empty");
-            let span_secs = last.duration_since(*first).as_secs_f64();
-            if span_secs > 0.0 {
-                (self.recent_canvas_inputs.len().saturating_sub(1)) as f64 / span_secs
-            } else {
-                self.latest_snapshot
-                    .map_or(0.0, |snapshot| snapshot.canvas_sample_hz)
-            }
-        } else {
-            self.latest_snapshot
-                .map_or(0.0, |snapshot| snapshot.canvas_sample_hz)
-        };
-
-        let canvas_latency_ms = if self.recent_canvas_latencies.is_empty() {
-            self.latest_snapshot
-                .map_or(0.0, |snapshot| snapshot.canvas_latency_ms)
-        } else {
-            self.recent_canvas_latencies
-                .iter()
-                .map(|sample| sample.latency.as_secs_f64() * 1000.0)
-                .sum::<f64>()
-                / self.recent_canvas_latencies.len() as f64
-        };
-
-        Some(PerformanceSnapshot {
-            fps,
-            frame_ms: totals.frame_total.as_secs_f64() * 1000.0 / frame_count as f64,
-            prepare_ms: totals.prepare_frame.as_secs_f64() * 1000.0 / frame_count as f64,
-            ui_update_ms: totals.ui_update.as_secs_f64() * 1000.0 / frame_count as f64,
-            panel_surface_ms: totals.panel_surface.as_secs_f64() * 1000.0 / frame_count as f64,
-            present_ms: totals.present_total.as_secs_f64() * 1000.0 / frame_count as f64,
-            canvas_latency_ms,
-            canvas_sample_hz,
-        })
-    }
-
-    fn average_ms(&self, label: &'static str) -> f64 {
-        self.stats.get(label).map_or(0.0, |stat| {
-            if stat.calls == 0 {
-                0.0
-            } else {
-                stat.total.as_secs_f64() * 1000.0 / stat.calls as f64
-            }
-        })
-    }
-
-    fn print_report(&self, now: Instant) {
-        let interval_secs = now
-            .duration_since(self.frame_interval_started)
-            .as_secs_f64()
-            .max(f64::EPSILON);
-        eprintln!(
-            "[profile] ---- last {:.2}s | fps={:.1} frame={:.3}ms prep={:.3}ms ui={:.3}ms panel={:.3}ms present={:.3}ms ink={:.3}ms target<={:.1}ms sample={:.1}Hz target>={:.1}Hz ----",
-            now.duration_since(self.frame_interval_started)
-                .as_secs_f64(),
-            self.frames as f64 / interval_secs,
-            self.average_ms("frame_total"),
-            self.average_ms("prepare_frame"),
-            self.average_ms("ui_update"),
-            self.average_ms("panel_surface"),
-            self.average_ms("present_total"),
-            self.latest_snapshot
-                .map_or(0.0, |snapshot| snapshot.canvas_latency_ms),
-            INPUT_LATENCY_TARGET_MS,
-            self.latest_snapshot
-                .map_or(0.0, |snapshot| snapshot.canvas_sample_hz),
-            INPUT_SAMPLING_TARGET_HZ,
-        );
-        for (label, stat) in &self.stats {
-            let avg = if stat.calls == 0 {
-                0.0
-            } else {
-                stat.total.as_secs_f64() * 1000.0 / stat.calls as f64
-            };
-            eprintln!(
-                "[profile] {:>18} calls={:>5} avg={:>8.3}ms max={:>8.3}ms total={:>8.3}ms",
-                label,
-                stat.calls,
-                avg,
-                stat.max.as_secs_f64() * 1000.0,
-                stat.total.as_secs_f64() * 1000.0,
-            );
-        }
-    }
-
-    fn reset_interval(&mut self, now: Instant) {
-        self.stats.clear();
-        self.frames = 0;
-        self.frame_interval_started = now;
-        self.last_report = now;
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct DesktopLayout {
-    panel_host_rect: Rect,
-    panel_surface_rect: Rect,
-    canvas_host_rect: Rect,
-    canvas_display_rect: Rect,
-}
-
-impl DesktopLayout {
-    fn new(
-        window_width: usize,
-        window_height: usize,
-        canvas_width: usize,
-        canvas_height: usize,
-    ) -> Self {
-        let sidebar_width = SIDEBAR_WIDTH.min(window_width);
-        let sidebar_inner_width = sidebar_width.saturating_sub(WINDOW_PADDING * 2).max(1);
-        let panel_host_rect = Rect {
-            x: WINDOW_PADDING,
-            y: WINDOW_PADDING + HEADER_HEIGHT + WINDOW_PADDING,
-            width: sidebar_inner_width,
-            height: window_height
-                .saturating_sub(HEADER_HEIGHT)
-                .saturating_sub(FOOTER_HEIGHT)
-                .saturating_sub(WINDOW_PADDING * 3)
-                .max(1),
-        };
-        let panel_surface_rect = panel_host_rect;
-
-        let canvas_host_rect = Rect {
-            x: sidebar_width + WINDOW_PADDING,
-            y: WINDOW_PADDING + HEADER_HEIGHT + WINDOW_PADDING,
-            width: window_width
-                .saturating_sub(sidebar_width)
-                .saturating_sub(WINDOW_PADDING * 2)
-                .max(1),
-            height: window_height
-                .saturating_sub(HEADER_HEIGHT)
-                .saturating_sub(FOOTER_HEIGHT)
-                .saturating_sub(WINDOW_PADDING * 3)
-                .max(1),
-        };
-        let canvas_display_rect =
-            fit_rect(canvas_width.max(1), canvas_height.max(1), canvas_host_rect);
-
-        Self {
-            panel_host_rect,
-            panel_surface_rect,
-            canvas_host_rect,
-            canvas_display_rect,
-        }
-    }
-}
-
-struct CanvasCompositeSource<'a> {
-    width: usize,
-    height: usize,
-    pixels: &'a [u8],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -664,6 +204,73 @@ impl DesktopApp {
         }
     }
 
+    fn mark_panel_surface_dirty(&mut self) {
+        self.needs_panel_surface_refresh = true;
+    }
+
+    fn mark_status_dirty(&mut self) {
+        self.needs_status_refresh = true;
+    }
+
+    fn sync_ui_from_document(&mut self) {
+        self.needs_ui_sync = true;
+        self.mark_panel_surface_dirty();
+    }
+
+    fn rebuild_present_frame(&mut self) {
+        self.needs_full_present_rebuild = true;
+    }
+
+    fn reset_active_interactions(&mut self) {
+        self.canvas_input = CanvasInputState::default();
+        self.pending_canvas_dirty_rect = None;
+        self.active_panel_drag = None;
+    }
+
+    fn refresh_panel_surface_if_changed(&mut self, changed: bool) -> bool {
+        if changed {
+            self.mark_panel_surface_dirty();
+        }
+        changed
+    }
+
+    fn append_canvas_dirty_rect(&mut self, dirty: DirtyRect) -> bool {
+        self.pending_canvas_dirty_rect = Some(
+            self.pending_canvas_dirty_rect
+                .map_or(dirty, |existing| existing.union(dirty)),
+        );
+        true
+    }
+
+    fn execute_document_command(&mut self, command: Command) -> bool {
+        let dirty = self.document.apply_command(&command);
+        match command {
+            Command::DrawPoint { .. }
+            | Command::DrawStroke { .. }
+            | Command::ErasePoint { .. }
+            | Command::EraseStroke { .. } => dirty.is_some_and(|dirty| self.append_canvas_dirty_rect(dirty)),
+            Command::SetActiveTool { .. } | Command::SetActiveColor { .. } => {
+                self.sync_ui_from_document();
+                self.mark_status_dirty();
+                true
+            }
+            Command::NewDocumentSized { .. } => {
+                self.reset_active_interactions();
+                self.sync_ui_from_document();
+                self.mark_status_dirty();
+                self.rebuild_present_frame();
+                true
+            }
+            Command::Noop
+            | Command::NewDocument
+            | Command::SaveProject
+            | Command::SaveProjectAs
+            | Command::SaveProjectToPath { .. }
+            | Command::LoadProject
+            | Command::LoadProjectFromPath { .. } => false,
+        }
+    }
+
     fn prepare_present_frame(
         &mut self,
         window_width: usize,
@@ -677,8 +284,8 @@ impl DesktopApp {
 
         if self.layout.as_ref() != Some(&next_layout) {
             self.layout = Some(next_layout.clone());
-            self.needs_panel_surface_refresh = true;
-            self.needs_full_present_rebuild = true;
+            self.mark_panel_surface_dirty();
+            self.rebuild_present_frame();
         }
 
         if self.needs_ui_sync {
@@ -744,7 +351,7 @@ impl DesktopApp {
         let layout = self.layout.clone().expect("layout exists");
         let status_text = self.needs_status_refresh.then(|| self.status_text());
         let Some(present_frame) = self.present_frame.as_mut() else {
-            self.needs_full_present_rebuild = true;
+            self.rebuild_present_frame();
             return PresentFrameUpdate {
                 dirty_rect: None,
                 canvas_updated: false,
@@ -778,7 +385,7 @@ impl DesktopApp {
 
         if let Some(dirty) = self.pending_canvas_dirty_rect.take() {
             let Some(bitmap) = self.document.active_bitmap() else {
-                self.needs_full_present_rebuild = true;
+                self.rebuild_present_frame();
                 return PresentFrameUpdate {
                     dirty_rect: None,
                     canvas_updated: false,
@@ -882,7 +489,7 @@ impl DesktopApp {
             changed |= self.ui_shell.focus_panel_node(panel_id, node_id);
         }
 
-        self.needs_panel_surface_refresh = true;
+        self.mark_panel_surface_dirty();
         let mut needs_redraw = true;
 
         for action in self.ui_shell.handle_panel_event(&event) {
@@ -901,18 +508,12 @@ impl DesktopApp {
 
     fn focus_next_panel_control(&mut self) -> bool {
         let changed = self.ui_shell.focus_next();
-        if changed {
-            self.needs_panel_surface_refresh = true;
-        }
-        changed
+        self.refresh_panel_surface_if_changed(changed)
     }
 
     fn focus_previous_panel_control(&mut self) -> bool {
         let changed = self.ui_shell.focus_previous();
-        if changed {
-            self.needs_panel_surface_refresh = true;
-        }
-        changed
+        self.refresh_panel_surface_if_changed(changed)
     }
 
     fn activate_focused_panel_control(&mut self) -> Option<Command> {
@@ -931,58 +532,37 @@ impl DesktopApp {
 
     fn insert_text_into_focused_panel_input(&mut self, text: &str) -> bool {
         let changed = self.ui_shell.insert_text_into_focused_input(text);
-        if changed {
-            self.needs_panel_surface_refresh = true;
-        }
-        changed
+        self.refresh_panel_surface_if_changed(changed)
     }
 
     fn backspace_focused_panel_input(&mut self) -> bool {
         let changed = self.ui_shell.backspace_focused_input();
-        if changed {
-            self.needs_panel_surface_refresh = true;
-        }
-        changed
+        self.refresh_panel_surface_if_changed(changed)
     }
 
     fn delete_focused_panel_input(&mut self) -> bool {
         let changed = self.ui_shell.delete_focused_input();
-        if changed {
-            self.needs_panel_surface_refresh = true;
-        }
-        changed
+        self.refresh_panel_surface_if_changed(changed)
     }
 
     fn move_focused_panel_input_cursor(&mut self, delta_chars: isize) -> bool {
         let changed = self.ui_shell.move_focused_input_cursor(delta_chars);
-        if changed {
-            self.needs_panel_surface_refresh = true;
-        }
-        changed
+        self.refresh_panel_surface_if_changed(changed)
     }
 
     fn move_focused_panel_input_cursor_to_start(&mut self) -> bool {
         let changed = self.ui_shell.move_focused_input_cursor_to_start();
-        if changed {
-            self.needs_panel_surface_refresh = true;
-        }
-        changed
+        self.refresh_panel_surface_if_changed(changed)
     }
 
     fn move_focused_panel_input_cursor_to_end(&mut self) -> bool {
         let changed = self.ui_shell.move_focused_input_cursor_to_end();
-        if changed {
-            self.needs_panel_surface_refresh = true;
-        }
-        changed
+        self.refresh_panel_surface_if_changed(changed)
     }
 
     fn set_focused_panel_input_preedit(&mut self, preedit: Option<String>) -> bool {
         let changed = self.ui_shell.set_focused_input_preedit(preedit);
-        if changed {
-            self.needs_panel_surface_refresh = true;
-        }
-        changed
+        self.refresh_panel_surface_if_changed(changed)
     }
 
     fn has_focused_panel_input(&self) -> bool {
@@ -1000,10 +580,7 @@ impl DesktopApp {
         }
 
         let changed = self.ui_shell.scroll_panels(delta_lines, viewport_height);
-        if changed {
-            self.needs_panel_surface_refresh = true;
-        }
-        changed
+        self.refresh_panel_surface_if_changed(changed)
     }
 
     fn handle_canvas_pointer(&mut self, action: &str, x: i32, y: i32) -> bool {
@@ -1083,13 +660,10 @@ impl DesktopApp {
                 self.project_path = path;
                 self.document = project.document;
                 self.ui_shell.set_workspace_layout(project.workspace_layout);
-                self.canvas_input = CanvasInputState::default();
-                self.pending_canvas_dirty_rect = None;
-                self.active_panel_drag = None;
-                self.needs_ui_sync = true;
-                self.needs_panel_surface_refresh = true;
-                self.needs_status_refresh = true;
-                self.needs_full_present_rebuild = true;
+                self.reset_active_interactions();
+                self.sync_ui_from_document();
+                self.mark_status_dirty();
+                self.rebuild_present_frame();
                 true
             }
             Err(error) => {
@@ -1131,52 +705,7 @@ impl DesktopApp {
             Command::SaveProjectToPath { path } => self.save_project_to_path(PathBuf::from(path)),
             Command::LoadProject => self.open_project(),
             Command::LoadProjectFromPath { path } => self.load_project(PathBuf::from(path)),
-            other => {
-                let dirty = self.document.apply_command(&other);
-                match other {
-                    Command::DrawPoint { .. }
-                    | Command::DrawStroke { .. }
-                    | Command::ErasePoint { .. }
-                    | Command::EraseStroke { .. } => {
-                        if let Some(dirty) = dirty {
-                            self.pending_canvas_dirty_rect = Some(
-                                self.pending_canvas_dirty_rect
-                                    .map_or(dirty, |existing| existing.union(dirty)),
-                            );
-                        }
-                        dirty.is_some()
-                    }
-                    Command::SetActiveTool { .. } => {
-                        self.needs_ui_sync = true;
-                        self.needs_panel_surface_refresh = true;
-                        self.needs_status_refresh = true;
-                        true
-                    }
-                    Command::SetActiveColor { .. } => {
-                        self.needs_ui_sync = true;
-                        self.needs_panel_surface_refresh = true;
-                        self.needs_status_refresh = true;
-                        true
-                    }
-                    Command::NewDocumentSized { .. } => {
-                        self.canvas_input = CanvasInputState::default();
-                        self.pending_canvas_dirty_rect = None;
-                        self.active_panel_drag = None;
-                        self.needs_ui_sync = true;
-                        self.needs_panel_surface_refresh = true;
-                        self.needs_status_refresh = true;
-                        self.needs_full_present_rebuild = true;
-                        true
-                    }
-                    Command::Noop
-                    | Command::NewDocument
-                    | Command::SaveProject
-                    | Command::SaveProjectAs
-                    | Command::SaveProjectToPath { .. }
-                    | Command::LoadProject
-                    | Command::LoadProjectFromPath { .. } => false,
-                }
-            }
+            other => self.execute_document_command(other),
         }
     }
 
@@ -1197,16 +726,16 @@ impl DesktopApp {
             } => {
                 let changed = self.ui_shell.move_panel(&panel_id, direction);
                 if changed {
-                    self.needs_panel_surface_refresh = true;
-                    self.needs_status_refresh = true;
+                    self.mark_panel_surface_dirty();
+                    self.mark_status_dirty();
                 }
                 changed
             }
             HostAction::SetPanelVisibility { panel_id, visible } => {
                 let changed = self.ui_shell.set_panel_visibility(&panel_id, visible);
                 if changed {
-                    self.needs_panel_surface_refresh = true;
-                    self.needs_status_refresh = true;
+                    self.mark_panel_surface_dirty();
+                    self.mark_status_dirty();
                 }
                 changed
             }
@@ -1327,10 +856,7 @@ impl DesktopRuntime {
         let position = (x, y);
         self.last_cursor_position = Some(position);
         let changed = self.app.handle_pointer_dragged(position.0, position.1);
-        if changed && self.app.is_canvas_interacting() {
-            self.profiler.record_canvas_input();
-        }
-        changed
+        self.record_canvas_input_if_needed(changed)
     }
 
     fn handle_mouse_button(&mut self, state: ElementState) -> bool {
@@ -1345,13 +871,17 @@ impl DesktopRuntime {
         match state {
             ElementState::Pressed => {
                 let changed = self.app.handle_pointer_pressed(x, y);
-                if changed && self.app.is_canvas_interacting() {
-                    self.profiler.record_canvas_input();
-                }
-                changed
+                self.record_canvas_input_if_needed(changed)
             }
             ElementState::Released => self.app.handle_pointer_released(x, y),
         }
+    }
+
+    fn record_canvas_input_if_needed(&mut self, changed: bool) -> bool {
+        if changed && self.app.is_canvas_interacting() {
+            self.profiler.record_canvas_input();
+        }
+        changed
     }
 
     fn handle_touch_phase(&mut self, touch_id: u64, phase: TouchPhase, x: i32, y: i32) -> bool {
@@ -1366,10 +896,7 @@ impl DesktopRuntime {
                 self.active_touch_id = Some(touch_id);
                 self.last_cursor_position = Some(position);
                 let changed = self.app.handle_pointer_pressed(position.0, position.1);
-                if changed && self.app.is_canvas_interacting() {
-                    self.profiler.record_canvas_input();
-                }
-                changed
+                self.record_canvas_input_if_needed(changed)
             }
             TouchPhase::Moved => {
                 if self.active_touch_id != Some(touch_id) {
@@ -1378,10 +905,7 @@ impl DesktopRuntime {
 
                 self.last_cursor_position = Some(position);
                 let changed = self.app.handle_pointer_dragged(position.0, position.1);
-                if changed && self.app.is_canvas_interacting() {
-                    self.profiler.record_canvas_input();
-                }
-                changed
+                self.record_canvas_input_if_needed(changed)
             }
             TouchPhase::Ended | TouchPhase::Cancelled => {
                 if self.active_touch_id != Some(touch_id) {
@@ -1657,366 +1181,6 @@ impl ApplicationHandler for DesktopRuntime {
             _ => {}
         }
     }
-}
-
-fn fit_rect(source_width: usize, source_height: usize, target: Rect) -> Rect {
-    if source_width == 0 || source_height == 0 || target.width == 0 || target.height == 0 {
-        return Rect {
-            x: target.x,
-            y: target.y,
-            width: 0,
-            height: 0,
-        };
-    }
-
-    let scale_x = target.width as f32 / source_width as f32;
-    let scale_y = target.height as f32 / source_height as f32;
-    let scale = scale_x.min(scale_y);
-    let fitted_width = ((source_width as f32 * scale).floor() as usize).max(1);
-    let fitted_height = ((source_height as f32 * scale).floor() as usize).max(1);
-
-    Rect {
-        x: target.x + (target.width.saturating_sub(fitted_width)) / 2,
-        y: target.y + (target.height.saturating_sub(fitted_height)) / 2,
-        width: fitted_width,
-        height: fitted_height,
-    }
-}
-
-fn map_canvas_dirty_to_display(
-    dirty: DirtyRect,
-    destination: Rect,
-    source_width: usize,
-    source_height: usize,
-) -> Rect {
-    if destination.width == 0 || destination.height == 0 || source_width == 0 || source_height == 0
-    {
-        return destination;
-    }
-
-    let clamped = dirty.clamp_to_bitmap(source_width, source_height);
-    let start_x = destination.x + (clamped.x * destination.width) / source_width;
-    let start_y = destination.y + (clamped.y * destination.height) / source_height;
-    let end_x =
-        destination.x + ((clamped.x + clamped.width) * destination.width).div_ceil(source_width);
-    let end_y =
-        destination.y + ((clamped.y + clamped.height) * destination.height).div_ceil(source_height);
-
-    Rect {
-        x: start_x.min(destination.x + destination.width.saturating_sub(1)),
-        y: start_y.min(destination.y + destination.height.saturating_sub(1)),
-        width: end_x.saturating_sub(start_x).max(1),
-        height: end_y.saturating_sub(start_y).max(1),
-    }
-}
-
-fn compose_desktop_frame(
-    width: usize,
-    height: usize,
-    layout: &DesktopLayout,
-    panel_surface: &PanelSurface,
-    canvas: CanvasCompositeSource<'_>,
-    status_text: &str,
-) -> render::RenderFrame {
-    let mut frame = render::RenderFrame {
-        width,
-        height,
-        pixels: vec![0; width * height * 4],
-    };
-
-    fill_rect(
-        &mut frame,
-        Rect {
-            x: 0,
-            y: 0,
-            width,
-            height,
-        },
-        APP_BACKGROUND,
-    );
-    fill_rect(
-        &mut frame,
-        Rect {
-            x: 0,
-            y: 0,
-            width: SIDEBAR_WIDTH.min(width),
-            height,
-        },
-        SIDEBAR_BACKGROUND,
-    );
-    fill_rect(&mut frame, layout.panel_host_rect, PANEL_FRAME_BACKGROUND);
-    stroke_rect(&mut frame, layout.panel_host_rect, PANEL_FRAME_BORDER);
-    fill_rect(&mut frame, layout.canvas_host_rect, CANVAS_FRAME_BACKGROUND);
-    stroke_rect(&mut frame, layout.canvas_host_rect, CANVAS_FRAME_BORDER);
-    fill_rect(&mut frame, layout.canvas_display_rect, CANVAS_BACKGROUND);
-
-    blit_scaled_rgba(
-        &mut frame,
-        layout.panel_surface_rect,
-        panel_surface.width,
-        panel_surface.height,
-        panel_surface.pixels.as_slice(),
-    );
-    blit_scaled_rgba(
-        &mut frame,
-        layout.canvas_display_rect,
-        canvas.width,
-        canvas.height,
-        canvas.pixels,
-    );
-
-    draw_text(
-        &mut frame,
-        WINDOW_PADDING,
-        WINDOW_PADDING + 4,
-        "Panel host (winit + software panel runtime)",
-        TEXT_PRIMARY,
-    );
-    draw_text(
-        &mut frame,
-        layout.canvas_host_rect.x,
-        WINDOW_PADDING + 4,
-        "Canvas host (winit + wgpu presenter)",
-        TEXT_PRIMARY,
-    );
-    draw_text(
-        &mut frame,
-        WINDOW_PADDING,
-        height.saturating_sub(FOOTER_HEIGHT) + 6,
-        "Built-in panels are rendered by the host panel runtime.",
-        TEXT_SECONDARY,
-    );
-    draw_text(
-        &mut frame,
-        layout.canvas_host_rect.x,
-        height.saturating_sub(FOOTER_HEIGHT) + 6,
-        status_text,
-        TEXT_SECONDARY,
-    );
-
-    frame
-}
-
-fn compose_panel_host_region(
-    frame: &mut render::RenderFrame,
-    layout: &DesktopLayout,
-    panel_surface: &PanelSurface,
-) {
-    fill_rect(frame, layout.panel_host_rect, PANEL_FRAME_BACKGROUND);
-    stroke_rect(frame, layout.panel_host_rect, PANEL_FRAME_BORDER);
-    blit_scaled_rgba(
-        frame,
-        layout.panel_surface_rect,
-        panel_surface.width,
-        panel_surface.height,
-        panel_surface.pixels.as_slice(),
-    );
-}
-
-fn compose_status_region(
-    frame: &mut render::RenderFrame,
-    width: usize,
-    height: usize,
-    layout: &DesktopLayout,
-    status_text: &str,
-) {
-    let status_rect = status_text_rect(width, height, layout);
-    fill_rect(frame, status_rect, APP_BACKGROUND);
-    draw_text(
-        frame,
-        layout.canvas_host_rect.x,
-        height.saturating_sub(FOOTER_HEIGHT) + 6,
-        status_text,
-        TEXT_SECONDARY,
-    );
-}
-
-fn status_text_rect(width: usize, height: usize, layout: &DesktopLayout) -> Rect {
-    Rect {
-        x: layout.canvas_host_rect.x,
-        y: height.saturating_sub(FOOTER_HEIGHT),
-        width: width.saturating_sub(layout.canvas_host_rect.x),
-        height: FOOTER_HEIGHT,
-    }
-}
-
-fn map_view_to_surface(
-    surface_width: usize,
-    surface_height: usize,
-    rect: Rect,
-    x: i32,
-    y: i32,
-) -> Option<(usize, usize)> {
-    if surface_width == 0 || surface_height == 0 || rect.width == 0 || rect.height == 0 {
-        return None;
-    }
-    if !rect.contains(x, y) {
-        return None;
-    }
-
-    let local_x = (x - rect.x as i32) as f32;
-    let local_y = (y - rect.y as i32) as f32;
-    Some((
-        (((local_x / rect.width as f32) * surface_width as f32).floor() as usize)
-            .min(surface_width.saturating_sub(1)),
-        (((local_y / rect.height as f32) * surface_height as f32).floor() as usize)
-            .min(surface_height.saturating_sub(1)),
-    ))
-}
-
-fn map_view_to_surface_clamped(
-    surface_width: usize,
-    surface_height: usize,
-    rect: Rect,
-    x: i32,
-    y: i32,
-) -> Option<(usize, usize)> {
-    if surface_width == 0 || surface_height == 0 || rect.width == 0 || rect.height == 0 {
-        return None;
-    }
-
-    let clamped_x = x.clamp(
-        rect.x as i32,
-        (rect.x + rect.width.saturating_sub(1)) as i32,
-    );
-    let clamped_y = y.clamp(
-        rect.y as i32,
-        (rect.y + rect.height.saturating_sub(1)) as i32,
-    );
-    map_view_to_surface(surface_width, surface_height, rect, clamped_x, clamped_y)
-}
-
-fn draw_text(frame: &mut render::RenderFrame, x: usize, y: usize, text: &str, color: [u8; 4]) {
-    draw_text_rgba(
-        frame.pixels.as_mut_slice(),
-        frame.width,
-        frame.height,
-        x,
-        y,
-        text,
-        color,
-    );
-}
-
-fn fill_rect(frame: &mut render::RenderFrame, rect: Rect, color: [u8; 4]) {
-    let max_x = (rect.x + rect.width).min(frame.width);
-    let max_y = (rect.y + rect.height).min(frame.height);
-    for yy in rect.y..max_y {
-        for xx in rect.x..max_x {
-            write_pixel(frame, xx, yy, color);
-        }
-    }
-}
-
-fn stroke_rect(frame: &mut render::RenderFrame, rect: Rect, color: [u8; 4]) {
-    if rect.width == 0 || rect.height == 0 {
-        return;
-    }
-
-    fill_rect(
-        frame,
-        Rect {
-            x: rect.x,
-            y: rect.y,
-            width: rect.width,
-            height: 1,
-        },
-        color,
-    );
-    fill_rect(
-        frame,
-        Rect {
-            x: rect.x,
-            y: rect.y + rect.height.saturating_sub(1),
-            width: rect.width,
-            height: 1,
-        },
-        color,
-    );
-    fill_rect(
-        frame,
-        Rect {
-            x: rect.x,
-            y: rect.y,
-            width: 1,
-            height: rect.height,
-        },
-        color,
-    );
-    fill_rect(
-        frame,
-        Rect {
-            x: rect.x + rect.width.saturating_sub(1),
-            y: rect.y,
-            width: 1,
-            height: rect.height,
-        },
-        color,
-    );
-}
-
-fn blit_scaled_rgba(
-    frame: &mut render::RenderFrame,
-    destination: Rect,
-    source_width: usize,
-    source_height: usize,
-    source_pixels: &[u8],
-) {
-    blit_scaled_rgba_region(
-        frame,
-        destination,
-        source_width,
-        source_height,
-        source_pixels,
-        None,
-    );
-}
-
-fn blit_scaled_rgba_region(
-    frame: &mut render::RenderFrame,
-    destination: Rect,
-    source_width: usize,
-    source_height: usize,
-    source_pixels: &[u8],
-    dirty_rect: Option<Rect>,
-) {
-    if destination.width == 0 || destination.height == 0 || source_width == 0 || source_height == 0
-    {
-        return;
-    }
-
-    let target = dirty_rect
-        .and_then(|dirty| destination.intersect(dirty))
-        .unwrap_or(destination);
-
-    for dst_y in target.y..target.y + target.height {
-        let local_y = dst_y - destination.y;
-        let src_y = ((local_y * source_height) / destination.height).min(source_height - 1);
-        for dst_x in target.x..target.x + target.width {
-            let local_x = dst_x - destination.x;
-            let src_x = ((local_x * source_width) / destination.width).min(source_width - 1);
-            let src_index = (src_y * source_width + src_x) * 4;
-            write_pixel(
-                frame,
-                dst_x,
-                dst_y,
-                [
-                    source_pixels[src_index],
-                    source_pixels[src_index + 1],
-                    source_pixels[src_index + 2],
-                    source_pixels[src_index + 3],
-                ],
-            );
-        }
-    }
-}
-
-fn write_pixel(frame: &mut render::RenderFrame, x: usize, y: usize, color: [u8; 4]) {
-    if x >= frame.width || y >= frame.height {
-        return;
-    }
-    let index = (y * frame.width + x) * 4;
-    frame.pixels[index..index + 4].copy_from_slice(&color);
 }
 
 #[cfg(test)]
@@ -2459,6 +1623,62 @@ mod tests {
     }
 
     #[test]
+    fn move_panel_host_action_updates_status_without_full_recompose() {
+        let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+        let mut profiler = DesktopProfiler::new();
+        let _ = app.prepare_present_frame(1280, 200, &mut profiler);
+        profiler.stats.clear();
+        let layout = app.layout.clone().expect("layout exists");
+
+        assert!(app.execute_host_action(HostAction::MovePanel {
+            panel_id: "builtin.layers-panel".to_string(),
+            direction: plugin_api::PanelMoveDirection::Up,
+        }));
+        let update = app.prepare_present_frame(1280, 200, &mut profiler);
+
+        assert!(!profiler.stats.contains_key("ui_update"));
+        assert!(!profiler.stats.contains_key("compose_full_frame"));
+        assert!(profiler.stats.contains_key("compose_dirty_panel"));
+        assert!(profiler.stats.contains_key("compose_dirty_status"));
+        assert_eq!(
+            update.dirty_rect,
+            Some(
+                layout
+                    .panel_host_rect
+                    .union(status_text_rect(1280, 200, &layout))
+            )
+        );
+    }
+
+    #[test]
+    fn set_panel_visibility_updates_status_without_full_recompose() {
+        let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+        let mut profiler = DesktopProfiler::new();
+        let _ = app.prepare_present_frame(1280, 200, &mut profiler);
+        profiler.stats.clear();
+        let layout = app.layout.clone().expect("layout exists");
+
+        assert!(app.execute_host_action(HostAction::SetPanelVisibility {
+            panel_id: "builtin.tool-palette".to_string(),
+            visible: false,
+        }));
+        let update = app.prepare_present_frame(1280, 200, &mut profiler);
+
+        assert!(!profiler.stats.contains_key("ui_update"));
+        assert!(!profiler.stats.contains_key("compose_full_frame"));
+        assert!(profiler.stats.contains_key("compose_dirty_panel"));
+        assert!(profiler.stats.contains_key("compose_dirty_status"));
+        assert_eq!(
+            update.dirty_rect,
+            Some(
+                layout
+                    .panel_host_rect
+                    .union(status_text_rect(1280, 200, &layout))
+            )
+        );
+    }
+
+    #[test]
     fn desktop_app_loads_phase6_sample_panel_from_default_ui_directory() {
         let app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
 
@@ -2590,7 +1810,7 @@ mod tests {
 
     #[test]
     fn performance_snapshot_formats_window_title() {
-        let title = PerformanceSnapshot {
+        let title = profiler::PerformanceSnapshot {
             fps: 59.8,
             frame_ms: 16.72,
             prepare_ms: 3.11,
@@ -2632,7 +1852,7 @@ mod tests {
         profiler.record("present_total", Duration::from_millis(2));
         profiler.finish_frame_at(Duration::from_millis(16), start + Duration::from_millis(32));
 
-        let snapshot = profiler.latest_snapshot.expect("snapshot exists");
+        let snapshot = profiler.latest_snapshot().expect("snapshot exists");
         assert!(snapshot.fps > 60.0);
         assert!(snapshot.fps < 65.0);
     }
@@ -2655,7 +1875,7 @@ mod tests {
             profiler.finish_frame_at(Duration::from_millis(8), present_at);
         }
 
-        let snapshot = profiler.latest_snapshot.expect("snapshot exists");
+        let snapshot = profiler.latest_snapshot().expect("snapshot exists");
         assert!(snapshot.canvas_latency_ms >= 8.0);
         assert!(snapshot.canvas_latency_ms < 9.0);
         assert!(snapshot.canvas_sample_hz >= 120.0);
@@ -2678,7 +1898,7 @@ mod tests {
             );
         }
 
-        let fps_before_idle = profiler.latest_snapshot.expect("snapshot exists").fps;
+        let fps_before_idle = profiler.latest_snapshot().expect("snapshot exists").fps;
 
         profiler.record("prepare_frame", Duration::from_millis(2));
         profiler.record("ui_update", Duration::from_millis(1));
@@ -2686,7 +1906,7 @@ mod tests {
         profiler.record("present_total", Duration::from_millis(2));
         profiler.finish_frame_at(Duration::from_millis(16), start + Duration::from_secs(3));
 
-        let fps_after_idle = profiler.latest_snapshot.expect("snapshot exists").fps;
+        let fps_after_idle = profiler.latest_snapshot().expect("snapshot exists").fps;
         assert!(fps_before_idle > 50.0);
         assert!(fps_after_idle > 50.0);
     }
