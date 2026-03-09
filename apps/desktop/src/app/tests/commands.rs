@@ -128,6 +128,13 @@ fn plugin_keyboard_capture_updates_persistent_config() {
     );
 }
 
+#[test]
+fn unmatched_keyboard_shortcut_is_not_consumed() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+
+    assert!(!app.dispatch_keyboard_shortcut("Tab", "Tab", false));
+}
+
 /// サイズ指定付き新規作成がビットマップ寸法を置き換えることを確認する。
 #[test]
 fn execute_command_new_document_sized_replaces_bitmap() {

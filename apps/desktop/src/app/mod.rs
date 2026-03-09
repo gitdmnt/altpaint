@@ -9,6 +9,7 @@ mod present;
 #[cfg(test)]
 mod tests;
 
+use std::thread::JoinHandle;
 use std::path::PathBuf;
 
 use app_core::{Command, DirtyRect, Document};
@@ -24,6 +25,7 @@ use crate::frame::{
     exposed_canvas_background_rect,
 };
 use crate::pens::load_pen_directory;
+use crate::session::{DesktopSessionState, default_session_path, load_session_state, save_session_state};
 
 /// 差分提示のために更新領域を集約した結果を表す。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -42,11 +44,17 @@ struct PanelDragState {
     node_id: String,
 }
 
+#[derive(Debug)]
+struct PendingSaveTask {
+    handle: JoinHandle<Result<(), String>>,
+}
+
 /// ランタイムから利用されるデスクトップアプリ本体を表す。
 pub(crate) struct DesktopApp {
     pub(crate) document: Document,
     pub(crate) ui_shell: UiShell,
     pub(crate) project_path: PathBuf,
+    session_path: PathBuf,
     dialogs: Box<dyn DesktopDialogs>,
     canvas_input: CanvasInputState,
     pub(crate) panel_surface: Option<PanelSurface>,
@@ -63,19 +71,43 @@ pub(crate) struct DesktopApp {
     needs_panel_surface_refresh: bool,
     needs_status_refresh: bool,
     needs_full_present_rebuild: bool,
+    pending_save_tasks: Vec<PendingSaveTask>,
 }
 
 impl DesktopApp {
     /// 既定ダイアログ実装付きのアプリ本体を生成する。
     pub(crate) fn new(project_path: PathBuf) -> Self {
-        Self::new_with_dialogs(project_path, Box::new(NativeDesktopDialogs))
+        Self::new_with_dialogs_and_session_path(
+            project_path,
+            Box::new(NativeDesktopDialogs),
+            default_session_path(),
+        )
     }
 
     /// ダイアログ実装を差し替えてアプリ本体を生成する。
+    #[allow(dead_code)]
     pub(crate) fn new_with_dialogs(
         project_path: PathBuf,
         dialogs: Box<dyn DesktopDialogs>,
     ) -> Self {
+        Self::new_with_dialogs_and_session_path(project_path, dialogs, default_session_path())
+    }
+
+    /// ダイアログ実装とセッション保存先を差し替えてアプリ本体を生成する。
+    pub(crate) fn new_with_dialogs_and_session_path(
+        project_path: PathBuf,
+        dialogs: Box<dyn DesktopDialogs>,
+        session_path: PathBuf,
+    ) -> Self {
+        let session = load_session_state(&session_path);
+        let project_path = session
+            .as_ref()
+            .and_then(|state| {
+                (project_path == std::path::Path::new(DEFAULT_PROJECT_PATH))
+                    .then(|| state.last_project_path.clone())
+                    .flatten()
+            })
+            .unwrap_or(project_path);
         let loaded_project = load_project_from_path(&project_path).ok();
         let document = loaded_project
             .as_ref()
@@ -87,6 +119,14 @@ impl DesktopApp {
             ui_shell.set_workspace_layout(project.workspace_layout);
             ui_shell.set_persistent_panel_configs(project.plugin_configs);
         }
+        if let Some(session) = session.as_ref() {
+            if !session.workspace_layout.panels.is_empty() {
+                ui_shell.set_workspace_layout(session.workspace_layout.clone());
+            }
+            if !session.plugin_configs.is_empty() {
+                ui_shell.set_persistent_panel_configs(session.plugin_configs.clone());
+            }
+        }
         let mut document = document;
         Self::reload_pen_presets_into_document(&mut document);
         ui_shell.update(&document);
@@ -95,6 +135,7 @@ impl DesktopApp {
             document,
             ui_shell,
             project_path,
+            session_path,
             dialogs,
             canvas_input: CanvasInputState::default(),
             panel_surface: None,
@@ -111,7 +152,69 @@ impl DesktopApp {
             needs_panel_surface_refresh: true,
             needs_status_refresh: false,
             needs_full_present_rebuild: true,
+            pending_save_tasks: Vec::new(),
         }
+    }
+
+    fn session_state(&self) -> DesktopSessionState {
+        DesktopSessionState {
+            last_project_path: Some(self.project_path.clone()),
+            workspace_layout: self.ui_shell.workspace_layout(),
+            plugin_configs: self.ui_shell.persistent_panel_configs(),
+        }
+    }
+
+    fn persist_session_state(&self) {
+        if let Err(error) = save_session_state(&self.session_path, &self.session_state()) {
+            eprintln!("failed to persist desktop session: {error}");
+        }
+    }
+
+    fn poll_background_tasks(&mut self) {
+        let mut remaining = Vec::new();
+        let mut completed_any = false;
+
+        for task in self.pending_save_tasks.drain(..) {
+            if task.handle.is_finished() {
+                completed_any = true;
+                match task.handle.join() {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => {
+                        eprintln!("failed to save project: {error}");
+                        self.dialogs.show_error("Save failed", &error);
+                    }
+                    Err(_) => {
+                        self.dialogs
+                            .show_error("Save failed", "background save task panicked");
+                    }
+                }
+            } else {
+                remaining.push(task);
+            }
+        }
+
+        if completed_any {
+            self.mark_status_dirty();
+        }
+        self.pending_save_tasks = remaining;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn wait_for_pending_save_tasks(&mut self) {
+        let mut remaining = Vec::new();
+        std::mem::swap(&mut remaining, &mut self.pending_save_tasks);
+        for task in remaining {
+            match task.handle.join() {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => panic!("background save failed: {error}"),
+                Err(_) => panic!("background save task panicked"),
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pending_save_task_count(&self) -> usize {
+        self.pending_save_tasks.len()
     }
 
     /// パネル面の再描画が必要であることを記録する。
@@ -187,31 +290,31 @@ impl DesktopApp {
         previous_transform: app_core::CanvasViewTransform,
     ) -> bool {
         self.pending_canvas_transform_update = true;
-        if let Some(canvas_display_rect) = self
+        if let Some(canvas_viewport_rect) = self
             .layout
             .as_ref()
-            .map(|layout| layout.canvas_display_rect)
+            .map(|layout| layout.canvas_host_rect)
         {
             let (canvas_width, canvas_height) = self.canvas_dimensions();
             let background_dirty = exposed_canvas_background_rect(
-                canvas_display_rect,
+                canvas_viewport_rect,
                 canvas_width,
                 canvas_height,
                 previous_transform,
                 self.document.view_transform,
             )
-            .unwrap_or(canvas_display_rect);
+            .unwrap_or(canvas_viewport_rect);
             self.append_canvas_background_dirty_rect(background_dirty);
             if let Some(hover_position) = self.hover_canvas_position {
                 let previous_preview = brush_preview_rect(
-                    canvas_display_rect,
+                    canvas_viewport_rect,
                     canvas_width,
                     canvas_height,
                     previous_transform,
                     hover_position,
                 );
                 let current_preview = brush_preview_rect(
-                    canvas_display_rect,
+                    canvas_viewport_rect,
                     canvas_width,
                     canvas_height,
                     self.document.view_transform,
@@ -307,7 +410,7 @@ impl DesktopApp {
         let layout = self.layout.as_ref()?;
         let bitmap = self.document.active_bitmap()?;
         canvas_texture_quad(
-            layout.canvas_display_rect,
+            layout.canvas_host_rect,
             bitmap.width,
             bitmap.height,
             self.document.view_transform,

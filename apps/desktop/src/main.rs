@@ -11,14 +11,16 @@ mod frame;
 mod pens;
 mod profiler;
 mod runtime;
+mod session;
 mod wgpu_canvas;
 
 use anyhow::Result;
 
 use crate::config::DEFAULT_PROJECT_PATH;
 use crate::runtime::DesktopRuntime;
+use crate::session::startup_project_path;
 
 /// デスクトップアプリケーションを既定プロジェクトパスで起動する。
 fn main() -> Result<()> {
-    DesktopRuntime::run(std::path::PathBuf::from(DEFAULT_PROJECT_PATH))
+    DesktopRuntime::run(startup_project_path(DEFAULT_PROJECT_PATH))
 }

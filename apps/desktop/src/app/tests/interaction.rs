@@ -247,7 +247,7 @@ fn pan_view_updates_canvas_without_status_recompose() {
         .base_dirty_rect
         .expect("base dirty rect")
         .width
-        <= layout.canvas_display_rect.width);
+        <= layout.canvas_host_rect.width);
     assert_eq!(update.overlay_dirty_rect, None);
 }
 
@@ -268,6 +268,23 @@ fn pan_view_updates_canvas_quad_without_bitmap_reupload() {
     assert!(update.canvas_transform_changed);
     assert_eq!(update.canvas_dirty_rect, None);
     assert_ne!(original_quad.destination, moved_quad.destination);
+}
+
+#[test]
+fn pan_can_expand_canvas_quad_into_host_margin() {
+    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut profiler = DesktopProfiler::new();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+    let layout = app.layout.clone().expect("layout exists");
+
+    assert!(app.execute_command(Command::PanView {
+        delta_x: -96.0,
+        delta_y: 0.0,
+    }));
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+    let moved_quad = app.canvas_texture_quad().expect("canvas quad exists");
+
+    assert!(moved_quad.destination.x < layout.canvas_display_rect.x);
 }
 
 /// `NewDocument` 用のテストダイアログ付きアプリでも描画系の初期化が行えることを確認する。

@@ -400,13 +400,19 @@ impl UiShell {
             if !panel.handles_keyboard_event() {
                 continue;
             }
-            handled = true;
-            actions.extend(panel.handle_event(&PanelEvent::Keyboard {
+            let previous_tree = panel.panel_tree();
+            let previous_config = panel.persistent_config();
+            let panel_actions = panel.handle_event(&PanelEvent::Keyboard {
                 panel_id: panel.id().to_string(),
                 shortcut: shortcut.to_string(),
                 key: key.to_string(),
                 repeat,
-            }));
+            });
+            let keyboard_handled = !panel_actions.is_empty()
+                || panel.panel_tree() != previous_tree
+                || panel.persistent_config() != previous_config;
+            handled |= keyboard_handled;
+            actions.extend(panel_actions);
         }
         if handled {
             self.panel_content_dirty = true;
@@ -1449,14 +1455,27 @@ fn collect_dsl_text(children: &[ViewNode], context: &DslEvaluationContext<'_>) -
 }
 
 fn evaluate_text_content(text: &str, context: &DslEvaluationContext<'_>) -> String {
-    let trimmed = text.trim();
-    if let Some(expression) = trimmed
-        .strip_prefix('{')
-        .and_then(|value| value.strip_suffix('}'))
-    {
-        expression_to_string(expression.trim(), context)
-    } else {
+    let mut rendered = String::with_capacity(text.len());
+    let mut rest = text;
+
+    while let Some(start) = rest.find('{') {
+        rendered.push_str(&rest[..start]);
+        let after_start = &rest[start + 1..];
+        let Some(end) = after_start.find('}') else {
+            rendered.push_str(&rest[start..]);
+            return rendered;
+        };
+
+        let expression = after_start[..end].trim();
+        rendered.push_str(&expression_to_string(expression, context));
+        rest = &after_start[end + 1..];
+    }
+
+    if rendered.is_empty() {
         text.to_string()
+    } else {
+        rendered.push_str(rest);
+        rendered
     }
 }
 
@@ -1828,7 +1847,7 @@ fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, St
             let size = descriptor
                 .payload
                 .get("size")
-                .and_then(Value::as_u64)
+                .and_then(payload_u64)
                 .ok_or_else(|| "tool.set_size is missing payload.size".to_string())?;
             Ok(Command::SetActivePenSize { size: size as u32 })
         }
@@ -1850,7 +1869,7 @@ fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, St
             let index = descriptor
                 .payload
                 .get("index")
-                .and_then(Value::as_u64)
+                .and_then(payload_u64)
                 .ok_or_else(|| "layer.select is missing payload.index".to_string())?;
             Ok(Command::SelectLayer {
                 index: index as usize,
@@ -1865,7 +1884,7 @@ fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, St
             let zoom = descriptor
                 .payload
                 .get("zoom")
-                .and_then(Value::as_f64)
+                .and_then(payload_f64)
                 .ok_or_else(|| "view.zoom is missing payload.zoom".to_string())?;
             Ok(Command::SetViewZoom { zoom: zoom as f32 })
         }
@@ -1873,12 +1892,12 @@ fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, St
             let delta_x = descriptor
                 .payload
                 .get("delta_x")
-                .and_then(Value::as_f64)
+                .and_then(payload_f64)
                 .ok_or_else(|| "view.pan is missing payload.delta_x".to_string())?;
             let delta_y = descriptor
                 .payload
                 .get("delta_y")
-                .and_then(Value::as_f64)
+                .and_then(payload_f64)
                 .ok_or_else(|| "view.pan is missing payload.delta_y".to_string())?;
             Ok(Command::PanView {
                 delta_x: delta_x as f32,
@@ -1887,6 +1906,19 @@ fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, St
         }
         other => Err(format!("unsupported command descriptor: {other}")),
     }
+}
+
+fn payload_u64(value: &Value) -> Option<u64> {
+    value
+        .as_u64()
+        .or_else(|| value.as_i64().and_then(|number| u64::try_from(number).ok()))
+        .or_else(|| value.as_str().and_then(|text| text.parse::<u64>().ok()))
+}
+
+fn payload_f64(value: &Value) -> Option<f64> {
+    value
+        .as_f64()
+        .or_else(|| value.as_str().and_then(|text| text.parse::<f64>().ok()))
 }
 
 fn parse_hex_color(input: &str) -> Option<ColorRgba8> {
@@ -3536,6 +3568,52 @@ view {
         assert!(tree_contains_text(&layers_panel.children, "Untitled"));
         assert!(tree_contains_text(&layers_panel.children, "1"));
         assert!(tree_contains_text(&layers_panel.children, "Layer 1"));
+    }
+
+    #[test]
+    fn migrated_builtin_dsl_panels_render_interpolated_mixed_text() {
+        let mut shell = UiShell::new();
+        assert!(
+            shell
+                .load_panel_directory(default_builtin_panel_dir())
+                .is_empty()
+        );
+        shell.update(&Document::default());
+
+        let panels = shell.panel_trees();
+        let tool_panel = panels
+            .iter()
+            .find(|panel| panel.id == "builtin.tool-palette")
+            .expect("tool panel exists");
+        let layers_panel = panels
+            .iter()
+            .find(|panel| panel.id == "builtin.layers-panel")
+            .expect("layers panel exists");
+        let pen_panel = panels
+            .iter()
+            .find(|panel| panel.id == "builtin.pen-settings")
+            .expect("pen panel exists");
+
+        assert!(tree_contains_text(&tool_panel.children, "Preset: Round Pen"));
+        assert!(tree_contains_text(&tool_panel.children, "Size: 4px / presets: 1"));
+        assert!(tree_contains_text(&layers_panel.children, "index: 0"));
+        assert!(tree_contains_text(&layers_panel.children, "blend: normal"));
+        assert!(tree_contains_text(&layers_panel.children, "visible: true"));
+        assert!(tree_contains_text(&layers_panel.children, "mask: false"));
+        assert!(tree_contains_text(&pen_panel.children, "4px"));
+    }
+
+    #[test]
+    fn command_descriptor_accepts_numeric_payload_encoded_as_string() {
+        let mut descriptor = CommandDescriptor::new("tool.set_size");
+        descriptor
+            .payload
+            .insert("size".to_string(), Value::String("12".to_string()));
+
+        assert_eq!(
+            command_from_descriptor(&descriptor),
+            Ok(Command::SetActivePenSize { size: 12 })
+        );
     }
 
     #[test]

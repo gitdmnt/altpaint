@@ -599,7 +599,7 @@ fn fill_canvas_host_background(
     transform: CanvasViewTransform,
     dirty_rect: Rect,
 ) {
-    let display = layout.canvas_display_rect;
+    let display = layout.canvas_host_rect;
     if let Some(display_region) = display.intersect(dirty_rect) {
         if let Some(drawn_rect) = canvas_drawn_rect(display, canvas.width, canvas.height, transform)
         {
@@ -702,7 +702,7 @@ pub(crate) fn blit_canvas_content(
 ) {
     blit_canvas_with_transform(
         frame,
-        layout.canvas_display_rect,
+        layout.canvas_host_rect,
         canvas,
         transform,
         dirty_rect,
@@ -720,7 +720,7 @@ pub(crate) fn draw_canvas_overlay(
     if let Some(position) = overlay.brush_preview {
         draw_brush_preview(
             frame,
-            layout.canvas_display_rect,
+            layout.canvas_host_rect,
             canvas,
             transform,
             position,

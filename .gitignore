@@ -8,3 +8,4 @@ plugins/**/*.wasm
 *.swp
 *.swo
 *.DS_Store
+*.altp.json

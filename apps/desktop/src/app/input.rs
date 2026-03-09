@@ -20,7 +20,7 @@ impl DesktopApp {
         }
         self.hover_canvas_position = next;
 
-        let Some(layout) = self.layout.as_ref().map(|layout| layout.canvas_display_rect) else {
+        let Some(layout) = self.layout.as_ref().map(|layout| layout.canvas_host_rect) else {
             self.rebuild_present_frame();
             return true;
         };
@@ -129,6 +129,7 @@ impl DesktopApp {
     /// パネルイベントを `UiShell` とホストアクションへ流す。
     pub(super) fn dispatch_panel_event(&mut self, event: PanelEvent) -> bool {
         let mut changed = false;
+        let previous_configs = self.ui_shell.persistent_panel_configs();
         if let PanelEvent::Activate { panel_id, node_id } = &event {
             changed |= self.ui_shell.focus_panel_node(panel_id, node_id);
         }
@@ -138,6 +139,10 @@ impl DesktopApp {
 
         for action in self.ui_shell.handle_panel_event(&event) {
             needs_redraw |= self.execute_host_action(action);
+        }
+
+        if self.ui_shell.persistent_panel_configs() != previous_configs {
+            self.persist_session_state();
         }
 
         changed || needs_redraw
@@ -284,7 +289,7 @@ impl DesktopApp {
     /// ウィンドウ座標をキャンバスビットマップ座標へ変換する。
     fn canvas_position_from_window(&self, x: i32, y: i32) -> Option<(usize, usize)> {
         let layout = self.layout.as_ref()?;
-        if !layout.canvas_display_rect.contains(x, y) {
+        if !layout.canvas_host_rect.contains(x, y) {
             return None;
         }
 
@@ -295,13 +300,13 @@ impl DesktopApp {
     fn canvas_position_from_window_clamped(&self, x: i32, y: i32) -> Option<(usize, usize)> {
         let layout = self.layout.as_ref()?;
         let clamped_x = x.clamp(
-            layout.canvas_display_rect.x as i32,
-            (layout.canvas_display_rect.x + layout.canvas_display_rect.width.saturating_sub(1))
+            layout.canvas_host_rect.x as i32,
+            (layout.canvas_host_rect.x + layout.canvas_host_rect.width.saturating_sub(1))
                 as i32,
         );
         let clamped_y = y.clamp(
-            layout.canvas_display_rect.y as i32,
-            (layout.canvas_display_rect.y + layout.canvas_display_rect.height.saturating_sub(1))
+            layout.canvas_host_rect.y as i32,
+            (layout.canvas_host_rect.y + layout.canvas_host_rect.height.saturating_sub(1))
                 as i32,
         );
 
@@ -313,10 +318,10 @@ impl DesktopApp {
                 pixels: Vec::new(),
             },
             CanvasPointerEvent {
-                x: clamped_x - layout.canvas_display_rect.x as i32,
-                y: clamped_y - layout.canvas_display_rect.y as i32,
-                width: layout.canvas_display_rect.width as i32,
-                height: layout.canvas_display_rect.height as i32,
+                x: clamped_x - layout.canvas_host_rect.x as i32,
+                y: clamped_y - layout.canvas_host_rect.y as i32,
+                width: layout.canvas_host_rect.width as i32,
+                height: layout.canvas_host_rect.height as i32,
             },
             self.document.view_transform,
         )

@@ -19,6 +19,7 @@ impl DesktopApp {
         window_height: usize,
         profiler: &mut DesktopProfiler,
     ) -> PresentFrameUpdate {
+        self.poll_background_tasks();
         let (canvas_width, canvas_height) = self.canvas_dimensions();
         let next_layout = profiler.measure("layout", || {
             DesktopLayout::new(window_width, window_height, canvas_width, canvas_height)

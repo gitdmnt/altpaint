@@ -4,6 +4,7 @@
 //! 入力処理と描画処理から外部依存を分離する。
 
 use std::path::PathBuf;
+use std::thread;
 
 use app_core::Command;
 use plugin_api::HostAction;
@@ -27,20 +28,7 @@ impl DesktopApp {
 
     /// 現在のプロジェクトパスへ保存を行う。
     fn save_project_to_current_path(&mut self) -> bool {
-        match save_project_to_path(
-            &self.project_path,
-            &self.document,
-            &self.ui_shell.workspace_layout(),
-            &self.ui_shell.persistent_panel_configs(),
-        ) {
-            Ok(()) => true,
-            Err(error) => {
-                let message = format!("failed to save project: {error}");
-                eprintln!("{message}");
-                self.dialogs.show_error("Save failed", &message);
-                false
-            }
-        }
+        self.enqueue_save_project(self.project_path.clone())
     }
 
     /// 保存先を選んでプロジェクトを保存する。
@@ -55,7 +43,21 @@ impl DesktopApp {
     fn save_project_to_path(&mut self, path: PathBuf) -> bool {
         self.project_path = normalize_project_path(path);
         self.mark_status_dirty();
+        self.persist_session_state();
         self.save_project_to_current_path()
+    }
+
+    fn enqueue_save_project(&mut self, path: PathBuf) -> bool {
+        let document = self.document.clone();
+        let workspace_layout = self.ui_shell.workspace_layout();
+        let plugin_configs = self.ui_shell.persistent_panel_configs();
+        let handle = thread::spawn(move || {
+            save_project_to_path(&path, &document, &workspace_layout, &plugin_configs)
+                .map_err(|error| error.to_string())
+        });
+        self.pending_save_tasks.push(super::PendingSaveTask { handle });
+        self.mark_status_dirty();
+        true
     }
 
     /// 開く対象を選んでプロジェクトを読み込む。
@@ -80,6 +82,7 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
+                self.persist_session_state();
                 true
             }
             Err(error) => {
@@ -93,6 +96,7 @@ impl DesktopApp {
 
     /// アプリケーション全体で扱うコマンドを解釈して適用する。
     pub(crate) fn execute_command(&mut self, command: Command) -> bool {
+        self.poll_background_tasks();
         match command {
             Command::NewDocument => self.activate_panel_control("builtin.app-actions", "app.new"),
             Command::SaveProject => self.save_project_to_current_path(),
@@ -141,6 +145,7 @@ impl DesktopApp {
                 if changed {
                     self.mark_panel_surface_dirty();
                     self.mark_status_dirty();
+                    self.persist_session_state();
                 }
                 changed
             }
@@ -149,6 +154,7 @@ impl DesktopApp {
                 if changed {
                     self.mark_panel_surface_dirty();
                     self.mark_status_dirty();
+                    self.persist_session_state();
                 }
                 changed
             }

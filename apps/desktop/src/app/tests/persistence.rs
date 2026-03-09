@@ -8,8 +8,9 @@ use serde_json::json;
 use std::collections::BTreeMap;
 use storage::{load_project_from_path, save_project_to_path};
 
-use super::{TestDialogs, test_app_with_dialogs};
+use super::{TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_session_path, unique_test_path};
 use crate::app::DesktopApp;
+use crate::config::DEFAULT_PROJECT_PATH;
 use crate::frame::status_text_bounds;
 use crate::profiler::DesktopProfiler;
 
@@ -32,6 +33,7 @@ fn execute_command_load_project_uses_native_dialog_path() {
 
     let mut app = test_app_with_dialogs(TestDialogs::with_open_path(path.clone()));
     assert!(app.execute_command(Command::LoadProject));
+    app.wait_for_pending_save_tasks();
     assert_eq!(app.project_path, path);
     assert!(!app.ui_shell.panel_trees().iter().any(|panel| panel.id == "builtin.tool-palette"));
 
@@ -49,6 +51,8 @@ fn save_project_as_updates_project_path_and_persists_workspace_layout() {
         visible: false,
     }));
     assert!(app.execute_command(Command::SaveProjectAs));
+    assert_eq!(app.pending_save_task_count(), 1);
+    app.wait_for_pending_save_tasks();
 
     let loaded = load_project_from_path(&path).expect("saved project should load");
     assert_eq!(app.project_path, path);
@@ -71,6 +75,7 @@ fn save_and_load_restore_plugin_shortcut_configs() {
     assert!(source_app.activate_panel_control("builtin.app-actions", "app.shortcut.new"));
     assert!(source_app.dispatch_keyboard_shortcut("Ctrl+Alt+N", "N", false));
     assert!(source_app.execute_command(Command::SaveProjectAs));
+    source_app.wait_for_pending_save_tasks();
 
     let loaded = load_project_from_path(&path).expect("saved project should load");
     assert_eq!(
@@ -115,6 +120,10 @@ fn load_project_restores_workspace_layout() {
         .iter()
         .position(|panel_id| *panel_id == "builtin.layers-panel")
         .expect("layers panel visible");
+    assert!(source_app.execute_host_action(HostAction::MovePanel {
+        panel_id: "builtin.layers-panel".to_string(),
+        direction: plugin_api::PanelMoveDirection::Up,
+    }));
     assert!(source_app.execute_host_action(HostAction::MovePanel {
         panel_id: "builtin.layers-panel".to_string(),
         direction: plugin_api::PanelMoveDirection::Up,
@@ -210,4 +219,56 @@ fn set_panel_visibility_updates_status_without_full_recompose() {
         )
     );
     assert_eq!(update.overlay_dirty_rect, None);
+}
+
+#[test]
+fn startup_restores_last_opened_project_from_session() {
+    let session_path = unique_test_path("desktop-session");
+    let project_path = unique_test_path("startup-project");
+    let mut source_app = test_app_with_dialogs_and_session_path(
+        TestDialogs::with_save_path(project_path.clone()),
+        session_path.clone(),
+    );
+    source_app.document.work.title = "Recovered Project".to_string();
+
+    assert!(source_app.execute_command(Command::SaveProjectAs));
+    source_app.wait_for_pending_save_tasks();
+
+    let app = DesktopApp::new_with_dialogs_and_session_path(
+        PathBuf::from(DEFAULT_PROJECT_PATH),
+        Box::new(TestDialogs::default()),
+        session_path.clone(),
+    );
+
+    assert_eq!(app.project_path, project_path);
+    assert_eq!(app.document.work.title, "Recovered Project");
+
+    let _ = std::fs::remove_file(session_path);
+    let _ = std::fs::remove_file(app.project_path.clone());
+}
+
+#[test]
+fn panel_layout_persists_across_restart_via_session() {
+    let session_path = unique_test_path("layout-session");
+    let mut source_app = test_app_with_dialogs_and_session_path(
+        TestDialogs::default(),
+        session_path.clone(),
+    );
+
+    assert!(source_app.execute_host_action(HostAction::MovePanel {
+        panel_id: "builtin.layers-panel".to_string(),
+        direction: plugin_api::PanelMoveDirection::Up,
+    }));
+    assert!(source_app.execute_host_action(HostAction::SetPanelVisibility {
+        panel_id: "builtin.tool-palette".to_string(),
+        visible: false,
+    }));
+    let expected_layout = source_app.ui_shell.workspace_layout();
+
+    let app = test_app_with_dialogs_and_session_path(TestDialogs::default(), session_path.clone());
+    let panels = app.ui_shell.panel_trees();
+    assert!(!panels.iter().any(|panel| panel.id == "builtin.tool-palette"));
+    assert_eq!(app.ui_shell.workspace_layout(), expected_layout);
+
+    let _ = std::fs::remove_file(session_path);
 }

@@ -226,7 +226,7 @@ impl DesktopRuntime {
             return false;
         };
         let on_panel = layout.panel_host_rect.contains(x, y);
-        let on_canvas = layout.canvas_display_rect.contains(x, y);
+        let on_canvas = layout.canvas_host_rect.contains(x, y);
         let (delta_x_lines, delta_y_lines) = Self::wheel_delta_lines(delta);
 
         if on_panel {

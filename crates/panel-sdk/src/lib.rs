@@ -421,13 +421,18 @@ pub mod runtime {
             0 => with_bytes(&descriptor.name, |ptr, len| unsafe { command(ptr, len) }),
             1 => {
                 let (key, value) = descriptor.payload.iter().next().expect("payload exists");
-                let Value::String(value) = value else {
-                    error("unsupported command payload type in panel-sdk runtime");
-                    return;
+                let value = match value {
+                    Value::String(value) => value.clone(),
+                    Value::Bool(value) => value.to_string(),
+                    Value::Number(value) => value.to_string(),
+                    _ => {
+                        error("unsupported command payload type in panel-sdk runtime");
+                        return;
+                    }
                 };
                 with_bytes(&descriptor.name, |name_ptr, name_len| {
                     with_bytes(key, |key_ptr, key_len| {
-                        with_bytes(value, |value_ptr, value_len| unsafe {
+                        with_bytes(&value, |value_ptr, value_len| unsafe {
                             command_string(
                                 name_ptr, name_len, key_ptr, key_len, value_ptr, value_len,
                             )

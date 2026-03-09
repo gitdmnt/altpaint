@@ -8,9 +8,12 @@ mod persistence;
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::DesktopApp;
 use crate::dialogs::DesktopDialogs;
+
+static TEST_FILE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// テストごとに返却パスと表示エラーを制御できるダイアログ実装を表す。
 #[derive(Default)]
@@ -61,10 +64,24 @@ impl DesktopDialogs for TestDialogs {
 
 /// 差し替えダイアログを使う `DesktopApp` を生成する。
 fn test_app_with_dialogs(dialogs: TestDialogs) -> DesktopApp {
-    DesktopApp::new_with_dialogs(
+    DesktopApp::new_with_dialogs_and_session_path(
         PathBuf::from("/tmp/altpaint-test.altp.json"),
         Box::new(dialogs),
+        unique_test_path("session"),
     )
+}
+
+fn test_app_with_dialogs_and_session_path(dialogs: TestDialogs, session_path: PathBuf) -> DesktopApp {
+    DesktopApp::new_with_dialogs_and_session_path(
+        PathBuf::from("/tmp/altpaint-test.altp.json"),
+        Box::new(dialogs),
+        session_path,
+    )
+}
+
+fn unique_test_path(name: &str) -> PathBuf {
+    let id = TEST_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!("altpaint-{name}-{}-{id}.json", std::process::id()))
 }
 
 /// パネルツリー内に指定テキストが含まれるか再帰的に判定する。
