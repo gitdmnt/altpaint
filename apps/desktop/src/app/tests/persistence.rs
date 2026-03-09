@@ -8,7 +8,9 @@ use serde_json::json;
 use std::collections::BTreeMap;
 use storage::{load_project_from_path, save_project_to_path};
 
-use super::{TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_session_path, unique_test_path};
+use super::{
+    TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_session_path, unique_test_path,
+};
 use crate::app::DesktopApp;
 use crate::config::DEFAULT_PROJECT_PATH;
 use crate::frame::status_text_bounds;
@@ -19,10 +21,12 @@ use crate::profiler::DesktopProfiler;
 fn execute_command_load_project_uses_native_dialog_path() {
     let path = std::env::temp_dir().join("altpaint-open-dialog-test.altp.json");
     let mut source_app = test_app_with_dialogs(TestDialogs::default());
-    assert!(source_app.execute_host_action(HostAction::SetPanelVisibility {
-        panel_id: "builtin.tool-palette".to_string(),
-        visible: false,
-    }));
+    assert!(
+        source_app.execute_host_action(HostAction::SetPanelVisibility {
+            panel_id: "builtin.tool-palette".to_string(),
+            visible: false,
+        })
+    );
     save_project_to_path(
         &path,
         &source_app.document,
@@ -35,7 +39,12 @@ fn execute_command_load_project_uses_native_dialog_path() {
     assert!(app.execute_command(Command::LoadProject));
     app.wait_for_pending_save_tasks();
     assert_eq!(app.project_path, path);
-    assert!(!app.ui_shell.panel_trees().iter().any(|panel| panel.id == "builtin.tool-palette"));
+    assert!(
+        !app.ui_shell
+            .panel_trees()
+            .iter()
+            .any(|panel| panel.id == "builtin.tool-palette")
+    );
 
     let _ = std::fs::remove_file(app.project_path.clone());
 }
@@ -132,10 +141,12 @@ fn load_project_restores_workspace_layout() {
         panel_id: "builtin.layers-panel".to_string(),
         direction: plugin_api::PanelMoveDirection::Up,
     }));
-    assert!(source_app.execute_host_action(HostAction::SetPanelVisibility {
-        panel_id: "builtin.tool-palette".to_string(),
-        visible: false,
-    }));
+    assert!(
+        source_app.execute_host_action(HostAction::SetPanelVisibility {
+            panel_id: "builtin.tool-palette".to_string(),
+            visible: false,
+        })
+    );
     save_project_to_path(
         &path,
         &source_app.document,
@@ -150,7 +161,11 @@ fn load_project_restores_workspace_layout() {
     }));
 
     let panels = app.ui_shell.panel_trees();
-    assert!(!panels.iter().any(|panel| panel.id == "builtin.tool-palette"));
+    assert!(
+        !panels
+            .iter()
+            .any(|panel| panel.id == "builtin.tool-palette")
+    );
     let visible_ids = panels.iter().map(|panel| panel.id).collect::<Vec<_>>();
     let layers_index = visible_ids
         .iter()
@@ -182,19 +197,12 @@ fn move_panel_host_action_updates_status_without_full_recompose() {
     assert!(profiler.stats.contains_key("compose_dirty_status"));
     assert_eq!(
         update.base_dirty_rect,
-        Some(
-            layout
-                .panel_host_rect
-                .union(status_text_bounds(1280, 200, &layout, &app.status_text()))
-        )
-    );
-    assert_eq!(update.overlay_dirty_rect, None);
-        update.base_dirty_rect,
-        Some(
-            layout
-                .panel_host_rect
-                .union(status_text_bounds(1280, 200, &layout, &app.status_text()))
-        )
+        Some(layout.panel_host_rect.union(status_text_bounds(
+            1280,
+            200,
+            &layout,
+            &app.status_text()
+        )))
     );
     assert_eq!(update.overlay_dirty_rect, None);
 }
@@ -220,11 +228,12 @@ fn set_panel_visibility_updates_status_without_full_recompose() {
     assert!(profiler.stats.contains_key("compose_dirty_status"));
     assert_eq!(
         update.base_dirty_rect,
-        Some(
-            layout
-                .panel_host_rect
-                .union(status_text_bounds(1280, 200, &layout, &app.status_text()))
-        )
+        Some(layout.panel_host_rect.union(status_text_bounds(
+            1280,
+            200,
+            &layout,
+            &app.status_text()
+        )))
     );
     assert_eq!(update.overlay_dirty_rect, None);
 }
@@ -258,24 +267,28 @@ fn startup_restores_last_opened_project_from_session() {
 #[test]
 fn panel_layout_persists_across_restart_via_session() {
     let session_path = unique_test_path("layout-session");
-    let mut source_app = test_app_with_dialogs_and_session_path(
-        TestDialogs::default(),
-        session_path.clone(),
-    );
+    let mut source_app =
+        test_app_with_dialogs_and_session_path(TestDialogs::default(), session_path.clone());
 
     assert!(source_app.execute_host_action(HostAction::MovePanel {
         panel_id: "builtin.layers-panel".to_string(),
         direction: plugin_api::PanelMoveDirection::Up,
     }));
-    assert!(source_app.execute_host_action(HostAction::SetPanelVisibility {
-        panel_id: "builtin.tool-palette".to_string(),
-        visible: false,
-    }));
+    assert!(
+        source_app.execute_host_action(HostAction::SetPanelVisibility {
+            panel_id: "builtin.tool-palette".to_string(),
+            visible: false,
+        })
+    );
     let expected_layout = source_app.ui_shell.workspace_layout();
 
     let app = test_app_with_dialogs_and_session_path(TestDialogs::default(), session_path.clone());
     let panels = app.ui_shell.panel_trees();
-    assert!(!panels.iter().any(|panel| panel.id == "builtin.tool-palette"));
+    assert!(
+        !panels
+            .iter()
+            .any(|panel| panel.id == "builtin.tool-palette")
+    );
     assert_eq!(app.ui_shell.workspace_layout(), expected_layout);
 
     let _ = std::fs::remove_file(session_path);

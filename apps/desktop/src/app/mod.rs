@@ -9,8 +9,8 @@ mod present;
 #[cfg(test)]
 mod tests;
 
-use std::thread::JoinHandle;
 use std::path::PathBuf;
+use std::thread::JoinHandle;
 
 use app_core::{Command, DirtyRect, Document};
 use render::RenderFrame;
@@ -25,15 +25,13 @@ use crate::frame::{
     exposed_canvas_background_rect,
 };
 use crate::pens::load_pen_directory;
-use crate::session::{DesktopSessionState, default_session_path, load_session_state, save_session_state};
+use crate::session::{
+    DesktopSessionState, default_session_path, load_session_state, save_session_state,
+};
 
 /// 差分提示のために更新領域を集約した結果を表す。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PresentFrameUpdate {
-    pub(crate) base_dirty_rect: Option<crate::frame::Rect>,
-    pub(crate) overlay_dirty_rect: Option<crate::frame::Rect>,
-    pub(crate) canvas_dirty_rect: Option<DirtyRect>,
-    pub(crate) canvas_transform_changed: bool,
     pub(crate) base_dirty_rect: Option<crate::frame::Rect>,
     pub(crate) overlay_dirty_rect: Option<crate::frame::Rect>,
     pub(crate) canvas_dirty_rect: Option<DirtyRect>,
@@ -65,13 +63,9 @@ pub(crate) struct DesktopApp {
     pub(crate) layout: Option<DesktopLayout>,
     base_frame: Option<RenderFrame>,
     overlay_frame: Option<RenderFrame>,
-    base_frame: Option<RenderFrame>,
-    overlay_frame: Option<RenderFrame>,
     pending_canvas_dirty_rect: Option<DirtyRect>,
     pending_canvas_background_dirty_rect: Option<Rect>,
-    pending_canvas_background_dirty_rect: Option<Rect>,
     pending_canvas_host_dirty_rect: Option<Rect>,
-    pending_canvas_transform_update: bool,
     pending_canvas_transform_update: bool,
     active_panel_drag: Option<PanelDragState>,
     hover_canvas_position: Option<(usize, usize)>,
@@ -150,13 +144,9 @@ impl DesktopApp {
             layout: None,
             base_frame: None,
             overlay_frame: None,
-            base_frame: None,
-            overlay_frame: None,
             pending_canvas_dirty_rect: None,
             pending_canvas_background_dirty_rect: None,
-            pending_canvas_background_dirty_rect: None,
             pending_canvas_host_dirty_rect: None,
-            pending_canvas_transform_update: false,
             pending_canvas_transform_update: false,
             active_panel_drag: None,
             hover_canvas_position: None,
@@ -289,15 +279,6 @@ impl DesktopApp {
         true
     }
 
-    /// キャンバス背景の dirty rect を次回提示用に集約する。
-    fn append_canvas_background_dirty_rect(&mut self, dirty: Rect) -> bool {
-        self.pending_canvas_background_dirty_rect = Some(
-            self.pending_canvas_background_dirty_rect
-                .map_or(dirty, |existing| existing.union(dirty)),
-        );
-        true
-    }
-
     /// キャンバスホスト上の dirty rect を次回提示用に集約する。
     fn append_canvas_host_dirty_rect(&mut self, dirty: Rect) -> bool {
         self.pending_canvas_host_dirty_rect = Some(
@@ -313,10 +294,8 @@ impl DesktopApp {
         previous_transform: app_core::CanvasViewTransform,
     ) -> bool {
         self.pending_canvas_transform_update = true;
-        if let Some(canvas_viewport_rect) = self
-            .layout
-            .as_ref()
-            .map(|layout| layout.canvas_host_rect)
+        if let Some(canvas_viewport_rect) =
+            self.layout.as_ref().map(|layout| layout.canvas_host_rect)
         {
             let (canvas_width, canvas_height) = self.canvas_dimensions();
             let background_dirty = exposed_canvas_background_rect(
@@ -361,12 +340,10 @@ impl DesktopApp {
             self.rebuild_present_frame();
         }
         true
-        true
     }
 
     /// ドキュメント変更系コマンドを適用し、必要な更新フラグを立てる。
     fn execute_document_command(&mut self, command: Command) -> bool {
-        let previous_transform = self.document.view_transform;
         let previous_transform = self.document.view_transform;
         let dirty = self.document.apply_command(&command);
         match command {
@@ -391,7 +368,6 @@ impl DesktopApp {
                 self.mark_status_dirty();
                 true
             }
-            Command::PanView { .. } => self.mark_canvas_transform_dirty(previous_transform),
             Command::PanView { .. } => self.mark_canvas_transform_dirty(previous_transform),
             Command::AddRasterLayer
             | Command::SelectLayer { .. }
