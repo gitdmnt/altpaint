@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use app_core::{ColorRgba8, Command, ToolKind};
 use plugin_api::HostAction;
+use serde_json::json;
 
 use super::{TestDialogs, test_app_with_dialogs, tree_contains_text};
 use crate::config::{default_panel_dir, parse_document_size};
@@ -85,6 +86,36 @@ fn execute_command_new_document_opens_inline_form() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
 
     assert!(app.execute_command(Command::NewDocument));
+}
+
+#[test]
+fn plugin_keyboard_shortcut_can_switch_tool() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    app.document.set_active_tool(ToolKind::Eraser);
+
+    assert!(app.dispatch_keyboard_shortcut("B", "B", false));
+
+    assert_eq!(app.document.active_tool, ToolKind::Brush);
+}
+
+#[test]
+fn plugin_keyboard_capture_updates_persistent_config() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+
+    assert!(app.activate_panel_control("builtin.app-actions", "app.shortcuts"));
+    assert!(app.activate_panel_control("builtin.app-actions", "app.shortcut.new"));
+    assert!(app.dispatch_keyboard_shortcut("Ctrl+Alt+N", "N", false));
+
+    let configs = app.ui_shell.persistent_panel_configs();
+    assert_eq!(
+        configs.get("builtin.app-actions"),
+        Some(&json!({
+            "new_shortcut": "Ctrl+Alt+N",
+            "save_shortcut": "Ctrl+S",
+            "save_as_shortcut": "Ctrl+Shift+S",
+            "open_shortcut": "Ctrl+O"
+        }))
+    );
 }
 
 /// サイズ指定付き新規作成がビットマップ寸法を置き換えることを確認する。

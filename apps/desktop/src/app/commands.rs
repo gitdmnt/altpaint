@@ -31,6 +31,7 @@ impl DesktopApp {
             &self.project_path,
             &self.document,
             &self.ui_shell.workspace_layout(),
+            &self.ui_shell.persistent_panel_configs(),
         ) {
             Ok(()) => true,
             Err(error) => {
@@ -73,6 +74,7 @@ impl DesktopApp {
                 self.project_path = path;
                 self.document = project.document;
                 self.ui_shell.set_workspace_layout(project.workspace_layout);
+                self.ui_shell.set_persistent_panel_configs(project.plugin_configs);
                 self.reset_active_interactions();
                 self.sync_ui_from_document();
                 self.mark_status_dirty();
@@ -107,6 +109,21 @@ impl DesktopApp {
             panel_id: panel_id.to_string(),
             node_id: node_id.to_string(),
         })
+    }
+
+    /// グローバルキーボードショートカットをパネルプラグインへ配送する。
+    pub(crate) fn dispatch_keyboard_shortcut(
+        &mut self,
+        shortcut: &str,
+        key: &str,
+        repeat: bool,
+    ) -> bool {
+        let (handled, actions) = self.ui_shell.handle_keyboard_event(shortcut, key, repeat);
+        let mut changed = handled;
+        for action in actions {
+            changed |= self.execute_host_action(action);
+        }
+        self.refresh_panel_surface_if_changed(changed)
     }
 
     /// パネルランタイムから返されたホストアクションを実行する。

@@ -20,6 +20,14 @@ pub(crate) struct StageStats {
     pub(crate) max: Duration,
 }
 
+/// 数値メトリクスのサンプル数・合計・最大値を保持する。
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub(crate) struct ValueStats {
+    pub(crate) samples: u64,
+    pub(crate) total: f64,
+    pub(crate) max: f64,
+}
+
 /// ウィンドウタイトルへ表示する集計済みスナップショットを表す。
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub(crate) struct PerformanceSnapshot {
@@ -91,6 +99,7 @@ struct TimedLatencySample {
 pub(crate) struct DesktopProfiler {
     logging_enabled: bool,
     pub(crate) stats: BTreeMap<&'static str, StageStats>,
+    pub(crate) value_stats: BTreeMap<&'static str, ValueStats>,
     frames: u64,
     frame_interval_started: Instant,
     last_report: Instant,
@@ -115,6 +124,7 @@ impl DesktopProfiler {
         Self {
             logging_enabled: env::var_os("ALTPAINT_PROFILE").is_some(),
             stats: BTreeMap::new(),
+            value_stats: BTreeMap::new(),
             frames: 0,
             frame_interval_started: now,
             last_report: now,
@@ -152,6 +162,14 @@ impl DesktopProfiler {
             "present_total" => self.current_frame.present_total += elapsed,
             _ => {}
         }
+    }
+
+    /// 数値メトリクスをサンプルとして記録する。
+    pub(crate) fn record_value(&mut self, label: &'static str, value: f64) {
+        let stat = self.value_stats.entry(label).or_default();
+        stat.samples += 1;
+        stat.total += value;
+        stat.max = stat.max.max(value);
     }
 
     /// 現在時刻でフレームを完了する。
@@ -389,11 +407,26 @@ impl DesktopProfiler {
                 stat.total.as_secs_f64() * 1000.0,
             );
         }
+        for (label, stat) in &self.value_stats {
+            let avg = if stat.samples == 0 {
+                0.0
+            } else {
+                stat.total / stat.samples as f64
+            };
+            eprintln!(
+                "[profile] {:>18} samples={:>5} avg={:>10.1} max={:>10.1}",
+                label,
+                stat.samples,
+                avg,
+                stat.max,
+            );
+        }
     }
 
     /// ログ用集計区間をリセットする。
     fn reset_interval(&mut self, now: Instant) {
         self.stats.clear();
+        self.value_stats.clear();
         self.frames = 0;
         self.frame_interval_started = now;
         self.last_report = now;

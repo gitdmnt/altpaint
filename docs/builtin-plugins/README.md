@@ -10,6 +10,7 @@
 - [layers-panel.md](layers-panel.md)
 - [job-progress.md](job-progress.md)
 - [snapshot-panel.md](snapshot-panel.md)
+- [keyboard-shortcut-config.md](keyboard-shortcut-config.md)
 
 いずれの文書も、2026-03-09 時点の最小実装を前提にしています。
 
@@ -22,4 +23,5 @@
 - Rust SDK helper は crates/panel-sdk/src/lib.rs にあります
 - 実際の描画、ヒットテスト、フォーカス、スクロールは crates/ui-shell/src/lib.rs 側で行います
 - パネル由来の状態変更は HostAction::DispatchCommand(Command) を通じて desktop 側へ渡されます
+- キーボード設定の永続化方針は [keyboard-shortcut-config.md](keyboard-shortcut-config.md) を参照してください
 - 開発手順の詳細は [../PLUGIN_DEVELOPMENT.md](../PLUGIN_DEVELOPMENT.md) を参照してください

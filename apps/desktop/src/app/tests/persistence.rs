@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use app_core::Command;
 use plugin_api::HostAction;
+use serde_json::json;
+use std::collections::BTreeMap;
 use storage::{load_project_from_path, save_project_to_path};
 
 use super::{TestDialogs, test_app_with_dialogs};
@@ -24,6 +26,7 @@ fn execute_command_load_project_uses_native_dialog_path() {
         &path,
         &source_app.document,
         &source_app.ui_shell.workspace_layout(),
+        &BTreeMap::new(),
     )
     .expect("project save should succeed");
 
@@ -60,6 +63,43 @@ fn save_project_as_updates_project_path_and_persists_workspace_layout() {
     let _ = std::fs::remove_file(app.project_path.clone());
 }
 
+#[test]
+fn save_and_load_restore_plugin_shortcut_configs() {
+    let path = std::env::temp_dir().join("altpaint-plugin-config-test.altp.json");
+    let mut source_app = test_app_with_dialogs(TestDialogs::with_save_path(path.clone()));
+    assert!(source_app.activate_panel_control("builtin.app-actions", "app.shortcuts"));
+    assert!(source_app.activate_panel_control("builtin.app-actions", "app.shortcut.new"));
+    assert!(source_app.dispatch_keyboard_shortcut("Ctrl+Alt+N", "N", false));
+    assert!(source_app.execute_command(Command::SaveProjectAs));
+
+    let loaded = load_project_from_path(&path).expect("saved project should load");
+    assert_eq!(
+        loaded.plugin_configs.get("builtin.app-actions"),
+        Some(&json!({
+            "new_shortcut": "Ctrl+Alt+N",
+            "save_shortcut": "Ctrl+S",
+            "save_as_shortcut": "Ctrl+Shift+S",
+            "open_shortcut": "Ctrl+O"
+        }))
+    );
+
+    let mut app = test_app_with_dialogs(TestDialogs::with_open_path(path.clone()));
+    assert!(app.execute_command(Command::LoadProject));
+    assert_eq!(
+        app.ui_shell
+            .persistent_panel_configs()
+            .get("builtin.app-actions"),
+        Some(&json!({
+            "new_shortcut": "Ctrl+Alt+N",
+            "save_shortcut": "Ctrl+S",
+            "save_as_shortcut": "Ctrl+Shift+S",
+            "open_shortcut": "Ctrl+O"
+        }))
+    );
+
+    let _ = std::fs::remove_file(path);
+}
+
 /// 読込でパネル順序と表示状態がワークスペースへ復元されることを確認する。
 #[test]
 fn load_project_restores_workspace_layout() {
@@ -91,6 +131,7 @@ fn load_project_restores_workspace_layout() {
         &path,
         &source_app.document,
         &source_app.ui_shell.workspace_layout(),
+        &BTreeMap::new(),
     )
     .expect("project save should succeed");
 

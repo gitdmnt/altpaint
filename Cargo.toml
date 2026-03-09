@@ -2,6 +2,7 @@
 members = [
   "crates/app-core",
   "crates/panel-dsl",
+  "crates/panel-macros",
   "crates/panel-schema",
   "crates/panel-sdk",
   "crates/plugin-host",

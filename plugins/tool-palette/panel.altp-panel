@@ -14,6 +14,10 @@ runtime {
 }
 
 state {
+  show_shortcuts: bool = false
+  session.capture_target: string = ""
+  config.brush_shortcut: string = "B"
+  config.eraser_shortcut: string = "E"
 }
 
 view {
@@ -22,6 +26,18 @@ view {
       <text tone="muted">Hosted via Rust SDK + Wasm</text>
       <button id="tool.brush" on:click="activate_brush" active={host.tool.active == "brush"}>Brush</button>
       <button id="tool.eraser" on:click="activate_eraser" active={host.tool.active == "eraser"}>Eraser</button>
+      <button id="tool.shortcuts" on:click="toggle_shortcuts" active={state.show_shortcuts}>Keyboard...</button>
+      <when test={state.show_shortcuts}>
+        <section title="Shortcuts">
+          <text>Brush: {state.config.brush_shortcut}</text>
+          <button id="tool.shortcut.brush" on:click="capture_brush_shortcut" active={state.session.capture_target == "brush"}>Capture Brush</button>
+          <text>Eraser: {state.config.eraser_shortcut}</text>
+          <button id="tool.shortcut.eraser" on:click="capture_eraser_shortcut" active={state.session.capture_target == "eraser"}>Capture Eraser</button>
+          <when test={state.session.capture_target != ""}>
+            <text tone="muted">Press the next key combination to replace the selected shortcut.</text>
+          </when>
+        </section>
+      </when>
     </section>
   </column>
 }

@@ -4,6 +4,7 @@
 //! ポインタイベント解釈とツール別コマンド生成を提供する。
 
 use app_core::{Command, ToolKind};
+use app_core::CanvasViewTransform;
 use render::RenderFrame;
 
 /// キャンバス入力中の最小状態を表す。
@@ -23,9 +24,18 @@ pub struct CanvasPointerEvent {
 }
 
 /// 表示座標をビットマップ座標へ変換する。
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn map_view_to_canvas(
     frame: &RenderFrame,
     event: CanvasPointerEvent,
+) -> Option<(usize, usize)> {
+    map_view_to_canvas_with_transform(frame, event, CanvasViewTransform::default())
+}
+
+pub fn map_view_to_canvas_with_transform(
+    frame: &RenderFrame,
+    event: CanvasPointerEvent,
+    transform: CanvasViewTransform,
 ) -> Option<(usize, usize)> {
     if frame.width == 0 || frame.height == 0 || event.width <= 0 || event.height <= 0 {
         return None;
@@ -33,15 +43,15 @@ pub fn map_view_to_canvas(
 
     let scale_x = event.width as f32 / frame.width as f32;
     let scale_y = event.height as f32 / frame.height as f32;
-    let scale = scale_x.min(scale_y);
+    let scale = (scale_x.min(scale_y) * transform.zoom.max(0.25)).max(f32::EPSILON);
     if scale <= 0.0 {
         return None;
     }
 
     let drawn_width = frame.width as f32 * scale;
     let drawn_height = frame.height as f32 * scale;
-    let offset_x = (event.width as f32 - drawn_width) * 0.5;
-    let offset_y = (event.height as f32 - drawn_height) * 0.5;
+    let offset_x = (event.width as f32 - drawn_width) * 0.5 + transform.pan_x;
+    let offset_y = (event.height as f32 - drawn_height) * 0.5 + transform.pan_y;
 
     let local_x = event.x as f32 - offset_x;
     let local_y = event.y as f32 - offset_y;
@@ -128,6 +138,27 @@ mod tests {
         );
 
         assert_eq!(mapped, None);
+    }
+
+    #[test]
+    fn map_view_with_zoom_and_pan_tracks_shifted_canvas() {
+        let mapped = map_view_to_canvas_with_transform(
+            &sample_frame(),
+            CanvasPointerEvent {
+                x: 352,
+                y: 320,
+                width: 640,
+                height: 640,
+            },
+            CanvasViewTransform {
+                zoom: 2.0,
+                rotation_degrees: 0.0,
+                pan_x: 32.0,
+                pan_y: 0.0,
+            },
+        );
+
+        assert_eq!(mapped, Some((32, 32)));
     }
 
     #[test]

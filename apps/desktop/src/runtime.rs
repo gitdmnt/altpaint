@@ -76,7 +76,8 @@ impl DesktopRuntime {
 
         let position = (x, y);
         self.last_cursor_position = Some(position);
-        let changed = self.app.handle_pointer_dragged(position.0, position.1);
+        let hover_changed = self.app.update_canvas_hover(position.0, position.1);
+        let changed = self.app.handle_pointer_dragged(position.0, position.1) || hover_changed;
         self.record_canvas_input_if_needed(changed)
     }
 
@@ -141,6 +142,69 @@ impl DesktopRuntime {
                 self.app.handle_pointer_released(position.0, position.1)
             }
         }
+    }
+
+    fn normalized_shortcut(&self, key: &Key) -> Option<(String, String)> {
+        let key_name = normalized_key_name(key)?;
+        let mut parts = Vec::new();
+        if self.modifiers.control_key() {
+            parts.push("Ctrl".to_string());
+        }
+        if self.modifiers.alt_key() {
+            parts.push("Alt".to_string());
+        }
+        if self.modifiers.super_key() {
+            parts.push("Meta".to_string());
+        }
+        if self.modifiers.shift_key() {
+            parts.push("Shift".to_string());
+        }
+        parts.push(key_name.clone());
+        Some((parts.join("+"), key_name))
+    }
+}
+
+fn normalized_key_name(key: &Key) -> Option<String> {
+    match key {
+        Key::Character(text) => {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_uppercase())
+            }
+        }
+        Key::Named(named) => match named {
+            NamedKey::Space => Some("Space".to_string()),
+            NamedKey::Enter => Some("Enter".to_string()),
+            NamedKey::Tab => Some("Tab".to_string()),
+            NamedKey::Backspace => Some("Backspace".to_string()),
+            NamedKey::Delete => Some("Delete".to_string()),
+            NamedKey::ArrowLeft => Some("ArrowLeft".to_string()),
+            NamedKey::ArrowRight => Some("ArrowRight".to_string()),
+            NamedKey::ArrowUp => Some("ArrowUp".to_string()),
+            NamedKey::ArrowDown => Some("ArrowDown".to_string()),
+            NamedKey::Home => Some("Home".to_string()),
+            NamedKey::End => Some("End".to_string()),
+            NamedKey::PageUp => Some("PageUp".to_string()),
+            NamedKey::PageDown => Some("PageDown".to_string()),
+            NamedKey::Escape => Some("Escape".to_string()),
+            NamedKey::F1 => Some("F1".to_string()),
+            NamedKey::F2 => Some("F2".to_string()),
+            NamedKey::F3 => Some("F3".to_string()),
+            NamedKey::F4 => Some("F4".to_string()),
+            NamedKey::F5 => Some("F5".to_string()),
+            NamedKey::F6 => Some("F6".to_string()),
+            NamedKey::F7 => Some("F7".to_string()),
+            NamedKey::F8 => Some("F8".to_string()),
+            NamedKey::F9 => Some("F9".to_string()),
+            NamedKey::F10 => Some("F10".to_string()),
+            NamedKey::F11 => Some("F11".to_string()),
+            NamedKey::F12 => Some("F12".to_string()),
+            NamedKey::Shift | NamedKey::Control | NamedKey::Alt | NamedKey::Super => None,
+            other => Some(format!("{other:?}")),
+        },
+        _ => None,
     }
 }
 
@@ -227,10 +291,8 @@ impl ApplicationHandler for DesktopRuntime {
                 let Some(layout) = self.app.layout.as_ref() else {
                     return;
                 };
-                if !layout.panel_host_rect.contains(x, y) {
-                    return;
-                }
-
+                let on_panel = layout.panel_host_rect.contains(x, y);
+                let on_canvas = layout.canvas_host_rect.contains(x, y);
                 let delta_lines = match delta {
                     MouseScrollDelta::LineDelta(_, y) => -(y.round() as i32),
                     MouseScrollDelta::PixelDelta(position) => {
@@ -238,7 +300,38 @@ impl ApplicationHandler for DesktopRuntime {
                         -(lines.round() as i32)
                     }
                 };
-                if delta_lines != 0 && self.app.scroll_panel_surface(delta_lines) {
+                if delta_lines == 0 {
+                    return;
+                }
+
+                let changed = if on_panel {
+                    self.app.scroll_panel_surface(delta_lines)
+                } else if on_canvas {
+                    if self.modifiers.control_key() {
+                        let current = self.app.document.view_transform.zoom;
+                        let factor = if delta_lines > 0 { 0.9_f32 } else { 1.1_f32 };
+                        self.app.execute_command(Command::SetViewZoom {
+                            zoom: (current * factor.powi(delta_lines.unsigned_abs() as i32))
+                                .clamp(0.25, 16.0),
+                        })
+                    } else {
+                        let (delta_x, delta_y) = if self.modifiers.shift_key() {
+                            (-(delta_lines as f32) * 32.0, 0.0)
+                        } else {
+                            (0.0, -(delta_lines as f32) * 32.0)
+                        };
+                        self.app
+                            .execute_command(Command::PanView { delta_x, delta_y })
+                    }
+                } else {
+                    false
+                };
+
+                if changed && on_canvas {
+                    self.profiler.record_canvas_input();
+                }
+
+                if changed {
                     self.request_redraw();
                 }
             }
@@ -308,6 +401,15 @@ impl ApplicationHandler for DesktopRuntime {
                     return;
                 }
 
+                if let Some((shortcut, key_name)) = self.normalized_shortcut(&event.logical_key)
+                    && self
+                        .app
+                        .dispatch_keyboard_shortcut(&shortcut, &key_name, event.repeat)
+                {
+                    self.request_redraw();
+                    return;
+                }
+
                 let changed = match &event.logical_key {
                     Key::Character(text)
                         if self.modifiers.control_key()
@@ -372,7 +474,8 @@ impl ApplicationHandler for DesktopRuntime {
                     size.height as usize,
                     &mut self.profiler,
                 );
-                self.profiler.record("prepare_frame", prepare_started.elapsed());
+                self.profiler
+                    .record("prepare_frame", prepare_started.elapsed());
                 let Some(frame) = self.app.present_frame() else {
                     return;
                 };
@@ -391,7 +494,8 @@ impl ApplicationHandler for DesktopRuntime {
                         return;
                     }
                 };
-                self.profiler.record("present_total", present_started.elapsed());
+                self.profiler
+                    .record("present_total", present_started.elapsed());
                 self.profiler.record_present(timings);
                 if update.canvas_updated {
                     self.profiler.record_canvas_present();

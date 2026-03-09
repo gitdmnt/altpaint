@@ -1,67 +1,157 @@
 use panel_sdk::{
-    CommandDescriptor, command,
-    runtime::{emit_command_descriptor, error, set_state_bool, state_string},
+    CommandDescriptor, commands,
+    runtime::{emit_command, error, event_string, set_state_bool, set_state_string, state_string, toggle_state},
+    state,
 };
 
-fn normalize_dimension(value: &str) -> String {
-    value.trim().to_string()
-}
+const SHOW_NEW: state::BoolKey = state::bool("show_new");
+const SHOW_SHORTCUTS: state::BoolKey = state::bool("show_shortcuts");
+const NEW_WIDTH: state::StringKey = state::string("new_width");
+const NEW_HEIGHT: state::StringKey = state::string("new_height");
+const CAPTURE_TARGET: state::StringKey = state::string("session.capture_target");
+const NEW_SHORTCUT: state::StringKey = state::string("config.new_shortcut");
+const SAVE_SHORTCUT: state::StringKey = state::string("config.save_shortcut");
+const SAVE_AS_SHORTCUT: state::StringKey = state::string("config.save_as_shortcut");
+const OPEN_SHORTCUT: state::StringKey = state::string("config.open_shortcut");
 
-fn build_new_project_command(width: &str, height: &str) -> Result<CommandDescriptor, &'static str> {
-    let width = normalize_dimension(width);
-    let height = normalize_dimension(height);
-    if width.is_empty() || height.is_empty() {
+fn parse_dimension(value: &str) -> Result<usize, &'static str> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
         return Err("width and height are required");
     }
 
-    Ok(command("project.new_sized")
-        .string("size", format!("{width}x{height}"))
-        .build())
+    trimmed
+        .parse::<usize>()
+        .map_err(|_| "width and height must be positive integers")
 }
 
-fn build_project_command(name: &str) -> CommandDescriptor {
-    command(name).build()
+fn build_new_project_command(
+    width: &str,
+    height: &str,
+) -> Result<CommandDescriptor, &'static str> {
+    let width = parse_dimension(width)?;
+    let height = parse_dimension(height)?;
+    Ok(commands::project::new_sized(width, height))
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn panel_init() {}
+#[panel_sdk::panel_init]
+fn init() {}
 
-#[unsafe(no_mangle)]
-pub extern "C" fn panel_handle_show_new_form() {
-    set_state_bool("show_new", true);
+fn set_capture_target(target: &str) {
+    set_state_string(CAPTURE_TARGET, target);
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn panel_handle_cancel_forms() {
-    set_state_bool("show_new", false);
+fn capture_shortcut(target: &str) {
+    set_capture_target(target);
+    set_state_bool(SHOW_SHORTCUTS, true);
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn panel_handle_new_project() {
-    let width = state_string("new_width");
-    let height = state_string("new_height");
+fn assign_captured_shortcut(target: &str, shortcut: &str) {
+    match target {
+        "new" => set_state_string(NEW_SHORTCUT, shortcut),
+        "save" => set_state_string(SAVE_SHORTCUT, shortcut),
+        "save_as" => set_state_string(SAVE_AS_SHORTCUT, shortcut),
+        "open" => set_state_string(OPEN_SHORTCUT, shortcut),
+        _ => {}
+    }
+}
+
+fn shortcut_matches(configured: &str, incoming: &str) -> bool {
+    !configured.is_empty() && configured.eq_ignore_ascii_case(incoming)
+}
+
+#[panel_sdk::panel_handler]
+fn show_new_form() {
+    set_state_bool(SHOW_NEW, true);
+}
+
+#[panel_sdk::panel_handler]
+fn cancel_forms() {
+    set_state_bool(SHOW_NEW, false);
+}
+
+#[panel_sdk::panel_handler]
+fn toggle_shortcuts() {
+    toggle_state(SHOW_SHORTCUTS);
+}
+
+#[panel_sdk::panel_handler]
+fn capture_new_shortcut() {
+    capture_shortcut("new");
+}
+
+#[panel_sdk::panel_handler]
+fn capture_save_shortcut() {
+    capture_shortcut("save");
+}
+
+#[panel_sdk::panel_handler]
+fn capture_save_as_shortcut() {
+    capture_shortcut("save_as");
+}
+
+#[panel_sdk::panel_handler]
+fn capture_open_shortcut() {
+    capture_shortcut("open");
+}
+
+#[panel_sdk::panel_handler]
+fn new_project() {
+    let width = state_string(NEW_WIDTH);
+    let height = state_string(NEW_HEIGHT);
     let Ok(command) = build_new_project_command(&width, &height) else {
-        error("width and height are required");
+        error("width and height must be positive integers");
         return;
     };
 
-    emit_command_descriptor(&command);
-    panel_handle_cancel_forms();
+    emit_command(&command);
+    cancel_forms();
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn panel_handle_save_project() {
-    emit_command_descriptor(&build_project_command("project.save"));
+#[panel_sdk::panel_handler]
+fn save_project() {
+    emit_command(&commands::project::save());
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn panel_handle_save_project_as() {
-    emit_command_descriptor(&build_project_command("project.save_as"));
+#[panel_sdk::panel_handler]
+fn save_project_as() {
+    emit_command(&commands::project::save_as());
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn panel_handle_load_project() {
-    emit_command_descriptor(&build_project_command("project.load"));
+#[panel_sdk::panel_handler]
+fn load_project() {
+    emit_command(&commands::project::load());
+}
+
+#[panel_sdk::panel_handler]
+fn keyboard() {
+    let shortcut = event_string("shortcut");
+    if shortcut.is_empty() {
+        return;
+    }
+
+    let target = state_string(CAPTURE_TARGET);
+    if !target.is_empty() {
+        assign_captured_shortcut(&target, &shortcut);
+        set_capture_target("");
+        return;
+    }
+
+    if shortcut_matches(&state_string(NEW_SHORTCUT), &shortcut) {
+        show_new_form();
+        return;
+    }
+    if shortcut_matches(&state_string(SAVE_SHORTCUT), &shortcut) {
+        save_project();
+        return;
+    }
+    if shortcut_matches(&state_string(SAVE_AS_SHORTCUT), &shortcut) {
+        save_project_as();
+        return;
+    }
+    if shortcut_matches(&state_string(OPEN_SHORTCUT), &shortcut) {
+        load_project();
+    }
 }
 
 #[cfg(test)]
@@ -89,11 +179,15 @@ mod tests {
             build_new_project_command("320", "   "),
             Err("width and height are required")
         );
+        assert_eq!(
+            build_new_project_command("320px", "240"),
+            Err("width and height must be positive integers")
+        );
     }
 
     #[test]
-    fn project_command_uses_requested_name() {
-        let command = build_project_command("project.save_as");
+    fn typed_project_commands_use_expected_names() {
+        let command = commands::project::save_as();
 
         assert_eq!(command.name, "project.save_as");
         assert!(command.payload.is_empty());
@@ -101,12 +195,24 @@ mod tests {
 
     #[test]
     fn panel_entrypoints_are_callable_on_native_targets() {
-        panel_init();
-        panel_handle_show_new_form();
-        panel_handle_cancel_forms();
-        panel_handle_new_project();
-        panel_handle_save_project();
-        panel_handle_save_project_as();
-        panel_handle_load_project();
+        init();
+        show_new_form();
+        cancel_forms();
+        toggle_shortcuts();
+        capture_new_shortcut();
+        capture_save_shortcut();
+        capture_save_as_shortcut();
+        capture_open_shortcut();
+        new_project();
+        save_project();
+        save_project_as();
+        load_project();
+        keyboard();
+    }
+
+    #[test]
+    fn shortcut_match_is_case_insensitive() {
+        assert!(shortcut_matches("Ctrl+S", "ctrl+s"));
+        assert!(!shortcut_matches("", "Ctrl+S"));
     }
 }

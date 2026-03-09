@@ -84,6 +84,7 @@ pub struct WgpuPresenter {
     sampler: wgpu::Sampler,
     bind_group_layout: wgpu::BindGroupLayout,
     uploaded_frame: Option<UploadedFrameTexture>,
+    needs_full_upload: bool,
 }
 
 /// 使用可能なモードから低遅延寄りの present mode を選ぶ。
@@ -219,6 +220,7 @@ impl WgpuPresenter {
             sampler,
             bind_group_layout,
             uploaded_frame: None,
+            needs_full_upload: true,
         })
     }
 
@@ -249,9 +251,14 @@ impl WgpuPresenter {
 
         self.ensure_uploaded_frame(frame.width as u32, frame.height as u32);
         let upload_started = Instant::now();
-        match upload_region {
-            Some(region) => self.upload_frame_region(frame, region),
-            None => self.upload_frame(frame),
+        if self.needs_full_upload {
+            self.upload_frame(frame);
+            self.needs_full_upload = false;
+        } else {
+            match upload_region {
+                Some(region) => self.upload_frame_region(frame, region),
+                None => self.upload_frame(frame),
+            }
         }
         let upload = upload_started.elapsed();
 
@@ -369,6 +376,7 @@ impl WgpuPresenter {
             width,
             height,
         });
+        self.needs_full_upload = true;
     }
 
     /// フレーム全体をテクスチャへアップロードする。

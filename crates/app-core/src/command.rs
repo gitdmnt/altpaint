@@ -5,7 +5,7 @@ use crate::document::ToolKind;
 ///
 /// フェーズ0ではまだ実際の編集機能を持たないため、将来の変更経路を
 /// 先に固定するためのプレースホルダとして最小コマンドだけを定義する。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     /// 状態を変更しないダミーコマンド。
     Noop,
@@ -31,6 +31,24 @@ pub enum Command {
     SetActiveTool { tool: ToolKind },
     /// 現在のブラシ色を切り替える。
     SetActiveColor { color: ColorRgba8 },
+    /// キャンバス表示倍率を設定する。
+    SetViewZoom { zoom: f32 },
+    /// キャンバス表示を平行移動する。
+    PanView { delta_x: f32, delta_y: f32 },
+    /// キャンバス表示を既定位置へ戻す。
+    ResetView,
+    /// 新しいラスタレイヤーを追加する。
+    AddRasterLayer,
+    /// アクティブレイヤーを指定 index に切り替える。
+    SelectLayer { index: usize },
+    /// 次のレイヤーをアクティブにする。
+    SelectNextLayer,
+    /// アクティブレイヤーの合成モードを循環させる。
+    CycleActiveLayerBlendMode,
+    /// アクティブレイヤーの表示状態を切り替える。
+    ToggleActiveLayerVisibility,
+    /// アクティブレイヤーの最小デモマスクを切り替える。
+    ToggleActiveLayerMask,
     /// 新規ドキュメントを作成する。
     NewDocument,
     /// 指定サイズで新規ドキュメントを作成する。

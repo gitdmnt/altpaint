@@ -17,3 +17,6 @@ tinyfiledialogs.workspace = true
 ui-shell = { path = "../../crates/ui-shell" }
 wgpu.workspace = true
 winit.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

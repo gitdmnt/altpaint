@@ -179,6 +179,7 @@ pub struct UiShell {
     panel_content_height: usize,
     focused_target: Option<FocusTarget>,
     text_input_states: BTreeMap<(String, String), TextInputEditorState>,
+    persistent_panel_configs: BTreeMap<String, Value>,
 }
 
 impl UiShell {
@@ -196,6 +197,7 @@ impl UiShell {
             panel_content_height: 0,
             focused_target: None,
             text_input_states: BTreeMap::new(),
+            persistent_panel_configs: BTreeMap::new(),
         }
     }
 
@@ -203,6 +205,9 @@ impl UiShell {
     pub fn register_panel(&mut self, mut panel: Box<dyn PanelPlugin>) {
         if let Some(document) = self.latest_document.as_ref() {
             panel.update(document);
+        }
+        if let Some(config) = self.persistent_panel_configs.get(panel.id()) {
+            panel.restore_persistent_config(config);
         }
         self.ensure_workspace_panel_entry(panel.id());
         self.panels
@@ -381,6 +386,53 @@ impl UiShell {
             .collect();
         self.panel_content_dirty = true;
         actions
+    }
+
+    pub fn handle_keyboard_event(
+        &mut self,
+        shortcut: &str,
+        key: &str,
+        repeat: bool,
+    ) -> (bool, Vec<HostAction>) {
+        let mut handled = false;
+        let mut actions = Vec::new();
+        for panel in &mut self.panels {
+            if !panel.handles_keyboard_event() {
+                continue;
+            }
+            handled = true;
+            actions.extend(panel.handle_event(&PanelEvent::Keyboard {
+                panel_id: panel.id().to_string(),
+                shortcut: shortcut.to_string(),
+                key: key.to_string(),
+                repeat,
+            }));
+        }
+        if handled {
+            self.panel_content_dirty = true;
+        }
+        (handled, actions)
+    }
+
+    pub fn persistent_panel_configs(&self) -> BTreeMap<String, Value> {
+        self.panels
+            .iter()
+            .filter_map(|panel| {
+                panel
+                    .persistent_config()
+                    .map(|config| (panel.id().to_string(), config))
+            })
+            .collect()
+    }
+
+    pub fn set_persistent_panel_configs(&mut self, configs: BTreeMap<String, Value>) {
+        self.persistent_panel_configs = configs;
+        for panel in &mut self.panels {
+            if let Some(config) = self.persistent_panel_configs.get(panel.id()) {
+                panel.restore_persistent_config(config);
+            }
+        }
+        self.panel_content_dirty = true;
     }
 
     pub fn has_focused_text_input(&self) -> bool {
@@ -927,7 +979,8 @@ fn event_panel_id(event: &PanelEvent) -> &str {
     match event {
         PanelEvent::Activate { panel_id, .. }
         | PanelEvent::SetValue { panel_id, .. }
-        | PanelEvent::SetText { panel_id, .. } => panel_id,
+        | PanelEvent::SetText { panel_id, .. }
+        | PanelEvent::Keyboard { panel_id, .. } => panel_id,
     }
 }
 
@@ -936,6 +989,7 @@ fn workspace_panel_actions(nodes: &[PanelNode], event: &PanelEvent) -> Vec<HostA
         PanelEvent::Activate { node_id, .. }
         | PanelEvent::SetValue { node_id, .. }
         | PanelEvent::SetText { node_id, .. } => node_id,
+        PanelEvent::Keyboard { .. } => return Vec::new(),
     };
     find_actions_in_nodes_local(nodes, target_id)
 }
@@ -994,6 +1048,7 @@ struct DslPanelPlugin {
     state: Value,
     host_snapshot: Value,
     diagnostics: Vec<Diagnostic>,
+    has_keyboard_handler: bool,
 }
 
 impl DslPanelPlugin {
@@ -1007,6 +1062,7 @@ impl DslPanelPlugin {
             .unwrap_or_else(|| definition.source_path.clone());
         let mut runtime = WasmPanelRuntime::load(&runtime_path)
             .map_err(|error: PluginHostError| error.to_string())?;
+        let has_keyboard_handler = runtime.has_handler("keyboard");
         let initial_state = state_defaults_to_json(&definition.state);
         let init = runtime
             .initialize(&PanelInitRequest {
@@ -1023,6 +1079,7 @@ impl DslPanelPlugin {
             state: init.state,
             host_snapshot: json!({}),
             diagnostics: init.diagnostics,
+            has_keyboard_handler,
         })
     }
 
@@ -1068,6 +1125,14 @@ impl DslPanelPlugin {
             PanelEvent::Activate { node_id, .. }
             | PanelEvent::SetValue { node_id, .. }
             | PanelEvent::SetText { node_id, .. } => find_panel_action(&tree.children, node_id),
+            PanelEvent::Keyboard { .. } if self.has_keyboard_handler => {
+                Some(HostAction::InvokePanelHandler {
+                    panel_id: self.id.to_string(),
+                    handler_name: "keyboard".to_string(),
+                    event_kind: "keyboard".to_string(),
+                })
+            }
+            PanelEvent::Keyboard { .. } => None,
         }
     }
 
@@ -1123,6 +1188,21 @@ impl PanelPlugin for DslPanelPlugin {
         self.evaluate_tree()
     }
 
+    fn handles_keyboard_event(&self) -> bool {
+        self.has_keyboard_handler
+    }
+
+    fn persistent_config(&self) -> Option<Value> {
+        lookup_json_path(&self.state, "config").cloned()
+    }
+
+    fn restore_persistent_config(&mut self, config: &Value) {
+        apply_state_patch(
+            &mut self.state,
+            &StatePatch::replace("config", config.clone()),
+        );
+    }
+
     fn handle_event(&mut self, event: &PanelEvent) -> Vec<HostAction> {
         let mut updated_text = false;
         if let PanelEvent::SetText { node_id, value, .. } = event {
@@ -1147,6 +1227,16 @@ impl PanelPlugin for DslPanelPlugin {
             PanelEvent::Activate { .. } => json!({}),
             PanelEvent::SetValue { value, .. } => json!({ "value": value }),
             PanelEvent::SetText { value, .. } => json!({ "value": value }),
+            PanelEvent::Keyboard {
+                shortcut,
+                key,
+                repeat,
+                ..
+            } => json!({
+                "shortcut": shortcut,
+                "key": key,
+                "repeat": repeat,
+            }),
         };
         let result = match self.runtime.handle_event(&PanelEventRequest {
             handler_name,
@@ -1519,14 +1609,14 @@ fn next_generated_node_id(context: &mut DslEvaluationContext<'_>, prefix: &str) 
 }
 
 fn state_defaults_to_json(fields: &[StateField]) -> Value {
-    let mut object = Map::new();
+    let mut state = Value::Object(Map::new());
     for field in fields {
-        object.insert(
-            field.name.clone(),
-            default_attr_value_to_json(&field.default),
+        apply_state_patch(
+            &mut state,
+            &StatePatch::set(field.name.clone(), default_attr_value_to_json(&field.default)),
         );
     }
-    Value::Object(object)
+    state
 }
 
 fn sync_host_derived_state(fields: &[StateField], host_snapshot: &Value, state: &mut Value) {
@@ -1539,19 +1629,9 @@ fn sync_host_derived_state(fields: &[StateField], host_snapshot: &Value, state: 
                 generated_ids: 0,
             };
             let next = evaluate_expression(expression, &context);
-            set_top_level_state_field(state, &field.name, next);
+            apply_state_patch(state, &StatePatch::replace(field.name.clone(), next));
         }
     }
-}
-
-fn set_top_level_state_field(state: &mut Value, key: &str, value: Value) {
-    if !state.is_object() {
-        *state = Value::Object(Map::new());
-    }
-    state
-        .as_object_mut()
-        .expect("object ensured")
-        .insert(key.to_string(), value);
 }
 
 fn default_attr_value_to_json(value: &DslAttrValue) -> Value {
@@ -1570,6 +1650,10 @@ fn default_attr_value_to_json(value: &DslAttrValue) -> Value {
 }
 
 fn build_host_snapshot(document: &Document) -> Value {
+    let active_panel = document.work.pages.first().and_then(|page| page.panels.first());
+    let layer_count = active_panel.map(|panel| panel.layers.len()).unwrap_or(1);
+    let active_layer_index = active_panel.map(|panel| panel.active_layer_index).unwrap_or(0);
+    let active_layer = active_panel.and_then(|panel| panel.layers.get(panel.active_layer_index));
     let page_count = document.work.pages.len();
     let panel_count = document
         .work
@@ -1577,12 +1661,8 @@ fn build_host_snapshot(document: &Document) -> Value {
         .iter()
         .map(|page| page.panels.len())
         .sum::<usize>();
-    let active_layer_name = document
-        .work
-        .pages
-        .first()
-        .and_then(|page| page.panels.first())
-        .map(|panel| panel.root_layer.name.clone())
+    let active_layer_name = active_layer
+        .map(|layer| layer.name.clone())
         .unwrap_or_else(|| "<no layer>".to_string());
 
     json!({
@@ -1591,6 +1671,13 @@ fn build_host_snapshot(document: &Document) -> Value {
             "page_count": page_count,
             "panel_count": panel_count,
             "active_layer_name": active_layer_name,
+            "layer_count": layer_count,
+            "active_layer_index": active_layer_index,
+            "active_layer_blend_mode": active_layer
+                .map(|layer| layer.blend_mode.as_str())
+                .unwrap_or("normal"),
+            "active_layer_visible": active_layer.map(|layer| layer.visible).unwrap_or(true),
+            "active_layer_masked": active_layer.and_then(|layer| layer.mask.as_ref()).is_some(),
         },
         "tool": {
             "active": match document.active_tool {
@@ -1611,6 +1698,11 @@ fn build_host_snapshot(document: &Document) -> Value {
         },
         "snapshot": {
             "storage_status": "pending",
+        },
+        "view": {
+            "zoom": document.view_transform.zoom,
+            "pan_x": document.view_transform.pan_x,
+            "pan_y": document.view_transform.pan_y,
         },
     })
 }
@@ -1731,6 +1823,46 @@ fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, St
             parse_hex_color(color)
                 .map(|color| Command::SetActiveColor { color })
                 .ok_or_else(|| format!("invalid color payload: {color}"))
+        }
+        "layer.add" => Ok(Command::AddRasterLayer),
+        "layer.select" => {
+            let index = descriptor
+                .payload
+                .get("index")
+                .and_then(Value::as_u64)
+                .ok_or_else(|| "layer.select is missing payload.index".to_string())?;
+            Ok(Command::SelectLayer {
+                index: index as usize,
+            })
+        }
+        "layer.select_next" => Ok(Command::SelectNextLayer),
+        "layer.cycle_blend_mode" => Ok(Command::CycleActiveLayerBlendMode),
+        "layer.toggle_visibility" => Ok(Command::ToggleActiveLayerVisibility),
+        "layer.toggle_mask" => Ok(Command::ToggleActiveLayerMask),
+        "view.reset" => Ok(Command::ResetView),
+        "view.zoom" => {
+            let zoom = descriptor
+                .payload
+                .get("zoom")
+                .and_then(Value::as_f64)
+                .ok_or_else(|| "view.zoom is missing payload.zoom".to_string())?;
+            Ok(Command::SetViewZoom { zoom: zoom as f32 })
+        }
+        "view.pan" => {
+            let delta_x = descriptor
+                .payload
+                .get("delta_x")
+                .and_then(Value::as_f64)
+                .ok_or_else(|| "view.pan is missing payload.delta_x".to_string())?;
+            let delta_y = descriptor
+                .payload
+                .get("delta_y")
+                .and_then(Value::as_f64)
+                .ok_or_else(|| "view.pan is missing payload.delta_y".to_string())?;
+            Ok(Command::PanView {
+                delta_x: delta_x as f32,
+                delta_y: delta_y as f32,
+            })
         }
         other => Err(format!("unsupported command descriptor: {other}")),
     }
@@ -2973,7 +3105,7 @@ view {
     #[test]
     fn rendered_panel_surface_contains_clickable_button_region() {
         let mut shell = shell_with_builtin_panels();
-        let surface = shell.render_panel_surface(280, 1600);
+        let surface = shell.render_panel_surface(280, 3200);
 
         let mut found = None;
         'outer: for y in 0..surface.height {

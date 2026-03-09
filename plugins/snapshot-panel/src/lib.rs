@@ -1,5 +1,5 @@
-#[unsafe(no_mangle)]
-pub extern "C" fn panel_init() {}
+#[panel_sdk::panel_init]
+fn init() {}
 
 #[cfg(test)]
 mod tests {
@@ -7,6 +7,6 @@ mod tests {
 
 	#[test]
 	fn panel_init_is_callable() {
-		panel_init();
+		init();
 	}
 }

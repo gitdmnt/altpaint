@@ -1,3 +1,4 @@
+pub use panel_macros::{panel_handler, panel_init};
 pub use panel_schema::{
     CommandDescriptor, Diagnostic, DiagnosticLevel, HandlerResult, PanelEventRequest,
     PanelInitRequest, PanelInitResponse, StatePatch, StatePatchOp,
@@ -49,6 +50,228 @@ pub fn handler_result() -> HandlerResult {
     HandlerResult::default()
 }
 
+pub mod commands {
+    use super::CommandDescriptor;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Tool {
+        Brush,
+        Eraser,
+    }
+
+    impl Tool {
+        pub fn as_str(self) -> &'static str {
+            match self {
+                Self::Brush => "brush",
+                Self::Eraser => "eraser",
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct RgbColor {
+        pub red: u8,
+        pub green: u8,
+        pub blue: u8,
+    }
+
+    impl RgbColor {
+        pub const fn new(red: u8, green: u8, blue: u8) -> Self {
+            Self { red, green, blue }
+        }
+
+        pub fn to_hex_string(self) -> String {
+            format!("#{:02X}{:02X}{:02X}", self.red, self.green, self.blue)
+        }
+    }
+
+    pub mod project {
+        use super::CommandDescriptor;
+        use serde_json::json;
+
+        pub fn new_document() -> CommandDescriptor {
+            CommandDescriptor::new("project.new")
+        }
+
+        pub fn new_sized(width: usize, height: usize) -> CommandDescriptor {
+            let mut descriptor = CommandDescriptor::new("project.new_sized");
+            descriptor
+                .payload
+                .insert("size".to_string(), json!(format!("{width}x{height}")));
+            descriptor
+        }
+
+        pub fn save() -> CommandDescriptor {
+            CommandDescriptor::new("project.save")
+        }
+
+        pub fn save_as() -> CommandDescriptor {
+            CommandDescriptor::new("project.save_as")
+        }
+
+        pub fn save_as_path(path: impl Into<String>) -> CommandDescriptor {
+            let mut descriptor = CommandDescriptor::new("project.save_as_path");
+            descriptor
+                .payload
+                .insert("path".to_string(), json!(path.into()));
+            descriptor
+        }
+
+        pub fn load() -> CommandDescriptor {
+            CommandDescriptor::new("project.load")
+        }
+
+        pub fn load_path(path: impl Into<String>) -> CommandDescriptor {
+            let mut descriptor = CommandDescriptor::new("project.load_path");
+            descriptor
+                .payload
+                .insert("path".to_string(), json!(path.into()));
+            descriptor
+        }
+    }
+
+    pub mod tool {
+        use super::{CommandDescriptor, RgbColor, Tool};
+        use serde_json::json;
+
+        pub fn set_active(tool: Tool) -> CommandDescriptor {
+            let mut descriptor = CommandDescriptor::new("tool.set_active");
+            descriptor
+                .payload
+                .insert("tool".to_string(), json!(tool.as_str()));
+            descriptor
+        }
+
+        pub fn set_color_hex(color: impl Into<String>) -> CommandDescriptor {
+            let mut descriptor = CommandDescriptor::new("tool.set_color");
+            descriptor
+                .payload
+                .insert("color".to_string(), json!(color.into()));
+            descriptor
+        }
+
+        pub fn set_color_rgb(color: RgbColor) -> CommandDescriptor {
+            set_color_hex(color.to_hex_string())
+        }
+    }
+
+    pub mod view {
+        use super::CommandDescriptor;
+        use serde_json::json;
+
+        pub fn zoom(zoom: f32) -> CommandDescriptor {
+            let mut descriptor = CommandDescriptor::new("view.zoom");
+            descriptor.payload.insert("zoom".to_string(), json!(zoom));
+            descriptor
+        }
+
+        pub fn pan(delta_x: f32, delta_y: f32) -> CommandDescriptor {
+            let mut descriptor = CommandDescriptor::new("view.pan");
+            descriptor
+                .payload
+                .insert("delta_x".to_string(), json!(delta_x));
+            descriptor
+                .payload
+                .insert("delta_y".to_string(), json!(delta_y));
+            descriptor
+        }
+
+        pub fn reset() -> CommandDescriptor {
+            CommandDescriptor::new("view.reset")
+        }
+    }
+
+    pub mod layer {
+        use super::CommandDescriptor;
+        use serde_json::json;
+
+        pub fn add() -> CommandDescriptor {
+            CommandDescriptor::new("layer.add")
+        }
+
+        pub fn select(index: usize) -> CommandDescriptor {
+            let mut descriptor = CommandDescriptor::new("layer.select");
+            descriptor.payload.insert("index".to_string(), json!(index));
+            descriptor
+        }
+
+        pub fn select_next() -> CommandDescriptor {
+            CommandDescriptor::new("layer.select_next")
+        }
+
+        pub fn cycle_blend_mode() -> CommandDescriptor {
+            CommandDescriptor::new("layer.cycle_blend_mode")
+        }
+
+        pub fn toggle_visibility() -> CommandDescriptor {
+            CommandDescriptor::new("layer.toggle_visibility")
+        }
+
+        pub fn toggle_mask() -> CommandDescriptor {
+            CommandDescriptor::new("layer.toggle_mask")
+        }
+    }
+}
+
+pub mod state {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct BoolKey(&'static str);
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct IntKey(&'static str);
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct StringKey(&'static str);
+
+    impl BoolKey {
+        pub const fn new(path: &'static str) -> Self {
+            Self(path)
+        }
+    }
+
+    impl IntKey {
+        pub const fn new(path: &'static str) -> Self {
+            Self(path)
+        }
+    }
+
+    impl StringKey {
+        pub const fn new(path: &'static str) -> Self {
+            Self(path)
+        }
+    }
+
+    impl AsRef<str> for BoolKey {
+        fn as_ref(&self) -> &str {
+            self.0
+        }
+    }
+
+    impl AsRef<str> for IntKey {
+        fn as_ref(&self) -> &str {
+            self.0
+        }
+    }
+
+    impl AsRef<str> for StringKey {
+        fn as_ref(&self) -> &str {
+            self.0
+        }
+    }
+
+    pub const fn bool(path: &'static str) -> BoolKey {
+        BoolKey::new(path)
+    }
+
+    pub const fn int(path: &'static str) -> IntKey {
+        IntKey::new(path)
+    }
+
+    pub const fn string(path: &'static str) -> StringKey {
+        StringKey::new(path)
+    }
+}
+
 pub mod runtime {
     use crate::CommandDescriptor;
     #[cfg(target_arch = "wasm32")]
@@ -59,9 +282,12 @@ pub mod runtime {
     unsafe extern "C" {
         fn state_toggle(ptr: i32, len: i32);
         fn state_set_bool(ptr: i32, len: i32, value: i32);
+        fn state_set_string(path_ptr: i32, path_len: i32, value_ptr: i32, value_len: i32);
         fn state_get_i32(ptr: i32, len: i32) -> i32;
         fn state_get_string_len(ptr: i32, len: i32) -> i32;
         fn state_get_string_copy(path_ptr: i32, path_len: i32, buffer_ptr: i32, buffer_len: i32);
+        fn event_get_string_len(ptr: i32, len: i32) -> i32;
+        fn event_get_string_copy(path_ptr: i32, path_len: i32, buffer_ptr: i32, buffer_len: i32);
         fn command(ptr: i32, len: i32);
         fn command_string(
             name_ptr: i32,
@@ -80,35 +306,48 @@ pub mod runtime {
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub fn toggle_state(path: &str) {
-        with_bytes(path, |ptr, len| unsafe { state_toggle(ptr, len) });
+    pub fn toggle_state(path: impl AsRef<str>) {
+        with_bytes(path.as_ref(), |ptr, len| unsafe { state_toggle(ptr, len) });
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn toggle_state(_path: &str) {}
+    pub fn toggle_state(_path: impl AsRef<str>) {}
 
     #[cfg(target_arch = "wasm32")]
-    pub fn set_state_bool(path: &str, value: bool) {
-        with_bytes(path, |ptr, len| unsafe {
+    pub fn set_state_bool(path: impl AsRef<str>, value: bool) {
+        with_bytes(path.as_ref(), |ptr, len| unsafe {
             state_set_bool(ptr, len, i32::from(value))
         });
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn set_state_bool(_path: &str, _value: bool) {}
+    pub fn set_state_bool(_path: impl AsRef<str>, _value: bool) {}
 
     #[cfg(target_arch = "wasm32")]
-    pub fn state_i32(path: &str) -> i32 {
-        with_bytes(path, |ptr, len| unsafe { state_get_i32(ptr, len) })
+    pub fn set_state_string(path: impl AsRef<str>, value: impl AsRef<str>) {
+        with_bytes(path.as_ref(), |path_ptr, path_len| {
+            with_bytes(value.as_ref(), |value_ptr, value_len| unsafe {
+                state_set_string(path_ptr, path_len, value_ptr, value_len)
+            })
+        });
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn state_i32(_path: &str) -> i32 {
+    pub fn set_state_string(_path: impl AsRef<str>, _value: impl AsRef<str>) {}
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn state_i32(path: impl AsRef<str>) -> i32 {
+        with_bytes(path.as_ref(), |ptr, len| unsafe { state_get_i32(ptr, len) })
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn state_i32(_path: impl AsRef<str>) -> i32 {
         0
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub fn state_string(path: &str) -> String {
+    pub fn state_string(path: impl AsRef<str>) -> String {
+        let path = path.as_ref();
         let length = with_bytes(path, |ptr, len| unsafe { state_get_string_len(ptr, len) });
         if length <= 0 {
             return String::new();
@@ -127,7 +366,32 @@ pub mod runtime {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn state_string(_path: &str) -> String {
+    pub fn state_string(_path: impl AsRef<str>) -> String {
+        String::new()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn event_string(path: impl AsRef<str>) -> String {
+        let path = path.as_ref();
+        let length = with_bytes(path, |ptr, len| unsafe { event_get_string_len(ptr, len) });
+        if length <= 0 {
+            return String::new();
+        }
+
+        let mut buffer = vec![0u8; length as usize];
+        with_bytes(path, |path_ptr, path_len| unsafe {
+            event_get_string_copy(
+                path_ptr,
+                path_len,
+                buffer.as_mut_ptr() as i32,
+                buffer.len() as i32,
+            )
+        });
+        String::from_utf8(buffer).unwrap_or_default()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn event_string(_path: impl AsRef<str>) -> String {
         String::new()
     }
 
@@ -157,6 +421,10 @@ pub mod runtime {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn emit_command_descriptor(_descriptor: &CommandDescriptor) {}
+
+    pub fn emit_command(descriptor: &CommandDescriptor) {
+        emit_command_descriptor(descriptor);
+    }
 
     #[cfg(target_arch = "wasm32")]
     pub fn info(message: &str) {
@@ -188,6 +456,17 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    #[panel_init]
+    fn init_for_macro_test() {}
+
+    #[panel_handler]
+    fn save_for_macro_test() {}
+
+    #[panel_handler]
+    fn slider_for_macro_test(value: i32) {
+        assert_eq!(value, 42);
+    }
+
     #[test]
     fn command_builder_collects_payload_fields() {
         let descriptor = command("tool.set_active")
@@ -200,5 +479,42 @@ mod tests {
         assert_eq!(descriptor.payload.get("tool"), Some(&json!("brush")));
         assert_eq!(descriptor.payload.get("pinned"), Some(&json!(true)));
         assert_eq!(descriptor.payload.get("weight"), Some(&json!(1)));
+    }
+
+    #[test]
+    fn typed_project_commands_hide_command_strings() {
+        let descriptor = commands::project::new_sized(320, 240);
+
+        assert_eq!(descriptor.name, "project.new_sized");
+        assert_eq!(descriptor.payload.get("size"), Some(&json!("320x240")));
+        assert_eq!(commands::project::save().name, "project.save");
+        assert_eq!(commands::project::load().name, "project.load");
+    }
+
+    #[test]
+    fn typed_tool_commands_hide_payload_keys() {
+        let tool = commands::tool::set_active(commands::Tool::Eraser);
+        let color = commands::tool::set_color_rgb(commands::RgbColor::new(0x0c, 0x22, 0x38));
+
+        assert_eq!(tool.payload.get("tool"), Some(&json!("eraser")));
+        assert_eq!(color.payload.get("color"), Some(&json!("#0C2238")));
+    }
+
+    #[test]
+    fn typed_state_keys_can_be_declared_once() {
+        const SHOW_NEW: state::BoolKey = state::bool("show_new");
+        const RED: state::IntKey = state::int("red");
+        const NAME: state::StringKey = state::string("name");
+
+        assert_eq!(SHOW_NEW.as_ref(), "show_new");
+        assert_eq!(RED.as_ref(), "red");
+        assert_eq!(NAME.as_ref(), "name");
+    }
+
+    #[test]
+    fn macro_annotated_functions_remain_directly_callable() {
+        init_for_macro_test();
+        save_for_macro_test();
+        slider_for_macro_test(42);
     }
 }

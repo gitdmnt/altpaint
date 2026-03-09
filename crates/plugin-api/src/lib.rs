@@ -1,6 +1,7 @@
 //! `plugin-api` は、標準パネルや将来の拡張機能が従う最小インターフェースを定義する。
 
 use app_core::{ColorRgba8, Command, Document};
+use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PanelMoveDirection {
@@ -15,14 +16,14 @@ pub struct PanelView {
     pub lines: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PanelTree {
     pub id: &'static str,
     pub title: &'static str,
     pub children: Vec<PanelNode>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum HostAction {
     DispatchCommand(Command),
     InvokePanelHandler {
@@ -56,6 +57,12 @@ pub enum PanelEvent {
         node_id: String,
         value: String,
     },
+    Keyboard {
+        panel_id: String,
+        shortcut: String,
+        key: String,
+        repeat: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,7 +71,7 @@ pub enum TextInputMode {
     Numeric,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PanelNode {
     Column {
         id: String,
@@ -170,6 +177,16 @@ pub trait PanelPlugin {
         }
     }
 
+    fn handles_keyboard_event(&self) -> bool {
+        false
+    }
+
+    fn persistent_config(&self) -> Option<Value> {
+        None
+    }
+
+    fn restore_persistent_config(&mut self, _config: &Value) {}
+
     fn handle_event(&mut self, event: &PanelEvent) -> Vec<HostAction> {
         match event {
             PanelEvent::Activate { panel_id, node_id }
@@ -181,6 +198,7 @@ pub trait PanelPlugin {
             } if panel_id == self.id() => {
                 find_actions_in_nodes(&self.panel_tree().children, node_id)
             }
+            PanelEvent::Keyboard { panel_id, .. } if panel_id == self.id() => Vec::new(),
             _ => Vec::new(),
         }
     }

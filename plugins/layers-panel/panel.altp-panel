@@ -25,9 +25,20 @@ view {
       <text>{host.document.page_count}</text>
       <text>Panel count</text>
       <text>{host.document.panel_count}</text>
+      <text>Layer count</text>
+      <text>{host.document.layer_count}</text>
     </section>
     <section title="Active Layer">
       <text>{host.document.active_layer_name}</text>
+      <text>index: {host.document.active_layer_index}</text>
+      <text>blend: {host.document.active_layer_blend_mode}</text>
+      <text>visible: {host.document.active_layer_visible}</text>
+      <text>mask: {host.document.active_layer_masked}</text>
+      <button id="layers.add" on:click="add_layer">Add Layer</button>
+      <button id="layers.next" on:click="select_next_layer">Next Layer</button>
+      <button id="layers.blend" on:click="cycle_blend_mode">Cycle Blend</button>
+      <button id="layers.visibility" on:click="toggle_layer_visibility">Toggle Visibility</button>
+      <button id="layers.mask" on:click="toggle_layer_mask">Toggle Mask</button>
     </section>
   </column>
 }

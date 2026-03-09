@@ -97,6 +97,38 @@ impl WasmPanelRuntime {
         linker
             .func_wrap(
                 "host",
+                "state_set_string",
+                |mut caller: Caller<'_, RuntimeCollector>,
+                 path_ptr: i32,
+                 path_len: i32,
+                 value_ptr: i32,
+                 value_len: i32| {
+                    let Some(path) = read_utf8(&mut caller, path_ptr, path_len) else {
+                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
+                            "failed to read state path for string set",
+                        ));
+                        return;
+                    };
+                    let Some(value) = read_utf8(&mut caller, value_ptr, value_len) else {
+                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
+                            "failed to read string value for state set",
+                        ));
+                        return;
+                    };
+                    caller
+                        .data_mut()
+                        .result
+                        .state_patch
+                        .push(StatePatch::set(path, value));
+                },
+            )
+            .map_err(|error| PluginHostError::Instantiate {
+                path: path.clone(),
+                message: error.to_string(),
+            })?;
+        linker
+            .func_wrap(
+                "host",
                 "state_get_i32",
                 |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| -> i32 {
                     let Some(path) = read_utf8(&mut caller, ptr, len) else {
@@ -179,9 +211,11 @@ impl WasmPanelRuntime {
                         return;
                     };
                     if buffer_ptr < 0 || buffer_len < 0 {
-                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
-                            "invalid buffer range for string copy",
-                        ));
+                        caller
+                            .data_mut()
+                            .result
+                            .diagnostics
+                            .push(Diagnostic::error("invalid buffer range for string copy"));
                         return;
                     }
                     let data = memory.data_mut(&mut caller);
@@ -190,6 +224,86 @@ impl WasmPanelRuntime {
                     let Some(target) = data.get_mut(start..end) else {
                         caller.data_mut().result.diagnostics.push(Diagnostic::error(
                             "buffer range out of bounds for string copy",
+                        ));
+                        return;
+                    };
+                    let bytes = value.as_bytes();
+                    let count = bytes.len().min(target.len());
+                    target[..count].copy_from_slice(&bytes[..count]);
+                },
+            )
+            .map_err(|error| PluginHostError::Instantiate {
+                path: path.clone(),
+                message: error.to_string(),
+            })?;
+        linker
+            .func_wrap(
+                "host",
+                "event_get_string_len",
+                |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| -> i32 {
+                    let Some(path) = read_utf8(&mut caller, ptr, len) else {
+                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
+                            "failed to read event path for string len",
+                        ));
+                        return 0;
+                    };
+                    caller
+                        .data()
+                        .current_request
+                        .as_ref()
+                        .and_then(|request| lookup_json_path(&request.event_payload, &path))
+                        .and_then(Value::as_str)
+                        .map(|value| value.len() as i32)
+                        .unwrap_or_default()
+                },
+            )
+            .map_err(|error| PluginHostError::Instantiate {
+                path: path.clone(),
+                message: error.to_string(),
+            })?;
+        linker
+            .func_wrap(
+                "host",
+                "event_get_string_copy",
+                |mut caller: Caller<'_, RuntimeCollector>,
+                 path_ptr: i32,
+                 path_len: i32,
+                 buffer_ptr: i32,
+                 buffer_len: i32| {
+                    let Some(path) = read_utf8(&mut caller, path_ptr, path_len) else {
+                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
+                            "failed to read event path for string copy",
+                        ));
+                        return;
+                    };
+                    let Some(value) = caller
+                        .data()
+                        .current_request
+                        .as_ref()
+                        .and_then(|request| lookup_json_path(&request.event_payload, &path))
+                        .and_then(Value::as_str)
+                        .map(ToString::to_string)
+                    else {
+                        return;
+                    };
+                    let Some(memory) = current_memory(&mut caller) else {
+                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
+                            "missing wasm memory for event string copy",
+                        ));
+                        return;
+                    };
+                    if buffer_ptr < 0 || buffer_len < 0 {
+                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
+                            "invalid buffer range for event string copy",
+                        ));
+                        return;
+                    }
+                    let data = memory.data_mut(&mut caller);
+                    let start = buffer_ptr as usize;
+                    let end = start.saturating_add(buffer_len as usize).min(data.len());
+                    let Some(target) = data.get_mut(start..end) else {
+                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
+                            "buffer range out of bounds for event string copy",
                         ));
                         return;
                     };
@@ -354,6 +468,13 @@ impl WasmPanelRuntime {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub fn has_handler(&mut self, handler_name: &str) -> bool {
+        let export_name = format!("panel_handle_{}", sanitize_handler_name(handler_name));
+        self.instance
+            .get_func(&mut self.store, &export_name)
+            .is_some()
     }
 }
 

@@ -1,50 +1,56 @@
 use panel_sdk::{
     CommandDescriptor,
-    command,
-    runtime::{emit_command_descriptor, state_i32},
+    commands::{self, RgbColor},
+    runtime::{emit_command, state_i32},
+    state,
 };
 
+const RED: state::IntKey = state::int("red");
+const GREEN: state::IntKey = state::int("green");
+const BLUE: state::IntKey = state::int("blue");
+
 fn format_color(red: i32, green: i32, blue: i32) -> String {
-    format!(
-        "#{:02X}{:02X}{:02X}",
-        clamp_channel(red),
-        clamp_channel(green),
-        clamp_channel(blue)
-    )
+    rgb_color(red, green, blue).to_hex_string()
 }
 
 fn build_color_command(red: i32, green: i32, blue: i32) -> CommandDescriptor {
-    command("tool.set_color")
-        .string("color", format_color(red, green, blue))
-        .build()
+    commands::tool::set_color_hex(format_color(red, green, blue))
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn panel_init() {}
+fn rgb_color(red: i32, green: i32, blue: i32) -> RgbColor {
+    RgbColor::new(
+        clamp_channel(red),
+        clamp_channel(green),
+        clamp_channel(blue),
+    )
+}
 
-#[unsafe(no_mangle)]
-pub extern "C" fn panel_handle_set_red(value: i32) {
-    let green = state_i32("green");
-    let blue = state_i32("blue");
+#[panel_sdk::panel_init]
+fn init() {}
+
+#[panel_sdk::panel_handler]
+fn set_red(value: i32) {
+    let green = state_i32(GREEN);
+    let blue = state_i32(BLUE);
     emit_color(value, green, blue);
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn panel_handle_set_green(value: i32) {
-    let red = state_i32("red");
-    let blue = state_i32("blue");
+#[panel_sdk::panel_handler]
+fn set_green(value: i32) {
+    let red = state_i32(RED);
+    let blue = state_i32(BLUE);
     emit_color(red, value, blue);
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn panel_handle_set_blue(value: i32) {
-    let red = state_i32("red");
-    let green = state_i32("green");
+#[panel_sdk::panel_handler]
+fn set_blue(value: i32) {
+    let red = state_i32(RED);
+    let green = state_i32(GREEN);
     emit_color(red, green, value);
 }
 
 fn emit_color(red: i32, green: i32, blue: i32) {
-    emit_command_descriptor(&build_color_command(red, green, blue));
+    emit_command(&build_color_command(red, green, blue));
 }
 
 fn clamp_channel(value: i32) -> u8 {
@@ -80,9 +86,9 @@ mod tests {
 
     #[test]
     fn panel_entrypoints_are_callable_on_native_targets() {
-        panel_init();
-        panel_handle_set_red(12);
-        panel_handle_set_green(34);
-        panel_handle_set_blue(56);
+        init();
+        set_red(12);
+        set_green(34);
+        set_blue(56);
     }
 }

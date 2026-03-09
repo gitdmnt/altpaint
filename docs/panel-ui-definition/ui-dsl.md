@@ -25,6 +25,8 @@
 - `ui-shell` は DSL panel をロードし、`PanelTree` へ正規化して表示できる
 - `input` ノードによるホスト描画テキスト入力は実装済み
 - `plugins/phase6-sample/panel.altp-panel` で sample panel の表示と操作を確認できる
+ - 標準パネル6種は `.altp-panel` + Rust SDK + Wasm 版へ移行済みである
+ - Rust 側では `#[panel_sdk::panel_handler]` と `panel_sdk::commands::*` により、unsafe export と生の command 名を避けられる
 
 一方で、より広い式評価、追加 widget、外部 plugin 向け権限本格化はフェーズ7以降の作業である。
 
@@ -285,6 +287,44 @@ UI DSL は handler 名だけを bind する。
 6. host が panel を再評価し `PanelTree` を更新する
 
 UI DSL 側には処理記述を入れない。
+
+### handler 名を文字列で残す理由
+
+handler 名は現状 `.altp-panel` 側で文字列として記述する。
+
+例:
+
+```text
+<button on:click="save_project">Save</button>
+```
+
+これは UI manifest と Rust 実装が別ファイルである以上、現時点では避けられない結合点である。
+
+ただし、plugin 作者の Rust コード側では次を原則にする。
+
+- `#[panel_sdk::panel_handler] fn save_project() { ... }` のように通常の Rust 関数を書く
+- `panel_handle_save_project` のような export 名を手書きしない
+- handler 実装中で command 名文字列を直書きしない
+
+つまり、**文字列の責務は DSL 側の binding に局所化し、Rust 実装側の unsafe / export 名手書きは SDK が吸収する**。
+
+将来的には、次のどちらかでさらに補強する。
+
+- `.altp-panel` から handler catalog を生成して Rust 側へ渡す
+- build 時 validator が Wasm export 一覧と binding を照合する
+
+### Rust SDK 側の state path 取り扱い
+
+UI DSL 上では state 名は文字列で定義されるが、Rust 実装側では `panel_sdk::state::BoolKey` / `IntKey` / `StringKey` を使って、同じ path を何度も文字列で書かないようにする。
+
+例:
+
+```rust
+const SHOW_NEW: panel_sdk::state::BoolKey = panel_sdk::state::bool("show_new");
+const NEW_WIDTH: panel_sdk::state::StringKey = panel_sdk::state::string("new_width");
+```
+
+この方針により、state path typo の発生箇所を局所化する。
 
 ## host snapshot と runtime 参照
 

@@ -19,7 +19,7 @@ use ui_shell::{PanelSurface, UiShell};
 use crate::canvas_bridge::CanvasInputState;
 use crate::config::{DEFAULT_PROJECT_PATH, default_panel_dir};
 use crate::dialogs::{DesktopDialogs, NativeDesktopDialogs};
-use crate::frame::DesktopLayout;
+use crate::frame::{DesktopLayout, Rect};
 
 /// 差分提示のために更新領域を集約した結果を表す。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +46,10 @@ pub(crate) struct DesktopApp {
     pub(crate) layout: Option<DesktopLayout>,
     present_frame: Option<RenderFrame>,
     pending_canvas_dirty_rect: Option<DirtyRect>,
+    pending_canvas_host_dirty_rect: Option<Rect>,
+    pending_canvas_scroll: Option<(i32, i32)>,
     active_panel_drag: Option<PanelDragState>,
+    hover_canvas_position: Option<(usize, usize)>,
     needs_ui_sync: bool,
     needs_panel_surface_refresh: bool,
     needs_status_refresh: bool,
@@ -60,7 +63,10 @@ impl DesktopApp {
     }
 
     /// ダイアログ実装を差し替えてアプリ本体を生成する。
-    pub(crate) fn new_with_dialogs(project_path: PathBuf, dialogs: Box<dyn DesktopDialogs>) -> Self {
+    pub(crate) fn new_with_dialogs(
+        project_path: PathBuf,
+        dialogs: Box<dyn DesktopDialogs>,
+    ) -> Self {
         let loaded_project = load_project_from_path(&project_path).ok();
         let document = loaded_project
             .as_ref()
@@ -70,6 +76,7 @@ impl DesktopApp {
         let _ = ui_shell.load_panel_directory(default_panel_dir());
         if let Some(project) = loaded_project {
             ui_shell.set_workspace_layout(project.workspace_layout);
+            ui_shell.set_persistent_panel_configs(project.plugin_configs);
         }
         ui_shell.update(&document);
 
@@ -83,7 +90,10 @@ impl DesktopApp {
             layout: None,
             present_frame: None,
             pending_canvas_dirty_rect: None,
+            pending_canvas_host_dirty_rect: None,
+            pending_canvas_scroll: None,
             active_panel_drag: None,
+            hover_canvas_position: None,
             needs_ui_sync: true,
             needs_panel_surface_refresh: true,
             needs_status_refresh: false,
@@ -116,7 +126,10 @@ impl DesktopApp {
     fn reset_active_interactions(&mut self) {
         self.canvas_input = CanvasInputState::default();
         self.pending_canvas_dirty_rect = None;
+        self.pending_canvas_host_dirty_rect = None;
+        self.pending_canvas_scroll = None;
         self.active_panel_drag = None;
+        self.hover_canvas_position = None;
     }
 
     /// UI 変更の有無に応じてパネル面更新フラグを立てる。
@@ -136,6 +149,44 @@ impl DesktopApp {
         true
     }
 
+    /// キャンバスホスト上の dirty rect を次回提示用に集約する。
+    fn append_canvas_host_dirty_rect(&mut self, dirty: Rect) -> bool {
+        self.pending_canvas_host_dirty_rect = Some(
+            self.pending_canvas_host_dirty_rect
+                .map_or(dirty, |existing| existing.union(dirty)),
+        );
+        true
+    }
+
+    /// キャンバス表示面のスクロール量を次回提示用に集約する。
+    fn append_canvas_scroll(&mut self, delta_x: f32, delta_y: f32) -> bool {
+        let delta_x = delta_x.round() as i32;
+        let delta_y = delta_y.round() as i32;
+        if delta_x == 0 && delta_y == 0 {
+            return false;
+        }
+
+        self.pending_canvas_scroll = Some(match self.pending_canvas_scroll {
+            Some((existing_x, existing_y)) => (existing_x + delta_x, existing_y + delta_y),
+            None => (delta_x, delta_y),
+        });
+        true
+    }
+
+    /// 現在のキャンバス表示矩形全域を dirty として次回差分更新対象にする。
+    fn invalidate_canvas_display(&mut self) -> bool {
+        if let Some(canvas_display_rect) = self
+            .layout
+            .as_ref()
+            .map(|layout| layout.canvas_display_rect)
+        {
+            self.append_canvas_host_dirty_rect(canvas_display_rect)
+        } else {
+            self.rebuild_present_frame();
+            true
+        }
+    }
+
     /// ドキュメント変更系コマンドを適用し、必要な更新フラグを立てる。
     fn execute_document_command(&mut self, command: Command) -> bool {
         let dirty = self.document.apply_command(&command);
@@ -149,6 +200,24 @@ impl DesktopApp {
             Command::SetActiveTool { .. } | Command::SetActiveColor { .. } => {
                 self.sync_ui_from_document();
                 self.mark_status_dirty();
+                true
+            }
+            Command::SetViewZoom { .. } | Command::ResetView => {
+                self.pending_canvas_scroll = None;
+                self.invalidate_canvas_display();
+                self.mark_status_dirty();
+                true
+            }
+            Command::PanView { delta_x, delta_y } => self.append_canvas_scroll(delta_x, delta_y),
+            Command::AddRasterLayer
+            | Command::SelectLayer { .. }
+            | Command::SelectNextLayer
+            | Command::CycleActiveLayerBlendMode
+            | Command::ToggleActiveLayerVisibility
+            | Command::ToggleActiveLayerMask => {
+                self.sync_ui_from_document();
+                self.mark_status_dirty();
+                self.rebuild_present_frame();
                 true
             }
             Command::NewDocumentSized { .. } => {
@@ -196,10 +265,11 @@ impl DesktopApp {
             .filter(|entry| !entry.visible)
             .count();
         format!(
-            "file={} / tool={:?} / color={} / pages={} / panels={} / hidden={}",
+            "file={} / tool={:?} / color={} / zoom={:.2}x / pages={} / panels={} / hidden={}",
             file_name,
             self.document.active_tool,
             self.document.active_color.hex_rgb(),
+            self.document.view_transform.zoom,
             self.document.work.pages.len(),
             self.document
                 .work

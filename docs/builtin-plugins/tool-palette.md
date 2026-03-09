@@ -34,6 +34,10 @@ PanelTree 上では 1 つの Section を持ちます。
 - Section: Tools
   - Button: Brush
   - Button: Eraser
+  - Shortcut settings
+    - Button: Keyboard...
+    - Capture Brush
+    - Capture Eraser
 
 active_tool と一致するボタンは active=true になります。
 ホスト側ではこの active 状態を使って強調表示します。
@@ -42,6 +46,7 @@ active_tool と一致するボタンは active=true になります。
 
 - Brush → Command::SetActiveTool { tool: ToolKind::Brush }
 - Eraser → Command::SetActiveTool { tool: ToolKind::Eraser }
+- keyboard handler → `config.*` の shortcut と一致したら対応ツール切替 command を発行
 
 ## view() での補助表示
 
@@ -57,6 +62,8 @@ active_tool と一致するボタンは active=true になります。
 - ツール数は 2 つだけです
 - ショートカット表示は補助テキストであり、パネル自身がキーバインド解決を持つわけではありません
 - ブラシサイズや不透明度などの詳細パラメータはまだありません
+
+補足: 現時点では Brush / Eraser の主要ショートカットだけをパネル側設定として持ちます。
 
 ## 今後の拡張候補
 

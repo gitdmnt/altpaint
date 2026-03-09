@@ -1,5 +1,6 @@
 //! `frame` モジュールの合成・座標変換テストをまとめる。
 
+use app_core::CanvasViewTransform;
 use app_core::DirtyRect;
 use render::RenderFrame;
 use ui_shell::UiShell;
@@ -81,6 +82,8 @@ fn compose_desktop_frame_writes_panel_and_canvas_regions() {
             height: 2,
             pixels: &[16; 16],
         },
+        CanvasViewTransform::default(),
+        CanvasOverlayState::default(),
         "status",
     );
 
@@ -113,6 +116,37 @@ fn canvas_dirty_rect_maps_into_display_rect() {
     assert_eq!(mapped.y, 130);
     assert_eq!(mapped.width, 40);
     assert_eq!(mapped.height, 40);
+}
+
+#[test]
+fn transformed_canvas_dirty_rect_tracks_zoom_and_pan() {
+    let mapped = map_canvas_dirty_to_display_with_transform(
+        DirtyRect {
+            x: 16,
+            y: 16,
+            width: 8,
+            height: 8,
+        },
+        Rect {
+            x: 100,
+            y: 50,
+            width: 320,
+            height: 320,
+        },
+        64,
+        64,
+        CanvasViewTransform {
+            zoom: 2.0,
+            rotation_degrees: 0.0,
+            pan_x: 16.0,
+            pan_y: -8.0,
+        },
+    );
+
+    assert!(mapped.width >= 80);
+    assert_eq!(mapped.height, 72);
+    assert!(mapped.x >= 100);
+    assert_eq!(mapped.y, 50);
 }
 
 /// dirty rect 転送が指定領域だけを書き換えることを確認する。
@@ -148,4 +182,94 @@ fn blit_scaled_rgba_region_updates_only_dirty_area() {
     let untouched_index = (2 * frame.width + 2) * 4;
     assert_eq!(&frame.pixels[dirty_index..dirty_index + 4], &[255, 255, 255, 255]);
     assert_eq!(&frame.pixels[untouched_index..untouched_index + 4], &[0, 0, 0, 0]);
+}
+
+#[test]
+fn source_axis_runs_merge_adjacent_pixels_with_same_source_x() {
+    let runs = build_source_axis_runs(100, 8, 100.0, 2.0, 64);
+
+    assert_eq!(
+        runs,
+        vec![
+            SourceAxisRun {
+                dst_offset: 0,
+                len: 2,
+                src_index: 0,
+            },
+            SourceAxisRun {
+                dst_offset: 2,
+                len: 2,
+                src_index: 1,
+            },
+            SourceAxisRun {
+                dst_offset: 4,
+                len: 2,
+                src_index: 2,
+            },
+            SourceAxisRun {
+                dst_offset: 6,
+                len: 2,
+                src_index: 3,
+            },
+        ]
+    );
+}
+
+#[test]
+fn fill_rgba_block_writes_rectangular_region() {
+    let mut frame = RenderFrame {
+        width: 6,
+        height: 4,
+        pixels: vec![0; 6 * 4 * 4],
+    };
+
+    fill_rgba_block(&mut frame, 2, 1, 3, 2, [9, 8, 7, 6]);
+
+    for y in 1..3 {
+        for x in 2..5 {
+            let index = (y * frame.width + x) * 4;
+            assert_eq!(&frame.pixels[index..index + 4], &[9, 8, 7, 6]);
+        }
+    }
+    let untouched = 0;
+    assert_eq!(&frame.pixels[untouched..untouched + 4], &[0, 0, 0, 0]);
+}
+
+#[test]
+fn scroll_canvas_region_moves_existing_pixels_and_reports_exposed_strip() {
+    let mut frame = RenderFrame {
+        width: 5,
+        height: 4,
+        pixels: vec![0; 5 * 4 * 4],
+    };
+    for y in 0..4 {
+        for x in 0..5 {
+            let index = (y * frame.width + x) * 4;
+            frame.pixels[index..index + 4].copy_from_slice(&[x as u8, y as u8, 0, 255]);
+        }
+    }
+
+    let exposed = scroll_canvas_region(
+        &mut frame,
+        Rect {
+            x: 0,
+            y: 0,
+            width: 5,
+            height: 4,
+        },
+        0,
+        -1,
+    );
+
+    assert_eq!(
+        exposed,
+        Rect {
+            x: 0,
+            y: 3,
+            width: 5,
+            height: 1,
+        }
+    );
+    let moved_index = 2 * 4;
+    assert_eq!(&frame.pixels[moved_index..moved_index + 4], &[2, 1, 0, 255]);
 }

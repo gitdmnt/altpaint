@@ -15,8 +15,14 @@ runtime {
 
 state {
   show_new: bool = false
+  show_shortcuts: bool = false
   new_width: string = "64"
   new_height: string = "64"
+  session.capture_target: string = ""
+  config.new_shortcut: string = "Ctrl+N"
+  config.save_shortcut: string = "Ctrl+S"
+  config.save_as_shortcut: string = "Ctrl+Shift+S"
+  config.open_shortcut: string = "Ctrl+O"
 }
 
 view {
@@ -27,6 +33,22 @@ view {
       <button id="app.save" on:click="save_project">Save</button>
       <button id="app.save_as" on:click="save_project_as">Save As</button>
       <button id="app.load" on:click="load_project">Open...</button>
+      <button id="app.shortcuts" on:click="toggle_shortcuts" active={state.show_shortcuts}>Keyboard...</button>
+      <when test={state.show_shortcuts}>
+        <section title="Shortcuts">
+          <text>New: {state.config.new_shortcut}</text>
+          <button id="app.shortcut.new" on:click="capture_new_shortcut" active={state.session.capture_target == "new"}>Capture New</button>
+          <text>Save: {state.config.save_shortcut}</text>
+          <button id="app.shortcut.save" on:click="capture_save_shortcut" active={state.session.capture_target == "save"}>Capture Save</button>
+          <text>Save As: {state.config.save_as_shortcut}</text>
+          <button id="app.shortcut.save_as" on:click="capture_save_as_shortcut" active={state.session.capture_target == "save_as"}>Capture Save As</button>
+          <text>Open: {state.config.open_shortcut}</text>
+          <button id="app.shortcut.open" on:click="capture_open_shortcut" active={state.session.capture_target == "open"}>Capture Open</button>
+          <when test={state.session.capture_target != ""}>
+            <text tone="muted">Press the next key combination to replace the selected shortcut.</text>
+          </when>
+        </section>
+      </when>
       <when test={state.show_new}>
         <section title="New Document">
           <input id="app.new.width" label="Width" value={state.new_width} bind="new_width" mode="numeric" placeholder="64" />

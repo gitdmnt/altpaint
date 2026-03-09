@@ -47,6 +47,39 @@
 - host が描画、入力配送、権限管理、`Command` 変換を握る
 - host と plugin の境界は DTO と command descriptor に限定する
 
+## 2026-03-09 改訂で固定したこと
+
+今回の改訂では、フェーズ9へ進む前提として「plugin 作者が unsafe / ABI / 文字列 command 名を直接扱わない」ことを明文化した。
+
+固定した判断は次である。
+
+- plugin 作者が触る正面 API は `crates/panel-sdk` に集約する
+- `extern "C"` / `#[unsafe(no_mangle)]` / host import は SDK 内部へ閉じ込める
+- Rust 側の handler export は `#[panel_sdk::panel_init]` / `#[panel_sdk::panel_handler]` で宣言する
+- Rust 側の command 発行は `panel_sdk::commands::*` の型付き helper を優先し、生の `"tool.set_active"` 文字列は escape hatch 扱いにする
+- Rust 側の local state 参照は `panel_sdk::state::*Key` を通し、状態パス文字列の重複を減らす
+- UI DSL 上の handler binding は依然として文字列だが、これは UI 定義の manifest 面に閉じ込め、Rust 実装側へは漏らさない
+
+つまり、**文字列ベースの境界は DTO / DSL 側へ寄せ、plugin 本体の Rust コードはなるべく型付き API で書けるようにする**。
+
+## レビュワーコメントに対する整理
+
+レビュワーの指摘のうち、次は妥当である。
+
+- 現行 ABI はフェーズ6向けの暫定形であり、安定 ABI と見なすべきではない
+- plugin 作者へ unsafe / export 名 / host import を露出させるべきではない
+- `Command` 名や state path の typo が、境界で文字列化されるとコンパイル時検査から漏れやすい
+
+一方で、次は補足が必要である。
+
+- handler 名の文字列化を完全にゼロにはできない
+	- UI DSL が別ファイルである以上、manifest 面には名前解決点が残る
+	- したがって、Rust 側を型安全化しつつ、DSL 側は validator と将来の生成支援で補強するのが現実的である
+- ABI の bytes DTO 化は将来方針として妥当だが、SDK の安全化はそれより前に進めるべきである
+	- ABI が暫定であっても、plugin 作者に見せる API は今すぐ安定化できる
+
+このため、本フォルダの文書では **「ABI はまだ発展途上だが、SDK は先に安全化する」** という立場を採る。
+
 ## 段階的導入計画
 
 このフォルダの文書は、次の 3 段階で導入する前提で読む。

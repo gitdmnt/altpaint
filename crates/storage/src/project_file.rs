@@ -3,14 +3,17 @@ use std::path::Path;
 
 use app_core::{Document, WorkspaceLayout};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::BTreeMap;
 use thiserror::Error;
 
-pub const CURRENT_FORMAT_VERSION: u32 = 2;
+pub const CURRENT_FORMAT_VERSION: u32 = 3;
 
 #[derive(Debug, Clone)]
 pub struct LoadedProject {
     pub document: Document,
     pub workspace_layout: WorkspaceLayout,
+    pub plugin_configs: BTreeMap<String, Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,14 +22,21 @@ pub struct AltpaintProjectFile {
     pub document: Document,
     #[serde(default)]
     pub workspace_layout: WorkspaceLayout,
+    #[serde(default)]
+    pub plugin_configs: BTreeMap<String, Value>,
 }
 
 impl AltpaintProjectFile {
-    pub fn new(document: &Document, workspace_layout: &WorkspaceLayout) -> Self {
+    pub fn new(
+        document: &Document,
+        workspace_layout: &WorkspaceLayout,
+        plugin_configs: &BTreeMap<String, Value>,
+    ) -> Self {
         Self {
             format_version: CURRENT_FORMAT_VERSION,
             document: document.clone(),
             workspace_layout: workspace_layout.clone(),
+            plugin_configs: plugin_configs.clone(),
         }
     }
 }
@@ -47,16 +57,17 @@ pub fn save_document_to_path(
     path: impl AsRef<Path>,
     document: &Document,
 ) -> Result<(), StorageError> {
-    save_project_to_path(path, document, &WorkspaceLayout::default())
+    save_project_to_path(path, document, &WorkspaceLayout::default(), &BTreeMap::new())
 }
 
 pub fn save_project_to_path(
     path: impl AsRef<Path>,
     document: &Document,
     workspace_layout: &WorkspaceLayout,
+    plugin_configs: &BTreeMap<String, Value>,
 ) -> Result<(), StorageError> {
     let path = path.as_ref();
-    let project = AltpaintProjectFile::new(document, workspace_layout);
+    let project = AltpaintProjectFile::new(document, workspace_layout, plugin_configs);
     let serialized = serde_json::to_vec_pretty(&project).map_err(StorageError::Serialize)?;
     fs::write(path, serialized)?;
     Ok(())
@@ -77,9 +88,13 @@ pub fn load_project_from_path(path: impl AsRef<Path>) -> Result<LoadedProject, S
         ));
     }
 
+    let mut document = project.document;
+    document.normalize_phase9_state();
+
     Ok(LoadedProject {
-        document: project.document,
+        document,
         workspace_layout: project.workspace_layout,
+        plugin_configs: project.plugin_configs,
     })
 }
 
@@ -134,10 +149,30 @@ mod tests {
             ],
         };
 
-        save_project_to_path(&path, &document, &workspace_layout).expect("save should succeed");
+        save_project_to_path(&path, &document, &workspace_layout, &BTreeMap::new())
+            .expect("save should succeed");
         let loaded = load_project_from_path(&path).expect("load should succeed");
 
         assert_eq!(loaded.workspace_layout, workspace_layout);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn save_and_load_roundtrip_preserves_plugin_configs() {
+        let path = temp_path("plugin-configs");
+        let document = Document::default();
+        let mut plugin_configs = BTreeMap::new();
+        plugin_configs.insert(
+            "builtin.tool-palette".to_string(),
+            serde_json::json!({ "brush_shortcut": "B", "eraser_shortcut": "E" }),
+        );
+
+        save_project_to_path(&path, &document, &WorkspaceLayout::default(), &plugin_configs)
+            .expect("save should succeed");
+        let loaded = load_project_from_path(&path).expect("load should succeed");
+
+        assert_eq!(loaded.plugin_configs, plugin_configs);
 
         let _ = fs::remove_file(path);
     }
@@ -157,6 +192,7 @@ mod tests {
 
         let loaded = load_project_from_path(&path).expect("load should succeed");
         assert!(loaded.workspace_layout.panels.is_empty());
+        assert!(loaded.plugin_configs.is_empty());
 
         let _ = fs::remove_file(path);
     }
@@ -168,6 +204,7 @@ mod tests {
             format_version: CURRENT_FORMAT_VERSION + 1,
             document: Document::default(),
             workspace_layout: WorkspaceLayout::default(),
+            plugin_configs: BTreeMap::new(),
         };
         let serialized = serde_json::to_vec(&project).expect("serialize should succeed");
         fs::write(&path, serialized).expect("write should succeed");

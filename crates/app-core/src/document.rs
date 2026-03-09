@@ -122,14 +122,125 @@ pub struct Panel {
     pub root_layer: LayerNode,
     /// フェーズ2の最小ラスタキャンバス。
     pub bitmap: CanvasBitmap,
+    /// フェーズ9の最小レイヤー列。
+    #[serde(default)]
+    pub layers: Vec<RasterLayer>,
+    /// 現在描画対象として選択されているレイヤー index。
+    #[serde(default)]
+    pub active_layer_index: usize,
 }
 
 impl Default for Panel {
     fn default() -> Self {
+        let background = RasterLayer::background(LayerNodeId(1), "Layer 1".to_string(), 64, 64);
         Self {
             id: PanelId(1),
             root_layer: LayerNode::default(),
-            bitmap: CanvasBitmap::new(64, 64),
+            bitmap: background.bitmap.clone(),
+            layers: vec![background],
+            active_layer_index: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum BlendMode {
+    #[default]
+    Normal,
+    Multiply,
+    Screen,
+    Add,
+}
+
+impl BlendMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Multiply => "multiply",
+            Self::Screen => "screen",
+            Self::Add => "add",
+        }
+    }
+
+    fn next(self) -> Self {
+        match self {
+            Self::Normal => Self::Multiply,
+            Self::Multiply => Self::Screen,
+            Self::Screen => Self::Add,
+            Self::Add => Self::Normal,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LayerMask {
+    pub width: usize,
+    pub height: usize,
+    pub alpha: Vec<u8>,
+}
+
+impl LayerMask {
+    pub fn demo(width: usize, height: usize) -> Self {
+        let mut alpha = vec![255; width.saturating_mul(height)];
+        for y in 0..height {
+            for x in 0..width {
+                if x < width / 3 || y >= (height * 5) / 6 {
+                    alpha[y * width + x] = 0;
+                }
+            }
+        }
+        Self {
+            width,
+            height,
+            alpha,
+        }
+    }
+
+    fn alpha_at(&self, x: usize, y: usize) -> u8 {
+        if x >= self.width || y >= self.height {
+            return 0;
+        }
+        self.alpha[y * self.width + x]
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RasterLayer {
+    pub id: LayerNodeId,
+    pub name: String,
+    #[serde(default = "default_layer_visible")]
+    pub visible: bool,
+    #[serde(default)]
+    pub blend_mode: BlendMode,
+    pub bitmap: CanvasBitmap,
+    #[serde(default)]
+    pub mask: Option<LayerMask>,
+}
+
+fn default_layer_visible() -> bool {
+    true
+}
+
+impl RasterLayer {
+    fn background(id: LayerNodeId, name: String, width: usize, height: usize) -> Self {
+        Self {
+            id,
+            name,
+            visible: true,
+            blend_mode: BlendMode::Normal,
+            bitmap: CanvasBitmap::new(width, height),
+            mask: None,
+        }
+    }
+
+    fn transparent(id: LayerNodeId, name: String, width: usize, height: usize) -> Self {
+        Self {
+            id,
+            name,
+            visible: true,
+            blend_mode: BlendMode::Normal,
+            bitmap: CanvasBitmap::transparent(width, height),
+            mask: None,
         }
     }
 }
@@ -254,6 +365,14 @@ impl CanvasBitmap {
             width,
             height,
             pixels,
+        }
+    }
+
+    pub fn transparent(width: usize, height: usize) -> Self {
+        Self {
+            width,
+            height,
+            pixels: vec![0; width * height * 4],
         }
     }
 
@@ -405,12 +524,15 @@ impl Document {
     pub fn new(width: usize, height: usize) -> Self {
         let width = width.max(1);
         let height = height.max(1);
+        let background = RasterLayer::background(LayerNodeId(1), "Layer 1".to_string(), width, height);
 
         Self {
             work: Work {
                 pages: vec![Page {
                     panels: vec![Panel {
-                        bitmap: CanvasBitmap::new(width, height),
+                        bitmap: background.bitmap.clone(),
+                        layers: vec![background],
+                        active_layer_index: 0,
                         ..Panel::default()
                     }],
                     ..Page::default()
@@ -443,6 +565,14 @@ impl Document {
         self.active_color = color;
     }
 
+    pub fn normalize_phase9_state(&mut self) {
+        for page in &mut self.work.pages {
+            for panel in &mut page.panels {
+                ensure_panel_layers(panel);
+            }
+        }
+    }
+
     pub fn apply_command(&mut self, command: &Command) -> Option<DirtyRect> {
         match command {
             Command::Noop => None,
@@ -466,6 +596,43 @@ impl Document {
             }
             Command::SetActiveColor { color } => {
                 self.set_active_color(*color);
+                None
+            }
+            Command::SetViewZoom { zoom } => {
+                self.view_transform.zoom = zoom.clamp(0.25, 16.0);
+                None
+            }
+            Command::PanView { delta_x, delta_y } => {
+                self.view_transform.pan_x += delta_x;
+                self.view_transform.pan_y += delta_y;
+                None
+            }
+            Command::ResetView => {
+                self.view_transform = CanvasViewTransform::default();
+                None
+            }
+            Command::AddRasterLayer => {
+                self.add_raster_layer();
+                None
+            }
+            Command::SelectLayer { index } => {
+                self.select_layer(*index);
+                None
+            }
+            Command::SelectNextLayer => {
+                self.select_next_layer();
+                None
+            }
+            Command::CycleActiveLayerBlendMode => {
+                self.cycle_active_layer_blend_mode();
+                None
+            }
+            Command::ToggleActiveLayerVisibility => {
+                self.toggle_active_layer_visibility();
+                None
+            }
+            Command::ToggleActiveLayerMask => {
+                self.toggle_active_layer_mask();
                 None
             }
             Command::NewDocument => {
@@ -496,7 +663,10 @@ impl Document {
             .first_mut()
             .and_then(|page| page.panels.first_mut())
         {
-            return Some(panel.bitmap.draw_point_rgba(x, y, color));
+            ensure_panel_layers(panel);
+            let dirty = draw_on_active_layer(panel, x, y, color, false);
+            composite_panel_bitmap_region(panel, dirty);
+            return Some(dirty);
         }
 
         None
@@ -517,11 +687,10 @@ impl Document {
             .first_mut()
             .and_then(|page| page.panels.first_mut())
         {
-            return Some(
-                panel
-                    .bitmap
-                    .draw_line_rgba(from_x, from_y, to_x, to_y, color),
-            );
+            ensure_panel_layers(panel);
+            let dirty = draw_line_on_active_layer(panel, from_x, from_y, to_x, to_y, color, false);
+            composite_panel_bitmap_region(panel, dirty);
+            return Some(dirty);
         }
 
         None
@@ -534,7 +703,10 @@ impl Document {
             .first_mut()
             .and_then(|page| page.panels.first_mut())
         {
-            return Some(panel.bitmap.erase_point(x, y));
+            ensure_panel_layers(panel);
+            let dirty = draw_on_active_layer(panel, x, y, [0, 0, 0, 0], true);
+            composite_panel_bitmap_region(panel, dirty);
+            return Some(dirty);
         }
 
         None
@@ -553,11 +725,278 @@ impl Document {
             .first_mut()
             .and_then(|page| page.panels.first_mut())
         {
-            return Some(panel.bitmap.erase_line(from_x, from_y, to_x, to_y));
+            ensure_panel_layers(panel);
+            let dirty = draw_line_on_active_layer(panel, from_x, from_y, to_x, to_y, [0, 0, 0, 0], true);
+            composite_panel_bitmap_region(panel, dirty);
+            return Some(dirty);
         }
 
         None
     }
+
+    pub fn add_raster_layer(&mut self) {
+        if let Some(panel) = self
+            .work
+            .pages
+            .first_mut()
+            .and_then(|page| page.panels.first_mut())
+        {
+            ensure_panel_layers(panel);
+            let next_index = panel.layers.len() + 1;
+            let (width, height) = (panel.bitmap.width, panel.bitmap.height);
+            panel.layers.push(RasterLayer::transparent(
+                LayerNodeId(next_index as u64),
+                format!("Layer {next_index}"),
+                width,
+                height,
+            ));
+            panel.active_layer_index = panel.layers.len().saturating_sub(1);
+            sync_root_layer_summary(panel);
+        }
+    }
+
+    pub fn select_layer(&mut self, index: usize) {
+        if let Some(panel) = self
+            .work
+            .pages
+            .first_mut()
+            .and_then(|page| page.panels.first_mut())
+        {
+            ensure_panel_layers(panel);
+            panel.active_layer_index = index.min(panel.layers.len().saturating_sub(1));
+            sync_root_layer_summary(panel);
+        }
+    }
+
+    pub fn select_next_layer(&mut self) {
+        if let Some(panel) = self
+            .work
+            .pages
+            .first_mut()
+            .and_then(|page| page.panels.first_mut())
+        {
+            ensure_panel_layers(panel);
+            panel.active_layer_index = (panel.active_layer_index + 1) % panel.layers.len().max(1);
+            sync_root_layer_summary(panel);
+        }
+    }
+
+    pub fn cycle_active_layer_blend_mode(&mut self) {
+        if let Some(panel) = self
+            .work
+            .pages
+            .first_mut()
+            .and_then(|page| page.panels.first_mut())
+        {
+            ensure_panel_layers(panel);
+            if let Some(layer) = panel.layers.get_mut(panel.active_layer_index) {
+                layer.blend_mode = layer.blend_mode.next();
+                panel.bitmap = composite_panel_bitmap(panel);
+            }
+        }
+    }
+
+    pub fn toggle_active_layer_visibility(&mut self) {
+        if let Some(panel) = self
+            .work
+            .pages
+            .first_mut()
+            .and_then(|page| page.panels.first_mut())
+        {
+            ensure_panel_layers(panel);
+            if let Some(layer) = panel.layers.get_mut(panel.active_layer_index) {
+                layer.visible = !layer.visible;
+                panel.bitmap = composite_panel_bitmap(panel);
+            }
+        }
+    }
+
+    pub fn toggle_active_layer_mask(&mut self) {
+        if let Some(panel) = self
+            .work
+            .pages
+            .first_mut()
+            .and_then(|page| page.panels.first_mut())
+        {
+            ensure_panel_layers(panel);
+            if let Some(layer) = panel.layers.get_mut(panel.active_layer_index) {
+                layer.mask = if layer.mask.is_some() {
+                    None
+                } else {
+                    Some(LayerMask::demo(layer.bitmap.width, layer.bitmap.height))
+                };
+                panel.bitmap = composite_panel_bitmap(panel);
+            }
+        }
+    }
+}
+
+fn ensure_panel_layers(panel: &mut Panel) {
+    let mut repaired = false;
+    if panel.layers.is_empty() {
+        panel.layers.push(RasterLayer::background(
+            panel.root_layer.id,
+            panel.root_layer.name.clone(),
+            panel.bitmap.width,
+            panel.bitmap.height,
+        ));
+        if let Some(layer) = panel.layers.first_mut() {
+            layer.bitmap = panel.bitmap.clone();
+        }
+        repaired = true;
+    }
+    panel.active_layer_index = panel.active_layer_index.min(panel.layers.len().saturating_sub(1));
+    sync_root_layer_summary(panel);
+    if repaired {
+        panel.bitmap = composite_panel_bitmap(panel);
+    }
+}
+
+fn sync_root_layer_summary(panel: &mut Panel) {
+    if let Some(layer) = panel.layers.get(panel.active_layer_index) {
+        panel.root_layer.id = layer.id;
+        panel.root_layer.name = layer.name.clone();
+    }
+}
+
+fn draw_on_active_layer(
+    panel: &mut Panel,
+    x: usize,
+    y: usize,
+    color: [u8; 4],
+    erase: bool,
+) -> DirtyRect {
+    let active_index = panel.active_layer_index.min(panel.layers.len().saturating_sub(1));
+    let is_background = active_index == 0;
+    let layer = &mut panel.layers[active_index];
+    if erase {
+        if is_background {
+            layer.bitmap.erase_point(x, y)
+        } else {
+            layer.bitmap.draw_point_rgba(x, y, color)
+        }
+    } else {
+        layer.bitmap.draw_point_rgba(x, y, color)
+    }
+}
+
+fn draw_line_on_active_layer(
+    panel: &mut Panel,
+    from_x: usize,
+    from_y: usize,
+    to_x: usize,
+    to_y: usize,
+    color: [u8; 4],
+    erase: bool,
+) -> DirtyRect {
+    let active_index = panel.active_layer_index.min(panel.layers.len().saturating_sub(1));
+    let is_background = active_index == 0;
+    let layer = &mut panel.layers[active_index];
+    if erase {
+        if is_background {
+            layer.bitmap.erase_line(from_x, from_y, to_x, to_y)
+        } else {
+            layer.bitmap.draw_line_rgba(from_x, from_y, to_x, to_y, color)
+        }
+    } else {
+        layer.bitmap.draw_line_rgba(from_x, from_y, to_x, to_y, color)
+    }
+}
+
+fn composite_panel_bitmap(panel: &Panel) -> CanvasBitmap {
+    let width = panel.bitmap.width.max(1);
+    let height = panel.bitmap.height.max(1);
+    let mut result = CanvasBitmap::transparent(width, height);
+    for layer in &panel.layers {
+        if !layer.visible {
+            continue;
+        }
+        composite_layer_region_into(
+            &mut result,
+            layer,
+            DirtyRect {
+                x: 0,
+                y: 0,
+                width,
+                height,
+            },
+        );
+    }
+    result
+}
+
+fn composite_panel_bitmap_region(panel: &mut Panel, dirty: DirtyRect) {
+    let dirty = dirty.clamp_to_bitmap(panel.bitmap.width.max(1), panel.bitmap.height.max(1));
+    for y in dirty.y..dirty.y + dirty.height {
+        for x in dirty.x..dirty.x + dirty.width {
+            let index = (y * panel.bitmap.width + x) * 4;
+            panel.bitmap.pixels[index..index + 4].copy_from_slice(&[0, 0, 0, 0]);
+        }
+    }
+
+    for layer in &panel.layers {
+        if !layer.visible {
+            continue;
+        }
+        composite_layer_region_into(&mut panel.bitmap, layer, dirty);
+    }
+}
+
+fn composite_layer_region_into(target: &mut CanvasBitmap, layer: &RasterLayer, dirty: DirtyRect) {
+    let dirty = dirty.clamp_to_bitmap(
+        target.width.min(layer.bitmap.width).max(1),
+        target.height.min(layer.bitmap.height).max(1),
+    );
+    for y in dirty.y..dirty.y + dirty.height {
+        for x in dirty.x..dirty.x + dirty.width {
+            let index = (y * target.width + x) * 4;
+            let mut src = [
+                layer.bitmap.pixels[index],
+                layer.bitmap.pixels[index + 1],
+                layer.bitmap.pixels[index + 2],
+                layer.bitmap.pixels[index + 3],
+            ];
+            if let Some(mask) = &layer.mask {
+                src[3] = ((src[3] as u16 * mask.alpha_at(x, y) as u16) / 255) as u8;
+            }
+            let dst = [
+                target.pixels[index],
+                target.pixels[index + 1],
+                target.pixels[index + 2],
+                target.pixels[index + 3],
+            ];
+            let blended = blend_pixel(dst, src, layer.blend_mode);
+            target.pixels[index..index + 4].copy_from_slice(&blended);
+        }
+    }
+}
+
+fn blend_pixel(dst: [u8; 4], src: [u8; 4], mode: BlendMode) -> [u8; 4] {
+    let src_a = src[3] as f32 / 255.0;
+    if src_a <= 0.0 {
+        return dst;
+    }
+    let dst_a = dst[3] as f32 / 255.0;
+    let blend_channel = |dst_c: u8, src_c: u8| -> f32 {
+        let d = dst_c as f32 / 255.0;
+        let s = src_c as f32 / 255.0;
+        match mode {
+            BlendMode::Normal => s,
+            BlendMode::Multiply => s * d,
+            BlendMode::Screen => 1.0 - (1.0 - s) * (1.0 - d),
+            BlendMode::Add => (s + d).min(1.0),
+        }
+    };
+    let out_a = src_a + dst_a * (1.0 - src_a);
+    let mut out = [0u8; 4];
+    for channel in 0..3 {
+        let dst_c = dst[channel] as f32 / 255.0;
+        let mixed = blend_channel(dst[channel], src[channel]);
+        let out_c = mixed * src_a + dst_c * (1.0 - src_a);
+        out[channel] = (out_c * 255.0).round().clamp(0.0, 255.0) as u8;
+    }
+    out[3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
+    out
 }
 
 /// レイヤーツリーの最小ノード。
@@ -791,5 +1230,47 @@ mod tests {
         document.set_view_transform(transform);
 
         assert_eq!(document.view_transform, transform);
+    }
+
+    #[test]
+    fn add_raster_layer_selects_new_layer() {
+        let mut document = Document::default();
+
+        let _ = document.apply_command(&Command::AddRasterLayer);
+
+        let panel = &document.work.pages[0].panels[0];
+        assert_eq!(panel.layers.len(), 2);
+        assert_eq!(panel.active_layer_index, 1);
+        assert_eq!(panel.layers[1].name, "Layer 2");
+    }
+
+    #[test]
+    fn toggle_active_layer_visibility_reveals_underlying_layer() {
+        let mut document = Document::default();
+        let _ = document.apply_command(&Command::AddRasterLayer);
+        let _ = document.draw_point(5, 5);
+
+        let visible_bitmap = document.active_bitmap().expect("bitmap exists").clone();
+        let _ = document.apply_command(&Command::ToggleActiveLayerVisibility);
+        let hidden_bitmap = document.active_bitmap().expect("bitmap exists");
+
+        let index = (5 * visible_bitmap.width + 5) * 4;
+        assert_eq!(&visible_bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
+        assert_eq!(&hidden_bitmap.pixels[index..index + 4], &[255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn toggle_active_layer_mask_applies_demo_mask() {
+        let mut document = Document::default();
+        let _ = document.apply_command(&Command::AddRasterLayer);
+        let _ = document.draw_point(1, 1);
+
+        let before_mask = document.active_bitmap().expect("bitmap exists").clone();
+        let _ = document.apply_command(&Command::ToggleActiveLayerMask);
+        let after_mask = document.active_bitmap().expect("bitmap exists");
+
+        let index = (before_mask.width + 1) * 4;
+        assert_eq!(&before_mask.pixels[index..index + 4], &[0, 0, 0, 255]);
+        assert_eq!(&after_mask.pixels[index..index + 4], &[255, 255, 255, 255]);
     }
 }

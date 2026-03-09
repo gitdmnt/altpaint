@@ -7,10 +7,58 @@ use app_core::Command;
 use plugin_api::{HostAction, PanelEvent};
 
 use super::{DesktopApp, PanelDragState};
-use crate::canvas_bridge::{CanvasInputState, CanvasPointerEvent, map_view_to_canvas};
-use crate::frame::{map_view_to_surface, map_view_to_surface_clamped};
+use crate::canvas_bridge::{CanvasInputState, CanvasPointerEvent, map_view_to_canvas_with_transform};
+use crate::frame::{brush_preview_rect, map_view_to_surface, map_view_to_surface_clamped};
 
 impl DesktopApp {
+    /// 現在のポインタ位置からキャンバスホバー状態を更新する。
+    pub(crate) fn update_canvas_hover(&mut self, x: i32, y: i32) -> bool {
+        let previous = self.hover_canvas_position;
+        let next = self.canvas_position_from_window(x, y);
+        if next == self.hover_canvas_position {
+            return false;
+        }
+        self.hover_canvas_position = next;
+
+        let Some(layout) = self.layout.as_ref().map(|layout| layout.canvas_display_rect) else {
+            self.rebuild_present_frame();
+            return true;
+        };
+        let Some((bitmap_width, bitmap_height)) = self
+            .document
+            .active_bitmap()
+            .map(|bitmap| (bitmap.width, bitmap.height))
+        else {
+            self.rebuild_present_frame();
+            return true;
+        };
+
+        let transform = self.document.view_transform;
+        if let Some(previous) = previous.and_then(|position| {
+            brush_preview_rect(
+                layout,
+                bitmap_width,
+                bitmap_height,
+                transform,
+                position,
+            )
+        }) {
+            self.append_canvas_host_dirty_rect(previous);
+        }
+        if let Some(next) = next.and_then(|position| {
+            brush_preview_rect(
+                layout,
+                bitmap_width,
+                bitmap_height,
+                transform,
+                position,
+            )
+        }) {
+            self.append_canvas_host_dirty_rect(next);
+        }
+        true
+    }
+
     /// ポインタ押下をキャンバスまたはパネル操作へ振り分ける。
     pub(crate) fn handle_pointer_pressed(&mut self, x: i32, y: i32) -> bool {
         if self.canvas_position_from_window(x, y).is_some() {
@@ -61,7 +109,9 @@ impl DesktopApp {
                 });
                 self.dispatch_panel_event(event)
             }
-            PanelEvent::Activate { .. } | PanelEvent::SetText { .. } => false,
+            PanelEvent::Activate { .. }
+            | PanelEvent::SetText { .. }
+            | PanelEvent::Keyboard { .. } => false,
         }
     }
 
@@ -228,7 +278,7 @@ impl DesktopApp {
         }
 
         let bitmap = self.document.active_bitmap()?;
-        map_view_to_canvas(
+        map_view_to_canvas_with_transform(
             &render::RenderFrame {
                 width: bitmap.width,
                 height: bitmap.height,
@@ -240,6 +290,7 @@ impl DesktopApp {
                 width: layout.canvas_display_rect.width as i32,
                 height: layout.canvas_display_rect.height as i32,
             },
+            self.document.view_transform,
         )
     }
 

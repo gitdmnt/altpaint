@@ -60,7 +60,12 @@ fn canvas_drag_draws_black_pixels() {
     app.handle_canvas_pointer("up", center_x + 20, center_y);
 
     let frame = app.ui_shell.render_frame(&app.document);
-    assert!(frame.pixels.chunks_exact(4).any(|pixel| pixel == [0, 0, 0, 255]));
+    assert!(
+        frame
+            .pixels
+            .chunks_exact(4)
+            .any(|pixel| pixel == [0, 0, 0, 255])
+    );
 }
 
 /// 選択色でキャンバス描画できることを確認する。
@@ -80,7 +85,12 @@ fn canvas_drag_draws_using_selected_color() {
     app.handle_canvas_pointer("up", center_x, center_y);
 
     let frame = app.ui_shell.render_frame(&app.document);
-    assert!(frame.pixels.chunks_exact(4).any(|pixel| pixel == [0x43, 0xa0, 0x47, 0xff]));
+    assert!(
+        frame
+            .pixels
+            .chunks_exact(4)
+            .any(|pixel| pixel == [0x43, 0xa0, 0x47, 0xff])
+    );
 }
 
 /// パネルスクロール要求でスクロールオフセットが更新されることを確認する。
@@ -151,7 +161,10 @@ fn scroll_refresh_does_not_trigger_ui_update() {
     assert!(!profiler.stats.contains_key("compose_full_frame"));
     assert_eq!(update.dirty_rect, Some(layout.panel_host_rect));
     assert!(!update.canvas_updated);
-    assert_eq!(profiler.stats.get("panel_surface").map(|stat| stat.calls), Some(1));
+    assert_eq!(
+        profiler.stats.get("panel_surface").map(|stat| stat.calls),
+        Some(1)
+    );
 }
 
 /// フォーカス移動時の差分更新が UI 全体再同期を引き起こさないことを確認する。
@@ -170,7 +183,10 @@ fn focus_refresh_does_not_trigger_ui_update() {
     assert!(!profiler.stats.contains_key("compose_full_frame"));
     assert_eq!(update.dirty_rect, Some(layout.panel_host_rect));
     assert!(!update.canvas_updated);
-    assert_eq!(profiler.stats.get("panel_surface").map(|stat| stat.calls), Some(1));
+    assert_eq!(
+        profiler.stats.get("panel_surface").map(|stat| stat.calls),
+        Some(1)
+    );
 }
 
 /// ツール切替時に全面再合成なしで状態表示だけ更新できることを確認する。
@@ -193,7 +209,62 @@ fn tool_change_updates_status_without_full_recompose() {
     assert!(!update.canvas_updated);
     assert_eq!(
         update.dirty_rect,
-        Some(layout.panel_host_rect.union(crate::frame::status_text_rect(1280, 200, &layout)))
+        Some(
+            layout
+                .panel_host_rect
+                .union(crate::frame::status_text_rect(1280, 200, &layout))
+        )
+    );
+}
+
+/// パン時はステータス再描画なしでキャンバス領域だけ更新できることを確認する。
+#[test]
+fn pan_view_updates_canvas_without_status_recompose() {
+    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut profiler = DesktopProfiler::new();
+    let _ = app.prepare_present_frame(1280, 200, &mut profiler);
+    profiler.stats.clear();
+    let layout = app.layout.clone().expect("layout exists");
+
+    assert!(app.execute_command(Command::PanView {
+        delta_x: 32.0,
+        delta_y: 0.0,
+    }));
+    let update = app.prepare_present_frame(1280, 200, &mut profiler);
+
+    assert!(!profiler.stats.contains_key("compose_full_frame"));
+    assert!(!profiler.stats.contains_key("compose_dirty_status"));
+    assert!(profiler.stats.contains_key("compose_dirty_canvas"));
+    assert!(update.canvas_updated);
+    assert_eq!(update.dirty_rect, Some(layout.canvas_display_rect));
+}
+
+#[test]
+fn pan_view_dirty_update_matches_full_recompose() {
+    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut profiler = DesktopProfiler::new();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+
+    assert!(app.execute_command(Command::PanView {
+        delta_x: 0.0,
+        delta_y: -32.0,
+    }));
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+    let dirty_pixels = app.present_frame().expect("frame exists").pixels.clone();
+
+    app.rebuild_present_frame();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+    let full_pixels = app.present_frame().expect("frame exists").pixels.clone();
+
+    let mismatch = dirty_pixels
+        .chunks_exact(4)
+        .zip(full_pixels.chunks_exact(4))
+        .enumerate()
+        .find(|(_, (dirty, full))| dirty != full);
+    assert!(
+        mismatch.is_none(),
+        "first mismatch: {:?}",
+        mismatch.map(|(index, (dirty, full))| (index, dirty.to_vec(), full.to_vec()))
     );
 }
 

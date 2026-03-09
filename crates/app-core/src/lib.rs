@@ -10,8 +10,8 @@ pub mod workspace;
 
 pub use command::Command;
 pub use document::{
-    CanvasBitmap, CanvasViewTransform, ColorRgba8, DirtyRect, Document, LayerNode, LayerNodeId,
-    Page, PageId, Panel, PanelId, ToolKind, Work, WorkId,
+    BlendMode, CanvasBitmap, CanvasViewTransform, ColorRgba8, DirtyRect, Document, LayerMask,
+    LayerNode, LayerNodeId, Page, PageId, Panel, PanelId, RasterLayer, ToolKind, Work, WorkId,
 };
 pub use error::CoreError;
 pub use workspace::{WorkspaceLayout, WorkspacePanelState};

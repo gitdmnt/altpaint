@@ -22,12 +22,18 @@ UI 構文と `.altp-panel` の設計は [docs/panel-ui-definition/ui-dsl.md](doc
 - `crates/panel-schema` / `crates/panel-sdk` / `crates/plugin-host` は追加済み
 - `plugin-host` は `wasmtime` で sample Wasm/WAT module をロードできる
 - `ui-shell` は handler 実行結果の state patch / command descriptor / diagnostics を反映できる
+- 標準パネル6種は Rust SDK + Wasm 版へ移行済みである
+- `crates/panel-macros` を追加し、plugin 作者は `#[panel_sdk::panel_init]` / `#[panel_sdk::panel_handler]` で安全に export を宣言できる
+- `crates/panel-sdk` は `commands::*` と `state::*Key` を公開し、生の command 名や state path 文字列を Rust 側から追い出し始めている
 
 ただし、現時点の ABI は**フェーズ6向けの最小実装**であり、将来の外部 plugin 公開用にそのまま固定する段階ではない。
 
 - 現行 export は `panel_init` と `panel_handle_<handler_name>` 命名である
 - host import を通じて state patch / command descriptor / diagnostics を収集している
 - bytes DTO ベースの単一 `panel_handle_event` ABI は今後の安定化対象である
+
+重要なのは、**ABI が暫定でも SDK は暫定でなくてよい** という点である。
+plugin 作者に unsafe / `extern` / export 名を露出したままフェーズ9へ進むべきではない。
 
 ## 結論
 
@@ -39,6 +45,13 @@ UI 構文と `.altp-panel` の設計は [docs/panel-ui-definition/ui-dsl.md](doc
 - Wasm は `Command` ではなく command descriptor を返す
 - plugin 作者には host 内部 crate ではなく SDK crate を使わせる
 - host が権限、state 適用、`Command` 変換を握る
+
+さらに、plugin 作者が日常的に書く Rust コードについて、次も固定する。
+
+- handler export は SDK attribute macro で宣言する
+- command 発行は型付き helper を優先する
+- state 参照は typed key を優先する
+- `unsafe` と `extern "C"` は SDK 実装へ閉じ込める
 
 ## Wasm の責務
 
@@ -86,6 +99,36 @@ Wasm は Rust 等からコンパイルする処理モジュールである。
 
 `panel_dispose` と bytes DTO ベースの単一 event ABI は、今後の安定化対象として残している。
 
+## 現状仕様への批判的整理
+
+レビュワーのコメントを踏まえると、現状仕様には次の事実がある。
+
+1. ABI の最小実装自体は妥当だが、そのまま plugin 作者へ露出してはいけない
+2. `CommandDescriptor` と state path は境界で文字列化されるため、完全なコンパイル時検査はできない
+3. それでも、Rust 側の authoring experience はかなり改善できる
+
+このため、仕様としては次の 3 層を分けて扱う。
+
+### 1. ABI 層
+
+- host と Wasm runtime の低レイヤ境界
+- ここでは `extern` / export 名 / import 関数 / DTO などの文字列化を許容する
+- ただし、これは SDK 内部実装であり、plugin 作者の主戦場ではない
+
+### 2. SDK 層
+
+- plugin 作者が直接触る層
+- 安全な Rust 関数、attribute macro、typed helper を置く
+- 今回の改訂ではここを優先的に安定化する
+
+### 3. DSL / manifest 層
+
+- `.altp-panel` 上の handler binding や state 名宣言を置く層
+- 別ファイルである都合上、名前文字列は残る
+- validator や将来の codegen によって不整合を減らす
+
+この整理により、**「文字列ベースの境界が存在する」ことと「plugin 作者が文字列だらけのコードを書く」ことを切り分ける**。
+
 ## 次の段階で実装する crate
 
 次の段階では、まず Wasm runtime と DSL をつなぐ基盤 crate を追加する。
@@ -112,10 +155,10 @@ Wasm は Rust 等からコンパイルする処理モジュールである。
 
 フェーズ6時点の実装 ABI は次である。
 
-| Export                         | 入力                                  | 出力                         | 役割                                     |
-| ------------------------------ | ------------------------------------- | ---------------------------- | ---------------------------------------- |
-| `panel_init`                   | なし                                  | host import 経由の patch 群  | 初期 state の最小セットアップ            |
-| `panel_handle_<handler_name>`  | なし または `i32` 1つ                 | host import 経由の result 群 | state patch と command descriptor の返却 |
+| Export                        | 入力                  | 出力                         | 役割                                     |
+| ----------------------------- | --------------------- | ---------------------------- | ---------------------------------------- |
+| `panel_init`                  | なし                  | host import 経由の patch 群  | 初期 state の最小セットアップ            |
+| `panel_handle_<handler_name>` | なし または `i32` 1つ | host import 経由の result 群 | state patch と command descriptor の返却 |
 
 将来の安定化候補 ABI は次である。
 
@@ -134,6 +177,7 @@ Wasm は Rust 等からコンパイルする処理モジュールである。
 - host は DTO を decode して `Command` へ変換する
 - built-in / external のどちらも同じ handler result 形式を使う
 - built-in だからという理由で別 ABI を作らない
+- ただし plugin 作者には `panel_handle_<handler_name>` を直接書かせない
 
 ### 将来の `panel_handle_event` 入力 DTO
 
@@ -201,6 +245,24 @@ Wasm は `Command` を直接返さない。
 
 host がこれを `Command` に変換する。
 
+### Rust SDK での command 構築方針
+
+plugin 作者が次のようなコードを書くことは、今後は推奨しない。
+
+```rust
+command("tool.set_active").string("tool", "brush")
+```
+
+この API は escape hatch として残してよいが、第一選択肢は型付き helper とする。
+
+```rust
+panel_sdk::commands::tool::set_active(panel_sdk::commands::Tool::Brush)
+panel_sdk::commands::project::save()
+panel_sdk::commands::project::new_sized(320, 240)
+```
+
+これにより、少なくとも Rust 側では command 名・payload key・代表的な enum 値の typo をコンパイル時に減らせる。
+
 ## state patch 境界
 
 Wasm は document 本体を直接更新しない。
@@ -241,7 +303,7 @@ plugin 作者には host 内部 crate を直接依存させない。
 - workspace 上の想定 crate は次とする。
   - `crates/panel-schema`
   - `crates/panel-sdk`
-  - 必要なら `crates/panel-macros`
+  - `crates/panel-macros`
 - 公開 package 名は必要なら次のように付けてもよい。
   - `altpaint-panel-schema`
   - `altpaint-panel-sdk`
@@ -255,19 +317,46 @@ plugin 作者には host 内部 crate を直接依存させない。
 - `CommandDescriptor`
 - `HandlerResult`
 
+加えて、現時点で plugin 作者が日常的に使う表面 API は次である。
+
+- `#[panel_sdk::panel_init]`
+- `#[panel_sdk::panel_handler]`
+- `panel_sdk::commands::*`
+- `panel_sdk::state::*Key`
+- `panel_sdk::runtime::{emit_command, state_i32, state_string, set_state_bool, ...}`
+
 ### SDK が提供すべき helper
 
-- `command("tool.set_active")`
-- `.string("tool", "brush")`
+- `commands::tool::set_active(Tool::Brush)`
+- `commands::tool::set_color_rgb(RgbColor::new(...))`
+- `commands::project::save()`
+- `commands::project::new_sized(width, height)`
 - `StatePatch::set("selectedTool", "brush")`
 - `StatePatch::toggle("showAdvanced")`
+- `state::bool("show_new")`
+- `state::string("new_width")`
 
-ビルトイン移植前には、少なくとも次の helper も必要になる。
+escape hatch としては、必要に応じて従来の `command("...")` builder も残してよい。
+
+ビルトイン移植後に必要な helper は、少なくとも次を含む。
 
 - `.bool("value", true)`
 - `.color("color", "#1E88E5")`
-- `StatePatch::set_bool("expanded", true)`
 - `StatePatch::replace("selected_id", "layer-1")`
+
+### SDK サンプル
+
+```rust
+use panel_sdk::{
+  commands::{self, Tool},
+  runtime::emit_command,
+};
+
+#[panel_sdk::panel_handler]
+fn activate_brush() {
+  emit_command(&commands::tool::set_active(Tool::Brush));
+}
+```
 
 ## ビルトイン移植を前提にした実装方針
 
