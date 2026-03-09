@@ -327,6 +327,29 @@ fn pan_can_expand_canvas_quad_into_host_margin() {
     assert!(moved_quad.destination.x < layout.canvas_display_rect.x);
 }
 
+#[test]
+fn new_document_sized_resets_active_interactions() {
+    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut profiler = DesktopProfiler::new();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+    let layout = app.layout.clone().expect("layout exists");
+    let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
+    let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
+
+    assert!(app.handle_canvas_pointer("down", center_x, center_y));
+    assert!(app.update_canvas_hover(center_x, center_y));
+    assert!(app.canvas_input.is_drawing);
+    assert!(app.hover_canvas_position.is_some());
+
+    assert!(app.execute_command(Command::NewDocumentSized {
+        width: 48,
+        height: 32,
+    }));
+    assert!(!app.canvas_input.is_drawing);
+    assert!(app.canvas_input.last_position.is_none());
+    assert!(app.hover_canvas_position.is_none());
+}
+
 /// `NewDocument` 用のテストダイアログ付きアプリでも描画系の初期化が行えることを確認する。
 #[test]
 fn test_dialog_app_can_prepare_frame() {
