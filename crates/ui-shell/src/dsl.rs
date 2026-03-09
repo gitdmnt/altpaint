@@ -833,6 +833,7 @@ fn build_host_snapshot(document: &Document) -> Value {
             "active": active_tool_name(document.active_tool),
             "pen_name": active_pen.name,
             "pen_id": active_pen.id,
+            "pen_presets_json": serde_json::to_string(&document.pen_presets).unwrap_or_else(|_| "[]".to_string()),
             "pen_index": document.active_pen_index(),
             "pen_count": document.pen_presets.len(),
             "pen_size": document.active_pen_size,

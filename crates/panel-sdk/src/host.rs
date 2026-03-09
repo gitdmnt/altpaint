@@ -57,7 +57,10 @@ pub mod document {
 
 /// ツール関連 host 値を読む。
 pub mod tool {
-    use crate::{commands::Tool, runtime::{host_i32, host_string}};
+    use crate::{
+        commands::Tool,
+        runtime::{host_i32, host_string},
+    };
 
     /// アクティブツール名を返す。
     pub fn active_name() -> String {
@@ -77,6 +80,11 @@ pub mod tool {
     /// ペン ID を返す。
     pub fn pen_id() -> String {
         host_string("tool.pen_id")
+    }
+
+    /// ペンプリセット一覧 JSON を返す。
+    pub fn pen_presets_json() -> String {
+        host_string("tool.pen_presets_json")
     }
 
     /// ペン index を返す。

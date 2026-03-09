@@ -187,6 +187,7 @@ fn typed_host_helpers_are_callable_on_native_targets() {
     assert_eq!(host::tool::active_name(), "");
     assert_eq!(host::tool::pen_name(), "");
     assert_eq!(host::tool::pen_id(), "");
+    assert_eq!(host::tool::pen_presets_json(), "");
     assert_eq!(host::tool::pen_index(), 0);
     assert_eq!(host::tool::pen_count(), 0);
     assert_eq!(host::tool::pen_size(), 0);

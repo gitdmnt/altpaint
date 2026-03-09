@@ -1,13 +1,14 @@
 use panel_sdk::{
     commands,
     host,
-    runtime::{emit_command, set_state_bool, set_state_i32, set_state_string},
+    runtime::{emit_command, error, event_string, set_state_bool, set_state_i32, set_state_string},
     state,
 };
 
 const PEN_NAME: state::StringKey = state::string("pen_name");
 const PEN_SIZE: state::IntKey = state::int("size");
 const PEN_SIZE_SLIDER: state::IntKey = state::int("size_slider");
+const PEN_SIZE_INPUT: state::StringKey = state::string("size_input");
 const TOOL_LABEL: state::StringKey = state::string("tool_label");
 const PEN_PRESSURE: state::BoolKey = state::bool("pressure_enabled");
 const PEN_ANTIALIAS: state::BoolKey = state::bool("antialias");
@@ -26,6 +27,7 @@ fn sync_host() {
     set_state_string(PEN_NAME, host::tool::pen_name());
     set_state_i32(PEN_SIZE, size);
     set_state_i32(PEN_SIZE_SLIDER, size_to_slider(size));
+    set_state_string(PEN_SIZE_INPUT, size.to_string());
     set_state_string(
         TOOL_LABEL,
         if active_tool.eq_ignore_ascii_case("eraser") {
@@ -52,9 +54,40 @@ fn slider_to_size(value: i32) -> u32 {
     MAX_TOOL_SIZE.powf(normalized).round().clamp(1.0, MAX_TOOL_SIZE) as u32
 }
 
+fn parse_size_input(value: &str) -> Result<u32, &'static str> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("width must not be empty");
+    }
+    let parsed = trimmed
+        .parse::<u32>()
+        .map_err(|_| "width must be a positive integer")?;
+    Ok(parsed.clamp(1, MAX_TOOL_SIZE as u32))
+}
+
+fn sync_size_state(size: u32) {
+    let clamped = size.clamp(1, MAX_TOOL_SIZE as u32);
+    set_state_i32(PEN_SIZE, clamped as i32);
+    set_state_i32(PEN_SIZE_SLIDER, size_to_slider(clamped as i32));
+    set_state_string(PEN_SIZE_INPUT, clamped.to_string());
+}
+
 #[panel_sdk::panel_handler]
 fn set_pen_size(value: i32) {
-    emit_command(&commands::tool::set_size(slider_to_size(value)));
+    let size = slider_to_size(value);
+    sync_size_state(size);
+    emit_command(&commands::tool::set_size(size));
+}
+
+#[panel_sdk::panel_handler]
+fn set_pen_size_text() {
+    let value = event_string("value");
+    let Ok(size) = parse_size_input(&value) else {
+        error("width must be a positive integer");
+        return;
+    };
+    sync_size_state(size);
+    emit_command(&commands::tool::set_size(size));
 }
 
 #[panel_sdk::panel_handler]
@@ -81,6 +114,7 @@ mod tests {
         init();
         sync_host();
         set_pen_size(400);
+        set_pen_size_text();
         toggle_pressure();
         toggle_antialias();
         set_stabilization(24);
@@ -93,5 +127,13 @@ mod tests {
             let restored = slider_to_size(slider) as i32;
             assert!((restored - size).abs() <= 2.max(size / 20));
         }
+    }
+
+    #[test]
+    fn size_input_parses_and_clamps() {
+        assert_eq!(parse_size_input("24"), Ok(24));
+        assert_eq!(parse_size_input("0"), Ok(1));
+        assert_eq!(parse_size_input("200000"), Ok(10000));
+        assert!(parse_size_input("abc").is_err());
     }
 }

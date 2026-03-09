@@ -8,6 +8,8 @@ use panel_sdk::{
     },
     state,
 };
+use serde_json::Value;
+use std::collections::BTreeMap;
 
 const ACTIVE_TOOL: state::StringKey = state::string("active_tool");
 const PEN_NAME: state::StringKey = state::string("pen_name");
@@ -19,6 +21,7 @@ const PEN_SHORTCUT: state::StringKey = state::string("config.pen_shortcut");
 const ERASER_SHORTCUT: state::StringKey = state::string("config.eraser_shortcut");
 const BUCKET_SHORTCUT: state::StringKey = state::string("config.bucket_shortcut");
 const LASSO_BUCKET_SHORTCUT: state::StringKey = state::string("config.lasso_bucket_shortcut");
+const SIZE_MEMORY: state::StringKey = state::string("config.size_memory");
 
 fn build_tool_command(tool: Tool) -> CommandDescriptor {
     commands::tool::set_active(tool)
@@ -44,14 +47,92 @@ fn shortcut_matches(configured: &str, incoming: &str) -> bool {
     !configured.is_empty() && configured.eq_ignore_ascii_case(incoming)
 }
 
+fn size_binding_key(tool_name: &str, pen_id: &str) -> Option<String> {
+    match tool_name.to_ascii_lowercase().as_str() {
+        "pen" | "eraser" => Some(format!("{}:{pen_id}", tool_name.to_ascii_lowercase())),
+        _ => None,
+    }
+}
+
+fn parse_size_memory(serialized: &str) -> BTreeMap<String, u32> {
+    serde_json::from_str(serialized).unwrap_or_default()
+}
+
+fn serialize_size_memory(memory: &BTreeMap<String, u32>) -> String {
+    serde_json::to_string(memory).unwrap_or_else(|_| "{}".to_string())
+}
+
+fn host_pen_ids() -> Vec<String> {
+    serde_json::from_str::<Vec<Value>>(&host::tool::pen_presets_json())
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            entry
+                .get("id")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+        })
+        .collect()
+}
+
+fn remember_current_size() {
+    let Some(key) = size_binding_key(&host::tool::active_name(), &host::tool::pen_id()) else {
+        return;
+    };
+    let mut memory = parse_size_memory(&state_string(SIZE_MEMORY));
+    memory.insert(key, host::tool::pen_size().max(1) as u32);
+    set_state_string(SIZE_MEMORY, serialize_size_memory(&memory));
+}
+
+fn restore_size(tool_name: &str, pen_id: &str) {
+    let Some(key) = size_binding_key(tool_name, pen_id) else {
+        return;
+    };
+    let memory = parse_size_memory(&state_string(SIZE_MEMORY));
+    if let Some(size) = memory.get(&key).copied() {
+        emit_command(&commands::tool::set_size(size.max(1)));
+    }
+}
+
+fn switch_tool_with_size_restore(tool: Tool) {
+    remember_current_size();
+    let pen_id = host::tool::pen_id();
+    emit_command(&build_tool_command(tool));
+    restore_size(tool.as_str(), &pen_id);
+}
+
+fn switch_pen_with_size_restore(delta: isize) {
+    remember_current_size();
+    let pen_ids = host_pen_ids();
+    let current_index = host::tool::pen_index().max(0) as usize;
+    let Some(target_pen_id) = pen_ids.get(
+        (current_index as isize + delta).rem_euclid(pen_ids.len().max(1) as isize) as usize,
+    ) else {
+        if delta < 0 {
+            emit_command(&commands::tool::select_previous_pen());
+        } else {
+            emit_command(&commands::tool::select_next_pen());
+        }
+        return;
+    };
+
+    if delta < 0 {
+        emit_command(&commands::tool::select_previous_pen());
+    } else {
+        emit_command(&commands::tool::select_next_pen());
+    }
+    restore_size(&host::tool::active_name(), target_pen_id);
+}
+
 #[panel_sdk::panel_handler]
 fn activate_pen() {
-    emit_command(&build_tool_command(Tool::Pen));
+    switch_tool_with_size_restore(Tool::Pen);
 }
 
 #[panel_sdk::panel_handler]
 fn activate_eraser() {
-    emit_command(&build_tool_command(Tool::Eraser));
+    switch_tool_with_size_restore(Tool::Eraser);
 }
 
 #[panel_sdk::panel_handler]
@@ -66,12 +147,12 @@ fn activate_lasso_bucket() {
 
 #[panel_sdk::panel_handler]
 fn previous_pen() {
-    emit_command(&commands::tool::select_previous_pen());
+    switch_pen_with_size_restore(-1);
 }
 
 #[panel_sdk::panel_handler]
 fn next_pen() {
-    emit_command(&commands::tool::select_next_pen());
+    switch_pen_with_size_restore(1);
 }
 
 #[panel_sdk::panel_handler]
@@ -167,5 +248,28 @@ mod tests {
     #[test]
     fn shortcut_match_is_case_insensitive() {
         assert!(shortcut_matches("B", "b"));
+    }
+
+    #[test]
+    fn size_memory_roundtrips_json() {
+        let mut memory = BTreeMap::new();
+        memory.insert("pen:builtin.round-pen".to_string(), 4);
+        memory.insert("eraser:builtin.round-pen".to_string(), 12);
+
+        let serialized = serialize_size_memory(&memory);
+        assert_eq!(parse_size_memory(&serialized), memory);
+    }
+
+    #[test]
+    fn size_binding_key_supports_pen_and_eraser() {
+        assert_eq!(
+            size_binding_key("pen", "builtin.round-pen"),
+            Some("pen:builtin.round-pen".to_string())
+        );
+        assert_eq!(
+            size_binding_key("eraser", "builtin.round-pen"),
+            Some("eraser:builtin.round-pen".to_string())
+        );
+        assert_eq!(size_binding_key("bucket", "builtin.round-pen"), None);
     }
 }

@@ -17,6 +17,7 @@ state {
   pen_name: string = ""
   size: int = 1
   size_slider: int = 0
+  size_input: string = "1"
   tool_label: string = "Pen / Eraser Width"
   pressure_enabled: bool = true
   antialias: bool = true
@@ -30,6 +31,7 @@ view {
       <text>{state.pen_name}</text>
       <text>{state.tool_label}: {state.size}px</text>
       <slider id="pen.size" label="Size" min={0} max={1000} value={state.size_slider} fill="#90CAF9" on:change="set_pen_size"></slider>
+      <input id="pen.size.input" label="Width" value={state.size_input} bind="size_input" mode="numeric" placeholder="1" on:change="set_pen_size_text" />
     </section>
     <section title="Dynamics">
       <button id="pen.pressure" on:click="toggle_pressure" active={state.pressure_enabled}>Pressure</button>

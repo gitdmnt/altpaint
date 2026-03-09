@@ -21,6 +21,30 @@ const PAN_SLIDER_CENTER: i32 = 2000;
 const PAN_SLIDER_MIN: i32 = 0;
 const PAN_SLIDER_MAX: i32 = 4000;
 
+fn update_zoom_state(zoom_percent: i32) {
+    let clamped = zoom_percent.clamp(MIN_ZOOM_PERCENT, MAX_ZOOM_PERCENT);
+    set_state_i32(ZOOM_SLIDER, clamped);
+    set_state_string(ZOOM_LABEL, format!("{:.1}%", clamped as f32));
+}
+
+fn update_pan_state(pan_x: i32, pan_y: i32) {
+    set_state_i32(
+        PAN_X_SLIDER,
+        (pan_x + PAN_SLIDER_CENTER).clamp(PAN_SLIDER_MIN, PAN_SLIDER_MAX),
+    );
+    set_state_i32(
+        PAN_Y_SLIDER,
+        (pan_y + PAN_SLIDER_CENTER).clamp(PAN_SLIDER_MIN, PAN_SLIDER_MAX),
+    );
+    set_state_string(PAN_LABEL, format!("{pan_x}, {pan_y}"));
+}
+
+fn update_rotation_state(rotation_degrees: i32) {
+    let clamped = rotation_degrees.rem_euclid(360);
+    set_state_i32(ROTATION_SLIDER, clamped);
+    set_state_string(ROTATION_LABEL, format!("{clamped}°"));
+}
+
 #[panel_sdk::panel_init]
 fn init() {}
 
@@ -64,28 +88,34 @@ fn normalized_rotation_degrees(quarter_turns: i32) -> i32 {
 
 #[panel_sdk::panel_handler]
 fn set_zoom(value: i32) {
-    let zoom_percent = value.clamp(MIN_ZOOM_PERCENT, MAX_ZOOM_PERCENT) as f32;
-    emit_command(&commands::view::zoom(zoom_percent / 100.0));
+    let zoom_percent = value.clamp(MIN_ZOOM_PERCENT, MAX_ZOOM_PERCENT);
+    update_zoom_state(zoom_percent);
+    emit_command(&commands::view::zoom(zoom_percent as f32 / 100.0));
 }
 
 #[panel_sdk::panel_handler]
 fn set_pan_x(value: i32) {
+    let pan_x = value.clamp(PAN_SLIDER_MIN, PAN_SLIDER_MAX) - PAN_SLIDER_CENTER;
+    update_pan_state(pan_x, host::view::pan_y());
     emit_command(&commands::view::set_pan(
-        (value - PAN_SLIDER_CENTER) as f32,
+        pan_x as f32,
         host::view::pan_y() as f32,
     ));
 }
 
 #[panel_sdk::panel_handler]
 fn set_pan_y(value: i32) {
+    let pan_y = value.clamp(PAN_SLIDER_MIN, PAN_SLIDER_MAX) - PAN_SLIDER_CENTER;
+    update_pan_state(host::view::pan_x(), pan_y);
     emit_command(&commands::view::set_pan(
         host::view::pan_x() as f32,
-        (value - PAN_SLIDER_CENTER) as f32,
+        pan_y as f32,
     ));
 }
 
 #[panel_sdk::panel_handler]
 fn set_rotation(value: i32) {
+    update_rotation_state(value);
     emit_command(&commands::view::set_rotation_degrees(
         value.rem_euclid(360) as f32,
     ));
