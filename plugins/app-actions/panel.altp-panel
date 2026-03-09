@@ -14,16 +14,29 @@ runtime {
 }
 
 state {
+  show_new: bool = false
+  new_width: string = "64"
+  new_height: string = "64"
 }
 
 view {
   <column gap=8 padding=8>
     <section title="Project">
       <text tone="muted">Hosted via Rust SDK + Wasm</text>
-      <button id="app.new" on:click="new_project">New</button>
+      <button id="app.new" on:click="show_new_form">New</button>
       <button id="app.save" on:click="save_project">Save</button>
       <button id="app.save_as" on:click="save_project_as">Save As</button>
       <button id="app.load" on:click="load_project">Open...</button>
+      <when test={state.show_new}>
+        <section title="New Document">
+          <input id="app.new.width" label="Width" value={state.new_width} bind="new_width" mode="numeric" placeholder="64" />
+          <input id="app.new.height" label="Height" value={state.new_height} bind="new_height" mode="numeric" placeholder="64" />
+          <row>
+            <button id="app.new.submit" on:click="new_project">Create</button>
+            <button id="app.new.cancel" on:click="cancel_forms">Cancel</button>
+          </row>
+        </section>
+      </when>
     </section>
   </column>
 }

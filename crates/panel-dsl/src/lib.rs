@@ -272,6 +272,7 @@ fn validate_view_node(
                 "button",
                 "toggle",
                 "slider",
+                "input",
                 "separator",
                 "spacer",
                 "when",
@@ -299,6 +300,14 @@ fn validate_view_node(
                 handler_bindings.insert(handler.to_string());
             }
             if element.tag == "slider"
+                && let Some(handler) = element
+                    .attributes
+                    .get("on:change")
+                    .and_then(AttrValue::as_string)
+            {
+                handler_bindings.insert(handler.to_string());
+            }
+            if element.tag == "input"
                 && let Some(handler) = element
                     .attributes
                     .get("on:change")

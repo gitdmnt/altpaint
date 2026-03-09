@@ -51,6 +51,17 @@ pub enum PanelEvent {
         node_id: String,
         value: usize,
     },
+    SetText {
+        panel_id: String,
+        node_id: String,
+        value: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextInputMode {
+    Text,
+    Numeric,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,6 +103,15 @@ pub enum PanelNode {
         max: usize,
         value: usize,
         fill_color: Option<ColorRgba8>,
+    },
+    TextInput {
+        id: String,
+        label: String,
+        value: String,
+        placeholder: String,
+        binding_path: String,
+        action: Option<HostAction>,
+        input_mode: TextInputMode,
     },
 }
 
@@ -155,6 +175,9 @@ pub trait PanelPlugin {
             PanelEvent::Activate { panel_id, node_id }
             | PanelEvent::SetValue {
                 panel_id, node_id, ..
+            }
+            | PanelEvent::SetText {
+                panel_id, node_id, ..
             } if panel_id == self.id() => {
                 find_actions_in_nodes(&self.panel_tree().children, node_id)
             }
@@ -184,6 +207,12 @@ fn find_actions_in_node(node: &PanelNode, target_id: &str) -> Option<Vec<HostAct
         PanelNode::Button { .. } => None,
         PanelNode::Slider { id, action, .. } if id == target_id => Some(vec![action.clone()]),
         PanelNode::Slider { .. } => None,
+        PanelNode::TextInput {
+            id,
+            action: Some(action),
+            ..
+        } if id == target_id => Some(vec![action.clone()]),
+        PanelNode::TextInput { .. } => None,
     }
 }
 

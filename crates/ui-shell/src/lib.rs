@@ -17,10 +17,12 @@ use panel_schema::{
 };
 use plugin_api::{
     HostAction, PanelEvent, PanelMoveDirection, PanelNode, PanelPlugin, PanelTree, PanelView,
+    TextInputMode,
 };
 use plugin_host::{PluginHostError, WasmPanelRuntime};
 use render::{RenderContext, RenderFrame};
 use serde_json::{Map, Value, json};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -48,11 +50,18 @@ const SECTION_GAP: usize = 4;
 const SECTION_INDENT: usize = 10;
 const BUTTON_HEIGHT: usize = 24;
 const COLOR_PREVIEW_HEIGHT: usize = 52;
+const INPUT_BOX_HEIGHT: usize = 24;
 const SLIDER_HEIGHT: usize = 32;
 const SLIDER_TRACK_HEIGHT: usize = 8;
 const SLIDER_TRACK_TOP: usize = 20;
 const SLIDER_KNOB_WIDTH: usize = 8;
+const INPUT_BACKGROUND: [u8; 4] = [0x15, 0x15, 0x15, 0xff];
+const INPUT_BORDER: [u8; 4] = [0x56, 0x56, 0x56, 0xff];
+const INPUT_PLACEHOLDER: [u8; 4] = [0x88, 0x88, 0x88, 0xff];
 const WORKSPACE_PANEL_ID: &str = "builtin.workspace-layout";
+const MAX_DOCUMENT_DIMENSION: usize = 8192;
+const MAX_DOCUMENT_PIXELS: usize = 16_777_216;
+const PANEL_SCROLL_PIXELS_PER_LINE: i32 = 48;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PanelHitKind {
@@ -75,6 +84,18 @@ struct PanelHitRegion {
 struct FocusTarget {
     panel_id: String,
     node_id: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct TextInputEditorState {
+    cursor_chars: usize,
+    preedit: Option<String>,
+}
+
+#[derive(Clone, Copy)]
+struct PanelRenderState<'a> {
+    focused_target: Option<&'a FocusTarget>,
+    text_input_states: &'a BTreeMap<(String, String), TextInputEditorState>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -157,6 +178,7 @@ pub struct UiShell {
     panel_scroll_offset: usize,
     panel_content_height: usize,
     focused_target: Option<FocusTarget>,
+    text_input_states: BTreeMap<(String, String), TextInputEditorState>,
 }
 
 impl UiShell {
@@ -173,6 +195,7 @@ impl UiShell {
             panel_scroll_offset: 0,
             panel_content_height: 0,
             focused_target: None,
+            text_input_states: BTreeMap::new(),
         }
     }
 
@@ -300,6 +323,11 @@ impl UiShell {
         }
 
         self.focused_target = Some(next);
+        if let Some(focused) = self.focused_target.clone()
+            && let Some((value, _)) = self.text_input_state_for_target(&focused)
+        {
+            self.ensure_text_input_editor_state(&focused, &value);
+        }
         self.panel_content_dirty = true;
         true
     }
@@ -324,7 +352,7 @@ impl UiShell {
     }
 
     pub fn scroll_panels(&mut self, delta_lines: i32, viewport_height: usize) -> bool {
-        let delta_pixels = delta_lines.saturating_mul(text_line_height() as i32);
+        let delta_pixels = delta_lines.saturating_mul(PANEL_SCROLL_PIXELS_PER_LINE);
         let max_offset = self.max_panel_scroll_offset(viewport_height) as i32;
         let next_offset = (self.panel_scroll_offset as i32 + delta_pixels).clamp(0, max_offset);
         let next_offset = next_offset as usize;
@@ -353,6 +381,149 @@ impl UiShell {
             .collect();
         self.panel_content_dirty = true;
         actions
+    }
+
+    pub fn has_focused_text_input(&self) -> bool {
+        self.focused_target
+            .as_ref()
+            .and_then(|target| self.text_input_state_for_target(target))
+            .is_some()
+    }
+
+    pub fn insert_text_into_focused_input(&mut self, text: &str) -> bool {
+        let Some(target) = self.focused_target.clone() else {
+            return false;
+        };
+        let Some((current, input_mode)) = self.text_input_state_for_target(&target) else {
+            return false;
+        };
+        let filtered = filter_text_input(text, input_mode);
+        if filtered.is_empty() {
+            return false;
+        }
+        let mut editor_state = self.editor_state_for_target(&target, &current);
+        let next_value = insert_text_at_char_index(&current, editor_state.cursor_chars, &filtered);
+        editor_state.cursor_chars += text_char_len(&filtered);
+        editor_state.preedit = None;
+        self.text_input_states
+            .insert(text_input_state_key(&target), editor_state);
+        self.handle_panel_event(&PanelEvent::SetText {
+            panel_id: target.panel_id,
+            node_id: target.node_id,
+            value: next_value,
+        });
+        true
+    }
+
+    pub fn backspace_focused_input(&mut self) -> bool {
+        let Some(target) = self.focused_target.clone() else {
+            return false;
+        };
+        let Some((mut current, _)) = self.text_input_state_for_target(&target) else {
+            return false;
+        };
+        let mut editor_state = self.editor_state_for_target(&target, &current);
+        if editor_state.preedit.take().is_some() {
+            self.text_input_states
+                .insert(text_input_state_key(&target), editor_state);
+            self.panel_content_dirty = true;
+            return true;
+        }
+        if current.is_empty() || editor_state.cursor_chars == 0 {
+            return false;
+        }
+        current = remove_char_before_char_index(&current, editor_state.cursor_chars);
+        editor_state.cursor_chars -= 1;
+        self.text_input_states
+            .insert(text_input_state_key(&target), editor_state);
+        self.handle_panel_event(&PanelEvent::SetText {
+            panel_id: target.panel_id,
+            node_id: target.node_id,
+            value: current,
+        });
+        true
+    }
+
+    pub fn delete_focused_input(&mut self) -> bool {
+        let Some(target) = self.focused_target.clone() else {
+            return false;
+        };
+        let Some((current, _)) = self.text_input_state_for_target(&target) else {
+            return false;
+        };
+        let mut editor_state = self.editor_state_for_target(&target, &current);
+        if editor_state.preedit.take().is_some() {
+            self.text_input_states
+                .insert(text_input_state_key(&target), editor_state);
+            self.panel_content_dirty = true;
+            return true;
+        }
+        if editor_state.cursor_chars >= text_char_len(&current) {
+            return false;
+        }
+        let next_value = remove_char_at_char_index(&current, editor_state.cursor_chars);
+        self.text_input_states
+            .insert(text_input_state_key(&target), editor_state);
+        self.handle_panel_event(&PanelEvent::SetText {
+            panel_id: target.panel_id,
+            node_id: target.node_id,
+            value: next_value,
+        });
+        true
+    }
+
+    pub fn move_focused_input_cursor(&mut self, delta_chars: isize) -> bool {
+        let Some(target) = self.focused_target.clone() else {
+            return false;
+        };
+        let Some((current, _)) = self.text_input_state_for_target(&target) else {
+            return false;
+        };
+        let mut editor_state = self.editor_state_for_target(&target, &current);
+        editor_state.preedit = None;
+        let max_chars = text_char_len(&current) as isize;
+        let next_cursor = (editor_state.cursor_chars as isize + delta_chars).clamp(0, max_chars);
+        let next_cursor = next_cursor as usize;
+        if next_cursor == editor_state.cursor_chars {
+            return false;
+        }
+        editor_state.cursor_chars = next_cursor;
+        self.text_input_states
+            .insert(text_input_state_key(&target), editor_state);
+        self.panel_content_dirty = true;
+        true
+    }
+
+    pub fn move_focused_input_cursor_to_start(&mut self) -> bool {
+        self.set_focused_input_cursor(0)
+    }
+
+    pub fn move_focused_input_cursor_to_end(&mut self) -> bool {
+        let Some(target) = self.focused_target.clone() else {
+            return false;
+        };
+        let Some((current, _)) = self.text_input_state_for_target(&target) else {
+            return false;
+        };
+        self.set_focused_input_cursor(text_char_len(&current))
+    }
+
+    pub fn set_focused_input_preedit(&mut self, preedit: Option<String>) -> bool {
+        let Some(target) = self.focused_target.clone() else {
+            return false;
+        };
+        let Some((current, _)) = self.text_input_state_for_target(&target) else {
+            return false;
+        };
+        let mut editor_state = self.editor_state_for_target(&target, &current);
+        if editor_state.preedit == preedit {
+            return false;
+        }
+        editor_state.preedit = preedit.filter(|value| !value.is_empty());
+        self.text_input_states
+            .insert(text_input_state_key(&target), editor_state);
+        self.panel_content_dirty = true;
+        true
     }
 
     pub fn move_panel(&mut self, panel_id: &str, direction: PanelMoveDirection) -> bool {
@@ -484,7 +655,10 @@ impl UiShell {
                 PANEL_OUTER_PADDING,
                 cursor_y,
                 panel_width,
-                self.focused_target.as_ref(),
+                PanelRenderState {
+                    focused_target: self.focused_target.as_ref(),
+                    text_input_states: &self.text_input_states,
+                },
             );
             cursor_y += panel_height + PANEL_OUTER_PADDING;
         }
@@ -528,6 +702,63 @@ impl UiShell {
 
     fn max_panel_scroll_offset(&self, viewport_height: usize) -> usize {
         self.panel_content_height.saturating_sub(viewport_height)
+    }
+
+    fn text_input_state_for_target(&self, target: &FocusTarget) -> Option<(String, TextInputMode)> {
+        self.panel_trees()
+            .into_iter()
+            .find(|tree| tree.id == target.panel_id)
+            .and_then(|tree| find_text_input_value(&tree.children, &target.node_id))
+    }
+
+    fn ensure_text_input_editor_state(&mut self, target: &FocusTarget, current_value: &str) {
+        let max_chars = text_char_len(current_value);
+        self.text_input_states
+            .entry(text_input_state_key(target))
+            .and_modify(|state| {
+                state.cursor_chars = state.cursor_chars.min(max_chars);
+            })
+            .or_insert(TextInputEditorState {
+                cursor_chars: max_chars,
+                preedit: None,
+            });
+    }
+
+    fn editor_state_for_target(
+        &self,
+        target: &FocusTarget,
+        current_value: &str,
+    ) -> TextInputEditorState {
+        let mut state = self
+            .text_input_states
+            .get(&text_input_state_key(target))
+            .cloned()
+            .unwrap_or(TextInputEditorState {
+                cursor_chars: text_char_len(current_value),
+                preedit: None,
+            });
+        state.cursor_chars = state.cursor_chars.min(text_char_len(current_value));
+        state
+    }
+
+    fn set_focused_input_cursor(&mut self, cursor_chars: usize) -> bool {
+        let Some(target) = self.focused_target.clone() else {
+            return false;
+        };
+        let Some((current, _)) = self.text_input_state_for_target(&target) else {
+            return false;
+        };
+        let mut editor_state = self.editor_state_for_target(&target, &current);
+        let next_cursor = cursor_chars.min(text_char_len(&current));
+        if next_cursor == editor_state.cursor_chars && editor_state.preedit.is_none() {
+            return false;
+        }
+        editor_state.cursor_chars = next_cursor;
+        editor_state.preedit = None;
+        self.text_input_states
+            .insert(text_input_state_key(&target), editor_state);
+        self.panel_content_dirty = true;
+        true
     }
 
     fn remove_loaded_panels(&mut self) {
@@ -694,13 +925,17 @@ impl UiShell {
 
 fn event_panel_id(event: &PanelEvent) -> &str {
     match event {
-        PanelEvent::Activate { panel_id, .. } | PanelEvent::SetValue { panel_id, .. } => panel_id,
+        PanelEvent::Activate { panel_id, .. }
+        | PanelEvent::SetValue { panel_id, .. }
+        | PanelEvent::SetText { panel_id, .. } => panel_id,
     }
 }
 
 fn workspace_panel_actions(nodes: &[PanelNode], event: &PanelEvent) -> Vec<HostAction> {
     let target_id = match event {
-        PanelEvent::Activate { node_id, .. } | PanelEvent::SetValue { node_id, .. } => node_id,
+        PanelEvent::Activate { node_id, .. }
+        | PanelEvent::SetValue { node_id, .. }
+        | PanelEvent::SetText { node_id, .. } => node_id,
     };
     find_actions_in_nodes_local(nodes, target_id)
 }
@@ -726,6 +961,12 @@ fn find_actions_in_node_local(node: &PanelNode, target_id: &str) -> Option<Vec<H
         PanelNode::Button { .. } => None,
         PanelNode::Slider { id, action, .. } if id == target_id => Some(vec![action.clone()]),
         PanelNode::Slider { .. } => None,
+        PanelNode::TextInput {
+            id,
+            action: Some(action),
+            ..
+        } if id == target_id => Some(vec![action.clone()]),
+        PanelNode::TextInput { .. } => None,
     }
 }
 
@@ -824,10 +1065,21 @@ impl DslPanelPlugin {
     fn resolve_handler_action(&self, event: &PanelEvent) -> Option<HostAction> {
         let tree = self.evaluate_tree();
         match event {
-            PanelEvent::Activate { node_id, .. } | PanelEvent::SetValue { node_id, .. } => {
-                find_panel_action(&tree.children, node_id)
-            }
+            PanelEvent::Activate { node_id, .. }
+            | PanelEvent::SetValue { node_id, .. }
+            | PanelEvent::SetText { node_id, .. } => find_panel_action(&tree.children, node_id),
         }
+    }
+
+    fn apply_text_input_event(&mut self, node_id: &str, value: &str) -> bool {
+        let tree = self.evaluate_tree();
+        let Some((binding, input_mode)) = find_text_input_binding(&tree.children, node_id) else {
+            return false;
+        };
+        let _ = input_mode;
+        let next_value = Value::String(value.to_string());
+        apply_state_patch(&mut self.state, &StatePatch::set(binding, next_value));
+        true
     }
 }
 
@@ -872,12 +1124,19 @@ impl PanelPlugin for DslPanelPlugin {
     }
 
     fn handle_event(&mut self, event: &PanelEvent) -> Vec<HostAction> {
+        let mut updated_text = false;
+        if let PanelEvent::SetText { node_id, value, .. } = event {
+            updated_text = self.apply_text_input_event(node_id, value);
+        }
         let Some(HostAction::InvokePanelHandler {
             panel_id,
             handler_name,
             event_kind,
         }) = self.resolve_handler_action(event)
         else {
+            if updated_text {
+                self.diagnostics.clear();
+            }
             return Vec::new();
         };
         if panel_id != self.id {
@@ -887,6 +1146,7 @@ impl PanelPlugin for DslPanelPlugin {
         let event_payload = match event {
             PanelEvent::Activate { .. } => json!({}),
             PanelEvent::SetValue { value, .. } => json!({ "value": value }),
+            PanelEvent::SetText { value, .. } => json!({ "value": value }),
         };
         let result = match self.runtime.handle_event(&PanelEventRequest {
             handler_name,
@@ -1021,6 +1281,35 @@ fn convert_dsl_view_node(
                 value: attribute_usize(&element.attributes, "value", context).unwrap_or(0),
                 fill_color: attribute_string(&element.attributes, "fill", context)
                     .and_then(|value| parse_hex_color(&value)),
+            }],
+            "input" => vec![PanelNode::TextInput {
+                id: node_id_for(element, context, "input"),
+                label: attribute_string(&element.attributes, "label", context).unwrap_or_default(),
+                value: attribute_string(&element.attributes, "value", context).unwrap_or_default(),
+                placeholder: attribute_string(&element.attributes, "placeholder", context)
+                    .unwrap_or_default(),
+                binding_path: attribute_string(&element.attributes, "bind", context)
+                    .unwrap_or_default(),
+                action: element
+                    .attributes
+                    .get("on:change")
+                    .and_then(DslAttrValue::as_string)
+                    .map(|handler_name| HostAction::InvokePanelHandler {
+                        panel_id: context.panel_id.clone(),
+                        handler_name: handler_name.to_string(),
+                        event_kind: "change".to_string(),
+                    }),
+                input_mode: attribute_string(&element.attributes, "mode", context)
+                    .map(|mode| {
+                        if mode.eq_ignore_ascii_case("numeric")
+                            || mode.eq_ignore_ascii_case("number")
+                        {
+                            TextInputMode::Numeric
+                        } else {
+                            TextInputMode::Text
+                        }
+                    })
+                    .unwrap_or(TextInputMode::Text),
             }],
             "separator" => vec![PanelNode::Text {
                 id: node_id_for(element, context, "separator"),
@@ -1387,9 +1676,39 @@ fn command_descriptors_to_actions(
 fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, String> {
     match descriptor.name.as_str() {
         "project.new" => Ok(Command::NewDocument),
+        "project.new_sized" => {
+            let size = descriptor
+                .payload
+                .get("size")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "project.new_sized is missing payload.size".to_string())?;
+            let (width, height) = parse_document_size(size)
+                .ok_or_else(|| format!("invalid project.new_sized payload: {size}"))?;
+            Ok(Command::NewDocumentSized { width, height })
+        }
         "project.save" => Ok(Command::SaveProject),
         "project.save_as" => Ok(Command::SaveProjectAs),
+        "project.save_as_path" => {
+            let path = descriptor
+                .payload
+                .get("path")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "project.save_as_path is missing payload.path".to_string())?;
+            Ok(Command::SaveProjectToPath {
+                path: path.to_string(),
+            })
+        }
         "project.load" => Ok(Command::LoadProject),
+        "project.load_path" => {
+            let path = descriptor
+                .payload
+                .get("path")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "project.load_path is missing payload.path".to_string())?;
+            Ok(Command::LoadProjectFromPath {
+                path: path.to_string(),
+            })
+        }
         "tool.set_active" => {
             let tool = descriptor
                 .payload
@@ -1428,6 +1747,30 @@ fn parse_hex_color(input: &str) -> Option<ColorRgba8> {
     Some(ColorRgba8::new(r, g, b, 0xff))
 }
 
+fn parse_document_size(input: &str) -> Option<(usize, usize)> {
+    let normalized = input.replace(['×', ',', ';'], "x");
+    let parts = normalized
+        .split(|ch: char| ch == 'x' || ch.is_whitespace())
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    if parts.len() != 2 {
+        return None;
+    }
+
+    let width = parts[0].parse::<usize>().ok()?;
+    let height = parts[1].parse::<usize>().ok()?;
+    if width == 0
+        || height == 0
+        || width > MAX_DOCUMENT_DIMENSION
+        || height > MAX_DOCUMENT_DIMENSION
+        || width.saturating_mul(height) > MAX_DOCUMENT_PIXELS
+    {
+        return None;
+    }
+
+    Some((width, height))
+}
+
 fn find_panel_action(nodes: &[PanelNode], target_id: &str) -> Option<HostAction> {
     for node in nodes {
         match node {
@@ -1440,10 +1783,76 @@ fn find_panel_action(nodes: &[PanelNode], target_id: &str) -> Option<HostAction>
             }
             PanelNode::Button { id, action, .. } if id == target_id => return Some(action.clone()),
             PanelNode::Slider { id, action, .. } if id == target_id => return Some(action.clone()),
+            PanelNode::TextInput {
+                id,
+                action: Some(action),
+                ..
+            } if id == target_id => return Some(action.clone()),
             PanelNode::Text { .. }
             | PanelNode::ColorPreview { .. }
             | PanelNode::Button { .. }
-            | PanelNode::Slider { .. } => {}
+            | PanelNode::Slider { .. }
+            | PanelNode::TextInput { .. } => {}
+        }
+    }
+    None
+}
+
+fn find_text_input_binding(
+    nodes: &[PanelNode],
+    target_id: &str,
+) -> Option<(String, TextInputMode)> {
+    for node in nodes {
+        match node {
+            PanelNode::Column { children, .. }
+            | PanelNode::Row { children, .. }
+            | PanelNode::Section { children, .. } => {
+                if let Some(binding) = find_text_input_binding(children, target_id) {
+                    return Some(binding);
+                }
+            }
+            PanelNode::TextInput {
+                id,
+                binding_path,
+                input_mode,
+                ..
+            } if id == target_id => {
+                if binding_path.is_empty() {
+                    return None;
+                }
+                return Some((binding_path.clone(), *input_mode));
+            }
+            PanelNode::Text { .. }
+            | PanelNode::ColorPreview { .. }
+            | PanelNode::Button { .. }
+            | PanelNode::Slider { .. }
+            | PanelNode::TextInput { .. } => {}
+        }
+    }
+    None
+}
+
+fn find_text_input_value(nodes: &[PanelNode], target_id: &str) -> Option<(String, TextInputMode)> {
+    for node in nodes {
+        match node {
+            PanelNode::Column { children, .. }
+            | PanelNode::Row { children, .. }
+            | PanelNode::Section { children, .. } => {
+                if let Some(value) = find_text_input_value(children, target_id) {
+                    return Some(value);
+                }
+            }
+            PanelNode::TextInput {
+                id,
+                value,
+                input_mode,
+                ..
+            } if id == target_id => return Some((value.clone(), *input_mode)),
+            PanelNode::Text { .. }
+            | PanelNode::ColorPreview { .. }
+            | PanelNode::Button { .. }
+            | PanelNode::Slider { .. }
+            | PanelNode::TextInput { .. } => {}
         }
     }
     None
@@ -1461,9 +1870,79 @@ fn collect_focus_targets(panel_id: &str, nodes: &[PanelNode], targets: &mut Vec<
                 panel_id: panel_id.to_string(),
                 node_id: id.clone(),
             }),
+            PanelNode::TextInput { id, .. } => targets.push(FocusTarget {
+                panel_id: panel_id.to_string(),
+                node_id: id.clone(),
+            }),
             PanelNode::Text { .. } | PanelNode::ColorPreview { .. } | PanelNode::Slider { .. } => {}
         }
     }
+}
+
+fn filter_text_input(text: &str, input_mode: TextInputMode) -> String {
+    match input_mode {
+        TextInputMode::Text => text
+            .chars()
+            .filter(|character| !character.is_control())
+            .collect(),
+        TextInputMode::Numeric => text
+            .chars()
+            .filter(|character| character.is_ascii_digit())
+            .collect(),
+    }
+}
+
+fn text_input_state_key(target: &FocusTarget) -> (String, String) {
+    (target.panel_id.clone(), target.node_id.clone())
+}
+
+fn text_char_len(text: &str) -> usize {
+    text.chars().count()
+}
+
+fn byte_index_for_char_index(text: &str, char_index: usize) -> usize {
+    text.char_indices()
+        .nth(char_index)
+        .map(|(index, _)| index)
+        .unwrap_or(text.len())
+}
+
+fn insert_text_at_char_index(text: &str, char_index: usize, inserted: &str) -> String {
+    let split_at = byte_index_for_char_index(text, char_index);
+    let mut next = String::with_capacity(text.len() + inserted.len());
+    next.push_str(&text[..split_at]);
+    next.push_str(inserted);
+    next.push_str(&text[split_at..]);
+    next
+}
+
+fn remove_char_before_char_index(text: &str, char_index: usize) -> String {
+    if char_index == 0 {
+        return text.to_string();
+    }
+    let start = byte_index_for_char_index(text, char_index - 1);
+    let end = byte_index_for_char_index(text, char_index);
+    remove_byte_range(text, start, end)
+}
+
+fn remove_char_at_char_index(text: &str, char_index: usize) -> String {
+    let start = byte_index_for_char_index(text, char_index);
+    let end = byte_index_for_char_index(text, char_index + 1);
+    if start >= end {
+        return text.to_string();
+    }
+    remove_byte_range(text, start, end)
+}
+
+fn remove_byte_range(text: &str, start: usize, end: usize) -> String {
+    let mut next = String::with_capacity(text.len().saturating_sub(end.saturating_sub(start)));
+    next.push_str(&text[..start]);
+    next.push_str(&text[end..]);
+    next
+}
+
+fn prefix_for_char_count(text: &str, char_count: usize) -> String {
+    text.chars().take(char_count).collect()
 }
 
 fn viewport_panel_surface(
@@ -1591,6 +2070,14 @@ fn measure_node(node: &PanelNode, available_width: usize) -> usize {
         PanelNode::ColorPreview { .. } => COLOR_PREVIEW_HEIGHT,
         PanelNode::Button { .. } => BUTTON_HEIGHT,
         PanelNode::Slider { .. } => SLIDER_HEIGHT,
+        PanelNode::TextInput { label, .. } => {
+            let label_height = if label.is_empty() {
+                0
+            } else {
+                measure_text(label, available_width) + 4
+            };
+            label_height + INPUT_BOX_HEIGHT
+        }
     }
 }
 
@@ -1600,7 +2087,7 @@ fn draw_panel_tree(
     x: usize,
     y: usize,
     width: usize,
-    focused_target: Option<&FocusTarget>,
+    render_state: PanelRenderState<'_>,
 ) {
     let inner_x = x + PANEL_INNER_PADDING;
     let inner_width = width.saturating_sub(PANEL_INNER_PADDING * 2);
@@ -1622,7 +2109,7 @@ fn draw_panel_tree(
             inner_x,
             cursor_y,
             inner_width,
-            focused_target,
+            render_state,
         );
         cursor_y += used + NODE_GAP;
     }
@@ -1635,7 +2122,7 @@ fn draw_node(
     x: usize,
     y: usize,
     available_width: usize,
-    focused_target: Option<&FocusTarget>,
+    render_state: PanelRenderState<'_>,
 ) -> usize {
     match node {
         PanelNode::Column { children, .. } => {
@@ -1648,7 +2135,7 @@ fn draw_node(
                     x,
                     cursor_y,
                     available_width,
-                    focused_target,
+                    render_state,
                 );
                 if index + 1 != children.len() {
                     cursor_y += NODE_GAP;
@@ -1674,7 +2161,7 @@ fn draw_node(
                     cursor_x,
                     y,
                     child_width,
-                    focused_target,
+                    render_state,
                 );
                 max_height = max_height.max(used);
                 cursor_x += child_width + child_gap;
@@ -1697,7 +2184,7 @@ fn draw_node(
                     child_x,
                     cursor_y,
                     child_width,
-                    focused_target,
+                    render_state,
                 );
                 if index + 1 != children.len() {
                     cursor_y += SECTION_GAP;
@@ -1747,7 +2234,8 @@ fn draw_node(
                 },
                 ColorRgba8::to_rgba8,
             );
-            let is_focused = focused_target
+            let is_focused = render_state
+                .focused_target
                 .is_some_and(|target| target.panel_id == panel_id && target.node_id == id.as_str());
             fill_rect(surface, x, y, available_width, BUTTON_HEIGHT, fill);
             stroke_rect(
@@ -1884,6 +2372,110 @@ fn draw_node(
                 },
             });
             SLIDER_HEIGHT
+        }
+        PanelNode::TextInput {
+            id,
+            label,
+            value,
+            placeholder,
+            binding_path: _,
+            ..
+        } => {
+            let is_focused = render_state
+                .focused_target
+                .is_some_and(|target| target.panel_id == panel_id && target.node_id == id.as_str());
+            let editor_state = render_state
+                .text_input_states
+                .get(&(panel_id.to_string(), id.clone()))
+                .cloned()
+                .unwrap_or(TextInputEditorState {
+                    cursor_chars: text_char_len(value),
+                    preedit: None,
+                });
+            let label_height = if label.is_empty() {
+                0
+            } else {
+                draw_wrapped_text(surface, x, y, label, BODY_TEXT, available_width) + 4
+            };
+            let box_y = y + label_height;
+            fill_rect(
+                surface,
+                x,
+                box_y,
+                available_width,
+                INPUT_BOX_HEIGHT,
+                INPUT_BACKGROUND,
+            );
+            stroke_rect(
+                surface,
+                x,
+                box_y,
+                available_width,
+                INPUT_BOX_HEIGHT,
+                INPUT_BORDER,
+            );
+            if is_focused && available_width > 2 && INPUT_BOX_HEIGHT > 2 {
+                stroke_rect(
+                    surface,
+                    x + 1,
+                    box_y + 1,
+                    available_width - 2,
+                    INPUT_BOX_HEIGHT - 2,
+                    BUTTON_FOCUS_BORDER,
+                );
+            }
+            let display_text = if let Some(preedit) = editor_state.preedit.as_deref() {
+                insert_text_at_char_index(value, editor_state.cursor_chars, preedit)
+            } else {
+                value.clone()
+            };
+            let text_to_draw = if display_text.is_empty() {
+                placeholder.clone()
+            } else {
+                display_text.clone()
+            };
+            draw_text_rgba(
+                &mut surface.pixels,
+                surface.width,
+                surface.height,
+                x + 6,
+                box_y + 7,
+                &text_to_draw,
+                if display_text.is_empty() {
+                    INPUT_PLACEHOLDER
+                } else {
+                    BUTTON_TEXT
+                },
+            );
+            if is_focused {
+                let caret_char_index = editor_state.cursor_chars
+                    + editor_state
+                        .preedit
+                        .as_deref()
+                        .map(text_char_len)
+                        .unwrap_or(0);
+                let caret_prefix = prefix_for_char_count(&display_text, caret_char_index);
+                let caret_x = (x + 6 + measure_text_width(&caret_prefix))
+                    .min(x + available_width.saturating_sub(3));
+                fill_rect(
+                    surface,
+                    caret_x,
+                    box_y + 4,
+                    1,
+                    INPUT_BOX_HEIGHT.saturating_sub(8).max(1),
+                    BUTTON_FOCUS_BORDER,
+                );
+            }
+            surface.hit_regions.push(PanelHitRegion {
+                x,
+                y: box_y,
+                width: available_width,
+                height: INPUT_BOX_HEIGHT,
+                panel_id: panel_id.to_string(),
+                node_id: id.clone(),
+                kind: PanelHitKind::Activate,
+            });
+            label_height + INPUT_BOX_HEIGHT
         }
     }
 }
@@ -2114,6 +2706,66 @@ view {
         i32.const 12
         call $command))"#;
 
+    const SAMPLE_INPUT_PANEL: &str = r#"
+panel {
+    id: "builtin.input-test"
+    title: "Input Test"
+    version: 1
+}
+
+permissions {
+    read.document
+}
+
+runtime {
+    wasm: "input_test.wasm"
+}
+
+state {
+    width: string = "64"
+}
+
+view {
+    <column gap=8 padding=8>
+        <section title="Fields">
+            <input id="input.width" label="Width" value={state.width} bind="width" mode="numeric" placeholder="64" />
+        </section>
+    </column>
+}
+"#;
+
+    const SAMPLE_INPUT_WAT: &str = r#"(module
+    (memory (export "memory") 1)
+    (func (export "panel_init")))"#;
+
+    const SAMPLE_TEXT_INPUT_PANEL: &str = r#"
+panel {
+    id: "builtin.text-input-test"
+    title: "Text Input Test"
+    version: 1
+}
+
+permissions {
+    read.document
+}
+
+runtime {
+    wasm: "input_test.wasm"
+}
+
+state {
+    text: string = "ab"
+}
+
+view {
+    <column gap=8 padding=8>
+        <section title="Fields">
+            <input id="input.text" label="Text" value={state.text} bind="text" placeholder="text" />
+        </section>
+    </column>
+}
+"#;
+
     /// `UiShell` の更新配送を確認するためのダミーパネル。
     struct TestPanel {
         updates: usize,
@@ -2212,7 +2864,8 @@ view {
                 | PanelNode::Section { children, .. } => has_brush_button(children),
                 PanelNode::Text { .. }
                 | PanelNode::ColorPreview { .. }
-                | PanelNode::Slider { .. } => false,
+                | PanelNode::Slider { .. }
+                | PanelNode::TextInput { .. } => false,
             })
         }
 
@@ -2282,9 +2935,10 @@ view {
                 PanelNode::Column { children, .. }
                 | PanelNode::Row { children, .. }
                 | PanelNode::Section { children, .. } => has_preview(children),
-                PanelNode::Text { .. } | PanelNode::Button { .. } | PanelNode::Slider { .. } => {
-                    false
-                }
+                PanelNode::Text { .. }
+                | PanelNode::Button { .. }
+                | PanelNode::Slider { .. }
+                | PanelNode::TextInput { .. } => false,
             })
         }
 
@@ -2350,11 +3004,111 @@ view {
             ))
         );
 
-        assert!(shell.focus_panel_node("builtin.app-actions", "app.new"));
+        assert!(shell.focus_panel_node("builtin.app-actions", "app.save"));
         assert_eq!(
             shell.activate_focused(),
-            vec![HostAction::DispatchCommand(Command::NewDocument)]
+            vec![HostAction::DispatchCommand(Command::SaveProject)]
         );
+    }
+
+    #[test]
+    fn app_actions_panel_exposes_inline_new_document_inputs() {
+        let temp_dir = unique_test_dir();
+        fs::create_dir_all(&temp_dir).expect("temp dir created");
+        fs::write(temp_dir.join("input.altp-panel"), SAMPLE_INPUT_PANEL)
+            .expect("dsl panel written");
+        fs::write(temp_dir.join("input_test.wasm"), SAMPLE_INPUT_WAT).expect("wasm sample written");
+
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+        assert!(shell.load_panel_directory(&temp_dir).is_empty());
+
+        let app_panel = shell
+            .panel_trees()
+            .into_iter()
+            .find(|panel| panel.id == "builtin.input-test")
+            .expect("app panel exists");
+        assert!(tree_contains_text_input(
+            &app_panel.children,
+            "input.width",
+            "64"
+        ));
+    }
+
+    #[test]
+    fn focused_text_input_updates_bound_state() {
+        let temp_dir = unique_test_dir();
+        fs::create_dir_all(&temp_dir).expect("temp dir created");
+        fs::write(temp_dir.join("input.altp-panel"), SAMPLE_INPUT_PANEL)
+            .expect("dsl panel written");
+        fs::write(temp_dir.join("input_test.wasm"), SAMPLE_INPUT_WAT).expect("wasm sample written");
+
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+        assert!(shell.load_panel_directory(&temp_dir).is_empty());
+
+        assert!(shell.focus_panel_node("builtin.input-test", "input.width"));
+        assert!(shell.backspace_focused_input());
+        assert!(shell.backspace_focused_input());
+        assert!(shell.insert_text_into_focused_input("320"));
+
+        let app_panel = shell
+            .panel_trees()
+            .into_iter()
+            .find(|panel| panel.id == "builtin.input-test")
+            .expect("app panel exists");
+        assert!(tree_contains_text_input(
+            &app_panel.children,
+            "input.width",
+            "320"
+        ));
+    }
+
+    #[test]
+    fn focused_text_input_supports_cursor_movement_and_space() {
+        let temp_dir = unique_test_dir();
+        fs::create_dir_all(&temp_dir).expect("temp dir created");
+        fs::write(temp_dir.join("input.altp-panel"), SAMPLE_TEXT_INPUT_PANEL)
+            .expect("dsl panel written");
+        fs::write(temp_dir.join("input_test.wasm"), SAMPLE_INPUT_WAT).expect("wasm sample written");
+
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+        assert!(shell.load_panel_directory(&temp_dir).is_empty());
+
+        assert!(shell.focus_panel_node("builtin.text-input-test", "input.text"));
+        assert!(shell.insert_text_into_focused_input(" c"));
+        assert!(shell.move_focused_input_cursor(-1));
+        assert!(shell.backspace_focused_input());
+        assert!(shell.insert_text_into_focused_input("d"));
+
+        let app_panel = shell
+            .panel_trees()
+            .into_iter()
+            .find(|panel| panel.id == "builtin.text-input-test")
+            .expect("app panel exists");
+        assert!(tree_contains_text_input(
+            &app_panel.children,
+            "input.text",
+            "abdc"
+        ));
+    }
+
+    #[test]
+    fn focused_text_input_tracks_preedit_text() {
+        let temp_dir = unique_test_dir();
+        fs::create_dir_all(&temp_dir).expect("temp dir created");
+        fs::write(temp_dir.join("input.altp-panel"), SAMPLE_INPUT_PANEL)
+            .expect("dsl panel written");
+        fs::write(temp_dir.join("input_test.wasm"), SAMPLE_INPUT_WAT).expect("wasm sample written");
+
+        let mut shell = UiShell::new();
+        shell.update(&Document::default());
+        assert!(shell.load_panel_directory(&temp_dir).is_empty());
+
+        assert!(shell.focus_panel_node("builtin.input-test", "input.width"));
+        assert!(shell.set_focused_input_preedit(Some("12".to_string())));
+        assert!(shell.set_focused_input_preedit(None));
     }
 
     #[test]
@@ -2661,7 +3415,23 @@ view {
             | PanelNode::Section { children, .. } => tree_contains_text(children, target),
             PanelNode::ColorPreview { .. }
             | PanelNode::Button { .. }
-            | PanelNode::Slider { .. } => false,
+            | PanelNode::Slider { .. }
+            | PanelNode::TextInput { .. } => false,
+        })
+    }
+
+    fn tree_contains_text_input(nodes: &[PanelNode], target_id: &str, target_value: &str) -> bool {
+        nodes.iter().any(|node| match node {
+            PanelNode::TextInput { id, value, .. } => id == target_id && value == target_value,
+            PanelNode::Column { children, .. }
+            | PanelNode::Row { children, .. }
+            | PanelNode::Section { children, .. } => {
+                tree_contains_text_input(children, target_id, target_value)
+            }
+            PanelNode::ColorPreview { .. }
+            | PanelNode::Button { .. }
+            | PanelNode::Slider { .. }
+            | PanelNode::Text { .. } => false,
         })
     }
 
@@ -2677,9 +3447,10 @@ view {
             | PanelNode::Section { children, .. } => {
                 tree_contains_button_label(children, target, active)
             }
-            PanelNode::ColorPreview { .. } | PanelNode::Slider { .. } | PanelNode::Text { .. } => {
-                false
-            }
+            PanelNode::ColorPreview { .. }
+            | PanelNode::Slider { .. }
+            | PanelNode::Text { .. }
+            | PanelNode::TextInput { .. } => false,
         })
     }
 

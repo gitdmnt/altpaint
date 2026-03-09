@@ -39,6 +39,10 @@ pub enum Command {
     SaveProject,
     /// 保存先を選んで現在のドキュメントを保存する。
     SaveProjectAs,
+    /// 指定パスへ現在のドキュメントを保存する。
+    SaveProjectToPath { path: String },
     /// 既定パスからドキュメントを読み込む。
     LoadProject,
+    /// 指定パスからドキュメントを読み込む。
+    LoadProjectFromPath { path: String },
 }

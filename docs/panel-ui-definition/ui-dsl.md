@@ -23,6 +23,7 @@
 - `.altp-panel` の parser / validator / normalized IR は実装済み
 - `runtime { wasm: ... }` と handler binding は実装済み
 - `ui-shell` は DSL panel をロードし、`PanelTree` へ正規化して表示できる
+- `input` ノードによるホスト描画テキスト入力は実装済み
 - `plugins/phase6-sample/panel.altp-panel` で sample panel の表示と操作を確認できる
 
 一方で、より広い式評価、追加 widget、外部 plugin 向け権限本格化はフェーズ7以降の作業である。
@@ -159,6 +160,7 @@ view {
 - `text`
 - `button`
 - `toggle`
+- `input`
 - `separator`
 - `spacer`
 - `when`
@@ -167,7 +169,6 @@ view {
 
 - `list`
 - `for`
-- `input`
 - `select`
 
 ## 既存ビルトイン移植を前提にした必要機能

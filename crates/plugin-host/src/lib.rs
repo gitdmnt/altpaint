@@ -123,6 +123,88 @@ impl WasmPanelRuntime {
         linker
             .func_wrap(
                 "host",
+                "state_get_string_len",
+                |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| -> i32 {
+                    let Some(path) = read_utf8(&mut caller, ptr, len) else {
+                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
+                            "failed to read state path for string len",
+                        ));
+                        return 0;
+                    };
+                    caller
+                        .data()
+                        .current_request
+                        .as_ref()
+                        .and_then(|request| lookup_json_path(&request.state_snapshot, &path))
+                        .and_then(Value::as_str)
+                        .map(|value| value.len() as i32)
+                        .unwrap_or_default()
+                },
+            )
+            .map_err(|error| PluginHostError::Instantiate {
+                path: path.clone(),
+                message: error.to_string(),
+            })?;
+        linker
+            .func_wrap(
+                "host",
+                "state_get_string_copy",
+                |mut caller: Caller<'_, RuntimeCollector>,
+                 path_ptr: i32,
+                 path_len: i32,
+                 buffer_ptr: i32,
+                 buffer_len: i32| {
+                    let Some(path) = read_utf8(&mut caller, path_ptr, path_len) else {
+                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
+                            "failed to read state path for string copy",
+                        ));
+                        return;
+                    };
+                    let Some(value) = caller
+                        .data()
+                        .current_request
+                        .as_ref()
+                        .and_then(|request| lookup_json_path(&request.state_snapshot, &path))
+                        .and_then(Value::as_str)
+                        .map(ToString::to_string)
+                    else {
+                        return;
+                    };
+                    let Some(memory) = current_memory(&mut caller) else {
+                        caller
+                            .data_mut()
+                            .result
+                            .diagnostics
+                            .push(Diagnostic::error("missing wasm memory for string copy"));
+                        return;
+                    };
+                    if buffer_ptr < 0 || buffer_len < 0 {
+                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
+                            "invalid buffer range for string copy",
+                        ));
+                        return;
+                    }
+                    let data = memory.data_mut(&mut caller);
+                    let start = buffer_ptr as usize;
+                    let end = start.saturating_add(buffer_len as usize).min(data.len());
+                    let Some(target) = data.get_mut(start..end) else {
+                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
+                            "buffer range out of bounds for string copy",
+                        ));
+                        return;
+                    };
+                    let bytes = value.as_bytes();
+                    let count = bytes.len().min(target.len());
+                    target[..count].copy_from_slice(&bytes[..count]);
+                },
+            )
+            .map_err(|error| PluginHostError::Instantiate {
+                path: path.clone(),
+                message: error.to_string(),
+            })?;
+        linker
+            .func_wrap(
+                "host",
                 "command",
                 |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| {
                     if let Some(name) = read_utf8(&mut caller, ptr, len) {
@@ -380,6 +462,8 @@ mod tests {
     const SAMPLE_WAT: &str = r#"(module
   (import "host" "state_toggle" (func $state_toggle (param i32 i32)))
   (import "host" "state_set_bool" (func $state_set_bool (param i32 i32 i32)))
+    (import "host" "state_get_string_len" (func $state_get_string_len (param i32 i32) (result i32)))
+    (import "host" "state_get_string_copy" (func $state_get_string_copy (param i32 i32 i32 i32)))
   (import "host" "command" (func $command (param i32 i32)))
   (import "host" "command_string" (func $command_string (param i32 i32 i32 i32 i32 i32)))
   (memory (export "memory") 1)
@@ -388,6 +472,7 @@ mod tests {
   (data (i32.const 32) "tool.set_active")
   (data (i32.const 64) "tool")
   (data (i32.const 80) "brush")
+    (data (i32.const 96) "save_path")
   (func (export "panel_init")
     i32.const 0
     i32.const 8
@@ -408,7 +493,12 @@ mod tests {
     i32.const 4
     i32.const 80
     i32.const 5
-    call $command_string))"#;
+        call $command_string)
+    (func (export "panel_handle_save_path_len")
+        i32.const 96
+        i32.const 9
+        call $state_get_string_len
+        drop))"#;
 
     #[test]
     fn runtime_initializes_state_and_emits_commands() {
@@ -459,6 +549,17 @@ mod tests {
             .payload
             .insert("tool".to_string(), Value::String("brush".to_string()));
         assert_eq!(brush.commands, vec![expected]);
+
+        let string_len = runtime
+            .handle_event(&PanelEventRequest {
+                handler_name: "save_path_len".to_string(),
+                event_kind: "click".to_string(),
+                event_payload: json!({}),
+                state_snapshot: json!({"save_path": "project.altp.json"}),
+                host_snapshot: json!({}),
+            })
+            .expect("string state handler runs");
+        assert!(string_len.diagnostics.is_empty());
     }
 
     fn write_temp_wat(contents: &str) -> PathBuf {

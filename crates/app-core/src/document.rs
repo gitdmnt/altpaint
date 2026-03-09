@@ -476,7 +476,11 @@ impl Document {
                 *self = Document::new(*width, *height);
                 None
             }
-            Command::SaveProject | Command::SaveProjectAs | Command::LoadProject => None,
+            Command::SaveProject
+            | Command::SaveProjectAs
+            | Command::SaveProjectToPath { .. }
+            | Command::LoadProject
+            | Command::LoadProjectFromPath { .. } => None,
         }
     }
 

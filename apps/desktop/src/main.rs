@@ -13,7 +13,8 @@ use canvas_bridge::{
 use plugin_api::{HostAction, PanelEvent};
 use std::collections::{BTreeMap, VecDeque};
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use storage::{load_project_from_path, save_project_to_path};
@@ -21,7 +22,7 @@ use ui_shell::{PanelSurface, UiShell, draw_text_rgba};
 use wgpu_canvas::{PresentTimings, UploadRegion, WgpuPresenter};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent};
+use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Window, WindowAttributes, WindowId};
@@ -46,9 +47,9 @@ const TEXT_SECONDARY: [u8; 4] = [0xd8, 0xd8, 0xd8, 0xff];
 const PERFORMANCE_SNAPSHOT_WINDOW: Duration = Duration::from_millis(1000);
 const INPUT_LATENCY_TARGET_MS: f64 = 10.0;
 const INPUT_SAMPLING_TARGET_HZ: f64 = 120.0;
-const DEFAULT_NEW_DOCUMENT_WIDTH: usize = 64;
-const DEFAULT_NEW_DOCUMENT_HEIGHT: usize = 64;
+#[cfg(test)]
 const MAX_DOCUMENT_DIMENSION: usize = 8192;
+#[cfg(test)]
 const MAX_DOCUMENT_PIXELS: usize = 16_777_216;
 
 fn default_panel_dir() -> PathBuf {
@@ -61,7 +62,6 @@ fn default_panel_dir() -> PathBuf {
 trait DesktopDialogs {
     fn pick_open_project_path(&self, current_path: &Path) -> Option<PathBuf>;
     fn pick_save_project_path(&self, current_path: &Path) -> Option<PathBuf>;
-    fn prompt_text(&self, title: &str, message: &str, default_value: &str) -> Option<String>;
     fn show_error(&self, title: &str, message: &str);
 }
 
@@ -69,26 +69,22 @@ struct NativeDesktopDialogs;
 
 impl DesktopDialogs for NativeDesktopDialogs {
     fn pick_open_project_path(&self, current_path: &Path) -> Option<PathBuf> {
-        let mut dialog = rfd::FileDialog::new().add_filter("altpaint project", &["json"]);
-        if let Some(directory) = current_path.parent() {
-            dialog = dialog.set_directory(directory);
-        }
-        dialog.pick_file()
+        tinyfiledialogs::open_file_dialog(
+            "Open Project",
+            &current_path.to_string_lossy(),
+            Some((&["*.altp.json", "*.json"], "altpaint project")),
+        )
+        .map(PathBuf::from)
     }
 
     fn pick_save_project_path(&self, current_path: &Path) -> Option<PathBuf> {
-        let mut dialog = rfd::FileDialog::new().add_filter("altpaint project", &["json"]);
-        if let Some(directory) = current_path.parent() {
-            dialog = dialog.set_directory(directory);
-        }
-        if let Some(file_name) = current_path.file_name().and_then(|value| value.to_str()) {
-            dialog = dialog.set_file_name(file_name);
-        }
-        dialog.save_file()
-    }
-
-    fn prompt_text(&self, title: &str, message: &str, default_value: &str) -> Option<String> {
-        tinyfiledialogs::input_box(title, message, default_value)
+        tinyfiledialogs::save_file_dialog_with_filter(
+            "Save Project",
+            &current_path.to_string_lossy(),
+            &["*.altp.json", "*.json"],
+            "altpaint project",
+        )
+        .map(PathBuf::from)
     }
 
     fn show_error(&self, title: &str, message: &str) {
@@ -104,6 +100,7 @@ fn normalize_project_path(path: PathBuf) -> PathBuf {
     }
 }
 
+#[cfg(test)]
 fn parse_document_size(input: &str) -> Option<(usize, usize)> {
     let normalized = input.replace(['×', ',', ';'], "x");
     let parts = normalized
@@ -865,7 +862,7 @@ impl DesktopApp {
                 });
                 self.dispatch_panel_event(event)
             }
-            PanelEvent::Activate { .. } => false,
+            PanelEvent::Activate { .. } | PanelEvent::SetText { .. } => false,
         }
     }
 
@@ -932,6 +929,66 @@ impl DesktopApp {
         dispatched
     }
 
+    fn insert_text_into_focused_panel_input(&mut self, text: &str) -> bool {
+        let changed = self.ui_shell.insert_text_into_focused_input(text);
+        if changed {
+            self.needs_panel_surface_refresh = true;
+        }
+        changed
+    }
+
+    fn backspace_focused_panel_input(&mut self) -> bool {
+        let changed = self.ui_shell.backspace_focused_input();
+        if changed {
+            self.needs_panel_surface_refresh = true;
+        }
+        changed
+    }
+
+    fn delete_focused_panel_input(&mut self) -> bool {
+        let changed = self.ui_shell.delete_focused_input();
+        if changed {
+            self.needs_panel_surface_refresh = true;
+        }
+        changed
+    }
+
+    fn move_focused_panel_input_cursor(&mut self, delta_chars: isize) -> bool {
+        let changed = self.ui_shell.move_focused_input_cursor(delta_chars);
+        if changed {
+            self.needs_panel_surface_refresh = true;
+        }
+        changed
+    }
+
+    fn move_focused_panel_input_cursor_to_start(&mut self) -> bool {
+        let changed = self.ui_shell.move_focused_input_cursor_to_start();
+        if changed {
+            self.needs_panel_surface_refresh = true;
+        }
+        changed
+    }
+
+    fn move_focused_panel_input_cursor_to_end(&mut self) -> bool {
+        let changed = self.ui_shell.move_focused_input_cursor_to_end();
+        if changed {
+            self.needs_panel_surface_refresh = true;
+        }
+        changed
+    }
+
+    fn set_focused_panel_input_preedit(&mut self, preedit: Option<String>) -> bool {
+        let changed = self.ui_shell.set_focused_input_preedit(preedit);
+        if changed {
+            self.needs_panel_surface_refresh = true;
+        }
+        changed
+    }
+
+    fn has_focused_panel_input(&self) -> bool {
+        self.ui_shell.has_focused_text_input()
+    }
+
     fn scroll_panel_surface(&mut self, delta_lines: i32) -> bool {
         let viewport_height = self
             .layout
@@ -983,33 +1040,6 @@ impl DesktopApp {
         self.execute_command(command)
     }
 
-    fn prompt_new_document_size(&self) -> Option<(usize, usize)> {
-        let (current_width, current_height) = self.canvas_dimensions();
-        let (default_width, default_height) = if current_width <= 1 && current_height <= 1 {
-            (DEFAULT_NEW_DOCUMENT_WIDTH, DEFAULT_NEW_DOCUMENT_HEIGHT)
-        } else {
-            (current_width, current_height)
-        };
-        let default_value = format!("{default_width}x{default_height}");
-
-        loop {
-            let input = self.dialogs.prompt_text(
-                "New Document",
-                "Enter width x height in pixels",
-                &default_value,
-            )?;
-
-            if let Some(size) = parse_document_size(&input) {
-                return Some(size);
-            }
-
-            self.dialogs.show_error(
-                "Invalid document size",
-                "Use a format like 640x480. Each side must be between 1 and 8192 pixels, and the total area must stay within the current safety limit.",
-            );
-        }
-    }
-
     fn save_project_to_current_path(&mut self) -> bool {
         match save_project_to_path(
             &self.project_path,
@@ -1030,6 +1060,10 @@ impl DesktopApp {
         let Some(path) = self.dialogs.pick_save_project_path(&self.project_path) else {
             return false;
         };
+        self.save_project_to_path(path)
+    }
+
+    fn save_project_to_path(&mut self, path: PathBuf) -> bool {
         self.project_path = normalize_project_path(path);
         self.needs_status_refresh = true;
         self.save_project_to_current_path()
@@ -1091,15 +1125,12 @@ impl DesktopApp {
 
     fn execute_command(&mut self, command: Command) -> bool {
         match command {
-            Command::NewDocument => {
-                self.prompt_new_document_size()
-                    .is_some_and(|(width, height)| {
-                        self.execute_command(Command::NewDocumentSized { width, height })
-                    })
-            }
+            Command::NewDocument => self.activate_panel_control("builtin.app-actions", "app.new"),
             Command::SaveProject => self.save_project_to_current_path(),
             Command::SaveProjectAs => self.save_project_as(),
+            Command::SaveProjectToPath { path } => self.save_project_to_path(PathBuf::from(path)),
             Command::LoadProject => self.open_project(),
+            Command::LoadProjectFromPath { path } => self.load_project(PathBuf::from(path)),
             other => {
                 let dirty = self.document.apply_command(&other);
                 match other {
@@ -1141,10 +1172,19 @@ impl DesktopApp {
                     | Command::NewDocument
                     | Command::SaveProject
                     | Command::SaveProjectAs
-                    | Command::LoadProject => false,
+                    | Command::SaveProjectToPath { .. }
+                    | Command::LoadProject
+                    | Command::LoadProjectFromPath { .. } => false,
                 }
             }
         }
+    }
+
+    fn activate_panel_control(&mut self, panel_id: &str, node_id: &str) -> bool {
+        self.dispatch_panel_event(PanelEvent::Activate {
+            panel_id: panel_id.to_string(),
+            node_id: node_id.to_string(),
+        })
     }
 
     fn execute_host_action(&mut self, action: HostAction) -> bool {
@@ -1270,6 +1310,7 @@ impl DesktopRuntime {
 
     fn request_redraw(&self) {
         if let Some(window) = &self.window {
+            window.set_ime_allowed(self.app.has_focused_panel_input());
             window.request_redraw();
         }
     }
@@ -1454,8 +1495,66 @@ impl ApplicationHandler for DesktopRuntime {
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.modifiers = modifiers.state();
             }
+            WindowEvent::Ime(ime) => {
+                let changed = match ime {
+                    Ime::Commit(text) => {
+                        self.app.set_focused_panel_input_preedit(None);
+                        self.app.insert_text_into_focused_panel_input(text.as_ref())
+                    }
+                    Ime::Preedit(text, _) => self
+                        .app
+                        .set_focused_panel_input_preedit(Some(text.to_string())),
+                    Ime::Enabled | Ime::Disabled => false,
+                };
+                if changed {
+                    self.request_redraw();
+                }
+            }
             WindowEvent::KeyboardInput { event, .. } => {
-                if event.state != ElementState::Pressed || event.repeat {
+                let editing_repeat = self.app.has_focused_panel_input()
+                    && matches!(
+                        &event.logical_key,
+                        Key::Named(
+                            NamedKey::Backspace
+                                | NamedKey::Delete
+                                | NamedKey::ArrowLeft
+                                | NamedKey::ArrowRight
+                                | NamedKey::Home
+                                | NamedKey::End
+                                | NamedKey::Space
+                        ) | Key::Character(_)
+                    );
+                if event.state != ElementState::Pressed || (event.repeat && !editing_repeat) {
+                    return;
+                }
+
+                let edited_text = if !self.modifiers.control_key() && !self.modifiers.alt_key() {
+                    match &event.logical_key {
+                        Key::Named(NamedKey::Backspace) => self.app.backspace_focused_panel_input(),
+                        Key::Named(NamedKey::Delete) => self.app.delete_focused_panel_input(),
+                        Key::Named(NamedKey::ArrowLeft) => {
+                            self.app.move_focused_panel_input_cursor(-1)
+                        }
+                        Key::Named(NamedKey::ArrowRight) => {
+                            self.app.move_focused_panel_input_cursor(1)
+                        }
+                        Key::Named(NamedKey::Home) => {
+                            self.app.move_focused_panel_input_cursor_to_start()
+                        }
+                        Key::Named(NamedKey::End) => {
+                            self.app.move_focused_panel_input_cursor_to_end()
+                        }
+                        Key::Named(NamedKey::Space) => {
+                            self.app.insert_text_into_focused_panel_input(" ")
+                        }
+                        Key::Character(text) => self.app.insert_text_into_focused_panel_input(text),
+                        _ => false,
+                    }
+                } else {
+                    false
+                };
+                if edited_text {
+                    self.request_redraw();
                     return;
                 }
 
@@ -1486,7 +1585,9 @@ impl ApplicationHandler for DesktopRuntime {
                         self.app.focus_previous_panel_control()
                     }
                     Key::Named(NamedKey::Tab) => self.app.focus_next_panel_control(),
-                    Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
+                    Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space)
+                        if !self.app.has_focused_panel_input() =>
+                    {
                         self.app.activate_focused_panel_control().is_some()
                     }
                     _ => false,
@@ -1933,31 +2034,23 @@ mod tests {
     struct TestDialogs {
         open_paths: RefCell<Vec<PathBuf>>,
         save_paths: RefCell<Vec<PathBuf>>,
-        text_inputs: RefCell<Vec<String>>,
         errors: RefCell<Vec<(String, String)>>,
     }
 
     impl TestDialogs {
-        fn with_text_inputs(inputs: impl IntoIterator<Item = &'static str>) -> Self {
-            let mut inputs = inputs.into_iter().map(str::to_string).collect::<Vec<_>>();
-            inputs.reverse();
+        fn with_open_path(path: PathBuf) -> Self {
             Self {
-                text_inputs: RefCell::new(inputs),
-                ..Self::default()
+                open_paths: RefCell::new(vec![path]),
+                save_paths: RefCell::new(Vec::new()),
+                errors: RefCell::new(Vec::new()),
             }
         }
 
         fn with_save_path(path: PathBuf) -> Self {
             Self {
+                open_paths: RefCell::new(Vec::new()),
                 save_paths: RefCell::new(vec![path]),
-                ..Self::default()
-            }
-        }
-
-        fn with_open_path(path: PathBuf) -> Self {
-            Self {
-                open_paths: RefCell::new(vec![path]),
-                ..Self::default()
+                errors: RefCell::new(Vec::new()),
             }
         }
     }
@@ -1969,15 +2062,6 @@ mod tests {
 
         fn pick_save_project_path(&self, _current_path: &Path) -> Option<PathBuf> {
             self.save_paths.borrow_mut().pop()
-        }
-
-        fn prompt_text(
-            &self,
-            _title: &str,
-            _message: &str,
-            _default_value: &str,
-        ) -> Option<String> {
-            self.text_inputs.borrow_mut().pop()
         }
 
         fn show_error(&self, title: &str, message: &str) {
@@ -2222,38 +2306,73 @@ mod tests {
 
     #[test]
     fn keyboard_panel_focus_can_activate_app_action() {
-        let mut app = test_app_with_dialogs(TestDialogs::with_text_inputs(["64x64"]));
+        let mut app = test_app_with_dialogs(TestDialogs::default());
         let mut profiler = DesktopProfiler::new();
         let _ = app.prepare_present_frame(1280, 200, &mut profiler);
 
         assert!(
             app.ui_shell
-                .focus_panel_node("builtin.app-actions", "app.new")
+                .focus_panel_node("builtin.app-actions", "app.save")
         );
         assert_eq!(
             app.activate_focused_panel_control(),
-            Some(Command::NewDocument)
+            Some(Command::SaveProject)
         );
     }
 
     #[test]
     fn parse_document_size_accepts_common_formats() {
-        assert_eq!(
-            parse_document_size(&format!(
-                "{DEFAULT_NEW_DOCUMENT_WIDTH}x{DEFAULT_NEW_DOCUMENT_HEIGHT}"
-            )),
-            Some((DEFAULT_NEW_DOCUMENT_WIDTH, DEFAULT_NEW_DOCUMENT_HEIGHT))
-        );
+        assert_eq!(parse_document_size("64x64"), Some((64, 64)));
         assert_eq!(parse_document_size("320 240"), Some((320, 240)));
         assert_eq!(parse_document_size("800,600"), Some((800, 600)));
         assert_eq!(parse_document_size("0x600"), None);
     }
 
     #[test]
-    fn execute_command_new_document_uses_prompted_size() {
-        let mut app = test_app_with_dialogs(TestDialogs::with_text_inputs(["320x240"]));
+    fn execute_command_new_document_opens_inline_form() {
+        let mut app = test_app_with_dialogs(TestDialogs::default());
 
         assert!(app.execute_command(Command::NewDocument));
+    }
+
+    #[test]
+    fn execute_command_load_project_uses_native_dialog_path() {
+        let path = std::env::temp_dir().join("altpaint-open-dialog-test.altp.json");
+        let mut source_app = test_app_with_dialogs(TestDialogs::default());
+        assert!(
+            source_app.execute_host_action(HostAction::SetPanelVisibility {
+                panel_id: "builtin.tool-palette".to_string(),
+                visible: false,
+            })
+        );
+        save_project_to_path(
+            &path,
+            &source_app.document,
+            &source_app.ui_shell.workspace_layout(),
+        )
+        .expect("project save should succeed");
+
+        let mut app = test_app_with_dialogs(TestDialogs::with_open_path(path.clone()));
+        assert!(app.execute_command(Command::LoadProject));
+        assert_eq!(app.project_path, path);
+        assert!(
+            !app.ui_shell
+                .panel_trees()
+                .iter()
+                .any(|panel| panel.id == "builtin.tool-palette")
+        );
+
+        let _ = std::fs::remove_file(app.project_path.clone());
+    }
+
+    #[test]
+    fn execute_command_new_document_sized_replaces_bitmap() {
+        let mut app = test_app_with_dialogs(TestDialogs::default());
+
+        assert!(app.execute_command(Command::NewDocumentSized {
+            width: 320,
+            height: 240,
+        }));
 
         let bitmap = app.document.active_bitmap().expect("bitmap exists");
         assert_eq!((bitmap.width, bitmap.height), (320, 240));
@@ -2318,8 +2437,10 @@ mod tests {
         )
         .expect("project save should succeed");
 
-        let mut app = test_app_with_dialogs(TestDialogs::with_open_path(path.clone()));
-        assert!(app.execute_command(Command::LoadProject));
+        let mut app = test_app_with_dialogs(TestDialogs::default());
+        assert!(app.execute_command(Command::LoadProjectFromPath {
+            path: path.to_string_lossy().to_string(),
+        }));
 
         let panels = app.ui_shell.panel_trees();
         assert!(
@@ -2713,7 +2834,8 @@ mod tests {
             }
             plugin_api::PanelNode::ColorPreview { .. }
             | plugin_api::PanelNode::Button { .. }
-            | plugin_api::PanelNode::Slider { .. } => false,
+            | plugin_api::PanelNode::Slider { .. }
+            | plugin_api::PanelNode::TextInput { .. } => false,
         })
     }
 }

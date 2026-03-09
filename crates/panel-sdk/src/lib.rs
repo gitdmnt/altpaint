@@ -60,6 +60,8 @@ pub mod runtime {
         fn state_toggle(ptr: i32, len: i32);
         fn state_set_bool(ptr: i32, len: i32, value: i32);
         fn state_get_i32(ptr: i32, len: i32) -> i32;
+        fn state_get_string_len(ptr: i32, len: i32) -> i32;
+        fn state_get_string_copy(path_ptr: i32, path_len: i32, buffer_ptr: i32, buffer_len: i32);
         fn command(ptr: i32, len: i32);
         fn command_string(
             name_ptr: i32,
@@ -103,6 +105,30 @@ pub mod runtime {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn state_i32(_path: &str) -> i32 {
         0
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn state_string(path: &str) -> String {
+        let length = with_bytes(path, |ptr, len| unsafe { state_get_string_len(ptr, len) });
+        if length <= 0 {
+            return String::new();
+        }
+
+        let mut buffer = vec![0u8; length as usize];
+        with_bytes(path, |path_ptr, path_len| unsafe {
+            state_get_string_copy(
+                path_ptr,
+                path_len,
+                buffer.as_mut_ptr() as i32,
+                buffer.len() as i32,
+            )
+        });
+        String::from_utf8(buffer).unwrap_or_default()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn state_string(_path: &str) -> String {
+        String::new()
     }
 
     #[cfg(target_arch = "wasm32")]
