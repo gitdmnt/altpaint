@@ -2,7 +2,5 @@
   "format_version": 1,
   "id": "builtin.broad-marker",
   "name": "Broad Marker",
-  "size": 12,
-  "min_size": 2,
-  "max_size": 96
+  "size": 12
 }
