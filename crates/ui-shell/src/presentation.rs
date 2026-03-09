@@ -6,6 +6,11 @@ use plugin_api::PanelEvent;
 pub(crate) enum PanelHitKind {
     Activate,
     Slider { min: usize, max: usize },
+    ColorWheel {
+        hue_degrees: usize,
+        saturation: usize,
+        value: usize,
+    },
     LayerListItem { value: usize },
     DropdownOption { value: String },
 }
@@ -78,6 +83,7 @@ impl PanelSurface {
                 region.panel_id == panel_id
                     && region.node_id == node_id
                     && (matches!(&region.kind, PanelHitKind::Slider { .. })
+                        || matches!(&region.kind, PanelHitKind::ColorWheel { .. })
                         || matches!(
                             &region.kind,
                             PanelHitKind::LayerListItem { value } if *value == source_value
@@ -86,6 +92,12 @@ impl PanelSurface {
 
         match &source_region.kind {
             PanelHitKind::Slider { .. } => self
+                .hit_regions
+                .iter()
+                .rev()
+                .find(|region| region.panel_id == panel_id && region.node_id == node_id)
+                .map(|region| panel_event_for_region(region, x, y)),
+            PanelHitKind::ColorWheel { .. } => self
                 .hit_regions
                 .iter()
                 .rev()
@@ -129,6 +141,15 @@ fn panel_event_for_region(region: &PanelHitRegion, x: usize, y: usize) -> PanelE
             node_id: region.node_id.clone(),
             value: slider_value_for_position(region, *min, *max, x, y),
         },
+        PanelHitKind::ColorWheel {
+            hue_degrees,
+            saturation,
+            value,
+        } => PanelEvent::SetText {
+            panel_id: region.panel_id.clone(),
+            node_id: region.node_id.clone(),
+            value: color_wheel_value_for_position(region, x, y, *hue_degrees, *saturation, *value),
+        },
         PanelHitKind::LayerListItem { value } => PanelEvent::SetValue {
             panel_id: region.panel_id.clone(),
             node_id: region.node_id.clone(),
@@ -155,4 +176,49 @@ fn slider_value_for_position(
 
     let local_x = x.clamp(region.x, region.x + region.width - 1) - region.x;
     min + ((max - min) * local_x) / (region.width - 1)
+}
+
+fn color_wheel_value_for_position(
+    region: &PanelHitRegion,
+    x: usize,
+    y: usize,
+    hue_degrees: usize,
+    saturation: usize,
+    value: usize,
+) -> String {
+    let local_x = x.saturating_sub(region.x) as f32;
+    let local_y = y.saturating_sub(region.y) as f32;
+    let size = region.width.min(region.height).max(1) as f32;
+    let center = (size - 1.0) * 0.5;
+    let dx = local_x - center;
+    let dy = local_y - center;
+    let distance = (dx * dx + dy * dy).sqrt();
+    let outer_radius = center.max(1.0);
+    let inner_radius = outer_radius * 0.72;
+    let square_half = inner_radius * 0.7;
+
+    let (mut next_hue, mut next_saturation, mut next_value) = (hue_degrees, saturation, value);
+    if distance >= inner_radius && distance <= outer_radius {
+        let angle = dy.atan2(dx).to_degrees().rem_euclid(360.0);
+        next_hue = angle.round() as usize % 360;
+    } else {
+        let square_min_x = center - square_half;
+        let square_max_x = center + square_half;
+        let square_min_y = center - square_half;
+        let square_max_y = center + square_half;
+        if local_x >= square_min_x
+            && local_x <= square_max_x
+            && local_y >= square_min_y
+            && local_y <= square_max_y
+        {
+            next_saturation = (((local_x - square_min_x) / (square_max_x - square_min_x)) * 100.0)
+                .round()
+                .clamp(0.0, 100.0) as usize;
+            next_value = ((1.0 - (local_y - square_min_y) / (square_max_y - square_min_y)) * 100.0)
+                .round()
+                .clamp(0.0, 100.0) as usize;
+        }
+    }
+
+    format!("{next_hue},{next_saturation},{next_value}")
 }

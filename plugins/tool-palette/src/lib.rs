@@ -18,6 +18,8 @@ const CAPTURE_TARGET: state::StringKey = state::string("session.capture_target")
 const BRUSH_SHORTCUT: state::StringKey = state::string("config.brush_shortcut");
 const PEN_SHORTCUT: state::StringKey = state::string("config.pen_shortcut");
 const ERASER_SHORTCUT: state::StringKey = state::string("config.eraser_shortcut");
+const BUCKET_SHORTCUT: state::StringKey = state::string("config.bucket_shortcut");
+const LASSO_BUCKET_SHORTCUT: state::StringKey = state::string("config.lasso_bucket_shortcut");
 
 fn build_tool_command(tool: Tool) -> CommandDescriptor {
     commands::tool::set_active(tool)
@@ -56,6 +58,16 @@ fn activate_pen() {
 #[panel_sdk::panel_handler]
 fn activate_eraser() {
     emit_command(&build_tool_command(Tool::Eraser));
+}
+
+#[panel_sdk::panel_handler]
+fn activate_bucket() {
+    emit_command(&build_tool_command(Tool::Bucket));
+}
+
+#[panel_sdk::panel_handler]
+fn activate_lasso_bucket() {
+    emit_command(&build_tool_command(Tool::LassoBucket));
 }
 
 #[panel_sdk::panel_handler]
@@ -129,6 +141,14 @@ fn keyboard() {
     }
     if shortcut_matches(&state_string(ERASER_SHORTCUT), &shortcut) {
         activate_eraser();
+        return;
+    }
+    if shortcut_matches(&state_string(BUCKET_SHORTCUT), &shortcut) {
+        activate_bucket();
+        return;
+    }
+    if shortcut_matches(&state_string(LASSO_BUCKET_SHORTCUT), &shortcut) {
+        activate_lasso_bucket();
     }
 }
 
@@ -154,6 +174,8 @@ mod tests {
         activate_brush();
         activate_pen();
         activate_eraser();
+        activate_bucket();
+        activate_lasso_bucket();
         previous_pen();
         next_pen();
         reload_pens();

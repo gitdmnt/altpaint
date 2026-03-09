@@ -155,6 +155,7 @@ fn apply_command_draw_stroke_returns_dirty_rect() {
         from_y: 1,
         to_x: 3,
         to_y: 1,
+        pressure: 1.0,
     });
 
     assert_eq!(dirty, Some(DirtyRect::from_inclusive_points(1, 1, 3, 1)));
@@ -188,11 +189,17 @@ fn cycling_pen_presets_updates_active_size() {
             id: "fine".to_string(),
             name: "Fine".to_string(),
             size: 2,
+            pressure_enabled: true,
+            antialias: true,
+            stabilization: 0,
         },
         PenPreset {
             id: "bold".to_string(),
             name: "Bold".to_string(),
             size: 9,
+            pressure_enabled: true,
+            antialias: true,
+            stabilization: 0,
         },
     ]);
 

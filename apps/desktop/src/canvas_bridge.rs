@@ -10,10 +10,12 @@ use app_core::{Command, ToolKind};
 use render::RenderFrame;
 
 /// キャンバス入力中の最小状態を表す。
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct CanvasInputState {
     pub is_drawing: bool,
     pub last_position: Option<(usize, usize)>,
+    pub last_smoothed_position: Option<(f32, f32)>,
+    pub lasso_points: Vec<(usize, usize)>,
 }
 
 /// ビュー空間で受け取ったキャンバスポインタイベントを表す。
@@ -59,6 +61,7 @@ pub fn command_for_canvas_gesture(
     tool: ToolKind,
     current: (usize, usize),
     previous: Option<(usize, usize)>,
+    pressure: f32,
 ) -> Command {
     match (tool, previous) {
         (ToolKind::Pen, Some((from_x, from_y))) => Command::DrawStroke {
@@ -66,31 +69,42 @@ pub fn command_for_canvas_gesture(
             from_y,
             to_x: current.0,
             to_y: current.1,
+            pressure,
         },
         (ToolKind::Brush, Some((from_x, from_y))) => Command::DrawStroke {
             from_x,
             from_y,
             to_x: current.0,
             to_y: current.1,
+            pressure,
         },
         (ToolKind::Eraser, Some((from_x, from_y))) => Command::EraseStroke {
             from_x,
             from_y,
             to_x: current.0,
             to_y: current.1,
+            pressure,
         },
         (ToolKind::Brush, None) => Command::DrawPoint {
             x: current.0,
             y: current.1,
+            pressure,
         },
         (ToolKind::Pen, None) => Command::DrawPoint {
             x: current.0,
             y: current.1,
+            pressure,
         },
         (ToolKind::Eraser, None) => Command::ErasePoint {
             x: current.0,
             y: current.1,
+            pressure,
         },
+        (ToolKind::Bucket, _) => Command::FillRegion {
+            x: current.0,
+            y: current.1,
+        },
+        (ToolKind::LassoBucket, _) => Command::Noop,
     }
 }
 
@@ -161,7 +175,7 @@ mod tests {
 
     #[test]
     fn brush_drag_becomes_draw_stroke() {
-        let command = command_for_canvas_gesture(ToolKind::Brush, (4, 5), Some((1, 2)));
+        let command = command_for_canvas_gesture(ToolKind::Brush, (4, 5), Some((1, 2)), 1.0);
 
         assert_eq!(
             command,
@@ -170,6 +184,7 @@ mod tests {
                 from_y: 2,
                 to_x: 4,
                 to_y: 5,
+                pressure: 1.0,
             }
         );
     }

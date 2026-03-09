@@ -170,7 +170,13 @@ impl ApplicationHandler for DesktopRuntime {
             }
             WindowEvent::Touch(touch) => {
                 let position = (touch.location.x as i32, touch.location.y as i32);
-                if self.handle_touch_phase(touch.id, touch.phase, position.0, position.1) {
+                if self.handle_touch_phase(
+                    touch.id,
+                    touch.phase,
+                    position.0,
+                    position.1,
+                    touch.force,
+                ) {
                     self.request_redraw();
                 }
             }

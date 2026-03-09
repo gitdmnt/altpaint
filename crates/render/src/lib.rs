@@ -345,7 +345,7 @@ fn normalized_rotation_turns(rotation_degrees: f32) -> u8 {
 }
 
 fn rotated_dimensions(width: usize, height: usize, rotation_turns: u8) -> (usize, usize) {
-    if rotation_turns % 2 == 0 {
+    if rotation_turns.is_multiple_of(2) {
         (width, height)
     } else {
         (height, width)

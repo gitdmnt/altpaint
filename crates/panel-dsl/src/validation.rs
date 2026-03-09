@@ -145,6 +145,7 @@ fn validate_view_tag(tag: &str) -> Result<(), PanelDslError> {
         "section",
         "text",
         "color-preview",
+        "color-wheel",
         "button",
         "toggle",
         "slider",
@@ -171,7 +172,7 @@ fn collect_handler_binding(
 ) -> Result<(), PanelDslError> {
     let event_supported = matches!(
         tag,
-        "button" | "toggle" | "slider" | "input" | "dropdown" | "layer-list"
+        "button" | "toggle" | "slider" | "input" | "dropdown" | "layer-list" | "color-wheel"
     );
     let Some(handler) = handler.and_then(AttrValue::as_string) else {
         return Ok(());

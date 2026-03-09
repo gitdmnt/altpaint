@@ -4,7 +4,7 @@
 //! OS イベント処理とドキュメント更新の接点を読みやすく保つ。
 
 use app_core::Command;
-use winit::event::{ElementState, MouseScrollDelta, TouchPhase};
+use winit::event::{ElementState, Force, MouseScrollDelta, TouchPhase};
 
 use super::DesktopRuntime;
 
@@ -75,10 +75,10 @@ impl DesktopRuntime {
 
         match state {
             ElementState::Pressed => {
-                let changed = self.app.handle_pointer_pressed(x, y);
+                let changed = self.app.handle_pointer_pressed_with_pressure(x, y, 1.0);
                 self.record_canvas_input_if_needed(changed)
             }
-            ElementState::Released => self.app.handle_pointer_released(x, y),
+            ElementState::Released => self.app.handle_pointer_released_with_pressure(x, y, 1.0),
         }
     }
 
@@ -196,8 +196,10 @@ impl DesktopRuntime {
         phase: TouchPhase,
         x: i32,
         y: i32,
+        force: Option<Force>,
     ) -> bool {
         let position = (x, y);
+        let pressure = normalized_pressure(force);
 
         match phase {
             TouchPhase::Started => {
@@ -208,7 +210,9 @@ impl DesktopRuntime {
                 self.active_touch_id = Some(touch_id);
                 self.last_cursor_position = Some(position);
                 self.last_cursor_position_f64 = Some((position.0 as f64, position.1 as f64));
-                let changed = self.app.handle_pointer_pressed(position.0, position.1);
+                let changed = self
+                    .app
+                    .handle_pointer_pressed_with_pressure(position.0, position.1, pressure);
                 self.record_canvas_input_if_needed(changed)
             }
             TouchPhase::Moved => {
@@ -218,7 +222,9 @@ impl DesktopRuntime {
 
                 self.last_cursor_position = Some(position);
                 self.last_cursor_position_f64 = Some((position.0 as f64, position.1 as f64));
-                let changed = self.app.handle_pointer_dragged(position.0, position.1);
+                let changed = self
+                    .app
+                    .handle_pointer_dragged_with_pressure(position.0, position.1, pressure);
                 self.record_canvas_input_if_needed(changed)
             }
             TouchPhase::Ended | TouchPhase::Cancelled => {
@@ -229,7 +235,8 @@ impl DesktopRuntime {
                 self.last_cursor_position = Some(position);
                 self.last_cursor_position_f64 = Some((position.0 as f64, position.1 as f64));
                 self.active_touch_id = None;
-                self.app.handle_pointer_released(position.0, position.1)
+                self.app
+                    .handle_pointer_released_with_pressure(position.0, position.1, pressure)
             }
         }
     }
@@ -243,4 +250,17 @@ impl DesktopRuntime {
         }
         changed
     }
+}
+
+fn normalized_pressure(force: Option<Force>) -> f32 {
+    match force {
+        Some(Force::Calibrated {
+            force,
+            max_possible_force,
+            ..
+        }) if max_possible_force > f64::EPSILON => (force / max_possible_force) as f32,
+        Some(Force::Normalized(value)) => value as f32,
+        _ => 1.0,
+    }
+    .clamp(0.0, 1.0)
 }

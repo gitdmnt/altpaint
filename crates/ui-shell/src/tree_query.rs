@@ -16,6 +16,7 @@ pub(super) fn find_panel_action(nodes: &[PanelNode], target_id: &str) -> Option<
                     return Some(action);
                 }
             }
+            PanelNode::ColorWheel { id, action, .. } if id == target_id => return Some(action.clone()),
             PanelNode::Button { id, action, .. } if id == target_id => return Some(action.clone()),
             PanelNode::Slider { id, action, .. } if id == target_id => return Some(action.clone()),
             PanelNode::TextInput {
@@ -27,6 +28,7 @@ pub(super) fn find_panel_action(nodes: &[PanelNode], target_id: &str) -> Option<
             PanelNode::LayerList { id, action, .. } if id == target_id => return Some(action.clone()),
             PanelNode::Text { .. }
             | PanelNode::ColorPreview { .. }
+            | PanelNode::ColorWheel { .. }
             | PanelNode::Button { .. }
             | PanelNode::Slider { .. }
             | PanelNode::TextInput { .. }
@@ -51,6 +53,7 @@ pub(super) fn find_dropdown_node<'a>(nodes: &'a [PanelNode], target_id: &str) ->
             PanelNode::Dropdown { id, .. } if id == target_id => return Some(node),
             PanelNode::Text { .. }
             | PanelNode::ColorPreview { .. }
+            | PanelNode::ColorWheel { .. }
             | PanelNode::Button { .. }
             | PanelNode::Slider { .. }
             | PanelNode::TextInput { .. }
@@ -88,6 +91,7 @@ pub(super) fn find_text_input_binding(
             }
             PanelNode::Text { .. }
             | PanelNode::ColorPreview { .. }
+            | PanelNode::ColorWheel { .. }
             | PanelNode::Button { .. }
             | PanelNode::Slider { .. }
             | PanelNode::TextInput { .. }
@@ -120,6 +124,7 @@ pub(super) fn find_text_input_value(
             } if id == target_id => return Some((value.clone(), *input_mode)),
             PanelNode::Text { .. }
             | PanelNode::ColorPreview { .. }
+            | PanelNode::ColorWheel { .. }
             | PanelNode::Button { .. }
             | PanelNode::Slider { .. }
             | PanelNode::TextInput { .. }
@@ -145,7 +150,7 @@ pub(super) fn collect_focus_targets(panel_id: &str, nodes: &[PanelNode], targets
                 panel_id: panel_id.to_string(),
                 node_id: id.clone(),
             }),
-            PanelNode::Dropdown { id, .. } | PanelNode::LayerList { id, .. } => targets.push(FocusTarget {
+            PanelNode::Dropdown { id, .. } | PanelNode::LayerList { id, .. } | PanelNode::ColorWheel { id, .. } => targets.push(FocusTarget {
                 panel_id: panel_id.to_string(),
                 node_id: id.clone(),
             }),

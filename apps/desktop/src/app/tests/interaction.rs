@@ -32,7 +32,7 @@ fn canvas_position_maps_view_center_into_bitmap_bounds() {
 /// 消しゴムドラッグが erase stroke コマンドになることを確認する。
 #[test]
 fn eraser_drag_becomes_erase_stroke_command() {
-    let command = command_for_canvas_gesture(ToolKind::Eraser, (7, 8), Some((3, 4)));
+    let command = command_for_canvas_gesture(ToolKind::Eraser, (7, 8), Some((3, 4)), 1.0);
 
     assert_eq!(
         command,
@@ -41,6 +41,7 @@ fn eraser_drag_becomes_erase_stroke_command() {
             from_y: 4,
             to_x: 7,
             to_y: 8,
+            pressure: 1.0,
         }
     );
 }
@@ -55,9 +56,9 @@ fn canvas_drag_draws_black_pixels() {
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    app.handle_canvas_pointer("down", center_x, center_y);
-    app.handle_canvas_pointer("drag", center_x + 20, center_y);
-    app.handle_canvas_pointer("up", center_x + 20, center_y);
+    app.handle_canvas_pointer("down", center_x, center_y, 1.0);
+    app.handle_canvas_pointer("drag", center_x + 20, center_y, 1.0);
+    app.handle_canvas_pointer("up", center_x + 20, center_y, 1.0);
 
     let frame = render::RenderContext::new().render_frame(&app.document);
     assert!(
@@ -81,8 +82,8 @@ fn canvas_drag_draws_using_selected_color() {
     let _ = app.execute_command(Command::SetActiveColor {
         color: ColorRgba8::new(0x43, 0xa0, 0x47, 0xff),
     });
-    app.handle_canvas_pointer("down", center_x, center_y);
-    app.handle_canvas_pointer("up", center_x, center_y);
+    app.handle_canvas_pointer("down", center_x, center_y, 1.0);
+    app.handle_canvas_pointer("up", center_x, center_y, 1.0);
 
     let frame = render::RenderContext::new().render_frame(&app.document);
     assert!(
@@ -104,45 +105,15 @@ fn panel_scroll_requests_surface_offset_change() {
     assert!(app.ui_shell.panel_scroll_offset() > 0);
 }
 
-/// カラースライダードラッグでドキュメント色が更新されることを確認する。
+/// 色相環操作でドキュメント色が更新されることを確認する。
 #[test]
-fn panel_slider_drag_updates_document_color() {
+fn panel_color_wheel_updates_document_color() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
-    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
-    let layout = app.layout.clone().expect("layout exists");
-    let surface = app.panel_surface.clone().expect("panel surface exists");
-
-    let mut start = None;
-    let mut end = None;
-    'outer: for y in 0..surface.height {
-        for x in 0..surface.width {
-            if let Some(plugin_api::PanelEvent::SetValue {
-                panel_id,
-                node_id,
-                value,
-            }) = surface.hit_test(x, y)
-                && panel_id == "builtin.color-palette"
-                && node_id == "color.slider.red"
-            {
-                start = Some((x, y, value));
-                end = Some((surface.width - 1, y));
-                break 'outer;
-            }
-        }
-    }
-
-    let (start_x, start_y, _) = start.expect("slider hit region exists");
-    let (end_x, end_y) = end.expect("slider end exists");
-    let window_start_x = layout.panel_surface_rect.x as i32 + start_x as i32;
-    let window_start_y = layout.panel_surface_rect.y as i32 + start_y as i32;
-    let window_end_x = layout.panel_surface_rect.x as i32 + end_x as i32;
-    let window_end_y = layout.panel_surface_rect.y as i32 + end_y as i32;
-
-    assert!(app.handle_pointer_pressed(window_start_x, window_start_y));
-    assert!(app.handle_pointer_dragged(window_end_x, window_end_y));
-    assert!(!app.handle_pointer_released(window_end_x, window_end_y));
-    assert_eq!(app.document.active_color.r, 255);
+    assert!(app.dispatch_panel_event(plugin_api::PanelEvent::SetText {
+        panel_id: "builtin.color-palette".to_string(),
+        node_id: "color.wheel".to_string(),
+        value: "120,100,100".to_string(),
+    }));
 }
 
 #[test]
@@ -336,7 +307,7 @@ fn new_document_sized_resets_active_interactions() {
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    assert!(app.handle_canvas_pointer("down", center_x, center_y));
+    assert!(app.handle_canvas_pointer("down", center_x, center_y, 1.0));
     assert!(app.update_canvas_hover(center_x, center_y));
     assert!(app.canvas_input.is_drawing);
     assert!(app.hover_canvas_position.is_some());

@@ -93,6 +93,7 @@ fn tree_contains_text(nodes: &[plugin_api::PanelNode], target: &str) -> bool {
         | plugin_api::PanelNode::Row { children, .. }
         | plugin_api::PanelNode::Section { children, .. } => tree_contains_text(children, target),
         plugin_api::PanelNode::ColorPreview { .. }
+        | plugin_api::PanelNode::ColorWheel { .. }
         | plugin_api::PanelNode::Button { .. }
         | plugin_api::PanelNode::Slider { .. }
         | plugin_api::PanelNode::TextInput { .. }

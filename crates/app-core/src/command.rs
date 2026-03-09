@@ -10,15 +10,24 @@ pub enum Command {
     /// 状態を変更しないダミーコマンド。
     Noop,
     /// 指定座標へ1ピクセル描画する最小コマンド。
-    DrawPoint { x: usize, y: usize },
+    DrawPoint {
+        x: usize,
+        y: usize,
+        pressure: f32,
+    },
     /// 指定座標へ1ピクセル消去する最小コマンド。
-    ErasePoint { x: usize, y: usize },
+    ErasePoint {
+        x: usize,
+        y: usize,
+        pressure: f32,
+    },
     /// 指定した2点の間に最小ストロークを描画する。
     DrawStroke {
         from_x: usize,
         from_y: usize,
         to_x: usize,
         to_y: usize,
+        pressure: f32,
     },
     /// 指定した2点の間を白で消去する。
     EraseStroke {
@@ -26,11 +35,18 @@ pub enum Command {
         from_y: usize,
         to_x: usize,
         to_y: usize,
+        pressure: f32,
     },
     /// 現在のアクティブツールを切り替える。
     SetActiveTool { tool: ToolKind },
     /// 現在のアクティブペンサイズを切り替える。
     SetActivePenSize { size: u32 },
+    /// アクティブペンの筆圧有効状態を切り替える。
+    SetActivePenPressureEnabled { enabled: bool },
+    /// アクティブペンのアンチエイリアス有効状態を切り替える。
+    SetActivePenAntialias { enabled: bool },
+    /// アクティブペンの手ぶれ補正強さを切り替える。
+    SetActivePenStabilization { amount: u8 },
     /// 次のペンプリセットをアクティブにする。
     SelectNextPenPreset,
     /// 前のペンプリセットをアクティブにする。
@@ -39,6 +55,10 @@ pub enum Command {
     ReloadPenPresets,
     /// 現在のブラシ色を切り替える。
     SetActiveColor { color: ColorRgba8 },
+    /// 閉領域バケツ塗りを行う。
+    FillRegion { x: usize, y: usize },
+    /// 投げ縄で囲った領域を塗り潰す。
+    FillLasso { points: Vec<(usize, usize)> },
     /// キャンバス表示倍率を設定する。
     SetViewZoom { zoom: f32 },
     /// キャンバス表示を平行移動する。

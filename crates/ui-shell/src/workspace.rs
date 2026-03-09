@@ -238,6 +238,8 @@ fn find_actions_in_node_local(node: &PanelNode, target_id: &str) -> Option<Vec<H
             .iter()
             .find_map(|child| find_actions_in_node_local(child, target_id)),
         PanelNode::Text { .. } | PanelNode::ColorPreview { .. } => None,
+        PanelNode::ColorWheel { id, action, .. } if id == target_id => Some(vec![action.clone()]),
+        PanelNode::ColorWheel { .. } => None,
         PanelNode::Button { id, action, .. } if id == target_id => Some(vec![action.clone()]),
         PanelNode::Button { .. } => None,
         PanelNode::Slider { id, action, .. } if id == target_id => Some(vec![action.clone()]),

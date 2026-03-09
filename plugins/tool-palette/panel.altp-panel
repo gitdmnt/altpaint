@@ -23,6 +23,8 @@ state {
   config.brush_shortcut: string = "B"
   config.pen_shortcut: string = "P"
   config.eraser_shortcut: string = "E"
+  config.bucket_shortcut: string = "G"
+  config.lasso_bucket_shortcut: string = "Shift+G"
 }
 
 view {
@@ -32,6 +34,8 @@ view {
       <button id="tool.brush" on:click="activate_brush" active={state.active_tool == "brush"}>Brush</button>
       <button id="tool.pen" on:click="activate_pen" active={state.active_tool == "pen"}>Pen</button>
       <button id="tool.eraser" on:click="activate_eraser" active={state.active_tool == "eraser"}>Eraser</button>
+      <button id="tool.bucket" on:click="activate_bucket" active={state.active_tool == "bucket"}>Bucket</button>
+      <button id="tool.lasso-bucket" on:click="activate_lasso_bucket" active={state.active_tool == "lasso_bucket"}>Lasso Bucket</button>
       <separator></separator>
       <text>Preset: {state.pen_name}</text>
       <text>Size: {state.pen_size}px / presets: {state.pen_count}</text>
@@ -49,6 +53,8 @@ view {
           <button id="tool.shortcut.pen" on:click="capture_pen_shortcut" active={state.session.capture_target == "pen"}>Capture Pen</button>
           <text>Eraser: {state.config.eraser_shortcut}</text>
           <button id="tool.shortcut.eraser" on:click="capture_eraser_shortcut" active={state.session.capture_target == "eraser"}>Capture Eraser</button>
+          <text>Bucket: {state.config.bucket_shortcut}</text>
+          <text>Lasso Bucket: {state.config.lasso_bucket_shortcut}</text>
           <when test={state.session.capture_target != ""}>
             <text tone="muted">Press the next key combination to replace the selected shortcut.</text>
           </when>

@@ -3,7 +3,7 @@
 //! OS 由来の生イベントをドキュメント編集やパネル操作へ変換し、
 //! ランタイム側が UI 詳細を知らずに済むようにする。
 
-use app_core::Command;
+use app_core::{Command, ToolKind};
 use plugin_api::{HostAction, PanelEvent};
 
 use super::{DesktopApp, PanelDragState};
@@ -50,18 +50,38 @@ impl DesktopApp {
     }
 
     /// ポインタ押下をキャンバスまたはパネル操作へ振り分ける。
+    #[allow(dead_code)]
     pub(crate) fn handle_pointer_pressed(&mut self, x: i32, y: i32) -> bool {
+        self.handle_pointer_pressed_with_pressure(x, y, 1.0)
+    }
+
+    pub(crate) fn handle_pointer_pressed_with_pressure(
+        &mut self,
+        x: i32,
+        y: i32,
+        pressure: f32,
+    ) -> bool {
         if self.canvas_position_from_window(x, y).is_some() {
-            return self.handle_canvas_pointer("down", x, y);
+            return self.handle_canvas_pointer("down", x, y, pressure);
         }
 
         self.begin_panel_interaction(x, y)
     }
 
     /// ポインタ解放を現在の操作状態に応じて処理する。
+    #[allow(dead_code)]
     pub(crate) fn handle_pointer_released(&mut self, x: i32, y: i32) -> bool {
+        self.handle_pointer_released_with_pressure(x, y, 1.0)
+    }
+
+    pub(crate) fn handle_pointer_released_with_pressure(
+        &mut self,
+        x: i32,
+        y: i32,
+        pressure: f32,
+    ) -> bool {
         if self.canvas_input.is_drawing {
-            return self.handle_canvas_pointer("up", x, y);
+            return self.handle_canvas_pointer("up", x, y, pressure);
         }
         if self.active_panel_drag.take().is_some() {
             return false;
@@ -71,8 +91,17 @@ impl DesktopApp {
 
     /// ポインタ移動をドラッグ中の対象へ配送する。
     pub(crate) fn handle_pointer_dragged(&mut self, x: i32, y: i32) -> bool {
+        self.handle_pointer_dragged_with_pressure(x, y, 1.0)
+    }
+
+    pub(crate) fn handle_pointer_dragged_with_pressure(
+        &mut self,
+        x: i32,
+        y: i32,
+        pressure: f32,
+    ) -> bool {
         if self.canvas_input.is_drawing {
-            return self.handle_canvas_pointer("drag", x, y);
+            return self.handle_canvas_pointer("drag", x, y, pressure);
         }
 
         if self.active_panel_drag.is_some() {
@@ -250,7 +279,13 @@ impl DesktopApp {
     }
 
     /// キャンバス上のポインタ操作を描画コマンドへ変換して適用する。
-    pub(crate) fn handle_canvas_pointer(&mut self, action: &str, x: i32, y: i32) -> bool {
+    pub(crate) fn handle_canvas_pointer(
+        &mut self,
+        action: &str,
+        x: i32,
+        y: i32,
+        pressure: f32,
+    ) -> bool {
         let canvas_position = self.canvas_position_from_window(x, y).or_else(|| {
             (action != "down" && self.canvas_input.is_drawing)
                 .then(|| self.canvas_position_from_window_clamped(x, y))
@@ -263,32 +298,95 @@ impl DesktopApp {
             return false;
         };
 
+        let active_tool = self.document.active_tool;
         match action {
             "down" => {
+                if active_tool == ToolKind::Bucket {
+                    return self.execute_command(Command::FillRegion {
+                        x: canvas_x,
+                        y: canvas_y,
+                    });
+                }
                 self.canvas_input.is_drawing = true;
                 self.canvas_input.last_position = Some((canvas_x, canvas_y));
-                self.execute_canvas_command(canvas_x, canvas_y, None)
+                self.canvas_input.last_smoothed_position = Some((canvas_x as f32, canvas_y as f32));
+                if active_tool == ToolKind::LassoBucket {
+                    self.canvas_input.lasso_points.clear();
+                    self.canvas_input.lasso_points.push((canvas_x, canvas_y));
+                    return false;
+                }
+                self.execute_canvas_command(canvas_x, canvas_y, None, pressure)
             }
             "drag" if self.canvas_input.is_drawing => {
+                if active_tool == ToolKind::LassoBucket {
+                    if self.canvas_input.lasso_points.last().copied() != Some((canvas_x, canvas_y)) {
+                        self.canvas_input.lasso_points.push((canvas_x, canvas_y));
+                    }
+                    self.canvas_input.last_position = Some((canvas_x, canvas_y));
+                    return false;
+                }
+                let (next_x, next_y) = self.stabilized_canvas_position(canvas_x, canvas_y);
+                let next_position = (next_x, next_y);
                 let from = self.canvas_input.last_position;
-                let changed = self.execute_canvas_command(canvas_x, canvas_y, from);
-                self.canvas_input.last_position = Some((canvas_x, canvas_y));
+                if from == Some(next_position) {
+                    return false;
+                }
+                let changed = self.execute_canvas_command(next_x, next_y, from, pressure);
+                self.canvas_input.last_position = Some(next_position);
                 changed
             }
             "up" => {
+                if active_tool == ToolKind::LassoBucket {
+                    let changed = if self.canvas_input.lasso_points.len() >= 3 {
+                        self.execute_command(Command::FillLasso {
+                            points: self.canvas_input.lasso_points.clone(),
+                        })
+                    } else {
+                        false
+                    };
+                    self.canvas_input = CanvasInputState::default();
+                    return changed;
+                }
                 let from = self.canvas_input.last_position;
                 let changed = if self.canvas_input.is_drawing && from != Some((canvas_x, canvas_y))
                 {
-                    self.execute_canvas_command(canvas_x, canvas_y, from)
+                    self.execute_canvas_command(canvas_x, canvas_y, from, pressure)
                 } else {
                     false
                 };
-                self.canvas_input.is_drawing = false;
-                self.canvas_input.last_position = None;
+                self.canvas_input = CanvasInputState::default();
                 changed
             }
             _ => false,
         }
+    }
+
+    fn stabilized_canvas_position(&mut self, x: usize, y: usize) -> (usize, usize) {
+        if self.document.active_tool != ToolKind::Pen {
+            self.canvas_input.last_smoothed_position = Some((x as f32, y as f32));
+            return (x, y);
+        }
+        let stabilization = self
+            .document
+            .active_pen_preset()
+            .map(|preset| preset.stabilization)
+            .unwrap_or_default();
+        if stabilization == 0 {
+            self.canvas_input.last_smoothed_position = Some((x as f32, y as f32));
+            return (x, y);
+        }
+
+        let blend = (1.0 / (1.0 + stabilization as f32 / 12.0)).clamp(0.05, 1.0);
+        let previous = self
+            .canvas_input
+            .last_smoothed_position
+            .unwrap_or((x as f32, y as f32));
+        let next = (
+            previous.0 + (x as f32 - previous.0) * blend,
+            previous.1 + (y as f32 - previous.1) * blend,
+        );
+        self.canvas_input.last_smoothed_position = Some(next);
+        (next.0.round().max(0.0) as usize, next.1.round().max(0.0) as usize)
     }
 
     /// ウィンドウ座標をキャンバスビットマップ座標へ変換する。

@@ -2,5 +2,8 @@
   "format_version": 1,
   "id": "builtin.round-pen",
   "name": "Round Pen",
-  "size": 4
+  "size": 4,
+  "pressure_enabled": true,
+  "antialias": true,
+  "stabilization": 12
 }

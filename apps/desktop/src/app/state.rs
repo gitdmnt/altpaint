@@ -262,11 +262,16 @@ impl DesktopApp {
             Command::DrawPoint { .. }
             | Command::DrawStroke { .. }
             | Command::ErasePoint { .. }
-            | Command::EraseStroke { .. } => {
+            | Command::EraseStroke { .. }
+            | Command::FillRegion { .. }
+            | Command::FillLasso { .. } => {
                 dirty.is_some_and(|dirty| self.append_canvas_dirty_rect(dirty))
             }
             Command::SetActiveTool { .. }
             | Command::SetActivePenSize { .. }
+            | Command::SetActivePenPressureEnabled { .. }
+            | Command::SetActivePenAntialias { .. }
+            | Command::SetActivePenStabilization { .. }
             | Command::SelectNextPenPreset
             | Command::SelectPreviousPenPreset
             | Command::SetActiveColor { .. } => {

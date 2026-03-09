@@ -6,6 +6,8 @@ pub enum Tool {
     Brush,
     Pen,
     Eraser,
+    Bucket,
+    LassoBucket,
 }
 
 impl Tool {
@@ -15,6 +17,8 @@ impl Tool {
             Self::Brush => "brush",
             Self::Pen => "pen",
             Self::Eraser => "eraser",
+            Self::Bucket => "bucket",
+            Self::LassoBucket => "lasso_bucket",
         }
     }
 }
@@ -125,6 +129,33 @@ pub mod tool {
     pub fn set_size(size: u32) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("tool.set_size");
         descriptor.payload.insert("size".to_string(), json!(size));
+        descriptor
+    }
+
+    /// 筆圧有効状態設定コマンドを返す。
+    pub fn set_pressure_enabled(enabled: bool) -> CommandDescriptor {
+        let mut descriptor = CommandDescriptor::new("tool.set_pressure_enabled");
+        descriptor
+            .payload
+            .insert("enabled".to_string(), json!(enabled));
+        descriptor
+    }
+
+    /// アンチエイリアス有効状態設定コマンドを返す。
+    pub fn set_antialias(enabled: bool) -> CommandDescriptor {
+        let mut descriptor = CommandDescriptor::new("tool.set_antialias");
+        descriptor
+            .payload
+            .insert("enabled".to_string(), json!(enabled));
+        descriptor
+    }
+
+    /// 手ぶれ補正強さ設定コマンドを返す。
+    pub fn set_stabilization(amount: u8) -> CommandDescriptor {
+        let mut descriptor = CommandDescriptor::new("tool.set_stabilization");
+        descriptor
+            .payload
+            .insert("amount".to_string(), json!(amount.min(100)));
         descriptor
     }
 

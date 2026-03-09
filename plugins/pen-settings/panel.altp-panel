@@ -16,6 +16,9 @@ runtime {
 state {
   pen_name: string = ""
   size: int = 1
+  pressure_enabled: bool = true
+  antialias: bool = true
+  stabilization: int = 0
 }
 
 view {
@@ -25,6 +28,12 @@ view {
       <text>{state.pen_name}</text>
       <text>{state.size}px</text>
       <slider id="pen.size" label="Size" min={1} max={10000} value={state.size} fill="#90CAF9" on:change="set_pen_size"></slider>
+    </section>
+    <section title="Dynamics">
+      <button id="pen.pressure" on:click="toggle_pressure" active={state.pressure_enabled}>Pressure</button>
+      <button id="pen.antialias" on:click="toggle_antialias" active={state.antialias}>Antialias</button>
+      <text>Stabilization: {state.stabilization}%</text>
+      <slider id="pen.stabilization" label="Stabilization" min={0} max={100} value={state.stabilization} fill="#A5D6A7" on:change="set_stabilization"></slider>
     </section>
   </column>
 }

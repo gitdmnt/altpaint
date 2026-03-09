@@ -21,6 +21,12 @@ struct PenPresetFile {
     min_size: u32,
     #[serde(default = "default_pen_max_size")]
     max_size: u32,
+    #[serde(default = "default_pen_pressure_enabled")]
+    pressure_enabled: bool,
+    #[serde(default = "default_pen_antialias")]
+    antialias: bool,
+    #[serde(default)]
+    stabilization: u8,
 }
 
 fn default_format_version() -> u32 {
@@ -37,6 +43,14 @@ fn default_pen_min_size() -> u32 {
 
 fn default_pen_max_size() -> u32 {
     64
+}
+
+fn default_pen_pressure_enabled() -> bool {
+    true
+}
+
+fn default_pen_antialias() -> bool {
+    true
 }
 
 impl TryFrom<PenPresetFile> for PenPreset {
@@ -61,6 +75,9 @@ impl TryFrom<PenPresetFile> for PenPreset {
             id: value.id,
             name: value.name,
             size: value.size.clamp(min_size, max_size),
+            pressure_enabled: value.pressure_enabled,
+            antialias: value.antialias,
+            stabilization: value.stabilization.min(100),
         })
     }
 }

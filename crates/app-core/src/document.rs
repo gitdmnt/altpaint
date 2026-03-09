@@ -44,6 +44,8 @@ pub enum ToolKind {
     Brush,
     Pen,
     Eraser,
+    Bucket,
+    LassoBucket,
 }
 
 /// 外部読込可能な最小ペンプリセットを表す。
@@ -53,6 +55,12 @@ pub struct PenPreset {
     pub name: String,
     #[serde(default = "default_pen_size")]
     pub size: u32,
+    #[serde(default = "default_pen_pressure_enabled")]
+    pub pressure_enabled: bool,
+    #[serde(default = "default_pen_antialias")]
+    pub antialias: bool,
+    #[serde(default)]
+    pub stabilization: u8,
 }
 
 impl PenPreset {
@@ -69,12 +77,23 @@ impl Default for PenPreset {
             id: "builtin.round-pen".to_string(),
             name: "Round Pen".to_string(),
             size: default_pen_size(),
+            pressure_enabled: default_pen_pressure_enabled(),
+            antialias: default_pen_antialias(),
+            stabilization: 0,
         }
     }
 }
 
 fn default_pen_size() -> u32 {
     4
+}
+
+fn default_pen_pressure_enabled() -> bool {
+    true
+}
+
+fn default_pen_antialias() -> bool {
+    true
 }
 
 fn default_pen_presets() -> Vec<PenPreset> {
@@ -503,6 +522,24 @@ impl Document {
         self.active_pen_size = size;
     }
 
+    pub fn set_active_pen_pressure_enabled(&mut self, enabled: bool) {
+        if let Some(preset) = self.active_pen_preset_mut() {
+            preset.pressure_enabled = enabled;
+        }
+    }
+
+    pub fn set_active_pen_antialias(&mut self, enabled: bool) {
+        if let Some(preset) = self.active_pen_preset_mut() {
+            preset.antialias = enabled;
+        }
+    }
+
+    pub fn set_active_pen_stabilization(&mut self, amount: u8) {
+        if let Some(preset) = self.active_pen_preset_mut() {
+            preset.stabilization = amount.min(100);
+        }
+    }
+
     pub fn set_active_color(&mut self, color: ColorRgba8) {
         self.active_color = color;
     }
@@ -531,6 +568,11 @@ impl Document {
             .or_else(|| self.pen_presets.first())
     }
 
+    fn active_pen_preset_mut(&mut self) -> Option<&mut PenPreset> {
+        let index = self.active_pen_index();
+        self.pen_presets.get_mut(index)
+    }
+
     pub fn active_pen_index(&self) -> usize {
         self.pen_presets
             .iter()
@@ -549,26 +591,44 @@ impl Document {
     pub fn apply_command(&mut self, command: &Command) -> Option<DirtyRect> {
         match command {
             Command::Noop => None,
-            Command::DrawPoint { x, y } => self.draw_point(*x, *y),
-            Command::ErasePoint { x, y } => self.erase_point(*x, *y),
+            Command::DrawPoint { x, y, pressure } => {
+                self.draw_point_with_pressure(*x, *y, *pressure)
+            }
+            Command::ErasePoint { x, y, pressure } => {
+                self.erase_point_with_pressure(*x, *y, *pressure)
+            }
             Command::DrawStroke {
                 from_x,
                 from_y,
                 to_x,
                 to_y,
-            } => self.draw_stroke(*from_x, *from_y, *to_x, *to_y),
+                pressure,
+            } => self.draw_stroke_with_pressure(*from_x, *from_y, *to_x, *to_y, *pressure),
             Command::EraseStroke {
                 from_x,
                 from_y,
                 to_x,
                 to_y,
-            } => self.erase_stroke(*from_x, *from_y, *to_x, *to_y),
+                pressure,
+            } => self.erase_stroke_with_pressure(*from_x, *from_y, *to_x, *to_y, *pressure),
             Command::SetActiveTool { tool } => {
                 self.set_active_tool(*tool);
                 None
             }
             Command::SetActivePenSize { size } => {
                 self.set_active_pen_size(*size);
+                None
+            }
+            Command::SetActivePenPressureEnabled { enabled } => {
+                self.set_active_pen_pressure_enabled(*enabled);
+                None
+            }
+            Command::SetActivePenAntialias { enabled } => {
+                self.set_active_pen_antialias(*enabled);
+                None
+            }
+            Command::SetActivePenStabilization { amount } => {
+                self.set_active_pen_stabilization(*amount);
                 None
             }
             Command::SelectNextPenPreset => {
@@ -584,6 +644,8 @@ impl Document {
                 self.set_active_color(*color);
                 None
             }
+            Command::FillRegion { x, y } => self.fill_region(*x, *y),
+            Command::FillLasso { points } => self.fill_lasso(points),
             Command::SetViewZoom { zoom } => {
                 self.view_transform.zoom = zoom.clamp(0.25, 16.0);
                 None
@@ -594,9 +656,9 @@ impl Document {
                 None
             }
             Command::RotateView { quarter_turns } => {
-                self.view_transform.rotation_degrees =
-                    (self.view_transform.rotation_degrees + (*quarter_turns as f32 * 90.0))
-                        .rem_euclid(360.0);
+                self.view_transform.rotation_degrees = (self.view_transform.rotation_degrees
+                    + (*quarter_turns as f32 * 90.0))
+                    .rem_euclid(360.0);
                 None
             }
             Command::FlipViewHorizontally => {

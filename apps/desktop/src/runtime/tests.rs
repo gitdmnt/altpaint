@@ -20,9 +20,9 @@ fn touch_started_and_moved_draws_black_pixels() {
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    assert!(runtime.handle_touch_phase(1, TouchPhase::Started, center_x, center_y));
-    assert!(runtime.handle_touch_phase(1, TouchPhase::Moved, center_x + 20, center_y));
-    assert!(!runtime.handle_touch_phase(1, TouchPhase::Ended, center_x + 20, center_y));
+    assert!(runtime.handle_touch_phase(1, TouchPhase::Started, center_x, center_y, None));
+    assert!(runtime.handle_touch_phase(1, TouchPhase::Moved, center_x + 20, center_y, None));
+    assert!(!runtime.handle_touch_phase(1, TouchPhase::Ended, center_x + 20, center_y, None));
 
     let frame = render::RenderContext::new().render_frame(&runtime.app.document);
     assert!(frame.pixels.chunks_exact(4).any(|pixel| pixel == [0, 0, 0, 255]));
@@ -38,10 +38,10 @@ fn touch_cancelled_stops_active_touch_tracking() {
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    assert!(runtime.handle_touch_phase(7, TouchPhase::Started, center_x, center_y));
+    assert!(runtime.handle_touch_phase(7, TouchPhase::Started, center_x, center_y, None));
     assert_eq!(runtime.active_touch_id, Some(7));
 
-    assert!(!runtime.handle_touch_phase(7, TouchPhase::Cancelled, center_x, center_y));
+    assert!(!runtime.handle_touch_phase(7, TouchPhase::Cancelled, center_x, center_y, None));
     assert_eq!(runtime.active_touch_id, None);
 }
 

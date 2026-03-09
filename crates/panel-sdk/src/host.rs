@@ -93,6 +93,21 @@ pub mod tool {
     pub fn pen_size() -> i32 {
         host_i32("tool.pen_size")
     }
+
+    /// 筆圧有効状態を返す。
+    pub fn pen_pressure_enabled() -> bool {
+        crate::runtime::host_bool("tool.pen_pressure_enabled")
+    }
+
+    /// アンチエイリアス有効状態を返す。
+    pub fn pen_antialias() -> bool {
+        crate::runtime::host_bool("tool.pen_antialias")
+    }
+
+    /// 手ぶれ補正強さを返す。
+    pub fn pen_stabilization() -> i32 {
+        host_i32("tool.pen_stabilization")
+    }
 }
 
 /// 色関連 host 値を読む。

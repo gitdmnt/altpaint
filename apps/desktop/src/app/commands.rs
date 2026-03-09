@@ -21,8 +21,9 @@ impl DesktopApp {
         x: usize,
         y: usize,
         from: Option<(usize, usize)>,
+        pressure: f32,
     ) -> bool {
-        let command = command_for_canvas_gesture(self.document.active_tool, (x, y), from);
+        let command = command_for_canvas_gesture(self.document.active_tool, (x, y), from, pressure);
         self.execute_command(command)
     }
 

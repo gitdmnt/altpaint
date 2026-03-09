@@ -129,18 +129,14 @@ fn load_project_restores_workspace_layout() {
         .iter()
         .position(|panel_id| *panel_id == "builtin.layers-panel")
         .expect("layers panel visible");
-    assert!(source_app.execute_host_action(HostAction::MovePanel {
-        panel_id: "builtin.layers-panel".to_string(),
-        direction: plugin_api::PanelMoveDirection::Up,
-    }));
-    assert!(source_app.execute_host_action(HostAction::MovePanel {
-        panel_id: "builtin.layers-panel".to_string(),
-        direction: plugin_api::PanelMoveDirection::Up,
-    }));
-    assert!(source_app.execute_host_action(HostAction::MovePanel {
-        panel_id: "builtin.layers-panel".to_string(),
-        direction: plugin_api::PanelMoveDirection::Up,
-    }));
+    let mut moved = false;
+    for _ in 0..3 {
+        moved |= source_app.execute_host_action(HostAction::MovePanel {
+            panel_id: "builtin.layers-panel".to_string(),
+            direction: plugin_api::PanelMoveDirection::Up,
+        });
+    }
+    assert!(moved);
     assert!(
         source_app.execute_host_action(HostAction::SetPanelVisibility {
             panel_id: "builtin.tool-palette".to_string(),

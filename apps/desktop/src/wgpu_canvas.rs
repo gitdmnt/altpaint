@@ -135,6 +135,10 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 }
 "#;
 
+const LAYER_UNIFORM_VISIBILITY: wgpu::ShaderStages =
+    wgpu::ShaderStages::VERTEX.union(wgpu::ShaderStages::FRAGMENT);
+const LAYER_UNIFORM_SIZE: u64 = std::mem::size_of::<[f32; 12]>() as u64;
+
 #[derive(Debug)]
 struct UploadedLayerTexture {
     texture: wgpu::Texture,
@@ -244,7 +248,7 @@ impl WgpuPresenter {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: LAYER_UNIFORM_VISIBILITY,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -526,7 +530,7 @@ impl WgpuPresenter {
         });
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&format!("altpaint-{label}-uniform")),
-            size: 32,
+            size: LAYER_UNIFORM_SIZE,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -782,6 +786,12 @@ mod tests {
     }
 
     #[test]
+    fn layer_uniform_visibility_covers_vertex_and_fragment_stages() {
+        assert!(LAYER_UNIFORM_VISIBILITY.contains(wgpu::ShaderStages::VERTEX));
+        assert!(LAYER_UNIFORM_VISIBILITY.contains(wgpu::ShaderStages::FRAGMENT));
+    }
+
+    #[test]
     fn quad_uniform_bytes_maps_fullscreen_quad_to_ndc() {
         let bytes = quad_uniform_bytes(fullscreen_quad(640, 480), 640, 480);
         let mut values = [0.0f32; 12];
@@ -796,5 +806,13 @@ mod tests {
         assert_eq!(values[8], 0.0);
         assert_eq!(values[9], 0.0);
         assert_eq!(values[10], 0.0);
+    }
+
+    #[test]
+    fn quad_uniform_buffer_size_matches_written_bytes() {
+        assert_eq!(
+            LAYER_UNIFORM_SIZE as usize,
+            quad_uniform_bytes(fullscreen_quad(1, 1), 1, 1).len()
+        );
     }
 }

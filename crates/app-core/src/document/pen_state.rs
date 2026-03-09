@@ -43,10 +43,29 @@ impl Document {
     }
 
     /// 現在ツールに応じた実効描画サイズを返す。
+    #[allow(dead_code)]
     pub(super) fn active_draw_size(&self) -> u32 {
+        self.active_draw_size_with_pressure(1.0)
+    }
+
+    /// 筆圧と現在ツールに応じた実効描画サイズを返す。
+    pub(super) fn active_draw_size_with_pressure(&self, pressure: f32) -> u32 {
+        let clamped_pressure = pressure.clamp(0.0, 1.0);
         match self.active_tool {
-            ToolKind::Brush | ToolKind::Eraser => 1,
-            ToolKind::Pen => self.active_pen_size.max(1),
+            ToolKind::Brush => 1,
+            ToolKind::Eraser => self.active_pen_size.max(1),
+            ToolKind::Pen => {
+                let Some(preset) = self.active_pen_preset() else {
+                    return self.active_pen_size.max(1);
+                };
+                let base = self.active_pen_size.max(1);
+                if !preset.pressure_enabled {
+                    return base;
+                }
+                let scaled = (base as f32 * (0.2 + clamped_pressure * 0.8)).round() as u32;
+                scaled.max(1)
+            }
+            ToolKind::Bucket | ToolKind::LassoBucket => 1,
         }
     }
 }

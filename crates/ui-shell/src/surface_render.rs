@@ -30,6 +30,7 @@ const SECTION_GAP: usize = 4;
 const SECTION_INDENT: usize = 10;
 const BUTTON_HEIGHT: usize = 24;
 const COLOR_PREVIEW_HEIGHT: usize = 52;
+const COLOR_WHEEL_SIZE: usize = 160;
 const INPUT_BOX_HEIGHT: usize = 24;
 const SLIDER_HEIGHT: usize = 32;
 const SLIDER_TRACK_HEIGHT: usize = 8;
@@ -209,6 +210,10 @@ fn measure_node(node: &PanelNode, panel_id: &str, available_width: usize, render
         }
         PanelNode::Text { text, .. } => measure_text(text, available_width),
         PanelNode::ColorPreview { .. } => COLOR_PREVIEW_HEIGHT,
+        PanelNode::ColorWheel { label, .. } => {
+            let label_height = if label.is_empty() { 0 } else { measure_text(label, available_width) + 4 };
+            label_height + COLOR_WHEEL_SIZE.min(available_width.max(96))
+        }
         PanelNode::Button { .. } => BUTTON_HEIGHT,
         PanelNode::Slider { .. } => SLIDER_HEIGHT,
         PanelNode::TextInput { label, .. } => {
@@ -289,6 +294,31 @@ fn draw_node(surface: &mut PanelSurface, node: &PanelNode, panel_id: &str, x: us
             fill_rect(surface, x, swatch_y, available_width, swatch_height, color.to_rgba8());
             stroke_rect(surface, x, swatch_y, available_width, swatch_height, PREVIEW_SWATCH_BORDER);
             COLOR_PREVIEW_HEIGHT
+        }
+        PanelNode::ColorWheel { id, label, hue_degrees, saturation, value, .. } => {
+            let label_height = if label.is_empty() {
+                0
+            } else {
+                draw_wrapped_text(surface, x, y, label, BODY_TEXT, available_width) + 4
+            };
+            let wheel_size = COLOR_WHEEL_SIZE.min(available_width.max(96));
+            let wheel_x = x + available_width.saturating_sub(wheel_size) / 2;
+            let wheel_y = y + label_height;
+            draw_color_wheel(surface, wheel_x, wheel_y, wheel_size, *hue_degrees, *saturation, *value);
+            surface.hit_regions.push(PanelHitRegion {
+                x: wheel_x,
+                y: wheel_y,
+                width: wheel_size,
+                height: wheel_size,
+                panel_id: panel_id.to_string(),
+                node_id: id.clone(),
+                kind: PanelHitKind::ColorWheel {
+                    hue_degrees: *hue_degrees,
+                    saturation: *saturation,
+                    value: *value,
+                },
+            });
+            label_height + wheel_size
         }
         PanelNode::Button { id, label, active, fill_color, .. } => {
             let fill = fill_color.map_or(if *active { BUTTON_ACTIVE_FILL } else { BUTTON_FILL }, ColorRgba8::to_rgba8);
@@ -397,6 +427,87 @@ fn draw_node(surface: &mut PanelSurface, node: &PanelNode, panel_id: &str, x: us
             label_height + INPUT_BOX_HEIGHT
         }
     }
+}
+
+fn draw_color_wheel(
+    surface: &mut PanelSurface,
+    x: usize,
+    y: usize,
+    size: usize,
+    hue_degrees: usize,
+    saturation: usize,
+    value: usize,
+) {
+    let size = size.max(1);
+    let center = (size as f32 - 1.0) * 0.5;
+    let outer_radius = center.max(1.0);
+    let inner_radius = outer_radius * 0.72;
+    let square_half = inner_radius * 0.7;
+
+    for local_y in 0..size {
+        for local_x in 0..size {
+            let dx = local_x as f32 - center;
+            let dy = local_y as f32 - center;
+            let distance = (dx * dx + dy * dy).sqrt();
+            let pixel = if distance >= inner_radius && distance <= outer_radius {
+                let hue = dy.atan2(dx).to_degrees().rem_euclid(360.0) as usize;
+                hsv_to_rgba(hue, 100, 100)
+            } else if dx.abs() <= square_half && dy.abs() <= square_half {
+                let local_saturation = (((dx + square_half) / (square_half * 2.0)) * 100.0)
+                    .round()
+                    .clamp(0.0, 100.0) as usize;
+                let local_value = ((1.0 - (dy + square_half) / (square_half * 2.0)) * 100.0)
+                    .round()
+                    .clamp(0.0, 100.0) as usize;
+                hsv_to_rgba(hue_degrees, local_saturation, local_value)
+            } else {
+                continue;
+            };
+            fill_rect(surface, x + local_x, y + local_y, 1, 1, pixel);
+        }
+    }
+
+    let selector_hue = hue_degrees % 360;
+    let selector_angle = (selector_hue as f32).to_radians();
+    let selector_radius = (inner_radius + outer_radius) * 0.5;
+    let selector_x = x + (center + selector_angle.cos() * selector_radius).round().max(0.0) as usize;
+    let selector_y = y + (center + selector_angle.sin() * selector_radius).round().max(0.0) as usize;
+    stroke_rect(surface, selector_x.saturating_sub(2), selector_y.saturating_sub(2), 5, 5, BUTTON_FOCUS_BORDER);
+
+    let sv_x = x + (center - square_half + (square_half * 2.0) * (saturation as f32 / 100.0)).round().max(0.0) as usize;
+    let sv_y = y + (center - square_half + (square_half * 2.0) * (1.0 - value as f32 / 100.0)).round().max(0.0) as usize;
+    stroke_rect(surface, sv_x.saturating_sub(2), sv_y.saturating_sub(2), 5, 5, BUTTON_FOCUS_BORDER);
+}
+
+fn hsv_to_rgba(hue_degrees: usize, saturation: usize, value: usize) -> [u8; 4] {
+    let h = (hue_degrees % 360) as f32;
+    let s = (saturation.min(100) as f32) / 100.0;
+    let v = (value.min(100) as f32) / 100.0;
+    if s <= f32::EPSILON {
+        let gray = (v * 255.0).round() as u8;
+        return [gray, gray, gray, 0xff];
+    }
+
+    let sector = (h / 60.0).floor();
+    let fraction = h / 60.0 - sector;
+    let p = v * (1.0 - s);
+    let q = v * (1.0 - s * fraction);
+    let t = v * (1.0 - s * (1.0 - fraction));
+    let (r, g, b) = match sector as i32 {
+        0 => (v, t, p),
+        1 => (q, v, p),
+        2 => (p, v, t),
+        3 => (p, q, v),
+        4 => (t, p, v),
+        _ => (v, p, q),
+    };
+
+    [
+        (r * 255.0).round() as u8,
+        (g * 255.0).round() as u8,
+        (b * 255.0).round() as u8,
+        0xff,
+    ]
 }
 
 fn button_text_color(fill_color: Option<ColorRgba8>) -> [u8; 4] {
