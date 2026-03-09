@@ -151,6 +151,8 @@ mod tests {
                 rotation_degrees: 0.0,
                 pan_x: 32.0,
                 pan_y: 0.0,
+                flip_x: false,
+                flip_y: false,
             },
         );
 

@@ -43,6 +43,12 @@ pub enum Command {
     SetViewZoom { zoom: f32 },
     /// キャンバス表示を平行移動する。
     PanView { delta_x: f32, delta_y: f32 },
+    /// キャンバス表示を 90 度単位で回転する。
+    RotateView { quarter_turns: i32 },
+    /// キャンバス表示を左右反転する。
+    FlipViewHorizontally,
+    /// キャンバス表示を上下反転する。
+    FlipViewVertically,
     /// キャンバス表示を既定位置へ戻す。
     ResetView,
     /// 新しいラスタレイヤーを追加する。

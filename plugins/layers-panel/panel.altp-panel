@@ -52,7 +52,7 @@ view {
         id="layers.blend_mode"
         label="Blend Mode"
         value={state.active_layer_blend_mode}
-        options="normal:Normal|multiply:Multiply|screen:Screen|add:Add"
+        options="normal:Normal|multiply:Multiply|screen:Screen|add:Add|max(src,dst):Lighten"
         on:change="set_blend_mode"
       />
       <button id="layers.visibility" on:click="toggle_layer_visibility">Toggle Visibility</button>

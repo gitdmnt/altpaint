@@ -349,9 +349,11 @@ impl WasmPanelRuntime {
                 "host_get_string_len",
                 |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| -> i32 {
                     let Some(path) = read_utf8(&mut caller, ptr, len) else {
-                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
-                            "failed to read host path for string len",
-                        ));
+                        caller
+                            .data_mut()
+                            .result
+                            .diagnostics
+                            .push(Diagnostic::error("failed to read host path for string len"));
                         return 0;
                     };
                     caller
@@ -394,19 +396,15 @@ impl WasmPanelRuntime {
                         return;
                     };
                     let Some(memory) = current_memory(&mut caller) else {
-                        caller
-                            .data_mut()
-                            .result
-                            .diagnostics
-                            .push(Diagnostic::error("missing wasm memory for host string copy"));
+                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
+                            "missing wasm memory for host string copy",
+                        ));
                         return;
                     };
                     if buffer_ptr < 0 || buffer_len < 0 {
-                        caller
-                            .data_mut()
-                            .result
-                            .diagnostics
-                            .push(Diagnostic::error("invalid buffer range for host string copy"));
+                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
+                            "invalid buffer range for host string copy",
+                        ));
                         return;
                     }
                     let data = memory.data_mut(&mut caller);
@@ -567,6 +565,46 @@ impl WasmPanelRuntime {
 
                     let mut descriptor = CommandDescriptor::new(name);
                     descriptor.payload.insert(key, Value::String(value));
+                    caller.data_mut().result.commands.push(descriptor);
+                },
+            )
+            .map_err(|error| PluginHostError::Instantiate {
+                path: path.clone(),
+                message: error.to_string(),
+            })?;
+        linker
+            .func_wrap(
+                "host",
+                "command_json",
+                |mut caller: Caller<'_, RuntimeCollector>,
+                 name_ptr: i32,
+                 name_len: i32,
+                 json_ptr: i32,
+                 json_len: i32| {
+                    let Some(name) = read_utf8(&mut caller, name_ptr, name_len) else {
+                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
+                            "failed to read command name for json payload",
+                        ));
+                        return;
+                    };
+                    let Some(payload_text) = read_utf8(&mut caller, json_ptr, json_len) else {
+                        caller
+                            .data_mut()
+                            .result
+                            .diagnostics
+                            .push(Diagnostic::error("failed to read command payload json"));
+                        return;
+                    };
+                    let Ok(Value::Object(payload)) = serde_json::from_str::<Value>(&payload_text)
+                    else {
+                        caller.data_mut().result.diagnostics.push(Diagnostic::error(
+                            "failed to parse command payload json object",
+                        ));
+                        return;
+                    };
+
+                    let mut descriptor = CommandDescriptor::new(name);
+                    descriptor.payload = payload;
                     caller.data_mut().result.commands.push(descriptor);
                 },
             )
@@ -810,6 +848,7 @@ mod tests {
     (import "host" "state_get_string_copy" (func $state_get_string_copy (param i32 i32 i32 i32)))
   (import "host" "command" (func $command (param i32 i32)))
   (import "host" "command_string" (func $command_string (param i32 i32 i32 i32 i32 i32)))
+    (import "host" "command_json" (func $command_json (param i32 i32 i32 i32)))
   (memory (export "memory") 1)
   (data (i32.const 0) "expanded")
   (data (i32.const 16) "project.save")
@@ -817,6 +856,8 @@ mod tests {
   (data (i32.const 64) "tool")
   (data (i32.const 80) "brush")
     (data (i32.const 96) "save_path")
+    (data (i32.const 128) "layer.move")
+    (data (i32.const 160) "{\22from_index\22:2,\22to_index\22:0}")
   (func (export "panel_init")
     i32.const 0
     i32.const 8
@@ -838,13 +879,19 @@ mod tests {
     i32.const 80
     i32.const 5
         call $command_string)
+    (func (export "panel_handle_move_layer")
+        i32.const 128
+        i32.const 10
+        i32.const 160
+        i32.const 29
+        call $command_json)
     (func (export "panel_handle_save_path_len")
         i32.const 96
         i32.const 9
         call $state_get_string_len
         drop))"#;
 
-        const HOST_SYNC_WAT: &str = r#"(module
+    const HOST_SYNC_WAT: &str = r#"(module
     (import "host" "state_set_bool" (func $state_set_bool (param i32 i32 i32)))
     (import "host" "state_set_i32" (func $state_set_i32 (param i32 i32 i32)))
     (import "host" "state_set_string" (func $state_set_string (param i32 i32 i32 i32)))
@@ -951,6 +998,24 @@ mod tests {
             })
             .expect("string state handler runs");
         assert!(string_len.diagnostics.is_empty());
+
+        let moved = runtime
+            .handle_event(&PanelEventRequest {
+                handler_name: "move_layer".to_string(),
+                event_kind: "change".to_string(),
+                event_payload: json!({}),
+                state_snapshot: json!({}),
+                host_snapshot: json!({}),
+            })
+            .expect("json payload handler runs");
+        let mut expected_move = CommandDescriptor::new("layer.move");
+        expected_move
+            .payload
+            .insert("from_index".to_string(), json!(2));
+        expected_move
+            .payload
+            .insert("to_index".to_string(), json!(0));
+        assert_eq!(moved.commands, vec![expected_move]);
     }
 
     #[test]

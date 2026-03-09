@@ -402,7 +402,15 @@ fn build_host_snapshot(document: &Document) -> Value {
         },
         "jobs": { "active": 0, "queued": 0, "status": format!("idle / work={}", document.work.title) },
         "snapshot": { "storage_status": "pending" },
-        "view": { "zoom": document.view_transform.zoom, "pan_x": document.view_transform.pan_x, "pan_y": document.view_transform.pan_y },
+        "view": {
+            "zoom": document.view_transform.zoom,
+            "zoom_milli": (document.view_transform.zoom * 1000.0).round() as i32,
+            "pan_x": document.view_transform.pan_x.round() as i32,
+            "pan_y": document.view_transform.pan_y.round() as i32,
+            "quarter_turns": ((document.view_transform.rotation_degrees / 90.0).round() as i32).rem_euclid(4),
+            "flip_x": document.view_transform.flip_x,
+            "flip_y": document.view_transform.flip_y,
+        },
     })
 }
 fn apply_state_patches(state: &mut Value, patches: &[StatePatch]) { if !state.is_object() { *state = Value::Object(Map::new()); } for patch in patches { apply_state_patch(state, patch); } }
@@ -486,10 +494,17 @@ pub(super) fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<
             let delta_y = descriptor.payload.get("delta_y").and_then(payload_f64).ok_or_else(|| "view.pan is missing payload.delta_y".to_string())?;
             Ok(Command::PanView { delta_x: delta_x as f32, delta_y: delta_y as f32 })
         }
+        "view.rotate" => {
+            let quarter_turns = descriptor.payload.get("quarter_turns").and_then(payload_i32).ok_or_else(|| "view.rotate is missing payload.quarter_turns".to_string())?;
+            Ok(Command::RotateView { quarter_turns })
+        }
+        "view.flip_horizontal" => Ok(Command::FlipViewHorizontally),
+        "view.flip_vertical" => Ok(Command::FlipViewVertically),
         other => Err(format!("unsupported command descriptor: {other}")),
     }
 }
 fn payload_u64(value: &Value) -> Option<u64> { value.as_u64().or_else(|| value.as_i64().and_then(|number| u64::try_from(number).ok())).or_else(|| value.as_str().and_then(|text| text.parse::<u64>().ok())) }
+fn payload_i32(value: &Value) -> Option<i32> { value.as_i64().and_then(|number| i32::try_from(number).ok()).or_else(|| value.as_u64().and_then(|number| i32::try_from(number).ok())).or_else(|| value.as_str().and_then(|text| text.parse::<i32>().ok())) }
 fn payload_f64(value: &Value) -> Option<f64> { value.as_f64().or_else(|| value.as_str().and_then(|text| text.parse::<f64>().ok())) }
 fn parse_hex_color(input: &str) -> Option<ColorRgba8> {
     let hex = input.strip_prefix('#')?;

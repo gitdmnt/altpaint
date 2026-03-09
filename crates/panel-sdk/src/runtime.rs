@@ -30,6 +30,7 @@ unsafe extern "C" {
         value_ptr: i32,
         value_len: i32,
     );
+    fn command_json(name_ptr: i32, name_len: i32, json_ptr: i32, json_len: i32);
     fn diagnostic(level: i32, ptr: i32, len: i32);
 }
 
@@ -61,7 +62,9 @@ pub fn set_state_bool(_path: impl AsRef<str>, _value: bool) {}
 /// 整数 state を設定する。
 #[cfg(target_arch = "wasm32")]
 pub fn set_state_i32(path: impl AsRef<str>, value: i32) {
-    with_bytes(path.as_ref(), |ptr, len| unsafe { state_set_i32(ptr, len, value) });
+    with_bytes(path.as_ref(), |ptr, len| unsafe {
+        state_set_i32(ptr, len, value)
+    });
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -83,7 +86,9 @@ pub fn set_state_string(_path: impl AsRef<str>, _value: impl AsRef<str>) {}
 /// 真偽値 state を取得する。
 #[cfg(target_arch = "wasm32")]
 pub fn state_bool(path: impl AsRef<str>) -> bool {
-    with_bytes(path.as_ref(), |ptr, len| unsafe { state_get_bool(ptr, len) != 0 })
+    with_bytes(path.as_ref(), |ptr, len| unsafe {
+        state_get_bool(ptr, len) != 0
+    })
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -127,7 +132,9 @@ pub fn event_string(_path: impl AsRef<str>) -> String {
 /// host 真偽値を取得する。
 #[cfg(target_arch = "wasm32")]
 pub fn host_bool(path: impl AsRef<str>) -> bool {
-    with_bytes(path.as_ref(), |ptr, len| unsafe { host_get_bool(ptr, len) != 0 })
+    with_bytes(path.as_ref(), |ptr, len| unsafe {
+        host_get_bool(ptr, len) != 0
+    })
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -164,25 +171,44 @@ pub fn emit_command_descriptor(descriptor: &CommandDescriptor) {
         0 => with_bytes(&descriptor.name, |ptr, len| unsafe { command(ptr, len) }),
         1 => {
             let (key, value) = descriptor.payload.iter().next().expect("payload exists");
-            let value = match value {
-                Value::String(value) => value.clone(),
-                Value::Bool(value) => value.to_string(),
-                Value::Number(value) => value.to_string(),
-                _ => {
-                    error("unsupported command payload type in panel-sdk runtime");
-                    return;
-                }
-            };
-            with_bytes(&descriptor.name, |name_ptr, name_len| {
-                with_bytes(key, |key_ptr, key_len| {
-                    with_bytes(&value, |value_ptr, value_len| unsafe {
-                        command_string(name_ptr, name_len, key_ptr, key_len, value_ptr, value_len)
+            match value {
+                Value::String(value) => with_bytes(&descriptor.name, |name_ptr, name_len| {
+                    with_bytes(key, |key_ptr, key_len| {
+                        with_bytes(value, |value_ptr, value_len| unsafe {
+                            command_string(
+                                name_ptr, name_len, key_ptr, key_len, value_ptr, value_len,
+                            )
+                        })
                     })
-                })
-            });
+                }),
+                Value::Bool(value) => {
+                    emit_command_payload_json(descriptor, &serde_json::json!({ key: value }))
+                }
+                Value::Number(value) => {
+                    emit_command_payload_json(descriptor, &serde_json::json!({ key: value }))
+                }
+                _ => emit_command_payload_json(
+                    descriptor,
+                    &Value::Object(descriptor.payload.clone()),
+                ),
+            }
         }
-        _ => error("unsupported multi-field command payload in panel-sdk runtime"),
+        _ => emit_command_payload_json(descriptor, &Value::Object(descriptor.payload.clone())),
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn emit_command_payload_json(descriptor: &CommandDescriptor, payload: &Value) {
+    let Ok(json) = serde_json::to_string(payload) else {
+        error("failed to serialize command payload in panel-sdk runtime");
+        return;
+    };
+
+    with_bytes(&descriptor.name, |name_ptr, name_len| {
+        with_bytes(&json, |json_ptr, json_len| unsafe {
+            command_json(name_ptr, name_len, json_ptr, json_len)
+        })
+    });
 }
 
 #[cfg(not(target_arch = "wasm32"))]

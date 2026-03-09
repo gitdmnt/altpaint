@@ -33,6 +33,9 @@ fn from_render_quad(quad: render::TextureQuad) -> TextureQuad {
         destination: from_render_rect(quad.destination),
         uv_min: quad.uv_min,
         uv_max: quad.uv_max,
+        rotation_turns: quad.rotation_turns,
+        flip_x: quad.flip_x,
+        flip_y: quad.flip_y,
     }
 }
 

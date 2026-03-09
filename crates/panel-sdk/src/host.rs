@@ -120,6 +120,41 @@ pub mod color {
     }
 }
 
+/// ビュー関連 host 値を読む。
+pub mod view {
+    use crate::runtime::{host_bool, host_i32};
+
+    /// 現在ズーム倍率を 1/1000 単位で返す。
+    pub fn zoom_milli() -> i32 {
+        host_i32("view.zoom_milli")
+    }
+
+    /// 現在パン X を返す。
+    pub fn pan_x() -> i32 {
+        host_i32("view.pan_x")
+    }
+
+    /// 現在パン Y を返す。
+    pub fn pan_y() -> i32 {
+        host_i32("view.pan_y")
+    }
+
+    /// 現在の 90 度回転数を返す。
+    pub fn quarter_turns() -> i32 {
+        host_i32("view.quarter_turns")
+    }
+
+    /// 左右反転中なら true を返す。
+    pub fn flipped_x() -> bool {
+        host_bool("view.flip_x")
+    }
+
+    /// 上下反転中なら true を返す。
+    pub fn flipped_y() -> bool {
+        host_bool("view.flip_y")
+    }
+}
+
 /// ジョブ関連 host 値を読む。
 pub mod jobs {
     use crate::runtime::{host_i32, host_string};

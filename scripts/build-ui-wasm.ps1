@@ -20,6 +20,7 @@ try {
     $panelPackages = @(
         @{ Package = 'builtin-panel-app-actions'; Destination = 'plugins/app-actions/builtin_panel_app_actions.wasm' },
         @{ Package = 'builtin-panel-tool-palette'; Destination = 'plugins/tool-palette/builtin_panel_tool_palette.wasm' },
+        @{ Package = 'builtin-panel-view-controls'; Destination = 'plugins/view-controls/builtin_panel_view_controls.wasm' },
         @{ Package = 'builtin-panel-layers-panel'; Destination = 'plugins/layers-panel/builtin_panel_layers_panel.wasm' },
         @{ Package = 'builtin-panel-color-palette'; Destination = 'plugins/color-palette/builtin_panel_color_palette.wasm' },
         @{ Package = 'builtin-panel-pen-settings'; Destination = 'plugins/pen-settings/builtin_panel_pen_settings.wasm' },

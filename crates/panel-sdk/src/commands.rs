@@ -168,6 +168,25 @@ pub mod view {
         descriptor
     }
 
+    /// 90 度単位の回転コマンドを返す。
+    pub fn rotate(quarter_turns: i32) -> CommandDescriptor {
+        let mut descriptor = CommandDescriptor::new("view.rotate");
+        descriptor
+            .payload
+            .insert("quarter_turns".to_string(), json!(quarter_turns));
+        descriptor
+    }
+
+    /// 左右反転コマンドを返す。
+    pub fn flip_horizontal() -> CommandDescriptor {
+        CommandDescriptor::new("view.flip_horizontal")
+    }
+
+    /// 上下反転コマンドを返す。
+    pub fn flip_vertical() -> CommandDescriptor {
+        CommandDescriptor::new("view.flip_vertical")
+    }
+
     /// ビューリセットコマンドを返す。
     pub fn reset() -> CommandDescriptor {
         CommandDescriptor::new("view.reset")

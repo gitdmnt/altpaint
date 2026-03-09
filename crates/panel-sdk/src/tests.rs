@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use crate::{command, commands, host, state};
+use crate::{command, commands, handler_result, host, runtime, state};
 use crate::{panel_handler, panel_init, panel_sync_host};
 
 #[panel_init]
@@ -34,6 +34,15 @@ fn command_builder_collects_payload_fields() {
 }
 
 #[test]
+fn command_builder_color_aliases_string_payload_and_handler_result_defaults() {
+    let descriptor = command("tool.set_color").color("color", "#112233").build();
+
+    assert_eq!(descriptor.name, "tool.set_color");
+    assert_eq!(descriptor.payload.get("color"), Some(&json!("#112233")));
+    assert_eq!(handler_result(), crate::HandlerResult::default());
+}
+
+#[test]
 fn typed_project_commands_hide_command_strings() {
     let descriptor = commands::project::new_sized(320, 240);
 
@@ -44,12 +53,68 @@ fn typed_project_commands_hide_command_strings() {
 }
 
 #[test]
+fn typed_project_commands_cover_path_variants() {
+    assert_eq!(commands::project::new_document().name, "project.new");
+    assert_eq!(commands::project::save_as().name, "project.save_as");
+    assert_eq!(
+        commands::project::save_as_path("demo.altp")
+            .payload
+            .get("path"),
+        Some(&json!("demo.altp"))
+    );
+    assert_eq!(
+        commands::project::load_path("demo.altp")
+            .payload
+            .get("path"),
+        Some(&json!("demo.altp"))
+    );
+}
+
+#[test]
 fn typed_tool_commands_hide_payload_keys() {
     let tool = commands::tool::set_active(commands::Tool::Eraser);
     let color = commands::tool::set_color_rgb(commands::RgbColor::new(0x0c, 0x22, 0x38));
 
     assert_eq!(tool.payload.get("tool"), Some(&json!("eraser")));
     assert_eq!(color.payload.get("color"), Some(&json!("#0C2238")));
+}
+
+#[test]
+fn typed_tool_commands_cover_remaining_variants() {
+    assert_eq!(commands::Tool::Brush.as_str(), "brush");
+    assert_eq!(commands::Tool::Pen.as_str(), "pen");
+    assert_eq!(
+        commands::tool::set_color_hex("#ABCDEF")
+            .payload
+            .get("color"),
+        Some(&json!("#ABCDEF"))
+    );
+    assert_eq!(
+        commands::tool::set_size(24).payload.get("size"),
+        Some(&json!(24))
+    );
+    assert_eq!(commands::tool::select_next_pen().name, "tool.pen_next");
+    assert_eq!(commands::tool::select_previous_pen().name, "tool.pen_prev");
+    assert_eq!(
+        commands::tool::reload_pen_presets().name,
+        "tool.reload_pen_presets"
+    );
+}
+
+#[test]
+fn typed_view_commands_hide_payload_keys() {
+    let zoom = commands::view::zoom(1.5);
+    let pan = commands::view::pan(4.0, -2.0);
+    let rotate = commands::view::rotate(-1);
+
+    assert_eq!(zoom.name, "view.zoom");
+    assert_eq!(zoom.payload.get("zoom"), Some(&json!(1.5)));
+    assert_eq!(pan.payload.get("delta_x"), Some(&json!(4.0)));
+    assert_eq!(pan.payload.get("delta_y"), Some(&json!(-2.0)));
+    assert_eq!(rotate.payload.get("quarter_turns"), Some(&json!(-1)));
+    assert_eq!(commands::view::flip_horizontal().name, "view.flip_horizontal");
+    assert_eq!(commands::view::flip_vertical().name, "view.flip_vertical");
+    assert_eq!(commands::view::reset().name, "view.reset");
 }
 
 #[test]
@@ -67,6 +132,28 @@ fn typed_layer_commands_hide_payload_keys() {
 }
 
 #[test]
+fn typed_layer_commands_cover_remaining_variants() {
+    assert_eq!(commands::layer::BlendMode::Normal.as_str(), "normal");
+    assert_eq!(commands::layer::BlendMode::Multiply.as_str(), "multiply");
+    assert_eq!(commands::layer::BlendMode::Add.as_str(), "add");
+    assert_eq!(commands::layer::add().name, "layer.add");
+    assert_eq!(
+        commands::layer::select(3).payload.get("index"),
+        Some(&json!(3))
+    );
+    assert_eq!(commands::layer::select_next().name, "layer.select_next");
+    assert_eq!(
+        commands::layer::cycle_blend_mode().name,
+        "layer.cycle_blend_mode"
+    );
+    assert_eq!(
+        commands::layer::toggle_visibility().name,
+        "layer.toggle_visibility"
+    );
+    assert_eq!(commands::layer::toggle_mask().name, "layer.toggle_mask");
+}
+
+#[test]
 fn typed_state_keys_can_be_declared_once() {
     const SHOW_NEW: state::BoolKey = state::bool("show_new");
     const RED: state::IntKey = state::int("red");
@@ -81,11 +168,56 @@ fn typed_state_keys_can_be_declared_once() {
 fn typed_host_helpers_are_callable_on_native_targets() {
     assert_eq!(host::document::title(), "");
     assert_eq!(host::document::page_count(), 0);
+    assert_eq!(host::document::panel_count(), 0);
+    assert_eq!(host::document::layer_count(), 0);
+    assert_eq!(host::document::active_layer_name(), "");
+    assert_eq!(host::document::active_layer_index(), 0);
+    assert_eq!(host::document::active_layer_blend_mode(), "");
+    assert!(!host::document::active_layer_visible());
+    assert!(!host::document::active_layer_masked());
+    assert_eq!(host::document::layers_json(), "");
     assert!(!host::tool::is_active(commands::Tool::Brush));
+    assert_eq!(host::tool::active_name(), "");
     assert_eq!(host::tool::pen_name(), "");
+    assert_eq!(host::tool::pen_id(), "");
+    assert_eq!(host::tool::pen_index(), 0);
+    assert_eq!(host::tool::pen_count(), 0);
+    assert_eq!(host::tool::pen_size(), 0);
     assert_eq!(host::color::active_hex(), "");
+    assert_eq!(host::color::red(), 0);
+    assert_eq!(host::color::green(), 0);
+    assert_eq!(host::color::blue(), 0);
+    assert_eq!(host::view::zoom_milli(), 0);
+    assert_eq!(host::view::pan_x(), 0);
+    assert_eq!(host::view::pan_y(), 0);
+    assert_eq!(host::view::quarter_turns(), 0);
+    assert!(!host::view::flipped_x());
+    assert!(!host::view::flipped_y());
+    assert_eq!(host::jobs::active(), 0);
+    assert_eq!(host::jobs::queued(), 0);
     assert_eq!(host::jobs::status(), "");
     assert_eq!(host::snapshot::storage_status(), "");
+}
+
+#[test]
+fn native_runtime_helpers_are_safe_noops() {
+    runtime::toggle_state("flag");
+    runtime::set_state_bool("flag", true);
+    runtime::set_state_i32("count", 3);
+    runtime::set_state_string("name", "demo");
+    runtime::emit_command(&command("project.save").build());
+    runtime::emit_command_descriptor(&command("project.load").build());
+    runtime::info("info");
+    runtime::warn("warn");
+    runtime::error("error");
+
+    assert!(!runtime::state_bool("flag"));
+    assert_eq!(runtime::state_i32("count"), 0);
+    assert_eq!(runtime::state_string("name"), "");
+    assert_eq!(runtime::event_string("value"), "");
+    assert!(!runtime::host_bool("host.bool"));
+    assert_eq!(runtime::host_i32("host.int"), 0);
+    assert_eq!(runtime::host_string("host.string"), "");
 }
 
 #[test]

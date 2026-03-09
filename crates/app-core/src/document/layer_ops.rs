@@ -3,6 +3,9 @@
 //! 公開 command 境界の背後にある layer 操作・合成 helper をここへ集約し、
 //! ドキュメント本体を状態遷移の入口として読みやすく保つ。
 
+use std::iter::Peekable;
+use std::str::Chars;
+
 use super::{BlendMode, CanvasBitmap, DirtyRect, Document, LayerMask, LayerNodeId, Panel, RasterLayer};
 
 impl Document {
@@ -344,6 +347,10 @@ fn composite_panel_bitmap_region(panel: &mut Panel, dirty: DirtyRect) {
 
 /// 単一レイヤーの dirty rect だけを target bitmap へ合成する。
 fn composite_layer_region_into(target: &mut CanvasBitmap, layer: &RasterLayer, dirty: DirtyRect) {
+    let custom_formula = match &layer.blend_mode {
+        BlendMode::Custom(formula) => CustomBlendFormula::parse(formula),
+        BlendMode::Normal | BlendMode::Multiply | BlendMode::Screen | BlendMode::Add => None,
+    };
     let dirty = dirty.clamp_to_bitmap(
         target.width.min(layer.bitmap.width).max(1),
         target.height.min(layer.bitmap.height).max(1),
@@ -366,14 +373,19 @@ fn composite_layer_region_into(target: &mut CanvasBitmap, layer: &RasterLayer, d
                 target.pixels[index + 2],
                 target.pixels[index + 3],
             ];
-            let blended = blend_pixel(dst, src, layer.blend_mode);
+            let blended = blend_pixel(dst, src, &layer.blend_mode, custom_formula.as_ref());
             target.pixels[index..index + 4].copy_from_slice(&blended);
         }
     }
 }
 
 /// blend mode を考慮して 1 ピクセルを合成する。
-fn blend_pixel(dst: [u8; 4], src: [u8; 4], mode: BlendMode) -> [u8; 4] {
+fn blend_pixel(
+    dst: [u8; 4],
+    src: [u8; 4],
+    mode: &BlendMode,
+    custom_formula: Option<&CustomBlendFormula>,
+) -> [u8; 4] {
     let src_a = src[3] as f32 / 255.0;
     if src_a <= 0.0 {
         return dst;
@@ -387,6 +399,9 @@ fn blend_pixel(dst: [u8; 4], src: [u8; 4], mode: BlendMode) -> [u8; 4] {
             BlendMode::Multiply => s * d,
             BlendMode::Screen => 1.0 - (1.0 - s) * (1.0 - d),
             BlendMode::Add => (s + d).min(1.0),
+            BlendMode::Custom(_) => custom_formula
+                .map(|formula| formula.evaluate(s, d))
+                .unwrap_or(s),
         }
     };
     let out_a = src_a + dst_a * (1.0 - src_a);
@@ -399,4 +414,244 @@ fn blend_pixel(dst: [u8; 4], src: [u8; 4], mode: BlendMode) -> [u8; 4] {
     }
     out[3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
     out
+}
+
+#[derive(Debug, Clone)]
+struct CustomBlendFormula {
+    expression: BlendExpr,
+}
+
+impl CustomBlendFormula {
+    fn parse(input: &str) -> Option<Self> {
+        let expression = BlendExprParser::parse(input.trim())?;
+        Some(Self { expression })
+    }
+
+    fn evaluate(&self, src: f32, dst: f32) -> f32 {
+        self.expression.evaluate(src, dst).clamp(0.0, 1.0)
+    }
+}
+
+#[derive(Debug, Clone)]
+enum BlendExpr {
+    Number(f32),
+    Variable(BlendVariable),
+    UnaryMinus(Box<BlendExpr>),
+    Binary {
+        op: BlendBinaryOp,
+        left: Box<BlendExpr>,
+        right: Box<BlendExpr>,
+    },
+    Function {
+        name: String,
+        args: Vec<BlendExpr>,
+    },
+}
+
+impl BlendExpr {
+    fn evaluate(&self, src: f32, dst: f32) -> f32 {
+        match self {
+            Self::Number(value) => *value,
+            Self::Variable(BlendVariable::Src) => src,
+            Self::Variable(BlendVariable::Dst) => dst,
+            Self::UnaryMinus(value) => -value.evaluate(src, dst),
+            Self::Binary { op, left, right } => {
+                let left = left.evaluate(src, dst);
+                let right = right.evaluate(src, dst);
+                match op {
+                    BlendBinaryOp::Add => left + right,
+                    BlendBinaryOp::Sub => left - right,
+                    BlendBinaryOp::Mul => left * right,
+                    BlendBinaryOp::Div => {
+                        if right.abs() <= f32::EPSILON {
+                            0.0
+                        } else {
+                            left / right
+                        }
+                    }
+                }
+            }
+            Self::Function { name, args } => {
+                let values = args
+                    .iter()
+                    .map(|arg| arg.evaluate(src, dst))
+                    .collect::<Vec<_>>();
+                match name.as_str() {
+                    "min" if values.len() == 2 => values[0].min(values[1]),
+                    "max" if values.len() == 2 => values[0].max(values[1]),
+                    "clamp" if values.len() == 1 => values[0].clamp(0.0, 1.0),
+                    "clamp" if values.len() == 3 => values[0].clamp(values[1], values[2]),
+                    "abs" if values.len() == 1 => values[0].abs(),
+                    "screen" if values.len() == 2 => {
+                        1.0 - (1.0 - values[0]) * (1.0 - values[1])
+                    }
+                    "multiply" if values.len() == 2 => values[0] * values[1],
+                    "add" if values.len() == 2 => (values[0] + values[1]).min(1.0),
+                    "avg" if values.len() == 2 => (values[0] + values[1]) * 0.5,
+                    _ => src,
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum BlendVariable {
+    Src,
+    Dst,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum BlendBinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+struct BlendExprParser<'a> {
+    chars: Peekable<Chars<'a>>,
+}
+
+impl<'a> BlendExprParser<'a> {
+    fn parse(input: &'a str) -> Option<BlendExpr> {
+        let mut parser = Self {
+            chars: input.chars().peekable(),
+        };
+        let expression = parser.parse_expression()?;
+        parser.skip_whitespace();
+        parser.chars.peek().is_none().then_some(expression)
+    }
+
+    fn parse_expression(&mut self) -> Option<BlendExpr> {
+        let mut expr = self.parse_term()?;
+        loop {
+            self.skip_whitespace();
+            let op = match self.chars.peek().copied() {
+                Some('+') => BlendBinaryOp::Add,
+                Some('-') => BlendBinaryOp::Sub,
+                _ => break,
+            };
+            self.chars.next();
+            let right = self.parse_term()?;
+            expr = BlendExpr::Binary {
+                op,
+                left: Box::new(expr),
+                right: Box::new(right),
+            };
+        }
+        Some(expr)
+    }
+
+    fn parse_term(&mut self) -> Option<BlendExpr> {
+        let mut expr = self.parse_factor()?;
+        loop {
+            self.skip_whitespace();
+            let op = match self.chars.peek().copied() {
+                Some('*') => BlendBinaryOp::Mul,
+                Some('/') => BlendBinaryOp::Div,
+                _ => break,
+            };
+            self.chars.next();
+            let right = self.parse_factor()?;
+            expr = BlendExpr::Binary {
+                op,
+                left: Box::new(expr),
+                right: Box::new(right),
+            };
+        }
+        Some(expr)
+    }
+
+    fn parse_factor(&mut self) -> Option<BlendExpr> {
+        self.skip_whitespace();
+        match self.chars.peek().copied()? {
+            '(' => {
+                self.chars.next();
+                let expr = self.parse_expression()?;
+                self.skip_whitespace();
+                (self.chars.next() == Some(')')).then_some(expr)
+            }
+            '-' => {
+                self.chars.next();
+                self.parse_factor()
+                    .map(|expr| BlendExpr::UnaryMinus(Box::new(expr)))
+            }
+            ch if ch.is_ascii_digit() || ch == '.' => self.parse_number().map(BlendExpr::Number),
+            ch if ch.is_ascii_alphabetic() || ch == '_' => self.parse_identifier_or_function(),
+            _ => None,
+        }
+    }
+
+    fn parse_identifier_or_function(&mut self) -> Option<BlendExpr> {
+        let identifier = self.parse_identifier()?;
+        self.skip_whitespace();
+        if self.chars.peek().copied() == Some('(') {
+            self.chars.next();
+            let mut args = Vec::new();
+            loop {
+                self.skip_whitespace();
+                if self.chars.peek().copied() == Some(')') {
+                    self.chars.next();
+                    break;
+                }
+                args.push(self.parse_expression()?);
+                self.skip_whitespace();
+                match self.chars.peek().copied() {
+                    Some(',') => {
+                        self.chars.next();
+                    }
+                    Some(')') => {
+                        self.chars.next();
+                        break;
+                    }
+                    _ => return None,
+                }
+            }
+            Some(BlendExpr::Function {
+                name: identifier.to_ascii_lowercase(),
+                args,
+            })
+        } else {
+            match identifier.to_ascii_lowercase().as_str() {
+                "src" | "s" => Some(BlendExpr::Variable(BlendVariable::Src)),
+                "dst" | "d" => Some(BlendExpr::Variable(BlendVariable::Dst)),
+                _ => None,
+            }
+        }
+    }
+
+    fn parse_identifier(&mut self) -> Option<String> {
+        let mut identifier = String::new();
+        while let Some(ch) = self.chars.peek().copied() {
+            if ch.is_ascii_alphanumeric() || ch == '_' {
+                identifier.push(ch);
+                self.chars.next();
+            } else {
+                break;
+            }
+        }
+        (!identifier.is_empty()).then_some(identifier)
+    }
+
+    fn parse_number(&mut self) -> Option<f32> {
+        let mut text = String::new();
+        let mut has_digit = false;
+        while let Some(ch) = self.chars.peek().copied() {
+            if ch.is_ascii_digit() || ch == '.' {
+                has_digit |= ch.is_ascii_digit();
+                text.push(ch);
+                self.chars.next();
+            } else {
+                break;
+            }
+        }
+        has_digit.then(|| text.parse::<f32>().ok()).flatten()
+    }
+
+    fn skip_whitespace(&mut self) {
+        while self.chars.peek().copied().is_some_and(char::is_whitespace) {
+            self.chars.next();
+        }
+    }
 }

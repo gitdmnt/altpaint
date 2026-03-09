@@ -206,41 +206,49 @@ const fn default_created_layer_count() -> u64 {
     1
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum BlendMode {
     #[default]
     Normal,
     Multiply,
     Screen,
     Add,
+    Custom(String),
 }
 
 impl BlendMode {
-    pub fn as_str(self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::Normal => "normal",
             Self::Multiply => "multiply",
             Self::Screen => "screen",
             Self::Add => "add",
+            Self::Custom(value) => value.as_str(),
         }
     }
 
     pub fn parse_name(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        match trimmed.to_ascii_lowercase().as_str() {
             "normal" => Some(Self::Normal),
             "multiply" => Some(Self::Multiply),
             "screen" => Some(Self::Screen),
             "add" => Some(Self::Add),
-            _ => None,
+            _ => Some(Self::Custom(trimmed.to_string())),
         }
     }
 
-    fn next(self) -> Self {
+    fn next(&self) -> Self {
         match self {
             Self::Normal => Self::Multiply,
             Self::Multiply => Self::Screen,
             Self::Screen => Self::Add,
             Self::Add => Self::Normal,
+            Self::Custom(_) => Self::Normal,
         }
     }
 }
@@ -397,6 +405,8 @@ pub struct CanvasViewTransform {
     pub rotation_degrees: f32,
     pub pan_x: f32,
     pub pan_y: f32,
+    pub flip_x: bool,
+    pub flip_y: bool,
 }
 
 impl Default for CanvasViewTransform {
@@ -406,6 +416,8 @@ impl Default for CanvasViewTransform {
             rotation_degrees: 0.0,
             pan_x: 0.0,
             pan_y: 0.0,
+            flip_x: false,
+            flip_y: false,
         }
     }
 }
@@ -581,6 +593,20 @@ impl Document {
                 self.view_transform.pan_y += delta_y;
                 None
             }
+            Command::RotateView { quarter_turns } => {
+                self.view_transform.rotation_degrees =
+                    (self.view_transform.rotation_degrees + (*quarter_turns as f32 * 90.0))
+                        .rem_euclid(360.0);
+                None
+            }
+            Command::FlipViewHorizontally => {
+                self.view_transform.flip_x = !self.view_transform.flip_x;
+                None
+            }
+            Command::FlipViewVertically => {
+                self.view_transform.flip_y = !self.view_transform.flip_y;
+                None
+            }
             Command::ResetView => {
                 self.view_transform = CanvasViewTransform::default();
                 None
@@ -617,7 +643,7 @@ impl Document {
                 None
             }
             Command::SetActiveLayerBlendMode { mode } => {
-                self.set_active_layer_blend_mode(*mode);
+                self.set_active_layer_blend_mode(mode.clone());
                 None
             }
             Command::ToggleActiveLayerVisibility => {

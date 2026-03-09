@@ -15,6 +15,7 @@ members = [
   "apps/desktop",
   "plugins/app-actions",
   "plugins/tool-palette",
+  "plugins/view-controls",
   "plugins/layers-panel",
   "plugins/color-palette",
   "plugins/pen-settings",

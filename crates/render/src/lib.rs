@@ -64,6 +64,9 @@ pub struct TextureQuad {
     pub destination: PixelRect,
     pub uv_min: [f32; 2],
     pub uv_max: [f32; 2],
+    pub rotation_turns: u8,
+    pub flip_x: bool,
+    pub flip_y: bool,
 }
 
 /// `CanvasViewTransform` から導かれる表示用の幾何計画。
@@ -72,9 +75,14 @@ pub struct CanvasScene {
     viewport: PixelRect,
     source_width: usize,
     source_height: usize,
+    rotated_width: usize,
+    rotated_height: usize,
     scale: f32,
     offset_x: f32,
     offset_y: f32,
+    rotation_turns: u8,
+    flip_x: bool,
+    flip_y: bool,
     drawn_rect: Option<PixelRect>,
     texture_quad: Option<TextureQuad>,
 }
@@ -102,6 +110,17 @@ impl CanvasScene {
 
     /// ビットマップ dirty rect を表示先へ写像する。
     pub fn map_canvas_dirty_rect(&self, dirty: DirtyRect) -> PixelRect {
+        if self.rotation_turns != 0 || self.flip_x || self.flip_y {
+            return self
+                .map_source_rect_to_display(dirty)
+                .and_then(|rect| rect.intersect(self.viewport))
+                .unwrap_or(PixelRect {
+                    x: self.viewport.x,
+                    y: self.viewport.y,
+                    width: 0,
+                    height: 0,
+                });
+        }
         let clamped = dirty.clamp_to_bitmap(self.source_width, self.source_height);
         let start_x = (self.offset_x + clamped.x as f32 * self.scale).floor();
         let start_y = (self.offset_y + clamped.y as f32 * self.scale).floor();
@@ -132,8 +151,7 @@ impl CanvasScene {
 
     /// キャンバス座標のブラシプレビュー領域を返す。
     pub fn brush_preview_rect(&self, canvas_position: (usize, usize)) -> Option<PixelRect> {
-        let center_x = self.offset_x + (canvas_position.0 as f32 + 0.5) * self.scale;
-        let center_y = self.offset_y + (canvas_position.1 as f32 + 0.5) * self.scale;
+        let (center_x, center_y) = self.map_source_point_to_display(canvas_position)?;
         let radius = self.scale.max(4.0);
 
         self.viewport.intersect(PixelRect {
@@ -162,20 +180,85 @@ impl CanvasScene {
 
     /// ビュー座標をキャンバスビットマップ座標へ変換する。
     pub fn map_view_to_canvas(&self, x: i32, y: i32) -> Option<(usize, usize)> {
-        let drawn_width = self.source_width as f32 * self.scale;
-        let drawn_height = self.source_height as f32 * self.scale;
+        let drawn_width = self.rotated_width as f32 * self.scale;
+        let drawn_height = self.rotated_height as f32 * self.scale;
         let local_x = x as f32 - self.offset_x;
         let local_y = y as f32 - self.offset_y;
         if local_x < 0.0 || local_y < 0.0 || local_x >= drawn_width || local_y >= drawn_height {
             return None;
         }
 
-        let canvas_x = (local_x / self.scale).floor() as usize;
-        let canvas_y = (local_y / self.scale).floor() as usize;
+        let rotated_u = (local_x / drawn_width).clamp(0.0, 1.0 - f32::EPSILON);
+        let rotated_v = (local_y / drawn_height).clamp(0.0, 1.0 - f32::EPSILON);
+        let (source_u, source_v) = rotated_to_source_uv(
+            rotated_u,
+            rotated_v,
+            self.rotation_turns,
+            self.flip_x,
+            self.flip_y,
+        );
+        let canvas_x = (source_u * self.source_width as f32).floor() as usize;
+        let canvas_y = (source_v * self.source_height as f32).floor() as usize;
 
         Some((
             canvas_x.min(self.source_width.saturating_sub(1)),
             canvas_y.min(self.source_height.saturating_sub(1)),
+        ))
+    }
+
+    fn map_source_rect_to_display(&self, dirty: DirtyRect) -> Option<PixelRect> {
+        let dirty = dirty.clamp_to_bitmap(self.source_width, self.source_height);
+        let corners = [
+            (dirty.x as f32 / self.source_width as f32, dirty.y as f32 / self.source_height as f32),
+            ((dirty.x + dirty.width) as f32 / self.source_width as f32, dirty.y as f32 / self.source_height as f32),
+            (dirty.x as f32 / self.source_width as f32, (dirty.y + dirty.height) as f32 / self.source_height as f32),
+            ((dirty.x + dirty.width) as f32 / self.source_width as f32, (dirty.y + dirty.height) as f32 / self.source_height as f32),
+        ];
+        let mut min_x = f32::INFINITY;
+        let mut min_y = f32::INFINITY;
+        let mut max_x = f32::NEG_INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+
+        for (source_u, source_v) in corners {
+            let (rotated_u, rotated_v) = source_to_rotated_uv(
+                source_u,
+                source_v,
+                self.rotation_turns,
+                self.flip_x,
+                self.flip_y,
+            );
+            let display_x = self.offset_x + rotated_u * self.rotated_width as f32 * self.scale;
+            let display_y = self.offset_y + rotated_v * self.rotated_height as f32 * self.scale;
+            min_x = min_x.min(display_x);
+            min_y = min_y.min(display_y);
+            max_x = max_x.max(display_x);
+            max_y = max_y.max(display_y);
+        }
+
+        (min_x < max_x && min_y < max_y).then_some(PixelRect {
+            x: min_x.floor().max(self.viewport.x as f32) as usize,
+            y: min_y.floor().max(self.viewport.y as f32) as usize,
+            width: (max_x.ceil() - min_x.floor()).max(1.0) as usize,
+            height: (max_y.ceil() - min_y.floor()).max(1.0) as usize,
+        })
+    }
+
+    fn map_source_point_to_display(&self, canvas_position: (usize, usize)) -> Option<(f32, f32)> {
+        if canvas_position.0 >= self.source_width || canvas_position.1 >= self.source_height {
+            return None;
+        }
+        let source_u = (canvas_position.0 as f32 + 0.5) / self.source_width as f32;
+        let source_v = (canvas_position.1 as f32 + 0.5) / self.source_height as f32;
+        let (rotated_u, rotated_v) = source_to_rotated_uv(
+            source_u,
+            source_v,
+            self.rotation_turns,
+            self.flip_x,
+            self.flip_y,
+        );
+        Some((
+            self.offset_x + rotated_u * self.rotated_width as f32 * self.scale,
+            self.offset_y + rotated_v * self.rotated_height as f32 * self.scale,
         ))
     }
 }
@@ -191,11 +274,14 @@ pub fn prepare_canvas_scene(
         return None;
     }
 
-    let scale_x = viewport.width as f32 / source_width as f32;
-    let scale_y = viewport.height as f32 / source_height as f32;
+    let rotation_turns = normalized_rotation_turns(transform.rotation_degrees);
+    let (rotated_width, rotated_height) = rotated_dimensions(source_width, source_height, rotation_turns);
+
+    let scale_x = viewport.width as f32 / rotated_width as f32;
+    let scale_y = viewport.height as f32 / rotated_height as f32;
     let scale = (scale_x.min(scale_y) * transform.zoom.max(0.25)).max(f32::EPSILON);
-    let drawn_width = source_width as f32 * scale;
-    let drawn_height = source_height as f32 * scale;
+    let drawn_width = rotated_width as f32 * scale;
+    let drawn_height = rotated_height as f32 * scale;
     let offset_x =
         viewport.x as f32 + (viewport.width as f32 - drawn_width) * 0.5 + transform.pan_x;
     let offset_y =
@@ -229,8 +315,11 @@ pub fn prepare_canvas_scene(
 
         TextureQuad {
             destination: drawn_rect,
-            uv_min: [left / source_width as f32, top / source_height as f32],
-            uv_max: [right / source_width as f32, bottom / source_height as f32],
+            uv_min: [left / rotated_width as f32, top / rotated_height as f32],
+            uv_max: [right / rotated_width as f32, bottom / rotated_height as f32],
+            rotation_turns,
+            flip_x: transform.flip_x,
+            flip_y: transform.flip_y,
         }
     });
 
@@ -238,12 +327,74 @@ pub fn prepare_canvas_scene(
         viewport,
         source_width,
         source_height,
+        rotated_width,
+        rotated_height,
         scale,
         offset_x,
         offset_y,
+        rotation_turns,
+        flip_x: transform.flip_x,
+        flip_y: transform.flip_y,
         drawn_rect,
         texture_quad,
     })
+}
+
+fn normalized_rotation_turns(rotation_degrees: f32) -> u8 {
+    ((rotation_degrees / 90.0).round() as i32).rem_euclid(4) as u8
+}
+
+fn rotated_dimensions(width: usize, height: usize, rotation_turns: u8) -> (usize, usize) {
+    if rotation_turns % 2 == 0 {
+        (width, height)
+    } else {
+        (height, width)
+    }
+}
+
+fn source_to_rotated_uv(
+    source_u: f32,
+    source_v: f32,
+    rotation_turns: u8,
+    flip_x: bool,
+    flip_y: bool,
+) -> (f32, f32) {
+    let (mut rotated_u, mut rotated_v) = match rotation_turns % 4 {
+        0 => (source_u, source_v),
+        1 => (1.0 - source_v, source_u),
+        2 => (1.0 - source_u, 1.0 - source_v),
+        _ => (source_v, 1.0 - source_u),
+    };
+    if flip_x {
+        rotated_u = 1.0 - rotated_u;
+    }
+    if flip_y {
+        rotated_v = 1.0 - rotated_v;
+    }
+    (rotated_u, rotated_v)
+}
+
+fn rotated_to_source_uv(
+    rotated_u: f32,
+    rotated_v: f32,
+    rotation_turns: u8,
+    flip_x: bool,
+    flip_y: bool,
+) -> (f32, f32) {
+    let mut rotated_u = rotated_u;
+    let mut rotated_v = rotated_v;
+    if flip_x {
+        rotated_u = 1.0 - rotated_u;
+    }
+    if flip_y {
+        rotated_v = 1.0 - rotated_v;
+    }
+    match rotation_turns % 4 {
+        0 => (rotated_u, rotated_v),
+        1 => (rotated_v, 1.0 - rotated_u),
+        2 => (1.0 - rotated_u, 1.0 - rotated_v),
+        _ => (1.0 - rotated_v, rotated_u),
+    }
 }
 
 /// ビットマップ dirty rect を表示先へ写像する。
@@ -461,6 +612,8 @@ mod tests {
                 rotation_degrees: 0.0,
                 pan_x: 16.0,
                 pan_y: -8.0,
+                flip_x: false,
+                flip_y: false,
             },
         );
 
@@ -486,6 +639,8 @@ mod tests {
                 rotation_degrees: 0.0,
                 pan_x: 48.0,
                 pan_y: -16.0,
+                flip_x: false,
+                flip_y: false,
             },
         )
         .expect("quad exists");
@@ -514,9 +669,64 @@ mod tests {
                 rotation_degrees: 0.0,
                 pan_x: 32.0,
                 pan_y: 0.0,
+                flip_x: false,
+                flip_y: false,
             },
         );
 
         assert_eq!(mapped, Some((32, 32)));
+    }
+
+    #[test]
+    fn canvas_texture_quad_carries_rotation_and_flip_flags() {
+        let quad = canvas_texture_quad(
+            PixelRect {
+                x: 0,
+                y: 0,
+                width: 640,
+                height: 640,
+            },
+            64,
+            32,
+            CanvasViewTransform {
+                zoom: 1.0,
+                rotation_degrees: 90.0,
+                pan_x: 0.0,
+                pan_y: 0.0,
+                flip_x: true,
+                flip_y: false,
+            },
+        )
+        .expect("quad exists");
+
+        assert_eq!(quad.rotation_turns, 1);
+        assert!(quad.flip_x);
+        assert!(!quad.flip_y);
+    }
+
+    #[test]
+    fn map_view_to_canvas_tracks_rotated_scene() {
+        let mapped = map_view_to_canvas_with_transform(
+            PixelRect {
+                x: 0,
+                y: 0,
+                width: 640,
+                height: 640,
+            },
+            64,
+            32,
+            320,
+            160,
+            CanvasViewTransform {
+                zoom: 1.0,
+                rotation_degrees: 90.0,
+                pan_x: 0.0,
+                pan_y: 0.0,
+                flip_x: false,
+                flip_y: false,
+            },
+        );
+
+        assert!(mapped.is_some());
     }
 }

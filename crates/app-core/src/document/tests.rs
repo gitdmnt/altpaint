@@ -249,6 +249,8 @@ fn document_stores_canvas_view_transform() {
         rotation_degrees: 12.5,
         pan_x: 18.0,
         pan_y: -6.0,
+        flip_x: false,
+        flip_y: false,
     };
 
     document.set_view_transform(transform);
@@ -348,6 +350,33 @@ fn set_active_layer_blend_mode_sets_requested_mode() {
 
     let panel = &document.work.pages[0].panels[0];
     assert_eq!(panel.layers[0].blend_mode, BlendMode::Screen);
+}
+
+#[test]
+fn set_active_layer_blend_mode_accepts_custom_formula_string() {
+    let mut document = Document::default();
+    let _ = document.apply_command(&Command::SetActiveLayerBlendMode {
+        mode: BlendMode::parse_name("max(src, dst)").expect("custom mode"),
+    });
+
+    let panel = &document.work.pages[0].panels[0];
+    assert_eq!(panel.layers[0].blend_mode.as_str(), "max(src, dst)");
+}
+
+#[test]
+fn custom_blend_formula_is_applied_during_layer_composition() {
+    let mut document = Document::default();
+    let panel = &mut document.work.pages[0].panels[0];
+    panel.layers[0].bitmap.draw_point_rgba(0, 0, [64, 64, 64, 255]);
+
+    let _ = document.apply_command(&Command::AddRasterLayer);
+    let _ = document.draw_point(0, 0);
+    let _ = document.apply_command(&Command::SetActiveLayerBlendMode {
+        mode: BlendMode::parse_name("max(src, dst)").expect("custom mode"),
+    });
+
+    let pixel = &document.active_bitmap().expect("bitmap exists").pixels[0..4];
+    assert_eq!(pixel, &[64, 64, 64, 255]);
 }
 
 #[test]

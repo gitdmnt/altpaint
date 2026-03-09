@@ -1,0 +1,56 @@
+panel {
+  id: "builtin.view-controls"
+  title: "View"
+  version: 1
+}
+
+permissions {
+  read.document
+  write.command
+}
+
+runtime {
+  wasm: "builtin_panel_view_controls.wasm"
+}
+
+state {
+  zoom_label: string = "100%"
+  pan_label: string = "0, 0"
+  rotation_label: string = "0°"
+  flip_x: bool = false
+  flip_y: bool = false
+}
+
+view {
+  <column gap=8 padding=8>
+    <section title="Canvas View">
+      <text tone="muted">Hosted via Rust SDK + Wasm</text>
+      <text>Zoom: {state.zoom_label}</text>
+      <text>Pan: {state.pan_label}</text>
+      <text>Rotation: {state.rotation_label}</text>
+      <row gap=6>
+        <button id="view.zoom.out" on:click="zoom_out">-</button>
+        <button id="view.zoom.in" on:click="zoom_in">+</button>
+        <button id="view.reset" on:click="reset_view">Reset</button>
+      </row>
+      <section title="Pan">
+        <row gap=6>
+          <button id="view.pan.left" on:click="pan_left">←</button>
+          <button id="view.pan.up" on:click="pan_up">↑</button>
+          <button id="view.pan.down" on:click="pan_down">↓</button>
+          <button id="view.pan.right" on:click="pan_right">→</button>
+        </row>
+      </section>
+      <section title="Rotate / Flip">
+        <row gap=6>
+          <button id="view.rotate.left" on:click="rotate_left">Rotate Left</button>
+          <button id="view.rotate.right" on:click="rotate_right">Rotate Right</button>
+        </row>
+        <row gap=6>
+          <button id="view.flip.x" on:click="flip_horizontal" active={state.flip_x}>Flip X</button>
+          <button id="view.flip.y" on:click="flip_vertical" active={state.flip_y}>Flip Y</button>
+        </row>
+      </section>
+    </section>
+  </column>
+}

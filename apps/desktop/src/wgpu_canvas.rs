@@ -61,6 +61,7 @@ struct LayerUniform {
     rect_max: vec2<f32>,
     uv_min: vec2<f32>,
     uv_max: vec2<f32>,
+    transform: vec4<f32>,
 };
 
 @group(0) @binding(0)
@@ -74,7 +75,7 @@ var<uniform> layer_uniform: LayerUniform;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
+    @location(0) unit: vec2<f32>,
 }
 
 @vertex
@@ -96,16 +97,41 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
         0.0,
         1.0,
     );
-    output.uv = vec2<f32>(
-        mix(layer_uniform.uv_min.x, layer_uniform.uv_max.x, current.x),
-        mix(layer_uniform.uv_min.y, layer_uniform.uv_max.y, current.y),
-    );
+    output.unit = current;
     return output;
+}
+
+fn rotated_to_source_uv(rotated_uv: vec2<f32>, rotation_turns: i32) -> vec2<f32> {
+    switch rotation_turns {
+        case 1: {
+            return vec2<f32>(rotated_uv.y, 1.0 - rotated_uv.x);
+        }
+        case 2: {
+            return vec2<f32>(1.0 - rotated_uv.x, 1.0 - rotated_uv.y);
+        }
+        case 3: {
+            return vec2<f32>(1.0 - rotated_uv.y, rotated_uv.x);
+        }
+        default: {
+            return rotated_uv;
+        }
+    }
 }
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    return textureSample(present_texture, present_sampler, input.uv);
+    var rotated_uv = vec2<f32>(
+        mix(layer_uniform.uv_min.x, layer_uniform.uv_max.x, input.unit.x),
+        mix(layer_uniform.uv_min.y, layer_uniform.uv_max.y, input.unit.y),
+    );
+    if layer_uniform.transform.y > 0.5 {
+        rotated_uv.x = 1.0 - rotated_uv.x;
+    }
+    if layer_uniform.transform.z > 0.5 {
+        rotated_uv.y = 1.0 - rotated_uv.y;
+    }
+    let uv = rotated_to_source_uv(rotated_uv, i32(layer_uniform.transform.x + 0.5));
+    return textureSample(present_texture, present_sampler, uv);
 }
 "#;
 
@@ -692,10 +718,13 @@ fn fullscreen_quad(width: u32, height: u32) -> TextureQuad {
         },
         uv_min: [0.0, 0.0],
         uv_max: [1.0, 1.0],
+        rotation_turns: 0,
+        flip_x: false,
+        flip_y: false,
     }
 }
 
-fn quad_uniform_bytes(quad: TextureQuad, surface_width: u32, surface_height: u32) -> [u8; 32] {
+fn quad_uniform_bytes(quad: TextureQuad, surface_width: u32, surface_height: u32) -> [u8; 48] {
     let surface_width = surface_width.max(1) as f32;
     let surface_height = surface_height.max(1) as f32;
     let left = quad.destination.x as f32 / surface_width * 2.0 - 1.0;
@@ -711,8 +740,12 @@ fn quad_uniform_bytes(quad: TextureQuad, surface_width: u32, surface_height: u32
         quad.uv_min[1],
         quad.uv_max[0],
         quad.uv_max[1],
+        quad.rotation_turns as f32,
+        if quad.flip_x { 1.0 } else { 0.0 },
+        if quad.flip_y { 1.0 } else { 0.0 },
+        0.0,
     ];
-    let mut bytes = [0u8; 32];
+    let mut bytes = [0u8; 48];
     for (index, value) in values.into_iter().enumerate() {
         bytes[index * 4..index * 4 + 4].copy_from_slice(&value.to_le_bytes());
     }
@@ -751,7 +784,7 @@ mod tests {
     #[test]
     fn quad_uniform_bytes_maps_fullscreen_quad_to_ndc() {
         let bytes = quad_uniform_bytes(fullscreen_quad(640, 480), 640, 480);
-        let mut values = [0.0f32; 8];
+        let mut values = [0.0f32; 12];
         for (index, chunk) in bytes.chunks_exact(4).enumerate() {
             values[index] = f32::from_le_bytes(chunk.try_into().expect("chunk size"));
         }
@@ -760,5 +793,8 @@ mod tests {
         assert_eq!(values[1], 1.0);
         assert_eq!(values[2], 1.0);
         assert_eq!(values[3], -1.0);
+        assert_eq!(values[8], 0.0);
+        assert_eq!(values[9], 0.0);
+        assert_eq!(values[10], 0.0);
     }
 }

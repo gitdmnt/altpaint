@@ -140,6 +140,8 @@ fn transformed_canvas_dirty_rect_tracks_zoom_and_pan() {
             rotation_degrees: 0.0,
             pan_x: 16.0,
             pan_y: -8.0,
+            flip_x: false,
+            flip_y: false,
         },
     );
 
@@ -165,6 +167,8 @@ fn canvas_texture_quad_clips_uv_when_panned_outside_display() {
             rotation_degrees: 0.0,
             pan_x: 48.0,
             pan_y: -16.0,
+            flip_x: false,
+            flip_y: false,
         },
     )
     .expect("quad exists");
