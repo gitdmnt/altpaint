@@ -1,7 +1,4 @@
-//! `wgpu` を使ってソフトウェア合成フレームを画面へ提示する。
-//!
-//! フレームアップロード、差分転送、最終プレゼントの責務をここへ閉じ込め、
-//! アプリ本体が GPU API 詳細へ依存しないようにする。
+//! `wgpu` を使って UI ベースフレーム・GPU キャンバス・オーバーレイを提示する。
 
 use anyhow::{Context, Result};
 use render::RenderFrame;
@@ -10,13 +7,69 @@ use std::time::{Duration, Instant};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
-/// フルスクリーントライアングルで提示テクスチャを描画する WGSL シェーダを表す。
+use crate::frame::{Rect, TextureQuad};
+
+#[derive(Debug, Clone, Copy)]
+pub struct TextureSource<'a> {
+    pub width: u32,
+    pub height: u32,
+    pub pixels: &'a [u8],
+}
+
+impl<'a> From<&'a RenderFrame> for TextureSource<'a> {
+    fn from(frame: &'a RenderFrame) -> Self {
+        Self {
+            width: frame.width as u32,
+            height: frame.height as u32,
+            pixels: frame.pixels.as_slice(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UploadRegion {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct FrameLayer<'a> {
+    pub source: TextureSource<'a>,
+    pub upload_region: Option<UploadRegion>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CanvasLayer<'a> {
+    pub source: TextureSource<'a>,
+    pub upload_region: Option<UploadRegion>,
+    pub quad: TextureQuad,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PresentScene<'a> {
+    pub base_layer: FrameLayer<'a>,
+    pub overlay_layer: FrameLayer<'a>,
+    pub canvas_layer: Option<CanvasLayer<'a>>,
+}
+
 const PRESENT_SHADER: &str = r#"
+struct LayerUniform {
+    rect_min: vec2<f32>,
+    rect_max: vec2<f32>,
+    uv_min: vec2<f32>,
+    uv_max: vec2<f32>,
+};
+
 @group(0) @binding(0)
 var present_texture: texture_2d<f32>;
 
 @group(0) @binding(1)
 var present_sampler: sampler;
+
+@group(0) @binding(2)
+var<uniform> layer_uniform: LayerUniform;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -25,20 +78,27 @@ struct VertexOutput {
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
-    var positions = array<vec2<f32>, 3>(
-        vec2<f32>(-1.0, -3.0),
-        vec2<f32>(-1.0, 1.0),
-        vec2<f32>(3.0, 1.0)
-    );
-    var uvs = array<vec2<f32>, 3>(
-        vec2<f32>(0.0, 2.0),
+    var unit = array<vec2<f32>, 6>(
         vec2<f32>(0.0, 0.0),
-        vec2<f32>(2.0, 0.0)
+        vec2<f32>(1.0, 0.0),
+        vec2<f32>(0.0, 1.0),
+        vec2<f32>(0.0, 1.0),
+        vec2<f32>(1.0, 0.0),
+        vec2<f32>(1.0, 1.0)
     );
 
+    let current = unit[vertex_index];
     var output: VertexOutput;
-    output.position = vec4<f32>(positions[vertex_index], 0.0, 1.0);
-    output.uv = uvs[vertex_index];
+    output.position = vec4<f32>(
+        mix(layer_uniform.rect_min.x, layer_uniform.rect_max.x, current.x),
+        mix(layer_uniform.rect_min.y, layer_uniform.rect_max.y, current.y),
+        0.0,
+        1.0,
+    );
+    output.uv = vec2<f32>(
+        mix(layer_uniform.uv_min.x, layer_uniform.uv_max.x, current.x),
+        mix(layer_uniform.uv_min.y, layer_uniform.uv_max.y, current.y),
+    );
     return output;
 }
 
@@ -48,33 +108,35 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 }
 "#;
 
-/// GPU 上へアップロード済みのフレームテクスチャ一式を保持する。
 #[derive(Debug)]
-struct UploadedFrameTexture {
+struct UploadedLayerTexture {
     texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
+    uniform_buffer: wgpu::Buffer,
     width: u32,
     height: u32,
+    needs_full_upload: bool,
 }
 
-/// 差分アップロードする矩形領域を表す。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct UploadRegion {
-    pub x: u32,
-    pub y: u32,
-    pub width: u32,
-    pub height: u32,
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct LayerUploadStats {
+    duration: Duration,
+    bytes: u64,
 }
 
-/// 1 回の提示処理にかかった時間内訳を表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PresentTimings {
     pub upload: Duration,
     pub encode_and_submit: Duration,
     pub present: Duration,
+    pub base_upload: Duration,
+    pub overlay_upload: Duration,
+    pub canvas_upload: Duration,
+    pub base_upload_bytes: u64,
+    pub overlay_upload_bytes: u64,
+    pub canvas_upload_bytes: u64,
 }
 
-/// ソフトウェア合成フレームを `wgpu` サーフェスへ提示するプレゼンタを表す。
 pub struct WgpuPresenter {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
@@ -83,11 +145,11 @@ pub struct WgpuPresenter {
     pipeline: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
     bind_group_layout: wgpu::BindGroupLayout,
-    uploaded_frame: Option<UploadedFrameTexture>,
-    needs_full_upload: bool,
+    base_layer: Option<UploadedLayerTexture>,
+    overlay_layer: Option<UploadedLayerTexture>,
+    canvas_layer: Option<UploadedLayerTexture>,
 }
 
-/// 使用可能なモードから低遅延寄りの present mode を選ぶ。
 fn preferred_present_mode(modes: &[wgpu::PresentMode]) -> wgpu::PresentMode {
     [
         wgpu::PresentMode::Mailbox,
@@ -101,7 +163,6 @@ fn preferred_present_mode(modes: &[wgpu::PresentMode]) -> wgpu::PresentMode {
 }
 
 impl WgpuPresenter {
-    /// ウィンドウに紐づく `wgpu` デバイス・サーフェス一式を初期化する。
     pub async fn new(window: Arc<Window>) -> Result<Self> {
         let size = window.inner_size();
         let instance = wgpu::Instance::default();
@@ -167,6 +228,16 @@ impl WgpuPresenter {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -174,6 +245,8 @@ impl WgpuPresenter {
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
             mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
             ..Default::default()
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -199,7 +272,7 @@ impl WgpuPresenter {
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
@@ -219,12 +292,12 @@ impl WgpuPresenter {
             pipeline,
             sampler,
             bind_group_layout,
-            uploaded_frame: None,
-            needs_full_upload: true,
+            base_layer: None,
+            overlay_layer: None,
+            canvas_layer: None,
         })
     }
 
-    /// サーフェスサイズ変更に追従して再設定する。
     pub fn resize(&mut self, size: PhysicalSize<u32>) {
         if size.width == 0 || size.height == 0 {
             return;
@@ -235,30 +308,97 @@ impl WgpuPresenter {
         self.surface.configure(&self.device, &self.config);
     }
 
-    /// 合成フレームをアップロードして現在サーフェスへ提示する。
-    pub fn render(
-        &mut self,
-        frame: &RenderFrame,
-        upload_region: Option<UploadRegion>,
-    ) -> Result<PresentTimings> {
+    pub fn render(&mut self, scene: PresentScene<'_>) -> Result<PresentTimings> {
         if self.config.width == 0 || self.config.height == 0 {
             return Ok(PresentTimings {
                 upload: Duration::default(),
                 encode_and_submit: Duration::default(),
                 present: Duration::default(),
+                base_upload: Duration::default(),
+                overlay_upload: Duration::default(),
+                canvas_upload: Duration::default(),
+                base_upload_bytes: 0,
+                overlay_upload_bytes: 0,
+                canvas_upload_bytes: 0,
             });
         }
 
-        self.ensure_uploaded_frame(frame.width as u32, frame.height as u32);
+        Self::ensure_layer_texture(
+            &self.device,
+            &self.sampler,
+            &self.bind_group_layout,
+            &mut self.base_layer,
+            scene.base_layer.source.width,
+            scene.base_layer.source.height,
+            "base",
+        );
+        Self::ensure_layer_texture(
+            &self.device,
+            &self.sampler,
+            &self.bind_group_layout,
+            &mut self.overlay_layer,
+            scene.overlay_layer.source.width,
+            scene.overlay_layer.source.height,
+            "overlay",
+        );
+        if let Some(canvas_layer) = scene.canvas_layer {
+            Self::ensure_layer_texture(
+                &self.device,
+                &self.sampler,
+                &self.bind_group_layout,
+                &mut self.canvas_layer,
+                canvas_layer.source.width,
+                canvas_layer.source.height,
+                "canvas",
+            );
+        }
+
         let upload_started = Instant::now();
-        if self.needs_full_upload {
-            self.upload_frame(frame);
-            self.needs_full_upload = false;
+        let base_upload = Self::upload_layer(
+            &self.queue,
+            self.base_layer.as_mut(),
+            scene.base_layer.source,
+            scene.base_layer.upload_region,
+        );
+        let overlay_upload = Self::upload_layer(
+            &self.queue,
+            self.overlay_layer.as_mut(),
+            scene.overlay_layer.source,
+            scene.overlay_layer.upload_region,
+        );
+        let canvas_upload = if let Some(canvas_layer) = scene.canvas_layer {
+            Self::upload_layer(
+                &self.queue,
+                self.canvas_layer.as_mut(),
+                canvas_layer.source,
+                canvas_layer.upload_region,
+            )
         } else {
-            match upload_region {
-                Some(region) => self.upload_frame_region(frame, region),
-                None => self.upload_frame(frame),
-            }
+            LayerUploadStats::default()
+        };
+
+        Self::update_quad_uniform(
+            &self.queue,
+            self.base_layer.as_ref(),
+            fullscreen_quad(self.config.width, self.config.height),
+            self.config.width,
+            self.config.height,
+        );
+        Self::update_quad_uniform(
+            &self.queue,
+            self.overlay_layer.as_ref(),
+            fullscreen_quad(self.config.width, self.config.height),
+            self.config.width,
+            self.config.height,
+        );
+        if let Some(canvas_layer) = scene.canvas_layer {
+            Self::update_quad_uniform(
+                &self.queue,
+                self.canvas_layer.as_ref(),
+                canvas_layer.quad,
+                self.config.width,
+                self.config.height,
+            );
         }
         let upload = upload_started.elapsed();
 
@@ -275,6 +415,12 @@ impl WgpuPresenter {
                     upload,
                     encode_and_submit: Duration::default(),
                     present: Duration::default(),
+                    base_upload: base_upload.duration,
+                    overlay_upload: overlay_upload.duration,
+                    canvas_upload: canvas_upload.duration,
+                    base_upload_bytes: base_upload.bytes,
+                    overlay_upload_bytes: overlay_upload.bytes,
+                    canvas_upload_bytes: canvas_upload.bytes,
                 });
             }
             Err(wgpu::SurfaceError::OutOfMemory) => {
@@ -286,11 +432,6 @@ impl WgpuPresenter {
         let view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
-        let uploaded_frame = self
-            .uploaded_frame
-            .as_ref()
-            .context("uploaded frame texture is missing")?;
-
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -315,8 +456,11 @@ impl WgpuPresenter {
                 multiview_mask: None,
             });
             pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, &uploaded_frame.bind_group, &[]);
-            pass.draw(0..3, 0..1);
+            Self::draw_layer(&mut pass, self.base_layer.as_ref());
+            if scene.canvas_layer.is_some() {
+                Self::draw_layer(&mut pass, self.canvas_layer.as_ref());
+            }
+            Self::draw_layer(&mut pass, self.overlay_layer.as_ref());
         }
 
         self.queue.submit([encoder.finish()]);
@@ -327,21 +471,33 @@ impl WgpuPresenter {
             upload,
             encode_and_submit,
             present: present_started.elapsed(),
+            base_upload: base_upload.duration,
+            overlay_upload: overlay_upload.duration,
+            canvas_upload: canvas_upload.duration,
+            base_upload_bytes: base_upload.bytes,
+            overlay_upload_bytes: overlay_upload.bytes,
+            canvas_upload_bytes: canvas_upload.bytes,
         })
     }
 
-    /// 現在のフレーム寸法に対応したアップロード用テクスチャを確保する。
-    fn ensure_uploaded_frame(&mut self, width: u32, height: u32) {
-        let needs_rebuild = self
-            .uploaded_frame
+    fn ensure_layer_texture(
+        device: &wgpu::Device,
+        sampler: &wgpu::Sampler,
+        bind_group_layout: &wgpu::BindGroupLayout,
+        slot: &mut Option<UploadedLayerTexture>,
+        width: u32,
+        height: u32,
+        label: &str,
+    ) {
+        let needs_rebuild = slot
             .as_ref()
-            .is_none_or(|frame| frame.width != width || frame.height != height);
+            .is_none_or(|layer| layer.width != width || layer.height != height);
         if !needs_rebuild {
             return;
         }
 
-        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("altpaint-present-texture"),
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(&format!("altpaint-{label}-texture")),
             size: wgpu::Extent3d {
                 width,
                 height,
@@ -354,10 +510,16 @@ impl WgpuPresenter {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(&format!("altpaint-{label}-uniform")),
+            size: 32,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("altpaint-present-bind-group"),
-            layout: &self.bind_group_layout,
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(&format!("altpaint-{label}-bind-group")),
+            layout: bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -365,97 +527,208 @@ impl WgpuPresenter {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: uniform_buffer.as_entire_binding(),
                 },
             ],
         });
 
-        self.uploaded_frame = Some(UploadedFrameTexture {
+        *slot = Some(UploadedLayerTexture {
             texture,
             bind_group,
+            uniform_buffer,
             width,
             height,
+            needs_full_upload: true,
         });
-        self.needs_full_upload = true;
     }
 
-    /// フレーム全体をテクスチャへアップロードする。
-    fn upload_frame(&mut self, frame: &RenderFrame) {
-        let Some(uploaded_frame) = self.uploaded_frame.as_ref() else {
-            return;
+    fn upload_layer(
+        queue: &wgpu::Queue,
+        layer: Option<&mut UploadedLayerTexture>,
+        source: TextureSource<'_>,
+        upload_region: Option<UploadRegion>,
+    ) -> LayerUploadStats {
+        let Some(layer) = layer else {
+            return LayerUploadStats::default();
         };
 
-        self.queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &uploaded_frame.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            frame.pixels.as_slice(),
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some((frame.width * 4) as u32),
-                rows_per_image: Some(frame.height as u32),
-            },
-            wgpu::Extent3d {
-                width: frame.width as u32,
-                height: frame.height as u32,
-                depth_or_array_layers: 1,
-            },
+        let started = Instant::now();
+
+        if layer.needs_full_upload {
+            let bytes = upload_full_texture(queue, layer, source);
+            layer.needs_full_upload = false;
+            return LayerUploadStats {
+                duration: started.elapsed(),
+                bytes,
+            };
+        }
+
+        if let Some(region) = upload_region {
+            let bytes = upload_texture_region(queue, layer, source, region);
+            return LayerUploadStats {
+                duration: started.elapsed(),
+                bytes,
+            };
+        }
+
+        LayerUploadStats::default()
+    }
+
+    fn update_quad_uniform(
+        queue: &wgpu::Queue,
+        layer: Option<&UploadedLayerTexture>,
+        quad: TextureQuad,
+        surface_width: u32,
+        surface_height: u32,
+    ) {
+        let Some(layer) = layer else {
+            return;
+        };
+        queue.write_buffer(
+            &layer.uniform_buffer,
+            0,
+            &quad_uniform_bytes(quad, surface_width, surface_height),
         );
     }
 
-    /// 指定領域だけをパックしてテクスチャへアップロードする。
-    fn upload_frame_region(&mut self, frame: &RenderFrame, region: UploadRegion) {
-        let Some(uploaded_frame) = self.uploaded_frame.as_ref() else {
+    fn draw_layer<'a>(pass: &mut wgpu::RenderPass<'a>, layer: Option<&'a UploadedLayerTexture>) {
+        let Some(layer) = layer else {
             return;
         };
-        if region.width == 0 || region.height == 0 {
-            return;
-        }
-
-        let max_width = (frame.width as u32).saturating_sub(region.x);
-        let max_height = (frame.height as u32).saturating_sub(region.y);
-        let copy_width = region.width.min(max_width);
-        let copy_height = region.height.min(max_height);
-        if copy_width == 0 || copy_height == 0 {
-            return;
-        }
-
-        let mut packed = vec![0; (copy_width * copy_height * 4) as usize];
-        for row in 0..copy_height as usize {
-            let src_start = (((region.y as usize + row) * frame.width) + region.x as usize) * 4;
-            let src_end = src_start + copy_width as usize * 4;
-            let dst_start = row * copy_width as usize * 4;
-            let dst_end = dst_start + copy_width as usize * 4;
-            packed[dst_start..dst_end].copy_from_slice(&frame.pixels[src_start..src_end]);
-        }
-
-        self.queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &uploaded_frame.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d {
-                    x: region.x,
-                    y: region.y,
-                    z: 0,
-                },
-                aspect: wgpu::TextureAspect::All,
-            },
-            packed.as_slice(),
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(copy_width * 4),
-                rows_per_image: Some(copy_height),
-            },
-            wgpu::Extent3d {
-                width: copy_width,
-                height: copy_height,
-                depth_or_array_layers: 1,
-            },
-        );
+        pass.set_bind_group(0, &layer.bind_group, &[]);
+        pass.draw(0..6, 0..1);
     }
+}
+
+fn upload_full_texture(
+    queue: &wgpu::Queue,
+    layer: &UploadedLayerTexture,
+    source: TextureSource<'_>,
+) -> u64 {
+    if source.width == 0 || source.height == 0 {
+        return 0;
+    }
+
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &layer.texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        source.pixels,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(source.width * 4),
+            rows_per_image: Some(source.height),
+        },
+        wgpu::Extent3d {
+            width: source.width,
+            height: source.height,
+            depth_or_array_layers: 1,
+        },
+    );
+
+    (source.width as u64) * (source.height as u64) * 4
+}
+
+fn upload_texture_region(
+    queue: &wgpu::Queue,
+    layer: &UploadedLayerTexture,
+    source: TextureSource<'_>,
+    region: UploadRegion,
+) -> u64 {
+    if region.width == 0 || region.height == 0 || source.width == 0 || source.height == 0 {
+        return 0;
+    }
+
+    let max_width = source.width.saturating_sub(region.x);
+    let max_height = source.height.saturating_sub(region.y);
+    let copy_width = region.width.min(max_width);
+    let copy_height = region.height.min(max_height);
+    if copy_width == 0 || copy_height == 0 {
+        return 0;
+    }
+
+    let mut packed = vec![0; (copy_width * copy_height * 4) as usize];
+    let row_pixels = source.width as usize;
+    let copy_width_usize = copy_width as usize;
+    let region_x = region.x as usize;
+    let region_y = region.y as usize;
+    for row in 0..copy_height as usize {
+        let src_start = ((region_y + row) * row_pixels + region_x) * 4;
+        let src_end = src_start + copy_width_usize * 4;
+        let dst_start = row * copy_width_usize * 4;
+        packed[dst_start..dst_start + copy_width_usize * 4]
+            .copy_from_slice(&source.pixels[src_start..src_end]);
+    }
+
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &layer.texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d {
+                x: region.x,
+                y: region.y,
+                z: 0,
+            },
+            aspect: wgpu::TextureAspect::All,
+        },
+        packed.as_slice(),
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(copy_width * 4),
+            rows_per_image: Some(copy_height),
+        },
+        wgpu::Extent3d {
+            width: copy_width,
+            height: copy_height,
+            depth_or_array_layers: 1,
+        },
+    );
+
+    (copy_width as u64) * (copy_height as u64) * 4
+}
+
+fn fullscreen_quad(width: u32, height: u32) -> TextureQuad {
+    TextureQuad {
+        destination: Rect {
+            x: 0,
+            y: 0,
+            width: width as usize,
+            height: height as usize,
+        },
+        uv_min: [0.0, 0.0],
+        uv_max: [1.0, 1.0],
+    }
+}
+
+fn quad_uniform_bytes(quad: TextureQuad, surface_width: u32, surface_height: u32) -> [u8; 32] {
+    let surface_width = surface_width.max(1) as f32;
+    let surface_height = surface_height.max(1) as f32;
+    let left = quad.destination.x as f32 / surface_width * 2.0 - 1.0;
+    let top = 1.0 - quad.destination.y as f32 / surface_height * 2.0;
+    let right = (quad.destination.x + quad.destination.width) as f32 / surface_width * 2.0 - 1.0;
+    let bottom = 1.0 - (quad.destination.y + quad.destination.height) as f32 / surface_height * 2.0;
+    let values = [
+        left,
+        top,
+        right,
+        bottom,
+        quad.uv_min[0],
+        quad.uv_min[1],
+        quad.uv_max[0],
+        quad.uv_max[1],
+    ];
+    let mut bytes = [0u8; 32];
+    for (index, value) in values.into_iter().enumerate() {
+        bytes[index * 4..index * 4 + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    bytes
 }
 
 #[cfg(test)]
@@ -481,9 +754,23 @@ mod tests {
     }
 
     #[test]
-    fn presenter_shader_mentions_texture_sampling() {
+    fn presenter_shader_mentions_uniform_quad_mapping() {
+        assert!(PRESENT_SHADER.contains("LayerUniform"));
+        assert!(PRESENT_SHADER.contains("rect_min"));
         assert!(PRESENT_SHADER.contains("textureSample"));
-        assert!(PRESENT_SHADER.contains("vs_main"));
-        assert!(PRESENT_SHADER.contains("fs_main"));
+    }
+
+    #[test]
+    fn quad_uniform_bytes_maps_fullscreen_quad_to_ndc() {
+        let bytes = quad_uniform_bytes(fullscreen_quad(640, 480), 640, 480);
+        let mut values = [0.0f32; 8];
+        for (index, chunk) in bytes.chunks_exact(4).enumerate() {
+            values[index] = f32::from_le_bytes(chunk.try_into().expect("chunk size"));
+        }
+
+        assert_eq!(values[0], -1.0);
+        assert_eq!(values[1], 1.0);
+        assert_eq!(values[2], 1.0);
+        assert_eq!(values[3], -1.0);
     }
 }

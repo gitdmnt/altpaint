@@ -38,6 +38,7 @@ pub(crate) struct PerformanceSnapshot {
     pub(crate) panel_surface_ms: f64,
     pub(crate) present_ms: f64,
     pub(crate) canvas_latency_ms: f64,
+    pub(crate) canvas_present_hz: f64,
     pub(crate) canvas_sample_hz: f64,
 }
 
@@ -55,8 +56,13 @@ impl PerformanceSnapshot {
         } else {
             "ng"
         };
+        let present_marker = if self.canvas_present_hz >= INPUT_SAMPLING_TARGET_HZ {
+            "ok"
+        } else {
+            "ng"
+        };
         format!(
-            "{WINDOW_TITLE} | {:>5.1} fps | frame {:>5.2}ms | prep {:>5.2}ms | ui {:>5.2}ms | panel {:>5.2}ms | present {:>5.2}ms | ink {:>5.2}ms {} | sample {:>6.1}Hz {}",
+            "{WINDOW_TITLE} | {:>5.1} fps | frame {:>5.2}ms | prep {:>5.2}ms | ui {:>5.2}ms | panel {:>5.2}ms | present {:>5.2}ms | ink {:>5.2}ms {} | motion {:>6.1}Hz {} | input {:>6.1}Hz {}",
             self.fps,
             self.frame_ms,
             self.prepare_ms,
@@ -65,6 +71,8 @@ impl PerformanceSnapshot {
             self.present_ms,
             self.canvas_latency_ms,
             latency_marker,
+            self.canvas_present_hz,
+            present_marker,
             self.canvas_sample_hz,
             sample_marker,
         )
@@ -108,6 +116,7 @@ pub(crate) struct DesktopProfiler {
     current_frame: FrameStageTotals,
     recent_frames: VecDeque<FrameSample>,
     recent_canvas_inputs: VecDeque<Instant>,
+    recent_canvas_presents: VecDeque<Instant>,
     recent_canvas_latencies: VecDeque<TimedLatencySample>,
     pending_canvas_input_at: Option<Instant>,
     latest_snapshot: Option<PerformanceSnapshot>,
@@ -133,6 +142,7 @@ impl DesktopProfiler {
             current_frame: FrameStageTotals::default(),
             recent_frames: VecDeque::new(),
             recent_canvas_inputs: VecDeque::new(),
+            recent_canvas_presents: VecDeque::new(),
             recent_canvas_latencies: VecDeque::new(),
             pending_canvas_input_at: None,
             latest_snapshot: None,
@@ -204,6 +214,21 @@ impl DesktopProfiler {
         self.record("present_upload", timings.upload);
         self.record("present_encode", timings.encode_and_submit);
         self.record("present_swap", timings.present);
+        self.record("present_upload_base", timings.base_upload);
+        self.record("present_upload_overlay", timings.overlay_upload);
+        self.record("present_upload_canvas", timings.canvas_upload);
+        self.record_value(
+            "present_upload_base_bytes",
+            timings.base_upload_bytes as f64,
+        );
+        self.record_value(
+            "present_upload_overlay_bytes",
+            timings.overlay_upload_bytes as f64,
+        );
+        self.record_value(
+            "present_upload_canvas_bytes",
+            timings.canvas_upload_bytes as f64,
+        );
     }
 
     /// 現在時刻でキャンバス入力サンプルを記録する。
@@ -225,6 +250,7 @@ impl DesktopProfiler {
 
     /// 指定時刻でキャンバス提示完了を記録し、入力遅延を確定する。
     pub(crate) fn record_canvas_present_at(&mut self, now: Instant) {
+        self.recent_canvas_presents.push_back(now);
         let Some(input_at) = self.pending_canvas_input_at.take() else {
             self.prune_recent_inputs(now);
             return;
@@ -267,6 +293,13 @@ impl DesktopProfiler {
                 break;
             }
             self.recent_canvas_inputs.pop_front();
+        }
+
+        while let Some(sample) = self.recent_canvas_presents.front() {
+            if now.duration_since(*sample) <= self.snapshot_window {
+                break;
+            }
+            self.recent_canvas_presents.pop_front();
         }
 
         while let Some(sample) = self.recent_canvas_latencies.front() {
@@ -335,6 +368,27 @@ impl DesktopProfiler {
                 .map_or(0.0, |snapshot| snapshot.canvas_sample_hz)
         };
 
+        let canvas_present_hz = if self.recent_canvas_presents.len() >= 2 {
+            let first = self
+                .recent_canvas_presents
+                .front()
+                .expect("recent canvas present window is not empty");
+            let last = self
+                .recent_canvas_presents
+                .back()
+                .expect("recent canvas present window is not empty");
+            let span_secs = last.duration_since(*first).as_secs_f64();
+            if span_secs > 0.0 {
+                (self.recent_canvas_presents.len().saturating_sub(1)) as f64 / span_secs
+            } else {
+                self.latest_snapshot
+                    .map_or(0.0, |snapshot| snapshot.canvas_present_hz)
+            }
+        } else {
+            self.latest_snapshot
+                .map_or(0.0, |snapshot| snapshot.canvas_present_hz)
+        };
+
         let canvas_latency_ms = if self.recent_canvas_latencies.is_empty() {
             self.latest_snapshot
                 .map_or(0.0, |snapshot| snapshot.canvas_latency_ms)
@@ -354,6 +408,7 @@ impl DesktopProfiler {
             panel_surface_ms: totals.panel_surface.as_secs_f64() * 1000.0 / frame_count as f64,
             present_ms: totals.present_total.as_secs_f64() * 1000.0 / frame_count as f64,
             canvas_latency_ms,
+            canvas_present_hz,
             canvas_sample_hz,
         })
     }
@@ -376,7 +431,7 @@ impl DesktopProfiler {
             .as_secs_f64()
             .max(f64::EPSILON);
         eprintln!(
-            "[profile] ---- last {:.2}s | fps={:.1} frame={:.3}ms prep={:.3}ms ui={:.3}ms panel={:.3}ms present={:.3}ms ink={:.3}ms target<={:.1}ms sample={:.1}Hz target>={:.1}Hz ----",
+            "[profile] ---- last {:.2}s | fps={:.1} frame={:.3}ms prep={:.3}ms ui={:.3}ms panel={:.3}ms present={:.3}ms ink={:.3}ms target<={:.1}ms motion={:.1}Hz target>={:.1}Hz input={:.1}Hz target>={:.1}Hz ----",
             now.duration_since(self.frame_interval_started)
                 .as_secs_f64(),
             self.frames as f64 / interval_secs,
@@ -389,9 +444,26 @@ impl DesktopProfiler {
                 .map_or(0.0, |snapshot| snapshot.canvas_latency_ms),
             INPUT_LATENCY_TARGET_MS,
             self.latest_snapshot
+                .map_or(0.0, |snapshot| snapshot.canvas_present_hz),
+            INPUT_SAMPLING_TARGET_HZ,
+            self.latest_snapshot
                 .map_or(0.0, |snapshot| snapshot.canvas_sample_hz),
             INPUT_SAMPLING_TARGET_HZ,
         );
+        if let (Some(window_events), Some(raw_events), Some(dispatches)) = (
+            self.stats.get("canvas_input_window_event"),
+            self.stats.get("canvas_input_raw_event"),
+            self.stats.get("canvas_input_dispatch"),
+        ) {
+            let wheel_events = self
+                .stats
+                .get("canvas_input_wheel_event")
+                .map_or(0, |stat| stat.calls);
+            eprintln!(
+                "[profile] input sources window={} raw={} wheel={} dispatch={}",
+                window_events.calls, raw_events.calls, wheel_events, dispatches.calls,
+            );
+        }
         for (label, stat) in &self.stats {
             let avg = if stat.calls == 0 {
                 0.0
@@ -415,10 +487,7 @@ impl DesktopProfiler {
             };
             eprintln!(
                 "[profile] {:>18} samples={:>5} avg={:>10.1} max={:>10.1}",
-                label,
-                stat.samples,
-                avg,
-                stat.max,
+                label, stat.samples, avg, stat.max,
             );
         }
     }
@@ -450,6 +519,7 @@ mod tests {
             panel_surface_ms: 0.77,
             present_ms: 1.26,
             canvas_latency_ms: 8.40,
+            canvas_present_hz: 144.0,
             canvas_sample_hz: 123.4,
         }
         .title_text();
@@ -458,7 +528,8 @@ mod tests {
         assert!(title.contains("prep  3.11ms"));
         assert!(title.contains("ui  0.42ms"));
         assert!(title.contains("ink  8.40ms ok"));
-        assert!(title.contains("sample  123.4Hz ok"));
+        assert!(title.contains("motion  144.0Hz ok"));
+        assert!(title.contains("input  123.4Hz ok"));
     }
 
     /// スナップショット fps が直近窓のフレームから計算されることを確認する。
@@ -512,6 +583,8 @@ mod tests {
         let snapshot = profiler.latest_snapshot().expect("snapshot exists");
         assert!(snapshot.canvas_latency_ms >= 8.0);
         assert!(snapshot.canvas_latency_ms < 9.0);
+        assert!(snapshot.canvas_present_hz >= 120.0);
+        assert!(snapshot.canvas_present_hz < 130.0);
         assert!(snapshot.canvas_sample_hz >= 120.0);
         assert!(snapshot.canvas_sample_hz < 130.0);
     }

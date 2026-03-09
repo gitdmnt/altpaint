@@ -4,7 +4,7 @@
 //! フレーム差分更新の基礎部品を提供する。
 
 use app_core::{CanvasViewTransform, DirtyRect};
-use ui_shell::{PanelSurface, draw_text_rgba};
+use ui_shell::{PanelSurface, draw_text_rgba, measure_text_width};
 
 use crate::config::{
     APP_BACKGROUND, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND, CANVAS_FRAME_BORDER, FOOTER_HEIGHT,
@@ -126,12 +126,21 @@ impl DesktopLayout {
 pub(crate) struct CanvasCompositeSource<'a> {
     pub(crate) width: usize,
     pub(crate) height: usize,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) pixels: &'a [u8],
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct CanvasOverlayState {
     pub(crate) brush_preview: Option<(usize, usize)>,
+}
+
+/// GPU 上で提示するテクスチャ付き矩形を表す。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct TextureQuad {
+    pub(crate) destination: Rect,
+    pub(crate) uv_min: [f32; 2],
+    pub(crate) uv_max: [f32; 2],
 }
 
 /// 元画像を target 内へアスペクト比維持で収めた矩形を返す。
@@ -280,6 +289,96 @@ pub(crate) fn canvas_drawn_rect(
     })
 }
 
+pub(crate) fn exposed_canvas_background_rect(
+    destination: Rect,
+    source_width: usize,
+    source_height: usize,
+    previous_transform: CanvasViewTransform,
+    current_transform: CanvasViewTransform,
+) -> Option<Rect> {
+    let previous = canvas_drawn_rect(destination, source_width, source_height, previous_transform)?;
+    let current = canvas_drawn_rect(destination, source_width, source_height, current_transform);
+
+    let Some(current) = current else {
+        return Some(previous);
+    };
+
+    if previous == current {
+        return None;
+    }
+
+    let overlap = previous.intersect(current);
+    let mut exposed = Vec::with_capacity(4);
+    match overlap {
+        None => exposed.push(previous),
+        Some(overlap) => {
+            let candidates = [
+                Rect {
+                    x: previous.x,
+                    y: previous.y,
+                    width: previous.width,
+                    height: overlap.y.saturating_sub(previous.y),
+                },
+                Rect {
+                    x: previous.x,
+                    y: overlap.y + overlap.height,
+                    width: previous.width,
+                    height: (previous.y + previous.height)
+                        .saturating_sub(overlap.y + overlap.height),
+                },
+                Rect {
+                    x: previous.x,
+                    y: overlap.y,
+                    width: overlap.x.saturating_sub(previous.x),
+                    height: overlap.height,
+                },
+                Rect {
+                    x: overlap.x + overlap.width,
+                    y: overlap.y,
+                    width: (previous.x + previous.width).saturating_sub(overlap.x + overlap.width),
+                    height: overlap.height,
+                },
+            ];
+            for rect in candidates {
+                if rect.width > 0 && rect.height > 0 {
+                    exposed.push(rect);
+                }
+            }
+        }
+    }
+
+    exposed.into_iter().reduce(|acc, rect| acc.union(rect))
+}
+
+pub(crate) fn canvas_texture_quad(
+    destination: Rect,
+    source_width: usize,
+    source_height: usize,
+    transform: CanvasViewTransform,
+) -> Option<TextureQuad> {
+    if source_width == 0 || source_height == 0 || destination.width == 0 || destination.height == 0
+    {
+        return None;
+    }
+
+    let metrics = canvas_transform_metrics(destination, source_width, source_height, transform);
+    let drawn_rect = canvas_drawn_rect(destination, source_width, source_height, transform)?;
+    let left =
+        ((drawn_rect.x as f32 - metrics.offset_x) / metrics.scale).clamp(0.0, source_width as f32);
+    let top =
+        ((drawn_rect.y as f32 - metrics.offset_y) / metrics.scale).clamp(0.0, source_height as f32);
+    let right = (((drawn_rect.x + drawn_rect.width) as f32 - metrics.offset_x) / metrics.scale)
+        .clamp(0.0, source_width as f32);
+    let bottom = (((drawn_rect.y + drawn_rect.height) as f32 - metrics.offset_y) / metrics.scale)
+        .clamp(0.0, source_height as f32);
+
+    Some(TextureQuad {
+        destination: drawn_rect,
+        uv_min: [left / source_width as f32, top / source_height as f32],
+        uv_max: [right / source_width as f32, bottom / source_height as f32],
+    })
+}
+
 struct CanvasTransformMetrics {
     scale: f32,
     offset_x: f32,
@@ -310,15 +409,14 @@ fn canvas_transform_metrics(
 }
 
 /// パネル面・キャンバス面・ステータス表示をまとめて最終フレームへ合成する。
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn compose_desktop_frame(
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn compose_base_frame(
     width: usize,
     height: usize,
     layout: &DesktopLayout,
     panel_surface: &PanelSurface,
     canvas: CanvasCompositeSource<'_>,
     transform: CanvasViewTransform,
-    overlay: CanvasOverlayState,
     status_text: &str,
 ) -> render::RenderFrame {
     let mut frame = render::RenderFrame {
@@ -349,9 +447,14 @@ pub(crate) fn compose_desktop_frame(
     );
     fill_rect(&mut frame, layout.panel_host_rect, PANEL_FRAME_BACKGROUND);
     stroke_rect(&mut frame, layout.panel_host_rect, PANEL_FRAME_BORDER);
-    fill_rect(&mut frame, layout.canvas_host_rect, CANVAS_FRAME_BACKGROUND);
+    fill_canvas_host_background(
+        &mut frame,
+        layout,
+        canvas,
+        transform,
+        layout.canvas_host_rect,
+    );
     stroke_rect(&mut frame, layout.canvas_host_rect, CANVAS_FRAME_BORDER);
-    fill_rect(&mut frame, layout.canvas_display_rect, CANVAS_BACKGROUND);
 
     blit_scaled_rgba(
         &mut frame,
@@ -360,7 +463,6 @@ pub(crate) fn compose_desktop_frame(
         panel_surface.height,
         panel_surface.pixels.as_slice(),
     );
-    compose_canvas_host_region(&mut frame, layout, canvas, transform, overlay, None);
 
     draw_text(
         &mut frame,
@@ -373,7 +475,7 @@ pub(crate) fn compose_desktop_frame(
         &mut frame,
         layout.canvas_host_rect.x,
         WINDOW_PADDING + 4,
-        "Canvas host (winit + wgpu presenter)",
+        "Canvas host (winit + wgpu canvas texture)",
         TEXT_PRIMARY,
     );
     draw_text(
@@ -394,6 +496,67 @@ pub(crate) fn compose_desktop_frame(
     frame
 }
 
+pub(crate) fn compose_overlay_frame(
+    width: usize,
+    height: usize,
+    layout: &DesktopLayout,
+    canvas: CanvasCompositeSource<'_>,
+    transform: CanvasViewTransform,
+    overlay: CanvasOverlayState,
+) -> render::RenderFrame {
+    let mut frame = render::RenderFrame {
+        width,
+        height,
+        pixels: vec![0; width * height * 4],
+    };
+    compose_overlay_region(&mut frame, layout, canvas, transform, overlay, None);
+    frame
+}
+
+pub(crate) fn compose_overlay_region(
+    frame: &mut render::RenderFrame,
+    layout: &DesktopLayout,
+    canvas: CanvasCompositeSource<'_>,
+    transform: CanvasViewTransform,
+    overlay: CanvasOverlayState,
+    dirty_rect: Option<Rect>,
+) {
+    let clear_rect = dirty_rect.unwrap_or(Rect {
+        x: 0,
+        y: 0,
+        width: frame.width,
+        height: frame.height,
+    });
+    fill_rect(frame, clear_rect, [0, 0, 0, 0]);
+    draw_canvas_overlay(frame, layout, canvas, transform, overlay, dirty_rect);
+}
+
+#[allow(clippy::too_many_arguments)]
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn compose_desktop_frame(
+    width: usize,
+    height: usize,
+    layout: &DesktopLayout,
+    panel_surface: &PanelSurface,
+    canvas: CanvasCompositeSource<'_>,
+    transform: CanvasViewTransform,
+    overlay: CanvasOverlayState,
+    status_text: &str,
+) -> render::RenderFrame {
+    let mut frame = compose_base_frame(
+        width,
+        height,
+        layout,
+        panel_surface,
+        canvas,
+        transform,
+        status_text,
+    );
+    compose_canvas_host_region(&mut frame, layout, canvas, transform, overlay, None);
+    frame
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn compose_canvas_host_region(
     frame: &mut render::RenderFrame,
     layout: &DesktopLayout,
@@ -407,6 +570,7 @@ pub(crate) fn compose_canvas_host_region(
     draw_canvas_overlay(frame, layout, canvas, transform, overlay, dirty_rect);
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn clear_canvas_host_region(
     frame: &mut render::RenderFrame,
     layout: &DesktopLayout,
@@ -528,6 +692,7 @@ fn fill_rect_excluding(
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn blit_canvas_content(
     frame: &mut render::RenderFrame,
     layout: &DesktopLayout,
@@ -589,7 +754,7 @@ pub(crate) fn compose_status_region(
     layout: &DesktopLayout,
     status_text: &str,
 ) {
-    let status_rect = status_text_rect(width, height, layout);
+    let status_rect = status_text_bounds(width, height, layout, status_text);
     fill_rect(frame, status_rect, APP_BACKGROUND);
     draw_text(
         frame,
@@ -601,11 +766,23 @@ pub(crate) fn compose_status_region(
 }
 
 /// フッター右側のステータス表示領域を返す。
+#[allow(dead_code)]
 pub(crate) fn status_text_rect(width: usize, height: usize, layout: &DesktopLayout) -> Rect {
+    status_text_bounds(width, height, layout, "")
+}
+
+/// 現在のステータス文字列に必要な最小表示領域を返す。
+pub(crate) fn status_text_bounds(
+    width: usize,
+    height: usize,
+    layout: &DesktopLayout,
+    status_text: &str,
+) -> Rect {
+    let text_width = measure_text_width(status_text).saturating_add(16).max(1);
     Rect {
         x: layout.canvas_host_rect.x,
         y: height.saturating_sub(FOOTER_HEIGHT),
-        width: width.saturating_sub(layout.canvas_host_rect.x),
+        width: text_width.min(width.saturating_sub(layout.canvas_host_rect.x)),
         height: FOOTER_HEIGHT,
     }
 }
@@ -750,6 +927,7 @@ fn stroke_rect(frame: &mut render::RenderFrame, rect: Rect, color: [u8; 4]) {
     );
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn stroke_rect_region(
     frame: &mut render::RenderFrame,
     rect: Rect,
@@ -845,6 +1023,7 @@ fn blit_scaled_rgba(
     );
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn blit_canvas_with_transform(
     frame: &mut render::RenderFrame,
     destination: Rect,
@@ -918,6 +1097,7 @@ fn blit_canvas_with_transform(
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SourceAxisRun {
     dst_offset: usize,
@@ -925,6 +1105,7 @@ struct SourceAxisRun {
     src_index: usize,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn build_source_axis_runs(
     destination_start: usize,
     destination_len: usize,
@@ -965,6 +1146,7 @@ fn build_source_axis_runs(
     runs
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn fill_rgba_block(
     frame: &mut render::RenderFrame,
     x: usize,
@@ -986,6 +1168,7 @@ fn fill_rgba_block(
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn scroll_canvas_region(
     frame: &mut render::RenderFrame,
     region: Rect,
@@ -1047,6 +1230,7 @@ pub(crate) fn scroll_canvas_region(
     exposed_scroll_rect(region, shift_x, shift_y)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn exposed_scroll_rect(region: Rect, shift_x: i32, shift_y: i32) -> Rect {
     if shift_x.unsigned_abs() as usize >= region.width
         || shift_y.unsigned_abs() as usize >= region.height
