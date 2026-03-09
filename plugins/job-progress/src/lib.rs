@@ -11,7 +11,7 @@ const STATUS: state::StringKey = state::string("status");
 #[panel_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_handler]
+#[panel_sdk::panel_sync_host]
 fn sync_host() {
     set_state_i32(ACTIVE, host::jobs::active());
     set_state_i32(QUEUED, host::jobs::queued());

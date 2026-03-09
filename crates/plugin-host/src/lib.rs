@@ -8,6 +8,9 @@ use serde_json::{Map, Value};
 use thiserror::Error;
 use wasmtime::{Caller, Engine, Extern, Func, Instance, Linker, Memory, Module, Store};
 
+const PANEL_INIT_EXPORT: &str = "panel_init";
+const PANEL_SYNC_HOST_EXPORT: &str = "panel_sync_host";
+
 #[derive(Debug, Error)]
 pub enum PluginHostError {
     #[error("failed to load runtime module at {path}: {message}")]
@@ -616,7 +619,7 @@ impl WasmPanelRuntime {
         request: &PanelInitRequest,
     ) -> Result<PanelInitResponse, PluginHostError> {
         self.store.data_mut().clear();
-        if let Some(init) = self.instance.get_func(&mut self.store, "panel_init") {
+        if let Some(init) = self.instance.get_func(&mut self.store, PANEL_INIT_EXPORT) {
             call_export(&mut self.store, init, None).map_err(PluginHostError::Runtime)?;
         }
 
@@ -626,6 +629,32 @@ impl WasmPanelRuntime {
             state,
             diagnostics: self.store.data().result.diagnostics.clone(),
         })
+    }
+
+    pub fn sync_host(
+        &mut self,
+        state_snapshot: &Value,
+        host_snapshot: &Value,
+    ) -> Result<HandlerResult, PluginHostError> {
+        self.store.data_mut().clear();
+        self.store.data_mut().current_request = Some(PanelEventRequest {
+            handler_name: "sync_host".to_string(),
+            event_kind: "sync_host".to_string(),
+            event_payload: Value::Object(Map::new()),
+            state_snapshot: state_snapshot.clone(),
+            host_snapshot: host_snapshot.clone(),
+        });
+
+        let handler = self
+            .instance
+            .get_func(&mut self.store, PANEL_SYNC_HOST_EXPORT)
+            .ok_or_else(|| {
+                PluginHostError::Runtime(format!(
+                    "missing lifecycle export: {PANEL_SYNC_HOST_EXPORT}"
+                ))
+            })?;
+        call_export(&mut self.store, handler, None).map_err(PluginHostError::Runtime)?;
+        Ok(self.store.data().result.clone())
     }
 
     pub fn handle_event(
@@ -656,6 +685,12 @@ impl WasmPanelRuntime {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub fn supports_sync_host(&mut self) -> bool {
+        self.instance
+            .get_func(&mut self.store, PANEL_SYNC_HOST_EXPORT)
+            .is_some()
     }
 
     pub fn has_handler(&mut self, handler_name: &str) -> bool {
@@ -824,7 +859,7 @@ mod tests {
     (data (i32.const 48) "document.title")
     (data (i32.const 80) "document.active_layer_visible")
     (data (i32.const 128) "document.page_count")
-    (func (export "panel_handle_sync_host")
+    (func (export "panel_sync_host")
         (local $title_len i32)
         (local $buffer_ptr i32)
         i32.const 48
@@ -923,20 +958,19 @@ mod tests {
         let wasm_path = write_temp_wat(HOST_SYNC_WAT);
         let mut runtime = WasmPanelRuntime::load(&wasm_path).expect("runtime loads");
 
+        assert!(runtime.supports_sync_host());
+
         let synced = runtime
-            .handle_event(&PanelEventRequest {
-                handler_name: "sync_host".to_string(),
-                event_kind: "sync_host".to_string(),
-                event_payload: json!({}),
-                state_snapshot: json!({}),
-                host_snapshot: json!({
+            .sync_host(
+                &json!({}),
+                &json!({
                     "document": {
                         "title": "Runtime Title",
                         "active_layer_visible": true,
                         "page_count": 7,
                     }
                 }),
-            })
+            )
             .expect("host sync handler runs");
 
         assert_eq!(

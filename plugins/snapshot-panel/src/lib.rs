@@ -13,7 +13,7 @@ const STORAGE_STATUS: state::StringKey = state::string("storage_status");
 #[panel_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_handler]
+#[panel_sdk::panel_sync_host]
 fn sync_host() {
 	set_state_string(TITLE, host::document::title());
 	set_state_i32(PAGE_COUNT, host::document::page_count());

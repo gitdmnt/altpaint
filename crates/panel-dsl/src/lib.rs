@@ -296,6 +296,7 @@ fn validate_view_node(
                     .get("on:click")
                     .and_then(AttrValue::as_string)
             {
+                validate_handler_binding(handler)?;
                 handler_bindings.insert(handler.to_string());
             }
             if element.tag == "toggle"
@@ -304,6 +305,7 @@ fn validate_view_node(
                     .get("on:change")
                     .and_then(AttrValue::as_string)
             {
+                validate_handler_binding(handler)?;
                 handler_bindings.insert(handler.to_string());
             }
             if element.tag == "slider"
@@ -312,6 +314,7 @@ fn validate_view_node(
                     .get("on:change")
                     .and_then(AttrValue::as_string)
             {
+                validate_handler_binding(handler)?;
                 handler_bindings.insert(handler.to_string());
             }
             if element.tag == "input"
@@ -320,6 +323,7 @@ fn validate_view_node(
                     .get("on:change")
                     .and_then(AttrValue::as_string)
             {
+                validate_handler_binding(handler)?;
                 handler_bindings.insert(handler.to_string());
             }
             for child in &element.children {
@@ -333,6 +337,15 @@ fn validate_view_node(
 fn validate_attr_value(value: &AttrValue) -> Result<(), PanelDslError> {
     if let AttrValue::Expression(expression) = value {
         validate_expression_usage(expression)?;
+    }
+    Ok(())
+}
+
+fn validate_handler_binding(handler: &str) -> Result<(), PanelDslError> {
+    if handler == "sync_host" {
+        return Err(PanelDslError::Validation(
+            "sync_host is a reserved lifecycle name; use #[panel_sdk::panel_sync_host] in Wasm and do not bind it from .altp-panel".to_string(),
+        ));
     }
     Ok(())
 }
@@ -946,6 +959,25 @@ view {
             error,
             PanelDslError::Validation(message)
                 if message.contains("direct host.* expressions are not allowed")
+        ));
+    }
+
+    #[test]
+    fn validation_rejects_sync_host_as_ui_handler_binding() {
+        let temp_dir = unique_test_dir();
+        fs::create_dir_all(&temp_dir).expect("temp dir created");
+        let source_path = temp_dir.join("sample.altp-panel");
+        fs::write(temp_dir.join("sample_panel.wasm"), []).expect("wasm placeholder created");
+        let source = SAMPLE_PANEL.replace("reload_panel", "sync_host");
+
+        let error = parse_panel_source(&source)
+            .and_then(|ast| validate_panel_ast(ast, source_path))
+            .expect_err("sync_host binding should fail validation");
+
+        assert!(matches!(
+            error,
+            PanelDslError::Validation(message)
+                if message.contains("sync_host is a reserved lifecycle name")
         ));
     }
 

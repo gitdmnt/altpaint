@@ -1,804 +1,196 @@
-# altpaint 実装状況メモ
+# altpaint 実装状況
 
 ## この文書の目的
 
-この文書は、`docs/SKETCH.md`、`docs/ARCHITECTURE.md`、`docs/ROADMAP.md` に基づいて進めた実装作業の現状を、後から参照しやすい形でまとめるための実装ログ兼コンテキスト文書である。
+この文書は、2026-03-10 時点の `altpaint` が**実際にどこまで実装済みか**を短く把握するための現況メモである。
 
-役割は以下。
-
-- ここまでに何を決め、何を実装したかを手早く把握する
-- 現在のコードベースがどのフェーズまで進んでいるかを確認する
-- 直近の性能改善で何が効いたのかを把握する
-- 次に着手する候補を整理する
-
-設計原則や責務分割そのものは `docs/ARCHITECTURE.md`、実装順序は `docs/ROADMAP.md` を正として、この文書では「実際にどう進んだか」と「今どこにいるか」に集中する。
+依存関係の詳細は [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md)、
+設計原則は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) を参照する。
 
 ## 現在の要約
 
-2026-03-10 時点で、`altpaint` は以下まで到達している。
+`altpaint` は現在、次を持つ。
 
-- Cargo workspace 構成がある
-- 最小クレートとして `app-core`、`render`、`ui-shell`、`plugin-api`、`storage`、`plugin-host`、`panel-sdk`、`panel-dsl`、`panel-schema`、`panel-macros`、`desktop-support`、`apps/desktop` がある
-- 単一ウィンドウのデスクトップアプリが起動する
-- 単一ページ、単一コマ、単一ラスタレイヤーの最小 `Document` がある
-- 白いキャンバスを灰色背景の上に表示できる
-- マウス入力で黒い点・線ストロークを描ける
-- `winit::WindowEvent::Touch` 経由の入力をキャンバス/パネルへルーティングできる
-- キャンバス表示位置と入力座標変換が一致している
-- 実行時プロファイラで描画コストを区間別に計測できる
-- ウィンドウタイトルに FPS と主要フレーム時間を常時表示できる
-- キャンバス入力の end-to-end レイテンシと実効サンプリング周波数を常時計測できる
-- dirty rect による差分転送で、描画コストを大幅に削減済みである
-- JSONベースの最小保存形式で `Document` を保存/読込できる
-- フォーマットバージョン付きで保存し、未知バージョンを拒否できる
-- `desktop` からサイズ指定付き新規作成・名前を付けて保存・読込・起動時自動読込ができる
-- 保存形式は `Document` に加えて UI パネルの表示順と表示/非表示状態も永続化できる
-- `desktop` は `plugins/` 配下の `.altp-panel` を再帰ロードし、組み込み標準パネルをファイルベースで読み込める
-- `plugins/` 配下に標準パネルごとの独立フォルダがある
-- 各標準パネルは `.altp-panel` / Rust SDK ソース / 生成 Wasm を同居できる
-- `plugin-api` に `PanelUi` / `PanelUiNode` を追加し、パネルUI記述を中間表現として扱える
-- `desktop` は `winit` + `wgpu` の単一ウィンドウホストとして起動する
-- `desktop` はホスト描画したパネル面とキャンバス面を `wgpu` で合成提示できる
-- `desktop` は UI ベースフレーム / GPU キャンバステクスチャ / オーバーレイフレームの 3 層で提示する
-- ブラシと消しゴムの最小ツール切替がある
-- `builtin.app-actions` パネルを追加し、`new` / `save` / `load` をパネル側から `Command` として発行できる
-- `save` / `load` / `new` / `tool switch` が `DesktopApp::execute_command(...)` 経由に統一された
-- `desktop` のキャンバス操作面から pointer 操作を `Command` へ変換し、`Document` 更新と再描画へ接続できる
-- `desktop` はホスト側レイアウト情報を使ってサイドパネルとキャンバスへの入力ルーティングを行える
-- `desktop` はキャンバス本体を GPU texture として保持し、パン/ズームを GPU quad で適用できる
-- `plugin-api` に `PanelTree` / `PanelNode` / `PanelEvent` / `HostAction` を追加し、フェーズ4契約へ進めた
-- `ui-shell` が最小レイアウト、ヒットテスト、ソフトウェア描画を持つホスト側パネルランタイムを持ち、組み込みパネルをホスト描画できる
-- `desktop` のサイドバーはホスト描画されたパネルサーフェスを表示し、ボタン押下から `Command` を発行できる
-- `ui-shell` にパネルフォーカス移動と縦スクロールの最小制御を追加した
-- `desktop` は `Tab` / `Shift+Tab` / `Enter` / `Space` とマウスホイールを使ってパネルUIを操作できる
-- `builtin.job-progress` と `builtin.snapshot-panel` を追加し、標準パネル6種をホスト自前描画へ揃えた
-- `crates/panel-dsl` / `crates/panel-schema` / `crates/panel-sdk` を追加し、フェーズ6の最小土台を完遂した
-- `panel-dsl` は `.altp-panel` の parser / validator / normalized IR を持ち、handler binding を抽出できる
-- `ui-shell` は `plugins/` から `.altp-panel` をロードし、static panel をホスト描画へ接続できる
-- `plugin-api::HostAction` に handler 呼び出し用の最小 variant を追加し、Wasm runtime 接続点を確保した
-- `crates/plugin-host` を追加し、`wasmtime` ベースの Wasm panel runtime を導入した
-- `ui-shell` は DSL panel の local state と host snapshot を持ち、Wasm handler の state patch / command descriptor を反映できる
-- `plugins/phase6-sample/` のサンプル panel と対応 Wasm runtime により、サンプル UI が実際に表示・操作できる
-- `plugins/` に標準パネル6種の UI DSL + Rust SDK + Wasm 版を完遂した
-- `crates/panel-macros` を追加し、plugin 作者が `#[panel_sdk::panel_init]` / `#[panel_sdk::panel_handler]` で安全に export を宣言できるようにした
-- `panel-sdk` に `commands::*` / `state::*Key` / `emit_command(...)` を追加し、標準パネル実装から `unsafe`・export 名・主要 command 文字列の直書きを追い出した
-- 旧 `crates/builtin-plugins` 実装を削除し、標準パネルはファイルベースの DSL/Wasm 版へ統一した
-- `ui-shell` は `.altp-panel` を再帰探索し、独立フォルダ化した標準パネルをまとめてロードできる
-- `scripts/build-ui-wasm.ps1` を追加し、標準パネル Wasm と `phase6-sample.wasm` を再生成できるようにした
-- host snapshot に document summary / active layer / jobs / snapshot status を拡張し、フェーズ7移植を完遂した
-- `docs/panel-ui-definition/` を改訂し、暫定 ABI と安定 SDK 面の分離、レビュワーコメントへの批判的整理、将来の bytes DTO ABI 方針を明文化した
-- `plugin-api::PanelEvent` に keyboard variant を追加し、ホスト正規化済みショートカットを Wasm panel へ配送できるようにした
-- パネル設定永続化用に `plugin_configs` を保存形式へ追加し、panel ごとの `config` subtree を save/load できるようにした
-- `builtin.app-actions` / `builtin.tool-palette` はショートカット設定 UI と keyboard handler を持ち、各 panel 自身の shortcut を永続化できる
-- キャンバスはホイールによる zoom/pan、ブラシプレビュー overlay、最小複数レイヤー、blend mode 循環、デモ mask 切替を持つようになった
-- `builtin.layers-panel` は最小レイヤー操作 UI を持ち、フェーズ9のキャンバス機能を panel 経由で操作できる
-- `pens/` 配下の `*.altp-pen.json` を起動時/再読込時に読める
-- ペンプリセット読込は `storage`、セッション/ダイアログ/プロファイラ/既定設定は `desktop-support` へ分離済みである
-- `builtin.tool-palette` は Pen ツール、前/次ペン切替、Reload Pens を持つ
-- `builtin.pen-settings` は現在ペンの幅スライダーを持つ
-- `Document` はペンプリセット列、アクティブペン、可変幅ペンサイズを保持する
-- Pen ツールは可変幅ストロークを描ける
+- Cargo workspace による multi-crate 構成
+- `winit` + `wgpu` による単一ウィンドウ desktop host
+- 単一 `Document` を中心にした最小編集モデル
+- 複数ラスタレイヤー、blend mode、簡易マスク、パン/ズーム
+- マウス / touch / wheel によるキャンバス操作
+- dirty rect を使う差分提示
+- project save/load
+- session save/load
+- `plugins/` 配下の `.altp-panel` + Wasm panel の再帰ロード
+- built-in panel 群の UI DSL + Rust SDK + Wasm 実装
+- panel local state / host snapshot / persistent config
+- 外部ペンプリセット読込
+- 実行時 profiler とタイトル表示
 
-現時点では、「フェーズ3: 保存と再読込」は最小形で実装済みであり、
-「フェーズ4: パネル中間表現の確立」は完了、
-「フェーズ5: 標準パネルの移植」は完了、
-「フェーズ6: パネル基盤 crate と UI DSL parser」は完了、
-「フェーズ7: 既存ビルトイン panel の UI DSL + Wasm 移植」は完了。
-現在は、「フェーズ8: 外部 Wasm パネルランタイム」の基盤に加え、「フェーズ9: キャンバス機能の実用化」も最小 MVP として到達済みである。
-加えて、フェーズ9の延長として **外部ペンプリセットの最小導線** も導入済みである。
+## workspace 現況
 
-## 実装済みの主要文書
+### 中核クレート
 
-- `docs/SKETCH.md`
-  - 要件、MVP、非目標、技術選定の基本方針
-- `docs/ARCHITECTURE.md`
-  - クレート分割、責務境界、内部プラグインの考え方
-- `docs/ROADMAP.md`
-  - フェーズ別の実装順序
-- `docs/IMPLEMENTATION_STATUS.md`
-  - この文書。実装進捗と性能改善の現状メモ
-- `docs/panel-ui-definition/README.md`
-  - panel UI 定義文書群の入口。SDK の安全化方針と ABI の扱いを整理した
-- `docs/panel-ui-definition/ui-dsl.md`
-  - `.altp-panel` と handler binding / state モデルの正本
-- `docs/panel-ui-definition/wasm-runtime.md`
-  - Wasm runtime / ABI / Rust SDK / plugin author 向け表面 API の正本
-
-## 実装済みフェーズ
-
-## フェーズ0: 最小契約
-
-実装済み。
-
-### 主な成果物
-
-- ルート `Cargo.toml` による workspace 構成
-- `crates/app-core`
-- `crates/render`
-- `crates/ui-shell`
-- `crates/plugin-api`
+- `app-core`
+- `render`
+- `storage`
+- `desktop-support`
+- `plugin-api`
+- `ui-shell`
+- `plugin-host`
+- `panel-dsl`
+- `panel-schema`
+- `panel-sdk`
+- `panel-macros`
 - `apps/desktop`
 
-### 導入した最小概念
+### 組み込みパネル crate
+
+- `plugins/app-actions`
+- `plugins/tool-palette`
+- `plugins/layers-panel`
+- `plugins/color-palette`
+- `plugins/pen-settings`
+- `plugins/job-progress`
+- `plugins/snapshot-panel`
+
+## 実装済みの主要領域
+
+### 1. ドメインモデル
+
+`app-core` には次がある。
 
 - `Document`
-- `Work`
-- `Page`
-- `Panel`
-- `LayerNode`
 - `Command`
-- `PanelPlugin`
-- `RenderContext`
-- `UiShell`
-
-### 意図
-
-MVP 時点で必要な「コア」「描画」「UIホスト」「プラグイン境界」を、過剰に作り込みすぎない最小形で固定した。
-
-## フェーズ1: 最小起動ループ
-
-実装済み。
-
-### 実装内容
-
-- `winit` ベースの単一ウィンドウ起動
-- キャンバス表示面を含む最小レイアウト
-- `Document::default()` を表示対象にする最小デスクトップアプリ
-
-### 到達点
-
-- アプリが起動する
-- キャンバス表示基盤がある
-- 将来のパネル追加を妨げない最小構造がある
-
-## フェーズ2: 描画できる最小垂直スライス
-
-実装済み。
-
-### 実装内容
-
-- `CanvasBitmap` による最小ラスタキャンバス
-- キャンバス初期色を白で初期化
-- キャンバス外背景を灰色で表示
-- キャンバス外周枠を描画
-- `draw_point()` による点描画
-- `draw_line()` による 1px 線分描画
-- `Document::draw_stroke()` によるストローク反映
-- マウスドラッグ中の連続ストローク描画
-- `TouchPhase` ベースの連続ストローク描画
-- キャンバス中央配置
-- ウィンドウ座標からキャンバス座標への変換
-- リサイズ追従
-
-### 実装メモ
-
-- 線分描画は Bresenham ベースの最小実装
-- まだ筆圧や太さはない
-- レイヤーはまだ単一ラスタのみ
-- 複数コマ、Undo/Redo、本格的な標準内部パネルUIは未着手
-- `desktop` はキャンバス描画中に連続 `request_redraw()` を行い、実効入力レイテンシ計測と高リフレッシュ提示を優先する
-- `wgpu` 提示モードは `Mailbox` → `Immediate` → `FifoRelaxed` → `Fifo` の順で低遅延優先に選択し、`desired_maximum_frame_latency = 1` を使う
-
-## フェーズ3: 保存と再読込
-
-最小形を実装済み。
-
-### 実装内容
-
-- `crates/storage` を追加
-- `AltpaintProjectFile` による最小プロジェクト保存形式を定義
-- `format_version` をファイルに保持
-- `save_document_to_path(...)` を実装
-- `load_document_from_path(...)` を実装
-- 未知のフォーマットバージョンを拒否
-- `desktop` に新規作成・保存・読込の最小導線を追加
-- 起動時に既定ファイルが存在すれば自動読込する処理を追加
-
-### 到達点
-
-- 描画結果を保存できる
-- 次回起動または手動読込で状態を復元できる
-- 将来のフォーマット更新に備えるための明示的バージョンを持てている
-
-### 現時点の制約
-
-- 保存形式は暫定的に JSON ベースである
-- 最近使ったファイル一覧や未保存確認はまだない
-
-## フェーズ4: パネルホストと内部プラグイン1号
-
-実装済み。
-
-### 実装内容
-
-- `crates/builtin-plugins` を追加
-- `LayersPanelPlugin` を内部標準プラグイン1号として実装
-- `ToolPalettePlugin` を追加
-- `AppActionsPlugin` を追加
-- `ui-shell` がデフォルト内部プラグインを自動登録するよう変更
-- `PanelPlugin` trait に最小観測用の `debug_summary()` を追加
-- `PanelPlugin` trait に `PanelView` / `view()` を追加
-- `PanelPlugin` trait に `PanelTree` / `handle_event()` を追加
-- `desktop` にホスト描画ベースの左サイドパネルUIを追加
-- `ui-shell` に最小レイアウト、ヒットテスト、パネル描画を追加
-- `desktop` は `PanelTree` を直接ホスト描画して入力配送するよう変更
-- キーボードショートカットとパネルクリックの両方が `Document::apply_command(...)` 経由で状態更新するよう変更
-- アプリレベル副作用を持つ `SaveProject` / `LoadProject` / `NewDocument` は `DesktopApp::execute_command(...)` で処理する形に統一した
-- キャンバス pointer 操作も `Command` 経由で `Document` を更新するよう変更
-
-### 到達点
-
-- キャンバス以外の標準UI要素を、内部プラグインとしてホストする経路が通った
-- 内部プラグインが `Document` を読み取り、自身の状態を持てることを確認できた
-- パネルホストと内部プラグイン境界の最初の検証ができた
-- `desktop` 上でツールパレット、アプリアクション、レイヤーパネルを視認できる
-- パネルUIとキャンバスUIの双方で宣言的 `Command` 発行経路を確認できた
-
-### 現時点の制約
-
-- `desktop` 既定バイナリは `winit` + `wgpu` ベースの単一 window 構成である
-- キャンバス描画は最終合成済みフレームを WGPU texture として提示する経路である
-- パネルの追加/削除/配置変更をユーザー操作で行うUIはまだない
-- この時点では `plugin-host` クレートは未実装であり、`ui-shell` から直接内部プラグインを登録していた
-- 起動確認では `desktop` バイナリのビルド、単一 window 起動、既定プロジェクト読込、組み込みパネル初期化、キャンバス画像表示を確認対象とする
-
-## フェーズ5: 標準パネルの移植
-
-最小形を実装済み。
-
-### 実装内容
-
-- `tool-palette` / `layers-panel` / `app-actions` をホスト自前描画の `PanelTree` 基盤へ揃えた
-- `color-palette` を追加し、ライブプレビュー付き RGB スライダーからブラシ色を調整できるようにした
-- `job-progress` を読み取り専用の標準パネルとして追加した
-- `snapshot-panel` を読み取り専用の標準パネルとして追加した
-- `ui-shell` にフォーカス対象追跡、フォーカス順移動、フォーカス中ボタンの可視強調を追加した
-- `ui-shell` にサイドバー縦スクロール状態を追加した
-- `desktop` に `Tab` / `Shift+Tab` によるフォーカス移動と `Enter` / `Space` によるアクティブ化を追加した
-- `desktop` にパネルサーフェス上のマウスホイールスクロールを追加した
-
-### 到達点
-
-- 標準パネル6種がホスト自前描画で表示される
-- 少なくとも `app-actions` / `tool-palette` / `layers-panel` の3種類は `Command` 発行または状態同期まで確認できる
-- `color-palette` はライブプレビューと RGB スライダーから `Command::SetActiveColor` を発行し、選択色付きの描画へ接続される
-- フォーカス、クリック、スクロールの基本導線が `desktop` ホストと `ui-shell` の間で成立した
-
-### 現時点の制約
-
-- フォーカスはボタン系ノードのみを対象にした最小実装である
-- スクロールはサイドバー全体に対する単純な縦スクロールのみで、慣性や個別パネル内スクロールはまだない
-- `job-progress` と `snapshot-panel` は将来の `jobs` クレートやスナップショット永続化に先立つ読み取り専用プレースホルダである
-
-## フェーズ6: パネル基盤 crate と UI DSL parser
-
-前半の parser 導入に続いて、後半の最小 Wasm runtime 接続まで含めて完遂した。
-
-### 実装内容
-
-- `crates/panel-dsl` を追加し、`.altp-panel` 向けの parser / validator / normalized IR を導入した
-- `crates/panel-schema` を追加し、handler result / state patch / command descriptor DTO の最小形を定義した
-- `crates/panel-sdk` を追加し、command descriptor 構築 helper に加えて typed command helper / typed state key / runtime helper を追加した
-- `crates/panel-macros` を追加し、safe な panel export 用 attribute macro を導入した
-- `crates/plugin-host` を追加し、`wasmtime` ベースで WAT / Wasm panel module をロードできるようにした
-- `ui-shell` に `.altp-panel` ディレクトリローダを追加し、再ロード時に以前の DSL panel を差し替えられるようにした
-- `ui-shell` に DSL panel の state store / host snapshot / 式評価を追加し、`button` / `toggle` / `when` の最小動的表示を既存ホスト描画へ接続した
-- `ui-shell` で Wasm handler を呼び、返ってきた state patch と command descriptor を適用できるようにした
-- `plugins/phase6-sample/panel.altp-panel` と `phase6-sample.wasm` を追加し、保存・読込・ツール切替・詳細展開のサンプル UI を表示できるようにした
-- `plugin-api::HostAction` に `InvokePanelHandler` を追加し、DSL / Wasm panel から host action を引けるようにした
-
-### 到達点
-
-- `*.altp-panel` をロードして Wasm handler 付き panel を表示できる
-- 再ロードで panel 定義差し替えが反映される
-- parser → validator → normalized IR → `PanelTree` → Wasm handler 実行の最小流れが通った
-- state patch による local state 更新と command descriptor から `Command` への変換が通った
-- sample panel から `project.save` / `project.load` / `tool.set_active` を発行できる
-- フェーズ7で built-in panel を UI DSL へ移すための土台 crate が workspace に入った
-- plugin 作者が Rust 側で `extern "C"` や `#[unsafe(no_mangle)]` を直接書かずに Wasm panel を実装できる土台が整った
-
-### 現時点の制約
-
-- `toggle` は現状ホスト上ではボタン風の最小表示へ正規化している
-- 式評価は `state.*` / `host.*` / `!expr` / `==` に絞った最小実装である
-- Wasm handler export は `panel_handle_<handler_name>` 命名の最小 ABI であり、bytes DTO 入出力の最終形ではない
-- event payload / host snapshot / state snapshot は現状 host 側では持つが、Wasm module 側の参照は今後拡張である
-
-## フェーズ7: 既存ビルトイン panel の UI DSL + Wasm 移植
-
-実装済み。
-
-### 実装内容
-
-- `plugins/` に標準パネル6種（`app-actions`, `tool-palette`, `layers-panel`, `color-palette`, `job-progress`, `snapshot-panel`）の `.altp-panel` と対応 Wasm runtime を追加した
-- `ui-shell::register_panel(...)` を同一 `panel.id` の後勝ち置換に変更し、既定の Rust 実装を DSL/Wasm 版で差し替えられるようにした
-- host snapshot に `document.page_count` / `document.panel_count` / `document.active_layer_name` / `jobs.*` / `snapshot.storage_status` を追加した
-- `desktop` 起動時の既定 UI ディレクトリ読み込みで、同一 ID の panel が1つだけ残ることをテストで固定した
-- `ui-shell` / `desktop` のテストで、DSL 版 `app-actions` の `Command` 発行、DSL 版 `tool-palette` の active 表示、DSL 版 `layers-panel` の host snapshot 表示を全パネルで検証した
-- 標準パネル実装を `panel-sdk::commands::*` と `panel-sdk::state::*Key` ベースへ寄せ、主要 command 文字列と state path 文字列の直書きを削減した
-
-### 到達点
-
-- 標準パネル6種すべてを UI DSL + Wasm 版へ差し替えて動かせる
-- built-in 専用 ABI を増やさず、既存の command descriptor → `Command` 変換経路を再利用できている
-- Rust 実装（`plugin-api` ベースの静的ツリー）をフォールバックとして残したまま、既定 UI ディレクトリに置いた DSL/Wasm 版を優先できる
-- plugin 作者向け API としては、安全な Rust 関数 + attribute macro ベースの記述へ移行できた
-
-## フェーズ8: 外部 Wasm パネルランタイム
-
-実装済み（基盤部分）。
-
-### 実装内容
-
-- `crates/plugin-host` を追加し、`wasmtime` ベースで Wasm モジュールをロード・実行する基盤を構築した
-
-## フェーズ9: キャンバス機能の実用化
-
-最小 MVP として実装済み。
-
-### 実装内容
-
-- `Document` / `Command` に zoom/pan、複数レイヤー、blend mode、mask 切替の最小操作を追加した
-- レイヤーは背景ラスタ + 追加ラスタの線形列として持ち、active layer へ描画できる
-- 合成モードは `normal` / `multiply` / `screen` / `add` を最小実装した
-- active layer ごとにデモ用 mask を ON/OFF できるようにした
-- `desktop` はマウスホイールでキャンバスの zoom/pan を更新できる
-- `desktop` / `frame` はブラシプレビューを overlay として本体描画と分離して合成する
-- `builtin.layers-panel` は layer count / active layer 状態表示に加えて add/select/blend/visibility/mask の最小操作を提供する
-
-### 到達点
-
-- キャンバス表示はズームとパンを伴っても入力座標変換と整合する
-- ブラシプレビューは本体ビットマップへ焼き込まず overlay として描画される
-- 複数レイヤーを重ねて表示し、可視/不可視や blend mode の違いを確認できる
-- mask の有無を切り替えて合成結果が変わることを確認できる
-
-### 現時点の制約
-
-- レイヤー構造はまだ線形で、削除・並べ替え・名前変更は未実装である
-- mask は任意編集ではなくデモ用の最小パターン切替である
-- zoom/pan は最小導線であり、ミニマップや複合ジェスチャはまだない
-- `host` モジュールを介したホスト関数の最小セット（`state_set_bool`, `state_get_i32`, `emit_command` 等）を定義した
-- `panel_init` / `panel_handle_<handler_name>` を介して、UI DSL 上のイベントを Wasm 側へ配送し、結果をホスト側へ書き戻す経路を確立した
-- `docs/panel-ui-definition/wasm-runtime.md` で、現行 ABI は暫定であり、将来は bytes DTO ベースの単一 `panel_handle_event` へ安定化する方針を明文化した
-- `panel-macros` と `panel-sdk` により、plugin 作者からは low-level ABI を隠蔽できるようにした
-
-### 到達点
-
-- 標準パネルがこの Wasm runtime 上で動作しており、事実上の外部パネル基盤として機能している
-- 標準パネル6種が同一 runtime / SDK 契約上で動作しており、built-in と external の ABI 分岐を増やさずに済んでいる
-- 権限管理や完全なエラー隔離については今後の拡張課題である
-
-### 現時点の制約
-
-- 権限 manifest の本格 enforcement はまだ未実装である
-- エラー隔離は diagnostics 返却と host 側ハンドリングの最小形に留まり、停止・再起動・無効化戦略は今後の拡張課題である
-- ABI は依然として `panel_handle_<handler_name>` 命名の最小形であり、bytes DTO ベースの単一 `panel_handle_event` / `panel_dispose` は未安定化である
-- UI DSL 側の handler binding は文字列のままであり、Rust 実装側の型安全化に比べると validator / codegen の余地が残っている
-
-## Slint 撤廃後に残る作業
-
-`desktop` の既定バイナリは、`winit` + `wgpu` の単一 window による最小 UI 構成へ移行した。
-
-一方で、MVPとして今後さらに必要な作業は残っている。
-
-- `CanvasBridge` と `WorkspaceShell` の責務分離をより明確にする
-- WGPU 側の render target / viewport 制御を拡張し、実キャンバス領域への描画制御を洗練する
-- 動的なパネル数やパネル配置変更をホストレイアウト側で扱えるよう拡張する
-- 将来の外部プラグイン導入に向け、`plugin-host` の権限・隔離・ABI を本格化する
-
-## 主要クレートの現状
-
-## `crates/app-core`
-
-現在の役割:
-
-- ドメインモデルの保持
-- 最小描画対象データの保持
-- 最小描画変更 API の提供
-
-主要な型:
-
-- `Document`
-- `Work`
-- `Page`
-- `Panel`
-- `LayerNode`
 - `CanvasBitmap`
-- `DirtyRect`
+- `RasterLayer`
+- `BlendMode`
+- `CanvasViewTransform`
+- `PenPreset`
+- `WorkspaceLayout`
 
-重要な現状:
+現状の中心は、`Document::apply_command(...)` を通じて編集状態を変える形である。
 
-- `Document::draw_point()` は dirty rect を返す
-- `Document::draw_stroke()` は dirty rect を返す
-- dirty rect を使って UI 側で差分更新できる
+### 2. デスクトップホスト
 
-## `crates/render`
+`apps/desktop` には次がある。
 
-現在の役割:
+- `DesktopRuntime` による `winit` event loop
+- `DesktopApp` による状態遷移と副作用統合
+- `wgpu` presenter
+- base frame / canvas texture / overlay frame の 3 層提示
+- pointer / keyboard / IME の処理
+- panel と canvas の入力ルーティング
 
-- 最初のコマのビットマップを `RenderFrame` として取り出す
+### 3. パネル基盤
 
-主要な型:
+現在の panel stack は次で構成される。
 
-- `RenderContext`
-- `RenderFrame`
+- `plugin-api`: `PanelTree`, `PanelNode`, `PanelEvent`, `HostAction`
+- `panel-dsl`: `.altp-panel` parser / validator / normalized IR
+- `panel-schema`: Wasm runtime DTO
+- `panel-sdk`: plugin author API
+- `panel-macros`: safe export macro
+- `plugin-host`: `wasmtime` ベース runtime
+- `ui-shell`: panel runtime 統合、panel draw、focus、text input、persistent config
 
-現状の注意点:
+### 4. 永続化
 
-- `RenderFrame` は `Vec<u8>` を持つ
-- `render_frame()` は現状 `panel.bitmap.pixels.clone()` を行う
-- ただし現計測では、これは支配的ボトルネックではなくなっている
+`storage` には次がある。
 
-## `crates/ui-shell`
+- project save/load
+- `format_version` 管理
+- `WorkspaceLayout` 永続化
+- `plugin_configs` 永続化
+- pen preset 読込
 
-現在の役割:
+`desktop-support` には次がある。
 
-- パネルホストの最小境界
-- `RenderContext` と `PanelPlugin` 群の束ね
-- 組み込み内部プラグインの自動登録
-- パネルサーフェスのレイアウト、ヒットテスト、ソフトウェア描画
+- session save/load
+- native dialog
+- desktop config
+- profiler
 
-主要な責務:
+### 5. built-in panels
 
-- `update(document)`
-- `render_frame(document)`
-- `render_panel_surface(width, height)`
-- `register_panel(...)`
-- `handle_panel_event(...)`
-- `panel_debug_summaries()`
-- `panel_views()`
-- `panel_trees()`
+現在の標準 panel は次である。
 
-## `crates/plugin-api`
+- `builtin.app-actions`
+- `builtin.tool-palette`
+- `builtin.layers-panel`
+- `builtin.color-palette`
+- `builtin.pen-settings`
+- `builtin.job-progress`
+- `builtin.snapshot-panel`
 
-現在の役割:
+これらは `plugins/` 配下に `.altp-panel` と Rust/Wasm 実装を同居させる構成で揃っている。
 
-- `PanelPlugin` trait の定義
+## runtime と依存関係の現況
 
-現状:
+### 依存関係の読み方
 
-- 最小のパネル境界として実用に入り始めた段階
-- `debug_summary()` により、最小UIやデバッグ用観測を支えられる
-- `PanelView` / `view()` により、簡易可視UIやデバッグ表示データ源として利用できる
-- `PanelTree` / `PanelNode` / `PanelEvent` / `HostAction` により、ホストが直接描画と入力配送を担える
+依存関係の正本は [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md) に移した。
 
-## `crates/storage`
+重要な点だけここに再掲する。
 
-現在の役割:
+- `app-core` はローカル依存を持たない
+- `render`, `storage`, `desktop-support`, `plugin-api` は `app-core` に依存する
+- `ui-shell` は `panel-*`, `plugin-host`, `plugin-api`, `render`, `app-core` に依存する
+- `apps/desktop` は desktop host 全体を束ねる
+- built-in panel crate は `panel-sdk` のみへ依存する
 
-- 最小プロジェクトファイルの保存/読込
-- フォーマットバージョンの検証
+### 現時点での実装上の特徴
 
-主要な型と関数:
+1. `ui-shell` が panel runtime の中心である
+2. `render` はまだ薄く、描画 orchestration の多くは `apps/desktop` にある
+3. `plugin-host` は `ui-shell` の内側で使われる
+4. project 保存と session 保存は既に分離されている
 
-- `AltpaintProjectFile`
-- `CURRENT_FORMAT_VERSION`
-- `save_document_to_path(...)`
-- `load_document_from_path(...)`
+## 到達済みフェーズの整理
 
-現状の注意点:
+### 完了済み
 
-- 形式は JSON ベースの暫定実装である
-- 将来的な部分ロードや差分保存には未対応
+- フェーズ0: 最小契約
+- フェーズ1: 最小起動ループ
+- フェーズ2: 最小描画ループ
+- フェーズ3: 保存と再読込
+- フェーズ4: パネル中間表現
+- フェーズ5: 標準パネルの host 描画
+- フェーズ6: panel 基盤 crate と UI DSL parser
+- フェーズ7: built-in panel の UI DSL + Wasm 移植
 
-## `crates/builtin-plugins`
+### 最小到達済み
 
-現在の役割:
+- フェーズ8: 外部 Wasm panel runtime の基盤
+- フェーズ9: 実用寄りキャンバス機能の最小形
 
-- 内部標準プラグイン群の格納場所
-- `layers-panel` と `tool-palette` の実装
+## 既知の現在地
 
-主要な型:
+### 強い点
 
-- `LayersPanelPlugin`
-- `LayersPanelSnapshot`
-- `ToolPalettePlugin`
-- `ToolPaletteSnapshot`
+- host 主導の desktop runtime が一周している
+- panel DSL + Wasm の最小垂直スライスが通っている
+- built-in panel を file-based plugin へ寄せられている
+- dirty rect と三層提示により、最低限の差分更新構造がある
 
-## `apps/desktop`
+### まだ薄い点
 
-現在の役割:
+- `render` は将来構想に比べると責務が少ない
+- panel permission は宣言に比べ検証がまだ薄い
+- jobs / snapshot / export はまだ最小プレースホルダ寄りである
+- Undo/Redo や高度なドキュメント操作は未実装である
 
-- 実行可能な最小デスクトップアプリ
-- `winit` ウィンドウの起動
-- パネル面とキャンバス面のホスト合成
-- pointer 入力から `Command` への変換
-- キャンバスフレームの表示
-- 保存/読込/新規作成の実行
-- 起動時自動読込
-- 内部プラグイン状態の最小ログ出力
-- 左右サイドパネルの可視UI
-- `fontdb` + `ab_glyph` によるシステムフォント描画
-- ブラシ/消しゴム切替
+## いま読むべき関連文書
 
-重要な実装要素:
+- 依存関係を追いたいとき
+  - [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md)
+- 設計原則を確認したいとき
+  - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- 描画責務を確認したいとき
+  - [docs/RENDERING-ENGINE.md](docs/RENDERING-ENGINE.md)
+- 今後の順番を確認したいとき
+  - [docs/ROADMAP.md](docs/ROADMAP.md)
 
-- `CanvasLayout`
-- `window_to_canvas_position(...)`
-- `draw_at_cursor()`
-- `redraw()`
-- `blit_canvas_to_window(...)`
-- `blit_canvas_region_to_window(...)`
-- `Profiler`
-- `save_project()`
-- `load_project()`
-- `load_project_if_present()`
-- `new_document()`
-- `draw_visible_panels(...)`
-- `ui-shell::text::draw_text_rgba(...)`
-- `ui-shell::text::wrap_text_lines(...)`
-- `ui-shell::text::measure_text_width(...)`
+## 実務メモ
 
-### ウィンドウ文字描画の現状
-
-現行のホストUI文字描画は、固定 8x8 ビットマップではなく、共有テキストレンダラでシステムフォントを解決して CPU ラスタライズする構成へ移行した。
-
-- フォント解決: `fontdb::Database::load_system_fonts()`
-- グリフラスタライズ: `ab_glyph`
-- 適用対象: `ui-shell` のパネル文字列と `apps/desktop` のヘッダ/フッタ文字列
-- フォールバック: システムフォントが取得できない環境では従来の `font8x8`
-
-判断として、**現行アーキテクチャでもシステムフォントによる文字列描画は可能** である。理由は、パネル面とホスト面がどちらも最終的に RGBA バッファへ描画され、その後 `wgpu` へアップロードされるためである。GPU 側の提示経路を変えずに、CPU 側の文字ラスタライズだけ差し替えられる。
-
-制約として、現時点の実装は複雑な文字 shaping までは行っていない。現在のホストUI文字列には十分だが、多言語組版を本格化する場合は `cosmic-text` などの shaping 対応エンジンを別途検討する余地がある。
-
-## パフォーマンス改善の経緯
-
-## 問題の発端
-
-当初は、速く曲線を引こうとするとフレーム間隔が長く、見た目が折れ線になっていた。
-
-初期の `winit` + `wgpu` ホストでは、キャンバス更新のたびに最終提示用フレーム全体を CPU 側で再合成し、その全体を GPU texture へ毎回アップロードしていた。
-
-この時点で疑われた候補は大きく4つあった。
-
-- `render_frame()` 内の `pixels.clone()`
-- ホスト側の全面フレーム再合成
-- `queue.write_texture(...)` による全面 GPU アップロード
-- pointer 移動のたびに再描画要求を出していること
-
-## まず行った改善
-
-最初に、入力が変化していないときの無駄な再描画要求を止めた。
-
-### 効果
-
-- 描画していない単なるカーソル移動で `request_redraw()` し続けない
-- 入力イベント起因の無駄なフレーム生成を減らせる
-
-ただし、これだけではまだストローク中の重さは解消しなかった。
-
-## 次に行ったこと: 実行時プロファイラの導入
-
-どこが本当に重いかを断定するため、`apps/desktop/src/main.rs` と `apps/desktop/src/wgpu_canvas.rs` に簡易プロファイラを追加した。
-
-### 有効化方法
-
-- 常時: ウィンドウタイトルに `fps` / `frame` / `prep` / `ui` / `panel` / `present` を表示する
-- 詳細ログ: `ALTPAINT_PROFILE=1` を付けて起動すると、2秒ごとの集計を標準エラーへ出す
-
-### 測定区間
-
-- `prepare_frame`
-- `layout`
-- `ui_update`
-- `panel_surface`
-- `compose_full_frame`
-- `compose_dirty_canvas`
-- `present_total`
-- `present_upload`
-- `present_encode`
-- `present_swap`
-
-### 現行プロファイラで分かったこと
-
-現行実装では、**通常のストローク更新は十分軽い** 一方で、**初回または UI 再構成時の全面フレーム再合成とパネル面生成が高コスト** であることが分かった。
-
-実測では、おおむね以下の傾向だった。
-
-- `compose_full_frame`: 約 146〜150 ms
-- `panel_surface`: 初回約 492 ms、再生成時でも十数 ms 級になることがある
-- `compose_dirty_canvas`: 約 0.03 ms 前後
-- `present_upload`: 約 0.10 ms 前後
-- `present_encode`: 約 0.45〜0.55 ms
-- `present_swap`: 約 0.06〜0.07 ms
-
-この結果から、現時点の主因は steady state のキャンバス更新ではなく、**全面再合成時の CPU 側フレーム構築とパネルサーフェス生成** であると判断できる。
-
-## UI 更新経路の見直し
-
-UI 操作時の低下を切り分けやすくするため、`desktop` 側で次の2種類を分離した。
-
-- `needs_ui_sync`
-  - `Document` 変更を各パネルへ再配送する必要がある状態
-- `needs_panel_surface_refresh`
-  - フォーカス移動、スクロール、サイズ変更などでパネル面の再描画だけが必要な状態
-
-これにより、少なくとも次のケースでは不要な `ui_update` を避けられるようになった。
-
-- パネルフォーカス移動
-- パネルスクロール
-- レイアウト変更に伴う単純な再描画
-
-加えて `ui-shell` 側では、パネル内容のオフスクリーン結果をキャッシュし、スクロール時は内容再構築ではなくビューポート切り出しを優先する形へ寄せた。
-
-さらに `desktop` 側では、パネル更新時に毎回 `compose_full_frame` へ戻らず、次の差分再合成を使うようにした。
-
-- `compose_dirty_panel`
-  - パネルホスト矩形だけを再描画する
-- `compose_dirty_status`
-  - ツール名や色表示が変わるステータス領域だけを再描画する
-
-これにより、少なくとも次のケースではフレーム全体の CPU 再合成を避けられる。
-
-- パネルスクロール
-- パネルフォーカス移動
-- ツール切替
-- 色変更
-
-## dirty rect ベースの差分更新
-
-その後、dirty rect を `app-core` から `desktop` まで通し、変更があったキャンバス領域だけをホスト合成済みフレームへ反映し、その領域だけ GPU texture へアップロードする形に変更した。
-
-### 導入したもの
-
-- `DirtyRect`
-- `pending_canvas_dirty_rect`
-- `present_frame` キャッシュ
-- `compose_dirty_canvas`
-- `UploadRegion`
-- `upload_frame_region(...)`
-
-### 再描画方針
-
-- 初回表示、リサイズ、パネル更新時は全面再合成
-- 通常の描画中は dirty 領域のみを既存 `present_frame` へ差分反映
-- GPU 側も dirty 領域のみを `write_texture(...)` で更新
-
-### 実測結果
-
-描画中の steady state では、以下のような結果が得られた。
-
-```text
-[profile] ---- last 2s ----
-[profile] compose_dirty_canvas calls=  124 avg=   0.026ms max=   0.094ms total=   3.185ms
-[profile]             layout calls=  123 avg=   0.001ms max=   0.001ms total=   0.090ms
-[profile]     present_encode calls=  123 avg=   0.492ms max=   1.114ms total=  60.477ms
-[profile]       present_swap calls=  123 avg=   0.062ms max=   0.174ms total=   7.595ms
-[profile]     present_upload calls=  124 avg=   0.096ms max=   0.238ms total=  11.877ms
-```
-
-### 解釈
-
-- 通常ストローク中の dirty キャンバス反映はほぼ無視できる
-- GPU への差分アップロードも 0.1 ms 前後で収まっている
-- steady state のフレーム時間は 60fps 予算 16.67 ms に十分収まる
-- 現在の改善対象は、主に初回全面合成とパネル面再生成である
-
-したがって、dirty rect ベースの差分更新は有効であり、現時点では通常のキャンバス更新経路は大きな問題ではなくなった。
-
-## 2026-03-09: キャンバス本体の GPU 化
-
-その後、パン・ズーム時の支配コストを再調査した結果、主因は UI ではなく **CPU 側でキャンバスを最終 RGBA フレームへ再サンプリングしていたこと** にあると判断した。
-
-そこで、提示経路を次の 3 層へ組み替えた。
-
-- UI ベースフレーム
-  - CPU で生成する
-  - パネル、背景、ステータス、キャンバス host 枠と背景だけを持つ
-- GPU キャンバステクスチャ
-  - 元キャンバス bitmap をそのまま GPU に保持する
-  - パン・ズームは quad / UV 更新で適用する
-- オーバーレイフレーム
-  - CPU で生成する透過フレーム
-  - ブラシプレビューなど、キャンバス本体の上に重なるものだけを持つ
-
-### この変更で消したもの
-
-- パン・ズーム時の `compose_canvas_blit`
-- キャンバス変換結果を CPU 側 `present_frame` へ焼き込む主経路
-- 表示変換のたびに dirty rect を表示座標へ再マップして GPU へ送る構造
-
-### この変更で残したもの
-
-- ストローク編集時の dirty bitmap 更新
-- パネル・ステータス・オーバーレイの CPU 合成
-- `wgpu` 側での差分 `write_texture(...)`
-
-### 現在の判断
-
-- CPU は UI と dirty 管理へ後退する
-- GPU はキャンバス本体の変換と最終合成を担う
-- パン・ズームではキャンバス bitmap 自体の再アップロードを避けられる
-
-この時点で、キャンバス本体の提示責務は「CPU が最終画面を作る」構造から、「CPU が UI と制御を担当し、GPU がキャンバス表示を担当する」構造へ移行した。
-
-## テスト状況
-
-現時点で、少なくとも以下の観点のユニットテストがある。
-
-### `app-core`
-
-- 最小ドキュメント構造の確認
-- `draw_point()` の反映確認
-- `draw_stroke()` の反映確認
-- キャンバス初期色の確認
-- `DirtyRect::union()` の確認
-
-### `storage`
-
-- 保存→読込の往復確認
-- 未知フォーマットバージョンの拒否確認
-
-### `builtin-plugins`
-
-- `LayersPanelPlugin` がドキュメント概要を追従することの確認
-- `ToolPalettePlugin` がアクティブツールに追従することの確認
-- `JobProgressPanelPlugin` が最小アイドル状態を追従することの確認
-- `SnapshotPanelPlugin` がドキュメント概要を追従することの確認
-
-### `ui-shell`
-
-- 組み込み `layers-panel` がデフォルト登録されることの確認
-- 組み込み `tool-palette` がデフォルト登録されることの確認
-- フォーカス移動からボタン活性化まで通ることの確認
-- 縦スクロール状態が更新されることの確認
-
-### `desktop`
-
-- デフォルト状態の確認
-- 点描画の反映確認
-- ストローク接続の確認
-- 再描画フラグの確認
-- レイアウト中央配置の確認
-- ウィンドウ座標→キャンバス座標変換の確認
-- 背景とキャンバス転送の確認
-- ランタイムウィンドウサイズ時のレイアウト確認
-- dirty rect のウィンドウ変換確認
-- 差分転送の部分更新確認
-- 新規ドキュメント作成時の状態リセット確認
-- 消しゴムで白に戻せることの確認
-- サイドパネル描画の確認
-- サイドパネルを考慮したレイアウト確認
-- キーボードによるパネルフォーカス移動とアクティブ化の確認
-- マウスホイールによるパネルスクロールの確認
-- 共有テキストレンダラが可視ピクセルを出力する確認
-- 長い単語の折り返しで文字欠落しない確認
-
-## 現在の未実装事項
-
-まだ未着手、あるいは本格実装していない主な項目は以下。
-
-- 複数コマ対応
-- レイヤー構造編集
-- `Command` 経路の本格統一
-- Undo/Redo
-- `plugin-host` の権限・隔離・ABI 固定
-- Wasm 側からの host snapshot / state snapshot 参照拡張
-- `jobs` クレート
-- `render_frame()` の clone 削減
-- GPU ネイティブなキャンバス提示方式の検討
-- 保存形式の部分ロード/差分保存対応
-
-## 次の有力候補
-
-優先度順に考えると、次の候補は以下。
-
-1. フェーズ7の既存ビルトイン panel の UI DSL + Wasm 移植準備
-2. `plugin-host` の権限・隔離・ABI の本格化
-3. Wasm 側からの host snapshot / state snapshot 参照拡張
-4. `jobs` クレートと `job-progress` の実データ接続
-5. `render_frame()` の clone 削減とパネルサーフェス再生成コストの削減
-
-現状の性能が 60fps 予算に入っているため、直近では「性能で詰まって先に進めない」状態ではなくなっている。したがって、次はロードマップに戻ってフェーズ6以降へ進むのが自然である。
-
-## 参照のしかた
-
-素早く状況を把握したいときは、以下の順で読むとよい。
-
-1. `docs/IMPLEMENTATION_STATUS.md`
-2. `docs/ROADMAP.md`
-3. `docs/ARCHITECTURE.md`
-4. `docs/SKETCH.md`
-
+- 「今どう実装されているか」はコードが正本
+- 「依存関係はどう整理されているか」は `MODULE_DEPENDENCIES.md` を優先
+- 「どういう境界を守るべきか」は `ARCHITECTURE.md` を優先

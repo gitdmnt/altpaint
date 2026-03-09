@@ -27,6 +27,8 @@
 
 ### 必要になったら読む
 
+- 実装ベースのクレート依存と runtime flow を把握したい  
+  → [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md)
 - 責務境界・依存方向・設計原則が必要  
   → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 次に何を実装すべきか、フェーズ順を確認したい  
@@ -34,7 +36,7 @@
 - 描画、dirty rect、ビュー変換、レンダリング分割を触る  
   → [docs/RENDERING-ENGINE.md](docs/RENDERING-ENGINE.md)
 - プラグインの開発場所、Rust SDK、Wasm ビルド手順を確認したい  
-  → [docs/PLUGIN_DEVELOPMENT.md](docs/PLUGIN_DEVELOPMENT.md)
+  → [docs/builtin-plugins/PLUGIN_DEVELOPMENT.md](docs/builtin-plugins/PLUGIN_DEVELOPMENT.md)
 - プロダクト意図、MVP、非目標、要求背景を確認したい  
   → [docs/SKETCH.md](docs/SKETCH.md)
 
@@ -44,6 +46,7 @@
 | ------ | -------------------------------------------------------------- | ------------------------------------------ | -------------------------------- |
 | 最優先 | [AGENTS.md](AGENTS.md)                                         | LLM向け入口。読む順番と判断基準を示す      | 常に最初                         |
 | 最優先 | [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | 現在の実装状況、到達済み機能、直近の制約   | 常に最初期                       |
+| 高     | [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md)     | 実装ベースの依存関係、runtime flow の正本  | 多クレート修正、境界確認時       |
 | 高     | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                   | クレート責務、依存方向、設計原則、境界条件 | 設計変更、責務追加、境界横断修正 |
 | 高     | [docs/ROADMAP.md](docs/ROADMAP.md)                             | 実装順序、次フェーズ、優先実装候補         | 何を先に作るべきか判断するとき   |
 | 中     | [docs/RENDERING-ENGINE.md](docs/RENDERING-ENGINE.md)           | render 系の詳細設計                        | キャンバス・描画・dirty 更新関連 |
@@ -55,9 +58,10 @@
 
 1. **現に動いているコード**
 2. [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) の「現在の到達点」
-3. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) の責務境界と原則
-4. [docs/ROADMAP.md](docs/ROADMAP.md) のフェーズ順序
-5. [docs/SKETCH.md](docs/SKETCH.md) の要求背景
+3. [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md) の依存関係整理
+4. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) の責務境界と原則
+5. [docs/ROADMAP.md](docs/ROADMAP.md) のフェーズ順序
+6. [docs/SKETCH.md](docs/SKETCH.md) の要求背景
 
 補足:
 
@@ -79,6 +83,7 @@
 
 - [AGENTS.md](AGENTS.md)
 - [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)
+- [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 必要なら [docs/ROADMAP.md](docs/ROADMAP.md)
 - 関連コード
@@ -87,6 +92,7 @@
 
 - [AGENTS.md](AGENTS.md)
 - [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)
+- [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/RENDERING-ENGINE.md](docs/RENDERING-ENGINE.md)
 - `crates/render/` と `apps/desktop/` の関連コード
@@ -95,6 +101,7 @@
 
 - [AGENTS.md](AGENTS.md)
 - [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)
+- [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - `crates/plugin-api/`, `crates/ui-shell/`, `crates/panel-sdk/`, `crates/plugin-host/`, `apps/desktop/`, `plugins/` の関連コード
 
@@ -102,6 +109,7 @@
 
 - [AGENTS.md](AGENTS.md)
 - [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)
+- [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/SKETCH.md](docs/SKETCH.md) のデータ要件
 - `crates/storage/` と `crates/app-core/` の関連コード
@@ -116,11 +124,21 @@
   - UI や GPU に依存しない中核
 - `crates/render/`
   - キャンバス描画入力、レンダリング関連処理
+- `crates/panel-dsl/`
+  - `.altp-panel` parser / validator / normalized IR
+- `crates/panel-schema/`
+  - Wasm panel runtime 共有 DTO
+- `crates/panel-sdk/`
+  - panel 作者向け SDK
+- `crates/panel-macros/`
+  - panel export 用 proc-macro
 - `crates/ui-shell/`
-  - ホスト側パネルランタイム
+  - ホスト側パネルランタイム統合層
   - レイアウト、ヒットテスト、簡易描画
 - `crates/plugin-api/`
   - パネル/ホスト間の契約
+- `crates/plugin-host/`
+  - `wasmtime` ベースの Wasm panel runtime
 - `plugins/`
   - 組み込み標準パネルごとの独立フォルダ
   - `.altp-panel` / Rust SDK ソース / 生成 Wasm を同居
@@ -133,12 +151,12 @@
 - `target/`
   - ビルド生成物。通常は無視
 
-## 2026-03-09 時点の短い現在地
+## 2026-03-10 時点の短い現在地
 
 最小実装としては次が既にある。
 
 - Cargo workspace 構成
-- `app-core` / `render` / `ui-shell` / `plugin-api` / `storage` / `desktop-support` / `plugin-host` / `panel-sdk` / `apps/desktop`
+- `app-core` / `render` / `ui-shell` / `plugin-api` / `storage` / `desktop-support` / `plugin-host` / `panel-dsl` / `panel-schema` / `panel-sdk` / `panel-macros` / `apps/desktop`
 - `winit` + `wgpu` の単一ウィンドウデスクトップ起動
 - 白キャンバス表示
 - マウス入力による最小ストローク描画
@@ -189,6 +207,7 @@
 
 - 実装前に、変更対象クレートの責務が [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) と矛盾しないか確認する
 - 進捗や現状確認はまず [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) を見る
+- 多クレートの境界や依存方向はまず [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md) を見る
 - 何を次にやるべきか迷ったら [docs/ROADMAP.md](docs/ROADMAP.md) を見る
 - 描画最適化や dirty rect を触る前に [docs/RENDERING-ENGINE.md](docs/RENDERING-ENGINE.md) を見る
 - プロダクト思想や MVP 範囲に迷ったら [docs/SKETCH.md](docs/SKETCH.md) を見る

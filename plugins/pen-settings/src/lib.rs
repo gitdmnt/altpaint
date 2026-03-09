@@ -11,7 +11,7 @@ const PEN_SIZE: state::IntKey = state::int("size");
 #[panel_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_handler]
+#[panel_sdk::panel_sync_host]
 fn sync_host() {
     set_state_string(PEN_NAME, host::tool::pen_name());
     set_state_i32(PEN_SIZE, host::tool::pen_size());

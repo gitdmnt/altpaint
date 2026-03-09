@@ -1,4 +1,4 @@
-pub use panel_macros::{panel_handler, panel_init};
+pub use panel_macros::{panel_handler, panel_init, panel_sync_host};
 pub use panel_schema::{
     CommandDescriptor, Diagnostic, DiagnosticLevel, HandlerResult, PanelEventRequest,
     PanelInitRequest, PanelInitResponse, StatePatch, StatePatchOp,
@@ -679,6 +679,9 @@ mod tests {
     #[panel_handler]
     fn save_for_macro_test() {}
 
+    #[panel_sync_host]
+    fn sync_host_for_macro_test() {}
+
     #[panel_handler]
     fn slider_for_macro_test(value: i32) {
         assert_eq!(value, 42);
@@ -743,6 +746,7 @@ mod tests {
     fn macro_annotated_functions_remain_directly_callable() {
         init_for_macro_test();
         save_for_macro_test();
+        sync_host_for_macro_test();
         slider_for_macro_test(42);
     }
 }

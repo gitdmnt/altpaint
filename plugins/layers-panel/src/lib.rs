@@ -17,7 +17,7 @@ const ACTIVE_LAYER_MASKED: state::BoolKey = state::bool("active_layer_masked");
 #[panel_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_handler]
+#[panel_sdk::panel_sync_host]
 fn sync_host() {
 	set_state_string(TITLE, host::document::title());
 	set_state_i32(PAGE_COUNT, host::document::page_count());

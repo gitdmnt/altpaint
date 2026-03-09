@@ -53,6 +53,26 @@ pub fn panel_handler(attr: TokenStream, item: TokenStream) -> TokenStream {
     expand_panel_export(function, "panel_handle", false, args.export_name)
 }
 
+#[proc_macro_attribute]
+pub fn panel_sync_host(attr: TokenStream, item: TokenStream) -> TokenStream {
+    if !attr.is_empty() {
+        return syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "`panel_sync_host` does not accept arguments",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let function = parse_macro_input!(item as ItemFn);
+    expand_panel_export(
+        function,
+        "panel_sync_host",
+        true,
+        Some(LitStr::new("panel_sync_host", proc_macro2::Span::call_site())),
+    )
+}
+
 fn expand_panel_export(
     function: ItemFn,
     export_prefix: &str,

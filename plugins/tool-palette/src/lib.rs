@@ -26,7 +26,7 @@ fn build_tool_command(tool: Tool) -> CommandDescriptor {
 #[panel_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_handler]
+#[panel_sdk::panel_sync_host]
 fn sync_host() {
     set_state_string(ACTIVE_TOOL, host::tool::active_name());
     set_state_string(PEN_NAME, host::tool::pen_name());

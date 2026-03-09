@@ -23,12 +23,12 @@ UI 構文と `.altp-panel` の設計は [docs/panel-ui-definition/ui-dsl.md](doc
 - `plugin-host` は `wasmtime` で sample Wasm/WAT module をロードできる
 - `ui-shell` は handler 実行結果の state patch / command descriptor / diagnostics を反映できる
 - 標準パネル6種は Rust SDK + Wasm 版へ移行済みである
-- `crates/panel-macros` を追加し、plugin 作者は `#[panel_sdk::panel_init]` / `#[panel_sdk::panel_handler]` で安全に export を宣言できる
+- `crates/panel-macros` を追加し、plugin 作者は `#[panel_sdk::panel_init]` / `#[panel_sdk::panel_sync_host]` / `#[panel_sdk::panel_handler]` で安全に export を宣言できる
 - `crates/panel-sdk` は `commands::*` と `state::*Key` を公開し、生の command 名や state path 文字列を Rust 側から追い出し始めている
 
 ただし、現時点の ABI は**フェーズ6向けの最小実装**であり、将来の外部 plugin 公開用にそのまま固定する段階ではない。
 
-- 現行 export は `panel_init` と `panel_handle_<handler_name>` 命名である
+- 現行 export は `panel_init` / `panel_sync_host` / `panel_handle_<handler_name>` 命名である
 - host import を通じて state patch / command descriptor / diagnostics を収集している
 - bytes DTO ベースの単一 `panel_handle_event` ABI は今後の安定化対象である
 
@@ -89,6 +89,7 @@ Wasm は Rust 等からコンパイルする処理モジュールである。
 フェーズ6で実装した最小 export は次である。
 
 - `panel_init`
+- `panel_sync_host`
 - `panel_handle_<handler_name>`
 
 フェーズ6では、host が handler ごとの export を呼び出し、Wasm から host import を通じて次を収集する。
@@ -155,10 +156,11 @@ Wasm は Rust 等からコンパイルする処理モジュールである。
 
 フェーズ6時点の実装 ABI は次である。
 
-| Export                        | 入力                  | 出力                         | 役割                                     |
-| ----------------------------- | --------------------- | ---------------------------- | ---------------------------------------- |
-| `panel_init`                  | なし                  | host import 経由の patch 群  | 初期 state の最小セットアップ            |
-| `panel_handle_<handler_name>` | なし または `i32` 1つ | host import 経由の result 群 | state patch と command descriptor の返却 |
+| Export                        | 入力                  | 出力                         | 役割                                            |
+| ----------------------------- | --------------------- | ---------------------------- | ----------------------------------------------- |
+| `panel_init`                  | なし                  | host import 経由の patch 群  | 初期 state の最小セットアップ                   |
+| `panel_sync_host`             | なし                  | host import 経由の patch 群  | host snapshot を panel local state へ同期する   |
+| `panel_handle_<handler_name>` | なし または `i32` 1つ | host import 経由の result 群 | UI event に応じて state patch / command を返却 |
 
 将来の安定化候補 ABI は次である。
 
@@ -177,7 +179,7 @@ Wasm は Rust 等からコンパイルする処理モジュールである。
 - host は DTO を decode して `Command` へ変換する
 - built-in / external のどちらも同じ handler result 形式を使う
 - built-in だからという理由で別 ABI を作らない
-- ただし plugin 作者には `panel_handle_<handler_name>` を直接書かせない
+- ただし plugin 作者には `panel_sync_host` や `panel_handle_<handler_name>` を直接書かせない
 
 ### 将来の `panel_handle_event` 入力 DTO
 

@@ -1055,7 +1055,7 @@ struct DslPanelPlugin {
     host_snapshot: Value,
     diagnostics: Vec<Diagnostic>,
     has_keyboard_handler: bool,
-    has_sync_host_handler: bool,
+    supports_sync_host: bool,
 }
 
 impl DslPanelPlugin {
@@ -1070,7 +1070,7 @@ impl DslPanelPlugin {
         let mut runtime = WasmPanelRuntime::load(&runtime_path)
             .map_err(|error: PluginHostError| error.to_string())?;
         let has_keyboard_handler = runtime.has_handler("keyboard");
-        let has_sync_host_handler = runtime.has_handler("sync_host");
+        let supports_sync_host = runtime.supports_sync_host();
         let initial_state = state_defaults_to_json(&definition.state);
         let init = runtime
             .initialize(&PanelInitRequest {
@@ -1088,7 +1088,7 @@ impl DslPanelPlugin {
             host_snapshot: json!({}),
             diagnostics: init.diagnostics,
             has_keyboard_handler,
-            has_sync_host_handler,
+            supports_sync_host,
         })
     }
 
@@ -1156,17 +1156,14 @@ impl DslPanelPlugin {
     }
 
     fn sync_host_state(&mut self) {
-        if !self.has_sync_host_handler {
+        if !self.supports_sync_host {
             return;
         }
 
-        let result = match self.runtime.handle_event(&PanelEventRequest {
-            handler_name: "sync_host".to_string(),
-            event_kind: "sync_host".to_string(),
-            event_payload: json!({}),
-            state_snapshot: self.state.clone(),
-            host_snapshot: self.host_snapshot.clone(),
-        }) {
+        let result = match self
+            .runtime
+            .sync_host(&self.state, &self.host_snapshot)
+        {
             Ok(result) => result,
             Err(error) => {
                 self.diagnostics = vec![Diagnostic::error(error.to_string())];
@@ -2848,7 +2845,7 @@ view {
         i32.const 8
         i32.const 0
         call $state_set_bool)
-    (func (export "panel_handle_sync_host")
+    (func (export "panel_sync_host")
         (local $len i32)
         i32.const 64
         i32.const 11

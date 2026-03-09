@@ -1,10 +1,12 @@
-//! キャンバス表示座標と編集コマンドの橋渡しを担当する。
+//! デスクトップアプリ内には、キャンバス自体の持つピクセル座標と
+//! ユーザーの操作するビュー画面の座標が存在する。
 //!
-//! ランタイムやアプリ状態から独立した純粋関数として、
-//! ポインタイベント解釈とツール別コマンド生成を提供する。
+//! このモジュールは、ランタイムやアプリ状態から独立した純粋関数として、
+//! キャンバス表示座標と編集コマンドの間の座標変換、
+//! およびビューへの入力イベントからのコマンド生成を担当する。
 
-use app_core::{Command, ToolKind};
 use app_core::CanvasViewTransform;
+use app_core::{Command, ToolKind};
 use render::RenderFrame;
 
 /// キャンバス入力中の最小状態を表す。
@@ -23,7 +25,7 @@ pub struct CanvasPointerEvent {
     pub height: i32,
 }
 
-/// 表示座標をビットマップ座標へ変換する。
+/// ビューの座標をキャンバス上のビットマップの座標へ変換する。
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn map_view_to_canvas(
     frame: &RenderFrame,

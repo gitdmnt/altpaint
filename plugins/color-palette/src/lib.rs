@@ -30,7 +30,7 @@ fn rgb_color(red: i32, green: i32, blue: i32) -> RgbColor {
 #[panel_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_handler]
+#[panel_sdk::panel_sync_host]
 fn sync_host() {
     set_state_i32(RED, host::color::red());
     set_state_i32(GREEN, host::color::green());

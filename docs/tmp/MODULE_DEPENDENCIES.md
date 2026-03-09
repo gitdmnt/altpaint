@@ -1,0 +1,455 @@
+# altpaint モジュール依存関係
+
+## この文書の目的
+
+この文書は、**2026-03-10 時点の実装コードを正本として**、workspace 内のクレートと主要モジュールの依存関係を整理するための文書である。
+
+主に次を明確にする。
+
+- どのクレートがどのクレートへ依存しているか
+- 各クレートが実際に何を担当しているか
+- ランタイム上でどの経路を通ってデータとイベントが流れるか
+- 今後 `ARCHITECTURE.md` や `ROADMAP.md` を読む前提として、どこが「現実の実装」か
+
+この文書は理想図ではなく、**今のコードの実態整理**を優先する。
+
+## 読み方
+
+まず compile-time 依存を見る。
+その後、起動・描画・パネル・保存の runtime flow を見る。
+
+重要な前提は次の3点である。
+
+1. `app-core` がドメインの中心である
+2. `apps/desktop` がデスクトップ実行ホストである
+3. パネル系は `plugin-api` / `panel-*` / `plugin-host` / `ui-shell` に分散している
+
+## workspace パッケージ一覧
+
+2026-03-10 時点の workspace package は次の通り。
+
+### 中核クレート
+
+- `app-core`
+- `render`
+- `storage`
+- `desktop-support`
+- `plugin-api`
+- `ui-shell`
+- `plugin-host`
+- `panel-dsl`
+- `panel-schema`
+- `panel-sdk`
+- `panel-macros`
+- `apps/desktop`
+
+### 組み込みパネル crate
+
+- `plugins/app-actions`
+- `plugins/tool-palette`
+- `plugins/layers-panel`
+- `plugins/color-palette`
+- `plugins/pen-settings`
+- `plugins/job-progress`
+- `plugins/snapshot-panel`
+
+## compile-time 依存関係
+
+### クレート依存グラフ
+
+```mermaid
+graph TD
+    desktop[apps/desktop] --> appcore[app-core]
+    desktop --> render[render]
+    desktop --> uishell[ui-shell]
+    desktop --> pluginapi[plugin-api]
+    desktop --> storage[storage]
+    desktop --> dsupport[desktop-support]
+
+    render --> appcore
+    storage --> appcore
+    dsupport --> appcore
+    pluginapi --> appcore
+
+    uishell --> appcore
+    uishell --> render
+    uishell --> pluginapi
+    uishell --> pds[panel-dsl]
+    uishell --> pschema[panel-schema]
+    uishell --> phost[plugin-host]
+
+    phost --> pschema
+    psdk[panel-sdk] --> pmacros[panel-macros]
+    psdk --> pschema
+
+    appactions[plugins/app-actions] --> psdk
+    toolpalette[plugins/tool-palette] --> psdk
+    layerspanel[plugins/layers-panel] --> psdk
+    colorpalette[plugins/color-palette] --> psdk
+    pensettings[plugins/pen-settings] --> psdk
+    jobprogress[plugins/job-progress] --> psdk
+    snapshotpanel[plugins/snapshot-panel] --> psdk
+```
+
+### 依存関係の要点
+
+- `app-core` は workspace 内の土台であり、ローカル依存を持たない
+- `render` / `storage` / `desktop-support` / `plugin-api` は `app-core` に依存する薄い周辺クレートである
+- `ui-shell` が現在の**パネルランタイム統合点**であり、DSL 読み込み・Wasm 実行・Panel 描画をまとめて持っている
+- `plugin-host` は `ui-shell` の内側で使われ、`apps/desktop` は直接依存していない
+- `panel-sdk` は plugin author 向け表面 API であり、組み込みパネル crate はここだけへ依存する
+
+## クレート別の実責務
+
+### `app-core`
+
+担当:
+
+- `Document` / `Work` / `Page` / `Panel` / `RasterLayer` などのドメインモデル
+- `Command` による状態変更入口
+- キャンバス編集、レイヤー操作、表示変換、色、ペンプリセット状態
+- `WorkspaceLayout` とパネル可視性の保存対象モデル
+
+主要モジュール:
+
+- `command.rs`
+- `document.rs`
+- `workspace.rs`
+- `error.rs`
+
+依存しないもの:
+
+- `winit`
+- `wgpu`
+- Wasm ランタイム
+- パネル DSL parser
+
+### `render`
+
+担当:
+
+- `Document` から `RenderFrame` を得る最小描画入口
+- `RenderContext` の保持
+
+現状の実態:
+
+- かなり薄いクレートであり、`Document` の先頭 `Panel` の bitmap を `RenderFrame` として返すのが中心
+- dirty rect の最終的な表示変換や UI/overlay 合成は、まだ主に `apps/desktop` 側にある
+
+### `plugin-api`
+
+担当:
+
+- `PanelPlugin` trait
+- `PanelTree` / `PanelNode`
+- `PanelEvent`
+- `HostAction`
+
+意味:
+
+- host が理解できる最小パネル中間表現
+- `Command` をパネルから直接返すのではなく、`HostAction` を経由するための境界
+
+### `panel-dsl`
+
+担当:
+
+- `.altp-panel` の読み込み
+- parser / validator
+- normalized IR
+- handler binding 抽出
+
+依存の特徴:
+
+- workspace ローカル依存なし
+- DSL の純粋処理に閉じている
+
+### `panel-schema`
+
+担当:
+
+- host と Wasm runtime 間でやりとりする DTO
+- `PanelInitRequest/Response`
+- `PanelEventRequest`
+- `HandlerResult`
+- `StatePatch`
+- `CommandDescriptor`
+- `Diagnostic`
+
+### `panel-macros`
+
+担当:
+
+- `#[panel_init]`
+- `#[panel_handler]`
+
+意味:
+
+- plugin author が `extern "C"` や export 名を直接書かなくても済むようにする proc-macro 層
+
+### `panel-sdk`
+
+担当:
+
+- plugin author 向け安定表面 API
+- typed `commands::*`
+- typed `state::*`
+- runtime helper
+- `panel-macros` の再 export
+
+意味:
+
+- plugin 側は `panel-schema` の DTO と ABI 事情を直接知らなくても実装できる
+
+### `plugin-host`
+
+担当:
+
+- `wasmtime` ベースの `WasmPanelRuntime`
+- host import の定義
+- Wasm memory 読み書き
+- `PanelEventRequest` -> `HandlerResult` の橋渡し
+
+重要事項:
+
+- 現時点では panel runtime 専用であり、一般的 plugin host 全体にはまだ広がっていない
+- `CommandDescriptor` / `StatePatch` / `Diagnostic` の収集が中心
+
+### `ui-shell`
+
+担当:
+
+- Panel host runtime の現在の中心
+- Panel 登録
+- `.altp-panel` の再帰ロード
+- DSL -> `PanelTree` 評価
+- Wasm handler 実行
+- Panel の local state / host snapshot / persistent config 管理
+- レイアウト、ヒットテスト、スクロール、フォーカス、テキスト入力
+- software panel rendering
+
+実装上の特徴:
+
+- `DslPanelPlugin` を内部に持つ
+- `plugin-host` を内部利用して Wasm handler を実行する
+- `RenderContext` と `RenderFrame` も抱えており、キャンバス側の最小レンダ入口を兼ねている
+
+補足:
+
+- アーキテクチャ上は panel runtime と render の分離を強く意識しているが、現実のコードでは `ui-shell` が `render` に依存している
+
+### `storage`
+
+担当:
+
+- project save/load
+- `format_version` 管理
+- `WorkspaceLayout` と `plugin_configs` の永続化
+- ペンプリセットファイル群の読込
+
+主要モジュール:
+
+- `project_file.rs`
+- `pen_presets.rs`
+
+### `desktop-support`
+
+担当:
+
+- 配色・寸法・既定パスなどの desktop config
+- native dialog 境界
+- session save/load
+- runtime profiler
+
+主要モジュール:
+
+- `config.rs`
+- `dialogs.rs`
+- `session.rs`
+- `profiler.rs`
+
+### `apps/desktop`
+
+担当:
+
+- `winit` の event loop
+- `wgpu` presenter
+- desktop layout
+- canvas pointer input から `Command` への変換
+- `DesktopApp` による状態遷移と副作用統合
+- base frame / canvas texture / overlay frame の三層提示
+
+主要モジュール:
+
+- `main.rs`
+- `runtime.rs`
+- `app/mod.rs`
+- `app/commands.rs`
+- `app/input.rs`
+- `app/present.rs`
+- `canvas_bridge.rs`
+- `frame.rs`
+- `wgpu_canvas.rs`
+
+### `plugins/*`
+
+担当:
+
+- 各 built-in panel の Wasm runtime 実装
+- `panel.altp-panel` と対になる handler 群
+
+依存ルール:
+
+- compile-time では `panel-sdk` にのみ依存する
+- host の内部型へ直接依存しない
+
+## モジュール単位の見取り図
+
+### 1. デスクトップホスト側
+
+```text
+apps/desktop/main.rs
+  -> runtime.rs
+     -> app/mod.rs
+        -> app/commands.rs
+        -> app/input.rs
+        -> app/present.rs
+     -> frame.rs
+     -> canvas_bridge.rs
+     -> wgpu_canvas.rs
+```
+
+役割分担:
+
+- `runtime.rs`: OS イベントと再描画サイクル
+- `app/*`: 状態変化と副作用
+- `canvas_bridge.rs`: view 座標 <-> canvas 座標変換、gesture -> `Command`
+- `frame.rs`: CPU 側フレーム構築と差分矩形計算
+- `wgpu_canvas.rs`: 実 GPU 提示
+
+### 2. パネルランタイム側
+
+```text
+panel.altp-panel
+  -> panel-dsl
+  -> ui-shell::DslPanelPlugin
+  -> plugin-host::WasmPanelRuntime
+  -> panel-schema DTO
+  -> plugin-api::PanelTree / HostAction
+```
+
+役割分担:
+
+- `panel-dsl`: 定義ファイルの正規化
+- `plugin-host`: Wasm handler 呼び出し
+- `ui-shell`: state と host snapshot を渡し、結果を `PanelTree` と `HostAction` に変換
+
+### 3. 永続化側
+
+```text
+DesktopApp
+  -> storage::save_project_to_path / load_project_from_path
+  -> Document + WorkspaceLayout + plugin_configs
+
+DesktopApp
+  -> desktop-support::save_session_state / load_session_state
+```
+
+project file と session file は役割が異なる。
+
+- project file: 作品状態 + workspace layout + panel config
+- session file: 最後に開いた project と desktop session の補助状態
+
+## runtime flow
+
+### 起動フロー
+
+1. `main.rs` が `DesktopRuntime::run(...)` を呼ぶ
+2. `DesktopRuntime` が `DesktopApp::new(...)` を構築する
+3. `DesktopApp` が session を読み、project を読み、`UiShell` を初期化する
+4. `UiShell` が `plugins/` 以下の `.altp-panel` を再帰探索してロードする
+5. 各 panel について `DslPanelPlugin` が Wasm runtime を初期化する
+6. `DesktopRuntime` が `winit` window と `wgpu` presenter を用意する
+
+### キャンバス編集フロー
+
+1. OS pointer event が `runtime.rs` に届く
+2. `DesktopApp::handle_pointer_*` が panel/canvas を振り分ける
+3. canvas 側は `canvas_bridge.rs` で座標変換する
+4. `Command` が生成され `DesktopApp::execute_command(...)` に入る
+5. `Document::apply_command(...)` が実データを更新する
+6. dirty rect / transform 更新 / UI 再同期要求が蓄積される
+7. `prepare_present_frame(...)` が base/overlay/canvas 更新情報を組み立てる
+8. `wgpu_canvas.rs` が 3 層を提示する
+
+### パネルイベントフロー
+
+1. pointer / keyboard event が `DesktopApp` に届く
+2. `UiShell` が hit-test / focus / text input 編集を行う
+3. 対象 panel が DSL/Wasm panel なら `DslPanelPlugin::handle_event(...)` が呼ばれる
+4. 必要なら `plugin-host` を通じて Wasm handler を実行する
+5. `StatePatch` を panel local state に適用する
+6. `CommandDescriptor` を `HostAction::DispatchCommand(...)` 等へ変換する
+7. `DesktopApp::execute_host_action(...)` が `Command` や workspace 操作を実行する
+
+### 保存・読込フロー
+
+1. `DesktopApp` が保存/読込 command を受ける
+2. project 保存は `storage` へ委譲する
+3. workspace layout / plugin config は `UiShell` から取り出して一緒に保存する
+4. session 保存は `desktop-support` へ委譲する
+
+## 現在の境界で重要なこと
+
+### `app-core` は依然として最重要の安定境界
+
+今後クレートを増やしても、以下は維持したい。
+
+- `Document` と `Command` は `app-core` に置く
+- UI や GPU の型を `app-core` に入れない
+- 保存形式と panel runtime は `app-core` の外側に置く
+
+### `ui-shell` は現状かなり多機能
+
+現実のコードでは、`ui-shell` は以下を同時に持っている。
+
+- panel registry
+- panel layout / hit-test / software render
+- DSL evaluation
+- Wasm runtime bridge
+- focus / text input / config persistence
+- `RenderContext` 保持
+
+そのため、現在の `ui-shell` は「単なる UI shell」より広く、**panel runtime 統合クレート**として読む方が実態に近い。
+
+### `render` はまだ薄い
+
+`render` は将来のレンダリング中核候補だが、現時点では次の責務の多くがまだ `apps/desktop` 側にある。
+
+- desktop fixed layout
+- dirty rect の表示先への写像
+- base / overlay の CPU 合成
+- GPU texture upload 戦略
+- quad 計算
+
+従って、レンダリング設計を読むときは「理想は `render` 側」「実装の多くは `apps/desktop` 側」という二層で理解する必要がある。
+
+## 今後も守るべき依存ルール
+
+1. `app-core` に `winit` / `wgpu` / `wasmtime` を入れない
+2. `plugins/*` から host 内部クレートへ直接依存させない
+3. panel の ABI DTO は `panel-schema` に閉じ込める
+4. desktop 固有の I/O や dialog は `desktop-support` に寄せる
+5. project 永続化は `storage`、session 永続化は `desktop-support` に分ける
+6. `apps/desktop` だけが OS window と GPU presenter を所有する
+
+## リファクタリング候補
+
+実装を読んだ結果、次は整理候補になる。
+
+1. `render` と `apps/desktop::frame` の責務再分配
+2. `ui-shell` 内の DSL/Wasm runtime 部分の分離
+3. `plugin-api` が `app-core::Command` を直接知っている点の再評価
+4. panel permission の宣言値を runtime で実際に検証する仕組みの強化
+
+ただし、これらは**今そうなっている**という意味ではない。現時点の正本は、上記 compile-time 依存と runtime flow である。
