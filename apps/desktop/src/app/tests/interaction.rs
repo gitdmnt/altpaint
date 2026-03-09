@@ -161,6 +161,8 @@ fn scroll_refresh_does_not_trigger_ui_update() {
     assert!(!profiler.stats.contains_key("compose_full_frame"));
     assert_eq!(update.base_dirty_rect, Some(layout.panel_host_rect));
     assert_eq!(update.overlay_dirty_rect, None);
+    assert_eq!(update.base_dirty_rect, Some(layout.panel_host_rect));
+    assert_eq!(update.overlay_dirty_rect, None);
     assert!(!update.canvas_updated);
     assert_eq!(
         profiler.stats.get("panel_surface").map(|stat| stat.calls),
@@ -214,7 +216,12 @@ fn tool_change_updates_status_without_full_recompose() {
         Some(
             layout
                 .panel_host_rect
-                .union(crate::frame::status_text_bounds(1280, 200, &layout, &app.status_text()))
+                .union(crate::frame::status_text_bounds(
+                    1280,
+                    200,
+                    &layout,
+                    &app.status_text()
+                ))
         )
     );
     assert_eq!(update.overlay_dirty_rect, None);
@@ -240,14 +247,15 @@ fn pan_view_updates_canvas_without_status_recompose() {
     assert!(profiler.stats.contains_key("prepare_canvas_scene"));
     assert!(profiler.stats.contains_key("compose_dirty_canvas_base"));
     assert!(!profiler.stats.contains_key("compose_dirty_overlay"));
+    assert!(profiler.stats.contains_key("prepare_canvas_scene"));
+    assert!(profiler.stats.contains_key("compose_dirty_canvas_base"));
+    assert!(!profiler.stats.contains_key("compose_dirty_overlay"));
     assert!(update.canvas_updated);
     assert!(update.canvas_transform_changed);
     assert_eq!(update.canvas_dirty_rect, None);
-    assert!(update
-        .base_dirty_rect
-        .expect("base dirty rect")
-        .width
-        <= layout.canvas_host_rect.width);
+    assert!(
+        update.base_dirty_rect.expect("base dirty rect").width <= layout.canvas_host_rect.width
+    );
     assert_eq!(update.overlay_dirty_rect, None);
 }
 

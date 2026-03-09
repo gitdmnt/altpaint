@@ -7,7 +7,9 @@ use app_core::Command;
 use plugin_api::{HostAction, PanelEvent};
 
 use super::{DesktopApp, PanelDragState};
-use crate::canvas_bridge::{CanvasInputState, CanvasPointerEvent, map_view_to_canvas_with_transform};
+use crate::canvas_bridge::{
+    CanvasInputState, CanvasPointerEvent, map_view_to_canvas_with_transform,
+};
 use crate::frame::{brush_preview_rect, map_view_to_surface, map_view_to_surface_clamped};
 
 impl DesktopApp {
@@ -35,24 +37,12 @@ impl DesktopApp {
 
         let transform = self.document.view_transform;
         if let Some(previous) = previous.and_then(|position| {
-            brush_preview_rect(
-                layout,
-                bitmap_width,
-                bitmap_height,
-                transform,
-                position,
-            )
+            brush_preview_rect(layout, bitmap_width, bitmap_height, transform, position)
         }) {
             self.append_canvas_host_dirty_rect(previous);
         }
         if let Some(next) = next.and_then(|position| {
-            brush_preview_rect(
-                layout,
-                bitmap_width,
-                bitmap_height,
-                transform,
-                position,
-            )
+            brush_preview_rect(layout, bitmap_width, bitmap_height, transform, position)
         }) {
             self.append_canvas_host_dirty_rect(next);
         }
@@ -273,7 +263,8 @@ impl DesktopApp {
             }
             "up" => {
                 let from = self.canvas_input.last_position;
-                let changed = if self.canvas_input.is_drawing && from != Some((canvas_x, canvas_y)) {
+                let changed = if self.canvas_input.is_drawing && from != Some((canvas_x, canvas_y))
+                {
                     self.execute_canvas_command(canvas_x, canvas_y, from)
                 } else {
                     false
@@ -301,13 +292,11 @@ impl DesktopApp {
         let layout = self.layout.as_ref()?;
         let clamped_x = x.clamp(
             layout.canvas_host_rect.x as i32,
-            (layout.canvas_host_rect.x + layout.canvas_host_rect.width.saturating_sub(1))
-                as i32,
+            (layout.canvas_host_rect.x + layout.canvas_host_rect.width.saturating_sub(1)) as i32,
         );
         let clamped_y = y.clamp(
             layout.canvas_host_rect.y as i32,
-            (layout.canvas_host_rect.y + layout.canvas_host_rect.height.saturating_sub(1))
-                as i32,
+            (layout.canvas_host_rect.y + layout.canvas_host_rect.height.saturating_sub(1)) as i32,
         );
 
         let bitmap = self.document.active_bitmap()?;

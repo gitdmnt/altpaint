@@ -34,6 +34,10 @@ pub(crate) struct PresentFrameUpdate {
     pub(crate) overlay_dirty_rect: Option<crate::frame::Rect>,
     pub(crate) canvas_dirty_rect: Option<DirtyRect>,
     pub(crate) canvas_transform_changed: bool,
+    pub(crate) base_dirty_rect: Option<crate::frame::Rect>,
+    pub(crate) overlay_dirty_rect: Option<crate::frame::Rect>,
+    pub(crate) canvas_dirty_rect: Option<DirtyRect>,
+    pub(crate) canvas_transform_changed: bool,
     pub(crate) canvas_updated: bool,
 }
 
@@ -61,9 +65,13 @@ pub(crate) struct DesktopApp {
     pub(crate) layout: Option<DesktopLayout>,
     base_frame: Option<RenderFrame>,
     overlay_frame: Option<RenderFrame>,
+    base_frame: Option<RenderFrame>,
+    overlay_frame: Option<RenderFrame>,
     pending_canvas_dirty_rect: Option<DirtyRect>,
     pending_canvas_background_dirty_rect: Option<Rect>,
+    pending_canvas_background_dirty_rect: Option<Rect>,
     pending_canvas_host_dirty_rect: Option<Rect>,
+    pending_canvas_transform_update: bool,
     pending_canvas_transform_update: bool,
     active_panel_drag: Option<PanelDragState>,
     hover_canvas_position: Option<(usize, usize)>,
@@ -142,9 +150,13 @@ impl DesktopApp {
             layout: None,
             base_frame: None,
             overlay_frame: None,
+            base_frame: None,
+            overlay_frame: None,
             pending_canvas_dirty_rect: None,
             pending_canvas_background_dirty_rect: None,
+            pending_canvas_background_dirty_rect: None,
             pending_canvas_host_dirty_rect: None,
+            pending_canvas_transform_update: false,
             pending_canvas_transform_update: false,
             active_panel_drag: None,
             hover_canvas_position: None,
@@ -243,7 +255,9 @@ impl DesktopApp {
         self.canvas_input = CanvasInputState::default();
         self.pending_canvas_dirty_rect = None;
         self.pending_canvas_background_dirty_rect = None;
+        self.pending_canvas_background_dirty_rect = None;
         self.pending_canvas_host_dirty_rect = None;
+        self.pending_canvas_transform_update = false;
         self.pending_canvas_transform_update = false;
         self.active_panel_drag = None;
         self.hover_canvas_position = None;
@@ -261,6 +275,15 @@ impl DesktopApp {
     fn append_canvas_dirty_rect(&mut self, dirty: DirtyRect) -> bool {
         self.pending_canvas_dirty_rect = Some(
             self.pending_canvas_dirty_rect
+                .map_or(dirty, |existing| existing.union(dirty)),
+        );
+        true
+    }
+
+    /// キャンバス背景の dirty rect を次回提示用に集約する。
+    fn append_canvas_background_dirty_rect(&mut self, dirty: Rect) -> bool {
+        self.pending_canvas_background_dirty_rect = Some(
+            self.pending_canvas_background_dirty_rect
                 .map_or(dirty, |existing| existing.union(dirty)),
         );
         true
@@ -338,10 +361,12 @@ impl DesktopApp {
             self.rebuild_present_frame();
         }
         true
+        true
     }
 
     /// ドキュメント変更系コマンドを適用し、必要な更新フラグを立てる。
     fn execute_document_command(&mut self, command: Command) -> bool {
+        let previous_transform = self.document.view_transform;
         let previous_transform = self.document.view_transform;
         let dirty = self.document.apply_command(&command);
         match command {
@@ -362,9 +387,11 @@ impl DesktopApp {
             }
             Command::SetViewZoom { .. } | Command::ResetView => {
                 self.mark_canvas_transform_dirty(previous_transform);
+                self.mark_canvas_transform_dirty(previous_transform);
                 self.mark_status_dirty();
                 true
             }
+            Command::PanView { .. } => self.mark_canvas_transform_dirty(previous_transform),
             Command::PanView { .. } => self.mark_canvas_transform_dirty(previous_transform),
             Command::AddRasterLayer
             | Command::SelectLayer { .. }
