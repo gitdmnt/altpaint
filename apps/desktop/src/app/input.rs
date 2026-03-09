@@ -242,7 +242,12 @@ impl DesktopApp {
 
     /// キャンバス上のポインタ操作を描画コマンドへ変換して適用する。
     pub(crate) fn handle_canvas_pointer(&mut self, action: &str, x: i32, y: i32) -> bool {
-        let Some((canvas_x, canvas_y)) = self.canvas_position_from_window(x, y) else {
+        let canvas_position = self.canvas_position_from_window(x, y).or_else(|| {
+            (action != "down" && self.canvas_input.is_drawing)
+                .then(|| self.canvas_position_from_window_clamped(x, y))
+                .flatten()
+        });
+        let Some((canvas_x, canvas_y)) = canvas_position else {
             if action == "up" {
                 self.canvas_input = CanvasInputState::default();
             }
@@ -262,9 +267,15 @@ impl DesktopApp {
                 changed
             }
             "up" => {
+                let from = self.canvas_input.last_position;
+                let changed = if self.canvas_input.is_drawing && from != Some((canvas_x, canvas_y)) {
+                    self.execute_canvas_command(canvas_x, canvas_y, from)
+                } else {
+                    false
+                };
                 self.canvas_input.is_drawing = false;
                 self.canvas_input.last_position = None;
-                false
+                changed
             }
             _ => false,
         }
@@ -277,6 +288,23 @@ impl DesktopApp {
             return None;
         }
 
+        self.canvas_position_from_window_clamped(x, y)
+    }
+
+    /// ウィンドウ座標をキャンバスビットマップ座標へクランプ付きで変換する。
+    fn canvas_position_from_window_clamped(&self, x: i32, y: i32) -> Option<(usize, usize)> {
+        let layout = self.layout.as_ref()?;
+        let clamped_x = x.clamp(
+            layout.canvas_display_rect.x as i32,
+            (layout.canvas_display_rect.x + layout.canvas_display_rect.width.saturating_sub(1))
+                as i32,
+        );
+        let clamped_y = y.clamp(
+            layout.canvas_display_rect.y as i32,
+            (layout.canvas_display_rect.y + layout.canvas_display_rect.height.saturating_sub(1))
+                as i32,
+        );
+
         let bitmap = self.document.active_bitmap()?;
         map_view_to_canvas_with_transform(
             &render::RenderFrame {
@@ -285,8 +313,8 @@ impl DesktopApp {
                 pixels: Vec::new(),
             },
             CanvasPointerEvent {
-                x: x - layout.canvas_display_rect.x as i32,
-                y: y - layout.canvas_display_rect.y as i32,
+                x: clamped_x - layout.canvas_display_rect.x as i32,
+                y: clamped_y - layout.canvas_display_rect.y as i32,
                 width: layout.canvas_display_rect.width as i32,
                 height: layout.canvas_display_rect.height as i32,
             },

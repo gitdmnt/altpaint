@@ -75,6 +75,12 @@ pub fn command_for_canvas_gesture(
     previous: Option<(usize, usize)>,
 ) -> Command {
     match (tool, previous) {
+        (ToolKind::Pen, Some((from_x, from_y))) => Command::DrawStroke {
+            from_x,
+            from_y,
+            to_x: current.0,
+            to_y: current.1,
+        },
         (ToolKind::Brush, Some((from_x, from_y))) => Command::DrawStroke {
             from_x,
             from_y,
@@ -88,6 +94,10 @@ pub fn command_for_canvas_gesture(
             to_y: current.1,
         },
         (ToolKind::Brush, None) => Command::DrawPoint {
+            x: current.0,
+            y: current.1,
+        },
+        (ToolKind::Pen, None) => Command::DrawPoint {
             x: current.0,
             y: current.1,
         },

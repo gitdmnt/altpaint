@@ -36,7 +36,59 @@ impl Default for ColorRgba8 {
 pub enum ToolKind {
     #[default]
     Brush,
+    Pen,
     Eraser,
+}
+
+/// 外部読込可能な最小ペンプリセットを表す。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PenPreset {
+    pub id: String,
+    pub name: String,
+    #[serde(default = "default_pen_size")]
+    pub size: u32,
+    #[serde(default = "default_pen_min_size")]
+    pub min_size: u32,
+    #[serde(default = "default_pen_max_size")]
+    pub max_size: u32,
+}
+
+impl PenPreset {
+    pub fn clamp_size(&self, size: u32) -> u32 {
+        size.clamp(self.min_size.max(1), self.max_size.max(self.min_size.max(1)))
+    }
+}
+
+impl Default for PenPreset {
+    fn default() -> Self {
+        Self {
+            id: "builtin.round-pen".to_string(),
+            name: "Round Pen".to_string(),
+            size: default_pen_size(),
+            min_size: default_pen_min_size(),
+            max_size: default_pen_max_size(),
+        }
+    }
+}
+
+fn default_pen_size() -> u32 {
+    4
+}
+
+fn default_pen_min_size() -> u32 {
+    1
+}
+
+fn default_pen_max_size() -> u32 {
+    64
+}
+
+fn default_pen_presets() -> Vec<PenPreset> {
+    vec![PenPreset::default()]
+}
+
+fn default_active_pen_preset_id() -> String {
+    PenPreset::default().id
 }
 
 /// 作品を識別する最小ID型。
@@ -67,6 +119,15 @@ pub struct Document {
     /// 現在のブラシ色。
     #[serde(default)]
     pub active_color: ColorRgba8,
+    /// 現在ロード済みのペンプリセット列。
+    #[serde(default = "default_pen_presets")]
+    pub pen_presets: Vec<PenPreset>,
+    /// 現在アクティブなペンプリセット ID。
+    #[serde(default = "default_active_pen_preset_id")]
+    pub active_pen_preset_id: String,
+    /// 現在の可変幅ペンサイズ。
+    #[serde(default = "default_pen_size")]
+    pub active_pen_size: u32,
     /// キャンバスの表示変換状態。
     pub view_transform: CanvasViewTransform,
 }
@@ -392,6 +453,20 @@ impl CanvasBitmap {
         self.write_pixel(x, y, [255, 255, 255, 255])
     }
 
+    pub fn draw_point_sized_rgba(
+        &mut self,
+        x: usize,
+        y: usize,
+        rgba: [u8; 4],
+        size: u32,
+    ) -> DirtyRect {
+        self.paint_disk(x as isize, y as isize, size, rgba)
+    }
+
+    pub fn erase_point_sized(&mut self, x: usize, y: usize, size: u32) -> DirtyRect {
+        self.paint_disk(x as isize, y as isize, size, [255, 255, 255, 255])
+    }
+
     fn write_pixel(&mut self, x: usize, y: usize, rgba: [u8; 4]) -> DirtyRect {
         if x >= self.width || y >= self.height {
             return DirtyRect::from_inclusive_points(
@@ -506,6 +581,96 @@ impl CanvasBitmap {
 
         DirtyRect::from_inclusive_points(from_x, from_y, to_x, to_y)
     }
+
+    pub fn draw_line_sized_rgba(
+        &mut self,
+        from_x: usize,
+        from_y: usize,
+        to_x: usize,
+        to_y: usize,
+        rgba: [u8; 4],
+        size: u32,
+    ) -> DirtyRect {
+        self.paint_line_disks(from_x, from_y, to_x, to_y, size, rgba)
+    }
+
+    pub fn erase_line_sized(
+        &mut self,
+        from_x: usize,
+        from_y: usize,
+        to_x: usize,
+        to_y: usize,
+        size: u32,
+    ) -> DirtyRect {
+        self.paint_line_disks(from_x, from_y, to_x, to_y, size, [255, 255, 255, 255])
+    }
+
+    fn paint_line_disks(
+        &mut self,
+        from_x: usize,
+        from_y: usize,
+        to_x: usize,
+        to_y: usize,
+        size: u32,
+        rgba: [u8; 4],
+    ) -> DirtyRect {
+        let mut x0 = from_x as isize;
+        let mut y0 = from_y as isize;
+        let x1 = to_x as isize;
+        let y1 = to_y as isize;
+
+        let dx = (x1 - x0).abs();
+        let sx = if x0 < x1 { 1 } else { -1 };
+        let dy = -(y1 - y0).abs();
+        let sy = if y0 < y1 { 1 } else { -1 };
+        let mut error = dx + dy;
+        let mut dirty = self.paint_disk(x0, y0, size, rgba);
+
+        loop {
+            if x0 == x1 && y0 == y1 {
+                break;
+            }
+
+            let doubled_error = 2 * error;
+            if doubled_error >= dy {
+                error += dy;
+                x0 += sx;
+            }
+            if doubled_error <= dx {
+                error += dx;
+                y0 += sy;
+            }
+            dirty = dirty.union(self.paint_disk(x0, y0, size, rgba));
+        }
+
+        dirty
+    }
+
+    fn paint_disk(&mut self, center_x: isize, center_y: isize, size: u32, rgba: [u8; 4]) -> DirtyRect {
+        let radius = (size.max(1) as f32) * 0.5;
+        let left = (center_x as f32 - radius).floor().max(0.0) as usize;
+        let top = (center_y as f32 - radius).floor().max(0.0) as usize;
+        let right = (center_x as f32 + radius).ceil().max(0.0) as usize;
+        let bottom = (center_y as f32 + radius).ceil().max(0.0) as usize;
+        let mut dirty: Option<DirtyRect> = None;
+
+        for y in top..=bottom {
+            for x in left..=right {
+                let dx = x as f32 + 0.5 - (center_x as f32 + 0.5);
+                let dy = y as f32 + 0.5 - (center_y as f32 + 0.5);
+                if dx * dx + dy * dy > radius * radius {
+                    continue;
+                }
+                let rect = self.write_pixel(x, y, rgba);
+                dirty = Some(match dirty {
+                    Some(current) => current.union(rect),
+                    None => rect,
+                });
+            }
+        }
+
+        dirty.unwrap_or_else(|| DirtyRect::from_inclusive_points(left, top, right, bottom))
+    }
 }
 
 impl Default for CanvasBitmap {
@@ -525,6 +690,15 @@ impl Document {
         let width = width.max(1);
         let height = height.max(1);
         let background = RasterLayer::background(LayerNodeId(1), "Layer 1".to_string(), width, height);
+        let pen_presets = default_pen_presets();
+        let active_pen_preset_id = pen_presets
+            .first()
+            .map(|preset| preset.id.clone())
+            .unwrap_or_else(default_active_pen_preset_id);
+        let active_pen_size = pen_presets
+            .first()
+            .map(|preset| preset.size)
+            .unwrap_or_else(default_pen_size);
 
         Self {
             work: Work {
@@ -541,6 +715,9 @@ impl Document {
             },
             active_tool: ToolKind::default(),
             active_color: ColorRgba8::default(),
+            pen_presets,
+            active_pen_preset_id,
+            active_pen_size,
             view_transform: CanvasViewTransform::default(),
         }
     }
@@ -561,8 +738,88 @@ impl Document {
         self.active_tool = tool;
     }
 
+    pub fn set_active_pen_size(&mut self, size: u32) {
+        let size = self
+            .active_pen_preset()
+            .map(|preset| preset.clamp_size(size))
+            .unwrap_or_else(|| size.max(1));
+        self.active_pen_size = size;
+    }
+
     pub fn set_active_color(&mut self, color: ColorRgba8) {
         self.active_color = color;
+    }
+
+    pub fn replace_pen_presets(&mut self, pen_presets: Vec<PenPreset>) {
+        self.pen_presets = if pen_presets.is_empty() {
+            default_pen_presets()
+        } else {
+            pen_presets
+        };
+        self.ensure_pen_state();
+    }
+
+    pub fn select_next_pen_preset(&mut self) {
+        self.cycle_pen_preset(1);
+    }
+
+    pub fn select_previous_pen_preset(&mut self) {
+        self.cycle_pen_preset(-1);
+    }
+
+    pub fn active_pen_preset(&self) -> Option<&PenPreset> {
+        self.pen_presets
+            .iter()
+            .find(|preset| preset.id == self.active_pen_preset_id)
+            .or_else(|| self.pen_presets.first())
+    }
+
+    pub fn active_pen_index(&self) -> usize {
+        self.pen_presets
+            .iter()
+            .position(|preset| preset.id == self.active_pen_preset_id)
+            .unwrap_or(0)
+    }
+
+    fn cycle_pen_preset(&mut self, delta: isize) {
+        self.ensure_pen_state();
+        if self.pen_presets.is_empty() {
+            return;
+        }
+
+        let len = self.pen_presets.len() as isize;
+        let next_index = (self.active_pen_index() as isize + delta).rem_euclid(len) as usize;
+        let preset = &self.pen_presets[next_index];
+        self.active_pen_preset_id = preset.id.clone();
+        self.active_pen_size = preset.clamp_size(preset.size);
+    }
+
+    fn ensure_pen_state(&mut self) {
+        if self.pen_presets.is_empty() {
+            self.pen_presets = default_pen_presets();
+        }
+
+        if self
+            .pen_presets
+            .iter()
+            .all(|preset| preset.id != self.active_pen_preset_id)
+            && let Some(preset) = self.pen_presets.first()
+        {
+            self.active_pen_preset_id = preset.id.clone();
+        }
+
+        if let Some(preset) = self.active_pen_preset() {
+            self.active_pen_size = preset.clamp_size(self.active_pen_size);
+        } else {
+            self.active_pen_size = default_pen_size();
+        }
+    }
+
+    fn active_draw_size(&self) -> u32 {
+        match self.active_tool {
+            ToolKind::Brush | ToolKind::Eraser => 1,
+            ToolKind::Pen => self.active_pen_size.max(1),
+        }
     }
 
     pub fn normalize_phase9_state(&mut self) {
@@ -594,6 +851,19 @@ impl Document {
                 self.set_active_tool(*tool);
                 None
             }
+            Command::SetActivePenSize { size } => {
+                self.set_active_pen_size(*size);
+                None
+            }
+            Command::SelectNextPenPreset => {
+                self.select_next_pen_preset();
+                None
+            }
+            Command::SelectPreviousPenPreset => {
+                self.select_previous_pen_preset();
+                None
+            }
+            Command::ReloadPenPresets => None,
             Command::SetActiveColor { color } => {
                 self.set_active_color(*color);
                 None
@@ -657,6 +927,7 @@ impl Document {
     /// ここで与えられる座標はコマのローカル座標で、(0, 0) が左上隅を指すものとする。
     pub fn draw_point(&mut self, x: usize, y: usize) -> Option<DirtyRect> {
         let color = self.active_color.to_rgba8();
+        let size = self.active_draw_size();
         if let Some(panel) = self
             .work
             .pages
@@ -664,7 +935,7 @@ impl Document {
             .and_then(|page| page.panels.first_mut())
         {
             ensure_panel_layers(panel);
-            let dirty = draw_on_active_layer(panel, x, y, color, false);
+            let dirty = draw_on_active_layer(panel, x, y, color, false, size);
             composite_panel_bitmap_region(panel, dirty);
             return Some(dirty);
         }
@@ -681,6 +952,7 @@ impl Document {
         to_y: usize,
     ) -> Option<DirtyRect> {
         let color = self.active_color.to_rgba8();
+        let size = self.active_draw_size();
         if let Some(panel) = self
             .work
             .pages
@@ -688,7 +960,8 @@ impl Document {
             .and_then(|page| page.panels.first_mut())
         {
             ensure_panel_layers(panel);
-            let dirty = draw_line_on_active_layer(panel, from_x, from_y, to_x, to_y, color, false);
+            let dirty =
+                draw_line_on_active_layer(panel, from_x, from_y, to_x, to_y, color, false, size);
             composite_panel_bitmap_region(panel, dirty);
             return Some(dirty);
         }
@@ -697,6 +970,7 @@ impl Document {
     }
 
     pub fn erase_point(&mut self, x: usize, y: usize) -> Option<DirtyRect> {
+        let size = self.active_draw_size();
         if let Some(panel) = self
             .work
             .pages
@@ -704,7 +978,7 @@ impl Document {
             .and_then(|page| page.panels.first_mut())
         {
             ensure_panel_layers(panel);
-            let dirty = draw_on_active_layer(panel, x, y, [0, 0, 0, 0], true);
+            let dirty = draw_on_active_layer(panel, x, y, [0, 0, 0, 0], true, size);
             composite_panel_bitmap_region(panel, dirty);
             return Some(dirty);
         }
@@ -719,6 +993,7 @@ impl Document {
         to_x: usize,
         to_y: usize,
     ) -> Option<DirtyRect> {
+        let size = self.active_draw_size();
         if let Some(panel) = self
             .work
             .pages
@@ -726,7 +1001,16 @@ impl Document {
             .and_then(|page| page.panels.first_mut())
         {
             ensure_panel_layers(panel);
-            let dirty = draw_line_on_active_layer(panel, from_x, from_y, to_x, to_y, [0, 0, 0, 0], true);
+            let dirty = draw_line_on_active_layer(
+                panel,
+                from_x,
+                from_y,
+                to_x,
+                to_y,
+                [0, 0, 0, 0],
+                true,
+                size,
+            );
             composite_panel_bitmap_region(panel, dirty);
             return Some(dirty);
         }
@@ -865,21 +1149,23 @@ fn draw_on_active_layer(
     y: usize,
     color: [u8; 4],
     erase: bool,
+    size: u32,
 ) -> DirtyRect {
     let active_index = panel.active_layer_index.min(panel.layers.len().saturating_sub(1));
     let is_background = active_index == 0;
     let layer = &mut panel.layers[active_index];
     if erase {
         if is_background {
-            layer.bitmap.erase_point(x, y)
+            layer.bitmap.erase_point_sized(x, y, size)
         } else {
-            layer.bitmap.draw_point_rgba(x, y, color)
+            layer.bitmap.draw_point_sized_rgba(x, y, color, size)
         }
     } else {
-        layer.bitmap.draw_point_rgba(x, y, color)
+        layer.bitmap.draw_point_sized_rgba(x, y, color, size)
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_line_on_active_layer(
     panel: &mut Panel,
     from_x: usize,
@@ -888,18 +1174,23 @@ fn draw_line_on_active_layer(
     to_y: usize,
     color: [u8; 4],
     erase: bool,
+    size: u32,
 ) -> DirtyRect {
     let active_index = panel.active_layer_index.min(panel.layers.len().saturating_sub(1));
     let is_background = active_index == 0;
     let layer = &mut panel.layers[active_index];
     if erase {
         if is_background {
-            layer.bitmap.erase_line(from_x, from_y, to_x, to_y)
+            layer.bitmap.erase_line_sized(from_x, from_y, to_x, to_y, size)
         } else {
-            layer.bitmap.draw_line_rgba(from_x, from_y, to_x, to_y, color)
+            layer
+                .bitmap
+                .draw_line_sized_rgba(from_x, from_y, to_x, to_y, color, size)
         }
     } else {
-        layer.bitmap.draw_line_rgba(from_x, from_y, to_x, to_y, color)
+        layer
+            .bitmap
+            .draw_line_sized_rgba(from_x, from_y, to_x, to_y, color, size)
     }
 }
 
@@ -1095,6 +1386,15 @@ mod tests {
     }
 
     #[test]
+    fn default_document_has_round_pen_preset() {
+        let document = Document::default();
+
+        assert_eq!(document.pen_presets.len(), 1);
+        assert_eq!(document.active_pen_preset_id, "builtin.round-pen");
+        assert_eq!(document.active_pen_size, 4);
+    }
+
+    #[test]
     fn draw_point_uses_active_color() {
         let mut document = Document::default();
         document.set_active_color(ColorRgba8::new(0xe5, 0x39, 0x35, 0xff));
@@ -1136,11 +1436,21 @@ mod tests {
         let mut document = Document::default();
 
         let dirty = document.apply_command(&Command::SetActiveTool {
-            tool: ToolKind::Eraser,
+            tool: ToolKind::Pen,
         });
 
         assert_eq!(dirty, None);
-        assert_eq!(document.active_tool, ToolKind::Eraser);
+        assert_eq!(document.active_tool, ToolKind::Pen);
+    }
+
+    #[test]
+    fn apply_command_updates_pen_size() {
+        let mut document = Document::default();
+
+        let dirty = document.apply_command(&Command::SetActivePenSize { size: 12 });
+
+        assert_eq!(dirty, None);
+        assert_eq!(document.active_pen_size, 12);
     }
 
     #[test]
@@ -1173,6 +1483,51 @@ mod tests {
         let bitmap = &document.work.pages[0].panels[0].bitmap;
         let index = (bitmap.width + 2) * 4;
         assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
+    }
+
+    #[test]
+    fn pen_draws_wider_than_single_pixel_brush() {
+        let mut document = Document::default();
+        let _ = document.apply_command(&Command::SetActiveTool {
+            tool: ToolKind::Pen,
+        });
+        let _ = document.apply_command(&Command::SetActivePenSize { size: 5 });
+
+        let dirty = document.draw_point(10, 10).expect("panel should exist");
+
+        assert!(dirty.width >= 5);
+        assert!(dirty.height >= 5);
+        let bitmap = &document.work.pages[0].panels[0].bitmap;
+        let center = (10 * bitmap.width + 10) * 4;
+        let edge = (10 * bitmap.width + 8) * 4;
+        assert_eq!(&bitmap.pixels[center..center + 4], &[0, 0, 0, 255]);
+        assert_eq!(&bitmap.pixels[edge..edge + 4], &[0, 0, 0, 255]);
+    }
+
+    #[test]
+    fn cycling_pen_presets_updates_active_size() {
+        let mut document = Document::default();
+        document.replace_pen_presets(vec![
+            PenPreset {
+                id: "fine".to_string(),
+                name: "Fine".to_string(),
+                size: 2,
+                min_size: 1,
+                max_size: 16,
+            },
+            PenPreset {
+                id: "bold".to_string(),
+                name: "Bold".to_string(),
+                size: 9,
+                min_size: 1,
+                max_size: 32,
+            },
+        ]);
+
+        document.select_next_pen_preset();
+
+        assert_eq!(document.active_pen_preset_id, "bold");
+        assert_eq!(document.active_pen_size, 9);
     }
 
     #[test]

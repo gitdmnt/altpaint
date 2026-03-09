@@ -8,6 +8,7 @@ use panel_sdk::{
 const SHOW_SHORTCUTS: state::BoolKey = state::bool("show_shortcuts");
 const CAPTURE_TARGET: state::StringKey = state::string("session.capture_target");
 const BRUSH_SHORTCUT: state::StringKey = state::string("config.brush_shortcut");
+const PEN_SHORTCUT: state::StringKey = state::string("config.pen_shortcut");
 const ERASER_SHORTCUT: state::StringKey = state::string("config.eraser_shortcut");
 
 fn build_tool_command(tool: Tool) -> CommandDescriptor {
@@ -32,8 +33,28 @@ fn activate_brush() {
 }
 
 #[panel_sdk::panel_handler]
+fn activate_pen() {
+    emit_command(&build_tool_command(Tool::Pen));
+}
+
+#[panel_sdk::panel_handler]
 fn activate_eraser() {
     emit_command(&build_tool_command(Tool::Eraser));
+}
+
+#[panel_sdk::panel_handler]
+fn previous_pen() {
+    emit_command(&commands::tool::select_previous_pen());
+}
+
+#[panel_sdk::panel_handler]
+fn next_pen() {
+    emit_command(&commands::tool::select_next_pen());
+}
+
+#[panel_sdk::panel_handler]
+fn reload_pens() {
+    emit_command(&commands::tool::reload_pen_presets());
 }
 
 #[panel_sdk::panel_handler]
@@ -44,6 +65,11 @@ fn toggle_shortcuts() {
 #[panel_sdk::panel_handler]
 fn capture_brush_shortcut() {
     capture_shortcut("brush");
+}
+
+#[panel_sdk::panel_handler]
+fn capture_pen_shortcut() {
+    capture_shortcut("pen");
 }
 
 #[panel_sdk::panel_handler]
@@ -64,6 +90,11 @@ fn keyboard() {
             set_state_string(CAPTURE_TARGET, "");
             return;
         }
+        "pen" => {
+            set_state_string(PEN_SHORTCUT, &shortcut);
+            set_state_string(CAPTURE_TARGET, "");
+            return;
+        }
         "eraser" => {
             set_state_string(ERASER_SHORTCUT, &shortcut);
             set_state_string(CAPTURE_TARGET, "");
@@ -74,6 +105,10 @@ fn keyboard() {
 
     if shortcut_matches(&state_string(BRUSH_SHORTCUT), &shortcut) {
         activate_brush();
+        return;
+    }
+    if shortcut_matches(&state_string(PEN_SHORTCUT), &shortcut) {
+        activate_pen();
         return;
     }
     if shortcut_matches(&state_string(ERASER_SHORTCUT), &shortcut) {
@@ -100,9 +135,14 @@ mod tests {
     fn panel_entrypoints_are_callable_on_native_targets() {
         init();
         activate_brush();
+        activate_pen();
         activate_eraser();
+        previous_pen();
+        next_pen();
+        reload_pens();
         toggle_shortcuts();
         capture_brush_shortcut();
+        capture_pen_shortcut();
         capture_eraser_shortcut();
         keyboard();
     }

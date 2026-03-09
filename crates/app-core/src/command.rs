@@ -29,6 +29,14 @@ pub enum Command {
     },
     /// 現在のアクティブツールを切り替える。
     SetActiveTool { tool: ToolKind },
+    /// 現在のアクティブペンサイズを切り替える。
+    SetActivePenSize { size: u32 },
+    /// 次のペンプリセットをアクティブにする。
+    SelectNextPenPreset,
+    /// 前のペンプリセットをアクティブにする。
+    SelectPreviousPenPreset,
+    /// 既定ペンディレクトリからペンプリセットを再読込する。
+    ReloadPenPresets,
     /// 現在のブラシ色を切り替える。
     SetActiveColor { color: ColorRgba8 },
     /// キャンバス表示倍率を設定する。

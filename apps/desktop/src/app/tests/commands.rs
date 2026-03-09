@@ -99,6 +99,16 @@ fn plugin_keyboard_shortcut_can_switch_tool() {
 }
 
 #[test]
+fn plugin_keyboard_shortcut_can_switch_to_pen() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    app.document.set_active_tool(ToolKind::Brush);
+
+    assert!(app.dispatch_keyboard_shortcut("P", "P", false));
+
+    assert_eq!(app.document.active_tool, ToolKind::Pen);
+}
+
+#[test]
 fn plugin_keyboard_capture_updates_persistent_config() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
 
@@ -147,7 +157,12 @@ fn desktop_app_replaces_builtin_panels_with_phase7_dsl_variants() {
     let app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
     let panels = app.ui_shell.panel_trees();
 
-    for panel_id in ["builtin.app-actions", "builtin.tool-palette", "builtin.layers-panel"] {
+    for panel_id in [
+        "builtin.app-actions",
+        "builtin.tool-palette",
+        "builtin.layers-panel",
+        "builtin.pen-settings",
+    ] {
         assert_eq!(
             panels.iter().filter(|panel| panel.id == panel_id).count(),
             1,
@@ -166,4 +181,12 @@ fn desktop_app_replaces_builtin_panels_with_phase7_dsl_variants() {
 
     assert!(tree_contains_text(&app_actions.children, "Hosted via Rust SDK + Wasm"));
     assert!(tree_contains_text(&layers.children, "Untitled"));
+}
+
+#[test]
+fn reload_pen_presets_reads_default_pen_directory() {
+    let mut app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+
+    assert!(app.execute_command(Command::ReloadPenPresets));
+    assert!(app.document.pen_presets.len() >= 3);
 }

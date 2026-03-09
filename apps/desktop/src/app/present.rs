@@ -1,17 +1,15 @@
 //! フレーム生成と差分更新の責務を `DesktopApp` へ追加する。
 //!
-//! レイアウト更新、UI シェル更新、パネル面再描画、キャンバス dirty rect 反映を
-//! 一箇所で扱い、ランタイム側は出来上がったフレームだけを扱えるようにする。
+//! CPU 側ではパネル UI・背景・ステータス・オーバーレイを保持し、
+//! キャンバス本体は GPU テクスチャとして別経路で提示する。
 
 use super::{DesktopApp, PresentFrameUpdate};
 use crate::frame::{
-    CanvasCompositeSource, CanvasOverlayState, DesktopLayout, blit_canvas_content,
-    canvas_drawn_rect, clear_canvas_host_region, compose_desktop_frame, compose_panel_host_region,
-    compose_status_region, draw_canvas_overlay, map_canvas_dirty_to_display_with_transform,
-    scroll_canvas_region, status_text_rect,
+    CanvasCompositeSource, CanvasOverlayState, DesktopLayout, Rect, clear_canvas_host_region,
+    compose_base_frame, compose_overlay_frame, compose_overlay_region,
+    compose_panel_host_region, compose_status_region, status_text_bounds,
 };
 use crate::profiler::DesktopProfiler;
-use std::time::Instant;
 
 impl DesktopApp {
     /// 現在状態から次に提示すべきフレームと差分更新情報を生成する。
@@ -58,7 +56,8 @@ impl DesktopApp {
             panel_surface_refreshed = true;
         }
 
-        if self.needs_full_present_rebuild || self.present_frame.is_none() {
+        if self.needs_full_present_rebuild || self.base_frame.is_none() || self.overlay_frame.is_none()
+        {
             let layout = self.layout.clone().expect("layout exists");
             let panel_surface = self.panel_surface.clone().unwrap_or_else(|| {
                 self.ui_shell.render_panel_surface(
@@ -68,208 +67,186 @@ impl DesktopApp {
             });
             let status_text = self.status_text();
             let bitmap = self.document.active_bitmap();
-            let present_frame = profiler.measure("compose_full_frame", || {
-                compose_desktop_frame(
+            let canvas_source = CanvasCompositeSource {
+                width: bitmap.map_or(1, |bitmap| bitmap.width),
+                height: bitmap.map_or(1, |bitmap| bitmap.height),
+                pixels: bitmap.map_or(&[][..], |bitmap| bitmap.pixels.as_slice()),
+            };
+            let base_frame = profiler.measure("compose_base_frame", || {
+                compose_base_frame(
                     window_width,
                     window_height,
                     &layout,
                     &panel_surface,
-                    CanvasCompositeSource {
-                        width: bitmap.map_or(1, |bitmap| bitmap.width),
-                        height: bitmap.map_or(1, |bitmap| bitmap.height),
-                        pixels: bitmap.map_or(&[][..], |bitmap| bitmap.pixels.as_slice()),
-                    },
+                    canvas_source,
+                    self.document.view_transform,
+                    &status_text,
+                )
+            });
+            let overlay_frame = profiler.measure("compose_overlay_frame", || {
+                compose_overlay_frame(
+                    window_width,
+                    window_height,
+                    &layout,
+                    canvas_source,
                     self.document.view_transform,
                     CanvasOverlayState {
                         brush_preview: self.hover_canvas_position,
                     },
-                    &status_text,
                 )
             });
-            self.present_frame = Some(present_frame);
+            self.base_frame = Some(base_frame);
+            self.overlay_frame = Some(overlay_frame);
             self.pending_canvas_dirty_rect = None;
+            self.pending_canvas_background_dirty_rect = None;
             self.pending_canvas_host_dirty_rect = None;
+            self.pending_canvas_transform_update = false;
             self.needs_status_refresh = false;
             self.needs_full_present_rebuild = false;
+            let window_rect = Rect {
+                x: 0,
+                y: 0,
+                width: window_width,
+                height: window_height,
+            };
             return PresentFrameUpdate {
-                dirty_rect: None,
+                base_dirty_rect: Some(window_rect),
+                overlay_dirty_rect: Some(window_rect),
+                canvas_dirty_rect: bitmap.map(|bitmap| app_core::DirtyRect {
+                    x: 0,
+                    y: 0,
+                    width: bitmap.width,
+                    height: bitmap.height,
+                }),
+                canvas_transform_changed: true,
                 canvas_updated: true,
             };
         }
 
         let layout = self.layout.clone().expect("layout exists");
         let status_text = self.needs_status_refresh.then(|| self.status_text());
-        let Some(present_frame) = self.present_frame.as_mut() else {
+        let Some(base_frame) = self.base_frame.as_mut() else {
             self.rebuild_present_frame();
-            return PresentFrameUpdate {
-                dirty_rect: None,
-                canvas_updated: false,
-            };
+            return PresentFrameUpdate::default();
+        };
+        let Some(overlay_frame) = self.overlay_frame.as_mut() else {
+            self.rebuild_present_frame();
+            return PresentFrameUpdate::default();
         };
 
-        let mut dirty_rect = None;
-        let mut canvas_updated = false;
+        let mut base_dirty_rect = None;
+        let mut overlay_dirty_rect = None;
+
         if panel_surface_refreshed && let Some(panel_surface) = self.panel_surface.as_ref() {
             profiler.measure("compose_dirty_panel", || {
-                compose_panel_host_region(present_frame, &layout, panel_surface);
+                compose_panel_host_region(base_frame, &layout, panel_surface);
             });
-            dirty_rect = Some(layout.panel_host_rect);
+            base_dirty_rect = Some(layout.panel_host_rect);
         }
 
         if let Some(status_text) = status_text.as_deref() {
-            let status_rect = status_text_rect(window_width, window_height, &layout);
+            let status_rect = status_text_bounds(window_width, window_height, &layout, status_text);
             profiler.measure("compose_dirty_status", || {
                 compose_status_region(
-                    present_frame,
+                    base_frame,
                     window_width,
                     window_height,
                     &layout,
                     status_text,
                 );
             });
-            dirty_rect = Some(dirty_rect.map_or(status_rect, |existing| existing.union(status_rect)));
+            base_dirty_rect = Some(
+                base_dirty_rect.map_or(status_rect, |existing| existing.union(status_rect)),
+            );
             self.needs_status_refresh = false;
         }
 
-        let mut canvas_dirty_rect = self.pending_canvas_host_dirty_rect.take();
-        let mut canvas_upload_rect = canvas_dirty_rect;
-        if let Some((scroll_x, scroll_y)) = self.pending_canvas_scroll.take()
-            && (scroll_x != 0 || scroll_y != 0)
+        if let Some(dirty_rect) = self.pending_canvas_background_dirty_rect.take()
+            && dirty_rect.width > 0
+            && dirty_rect.height > 0
         {
-            let Some(bitmap) = self.document.active_bitmap() else {
-                self.rebuild_present_frame();
-                return PresentFrameUpdate {
-                    dirty_rect: None,
-                    canvas_updated: false,
-                };
-            };
-            let previous_transform = app_core::CanvasViewTransform {
-                pan_x: self.document.view_transform.pan_x - scroll_x as f32,
-                pan_y: self.document.view_transform.pan_y - scroll_y as f32,
-                ..self.document.view_transform
-            };
-            let old_drawn_rect = canvas_drawn_rect(
-                layout.canvas_display_rect,
-                bitmap.width,
-                bitmap.height,
-                previous_transform,
-            );
-            let new_drawn_rect = canvas_drawn_rect(
-                layout.canvas_display_rect,
-                bitmap.width,
-                bitmap.height,
-                self.document.view_transform,
-            );
-
-            if old_drawn_rect == Some(layout.canvas_display_rect)
-                && new_drawn_rect == Some(layout.canvas_display_rect)
-            {
-                let exposed_rect = scroll_canvas_region(
-                    present_frame,
-                    layout.canvas_display_rect,
-                    scroll_x,
-                    scroll_y,
-                );
-                canvas_dirty_rect = Some(
-                    canvas_dirty_rect.map_or(exposed_rect, |existing| existing.union(exposed_rect)),
-                );
-                canvas_upload_rect = Some(canvas_upload_rect.map_or(
-                    layout.canvas_display_rect,
-                    |existing| existing.union(layout.canvas_display_rect),
-                ));
-            } else {
-                canvas_dirty_rect = Some(canvas_dirty_rect.map_or(
-                    layout.canvas_display_rect,
-                    |existing| existing.union(layout.canvas_display_rect),
-                ));
-                canvas_upload_rect = Some(canvas_upload_rect.map_or(
-                    layout.canvas_display_rect,
-                    |existing| existing.union(layout.canvas_display_rect),
-                ));
-            }
-        }
-        if let Some(dirty) = self.pending_canvas_dirty_rect.take() {
-            let Some(bitmap) = self.document.active_bitmap() else {
-                self.rebuild_present_frame();
-                return PresentFrameUpdate {
-                    dirty_rect: None,
-                    canvas_updated: false,
-                };
-            };
-            let mapped = map_canvas_dirty_to_display_with_transform(
-                dirty,
-                layout.canvas_display_rect,
-                bitmap.width,
-                bitmap.height,
-                self.document.view_transform,
-            );
-            canvas_dirty_rect = Some(canvas_dirty_rect.map_or(mapped, |existing| existing.union(mapped)));
-            canvas_upload_rect = Some(canvas_upload_rect.map_or(mapped, |existing| existing.union(mapped)));
-        }
-
-        if let Some(canvas_dirty_rect) = canvas_dirty_rect
-            && canvas_dirty_rect.width > 0
-            && canvas_dirty_rect.height > 0
-        {
-            profiler.record_value(
-                "canvas_dirty_area_px",
-                (canvas_dirty_rect.width * canvas_dirty_rect.height) as f64,
-            );
-            profiler.record_value("canvas_dirty_width_px", canvas_dirty_rect.width as f64);
-            profiler.record_value("canvas_dirty_height_px", canvas_dirty_rect.height as f64);
-            let Some(bitmap) = self.document.active_bitmap() else {
-                self.rebuild_present_frame();
-                return PresentFrameUpdate {
-                    dirty_rect: None,
-                    canvas_updated: false,
-                };
-            };
+            let bitmap = self.document.active_bitmap();
             let canvas_source = CanvasCompositeSource {
-                width: bitmap.width,
-                height: bitmap.height,
-                pixels: bitmap.pixels.as_slice(),
+                width: bitmap.map_or(1, |bitmap| bitmap.width),
+                height: bitmap.map_or(1, |bitmap| bitmap.height),
+                pixels: bitmap.map_or(&[][..], |bitmap| bitmap.pixels.as_slice()),
             };
-            let overlay = CanvasOverlayState {
-                brush_preview: self.hover_canvas_position,
-            };
-            let compose_started = Instant::now();
-            profiler.measure("compose_canvas_clear", || {
+            profiler.measure("compose_dirty_canvas_base", || {
                 clear_canvas_host_region(
-                    present_frame,
+                    base_frame,
                     &layout,
                     canvas_source,
                     self.document.view_transform,
-                    Some(canvas_dirty_rect),
+                    Some(dirty_rect),
                 );
             });
-            profiler.measure("compose_canvas_blit", || {
-                blit_canvas_content(
-                    present_frame,
+            base_dirty_rect = Some(
+                base_dirty_rect.map_or(dirty_rect, |existing| existing.union(dirty_rect)),
+            );
+        }
+
+        if let Some(dirty_rect) = self.pending_canvas_host_dirty_rect.take()
+            && dirty_rect.width > 0
+            && dirty_rect.height > 0
+        {
+            let bitmap = self.document.active_bitmap();
+            let canvas_source = CanvasCompositeSource {
+                width: bitmap.map_or(1, |bitmap| bitmap.width),
+                height: bitmap.map_or(1, |bitmap| bitmap.height),
+                pixels: bitmap.map_or(&[][..], |bitmap| bitmap.pixels.as_slice()),
+            };
+            profiler.measure("compose_dirty_overlay", || {
+                compose_overlay_region(
+                    overlay_frame,
                     &layout,
                     canvas_source,
                     self.document.view_transform,
-                    Some(canvas_dirty_rect),
+                    CanvasOverlayState {
+                        brush_preview: self.hover_canvas_position,
+                    },
+                    Some(dirty_rect),
                 );
             });
-            profiler.measure("compose_canvas_overlay", || {
-                draw_canvas_overlay(
-                    present_frame,
-                    &layout,
-                    canvas_source,
-                    self.document.view_transform,
-                    overlay,
-                    Some(canvas_dirty_rect),
-                );
-            });
-            profiler.record("compose_dirty_canvas", compose_started.elapsed());
-            canvas_updated = true;
-            let upload_rect = canvas_upload_rect.unwrap_or(canvas_dirty_rect);
-            dirty_rect = Some(dirty_rect.map_or(upload_rect, |existing| existing.union(upload_rect)));
+            overlay_dirty_rect = Some(dirty_rect);
+        }
+
+        let canvas_dirty_rect = self.pending_canvas_dirty_rect.take();
+        let canvas_transform_changed = std::mem::take(&mut self.pending_canvas_transform_update);
+        if let Some(canvas_dirty_rect) = canvas_dirty_rect {
+            let dirty = canvas_dirty_rect.clamp_to_bitmap(canvas_width, canvas_height);
+            profiler.record_value(
+                "canvas_upload_area_px",
+                (dirty.width * dirty.height) as f64,
+            );
+            profiler.record_value("canvas_upload_width_px", dirty.width as f64);
+            profiler.record_value("canvas_upload_height_px", dirty.height as f64);
+        }
+        if let Some(base_dirty_rect) = base_dirty_rect {
+            profiler.record_value(
+                "base_upload_area_px",
+                (base_dirty_rect.width * base_dirty_rect.height) as f64,
+            );
+            profiler.record_value("base_upload_width_px", base_dirty_rect.width as f64);
+            profiler.record_value("base_upload_height_px", base_dirty_rect.height as f64);
+        }
+        if let Some(overlay_dirty_rect) = overlay_dirty_rect {
+            profiler.record_value(
+                "overlay_upload_area_px",
+                (overlay_dirty_rect.width * overlay_dirty_rect.height) as f64,
+            );
+            profiler.record_value("overlay_upload_width_px", overlay_dirty_rect.width as f64);
+            profiler.record_value("overlay_upload_height_px", overlay_dirty_rect.height as f64);
+        }
+        if canvas_dirty_rect.is_some() || canvas_transform_changed {
+            profiler.measure("prepare_canvas_scene", || {});
         }
 
         PresentFrameUpdate {
-            dirty_rect,
-            canvas_updated,
+            base_dirty_rect,
+            overlay_dirty_rect,
+            canvas_dirty_rect,
+            canvas_transform_changed,
+            canvas_updated: canvas_dirty_rect.is_some() || canvas_transform_changed,
         }
     }
 }

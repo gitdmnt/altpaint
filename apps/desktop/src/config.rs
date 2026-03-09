@@ -59,6 +59,14 @@ pub(crate) fn default_panel_dir() -> PathBuf {
         .join("plugins")
 }
 
+/// 既定のペンプリセットディレクトリを返す。
+pub(crate) fn default_pen_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("pens")
+}
+
 /// テスト用に文字列からドキュメント寸法を解釈する。
 #[cfg(test)]
 pub(crate) fn parse_document_size(input: &str) -> Option<(usize, usize)> {

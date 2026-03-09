@@ -11,7 +11,8 @@ pub mod workspace;
 pub use command::Command;
 pub use document::{
     BlendMode, CanvasBitmap, CanvasViewTransform, ColorRgba8, DirtyRect, Document, LayerMask,
-    LayerNode, LayerNodeId, Page, PageId, Panel, PanelId, RasterLayer, ToolKind, Work, WorkId,
+    LayerNode, LayerNodeId, Page, PageId, Panel, PanelId, PenPreset, RasterLayer, ToolKind,
+    Work, WorkId,
 };
 pub use error::CoreError;
 pub use workspace::{WorkspaceLayout, WorkspacePanelState};

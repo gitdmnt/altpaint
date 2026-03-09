@@ -17,14 +17,21 @@ use storage::load_project_from_path;
 use ui_shell::{PanelSurface, UiShell};
 
 use crate::canvas_bridge::CanvasInputState;
-use crate::config::{DEFAULT_PROJECT_PATH, default_panel_dir};
+use crate::config::{DEFAULT_PROJECT_PATH, default_panel_dir, default_pen_dir};
 use crate::dialogs::{DesktopDialogs, NativeDesktopDialogs};
-use crate::frame::{DesktopLayout, Rect};
+use crate::frame::{
+    DesktopLayout, Rect, TextureQuad, brush_preview_rect, canvas_texture_quad,
+    exposed_canvas_background_rect,
+};
+use crate::pens::load_pen_directory;
 
 /// 差分提示のために更新領域を集約した結果を表す。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PresentFrameUpdate {
-    pub(crate) dirty_rect: Option<crate::frame::Rect>,
+    pub(crate) base_dirty_rect: Option<crate::frame::Rect>,
+    pub(crate) overlay_dirty_rect: Option<crate::frame::Rect>,
+    pub(crate) canvas_dirty_rect: Option<DirtyRect>,
+    pub(crate) canvas_transform_changed: bool,
     pub(crate) canvas_updated: bool,
 }
 
@@ -44,10 +51,12 @@ pub(crate) struct DesktopApp {
     canvas_input: CanvasInputState,
     pub(crate) panel_surface: Option<PanelSurface>,
     pub(crate) layout: Option<DesktopLayout>,
-    present_frame: Option<RenderFrame>,
+    base_frame: Option<RenderFrame>,
+    overlay_frame: Option<RenderFrame>,
     pending_canvas_dirty_rect: Option<DirtyRect>,
+    pending_canvas_background_dirty_rect: Option<Rect>,
     pending_canvas_host_dirty_rect: Option<Rect>,
-    pending_canvas_scroll: Option<(i32, i32)>,
+    pending_canvas_transform_update: bool,
     active_panel_drag: Option<PanelDragState>,
     hover_canvas_position: Option<(usize, usize)>,
     needs_ui_sync: bool,
@@ -78,6 +87,8 @@ impl DesktopApp {
             ui_shell.set_workspace_layout(project.workspace_layout);
             ui_shell.set_persistent_panel_configs(project.plugin_configs);
         }
+        let mut document = document;
+        Self::reload_pen_presets_into_document(&mut document);
         ui_shell.update(&document);
 
         Self {
@@ -88,10 +99,12 @@ impl DesktopApp {
             canvas_input: CanvasInputState::default(),
             panel_surface: None,
             layout: None,
-            present_frame: None,
+            base_frame: None,
+            overlay_frame: None,
             pending_canvas_dirty_rect: None,
+            pending_canvas_background_dirty_rect: None,
             pending_canvas_host_dirty_rect: None,
-            pending_canvas_scroll: None,
+            pending_canvas_transform_update: false,
             active_panel_drag: None,
             hover_canvas_position: None,
             needs_ui_sync: true,
@@ -126,8 +139,9 @@ impl DesktopApp {
     fn reset_active_interactions(&mut self) {
         self.canvas_input = CanvasInputState::default();
         self.pending_canvas_dirty_rect = None;
+        self.pending_canvas_background_dirty_rect = None;
         self.pending_canvas_host_dirty_rect = None;
-        self.pending_canvas_scroll = None;
+        self.pending_canvas_transform_update = false;
         self.active_panel_drag = None;
         self.hover_canvas_position = None;
     }
@@ -149,6 +163,15 @@ impl DesktopApp {
         true
     }
 
+    /// キャンバス背景の dirty rect を次回提示用に集約する。
+    fn append_canvas_background_dirty_rect(&mut self, dirty: Rect) -> bool {
+        self.pending_canvas_background_dirty_rect = Some(
+            self.pending_canvas_background_dirty_rect
+                .map_or(dirty, |existing| existing.union(dirty)),
+        );
+        true
+    }
+
     /// キャンバスホスト上の dirty rect を次回提示用に集約する。
     fn append_canvas_host_dirty_rect(&mut self, dirty: Rect) -> bool {
         self.pending_canvas_host_dirty_rect = Some(
@@ -158,37 +181,65 @@ impl DesktopApp {
         true
     }
 
-    /// キャンバス表示面のスクロール量を次回提示用に集約する。
-    fn append_canvas_scroll(&mut self, delta_x: f32, delta_y: f32) -> bool {
-        let delta_x = delta_x.round() as i32;
-        let delta_y = delta_y.round() as i32;
-        if delta_x == 0 && delta_y == 0 {
-            return false;
-        }
-
-        self.pending_canvas_scroll = Some(match self.pending_canvas_scroll {
-            Some((existing_x, existing_y)) => (existing_x + delta_x, existing_y + delta_y),
-            None => (delta_x, delta_y),
-        });
-        true
-    }
-
-    /// 現在のキャンバス表示矩形全域を dirty として次回差分更新対象にする。
-    fn invalidate_canvas_display(&mut self) -> bool {
+    /// GPU 側で再適用するキャンバス変換の更新を記録する。
+    fn mark_canvas_transform_dirty(
+        &mut self,
+        previous_transform: app_core::CanvasViewTransform,
+    ) -> bool {
+        self.pending_canvas_transform_update = true;
         if let Some(canvas_display_rect) = self
             .layout
             .as_ref()
             .map(|layout| layout.canvas_display_rect)
         {
-            self.append_canvas_host_dirty_rect(canvas_display_rect)
+            let (canvas_width, canvas_height) = self.canvas_dimensions();
+            let background_dirty = exposed_canvas_background_rect(
+                canvas_display_rect,
+                canvas_width,
+                canvas_height,
+                previous_transform,
+                self.document.view_transform,
+            )
+            .unwrap_or(canvas_display_rect);
+            self.append_canvas_background_dirty_rect(background_dirty);
+            if let Some(hover_position) = self.hover_canvas_position {
+                let previous_preview = brush_preview_rect(
+                    canvas_display_rect,
+                    canvas_width,
+                    canvas_height,
+                    previous_transform,
+                    hover_position,
+                );
+                let current_preview = brush_preview_rect(
+                    canvas_display_rect,
+                    canvas_width,
+                    canvas_height,
+                    self.document.view_transform,
+                    hover_position,
+                );
+
+                match (previous_preview, current_preview) {
+                    (Some(previous), Some(current)) => {
+                        self.append_canvas_host_dirty_rect(previous.union(current));
+                    }
+                    (Some(previous), None) => {
+                        self.append_canvas_host_dirty_rect(previous);
+                    }
+                    (None, Some(current)) => {
+                        self.append_canvas_host_dirty_rect(current);
+                    }
+                    (None, None) => {}
+                }
+            }
         } else {
             self.rebuild_present_frame();
-            true
         }
+        true
     }
 
     /// ドキュメント変更系コマンドを適用し、必要な更新フラグを立てる。
     fn execute_document_command(&mut self, command: Command) -> bool {
+        let previous_transform = self.document.view_transform;
         let dirty = self.document.apply_command(&command);
         match command {
             Command::DrawPoint { .. }
@@ -197,18 +248,21 @@ impl DesktopApp {
             | Command::EraseStroke { .. } => {
                 dirty.is_some_and(|dirty| self.append_canvas_dirty_rect(dirty))
             }
-            Command::SetActiveTool { .. } | Command::SetActiveColor { .. } => {
+            Command::SetActiveTool { .. }
+            | Command::SetActivePenSize { .. }
+            | Command::SelectNextPenPreset
+            | Command::SelectPreviousPenPreset
+            | Command::SetActiveColor { .. } => {
                 self.sync_ui_from_document();
                 self.mark_status_dirty();
                 true
             }
             Command::SetViewZoom { .. } | Command::ResetView => {
-                self.pending_canvas_scroll = None;
-                self.invalidate_canvas_display();
+                self.mark_canvas_transform_dirty(previous_transform);
                 self.mark_status_dirty();
                 true
             }
-            Command::PanView { delta_x, delta_y } => self.append_canvas_scroll(delta_x, delta_y),
+            Command::PanView { .. } => self.mark_canvas_transform_dirty(previous_transform),
             Command::AddRasterLayer
             | Command::SelectLayer { .. }
             | Command::SelectNextLayer
@@ -233,13 +287,31 @@ impl DesktopApp {
             | Command::SaveProjectAs
             | Command::SaveProjectToPath { .. }
             | Command::LoadProject
-            | Command::LoadProjectFromPath { .. } => false,
+            | Command::LoadProjectFromPath { .. }
+            | Command::ReloadPenPresets => false,
         }
     }
 
-    /// 直近に組み立てた提示フレームを返す。
-    pub(crate) fn present_frame(&self) -> Option<&RenderFrame> {
-        self.present_frame.as_ref()
+    /// 背景・パネル・ステータスを含むベースフレームを返す。
+    pub(crate) fn base_frame(&self) -> Option<&RenderFrame> {
+        self.base_frame.as_ref()
+    }
+
+    /// キャンバス上へ重ねるオーバーレイフレームを返す。
+    pub(crate) fn overlay_frame(&self) -> Option<&RenderFrame> {
+        self.overlay_frame.as_ref()
+    }
+
+    /// 現在のキャンバスを描画する GPU 四角形を返す。
+    pub(crate) fn canvas_texture_quad(&self) -> Option<TextureQuad> {
+        let layout = self.layout.as_ref()?;
+        let bitmap = self.document.active_bitmap()?;
+        canvas_texture_quad(
+            layout.canvas_display_rect,
+            bitmap.width,
+            bitmap.height,
+            self.document.view_transform,
+        )
     }
 
     /// 現在のアクティブビットマップ寸法を返す。
@@ -248,6 +320,28 @@ impl DesktopApp {
             .active_bitmap()
             .map(|bitmap| (bitmap.width, bitmap.height))
             .unwrap_or((1, 1))
+    }
+
+    pub(crate) fn reload_pen_presets(&mut self) -> bool {
+        let changed = Self::reload_pen_presets_into_document(&mut self.document);
+        if changed {
+            self.sync_ui_from_document();
+            self.mark_status_dirty();
+            self.rebuild_present_frame();
+        }
+        changed
+    }
+
+    fn reload_pen_presets_into_document(document: &mut Document) -> bool {
+        let (presets, diagnostics) = load_pen_directory(default_pen_dir());
+        for diagnostic in diagnostics {
+            eprintln!("pen preset load warning: {diagnostic}");
+        }
+        if presets.is_empty() {
+            return false;
+        }
+        document.replace_pen_presets(presets);
+        true
     }
 
     /// フッターへ表示する現在状態の概要文字列を生成する。
@@ -265,9 +359,14 @@ impl DesktopApp {
             .filter(|entry| !entry.visible)
             .count();
         format!(
-            "file={} / tool={:?} / color={} / zoom={:.2}x / pages={} / panels={} / hidden={}",
+            "file={} / tool={:?} / pen={} {}px / color={} / zoom={:.2}x / pages={} / panels={} / hidden={}",
             file_name,
             self.document.active_tool,
+            self.document
+                .active_pen_preset()
+                .map(|preset| preset.name.as_str())
+                .unwrap_or("Round Pen"),
+            self.document.active_pen_size,
             self.document.active_color.hex_rgb(),
             self.document.view_transform.zoom,
             self.document.work.pages.len(),

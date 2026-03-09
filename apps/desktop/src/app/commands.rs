@@ -73,6 +73,7 @@ impl DesktopApp {
             Ok(project) => {
                 self.project_path = path;
                 self.document = project.document;
+                let _ = self.reload_pen_presets();
                 self.ui_shell.set_workspace_layout(project.workspace_layout);
                 self.ui_shell.set_persistent_panel_configs(project.plugin_configs);
                 self.reset_active_interactions();
@@ -99,6 +100,7 @@ impl DesktopApp {
             Command::SaveProjectToPath { path } => self.save_project_to_path(PathBuf::from(path)),
             Command::LoadProject => self.open_project(),
             Command::LoadProjectFromPath { path } => self.load_project(PathBuf::from(path)),
+            Command::ReloadPenPresets => self.reload_pen_presets(),
             other => self.execute_document_command(other),
         }
     }

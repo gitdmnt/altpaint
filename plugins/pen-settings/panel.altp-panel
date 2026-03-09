@@ -1,0 +1,29 @@
+panel {
+  id: "builtin.pen-settings"
+  title: "Pen"
+  version: 1
+}
+
+permissions {
+  read.document
+  write.command
+}
+
+runtime {
+  wasm: "builtin_panel_pen_settings.wasm"
+}
+
+state {
+  size: int = {host.tool.pen_size}
+}
+
+view {
+  <column gap=8 padding=8>
+    <section title="Pen Width">
+      <text tone="muted">Loaded from pens/ and adjustable in host.</text>
+      <text>{host.tool.pen_name}</text>
+      <text>{host.tool.pen_size}px</text>
+      <slider id="pen.size" label="Size" min={host.tool.pen_min_size} max={host.tool.pen_max_size} value={state.size} fill="#90CAF9" on:change="set_pen_size"></slider>
+    </section>
+  </column>
+}

@@ -159,7 +159,8 @@ fn scroll_refresh_does_not_trigger_ui_update() {
 
     assert!(!profiler.stats.contains_key("ui_update"));
     assert!(!profiler.stats.contains_key("compose_full_frame"));
-    assert_eq!(update.dirty_rect, Some(layout.panel_host_rect));
+    assert_eq!(update.base_dirty_rect, Some(layout.panel_host_rect));
+    assert_eq!(update.overlay_dirty_rect, None);
     assert!(!update.canvas_updated);
     assert_eq!(
         profiler.stats.get("panel_surface").map(|stat| stat.calls),
@@ -181,7 +182,8 @@ fn focus_refresh_does_not_trigger_ui_update() {
 
     assert!(!profiler.stats.contains_key("ui_update"));
     assert!(!profiler.stats.contains_key("compose_full_frame"));
-    assert_eq!(update.dirty_rect, Some(layout.panel_host_rect));
+    assert_eq!(update.base_dirty_rect, Some(layout.panel_host_rect));
+    assert_eq!(update.overlay_dirty_rect, None);
     assert!(!update.canvas_updated);
     assert_eq!(
         profiler.stats.get("panel_surface").map(|stat| stat.calls),
@@ -208,16 +210,17 @@ fn tool_change_updates_status_without_full_recompose() {
     assert!(profiler.stats.contains_key("compose_dirty_status"));
     assert!(!update.canvas_updated);
     assert_eq!(
-        update.dirty_rect,
+        update.base_dirty_rect,
         Some(
             layout
                 .panel_host_rect
-                .union(crate::frame::status_text_rect(1280, 200, &layout))
+                .union(crate::frame::status_text_bounds(1280, 200, &layout, &app.status_text()))
         )
     );
+    assert_eq!(update.overlay_dirty_rect, None);
 }
 
-/// パン時はステータス再描画なしでキャンバス領域だけ更新できることを確認する。
+/// パン時は CPU 再合成なしで GPU キャンバス変換だけ更新できることを確認する。
 #[test]
 fn pan_view_updates_canvas_without_status_recompose() {
     let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
@@ -234,38 +237,37 @@ fn pan_view_updates_canvas_without_status_recompose() {
 
     assert!(!profiler.stats.contains_key("compose_full_frame"));
     assert!(!profiler.stats.contains_key("compose_dirty_status"));
-    assert!(profiler.stats.contains_key("compose_dirty_canvas"));
+    assert!(profiler.stats.contains_key("prepare_canvas_scene"));
+    assert!(profiler.stats.contains_key("compose_dirty_canvas_base"));
+    assert!(!profiler.stats.contains_key("compose_dirty_overlay"));
     assert!(update.canvas_updated);
-    assert_eq!(update.dirty_rect, Some(layout.canvas_display_rect));
+    assert!(update.canvas_transform_changed);
+    assert_eq!(update.canvas_dirty_rect, None);
+    assert!(update
+        .base_dirty_rect
+        .expect("base dirty rect")
+        .width
+        <= layout.canvas_display_rect.width);
+    assert_eq!(update.overlay_dirty_rect, None);
 }
 
 #[test]
-fn pan_view_dirty_update_matches_full_recompose() {
+fn pan_view_updates_canvas_quad_without_bitmap_reupload() {
     let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
     let mut profiler = DesktopProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+    let original_quad = app.canvas_texture_quad().expect("canvas quad exists");
 
     assert!(app.execute_command(Command::PanView {
         delta_x: 0.0,
         delta_y: -32.0,
     }));
-    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
-    let dirty_pixels = app.present_frame().expect("frame exists").pixels.clone();
+    let update = app.prepare_present_frame(1280, 800, &mut profiler);
+    let moved_quad = app.canvas_texture_quad().expect("canvas quad exists");
 
-    app.rebuild_present_frame();
-    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
-    let full_pixels = app.present_frame().expect("frame exists").pixels.clone();
-
-    let mismatch = dirty_pixels
-        .chunks_exact(4)
-        .zip(full_pixels.chunks_exact(4))
-        .enumerate()
-        .find(|(_, (dirty, full))| dirty != full);
-    assert!(
-        mismatch.is_none(),
-        "first mismatch: {:?}",
-        mismatch.map(|(index, (dirty, full))| (index, dirty.to_vec(), full.to_vec()))
-    );
+    assert!(update.canvas_transform_changed);
+    assert_eq!(update.canvas_dirty_rect, None);
+    assert_ne!(original_quad.destination, moved_quad.destination);
 }
 
 /// `NewDocument` 用のテストダイアログ付きアプリでも描画系の初期化が行えることを確認する。

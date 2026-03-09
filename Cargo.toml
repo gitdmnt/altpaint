@@ -15,6 +15,7 @@ members = [
   "plugins/tool-palette",
   "plugins/layers-panel",
   "plugins/color-palette",
+  "plugins/pen-settings",
   "plugins/job-progress",
   "plugins/snapshot-panel",
 ]

@@ -1664,6 +1664,7 @@ fn build_host_snapshot(document: &Document) -> Value {
     let active_layer_name = active_layer
         .map(|layer| layer.name.clone())
         .unwrap_or_else(|| "<no layer>".to_string());
+    let active_pen = document.active_pen_preset().cloned().unwrap_or_default();
 
     json!({
         "document": {
@@ -1682,8 +1683,16 @@ fn build_host_snapshot(document: &Document) -> Value {
         "tool": {
             "active": match document.active_tool {
                 ToolKind::Brush => "brush",
+                ToolKind::Pen => "pen",
                 ToolKind::Eraser => "eraser",
             },
+            "pen_name": active_pen.name,
+            "pen_id": active_pen.id,
+            "pen_index": document.active_pen_index(),
+            "pen_count": document.pen_presets.len(),
+            "pen_size": document.active_pen_size,
+            "pen_min_size": active_pen.min_size,
+            "pen_max_size": active_pen.max_size,
         },
         "color": {
             "active": document.active_color.hex_rgb(),
@@ -1809,11 +1818,23 @@ fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, St
                 .ok_or_else(|| "tool.set_active is missing payload.tool".to_string())?;
             let tool = match tool {
                 "brush" => ToolKind::Brush,
+                "pen" => ToolKind::Pen,
                 "eraser" => ToolKind::Eraser,
                 other => return Err(format!("unsupported tool kind: {other}")),
             };
             Ok(Command::SetActiveTool { tool })
         }
+        "tool.set_size" => {
+            let size = descriptor
+                .payload
+                .get("size")
+                .and_then(Value::as_u64)
+                .ok_or_else(|| "tool.set_size is missing payload.size".to_string())?;
+            Ok(Command::SetActivePenSize { size: size as u32 })
+        }
+        "tool.pen_next" => Ok(Command::SelectNextPenPreset),
+        "tool.pen_prev" => Ok(Command::SelectPreviousPenPreset),
+        "tool.reload_pen_presets" => Ok(Command::ReloadPenPresets),
         "tool.set_color" => {
             let color = descriptor
                 .payload

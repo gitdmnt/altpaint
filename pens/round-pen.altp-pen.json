@@ -1,0 +1,8 @@
+{
+  "format_version": 1,
+  "id": "builtin.round-pen",
+  "name": "Round Pen",
+  "size": 4,
+  "min_size": 1,
+  "max_size": 64
+}

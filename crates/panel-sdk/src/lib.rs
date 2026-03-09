@@ -56,6 +56,7 @@ pub mod commands {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum Tool {
         Brush,
+        Pen,
         Eraser,
     }
 
@@ -63,6 +64,7 @@ pub mod commands {
         pub fn as_str(self) -> &'static str {
             match self {
                 Self::Brush => "brush",
+                Self::Pen => "pen",
                 Self::Eraser => "eraser",
             }
         }
@@ -152,6 +154,24 @@ pub mod commands {
 
         pub fn set_color_rgb(color: RgbColor) -> CommandDescriptor {
             set_color_hex(color.to_hex_string())
+        }
+
+        pub fn set_size(size: u32) -> CommandDescriptor {
+            let mut descriptor = CommandDescriptor::new("tool.set_size");
+            descriptor.payload.insert("size".to_string(), json!(size));
+            descriptor
+        }
+
+        pub fn select_next_pen() -> CommandDescriptor {
+            CommandDescriptor::new("tool.pen_next")
+        }
+
+        pub fn select_previous_pen() -> CommandDescriptor {
+            CommandDescriptor::new("tool.pen_prev")
+        }
+
+        pub fn reload_pen_presets() -> CommandDescriptor {
+            CommandDescriptor::new("tool.reload_pen_presets")
         }
     }
 

@@ -10,7 +10,7 @@ use storage::{load_project_from_path, save_project_to_path};
 
 use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::DesktopApp;
-use crate::frame::status_text_rect;
+use crate::frame::status_text_bounds;
 use crate::profiler::DesktopProfiler;
 
 /// open ダイアログ経由の読込でワークスペース状態も復元されることを確認する。
@@ -172,9 +172,14 @@ fn move_panel_host_action_updates_status_without_full_recompose() {
     assert!(profiler.stats.contains_key("compose_dirty_panel"));
     assert!(profiler.stats.contains_key("compose_dirty_status"));
     assert_eq!(
-        update.dirty_rect,
-        Some(layout.panel_host_rect.union(status_text_rect(1280, 200, &layout)))
+        update.base_dirty_rect,
+        Some(
+            layout
+                .panel_host_rect
+                .union(status_text_bounds(1280, 200, &layout, &app.status_text()))
+        )
     );
+    assert_eq!(update.overlay_dirty_rect, None);
 }
 
 /// パネル表示切替が全面再構成ではなく差分更新で反映されることを確認する。
@@ -197,7 +202,12 @@ fn set_panel_visibility_updates_status_without_full_recompose() {
     assert!(profiler.stats.contains_key("compose_dirty_panel"));
     assert!(profiler.stats.contains_key("compose_dirty_status"));
     assert_eq!(
-        update.dirty_rect,
-        Some(layout.panel_host_rect.union(status_text_rect(1280, 200, &layout)))
+        update.base_dirty_rect,
+        Some(
+            layout
+                .panel_host_rect
+                .union(status_text_bounds(1280, 200, &layout, &app.status_text()))
+        )
     );
+    assert_eq!(update.overlay_dirty_rect, None);
 }

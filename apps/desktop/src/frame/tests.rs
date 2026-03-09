@@ -149,6 +149,32 @@ fn transformed_canvas_dirty_rect_tracks_zoom_and_pan() {
     assert_eq!(mapped.y, 50);
 }
 
+#[test]
+fn canvas_texture_quad_clips_uv_when_panned_outside_display() {
+    let quad = canvas_texture_quad(
+        Rect {
+            x: 100,
+            y: 80,
+            width: 320,
+            height: 320,
+        },
+        64,
+        64,
+        CanvasViewTransform {
+            zoom: 2.0,
+            rotation_degrees: 0.0,
+            pan_x: 48.0,
+            pan_y: -16.0,
+        },
+    )
+    .expect("quad exists");
+
+    assert_eq!(quad.destination.width, 320);
+    assert!(quad.uv_min[0] > 0.0);
+    assert!(quad.uv_max[0] <= 1.0);
+    assert!(quad.uv_min[1] >= 0.0);
+}
+
 /// dirty rect 転送が指定領域だけを書き換えることを確認する。
 #[test]
 fn blit_scaled_rgba_region_updates_only_dirty_area() {

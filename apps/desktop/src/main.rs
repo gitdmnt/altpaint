@@ -8,6 +8,7 @@ mod canvas_bridge;
 mod config;
 mod dialogs;
 mod frame;
+mod pens;
 mod profiler;
 mod runtime;
 mod wgpu_canvas;
