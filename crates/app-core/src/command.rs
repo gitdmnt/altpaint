@@ -47,12 +47,20 @@ pub enum Command {
     ResetView,
     /// 新しいラスタレイヤーを追加する。
     AddRasterLayer,
+    /// 現在のアクティブレイヤーを削除する。
+    RemoveActiveLayer,
     /// アクティブレイヤーを指定 index に切り替える。
     SelectLayer { index: usize },
+    /// アクティブレイヤー名を変更する。
+    RenameActiveLayer { name: String },
+    /// レイヤー順を指定 index 間で移動する。
+    MoveLayer { from_index: usize, to_index: usize },
     /// 次のレイヤーをアクティブにする。
     SelectNextLayer,
     /// アクティブレイヤーの合成モードを循環させる。
     CycleActiveLayerBlendMode,
+    /// アクティブレイヤーの合成モードを明示設定する。
+    SetActiveLayerBlendMode { mode: crate::document::BlendMode },
     /// アクティブレイヤーの表示状態を切り替える。
     ToggleActiveLayerVisibility,
     /// アクティブレイヤーの最小デモマスクを切り替える。

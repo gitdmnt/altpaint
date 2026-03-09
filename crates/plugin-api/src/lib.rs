@@ -52,6 +52,12 @@ pub enum PanelEvent {
         node_id: String,
         value: usize,
     },
+    DragValue {
+        panel_id: String,
+        node_id: String,
+        from: usize,
+        to: usize,
+    },
     SetText {
         panel_id: String,
         node_id: String,
@@ -69,6 +75,18 @@ pub enum PanelEvent {
 pub enum TextInputMode {
     Text,
     Numeric,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DropdownOption {
+    pub label: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LayerListItem {
+    pub label: String,
+    pub detail: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -119,6 +137,20 @@ pub enum PanelNode {
         binding_path: String,
         action: Option<HostAction>,
         input_mode: TextInputMode,
+    },
+    Dropdown {
+        id: String,
+        label: String,
+        value: String,
+        action: HostAction,
+        options: Vec<DropdownOption>,
+    },
+    LayerList {
+        id: String,
+        label: String,
+        selected_index: usize,
+        action: HostAction,
+        items: Vec<LayerListItem>,
     },
 }
 
@@ -193,6 +225,9 @@ pub trait PanelPlugin {
             | PanelEvent::SetValue {
                 panel_id, node_id, ..
             }
+            | PanelEvent::DragValue {
+                panel_id, node_id, ..
+            }
             | PanelEvent::SetText {
                 panel_id, node_id, ..
             } if panel_id == self.id() => {
@@ -231,6 +266,10 @@ fn find_actions_in_node(node: &PanelNode, target_id: &str) -> Option<Vec<HostAct
             ..
         } if id == target_id => Some(vec![action.clone()]),
         PanelNode::TextInput { .. } => None,
+        PanelNode::Dropdown { id, action, .. } if id == target_id => Some(vec![action.clone()]),
+        PanelNode::Dropdown { .. } => None,
+        PanelNode::LayerList { id, action, .. } if id == target_id => Some(vec![action.clone()]),
+        PanelNode::LayerList { .. } => None,
     }
 }
 

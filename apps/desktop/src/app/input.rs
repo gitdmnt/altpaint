@@ -91,15 +91,19 @@ impl DesktopApp {
 
         match &event {
             PanelEvent::SetValue {
-                panel_id, node_id, ..
+                panel_id,
+                node_id,
+                value,
             } => {
                 self.active_panel_drag = Some(PanelDragState {
                     panel_id: panel_id.clone(),
                     node_id: node_id.clone(),
+                    source_value: *value,
                 });
                 self.dispatch_panel_event(event)
             }
             PanelEvent::Activate { .. }
+            | PanelEvent::DragValue { .. }
             | PanelEvent::SetText { .. }
             | PanelEvent::Keyboard { .. } => false,
         }
@@ -113,7 +117,17 @@ impl DesktopApp {
         let Some(event) = self.panel_drag_event_from_window(&state, x, y) else {
             return false;
         };
-        self.dispatch_panel_event(event)
+        let changed = self.dispatch_panel_event(event.clone());
+        self.advance_panel_drag_source(&event);
+        changed
+    }
+
+    pub(crate) fn advance_panel_drag_source(&mut self, event: &PanelEvent) {
+        if let PanelEvent::DragValue { to, .. } = event
+            && let Some(active_drag) = self.active_panel_drag.as_mut()
+        {
+            active_drag.source_value = *to;
+        }
     }
 
     /// パネルイベントを `UiShell` とホストアクションへ流す。
@@ -346,6 +360,12 @@ impl DesktopApp {
             x,
             y,
         )?;
-        panel_surface.drag_event(&state.panel_id, &state.node_id, surface_x, surface_y)
+        panel_surface.drag_event(
+            &state.panel_id,
+            &state.node_id,
+            state.source_value,
+            surface_x,
+            surface_y,
+        )
     }
 }

@@ -45,6 +45,7 @@ pub(crate) struct PresentFrameUpdate {
 struct PanelDragState {
     panel_id: String,
     node_id: String,
+    source_value: usize,
 }
 
 #[derive(Debug)]
@@ -374,9 +375,13 @@ impl DesktopApp {
             }
             Command::PanView { .. } => self.mark_canvas_transform_dirty(previous_transform),
             Command::AddRasterLayer
+            | Command::RemoveActiveLayer
             | Command::SelectLayer { .. }
+            | Command::RenameActiveLayer { .. }
+            | Command::MoveLayer { .. }
             | Command::SelectNextLayer
             | Command::CycleActiveLayerBlendMode
+            | Command::SetActiveLayerBlendMode { .. }
             | Command::ToggleActiveLayerVisibility
             | Command::ToggleActiveLayerMask => {
                 self.sync_ui_from_document();

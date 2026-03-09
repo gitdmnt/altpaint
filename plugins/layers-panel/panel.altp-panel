@@ -6,6 +6,7 @@ panel {
 
 permissions {
   read.document
+  write.command
 }
 
 runtime {
@@ -17,6 +18,7 @@ state {
   page_count: int = 0
   panel_count: int = 0
   layer_count: int = 0
+  layers_json: string = "[]"
   active_layer_name: string = ""
   active_layer_index: int = 0
   active_layer_blend_mode: string = "normal"
@@ -28,26 +30,35 @@ view {
   <column gap=8 padding=8>
     <section title="Document">
       <text tone="muted">Hosted via Rust SDK + Wasm</text>
-      <text>Work title</text>
       <text>{state.title}</text>
-      <text>Page count</text>
-      <text>{state.page_count}</text>
-      <text>Panel count</text>
-      <text>{state.panel_count}</text>
-      <text>Layer count</text>
-      <text>{state.layer_count}</text>
+      <text>pages: {state.page_count} / panels: {state.panel_count} / layers: {state.layer_count}</text>
     </section>
-    <section title="Active Layer">
-      <text>{state.active_layer_name}</text>
+    <section title="Layers">
+      <row>
+        <button id="layers.add" on:click="add_layer">Add Layer</button>
+        <button id="layers.remove" on:click="remove_layer">Delete Layer</button>
+      </row>
+      <layer-list
+        id="layers.list"
+        items={state.layers_json}
+        selected={state.active_layer_index}
+        on:change="handle_layer_list"
+      />
+    </section>
+    <section title="Selected Layer">
+      <input id="layers.name" label="Name" value={state.active_layer_name} bind="active_layer_name" placeholder="Layer name" on:change="rename_active_layer" />
       <text>index: {state.active_layer_index}</text>
-      <text>blend: {state.active_layer_blend_mode}</text>
-      <text>visible: {state.active_layer_visible}</text>
-      <text>mask: {state.active_layer_masked}</text>
-      <button id="layers.add" on:click="add_layer">Add Layer</button>
-      <button id="layers.next" on:click="select_next_layer">Next Layer</button>
-      <button id="layers.blend" on:click="cycle_blend_mode">Cycle Blend</button>
+      <dropdown
+        id="layers.blend_mode"
+        label="Blend Mode"
+        value={state.active_layer_blend_mode}
+        options="normal:Normal|multiply:Multiply|screen:Screen|add:Add"
+        on:change="set_blend_mode"
+      />
       <button id="layers.visibility" on:click="toggle_layer_visibility">Toggle Visibility</button>
       <button id="layers.mask" on:click="toggle_layer_mask">Toggle Mask</button>
+      <text>visible: {state.active_layer_visible}</text>
+      <text>mask: {state.active_layer_masked}</text>
     </section>
   </column>
 }

@@ -177,6 +177,9 @@ pub struct Panel {
     /// 現在描画対象として選択されているレイヤー index。
     #[serde(default)]
     pub active_layer_index: usize,
+    /// これまでに作成されたレイヤー数。
+    #[serde(default = "default_created_layer_count")]
+    pub created_layer_count: u64,
 }
 
 impl Default for Panel {
@@ -188,8 +191,13 @@ impl Default for Panel {
             bitmap: background.bitmap.clone(),
             layers: vec![background],
             active_layer_index: 0,
+            created_layer_count: 1,
         }
     }
+}
+
+const fn default_created_layer_count() -> u64 {
+    1
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -208,6 +216,16 @@ impl BlendMode {
             Self::Multiply => "multiply",
             Self::Screen => "screen",
             Self::Add => "add",
+        }
+    }
+
+    pub fn parse_name(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "normal" => Some(Self::Normal),
+            "multiply" => Some(Self::Multiply),
+            "screen" => Some(Self::Screen),
+            "add" => Some(Self::Add),
+            _ => None,
         }
     }
 
@@ -880,8 +898,23 @@ impl Document {
                 self.add_raster_layer();
                 None
             }
+            Command::RemoveActiveLayer => {
+                self.remove_active_layer();
+                None
+            }
             Command::SelectLayer { index } => {
                 self.select_layer(*index);
+                None
+            }
+            Command::RenameActiveLayer { name } => {
+                self.rename_active_layer(name);
+                None
+            }
+            Command::MoveLayer {
+                from_index,
+                to_index,
+            } => {
+                self.move_layer(*from_index, *to_index);
                 None
             }
             Command::SelectNextLayer => {
@@ -890,6 +923,10 @@ impl Document {
             }
             Command::CycleActiveLayerBlendMode => {
                 self.cycle_active_layer_blend_mode();
+                None
+            }
+            Command::SetActiveLayerBlendMode { mode } => {
+                self.set_active_layer_blend_mode(*mode);
                 None
             }
             Command::ToggleActiveLayerVisibility => {
@@ -1021,15 +1058,36 @@ impl Document {
             .and_then(|page| page.panels.first_mut())
         {
             ensure_panel_layers(panel);
-            let next_index = panel.layers.len() + 1;
+            panel.created_layer_count = panel.created_layer_count.saturating_add(1);
+            let next_index = panel.created_layer_count;
             let (width, height) = (panel.bitmap.width, panel.bitmap.height);
             panel.layers.push(RasterLayer::transparent(
-                LayerNodeId(next_index as u64),
+                LayerNodeId(next_index),
                 format!("Layer {next_index}"),
                 width,
                 height,
             ));
             panel.active_layer_index = panel.layers.len().saturating_sub(1);
+            sync_root_layer_summary(panel);
+        }
+    }
+
+    pub fn remove_active_layer(&mut self) {
+        if let Some(panel) = self
+            .work
+            .pages
+            .first_mut()
+            .and_then(|page| page.panels.first_mut())
+        {
+            ensure_panel_layers(panel);
+            if panel.layers.len() <= 1 {
+                return;
+            }
+            panel.layers.remove(panel.active_layer_index);
+            panel.active_layer_index = panel
+                .active_layer_index
+                .min(panel.layers.len().saturating_sub(1));
+            panel.bitmap = composite_panel_bitmap(panel);
             sync_root_layer_summary(panel);
         }
     }
@@ -1043,6 +1101,55 @@ impl Document {
         {
             ensure_panel_layers(panel);
             panel.active_layer_index = index.min(panel.layers.len().saturating_sub(1));
+            sync_root_layer_summary(panel);
+        }
+    }
+
+    pub fn rename_active_layer(&mut self, name: &str) {
+        if let Some(panel) = self
+            .work
+            .pages
+            .first_mut()
+            .and_then(|page| page.panels.first_mut())
+        {
+            ensure_panel_layers(panel);
+            if let Some(layer) = panel.layers.get_mut(panel.active_layer_index) {
+                layer.name = name.to_string();
+                sync_root_layer_summary(panel);
+            }
+        }
+    }
+
+    pub fn move_layer(&mut self, from_index: usize, to_index: usize) {
+        if let Some(panel) = self
+            .work
+            .pages
+            .first_mut()
+            .and_then(|page| page.panels.first_mut())
+        {
+            ensure_panel_layers(panel);
+            if panel.layers.len() <= 1 {
+                return;
+            }
+
+            let last_index = panel.layers.len().saturating_sub(1);
+            let from_index = from_index.min(last_index);
+            let to_index = to_index.min(last_index);
+            if from_index == to_index {
+                return;
+            }
+
+            let moved = panel.layers.remove(from_index);
+            panel.layers.insert(to_index, moved);
+
+            panel.active_layer_index = match panel.active_layer_index {
+                index if index == from_index => to_index,
+                index if from_index < index && index <= to_index => index.saturating_sub(1),
+                index if to_index <= index && index < from_index => index + 1,
+                index => index,
+            };
+
+            panel.bitmap = composite_panel_bitmap(panel);
             sync_root_layer_summary(panel);
         }
     }
@@ -1070,6 +1177,21 @@ impl Document {
             ensure_panel_layers(panel);
             if let Some(layer) = panel.layers.get_mut(panel.active_layer_index) {
                 layer.blend_mode = layer.blend_mode.next();
+                panel.bitmap = composite_panel_bitmap(panel);
+            }
+        }
+    }
+
+    pub fn set_active_layer_blend_mode(&mut self, mode: BlendMode) {
+        if let Some(panel) = self
+            .work
+            .pages
+            .first_mut()
+            .and_then(|page| page.panels.first_mut())
+        {
+            ensure_panel_layers(panel);
+            if let Some(layer) = panel.layers.get_mut(panel.active_layer_index) {
+                layer.blend_mode = mode;
                 panel.bitmap = composite_panel_bitmap(panel);
             }
         }
@@ -1124,6 +1246,10 @@ fn ensure_panel_layers(panel: &mut Panel) {
         }
         repaired = true;
     }
+    panel.created_layer_count = panel
+        .created_layer_count
+        .max(panel.layers.len() as u64)
+        .max(1);
     panel.active_layer_index = panel
         .active_layer_index
         .min(panel.layers.len().saturating_sub(1));
@@ -1596,6 +1722,96 @@ mod tests {
         assert_eq!(panel.layers.len(), 2);
         assert_eq!(panel.active_layer_index, 1);
         assert_eq!(panel.layers[1].name, "Layer 2");
+    }
+
+    #[test]
+    fn add_raster_layer_uses_created_layer_counter_for_names() {
+        let mut document = Document::default();
+        let _ = document.apply_command(&Command::AddRasterLayer);
+        let _ = document.apply_command(&Command::AddRasterLayer);
+        let _ = document.apply_command(&Command::RemoveActiveLayer);
+
+        let _ = document.apply_command(&Command::AddRasterLayer);
+
+        let panel = &document.work.pages[0].panels[0];
+        let names = panel
+            .layers
+            .iter()
+            .map(|layer| layer.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["Layer 1", "Layer 2", "Layer 4"]);
+        assert_eq!(panel.created_layer_count, 4);
+    }
+
+    #[test]
+    fn remove_active_layer_keeps_at_least_one_layer() {
+        let mut document = Document::default();
+
+        let _ = document.apply_command(&Command::RemoveActiveLayer);
+
+        let panel = &document.work.pages[0].panels[0];
+        assert_eq!(panel.layers.len(), 1);
+        assert_eq!(panel.active_layer_index, 0);
+    }
+
+    #[test]
+    fn remove_active_layer_selects_remaining_layer() {
+        let mut document = Document::default();
+        let _ = document.apply_command(&Command::AddRasterLayer);
+        let _ = document.apply_command(&Command::AddRasterLayer);
+
+        let _ = document.apply_command(&Command::RemoveActiveLayer);
+
+        let panel = &document.work.pages[0].panels[0];
+        assert_eq!(panel.layers.len(), 2);
+        assert_eq!(panel.active_layer_index, 1);
+        assert_eq!(panel.layers[1].name, "Layer 2");
+    }
+
+    #[test]
+    fn move_layer_reorders_layers_and_tracks_active_selection() {
+        let mut document = Document::default();
+        let _ = document.apply_command(&Command::AddRasterLayer);
+        let _ = document.apply_command(&Command::AddRasterLayer);
+
+        let _ = document.apply_command(&Command::MoveLayer {
+            from_index: 2,
+            to_index: 0,
+        });
+
+        let panel = &document.work.pages[0].panels[0];
+        let names = panel
+            .layers
+            .iter()
+            .map(|layer| layer.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["Layer 3", "Layer 1", "Layer 2"]);
+        assert_eq!(panel.active_layer_index, 0);
+    }
+
+    #[test]
+    fn rename_active_layer_updates_selected_layer_name() {
+        let mut document = Document::default();
+        let _ = document.apply_command(&Command::AddRasterLayer);
+
+        let _ = document.apply_command(&Command::RenameActiveLayer {
+            name: "Ink".to_string(),
+        });
+
+        let panel = &document.work.pages[0].panels[0];
+        assert_eq!(panel.layers[1].name, "Ink");
+        assert_eq!(panel.root_layer.name, "Ink");
+    }
+
+    #[test]
+    fn set_active_layer_blend_mode_sets_requested_mode() {
+        let mut document = Document::default();
+        let _ = document.apply_command(&Command::SetActiveLayerBlendMode {
+            mode: BlendMode::Screen,
+        });
+
+        let panel = &document.work.pages[0].panels[0];
+        assert_eq!(panel.layers[0].blend_mode, BlendMode::Screen);
     }
 
     #[test]

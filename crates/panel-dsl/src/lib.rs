@@ -277,6 +277,8 @@ fn validate_view_node(
                 "toggle",
                 "slider",
                 "input",
+                "dropdown",
+                "layer-list",
                 "separator",
                 "spacer",
                 "when",
@@ -318,6 +320,24 @@ fn validate_view_node(
                 handler_bindings.insert(handler.to_string());
             }
             if element.tag == "input"
+                && let Some(handler) = element
+                    .attributes
+                    .get("on:change")
+                    .and_then(AttrValue::as_string)
+            {
+                validate_handler_binding(handler)?;
+                handler_bindings.insert(handler.to_string());
+            }
+            if element.tag == "dropdown"
+                && let Some(handler) = element
+                    .attributes
+                    .get("on:change")
+                    .and_then(AttrValue::as_string)
+            {
+                validate_handler_binding(handler)?;
+                handler_bindings.insert(handler.to_string());
+            }
+            if element.tag == "layer-list"
                 && let Some(handler) = element
                     .attributes
                     .get("on:change")
@@ -892,6 +912,8 @@ view {
       <text tone="muted">Loaded from .altp-panel</text>
       <button id="sample.reload" on:click="reload_panel">Reload</button>
       <toggle id="sample.toggle" checked=false on:change="toggle_advanced">Advanced</toggle>
+            <dropdown id="sample.mode" value="brush" options="brush:Brush|eraser:Eraser" on:change="select_mode" />
+            <layer-list id="sample.layers" items="[]" selected=0 on:change="reorder_layers" />
     </section>
   </column>
 }
@@ -925,6 +947,8 @@ view {
 
         assert!(definition.handler_bindings.contains("reload_panel"));
         assert!(definition.handler_bindings.contains("toggle_advanced"));
+        assert!(definition.handler_bindings.contains("select_mode"));
+        assert!(definition.handler_bindings.contains("reorder_layers"));
     }
 
     #[test]

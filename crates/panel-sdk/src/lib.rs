@@ -205,13 +205,55 @@ pub mod commands {
         use super::CommandDescriptor;
         use serde_json::json;
 
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum BlendMode {
+            Normal,
+            Multiply,
+            Screen,
+            Add,
+        }
+
+        impl BlendMode {
+            pub fn as_str(self) -> &'static str {
+                match self {
+                    Self::Normal => "normal",
+                    Self::Multiply => "multiply",
+                    Self::Screen => "screen",
+                    Self::Add => "add",
+                }
+            }
+        }
+
         pub fn add() -> CommandDescriptor {
             CommandDescriptor::new("layer.add")
+        }
+
+        pub fn remove() -> CommandDescriptor {
+            CommandDescriptor::new("layer.remove")
         }
 
         pub fn select(index: usize) -> CommandDescriptor {
             let mut descriptor = CommandDescriptor::new("layer.select");
             descriptor.payload.insert("index".to_string(), json!(index));
+            descriptor
+        }
+
+        pub fn rename_active(name: impl Into<String>) -> CommandDescriptor {
+            let mut descriptor = CommandDescriptor::new("layer.rename_active");
+            descriptor
+                .payload
+                .insert("name".to_string(), json!(name.into()));
+            descriptor
+        }
+
+        pub fn move_to(from_index: usize, to_index: usize) -> CommandDescriptor {
+            let mut descriptor = CommandDescriptor::new("layer.move");
+            descriptor
+                .payload
+                .insert("from_index".to_string(), json!(from_index));
+            descriptor
+                .payload
+                .insert("to_index".to_string(), json!(to_index));
             descriptor
         }
 
@@ -221,6 +263,18 @@ pub mod commands {
 
         pub fn cycle_blend_mode() -> CommandDescriptor {
             CommandDescriptor::new("layer.cycle_blend_mode")
+        }
+
+        pub fn set_blend_mode(mode: impl Into<String>) -> CommandDescriptor {
+            let mut descriptor = CommandDescriptor::new("layer.set_blend_mode");
+            descriptor
+                .payload
+                .insert("mode".to_string(), json!(mode.into()));
+            descriptor
+        }
+
+        pub fn set_blend_mode_enum(mode: BlendMode) -> CommandDescriptor {
+            set_blend_mode(mode.as_str())
         }
 
         pub fn toggle_visibility() -> CommandDescriptor {
@@ -589,6 +643,10 @@ pub mod host {
         pub fn active_layer_masked() -> bool {
             host_bool("document.active_layer_masked")
         }
+
+        pub fn layers_json() -> String {
+            host_string("document.layers_json")
+        }
     }
 
     pub mod tool {
@@ -718,6 +776,20 @@ mod tests {
 
         assert_eq!(tool.payload.get("tool"), Some(&json!("eraser")));
         assert_eq!(color.payload.get("color"), Some(&json!("#0C2238")));
+    }
+
+    #[test]
+    fn typed_layer_commands_hide_payload_keys() {
+        let move_descriptor = commands::layer::move_to(2, 0);
+        let blend_descriptor = commands::layer::set_blend_mode_enum(commands::layer::BlendMode::Screen);
+        let rename_descriptor = commands::layer::rename_active("Ink");
+
+        assert_eq!(commands::layer::remove().name, "layer.remove");
+        assert_eq!(move_descriptor.payload.get("from_index"), Some(&json!(2)));
+        assert_eq!(move_descriptor.payload.get("to_index"), Some(&json!(0)));
+        assert_eq!(blend_descriptor.payload.get("mode"), Some(&json!("screen")));
+        assert_eq!(rename_descriptor.name, "layer.rename_active");
+        assert_eq!(rename_descriptor.payload.get("name"), Some(&json!("Ink")));
     }
 
     #[test]

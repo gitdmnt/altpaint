@@ -16,8 +16,8 @@ use panel_schema::{
     CommandDescriptor, Diagnostic, PanelEventRequest, PanelInitRequest, StatePatch,
 };
 use plugin_api::{
-    HostAction, PanelEvent, PanelMoveDirection, PanelNode, PanelPlugin, PanelTree, PanelView,
-    TextInputMode,
+    DropdownOption, HostAction, LayerListItem, PanelEvent, PanelMoveDirection, PanelNode,
+    PanelPlugin, PanelTree, PanelView, TextInputMode,
 };
 use plugin_host::{PluginHostError, WasmPanelRuntime};
 use render::{RenderContext, RenderFrame};
@@ -55,6 +55,10 @@ const SLIDER_HEIGHT: usize = 32;
 const SLIDER_TRACK_HEIGHT: usize = 8;
 const SLIDER_TRACK_TOP: usize = 20;
 const SLIDER_KNOB_WIDTH: usize = 8;
+const DROPDOWN_HEIGHT: usize = 24;
+const LAYER_LIST_ITEM_HEIGHT: usize = 38;
+const LAYER_LIST_DETAIL_OFFSET: usize = 18;
+const LAYER_LIST_DRAG_HANDLE_WIDTH: usize = 14;
 const INPUT_BACKGROUND: [u8; 4] = [0x15, 0x15, 0x15, 0xff];
 const INPUT_BORDER: [u8; 4] = [0x56, 0x56, 0x56, 0xff];
 const INPUT_PLACEHOLDER: [u8; 4] = [0x88, 0x88, 0x88, 0xff];
@@ -67,6 +71,8 @@ const PANEL_SCROLL_PIXELS_PER_LINE: i32 = 48;
 enum PanelHitKind {
     Activate,
     Slider { min: usize, max: usize },
+    LayerListItem { value: usize },
+    DropdownOption { value: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,6 +101,7 @@ struct TextInputEditorState {
 #[derive(Clone, Copy)]
 struct PanelRenderState<'a> {
     focused_target: Option<&'a FocusTarget>,
+    expanded_dropdown: Option<&'a FocusTarget>,
     text_input_states: &'a BTreeMap<(String, String), TextInputEditorState>,
 }
 
@@ -124,19 +131,62 @@ impl PanelSurface {
         &self,
         panel_id: &str,
         node_id: &str,
+        source_value: usize,
         x: usize,
         y: usize,
     ) -> Option<PanelEvent> {
-        self.hit_regions
+        let source_region = self
+            .hit_regions
             .iter()
             .rev()
-            .find(|region| region.panel_id == panel_id && region.node_id == node_id)
-            .map(|region| panel_event_for_region(region, x, y))
+            .find(|region| {
+                region.panel_id == panel_id
+                    && region.node_id == node_id
+                    && (
+                        matches!(&region.kind, PanelHitKind::Slider { .. })
+                            || matches!(
+                                &region.kind,
+                                PanelHitKind::LayerListItem { value } if *value == source_value
+                            )
+                    )
+            })?;
+
+        match &source_region.kind {
+            PanelHitKind::Slider { .. } => self
+                .hit_regions
+                .iter()
+                .rev()
+                .find(|region| region.panel_id == panel_id && region.node_id == node_id)
+                .map(|region| panel_event_for_region(region, x, y)),
+            PanelHitKind::LayerListItem { .. } => self
+                .hit_regions
+                .iter()
+                .rev()
+                .find(|region| {
+                    region.panel_id == panel_id
+                        && region.node_id == node_id
+                        && x >= region.x
+                        && y >= region.y
+                        && x < region.x + region.width
+                        && y < region.y + region.height
+                        && matches!(&region.kind, PanelHitKind::LayerListItem { .. })
+                })
+                .and_then(|region| match &region.kind {
+                    PanelHitKind::LayerListItem { value } => Some(PanelEvent::DragValue {
+                        panel_id: panel_id.to_string(),
+                        node_id: node_id.to_string(),
+                        from: source_value,
+                        to: *value,
+                    }),
+                    _ => None,
+                }),
+            PanelHitKind::Activate | PanelHitKind::DropdownOption { .. } => None,
+        }
     }
 }
 
 fn panel_event_for_region(region: &PanelHitRegion, x: usize, y: usize) -> PanelEvent {
-    match region.kind {
+    match &region.kind {
         PanelHitKind::Activate => PanelEvent::Activate {
             panel_id: region.panel_id.clone(),
             node_id: region.node_id.clone(),
@@ -144,7 +194,17 @@ fn panel_event_for_region(region: &PanelHitRegion, x: usize, y: usize) -> PanelE
         PanelHitKind::Slider { min, max } => PanelEvent::SetValue {
             panel_id: region.panel_id.clone(),
             node_id: region.node_id.clone(),
-            value: slider_value_for_position(region, min, max, x, y),
+            value: slider_value_for_position(region, *min, *max, x, y),
+        },
+        PanelHitKind::LayerListItem { value } => PanelEvent::SetValue {
+            panel_id: region.panel_id.clone(),
+            node_id: region.node_id.clone(),
+            value: *value,
+        },
+        PanelHitKind::DropdownOption { value } => PanelEvent::SetText {
+            panel_id: region.panel_id.clone(),
+            node_id: region.node_id.clone(),
+            value: value.clone(),
         },
     }
 }
@@ -178,6 +238,7 @@ pub struct UiShell {
     panel_scroll_offset: usize,
     panel_content_height: usize,
     focused_target: Option<FocusTarget>,
+    expanded_dropdown: Option<FocusTarget>,
     text_input_states: BTreeMap<(String, String), TextInputEditorState>,
     persistent_panel_configs: BTreeMap<String, Value>,
 }
@@ -196,6 +257,7 @@ impl UiShell {
             panel_scroll_offset: 0,
             panel_content_height: 0,
             focused_target: None,
+            expanded_dropdown: None,
             text_input_states: BTreeMap::new(),
             persistent_panel_configs: BTreeMap::new(),
         }
@@ -372,6 +434,24 @@ impl UiShell {
     pub fn handle_panel_event(&mut self, event: &PanelEvent) -> Vec<HostAction> {
         if let PanelEvent::Activate { panel_id, node_id } = event {
             let _ = self.focus_panel_node(panel_id, node_id);
+            if self.is_dropdown_target(panel_id, node_id) {
+                let dropdown = FocusTarget {
+                    panel_id: panel_id.clone(),
+                    node_id: node_id.clone(),
+                };
+                self.expanded_dropdown = if self.expanded_dropdown.as_ref() == Some(&dropdown) {
+                    None
+                } else {
+                    Some(dropdown)
+                };
+                self.panel_content_dirty = true;
+                return Vec::new();
+            }
+        }
+        if let PanelEvent::SetText { panel_id, node_id, .. } = event
+            && self.is_dropdown_target(panel_id, node_id)
+        {
+            self.expanded_dropdown = None;
         }
         if event_panel_id(event) == WORKSPACE_PANEL_ID {
             let actions =
@@ -670,7 +750,15 @@ impl UiShell {
 
     fn build_panel_content_surface(&mut self, width: usize, panel_width: usize) -> PanelSurface {
         let trees = self.panel_trees();
-        self.panel_content_height = measure_panel_content_height(&trees, panel_width);
+        let focused_target = self.focused_target.clone();
+        let expanded_dropdown = self.expanded_dropdown.clone();
+        let text_input_states = self.text_input_states.clone();
+        let render_state = PanelRenderState {
+            focused_target: focused_target.as_ref(),
+            expanded_dropdown: expanded_dropdown.as_ref(),
+            text_input_states: &text_input_states,
+        };
+        self.panel_content_height = measure_panel_content_height(&trees, panel_width, render_state);
 
         let content_height = self.panel_content_height.max(1);
         let mut content = PanelSurface {
@@ -690,7 +778,7 @@ impl UiShell {
 
         let mut cursor_y = PANEL_OUTER_PADDING;
         for tree in trees {
-            let panel_height = measure_panel_tree(&tree, panel_width);
+            let panel_height = measure_panel_tree(&tree, panel_width, render_state);
             fill_rect(
                 &mut content,
                 PANEL_OUTER_PADDING,
@@ -713,10 +801,7 @@ impl UiShell {
                 PANEL_OUTER_PADDING,
                 cursor_y,
                 panel_width,
-                PanelRenderState {
-                    focused_target: self.focused_target.as_ref(),
-                    text_input_states: &self.text_input_states,
-                },
+                render_state,
             );
             cursor_y += panel_height + PANEL_OUTER_PADDING;
         }
@@ -756,6 +841,14 @@ impl UiShell {
             collect_focus_targets(tree.id, &tree.children, &mut targets);
         }
         targets
+    }
+
+    fn is_dropdown_target(&self, panel_id: &str, node_id: &str) -> bool {
+        self.panel_trees()
+            .into_iter()
+            .find(|tree| tree.id == panel_id)
+            .map(|tree| find_dropdown_node(&tree.children, node_id).is_some())
+            .unwrap_or(false)
     }
 
     fn max_panel_scroll_offset(&self, viewport_height: usize) -> usize {
@@ -985,6 +1078,7 @@ fn event_panel_id(event: &PanelEvent) -> &str {
     match event {
         PanelEvent::Activate { panel_id, .. }
         | PanelEvent::SetValue { panel_id, .. }
+        | PanelEvent::DragValue { panel_id, .. }
         | PanelEvent::SetText { panel_id, .. }
         | PanelEvent::Keyboard { panel_id, .. } => panel_id,
     }
@@ -994,6 +1088,7 @@ fn workspace_panel_actions(nodes: &[PanelNode], event: &PanelEvent) -> Vec<HostA
     let target_id = match event {
         PanelEvent::Activate { node_id, .. }
         | PanelEvent::SetValue { node_id, .. }
+        | PanelEvent::DragValue { node_id, .. }
         | PanelEvent::SetText { node_id, .. } => node_id,
         PanelEvent::Keyboard { .. } => return Vec::new(),
     };
@@ -1027,6 +1122,10 @@ fn find_actions_in_node_local(node: &PanelNode, target_id: &str) -> Option<Vec<H
             ..
         } if id == target_id => Some(vec![action.clone()]),
         PanelNode::TextInput { .. } => None,
+        PanelNode::Dropdown { id, action, .. } if id == target_id => Some(vec![action.clone()]),
+        PanelNode::Dropdown { .. } => None,
+        PanelNode::LayerList { id, action, .. } if id == target_id => Some(vec![action.clone()]),
+        PanelNode::LayerList { .. } => None,
     }
 }
 
@@ -1132,6 +1231,7 @@ impl DslPanelPlugin {
         match event {
             PanelEvent::Activate { node_id, .. }
             | PanelEvent::SetValue { node_id, .. }
+            | PanelEvent::DragValue { node_id, .. }
             | PanelEvent::SetText { node_id, .. } => find_panel_action(&tree.children, node_id),
             PanelEvent::Keyboard { .. } if self.has_keyboard_handler => {
                 Some(HostAction::InvokePanelHandler {
@@ -1254,6 +1354,11 @@ impl PanelPlugin for DslPanelPlugin {
         let event_payload = match event {
             PanelEvent::Activate { .. } => json!({}),
             PanelEvent::SetValue { value, .. } => json!({ "value": value }),
+            PanelEvent::DragValue { from, to, .. } => json!({
+                "from": from.to_string(),
+                "to": to.to_string(),
+                "value": to,
+            }),
             PanelEvent::SetText { value, .. } => json!({ "value": value }),
             PanelEvent::Keyboard {
                 shortcut,
@@ -1428,6 +1533,39 @@ fn convert_dsl_view_node(
                     })
                     .unwrap_or(TextInputMode::Text),
             }],
+            "dropdown" => vec![PanelNode::Dropdown {
+                id: node_id_for(element, context, "dropdown"),
+                label: attribute_string(&element.attributes, "label", context).unwrap_or_default(),
+                value: attribute_string(&element.attributes, "value", context).unwrap_or_default(),
+                action: element
+                    .attributes
+                    .get("on:change")
+                    .and_then(DslAttrValue::as_string)
+                    .map(|handler_name| HostAction::InvokePanelHandler {
+                        panel_id: context.panel_id.clone(),
+                        handler_name: handler_name.to_string(),
+                        event_kind: "change".to_string(),
+                    })
+                    .unwrap_or(HostAction::DispatchCommand(Command::Noop)),
+                options: attribute_dropdown_options(&element.attributes, "options", context),
+            }],
+            "layer-list" => vec![PanelNode::LayerList {
+                id: node_id_for(element, context, "layer-list"),
+                label: attribute_string(&element.attributes, "label", context).unwrap_or_default(),
+                selected_index: attribute_usize(&element.attributes, "selected", context)
+                    .unwrap_or_default(),
+                action: element
+                    .attributes
+                    .get("on:change")
+                    .and_then(DslAttrValue::as_string)
+                    .map(|handler_name| HostAction::InvokePanelHandler {
+                        panel_id: context.panel_id.clone(),
+                        handler_name: handler_name.to_string(),
+                        event_kind: "change".to_string(),
+                    })
+                    .unwrap_or(HostAction::DispatchCommand(Command::Noop)),
+                items: attribute_layer_list_items(&element.attributes, "items", context),
+            }],
             "separator" => vec![PanelNode::Text {
                 id: node_id_for(element, context, "separator"),
                 text: "────────".to_string(),
@@ -1565,6 +1703,107 @@ fn attribute_usize(
         .and_then(|value| attr_value_to_usize(value, context))
 }
 
+fn attribute_dropdown_options(
+    attributes: &std::collections::BTreeMap<String, DslAttrValue>,
+    key: &str,
+    context: &DslEvaluationContext<'_>,
+) -> Vec<DropdownOption> {
+    let Some(raw) = attribute_string(attributes, key, context) else {
+        return Vec::new();
+    };
+
+    raw.split('|')
+        .filter_map(|item| {
+            let item = item.trim();
+            if item.is_empty() {
+                return None;
+            }
+            let (value, label) = item.split_once(':').unwrap_or((item, item));
+            Some(DropdownOption {
+                label: label.trim().to_string(),
+                value: value.trim().to_string(),
+            })
+        })
+        .collect()
+}
+
+fn attribute_layer_list_items(
+    attributes: &std::collections::BTreeMap<String, DslAttrValue>,
+    key: &str,
+    context: &DslEvaluationContext<'_>,
+) -> Vec<LayerListItem> {
+    let Some(value) = attributes.get(key) else {
+        return Vec::new();
+    };
+
+    layer_list_items_from_value(value, context)
+}
+
+fn layer_list_items_from_value(
+    value: &DslAttrValue,
+    context: &DslEvaluationContext<'_>,
+) -> Vec<LayerListItem> {
+    let json_value = match value {
+        DslAttrValue::Expression(expression) => evaluate_expression(expression, context),
+        DslAttrValue::String(text) => serde_json::from_str(text).unwrap_or_else(|_| Value::String(text.clone())),
+        DslAttrValue::Integer(number) => Value::Number((*number).into()),
+        DslAttrValue::Float(number) => number
+            .parse::<f64>()
+            .ok()
+            .and_then(serde_json::Number::from_f64)
+            .map(Value::Number)
+            .unwrap_or(Value::Null),
+        DslAttrValue::Bool(value) => Value::Bool(*value),
+    };
+
+    layer_list_items_from_json(&json_value)
+}
+
+fn layer_list_items_from_json(value: &Value) -> Vec<LayerListItem> {
+    match value {
+        Value::Array(items) => items.iter().filter_map(layer_list_item_from_json).collect(),
+        Value::String(text) => serde_json::from_str::<Value>(text)
+            .ok()
+            .map(|parsed| layer_list_items_from_json(&parsed))
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+fn layer_list_item_from_json(value: &Value) -> Option<LayerListItem> {
+    let object = value.as_object()?;
+    let label = object
+        .get("label")
+        .and_then(Value::as_str)
+        .or_else(|| object.get("name").and_then(Value::as_str))?
+        .to_string();
+    let detail = object
+        .get("detail")
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .unwrap_or_else(|| {
+            let blend_mode = object
+                .get("blend_mode")
+                .and_then(Value::as_str)
+                .unwrap_or("normal");
+            let visible = object
+                .get("visible")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+            let masked = object
+                .get("masked")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            format!(
+                "blend: {blend_mode} / {} / mask: {}",
+                if visible { "visible" } else { "hidden" },
+                masked
+            )
+        });
+
+    Some(LayerListItem { label, detail })
+}
+
 fn expression_to_string(expression: &str, context: &DslEvaluationContext<'_>) -> String {
     match evaluate_expression(expression, context) {
         Value::String(text) => text,
@@ -1683,6 +1922,28 @@ fn build_host_snapshot(document: &Document) -> Value {
         .pages
         .first()
         .and_then(|page| page.panels.first());
+    let layers = active_panel
+        .map(|panel| {
+            panel
+                .layers
+                .iter()
+                .map(|layer| {
+                    json!({
+                        "name": layer.name,
+                        "blend_mode": layer.blend_mode.as_str(),
+                        "visible": layer.visible,
+                        "masked": layer.mask.is_some(),
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(|| vec![json!({
+            "name": "Layer 1",
+            "blend_mode": "normal",
+            "visible": true,
+            "masked": false,
+        })]);
+    let layers_json = serde_json::to_string(&layers).unwrap_or_else(|_| "[]".to_string());
     let layer_count = active_panel.map(|panel| panel.layers.len()).unwrap_or(1);
     let active_layer_index = active_panel
         .map(|panel| panel.active_layer_index)
@@ -1713,6 +1974,8 @@ fn build_host_snapshot(document: &Document) -> Value {
                 .unwrap_or("normal"),
             "active_layer_visible": active_layer.map(|layer| layer.visible).unwrap_or(true),
             "active_layer_masked": active_layer.and_then(|layer| layer.mask.as_ref()).is_some(),
+            "layers": layers,
+            "layers_json": layers_json,
         },
         "tool": {
             "active": match document.active_tool {
@@ -1878,6 +2141,7 @@ fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, St
                 .ok_or_else(|| format!("invalid color payload: {color}"))
         }
         "layer.add" => Ok(Command::AddRasterLayer),
+        "layer.remove" => Ok(Command::RemoveActiveLayer),
         "layer.select" => {
             let index = descriptor
                 .payload
@@ -1888,8 +2152,44 @@ fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, St
                 index: index as usize,
             })
         }
+        "layer.rename_active" => {
+            let name = descriptor
+                .payload
+                .get("name")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "layer.rename_active is missing payload.name".to_string())?;
+            Ok(Command::RenameActiveLayer {
+                name: name.to_string(),
+            })
+        }
+        "layer.move" => {
+            let from_index = descriptor
+                .payload
+                .get("from_index")
+                .and_then(payload_u64)
+                .ok_or_else(|| "layer.move is missing payload.from_index".to_string())?;
+            let to_index = descriptor
+                .payload
+                .get("to_index")
+                .and_then(payload_u64)
+                .ok_or_else(|| "layer.move is missing payload.to_index".to_string())?;
+            Ok(Command::MoveLayer {
+                from_index: from_index as usize,
+                to_index: to_index as usize,
+            })
+        }
         "layer.select_next" => Ok(Command::SelectNextLayer),
         "layer.cycle_blend_mode" => Ok(Command::CycleActiveLayerBlendMode),
+        "layer.set_blend_mode" => {
+            let mode = descriptor
+                .payload
+                .get("mode")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "layer.set_blend_mode is missing payload.mode".to_string())?;
+            let mode = app_core::BlendMode::parse_name(mode)
+                .ok_or_else(|| format!("unsupported layer blend mode: {mode}"))?;
+            Ok(Command::SetActiveLayerBlendMode { mode })
+        }
         "layer.toggle_visibility" => Ok(Command::ToggleActiveLayerVisibility),
         "layer.toggle_mask" => Ok(Command::ToggleActiveLayerMask),
         "view.reset" => Ok(Command::ResetView),
@@ -1986,11 +2286,42 @@ fn find_panel_action(nodes: &[PanelNode], target_id: &str) -> Option<HostAction>
                 action: Some(action),
                 ..
             } if id == target_id => return Some(action.clone()),
+            PanelNode::Dropdown { id, action, .. } if id == target_id => {
+                return Some(action.clone());
+            }
+            PanelNode::LayerList { id, action, .. } if id == target_id => {
+                return Some(action.clone());
+            }
             PanelNode::Text { .. }
             | PanelNode::ColorPreview { .. }
             | PanelNode::Button { .. }
             | PanelNode::Slider { .. }
-            | PanelNode::TextInput { .. } => {}
+            | PanelNode::TextInput { .. }
+            | PanelNode::Dropdown { .. }
+            | PanelNode::LayerList { .. } => {}
+        }
+    }
+    None
+}
+
+fn find_dropdown_node<'a>(nodes: &'a [PanelNode], target_id: &str) -> Option<&'a PanelNode> {
+    for node in nodes {
+        match node {
+            PanelNode::Column { children, .. }
+            | PanelNode::Row { children, .. }
+            | PanelNode::Section { children, .. } => {
+                if let Some(found) = find_dropdown_node(children, target_id) {
+                    return Some(found);
+                }
+            }
+            PanelNode::Dropdown { id, .. } if id == target_id => return Some(node),
+            PanelNode::Text { .. }
+            | PanelNode::ColorPreview { .. }
+            | PanelNode::Button { .. }
+            | PanelNode::Slider { .. }
+            | PanelNode::TextInput { .. }
+            | PanelNode::Dropdown { .. }
+            | PanelNode::LayerList { .. } => {}
         }
     }
     None
@@ -2024,7 +2355,9 @@ fn find_text_input_binding(
             | PanelNode::ColorPreview { .. }
             | PanelNode::Button { .. }
             | PanelNode::Slider { .. }
-            | PanelNode::TextInput { .. } => {}
+            | PanelNode::TextInput { .. }
+            | PanelNode::Dropdown { .. }
+            | PanelNode::LayerList { .. } => {}
         }
     }
     None
@@ -2050,7 +2383,9 @@ fn find_text_input_value(nodes: &[PanelNode], target_id: &str) -> Option<(String
             | PanelNode::ColorPreview { .. }
             | PanelNode::Button { .. }
             | PanelNode::Slider { .. }
-            | PanelNode::TextInput { .. } => {}
+            | PanelNode::TextInput { .. }
+            | PanelNode::Dropdown { .. }
+            | PanelNode::LayerList { .. } => {}
         }
     }
     None
@@ -2072,6 +2407,12 @@ fn collect_focus_targets(panel_id: &str, nodes: &[PanelNode], targets: &mut Vec<
                 panel_id: panel_id.to_string(),
                 node_id: id.clone(),
             }),
+            PanelNode::Dropdown { id, .. } | PanelNode::LayerList { id, .. } => {
+                targets.push(FocusTarget {
+                    panel_id: panel_id.to_string(),
+                    node_id: id.clone(),
+                })
+            }
             PanelNode::Text { .. } | PanelNode::ColorPreview { .. } | PanelNode::Slider { .. } => {}
         }
     }
@@ -2201,24 +2542,28 @@ fn viewport_panel_surface(
     surface
 }
 
-fn measure_panel_content_height(trees: &[PanelTree], width: usize) -> usize {
+fn measure_panel_content_height(
+    trees: &[PanelTree],
+    width: usize,
+    render_state: PanelRenderState<'_>,
+) -> usize {
     if trees.is_empty() {
         return PANEL_OUTER_PADDING * 2;
     }
 
     let panels_height: usize = trees
         .iter()
-        .map(|tree| measure_panel_tree(tree, width) + PANEL_OUTER_PADDING)
+        .map(|tree| measure_panel_tree(tree, width, render_state) + PANEL_OUTER_PADDING)
         .sum();
     PANEL_OUTER_PADDING + panels_height
 }
 
-fn measure_panel_tree(tree: &PanelTree, width: usize) -> usize {
+fn measure_panel_tree(tree: &PanelTree, width: usize, render_state: PanelRenderState<'_>) -> usize {
     let title_width = width.saturating_sub(PANEL_INNER_PADDING * 2);
     let title_height = measure_text(tree.title, title_width);
     let mut content_height = 0;
     for (index, child) in tree.children.iter().enumerate() {
-        content_height += measure_node(child, title_width);
+        content_height += measure_node(child, tree.id, title_width, render_state);
         if index + 1 != tree.children.len() {
             content_height += NODE_GAP;
         }
@@ -2227,13 +2572,18 @@ fn measure_panel_tree(tree: &PanelTree, width: usize) -> usize {
     PANEL_INNER_PADDING * 2 + title_height + 6 + content_height
 }
 
-fn measure_node(node: &PanelNode, available_width: usize) -> usize {
+fn measure_node(
+    node: &PanelNode,
+    panel_id: &str,
+    available_width: usize,
+    render_state: PanelRenderState<'_>,
+) -> usize {
     match node {
         PanelNode::Column { children, .. } => children
             .iter()
             .enumerate()
             .map(|(index, child)| {
-                measure_node(child, available_width)
+                measure_node(child, panel_id, available_width, render_state)
                     + usize::from(index + 1 != children.len()) * NODE_GAP
             })
             .sum(),
@@ -2246,7 +2596,7 @@ fn measure_node(node: &PanelNode, available_width: usize) -> usize {
             };
             children
                 .iter()
-                .map(|child| measure_node(child, width_per_child))
+                .map(|child| measure_node(child, panel_id, width_per_child, render_state))
                 .max()
                 .unwrap_or(0)
         }
@@ -2257,7 +2607,7 @@ fn measure_node(node: &PanelNode, available_width: usize) -> usize {
             let child_width = available_width.saturating_sub(SECTION_INDENT);
             let mut children_height = 0;
             for (index, child) in children.iter().enumerate() {
-                children_height += measure_node(child, child_width);
+                children_height += measure_node(child, panel_id, child_width, render_state);
                 if index + 1 != children.len() {
                     children_height += SECTION_GAP;
                 }
@@ -2275,6 +2625,23 @@ fn measure_node(node: &PanelNode, available_width: usize) -> usize {
                 measure_text(label, available_width) + 4
             };
             label_height + INPUT_BOX_HEIGHT
+        }
+        PanelNode::Dropdown { id, options, .. } => {
+            let mut height = DROPDOWN_HEIGHT;
+            if render_state.expanded_dropdown.is_some_and(|target| {
+                target.panel_id == panel_id && target.node_id == id.as_str()
+            }) {
+                height += options.len() * DROPDOWN_HEIGHT;
+            }
+            height
+        }
+        PanelNode::LayerList { label, items, .. } => {
+            let label_height = if label.is_empty() {
+                0
+            } else {
+                measure_text(label, available_width) + 4
+            };
+            label_height + items.len().max(1) * LAYER_LIST_ITEM_HEIGHT
         }
     }
 }
@@ -2571,6 +2938,217 @@ fn draw_node(
             });
             SLIDER_HEIGHT
         }
+        PanelNode::Dropdown {
+            id,
+            label,
+            value,
+            options,
+            ..
+        } => {
+            let is_focused = render_state
+                .focused_target
+                .is_some_and(|target| target.panel_id == panel_id && target.node_id == id.as_str());
+            let is_expanded = render_state
+                .expanded_dropdown
+                .is_some_and(|target| target.panel_id == panel_id && target.node_id == id.as_str());
+            let selected_label = options
+                .iter()
+                .find(|option| option.value == *value)
+                .map(|option| option.label.as_str())
+                .unwrap_or(value.as_str());
+            let button_label = if label.is_empty() {
+                format!("{selected_label} ▾")
+            } else {
+                format!("{label}: {selected_label} ▾")
+            };
+
+            fill_rect(surface, x, y, available_width, DROPDOWN_HEIGHT, BUTTON_FILL);
+            stroke_rect(
+                surface,
+                x,
+                y,
+                available_width,
+                DROPDOWN_HEIGHT,
+                if is_expanded {
+                    BUTTON_ACTIVE_BORDER
+                } else {
+                    BUTTON_BORDER
+                },
+            );
+            if is_focused && available_width > 2 && DROPDOWN_HEIGHT > 2 {
+                stroke_rect(
+                    surface,
+                    x + 1,
+                    y + 1,
+                    available_width - 2,
+                    DROPDOWN_HEIGHT - 2,
+                    BUTTON_FOCUS_BORDER,
+                );
+            }
+            draw_wrapped_text(
+                surface,
+                x + 6,
+                y + 7,
+                &button_label,
+                BUTTON_TEXT,
+                available_width.saturating_sub(12),
+            );
+            surface.hit_regions.push(PanelHitRegion {
+                x,
+                y,
+                width: available_width,
+                height: DROPDOWN_HEIGHT,
+                panel_id: panel_id.to_string(),
+                node_id: id.clone(),
+                kind: PanelHitKind::Activate,
+            });
+
+            if !is_expanded {
+                return DROPDOWN_HEIGHT;
+            }
+
+            let mut cursor_y = y + DROPDOWN_HEIGHT;
+            for option in options {
+                let active = option.value == *value;
+                fill_rect(
+                    surface,
+                    x,
+                    cursor_y,
+                    available_width,
+                    DROPDOWN_HEIGHT,
+                    if active {
+                        BUTTON_ACTIVE_FILL
+                    } else {
+                        PANEL_BACKGROUND
+                    },
+                );
+                stroke_rect(
+                    surface,
+                    x,
+                    cursor_y,
+                    available_width,
+                    DROPDOWN_HEIGHT,
+                    BUTTON_BORDER,
+                );
+                draw_wrapped_text(
+                    surface,
+                    x + 6,
+                    cursor_y + 7,
+                    &option.label,
+                    if active { BUTTON_TEXT } else { BODY_TEXT },
+                    available_width.saturating_sub(12),
+                );
+                surface.hit_regions.push(PanelHitRegion {
+                    x,
+                    y: cursor_y,
+                    width: available_width,
+                    height: DROPDOWN_HEIGHT,
+                    panel_id: panel_id.to_string(),
+                    node_id: id.clone(),
+                    kind: PanelHitKind::DropdownOption {
+                        value: option.value.clone(),
+                    },
+                });
+                cursor_y += DROPDOWN_HEIGHT;
+            }
+
+            DROPDOWN_HEIGHT + options.len() * DROPDOWN_HEIGHT
+        }
+        PanelNode::LayerList {
+            id,
+            label,
+            selected_index,
+            items,
+            ..
+        } => {
+            let is_focused = render_state
+                .focused_target
+                .is_some_and(|target| target.panel_id == panel_id && target.node_id == id.as_str());
+            let label_height = if label.is_empty() {
+                0
+            } else {
+                draw_wrapped_text(surface, x, y, label, BODY_TEXT, available_width) + 4
+            };
+            let mut cursor_y = y + label_height;
+            let item_count = items.len().max(1);
+            for index in 0..item_count {
+                let item = items.get(index).cloned().unwrap_or(LayerListItem {
+                    label: "<no layers>".to_string(),
+                    detail: String::new(),
+                });
+                let active = *selected_index == index;
+                fill_rect(
+                    surface,
+                    x,
+                    cursor_y,
+                    available_width,
+                    LAYER_LIST_ITEM_HEIGHT,
+                    if active {
+                        BUTTON_ACTIVE_FILL
+                    } else {
+                        BUTTON_FILL
+                    },
+                );
+                stroke_rect(
+                    surface,
+                    x,
+                    cursor_y,
+                    available_width,
+                    LAYER_LIST_ITEM_HEIGHT,
+                    if active {
+                        BUTTON_ACTIVE_BORDER
+                    } else {
+                        BUTTON_BORDER
+                    },
+                );
+                if is_focused && active && available_width > 2 && LAYER_LIST_ITEM_HEIGHT > 2 {
+                    stroke_rect(
+                        surface,
+                        x + 1,
+                        cursor_y + 1,
+                        available_width - 2,
+                        LAYER_LIST_ITEM_HEIGHT - 2,
+                        BUTTON_FOCUS_BORDER,
+                    );
+                }
+                draw_text_rgba(
+                    &mut surface.pixels,
+                    surface.width,
+                    surface.height,
+                    x + 6,
+                    cursor_y + 6,
+                    &item.label,
+                    BUTTON_TEXT,
+                );
+                if !item.detail.is_empty() {
+                    draw_text_rgba(
+                        &mut surface.pixels,
+                        surface.width,
+                        surface.height,
+                        x + 6,
+                        cursor_y + LAYER_LIST_DETAIL_OFFSET,
+                        &item.detail,
+                        BODY_TEXT,
+                    );
+                }
+                let grip_x = x + available_width.saturating_sub(LAYER_LIST_DRAG_HANDLE_WIDTH);
+                for offset in [8usize, 14, 20] {
+                    fill_rect(surface, grip_x, cursor_y + offset, 8, 1, BODY_TEXT);
+                }
+                surface.hit_regions.push(PanelHitRegion {
+                    x,
+                    y: cursor_y,
+                    width: available_width,
+                    height: LAYER_LIST_ITEM_HEIGHT,
+                    panel_id: panel_id.to_string(),
+                    node_id: id.clone(),
+                    kind: PanelHitKind::LayerListItem { value: index },
+                });
+                cursor_y += LAYER_LIST_ITEM_HEIGHT;
+            }
+
+            label_height + item_count * LAYER_LIST_ITEM_HEIGHT
+        }
         PanelNode::TextInput {
             id,
             label,
@@ -2781,7 +3359,7 @@ mod tests {
     use super::*;
     use crate::text::{draw_text_rgba, text_backend_name, wrap_text_lines};
     use app_core::{Command, ToolKind};
-    use plugin_api::PanelPlugin;
+    use plugin_api::{DropdownOption, HostAction, LayerListItem, PanelPlugin};
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -3022,6 +3600,80 @@ view {
         }
     }
 
+    struct TestLayerListPanel;
+
+    impl PanelPlugin for TestLayerListPanel {
+        fn id(&self) -> &'static str {
+            "test.layer-list"
+        }
+
+        fn title(&self) -> &'static str {
+            "Layer List"
+        }
+
+        fn panel_tree(&self) -> PanelTree {
+            PanelTree {
+                id: self.id(),
+                title: self.title(),
+                children: vec![PanelNode::LayerList {
+                    id: "layers.list".to_string(),
+                    label: "Layers".to_string(),
+                    selected_index: 0,
+                    action: HostAction::DispatchCommand(Command::Noop),
+                    items: vec![
+                        LayerListItem {
+                            label: "Layer 1".to_string(),
+                            detail: "blend: normal / visible / mask: false".to_string(),
+                        },
+                        LayerListItem {
+                            label: "Layer 2".to_string(),
+                            detail: "blend: multiply / visible / mask: false".to_string(),
+                        },
+                        LayerListItem {
+                            label: "Layer 3".to_string(),
+                            detail: "blend: screen / hidden / mask: true".to_string(),
+                        },
+                    ],
+                }],
+            }
+        }
+    }
+
+    struct TestDropdownPanel;
+
+    impl PanelPlugin for TestDropdownPanel {
+        fn id(&self) -> &'static str {
+            "test.dropdown"
+        }
+
+        fn title(&self) -> &'static str {
+            "Dropdown"
+        }
+
+        fn panel_tree(&self) -> PanelTree {
+            PanelTree {
+                id: self.id(),
+                title: self.title(),
+                children: vec![PanelNode::Dropdown {
+                    id: "blend.mode".to_string(),
+                    label: "Blend Mode".to_string(),
+                    value: "normal".to_string(),
+                    action: HostAction::DispatchCommand(Command::Noop),
+                    options: vec![
+                        DropdownOption {
+                            label: "Normal".to_string(),
+                            value: "normal".to_string(),
+                        },
+                        DropdownOption {
+                            label: "Multiply".to_string(),
+                            value: "multiply".to_string(),
+                        },
+                    ],
+                }],
+            }
+        }
+    }
+
     /// パネル登録がホスト状態に反映されることを確認する。
     #[test]
     fn registering_panel_increases_panel_count() {
@@ -3102,7 +3754,9 @@ view {
                 PanelNode::Text { .. }
                 | PanelNode::ColorPreview { .. }
                 | PanelNode::Slider { .. }
-                | PanelNode::TextInput { .. } => false,
+                | PanelNode::TextInput { .. }
+                | PanelNode::Dropdown { .. }
+                | PanelNode::LayerList { .. } => false,
             })
         }
 
@@ -3175,7 +3829,9 @@ view {
                 PanelNode::Text { .. }
                 | PanelNode::Button { .. }
                 | PanelNode::Slider { .. }
-                | PanelNode::TextInput { .. } => false,
+                | PanelNode::TextInput { .. }
+                | PanelNode::Dropdown { .. }
+                | PanelNode::LayerList { .. } => false,
             })
         }
 
@@ -3226,6 +3882,101 @@ view {
         }
 
         assert!(found.is_some());
+    }
+
+    #[test]
+    fn rendered_layer_list_drag_maps_to_drag_value_event() {
+        let mut shell = UiShell::new();
+        shell.register_panel(Box::new(TestLayerListPanel));
+        shell.update(&Document::default());
+
+        let surface = shell.render_panel_surface(280, 320);
+        let mut source = None;
+        let mut target = None;
+
+        'outer: for y in 0..surface.height {
+            for x in 0..surface.width {
+                if let Some(PanelEvent::SetValue {
+                    panel_id,
+                    node_id,
+                    value,
+                }) = surface.hit_test(x, y)
+                    && panel_id == "test.layer-list"
+                    && node_id == "layers.list"
+                {
+                    if value == 0 && source.is_none() {
+                        source = Some((x, y));
+                    }
+                    if value == 2 {
+                        target = Some((x, y));
+                        break 'outer;
+                    }
+                }
+            }
+        }
+
+        let (target_x, target_y) = target.expect("target layer hit exists");
+        let drag_event = surface.drag_event("test.layer-list", "layers.list", 0, target_x, target_y);
+
+        assert_eq!(
+            drag_event,
+            Some(PanelEvent::DragValue {
+                panel_id: "test.layer-list".to_string(),
+                node_id: "layers.list".to_string(),
+                from: 0,
+                to: 2,
+            })
+        );
+        assert!(source.is_some());
+    }
+
+    #[test]
+    fn dropdown_expands_and_option_hit_sets_text_event() {
+        let mut shell = UiShell::new();
+        shell.register_panel(Box::new(TestDropdownPanel));
+        shell.update(&Document::default());
+
+        let collapsed = shell.render_panel_surface(280, 200);
+        let (root_x, root_y) = (0..collapsed.height)
+            .find_map(|y| {
+                (0..collapsed.width).find_map(|x| {
+                    match collapsed.hit_test(x, y) {
+                        Some(PanelEvent::Activate { panel_id, node_id })
+                            if panel_id == "test.dropdown" && node_id == "blend.mode" =>
+                        {
+                            Some((x, y))
+                        }
+                        _ => None,
+                    }
+                })
+            })
+            .expect("dropdown root exists");
+
+        assert!(shell
+            .handle_panel_event(&PanelEvent::Activate {
+                panel_id: "test.dropdown".to_string(),
+                node_id: "blend.mode".to_string(),
+            })
+            .is_empty());
+
+        let expanded = shell.render_panel_surface(280, 240);
+        let option_event = (0..expanded.height)
+            .find_map(|y| {
+                (0..expanded.width).find_map(|x| match expanded.hit_test(x, y) {
+                    Some(PanelEvent::SetText {
+                        panel_id,
+                        node_id,
+                        value,
+                    }) if panel_id == "test.dropdown"
+                        && node_id == "blend.mode"
+                        && value == "multiply" => Some((x, y)),
+                    _ => None,
+                })
+            })
+            .expect("dropdown option exists");
+
+        assert!(root_x < expanded.width && root_y < expanded.height);
+        assert!(option_event.0 < expanded.width && option_event.1 < expanded.height);
     }
 
     #[test]
@@ -3618,7 +4369,10 @@ view {
             true
         ));
         assert!(tree_contains_text(&layers_panel.children, "Untitled"));
-        assert!(tree_contains_text(&layers_panel.children, "1"));
+        assert!(tree_contains_text(
+            &layers_panel.children,
+            "pages: 1 / panels: 1 / layers: 1"
+        ));
         assert!(tree_contains_text(&layers_panel.children, "Layer 1"));
     }
 
@@ -3655,7 +4409,10 @@ view {
             "Size: 4px / presets: 1"
         ));
         assert!(tree_contains_text(&layers_panel.children, "index: 0"));
-        assert!(tree_contains_text(&layers_panel.children, "blend: normal"));
+        assert!(tree_contains_text(
+            &layers_panel.children,
+            "blend: normal / visible / mask: false"
+        ));
         assert!(tree_contains_text(&layers_panel.children, "visible: true"));
         assert!(tree_contains_text(&layers_panel.children, "mask: false"));
         assert!(tree_contains_text(&pen_panel.children, "4px"));
@@ -3671,6 +4428,21 @@ view {
         assert_eq!(
             command_from_descriptor(&descriptor),
             Ok(Command::SetActivePenSize { size: 12 })
+        );
+    }
+
+    #[test]
+    fn command_descriptor_maps_layer_rename_active() {
+        let mut descriptor = CommandDescriptor::new("layer.rename_active");
+        descriptor
+            .payload
+            .insert("name".to_string(), Value::String("Ink".to_string()));
+
+        assert_eq!(
+            command_from_descriptor(&descriptor),
+            Ok(Command::RenameActiveLayer {
+                name: "Ink".to_string(),
+            })
         );
     }
 
@@ -3702,6 +4474,22 @@ view {
             PanelNode::Column { children, .. }
             | PanelNode::Row { children, .. }
             | PanelNode::Section { children, .. } => tree_contains_text(children, target),
+            PanelNode::Dropdown {
+                label,
+                value,
+                options,
+                ..
+            } => {
+                label == target
+                    || value == target
+                    || options.iter().any(|option| option.label == target || option.value == target)
+            }
+            PanelNode::LayerList { label, items, .. } => {
+                label == target
+                    || items
+                        .iter()
+                        .any(|item| item.label == target || item.detail == target)
+            }
             PanelNode::ColorPreview { .. }
             | PanelNode::Button { .. }
             | PanelNode::Slider { .. }
@@ -3720,7 +4508,9 @@ view {
             PanelNode::ColorPreview { .. }
             | PanelNode::Button { .. }
             | PanelNode::Slider { .. }
-            | PanelNode::Text { .. } => false,
+            | PanelNode::Text { .. }
+            | PanelNode::Dropdown { .. }
+            | PanelNode::LayerList { .. } => false,
         })
     }
 
@@ -3739,7 +4529,9 @@ view {
             PanelNode::ColorPreview { .. }
             | PanelNode::Slider { .. }
             | PanelNode::Text { .. }
-            | PanelNode::TextInput { .. } => false,
+            | PanelNode::TextInput { .. }
+            | PanelNode::Dropdown { .. }
+            | PanelNode::LayerList { .. } => false,
         })
     }
 

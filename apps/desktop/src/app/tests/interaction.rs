@@ -6,7 +6,7 @@ use app_core::{ColorRgba8, Command, ToolKind};
 use desktop_support::DesktopProfiler;
 
 use super::{TestDialogs, test_app_with_dialogs};
-use crate::app::DesktopApp;
+use crate::app::{DesktopApp, PanelDragState};
 use crate::canvas_bridge::{CanvasPointerEvent, command_for_canvas_gesture, map_view_to_canvas};
 
 /// ビュー中央がキャンバス中央へ変換されることを確認する。
@@ -143,6 +143,38 @@ fn panel_slider_drag_updates_document_color() {
     assert!(app.handle_pointer_dragged(window_end_x, window_end_y));
     assert!(!app.handle_pointer_released(window_end_x, window_end_y));
     assert_eq!(app.document.active_color.r, 255);
+}
+
+#[test]
+fn layer_list_drag_keeps_dragged_layer_selected_while_reordering() {
+    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    app.active_panel_drag = Some(PanelDragState {
+        panel_id: "builtin.layers-panel".to_string(),
+        node_id: "layers.list".to_string(),
+        source_value: 2,
+    });
+
+    app.advance_panel_drag_source(&plugin_api::PanelEvent::DragValue {
+        panel_id: "builtin.layers-panel".to_string(),
+        node_id: "layers.list".to_string(),
+        from: 2,
+        to: 1,
+    });
+    assert_eq!(
+        app.active_panel_drag.as_ref().map(|drag| drag.source_value),
+        Some(1)
+    );
+
+    app.advance_panel_drag_source(&plugin_api::PanelEvent::DragValue {
+        panel_id: "builtin.layers-panel".to_string(),
+        node_id: "layers.list".to_string(),
+        from: 1,
+        to: 0,
+    });
+    assert_eq!(
+        app.active_panel_drag.as_ref().map(|drag| drag.source_value),
+        Some(0)
+    );
 }
 
 /// スクロール時の差分更新が UI 全体再同期を引き起こさないことを確認する。
