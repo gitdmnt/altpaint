@@ -673,9 +673,9 @@ fn layer_list_item_from_json(value: &Value) -> Option<LayerListItem> {
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
             format!(
-                "blend: {blend_mode} / {} / mask: {}",
-                if visible { "visible" } else { "hidden" },
-                masked
+                "合成: {blend_mode} / {} / マスク: {}",
+                if visible { "表示" } else { "非表示" },
+                if masked { "あり" } else { "なし" }
             )
         });
     Some(LayerListItem { label, detail })

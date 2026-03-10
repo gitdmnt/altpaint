@@ -79,7 +79,7 @@ fn pixel_wheel_pan_accepts_sub_line_delta() {
     assert!(runtime.handle_mouse_wheel(MouseScrollDelta::PixelDelta(
         winit::dpi::PhysicalPosition::new(0.0, 1.0),
     )));
-    assert_ne!(runtime.app.document.view_transform.pan_y, before);
+    assert!(runtime.app.document.view_transform.pan_y > before);
 }
 
 #[test]
@@ -97,7 +97,7 @@ fn wheel_pan_animation_continues_after_initial_event() {
         winit::dpi::PhysicalPosition::new(0.0, 16.0),
     )));
     let after_first = runtime.app.document.view_transform.pan_y;
-    assert_ne!(after_first, before);
+    assert!(after_first > before);
     assert!(runtime.has_pending_wheel_animation());
 
     assert!(runtime.advance_wheel_animation());
@@ -117,7 +117,7 @@ fn shift_wheel_converts_vertical_scroll_into_horizontal_pan() {
 
     let before = runtime.app.document.view_transform.pan_x;
     assert!(runtime.handle_mouse_wheel(MouseScrollDelta::LineDelta(0.0, 2.0)));
-    assert_ne!(runtime.app.document.view_transform.pan_x, before);
+    assert!(runtime.app.document.view_transform.pan_x > before);
 }
 
 #[test]
@@ -133,7 +133,7 @@ fn control_wheel_changes_zoom() {
 
     let before = runtime.app.document.view_transform.zoom;
     assert!(runtime.handle_mouse_wheel(MouseScrollDelta::LineDelta(0.0, 1.0)));
-    assert_ne!(runtime.app.document.view_transform.zoom, before);
+    assert!(runtime.app.document.view_transform.zoom > before);
 }
 
 #[test]

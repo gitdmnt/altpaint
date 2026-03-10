@@ -207,8 +207,7 @@ impl UiShell {
 
         let rows = ordered_entries
             .iter()
-            .enumerate()
-            .map(|(index, entry)| {
+            .map(|entry| {
                 let title = panel_titles
                     .get(entry.id.as_str())
                     .copied()
@@ -221,28 +220,12 @@ impl UiShell {
                             text: title.to_string(),
                         },
                         PanelNode::Button {
-                            id: format!("workspace.move-up.{}", entry.id),
-                            label: "Up".to_string(),
-                            action: HostAction::MovePanel {
-                                panel_id: entry.id.clone(),
-                                direction: PanelMoveDirection::Up,
-                            },
-                            active: index > 0,
-                            fill_color: None,
-                        },
-                        PanelNode::Button {
-                            id: format!("workspace.move-down.{}", entry.id),
-                            label: "Down".to_string(),
-                            action: HostAction::MovePanel {
-                                panel_id: entry.id.clone(),
-                                direction: PanelMoveDirection::Down,
-                            },
-                            active: index + 1 < ordered_entries.len(),
-                            fill_color: None,
-                        },
-                        PanelNode::Button {
                             id: format!("workspace.visibility.{}", entry.id),
-                            label: if entry.visible { "Hide".to_string() } else { "Show".to_string() },
+                            label: if entry.visible {
+                                "👁 非表示".to_string()
+                            } else {
+                                "👁 表示".to_string()
+                            },
                             action: HostAction::SetPanelVisibility {
                                 panel_id: entry.id.clone(),
                                 visible: !entry.visible,
@@ -257,12 +240,12 @@ impl UiShell {
 
         PanelTree {
             id: WORKSPACE_PANEL_ID,
-            title: "Workspace",
+            title: "パネル管理",
             children: vec![PanelNode::Column {
                 id: "workspace.root".to_string(),
                 children: vec![PanelNode::Section {
                     id: "workspace.panels".to_string(),
-                    title: "Panels".to_string(),
+                    title: "表示中のパネル".to_string(),
                     children: rows,
                 }],
             }],

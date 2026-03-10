@@ -18,6 +18,7 @@ use crate::frame::{Rect, TextureQuad, brush_preview_rect};
 
 const PEN_SETTING_PANEL_IDS: &[&str] = &["builtin.pen-settings", "builtin.tool-palette"];
 const COLOR_PANEL_IDS: &[&str] = &["builtin.color-palette"];
+const VIEW_PANEL_IDS: &[&str] = &["builtin.view-controls"];
 
 fn from_render_rect(rect: render::PixelRect) -> Rect {
     Rect {
@@ -331,11 +332,13 @@ impl DesktopApp {
             | Command::FlipViewHorizontally
             | Command::FlipViewVertically
             | Command::ResetView => {
+                self.sync_ui_from_document_panels(VIEW_PANEL_IDS);
                 self.mark_canvas_transform_dirty(previous_transform);
                 self.mark_status_dirty();
                 true
             }
             Command::PanView { .. } | Command::SetViewPan { .. } => {
+                self.sync_ui_from_document_panels(VIEW_PANEL_IDS);
                 self.mark_canvas_transform_dirty(previous_transform)
             }
             Command::AddRasterLayer

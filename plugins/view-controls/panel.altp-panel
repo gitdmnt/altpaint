@@ -1,6 +1,6 @@
 panel {
   id: "builtin.view-controls"
-  title: "View"
+  title: "表示"
   version: 1
 }
 
@@ -27,20 +27,19 @@ state {
 
 view {
   <column gap=8 padding=8>
-    <section title="Canvas View">
-      <text tone="muted">Hosted via Rust SDK + Wasm</text>
-      <text>Zoom: {state.zoom_label}</text>
-      <slider id="view.zoom" label="Zoom" min={25} max={1600} value={state.zoom_slider} fill="#90CAF9" on:change="set_zoom"></slider>
-      <text>Pan: {state.pan_label}</text>
-      <slider id="view.pan.x" label="Pan X" min={0} max={4000} value={state.pan_x_slider} fill="#A5D6A7" on:change="set_pan_x"></slider>
-      <slider id="view.pan.y" label="Pan Y" min={0} max={4000} value={state.pan_y_slider} fill="#CE93D8" on:change="set_pan_y"></slider>
-      <text>Rotation: {state.rotation_label}</text>
-      <slider id="view.rotation" label="Rotation" min={0} max={359} value={state.rotation_slider} fill="#FFCC80" on:change="set_rotation"></slider>
-      <section title="Rotate / Flip">
+    <section title="キャンバス表示">
+      <text>拡大率: {state.zoom_label}</text>
+      <slider id="view.zoom" label="ズーム" min={25} max={1600} value={state.zoom_slider} fill="#90CAF9" on:change="set_zoom"></slider>
+      <text>位置: {state.pan_label}</text>
+      <slider id="view.pan.x" label="左右移動" min={0} max={4000} value={state.pan_x_slider} fill="#A5D6A7" on:change="set_pan_x"></slider>
+      <slider id="view.pan.y" label="上下移動" min={0} max={4000} value={state.pan_y_slider} fill="#CE93D8" on:change="set_pan_y"></slider>
+      <text>回転: {state.rotation_label}</text>
+      <slider id="view.rotation" label="回転" min={0} max={359} value={state.rotation_slider} fill="#FFCC80" on:change="set_rotation"></slider>
+      <section title="回転 / 反転">
         <row gap=6>
-          <button id="view.flip.x" on:click="flip_horizontal" active={state.flip_x}>Flip X</button>
-          <button id="view.flip.y" on:click="flip_vertical" active={state.flip_y}>Flip Y</button>
-          <button id="view.reset" on:click="reset_view">Reset</button>
+          <button id="view.flip.x" on:click="flip_horizontal" active={state.flip_x}>↔ 左右反転</button>
+          <button id="view.flip.y" on:click="flip_vertical" active={state.flip_y}>↕ 上下反転</button>
+          <button id="view.reset" on:click="reset_view">⟳ リセット</button>
         </row>
       </section>
     </section>

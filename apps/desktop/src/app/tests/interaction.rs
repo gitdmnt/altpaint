@@ -10,6 +10,13 @@ use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::{DesktopApp, PanelDragState};
 use crate::canvas_bridge::{CanvasPointerEvent, command_for_canvas_gesture, map_view_to_canvas};
 
+fn rect_within_panel_surface(rect: crate::frame::Rect, surface: &ui_shell::PanelSurface) -> bool {
+    rect.x >= surface.x
+        && rect.y >= surface.y
+        && rect.x + rect.width <= surface.x + surface.width
+        && rect.y + rect.height <= surface.y + surface.height
+}
+
 /// ビュー中央がキャンバス中央へ変換されることを確認する。
 #[test]
 fn canvas_position_maps_view_center_into_bitmap_bounds() {
@@ -541,15 +548,8 @@ fn focus_refresh_does_not_trigger_ui_update() {
     assert!(!profiler.stats.contains_key("ui_update"));
     assert!(!profiler.stats.contains_key("compose_full_frame"));
     assert_eq!(update.base_dirty_rect, None);
-    assert_eq!(
-        update.overlay_dirty_rect,
-        Some(crate::frame::Rect {
-            x: surface.x,
-            y: surface.y,
-            width: surface.width,
-            height: surface.height,
-        })
-    );
+    let overlay_dirty = update.overlay_dirty_rect.expect("overlay dirty rect");
+    assert!(rect_within_panel_surface(overlay_dirty, &surface));
     assert!(!update.canvas_updated);
     assert_eq!(
         profiler.stats.get("panel_surface").map(|stat| stat.calls),
@@ -585,15 +585,8 @@ fn tool_change_updates_status_without_full_recompose() {
         ))
     );
     let surface = app.panel_surface.clone().expect("panel surface exists");
-    assert_eq!(
-        update.overlay_dirty_rect,
-        Some(crate::frame::Rect {
-            x: surface.x,
-            y: surface.y,
-            width: surface.width,
-            height: surface.height,
-        })
-    );
+    let overlay_dirty = update.overlay_dirty_rect.expect("overlay dirty rect");
+    assert!(rect_within_panel_surface(overlay_dirty, &surface));
 }
 
 #[test]
@@ -749,7 +742,7 @@ fn pan_view_updates_canvas_without_status_recompose() {
     assert!(!profiler.stats.contains_key("compose_dirty_status"));
     assert!(profiler.stats.contains_key("prepare_canvas_scene"));
     assert!(profiler.stats.contains_key("compose_dirty_canvas_base"));
-    assert!(!profiler.stats.contains_key("compose_dirty_overlay"));
+    assert!(profiler.stats.contains_key("compose_dirty_panel"));
     assert!(profiler.stats.contains_key("prepare_canvas_scene"));
     assert!(profiler.stats.contains_key("compose_dirty_canvas_base"));
     assert!(!profiler.stats.contains_key("compose_dirty_overlay"));
@@ -759,7 +752,9 @@ fn pan_view_updates_canvas_without_status_recompose() {
     assert!(
         update.base_dirty_rect.expect("base dirty rect").width <= layout.canvas_host_rect.width
     );
-    assert_eq!(update.overlay_dirty_rect, None);
+    let surface = app.panel_surface.clone().expect("panel surface exists");
+    let overlay_dirty = update.overlay_dirty_rect.expect("overlay dirty rect");
+    assert!(rect_within_panel_surface(overlay_dirty, &surface));
 }
 
 #[test]

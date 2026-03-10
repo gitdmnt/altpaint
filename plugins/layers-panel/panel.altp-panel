@@ -1,6 +1,6 @@
 panel {
   id: "builtin.layers-panel"
-  title: "Layers"
+  title: "レイヤー"
   version: 1
 }
 
@@ -28,16 +28,16 @@ state {
 
 view {
   <column gap=8 padding=8>
-    <section title="Document">
-      <text tone="muted">Hosted via Rust SDK + Wasm</text>
+    <section title="ドキュメント">
       <text>{state.title}</text>
-      <text>pages: {state.page_count} / panels: {state.panel_count} / layers: {state.layer_count}</text>
+      <text>ページ {state.page_count} / パネル {state.panel_count} / レイヤー {state.layer_count}</text>
     </section>
-    <section title="Layers">
+    <section title="レイヤー一覧">
       <row>
-        <button id="layers.add" on:click="add_layer">Add Layer</button>
-        <button id="layers.remove" on:click="remove_layer">Delete Layer</button>
+        <button id="layers.add" on:click="add_layer">＋ 追加</button>
+        <button id="layers.remove" on:click="remove_layer">－ 削除</button>
       </row>
+      <text tone="muted">項目右端の取っ手をドラッグすると並び替えできます。</text>
       <layer-list
         id="layers.list"
         items={state.layers_json}
@@ -45,20 +45,20 @@ view {
         on:change="handle_layer_list"
       />
     </section>
-    <section title="Selected Layer">
-      <input id="layers.name" label="Name" value={state.active_layer_name} bind="active_layer_name" placeholder="Layer name" on:change="rename_active_layer" />
-      <text>index: {state.active_layer_index}</text>
+    <section title="選択中のレイヤー">
+      <input id="layers.name" label="名前" value={state.active_layer_name} bind="active_layer_name" placeholder="レイヤー名" on:change="rename_active_layer" />
+      <text>番号: {state.active_layer_index}</text>
       <dropdown
         id="layers.blend_mode"
-        label="Blend Mode"
+        label="合成モード"
         value={state.active_layer_blend_mode}
-        options="normal:Normal|multiply:Multiply|screen:Screen|add:Add|max(src,dst):Lighten"
+        options="normal:通常|multiply:乗算|screen:スクリーン|add:加算|max(src,dst):比較(明)"
         on:change="set_blend_mode"
       />
-      <button id="layers.visibility" on:click="toggle_layer_visibility">Toggle Visibility</button>
-      <button id="layers.mask" on:click="toggle_layer_mask">Toggle Mask</button>
-      <text>visible: {state.active_layer_visible}</text>
-      <text>mask: {state.active_layer_masked}</text>
+      <button id="layers.visibility" on:click="toggle_layer_visibility">👁 表示切替</button>
+      <button id="layers.mask" on:click="toggle_layer_mask">◫ マスク切替</button>
+      <text>表示: {state.active_layer_visible}</text>
+      <text>マスク: {state.active_layer_masked}</text>
     </section>
   </column>
 }

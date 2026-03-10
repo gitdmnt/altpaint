@@ -54,27 +54,29 @@ pub(crate) fn compose_base_frame(
     );
     stroke_rect(&mut frame, layout.canvas_host_rect, CANVAS_FRAME_BORDER);
 
-    draw_text(
-        &mut frame,
-        WINDOW_PADDING,
-        WINDOW_PADDING + 4,
-        "Background layer",
-        TEXT_PRIMARY,
-    );
-    draw_text(
-        &mut frame,
-        layout.canvas_host_rect.x,
-        WINDOW_PADDING + 4,
-        "Canvas layer (winit + wgpu canvas texture)",
-        TEXT_PRIMARY,
-    );
-    draw_text(
-        &mut frame,
-        WINDOW_PADDING,
-        height.saturating_sub(FOOTER_HEIGHT) + 6,
-        "UI panels are rendered into an independent floating UI layer.",
-        TEXT_SECONDARY,
-    );
+    if std::env::var_os("ALTPAINT_DEBUG_LABELS").is_some() {
+        draw_text(
+            &mut frame,
+            WINDOW_PADDING,
+            WINDOW_PADDING + 4,
+            "Background layer",
+            TEXT_PRIMARY,
+        );
+        draw_text(
+            &mut frame,
+            layout.canvas_host_rect.x,
+            WINDOW_PADDING + 4,
+            "Canvas layer (winit + wgpu canvas texture)",
+            TEXT_PRIMARY,
+        );
+        draw_text(
+            &mut frame,
+            WINDOW_PADDING,
+            height.saturating_sub(FOOTER_HEIGHT) + 6,
+            "UI panels are rendered into an independent floating UI layer.",
+            TEXT_SECONDARY,
+        );
+    }
     draw_text(
         &mut frame,
         layout.canvas_host_rect.x,

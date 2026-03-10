@@ -101,3 +101,19 @@ fn tree_contains_text(nodes: &[plugin_api::PanelNode], target: &str) -> bool {
         | plugin_api::PanelNode::LayerList { .. } => false,
     })
 }
+
+fn tree_contains_button_id(nodes: &[plugin_api::PanelNode], target: &str) -> bool {
+    nodes.iter().any(|node| match node {
+        plugin_api::PanelNode::Button { id, .. } => id == target,
+        plugin_api::PanelNode::Column { children, .. }
+        | plugin_api::PanelNode::Row { children, .. }
+        | plugin_api::PanelNode::Section { children, .. } => tree_contains_button_id(children, target),
+        plugin_api::PanelNode::Text { .. }
+        | plugin_api::PanelNode::Slider { .. }
+        | plugin_api::PanelNode::TextInput { .. }
+        | plugin_api::PanelNode::Dropdown { .. }
+        | plugin_api::PanelNode::LayerList { .. }
+        | plugin_api::PanelNode::ColorPreview { .. }
+        | plugin_api::PanelNode::ColorWheel { .. } => false,
+    })
+}

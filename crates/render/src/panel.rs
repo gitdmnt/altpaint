@@ -8,25 +8,25 @@ use crate::text::{
     draw_text_rgba, line_height as text_line_height, measure_text_width, wrap_text_lines,
 };
 
-const PANEL_BACKGROUND: [u8; 4] = [0x1f, 0x1f, 0x1f, 0xf6];
-const PANEL_BORDER: [u8; 4] = [0x4a, 0x4a, 0x4a, 0xff];
-const PANEL_TITLE_BAR: [u8; 4] = [0x26, 0x2b, 0x33, 0xff];
+const PANEL_BACKGROUND: [u8; 4] = [0x18, 0x1c, 0x24, 0xf6];
+const PANEL_BORDER: [u8; 4] = [0x43, 0x4c, 0x5d, 0xff];
+const PANEL_TITLE_BAR: [u8; 4] = [0x20, 0x28, 0x35, 0xff];
 const PANEL_TITLE: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
-const SECTION_TITLE: [u8; 4] = [0x9f, 0xb7, 0xff, 0xff];
-const BODY_TEXT: [u8; 4] = [0xd8, 0xd8, 0xd8, 0xff];
-const BUTTON_FILL: [u8; 4] = [0x32, 0x32, 0x32, 0xff];
-const BUTTON_ACTIVE_FILL: [u8; 4] = [0x44, 0x5f, 0xb0, 0xff];
-const BUTTON_BORDER: [u8; 4] = [0x56, 0x56, 0x56, 0xff];
-const BUTTON_ACTIVE_BORDER: [u8; 4] = [0xc6, 0xd4, 0xff, 0xff];
+const SECTION_TITLE: [u8; 4] = [0x9d, 0xc7, 0xff, 0xff];
+const BODY_TEXT: [u8; 4] = [0xd9, 0xe2, 0xf1, 0xff];
+const BUTTON_FILL: [u8; 4] = [0x27, 0x30, 0x3d, 0xff];
+const BUTTON_ACTIVE_FILL: [u8; 4] = [0x3b, 0x6b, 0xbd, 0xff];
+const BUTTON_BORDER: [u8; 4] = [0x4d, 0x5a, 0x70, 0xff];
+const BUTTON_ACTIVE_BORDER: [u8; 4] = [0xd6, 0xe4, 0xff, 0xff];
 const BUTTON_FOCUS_BORDER: [u8; 4] = [0x9f, 0xb7, 0xff, 0xff];
-const BUTTON_TEXT: [u8; 4] = [0xf0, 0xf0, 0xf0, 0xff];
+const BUTTON_TEXT: [u8; 4] = [0xf3, 0xf7, 0xff, 0xff];
 const BUTTON_TEXT_DARK: [u8; 4] = [0x14, 0x14, 0x14, 0xff];
-const SLIDER_TRACK_BACKGROUND: [u8; 4] = [0x2c, 0x2c, 0x2c, 0xff];
-const SLIDER_TRACK_BORDER: [u8; 4] = [0x5f, 0x5f, 0x5f, 0xff];
+const SLIDER_TRACK_BACKGROUND: [u8; 4] = [0x1d, 0x25, 0x30, 0xff];
+const SLIDER_TRACK_BORDER: [u8; 4] = [0x56, 0x69, 0x87, 0xff];
 const SLIDER_KNOB: [u8; 4] = [0xf0, 0xf0, 0xf0, 0xff];
 const PREVIEW_SWATCH_BORDER: [u8; 4] = [0x74, 0x74, 0x74, 0xff];
-const INPUT_BACKGROUND: [u8; 4] = [0x15, 0x15, 0x15, 0xff];
-const INPUT_BORDER: [u8; 4] = [0x56, 0x56, 0x56, 0xff];
+const INPUT_BACKGROUND: [u8; 4] = [0x11, 0x17, 0x21, 0xff];
+const INPUT_BORDER: [u8; 4] = [0x4d, 0x5a, 0x70, 0xff];
 const INPUT_PLACEHOLDER: [u8; 4] = [0x88, 0x88, 0x88, 0xff];
 const PANEL_INNER_PADDING: usize = 8;
 const NODE_GAP: usize = 6;
@@ -203,7 +203,7 @@ pub fn measure_panel_size(
     let preferred_inner_width = tree
         .children
         .iter()
-        .map(|child| preferred_node_width(child, render_state))
+        .map(preferred_node_width)
         .max()
         .unwrap_or(0)
     .max(measure_text_width(title) + PANEL_INNER_PADDING * 2)
@@ -663,9 +663,9 @@ fn draw_node(
                 .map(|option| option.label.as_str())
                 .unwrap_or(value.as_str());
             let button_label = if label.is_empty() {
-                format!("{selected_label} ▾")
+                selected_label.to_string()
             } else {
-                format!("{label}: {selected_label} ▾")
+                format!("{label}: {selected_label}")
             };
             fill_rect(surface, x, y, available_width, DROPDOWN_HEIGHT, BUTTON_FILL);
             stroke_rect(
@@ -690,13 +690,22 @@ fn draw_node(
                     BUTTON_FOCUS_BORDER,
                 );
             }
+            let arrow = "▾";
+            let arrow_width = measure_text_width(arrow);
             draw_wrapped_text(
                 surface,
                 x + 6,
                 y + 7,
                 &button_label,
                 BUTTON_TEXT,
-                available_width.saturating_sub(12),
+                available_width.saturating_sub(arrow_width + 18),
+            );
+            draw_text_line(
+                surface,
+                x + available_width.saturating_sub(arrow_width + 6),
+                y + 7,
+                arrow,
+                if is_expanded { SECTION_TITLE } else { BUTTON_TEXT },
             );
             push_hit_region_clipped(
                 surface,
@@ -841,8 +850,17 @@ fn draw_node(
                     );
                 }
                 let grip_x = x + available_width.saturating_sub(LAYER_LIST_DRAG_HANDLE_WIDTH);
-                for offset in [8usize, 14, 20] {
-                    fill_rect(surface, grip_x, cursor_y + offset, 8, 1, BODY_TEXT);
+                draw_text_line(
+                    surface,
+                    x + 6,
+                    cursor_y + 20,
+                    &format!("{:02}", index + 1),
+                    SECTION_TITLE,
+                );
+                for offset in [6usize, 12, 18] {
+                    for column in [0usize, 5] {
+                        fill_rect(surface, grip_x + column, cursor_y + offset, 2, 2, BODY_TEXT);
+                    }
                 }
                 push_hit_region_clipped(
                     surface,
@@ -1117,24 +1135,24 @@ fn button_text_color(fill_color: Option<ColorRgba8>) -> [u8; 4] {
     }
 }
 
-fn preferred_node_width(node: &PanelNode, render_state: PanelRenderState<'_>) -> usize {
+fn preferred_node_width(node: &PanelNode) -> usize {
     match node {
         PanelNode::Column { children, .. } => children
             .iter()
-            .map(|child| preferred_node_width(child, render_state))
+            .map(preferred_node_width)
             .max()
             .unwrap_or(0),
         PanelNode::Row { children, .. } => {
             let child_sum = children
                 .iter()
-                .map(|child| preferred_node_width(child, render_state))
+                .map(preferred_node_width)
                 .sum::<usize>();
             child_sum + NODE_GAP * children.len().saturating_sub(1)
         }
         PanelNode::Section { title, children, .. } => {
             let child_width = children
                 .iter()
-                .map(|child| preferred_node_width(child, render_state))
+                .map(preferred_node_width)
                 .max()
                 .unwrap_or(0);
             (child_width + SECTION_INDENT).max(measure_text_width(title))
@@ -1151,7 +1169,6 @@ fn preferred_node_width(node: &PanelNode, render_state: PanelRenderState<'_>) ->
             label,
             value,
             options,
-            id,
             ..
         } => {
             let selected_label = options
@@ -1160,22 +1177,15 @@ fn preferred_node_width(node: &PanelNode, render_state: PanelRenderState<'_>) ->
                 .map(|option| option.label.as_str())
                 .unwrap_or(value.as_str());
             let button_label = if label.is_empty() {
-                format!("{selected_label} ▾")
+                selected_label.to_string()
             } else {
-                format!("{label}: {selected_label} ▾")
+                format!("{label}: {selected_label}")
             };
-            let expanded_height_width = if render_state
-                .expanded_dropdown
-                .is_some_and(|target| target.node_id == id.as_str())
-            {
-                options
-                    .iter()
-                    .map(|option| measure_text_width(option.label.as_str()) + 12)
-                    .max()
-                    .unwrap_or(0)
-            } else {
-                0
-            };
+            let expanded_height_width = options
+                .iter()
+                .map(|option| measure_text_width(option.label.as_str()) + 12)
+                .max()
+                .unwrap_or(0);
             (measure_text_width(&button_label) + 12)
                 .max(expanded_height_width)
                 .max(120)

@@ -126,7 +126,7 @@ impl DesktopRuntime {
 
         if zoom_lines.abs() > f32::EPSILON {
             let current = self.app.document.view_transform.zoom;
-            let next_zoom = (current * 1.1_f32.powf(-zoom_lines)).clamp(0.25, 16.0);
+            let next_zoom = (current * 1.1_f32.powf(zoom_lines)).clamp(0.25, 16.0);
             if (next_zoom - current).abs() > f32::EPSILON {
                 changed |= self
                     .app
@@ -174,8 +174,8 @@ impl DesktopRuntime {
             return self.advance_wheel_animation();
         }
 
-        let mut delta_x = -delta_x_lines * 32.0;
-        let mut delta_y = -delta_y_lines * 32.0;
+        let mut delta_x = delta_x_lines * 32.0;
+        let mut delta_y = delta_y_lines * 32.0;
         if self.modifiers.shift_key() && delta_x.abs() <= f32::EPSILON {
             delta_x = delta_y;
             delta_y = 0.0;
@@ -199,7 +199,6 @@ impl DesktopRuntime {
         force: Option<Force>,
     ) -> bool {
         let position = (x, y);
-        let pressure = normalized_pressure(force);
 
         match phase {
             TouchPhase::Started => {
@@ -207,7 +206,9 @@ impl DesktopRuntime {
                     return false;
                 }
 
+                let pressure = normalized_pressure(force, 1.0);
                 self.active_touch_id = Some(touch_id);
+                self.last_touch_pressure = pressure;
                 self.last_cursor_position = Some(position);
                 self.last_cursor_position_f64 = Some((position.0 as f64, position.1 as f64));
                 let changed = self
@@ -220,6 +221,8 @@ impl DesktopRuntime {
                     return false;
                 }
 
+                let pressure = normalized_pressure(force, self.last_touch_pressure);
+                self.last_touch_pressure = pressure;
                 self.last_cursor_position = Some(position);
                 self.last_cursor_position_f64 = Some((position.0 as f64, position.1 as f64));
                 let changed = self
@@ -232,9 +235,11 @@ impl DesktopRuntime {
                     return false;
                 }
 
+                let pressure = normalized_pressure(force, 0.0);
                 self.last_cursor_position = Some(position);
                 self.last_cursor_position_f64 = Some((position.0 as f64, position.1 as f64));
                 self.active_touch_id = None;
+                self.last_touch_pressure = 1.0;
                 self.app
                     .handle_pointer_released_with_pressure(position.0, position.1, pressure)
             }
@@ -252,7 +257,7 @@ impl DesktopRuntime {
     }
 }
 
-fn normalized_pressure(force: Option<Force>) -> f32 {
+fn normalized_pressure(force: Option<Force>, fallback: f32) -> f32 {
     match force {
         Some(Force::Calibrated {
             force,
@@ -260,7 +265,7 @@ fn normalized_pressure(force: Option<Force>) -> f32 {
             ..
         }) if max_possible_force > f64::EPSILON => (force / max_possible_force) as f32,
         Some(Force::Normalized(value)) => value as f32,
-        _ => 1.0,
+        _ => fallback,
     }
     .clamp(0.0, 1.0)
 }

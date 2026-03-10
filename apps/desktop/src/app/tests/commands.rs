@@ -7,7 +7,7 @@ use desktop_support::{DesktopProfiler, default_panel_dir, parse_document_size};
 use plugin_api::HostAction;
 use serde_json::json;
 
-use super::{TestDialogs, test_app_with_dialogs, tree_contains_text};
+use super::{TestDialogs, test_app_with_dialogs, tree_contains_button_id, tree_contains_text};
 
 /// ツール切替コマンドがドキュメントへ反映されることを確認する。
 #[test]
@@ -181,7 +181,7 @@ fn desktop_app_replaces_builtin_panels_with_phase7_dsl_variants() {
         .find(|panel| panel.id == "builtin.layers-panel")
         .expect("layers panel exists");
 
-    assert!(tree_contains_text(&app_actions.children, "Hosted via Rust SDK + Wasm"));
+    assert!(tree_contains_button_id(&app_actions.children, "app.save"));
     assert!(tree_contains_text(&layers.children, "Untitled"));
 }
 

@@ -1,6 +1,6 @@
 panel {
   id: "builtin.pen-settings"
-  title: "Stroke"
+  title: "筆設定"
   version: 1
 }
 
@@ -26,18 +26,17 @@ state {
 
 view {
   <column gap=8 padding=8>
-    <section title="Stroke Width">
-      <text tone="muted">Loaded from pens/ and shared by Pen / Eraser.</text>
+    <section title="太さ">
       <text>{state.pen_name}</text>
       <text>{state.tool_label}: {state.size}px</text>
-      <slider id="pen.size" label="Size" min={0} max={1000} value={state.size_slider} fill="#90CAF9" on:change="set_pen_size"></slider>
-      <input id="pen.size.input" label="Width" value={state.size_input} bind="size_input" mode="numeric" placeholder="1" on:change="set_pen_size_text" />
+      <slider id="pen.size" label="サイズ" min={0} max={1000} value={state.size_slider} fill="#90CAF9" on:change="set_pen_size"></slider>
+      <input id="pen.size.input" label="数値入力" value={state.size_input} bind="size_input" mode="numeric" placeholder="1" on:change="set_pen_size_text" />
     </section>
-    <section title="Dynamics">
-      <button id="pen.pressure" on:click="toggle_pressure" active={state.pressure_enabled}>Pressure</button>
-      <button id="pen.antialias" on:click="toggle_antialias" active={state.antialias}>Antialias</button>
-      <text>Stabilization: {state.stabilization}%</text>
-      <slider id="pen.stabilization" label="Stabilization" min={0} max={100} value={state.stabilization} fill="#A5D6A7" on:change="set_stabilization"></slider>
+    <section title="描画特性">
+      <button id="pen.pressure" on:click="toggle_pressure" active={state.pressure_enabled}>筆圧</button>
+      <button id="pen.antialias" on:click="toggle_antialias" active={state.antialias}>なめらか</button>
+      <text>手ぶれ補正: {state.stabilization}%</text>
+      <slider id="pen.stabilization" label="手ぶれ補正" min={0} max={100} value={state.stabilization} fill="#A5D6A7" on:change="set_stabilization"></slider>
     </section>
   </column>
 }

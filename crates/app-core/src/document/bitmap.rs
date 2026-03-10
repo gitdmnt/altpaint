@@ -66,7 +66,13 @@ impl CanvasBitmap {
         size: u32,
         antialias: bool,
     ) -> DirtyRect {
-        self.paint_disk(x as isize, y as isize, size, [255, 255, 255, 255], antialias)
+        self.paint_disk(
+            x as isize,
+            y as isize,
+            size,
+            [255, 255, 255, 255],
+            antialias,
+        )
     }
 
     /// 2点間を結ぶ最小ストロークを描く。
@@ -190,7 +196,15 @@ impl CanvasBitmap {
         size: u32,
         antialias: bool,
     ) -> DirtyRect {
-        self.paint_line_disks(from_x, from_y, to_x, to_y, size, [255, 255, 255, 255], antialias)
+        self.paint_line_disks(
+            from_x,
+            from_y,
+            to_x,
+            to_y,
+            size,
+            [255, 255, 255, 255],
+            antialias,
+        )
     }
 
     /// 指定座標のRGBA値を返す。
@@ -244,36 +258,35 @@ impl CanvasBitmap {
         rgba: [u8; 4],
         antialias: bool,
     ) -> DirtyRect {
-        let mut x0 = from_x as isize;
-        let mut y0 = from_y as isize;
-        let x1 = to_x as isize;
-        let y1 = to_y as isize;
+        let start_x = from_x as f32;
+        let start_y = from_y as f32;
+        let end_x = to_x as f32;
+        let end_y = to_y as f32;
+        let dx = end_x - start_x;
+        let dy = end_y - start_y;
+        let distance = (dx * dx + dy * dy).sqrt();
+        let step = ((size.max(1) as f32) * 0.35).clamp(1.0, 12.0);
+        let steps = (distance / step).ceil().max(1.0) as usize;
+        let mut dirty: Option<DirtyRect> = None;
 
-        let dx = (x1 - x0).abs();
-        let sx = if x0 < x1 { 1 } else { -1 };
-        let dy = -(y1 - y0).abs();
-        let sy = if y0 < y1 { 1 } else { -1 };
-        let mut error = dx + dy;
-        let mut dirty = self.paint_disk(x0, y0, size, rgba, antialias);
-
-        loop {
-            if x0 == x1 && y0 == y1 {
-                break;
-            }
-
-            let doubled_error = 2 * error;
-            if doubled_error >= dy {
-                error += dy;
-                x0 += sx;
-            }
-            if doubled_error <= dx {
-                error += dx;
-                y0 += sy;
-            }
-            dirty = dirty.union(self.paint_disk(x0, y0, size, rgba, antialias));
+        for index in 0..=steps {
+            let t = index as f32 / steps as f32;
+            let sample_x = start_x + dx * t;
+            let sample_y = start_y + dy * t;
+            let stamped = self.paint_disk(
+                sample_x.round() as isize,
+                sample_y.round() as isize,
+                size,
+                rgba,
+                antialias,
+            );
+            dirty = Some(match dirty {
+                Some(current) => current.union(stamped),
+                None => stamped,
+            });
         }
 
-        dirty
+        dirty.unwrap_or_else(|| DirtyRect::from_inclusive_points(from_x, from_y, to_x, to_y))
     }
 
     /// 円形ブラシ 1 個ぶんを描画する。
@@ -290,19 +303,28 @@ impl CanvasBitmap {
         let top = (center_y as f32 - radius).floor().max(0.0) as usize;
         let right = (center_x as f32 + radius).ceil().max(0.0) as usize;
         let bottom = (center_y as f32 + radius).ceil().max(0.0) as usize;
-        let mut dirty: Option<DirtyRect> = None;
+        let radius_sq = radius * radius;
+        let antialias_outer = radius + if antialias { 0.75 } else { 0.0 };
+        let antialias_outer_sq = antialias_outer * antialias_outer;
+        let full_coverage_sq = (radius - 0.5).max(0.0).powi(2);
+        let mut changed_bounds: Option<(usize, usize, usize, usize)> = None;
 
         for y in top..=bottom {
             for x in left..=right {
                 let dx = x as f32 + 0.5 - (center_x as f32 + 0.5);
                 let dy = y as f32 + 0.5 - (center_y as f32 + 0.5);
-                let distance = (dx * dx + dy * dy).sqrt();
-                if distance > radius + if antialias { 0.75 } else { 0.0 } {
+                let distance_sq = dx * dx + dy * dy;
+                if distance_sq > antialias_outer_sq {
                     continue;
                 }
                 let coverage = if antialias {
-                    (radius + 0.5 - distance).clamp(0.0, 1.0)
-                } else if distance <= radius {
+                    if distance_sq <= full_coverage_sq {
+                        1.0
+                    } else {
+                        let distance = distance_sq.sqrt();
+                        (radius + 0.5 - distance).clamp(0.0, 1.0)
+                    }
+                } else if distance_sq <= radius_sq {
                     1.0
                 } else {
                     0.0
@@ -310,15 +332,24 @@ impl CanvasBitmap {
                 if coverage <= f32::EPSILON {
                     continue;
                 }
-                let rect = self.blend_pixel(x, y, rgba, coverage);
-                dirty = Some(match dirty {
-                    Some(current) => current.union(rect),
-                    None => rect,
+                let _ = self.blend_pixel(x, y, rgba, coverage);
+                changed_bounds = Some(match changed_bounds {
+                    Some((min_x, min_y, max_x, max_y)) => {
+                        (min_x.min(x), min_y.min(y), max_x.max(x), max_y.max(y))
+                    }
+                    None => (x, y, x, y),
                 });
             }
         }
 
-        dirty.unwrap_or_else(|| DirtyRect::from_inclusive_points(left, top, right, bottom))
+        changed_bounds
+            .map(|(min_x, min_y, max_x, max_y)| {
+                DirtyRect::from_inclusive_points(min_x, min_y, max_x, max_y)
+            })
+            .unwrap_or_else(|| {
+                DirtyRect::from_inclusive_points(left, top, right, bottom)
+                    .clamp_to_bitmap(self.width, self.height)
+            })
     }
 
     fn blend_pixel(&mut self, x: usize, y: usize, rgba: [u8; 4], coverage: f32) -> DirtyRect {
@@ -329,6 +360,10 @@ impl CanvasBitmap {
                 x.min(self.width.saturating_sub(1)),
                 y.min(self.height.saturating_sub(1)),
             );
+        }
+
+        if coverage >= 1.0 - f32::EPSILON && rgba[3] == u8::MAX {
+            return self.write_pixel(x, y, rgba);
         }
 
         let index = (y * self.width + x) * 4;

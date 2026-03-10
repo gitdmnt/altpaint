@@ -1,6 +1,6 @@
 panel {
   id: "builtin.color-palette"
-  title: "Colors"
+  title: "色"
   version: 1
 }
 
@@ -22,11 +22,10 @@ state {
 
 view {
   <column gap=8 padding=8>
-    <section title="Custom">
-      <text tone="muted">Hosted via Rust SDK + Wasm</text>
-      <color-preview id="color.preview" label="Live Preview" color={state.active_hex}></color-preview>
+    <section title="カラー">
+      <color-preview id="color.preview" label="プレビュー" color={state.active_hex}></color-preview>
       <text>{state.active_hex}</text>
-      <color-wheel id="color.wheel" label="Hue / Saturation / Value" hue={state.hue} saturation={state.saturation} value={state.value} on:change="set_hsv"></color-wheel>
+      <color-wheel id="color.wheel" label="色相 / 彩度 / 明度" hue={state.hue} saturation={state.saturation} value={state.value} on:change="set_hsv"></color-wheel>
       <text>H {state.hue}° / S {state.saturation}% / V {state.value}%</text>
     </section>
   </column>

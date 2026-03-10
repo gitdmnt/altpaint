@@ -1,6 +1,6 @@
 panel {
   id: "builtin.tool-palette"
-  title: "Tools"
+  title: "ツール"
   version: 1
 }
 
@@ -28,31 +28,30 @@ state {
 
 view {
   <column gap=8 padding=8>
-    <section title="Tools">
-      <text tone="muted">Hosted via Rust SDK + Wasm</text>
-      <button id="tool.pen" on:click="activate_pen" active={state.active_tool == "pen"}>Pen</button>
-      <button id="tool.eraser" on:click="activate_eraser" active={state.active_tool == "eraser"}>Eraser</button>
-      <button id="tool.bucket" on:click="activate_bucket" active={state.active_tool == "bucket"}>Bucket</button>
-      <button id="tool.lasso-bucket" on:click="activate_lasso_bucket" active={state.active_tool == "lasso_bucket"}>Lasso Bucket</button>
+    <section title="ツール">
+      <button id="tool.pen" on:click="activate_pen" active={state.active_tool == "pen"}>✏ ペン</button>
+      <button id="tool.eraser" on:click="activate_eraser" active={state.active_tool == "eraser"}>⌫ 消しゴム</button>
+      <button id="tool.bucket" on:click="activate_bucket" active={state.active_tool == "bucket"}>🪣 塗りつぶし</button>
+      <button id="tool.lasso-bucket" on:click="activate_lasso_bucket" active={state.active_tool == "lasso_bucket"}>⬠ 囲って塗る</button>
       <separator></separator>
-      <text>Preset: {state.pen_name}</text>
-      <text>Size: {state.pen_size}px / presets: {state.pen_count}</text>
+      <text>プリセット: {state.pen_name}</text>
+      <text>サイズ: {state.pen_size}px / 登録数: {state.pen_count}</text>
       <row gap=6>
-        <button id="tool.pen.prev" on:click="previous_pen">Prev Pen</button>
-        <button id="tool.pen.next" on:click="next_pen">Next Pen</button>
+        <button id="tool.pen.prev" on:click="previous_pen">◀ 前へ</button>
+        <button id="tool.pen.next" on:click="next_pen">次へ ▶</button>
       </row>
-      <button id="tool.pen.reload" on:click="reload_pens">Reload Pens</button>
-      <button id="tool.shortcuts" on:click="toggle_shortcuts" active={state.show_shortcuts}>Keyboard...</button>
+      <button id="tool.pen.reload" on:click="reload_pens">⟳ ペン再読込</button>
+      <button id="tool.shortcuts" on:click="toggle_shortcuts" active={state.show_shortcuts}>⌨ ショートカット</button>
       <when test={state.show_shortcuts}>
-        <section title="Shortcuts">
-          <text>Pen: {state.config.pen_shortcut}</text>
-          <button id="tool.shortcut.pen" on:click="capture_pen_shortcut" active={state.session.capture_target == "pen"}>Capture Pen</button>
-          <text>Eraser: {state.config.eraser_shortcut}</text>
-          <button id="tool.shortcut.eraser" on:click="capture_eraser_shortcut" active={state.session.capture_target == "eraser"}>Capture Eraser</button>
-          <text>Bucket: {state.config.bucket_shortcut}</text>
-          <text>Lasso Bucket: {state.config.lasso_bucket_shortcut}</text>
+        <section title="ショートカット">
+          <text>ペン: {state.config.pen_shortcut}</text>
+          <button id="tool.shortcut.pen" on:click="capture_pen_shortcut" active={state.session.capture_target == "pen"}>ペンを再設定</button>
+          <text>消しゴム: {state.config.eraser_shortcut}</text>
+          <button id="tool.shortcut.eraser" on:click="capture_eraser_shortcut" active={state.session.capture_target == "eraser"}>消しゴムを再設定</button>
+          <text>塗りつぶし: {state.config.bucket_shortcut}</text>
+          <text>囲って塗る: {state.config.lasso_bucket_shortcut}</text>
           <when test={state.session.capture_target != ""}>
-            <text tone="muted">Press the next key combination to replace the selected shortcut.</text>
+            <text tone="muted">次に押したキーの組み合わせで置き換えます。</text>
           </when>
         </section>
       </when>

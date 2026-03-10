@@ -122,16 +122,13 @@ impl DesktopApp {
     fn begin_panel_interaction(&mut self, x: i32, y: i32) -> bool {
         self.pending_panel_press = None;
         if let Some(panel_id) = self.panel_move_hit_from_window(x, y) {
-            let Some((surface_x, surface_y)) = self.panel_surface_coordinates_from_window(x, y) else {
-                return false;
-            };
             let Some(panel_rect) = self.ui_shell.panel_rect(&panel_id) else {
                 return false;
             };
             self.active_panel_drag = Some(PanelDragState::Move {
                 panel_id,
-                grab_offset_x: surface_x.saturating_sub(panel_rect.x),
-                grab_offset_y: surface_y.saturating_sub(panel_rect.y),
+                grab_offset_x: (x.max(0) as usize).saturating_sub(panel_rect.x),
+                grab_offset_y: (y.max(0) as usize).saturating_sub(panel_rect.y),
             });
             return true;
         }
@@ -221,13 +218,12 @@ impl DesktopApp {
                 let Some(layout) = self.layout.as_ref() else {
                     return false;
                 };
-                let Some((surface_x, surface_y)) = self.panel_surface_coordinates_from_window(x, y) else {
-                    return false;
-                };
+                let window_x = x.max(0) as usize;
+                let window_y = y.max(0) as usize;
                 let changed = self.ui_shell.move_panel_to(
                     &panel_id,
-                    surface_x.saturating_sub(grab_offset_x),
-                    surface_y.saturating_sub(grab_offset_y),
+                    window_x.saturating_sub(grab_offset_x),
+                    window_y.saturating_sub(grab_offset_y),
                     layout.window_rect.width,
                     layout.window_rect.height,
                 );
