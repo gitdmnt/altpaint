@@ -7,6 +7,17 @@ use super::*;
 
 pub(super) const WORKSPACE_PANEL_ID: &str = "builtin.workspace-layout";
 
+pub(super) fn default_panel_state(panel_id: &str, index: usize) -> WorkspacePanelState {
+    let (anchor, position) = default_panel_anchor_and_position(panel_id, index);
+    WorkspacePanelState {
+        id: panel_id.to_string(),
+        visible: true,
+        anchor,
+        position: Some(position),
+        size: Some(WorkspacePanelSize::default()),
+    }
+}
+
 impl UiShell {
     pub(super) fn ensure_workspace_manager_entry(&mut self) {
         if self
@@ -20,12 +31,7 @@ impl UiShell {
 
         self.workspace_layout.panels.insert(
             0,
-            WorkspacePanelState {
-                id: WORKSPACE_PANEL_ID.to_string(),
-                visible: true,
-                position: Some(default_panel_position(0)),
-                size: Some(WorkspacePanelSize::default()),
-            },
+            default_panel_state(WORKSPACE_PANEL_ID, 0),
         );
     }
 
@@ -80,12 +86,23 @@ impl UiShell {
             x: x.min(viewport_width.saturating_sub(size.width.max(1))),
             y: y.min(viewport_height.saturating_sub(size.height.max(1))),
         };
-        if entry.position == Some(next_position) {
+        let current_position = entry.resolved_position(
+            viewport_width,
+            viewport_height,
+            size,
+            default_panel_position(panel_id, 0),
+        );
+        if current_position == next_position {
             return false;
         }
 
-        entry.position = Some(next_position);
-        entry.size = Some(size);
+        entry.set_position_from_absolute(
+            next_position.x,
+            next_position.y,
+            viewport_width,
+            viewport_height,
+            size,
+        );
         self.panel_layout_dirty = true;
         true
     }
@@ -101,8 +118,8 @@ impl UiShell {
             .panels
             .iter()
             .find(|entry| entry.id == panel_id)?;
-        let position = entry.position?;
         let size = entry.size.unwrap_or_default();
+        let position = entry.resolved_position(usize::MAX, usize::MAX, size, default_panel_position(panel_id, 0));
         Some(render::PixelRect {
             x: position.x,
             y: position.y,
@@ -172,12 +189,9 @@ impl UiShell {
             return;
         }
 
-        self.workspace_layout.panels.push(WorkspacePanelState {
-            id: panel_id.to_string(),
-            visible: true,
-            position: Some(default_panel_position(self.workspace_layout.panels.len())),
-            size: Some(WorkspacePanelSize::default()),
-        });
+        self.workspace_layout
+            .panels
+            .push(default_panel_state(panel_id, self.workspace_layout.panels.len()));
     }
 
     /// 読み込み済み panel 群と workspace layout の整合を取る。
@@ -191,7 +205,7 @@ impl UiShell {
 
         for (index, entry) in self.workspace_layout.panels.iter_mut().enumerate() {
             if entry.position.is_none() {
-                entry.position = Some(default_panel_position(index));
+                entry.position = Some(default_panel_position(&entry.id, index));
             }
             if entry.size.is_none() {
                 entry.size = Some(WorkspacePanelSize::default());
@@ -281,11 +295,43 @@ impl UiShell {
     }
 }
 
-fn default_panel_position(index: usize) -> WorkspacePanelPosition {
-    WorkspacePanelPosition {
-        x: 24 + index * 28,
-        y: 72 + index * 36,
+fn default_panel_anchor_and_position(
+    panel_id: &str,
+    index: usize,
+) -> (app_core::WorkspacePanelAnchor, WorkspacePanelPosition) {
+    match panel_id {
+        WORKSPACE_PANEL_ID => (
+            app_core::WorkspacePanelAnchor::TopLeft,
+            WorkspacePanelPosition { x: 24, y: 72 },
+        ),
+        "builtin.layers-panel" => (
+            app_core::WorkspacePanelAnchor::TopRight,
+            WorkspacePanelPosition { x: 24, y: 72 },
+        ),
+        "builtin.color-palette" => (
+            app_core::WorkspacePanelAnchor::BottomLeft,
+            WorkspacePanelPosition { x: 24, y: 24 },
+        ),
+        "builtin.pen-settings" => (
+            app_core::WorkspacePanelAnchor::BottomRight,
+            WorkspacePanelPosition { x: 24, y: 24 },
+        ),
+        "builtin.view-controls" => (
+            app_core::WorkspacePanelAnchor::BottomRight,
+            WorkspacePanelPosition { x: 376, y: 24 },
+        ),
+        _ => (
+            app_core::WorkspacePanelAnchor::TopLeft,
+            WorkspacePanelPosition {
+                x: 24 + index * 28,
+                y: 72 + index * 36,
+            },
+        ),
     }
+}
+
+fn default_panel_position(panel_id: &str, index: usize) -> WorkspacePanelPosition {
+    default_panel_anchor_and_position(panel_id, index).1
 }
 
 /// event から対象 panel id を取り出す。

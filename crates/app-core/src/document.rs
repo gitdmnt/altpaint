@@ -739,7 +739,9 @@ impl Document {
             | Command::SaveProjectAs
             | Command::SaveProjectToPath { .. }
             | Command::LoadProject
-            | Command::LoadProjectFromPath { .. } => None,
+            | Command::LoadProjectFromPath { .. }
+            | Command::ReloadWorkspacePresets
+            | Command::ApplyWorkspacePreset { .. } => None,
         }
     }
 }

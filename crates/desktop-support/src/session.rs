@@ -55,6 +55,7 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use app_core::WorkspacePanelAnchor;
 
     static TEST_SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -76,6 +77,7 @@ mod tests {
                     panels: vec![app_core::WorkspacePanelState {
                         id: "builtin.tool-palette".to_string(),
                         visible: false,
+                        anchor: WorkspacePanelAnchor::TopLeft,
                         position: None,
                         size: None,
                     }],

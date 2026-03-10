@@ -323,13 +323,14 @@ pub(crate) fn draw_canvas_overlay(
     overlay: CanvasOverlayState,
     dirty_rect: Option<Rect>,
 ) {
-    if let Some(position) = overlay.brush_preview {
+    if let (Some(position), Some(brush_size)) = (overlay.brush_preview, overlay.brush_size) {
         draw_brush_preview(
             frame,
             layout.canvas_host_rect,
             canvas,
             transform,
             position,
+            brush_size,
             dirty_rect,
         );
     }

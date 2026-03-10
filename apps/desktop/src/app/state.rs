@@ -79,6 +79,15 @@ pub(crate) struct PendingSaveTask {
 }
 
 impl DesktopApp {
+    pub(super) fn brush_preview_size(&self) -> Option<u32> {
+        match self.document.active_tool {
+            app_core::ToolKind::Pen | app_core::ToolKind::Eraser => {
+                Some(self.document.active_pen_size.max(1))
+            }
+            app_core::ToolKind::Bucket | app_core::ToolKind::LassoBucket => None,
+        }
+    }
+
     /// 現在のデスクトップセッションとして保存すべき状態を組み立てる。
     pub(super) fn session_state(&self) -> DesktopSessionState {
         DesktopSessionState {
@@ -265,6 +274,7 @@ impl DesktopApp {
                     canvas_height,
                     previous_transform,
                     hover_position,
+                    self.brush_preview_size().unwrap_or(1),
                 );
                 let current_preview = brush_preview_rect(
                     canvas_viewport_rect,
@@ -272,6 +282,7 @@ impl DesktopApp {
                     canvas_height,
                     self.document.view_transform,
                     hover_position,
+                    self.brush_preview_size().unwrap_or(1),
                 );
 
                 match (previous_preview, current_preview) {
@@ -370,6 +381,8 @@ impl DesktopApp {
             | Command::SaveProjectToPath { .. }
             | Command::LoadProject
             | Command::LoadProjectFromPath { .. }
+            | Command::ReloadWorkspacePresets
+            | Command::ApplyWorkspacePreset { .. }
             | Command::ReloadPenPresets => false,
         }
     }

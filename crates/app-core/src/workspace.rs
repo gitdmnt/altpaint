@@ -16,11 +16,26 @@ fn default_panel_height() -> usize {
     220
 }
 
-/// 浮動パネルの左上座標。
+fn default_panel_anchor() -> WorkspacePanelAnchor {
+    WorkspacePanelAnchor::TopLeft
+}
+
+/// 浮動パネルのアンカー基準オフセット。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct WorkspacePanelPosition {
     pub x: usize,
     pub y: usize,
+}
+
+/// 浮動パネルの配置基準となる画面隅。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum WorkspacePanelAnchor {
+    #[default]
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
 }
 
 /// 浮動パネルのサイズ。
@@ -54,10 +69,147 @@ pub struct WorkspacePanelState {
     pub id: String,
     #[serde(default = "default_visible")]
     pub visible: bool,
+    #[serde(default = "default_panel_anchor")]
+    pub anchor: WorkspacePanelAnchor,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<WorkspacePanelPosition>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<WorkspacePanelSize>,
+}
+
+impl WorkspacePanelState {
+    /// アンカーとオフセットから実際の左上座標を解決する。
+    pub fn resolved_position(
+        &self,
+        viewport_width: usize,
+        viewport_height: usize,
+        panel_size: WorkspacePanelSize,
+        fallback: WorkspacePanelPosition,
+    ) -> WorkspacePanelPosition {
+        let offset = self.position.unwrap_or(fallback);
+        let width = panel_size.width.min(viewport_width);
+        let height = panel_size.height.min(viewport_height);
+        let max_x = viewport_width.saturating_sub(width);
+        let max_y = viewport_height.saturating_sub(height);
+
+        match self.anchor {
+            WorkspacePanelAnchor::TopLeft => WorkspacePanelPosition {
+                x: offset.x.min(max_x),
+                y: offset.y.min(max_y),
+            },
+            WorkspacePanelAnchor::TopRight => WorkspacePanelPosition {
+                x: viewport_width
+                    .saturating_sub(width)
+                    .saturating_sub(offset.x)
+                    .min(max_x),
+                y: offset.y.min(max_y),
+            },
+            WorkspacePanelAnchor::BottomLeft => WorkspacePanelPosition {
+                x: offset.x.min(max_x),
+                y: viewport_height
+                    .saturating_sub(height)
+                    .saturating_sub(offset.y)
+                    .min(max_y),
+            },
+            WorkspacePanelAnchor::BottomRight => WorkspacePanelPosition {
+                x: viewport_width
+                    .saturating_sub(width)
+                    .saturating_sub(offset.x)
+                    .min(max_x),
+                y: viewport_height
+                    .saturating_sub(height)
+                    .saturating_sub(offset.y)
+                    .min(max_y),
+            },
+        }
+    }
+
+    /// 実際の左上座標を現在の viewport 基準のアンカーオフセットへ変換する。
+    pub fn set_position_from_absolute(
+        &mut self,
+        x: usize,
+        y: usize,
+        viewport_width: usize,
+        viewport_height: usize,
+        panel_size: WorkspacePanelSize,
+    ) {
+        let width = panel_size.width.min(viewport_width);
+        let height = panel_size.height.min(viewport_height);
+        let max_x = viewport_width.saturating_sub(width);
+        let max_y = viewport_height.saturating_sub(height);
+        let absolute_x = x.min(max_x);
+        let absolute_y = y.min(max_y);
+
+        let anchor = nearest_panel_anchor(
+            absolute_x,
+            absolute_y,
+            viewport_width,
+            viewport_height,
+            width,
+            height,
+        );
+        let position = match anchor {
+            WorkspacePanelAnchor::TopLeft => WorkspacePanelPosition {
+                x: absolute_x,
+                y: absolute_y,
+            },
+            WorkspacePanelAnchor::TopRight => WorkspacePanelPosition {
+                x: viewport_width
+                    .saturating_sub(width)
+                    .saturating_sub(absolute_x),
+                y: absolute_y,
+            },
+            WorkspacePanelAnchor::BottomLeft => WorkspacePanelPosition {
+                x: absolute_x,
+                y: viewport_height
+                    .saturating_sub(height)
+                    .saturating_sub(absolute_y),
+            },
+            WorkspacePanelAnchor::BottomRight => WorkspacePanelPosition {
+                x: viewport_width
+                    .saturating_sub(width)
+                    .saturating_sub(absolute_x),
+                y: viewport_height
+                    .saturating_sub(height)
+                    .saturating_sub(absolute_y),
+            },
+        };
+
+        self.anchor = anchor;
+        self.position = Some(position);
+        self.size = Some(panel_size);
+    }
+}
+
+fn nearest_panel_anchor(
+    x: usize,
+    y: usize,
+    viewport_width: usize,
+    viewport_height: usize,
+    panel_width: usize,
+    panel_height: usize,
+) -> WorkspacePanelAnchor {
+    let right_gap = viewport_width.saturating_sub(panel_width).saturating_sub(x);
+    let bottom_gap = viewport_height
+        .saturating_sub(panel_height)
+        .saturating_sub(y);
+    let mut best = (WorkspacePanelAnchor::TopLeft, x.saturating_add(y));
+    for candidate in [
+        (WorkspacePanelAnchor::TopRight, right_gap.saturating_add(y)),
+        (
+            WorkspacePanelAnchor::BottomLeft,
+            x.saturating_add(bottom_gap),
+        ),
+        (
+            WorkspacePanelAnchor::BottomRight,
+            right_gap.saturating_add(bottom_gap),
+        ),
+    ] {
+        if candidate.1 < best.1 {
+            best = candidate;
+        }
+    }
+    best.0
 }
 
 #[cfg(test)]
@@ -81,6 +233,7 @@ mod tests {
                 WorkspacePanelState {
                     id: "builtin.tool-palette".to_string(),
                     visible: false,
+                    anchor: WorkspacePanelAnchor::TopLeft,
                     position: Some(WorkspacePanelPosition { x: 24, y: 72 }),
                     size: Some(WorkspacePanelSize {
                         width: 280,
@@ -90,6 +243,7 @@ mod tests {
                 WorkspacePanelState {
                     id: "builtin.layers-panel".to_string(),
                     visible: true,
+                    anchor: WorkspacePanelAnchor::TopLeft,
                     position: Some(WorkspacePanelPosition { x: 340, y: 72 }),
                     size: Some(WorkspacePanelSize {
                         width: 320,
@@ -104,5 +258,69 @@ mod tests {
             serde_json::from_str(&json).expect("layout should deserialize");
 
         assert_eq!(restored, layout);
+    }
+
+    #[test]
+    fn workspace_panel_anchor_defaults_to_top_left_when_missing() {
+        let panel: WorkspacePanelState =
+            serde_json::from_str(r#"{"id":"builtin.tool-palette","position":{"x":24,"y":72}}"#)
+                .expect("panel should deserialize");
+
+        assert_eq!(panel.anchor, WorkspacePanelAnchor::TopLeft);
+    }
+
+    #[test]
+    fn resolved_position_uses_anchor_relative_offsets() {
+        let panel = WorkspacePanelState {
+            id: "builtin.layers-panel".to_string(),
+            visible: true,
+            anchor: WorkspacePanelAnchor::TopRight,
+            position: Some(WorkspacePanelPosition { x: 24, y: 72 }),
+            size: Some(WorkspacePanelSize {
+                width: 300,
+                height: 220,
+            }),
+        };
+
+        assert_eq!(
+            panel.resolved_position(
+                1280,
+                800,
+                panel.size.expect("size exists"),
+                WorkspacePanelPosition::default(),
+            ),
+            WorkspacePanelPosition { x: 956, y: 72 }
+        );
+    }
+
+    #[test]
+    fn set_position_from_absolute_picks_nearest_corner_anchor() {
+        let mut panel = WorkspacePanelState {
+            id: "builtin.layers-panel".to_string(),
+            visible: true,
+            anchor: WorkspacePanelAnchor::TopLeft,
+            position: None,
+            size: Some(WorkspacePanelSize {
+                width: 300,
+                height: 220,
+            }),
+        };
+
+        panel.set_position_from_absolute(930, 68, 1280, 800, panel.size.expect("size exists"));
+
+        assert_eq!(panel.anchor, WorkspacePanelAnchor::TopRight);
+        assert_eq!(
+            panel.position,
+            Some(WorkspacePanelPosition { x: 50, y: 68 })
+        );
+        assert_eq!(
+            panel.resolved_position(
+                1280,
+                800,
+                panel.size.expect("size exists"),
+                WorkspacePanelPosition::default(),
+            ),
+            WorkspacePanelPosition { x: 930, y: 68 }
+        );
     }
 }

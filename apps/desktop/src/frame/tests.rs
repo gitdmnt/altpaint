@@ -152,6 +152,41 @@ fn transformed_canvas_dirty_rect_tracks_zoom_and_pan() {
 }
 
 #[test]
+fn brush_preview_rect_expands_with_larger_brush_size() {
+    let small = brush_preview_rect(
+        Rect {
+            x: 100,
+            y: 50,
+            width: 320,
+            height: 320,
+        },
+        64,
+        64,
+        CanvasViewTransform::default(),
+        (32, 32),
+        4,
+    )
+    .expect("small preview exists");
+    let large = brush_preview_rect(
+        Rect {
+            x: 100,
+            y: 50,
+            width: 320,
+            height: 320,
+        },
+        64,
+        64,
+        CanvasViewTransform::default(),
+        (32, 32),
+        24,
+    )
+    .expect("large preview exists");
+
+    assert!(large.width > small.width);
+    assert!(large.height > small.height);
+}
+
+#[test]
 fn canvas_texture_quad_clips_uv_when_panned_outside_display() {
     let quad = canvas_texture_quad(
         Rect {

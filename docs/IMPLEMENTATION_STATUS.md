@@ -20,10 +20,13 @@
 - 浮動 UI panel の位置保存とドラッグ移動
 - project save/load
 - session save/load
+- workspace preset 読込・再読込・切り替え
 - `plugins/` 配下の `.altp-panel` + Wasm panel の再帰ロード
 - built-in panel 群の UI DSL + Rust SDK + Wasm 実装
 - panel local state / host snapshot / persistent config
+- 4隅アンカー基準の workspace panel 配置
 - 外部ペンプリセット読込
+- `AltPaintPen` 正規化 format と external brush parse/export module
 - 実行時 profiler とタイトル表示
 
 ## workspace 現況
@@ -103,6 +106,7 @@
 - `WorkspaceLayout` 永続化
 - `plugin_configs` 永続化
 - pen preset 読込
+- `ABR` / `SUT` / `GBR` 向け pen exchange module
 
 `desktop-support` には次がある。
 

@@ -440,6 +440,10 @@ fn workspace_layout_reorders_visible_panels() { let mut shell = shell_with_built
 #[test]
 fn workspace_manager_panel_has_layout_entry() { let shell = shell_with_builtin_panels(); assert!(shell.workspace_layout().panels.iter().any(|entry| entry.id == WORKSPACE_PANEL_ID)); }
 #[test]
+fn anchored_workspace_panel_repositions_with_viewport_resize() { let mut shell = shell_with_builtin_panels(); let _ = shell.render_panel_surface(960, 640); let initial = shell.panel_rect("builtin.layers-panel").expect("layers panel rect exists"); let layout = shell.workspace_layout(); let entry = layout.panels.iter().find(|entry| entry.id == "builtin.layers-panel").expect("layers layout entry exists"); assert_eq!(entry.anchor, app_core::WorkspacePanelAnchor::TopRight); let _ = shell.render_panel_surface(1280, 640); let resized = shell.panel_rect("builtin.layers-panel").expect("layers panel rect exists"); assert!(resized.x > initial.x); assert_eq!(resized.y, initial.y); }
+#[test]
+fn dragging_panel_to_right_edge_switches_anchor_for_responsive_layout() { let mut shell = shell_with_builtin_panels(); let _ = shell.render_panel_surface(1280, 720); assert!(shell.move_panel_to("builtin.app-actions", 920, 80, 1280, 720)); let entry = shell.workspace_layout().panels.into_iter().find(|entry| entry.id == "builtin.app-actions").expect("app actions layout entry exists"); assert_eq!(entry.anchor, app_core::WorkspacePanelAnchor::TopRight); let _ = shell.render_panel_surface(1440, 720); let moved = shell.panel_rect("builtin.app-actions").expect("app actions rect exists"); assert!(moved.x >= 920); }
+#[test]
 fn scrolling_panels_updates_scroll_offset() { let mut shell = shell_with_builtin_panels(); let _ = shell.render_panel_surface(280, 96); assert!(!shell.scroll_panels(6, 96)); assert_eq!(shell.panel_scroll_offset(), 0); }
 #[test]
 fn scrolling_panels_keeps_cached_panel_content() { let mut shell = shell_with_builtin_panels(); let _ = shell.render_panel_surface(280, 96); assert!(!shell.panel_content_dirty); assert!(!shell.scroll_panels(6, 96)); assert!(!shell.panel_content_dirty); }

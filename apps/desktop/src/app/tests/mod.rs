@@ -65,18 +65,35 @@ impl DesktopDialogs for TestDialogs {
 
 /// 差し替えダイアログを使う `DesktopApp` を生成する。
 fn test_app_with_dialogs(dialogs: TestDialogs) -> DesktopApp {
-    DesktopApp::new_with_dialogs_and_session_path(
+    DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
         PathBuf::from("/tmp/altpaint-test.altp.json"),
         Box::new(dialogs),
         unique_test_path("session"),
+        unique_test_path("workspace-presets"),
     )
 }
 
-fn test_app_with_dialogs_and_session_path(dialogs: TestDialogs, session_path: PathBuf) -> DesktopApp {
-    DesktopApp::new_with_dialogs_and_session_path(
+fn test_app_with_dialogs_and_session_path(
+    dialogs: TestDialogs,
+    session_path: PathBuf,
+) -> DesktopApp {
+    DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
         PathBuf::from("/tmp/altpaint-test.altp.json"),
         Box::new(dialogs),
         session_path,
+        unique_test_path("workspace-presets"),
+    )
+}
+
+fn test_app_with_dialogs_and_workspace_preset_path(
+    dialogs: TestDialogs,
+    workspace_preset_path: PathBuf,
+) -> DesktopApp {
+    DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
+        PathBuf::from("/tmp/altpaint-test.altp.json"),
+        Box::new(dialogs),
+        unique_test_path("session"),
+        workspace_preset_path,
     )
 }
 
@@ -107,7 +124,9 @@ fn tree_contains_button_id(nodes: &[plugin_api::PanelNode], target: &str) -> boo
         plugin_api::PanelNode::Button { id, .. } => id == target,
         plugin_api::PanelNode::Column { children, .. }
         | plugin_api::PanelNode::Row { children, .. }
-        | plugin_api::PanelNode::Section { children, .. } => tree_contains_button_id(children, target),
+        | plugin_api::PanelNode::Section { children, .. } => {
+            tree_contains_button_id(children, target)
+        }
         plugin_api::PanelNode::Text { .. }
         | plugin_api::PanelNode::Slider { .. }
         | plugin_api::PanelNode::TextInput { .. }

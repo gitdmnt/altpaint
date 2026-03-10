@@ -132,6 +132,7 @@ impl DesktopApp {
                     self.document.view_transform,
                     CanvasOverlayState {
                         brush_preview: self.hover_canvas_position,
+                        brush_size: self.brush_preview_size(),
                         lasso_points: self.canvas_input.lasso_points.clone(),
                     },
                 )
@@ -166,6 +167,7 @@ impl DesktopApp {
 
         let layout = self.layout.clone().expect("layout exists");
         let status_text = self.needs_status_refresh.then(|| self.status_text());
+        let brush_preview_size = self.brush_preview_size();
         let Some(base_frame) = self.base_frame.as_mut() else {
             self.rebuild_present_frame();
             return PresentFrameUpdate::default();
@@ -200,6 +202,7 @@ impl DesktopApp {
                     self.document.view_transform,
                     CanvasOverlayState {
                         brush_preview: self.hover_canvas_position,
+                        brush_size: brush_preview_size,
                         lasso_points: self.canvas_input.lasso_points.clone(),
                     },
                     panel_dirty_rect,
@@ -273,6 +276,7 @@ impl DesktopApp {
                     self.document.view_transform,
                     CanvasOverlayState {
                         brush_preview: self.hover_canvas_position,
+                        brush_size: brush_preview_size,
                         lasso_points: self.canvas_input.lasso_points.clone(),
                     },
                     Some(dirty_rect),

@@ -141,6 +141,7 @@ pub(crate) struct CanvasCompositeSource<'a> {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct CanvasOverlayState {
     pub(crate) brush_preview: Option<(usize, usize)>,
+    pub(crate) brush_size: Option<u32>,
     pub(crate) lasso_points: Vec<(usize, usize)>,
 }
 

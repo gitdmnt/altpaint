@@ -11,3 +11,5 @@ plugins/**/*.wasm
 *.altp.json
 altpaint-session.json
 logs/
+pens/abr/*.abr
+pens/sut/*.sut

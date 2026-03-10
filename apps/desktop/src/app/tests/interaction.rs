@@ -969,3 +969,27 @@ fn test_dialog_app_can_prepare_frame() {
 
     assert!(update.canvas_updated);
 }
+
+#[test]
+fn brush_preview_dirty_rect_grows_with_pen_size() {
+    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut profiler = DesktopProfiler::new();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+    let layout = app.layout.clone().expect("layout exists");
+    let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
+    let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
+
+    let _ = app.execute_command(Command::SetViewZoom { zoom: 8.0 });
+    let _ = app.execute_command(Command::SetActivePenSize { size: 4 });
+    assert!(app.update_canvas_hover(center_x, center_y));
+    let small_dirty = app.pending_canvas_host_dirty_rect.expect("small preview dirty exists");
+
+    app.pending_canvas_host_dirty_rect = None;
+    app.hover_canvas_position = None;
+    let _ = app.execute_command(Command::SetActivePenSize { size: 96 });
+    assert!(app.update_canvas_hover(center_x, center_y));
+    let large_dirty = app.pending_canvas_host_dirty_rect.expect("large preview dirty exists");
+
+    assert!(large_dirty.width > small_dirty.width);
+    assert!(large_dirty.height > small_dirty.height);
+}

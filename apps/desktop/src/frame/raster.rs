@@ -476,6 +476,7 @@ pub(super) fn draw_brush_preview(
     source: CanvasCompositeSource<'_>,
     transform: CanvasViewTransform,
     canvas_position: (usize, usize),
+    brush_size: u32,
     dirty_rect: Option<Rect>,
 ) {
     if source.width == 0 || source.height == 0 {
@@ -487,13 +488,14 @@ pub(super) fn draw_brush_preview(
     let Some((center_x, center_y)) = scene.map_canvas_point_to_display(canvas_position) else {
         return;
     };
-    let radius = scene.scale().max(4.0);
+    let radius = ((brush_size.max(1) as f32 * scene.scale()) * 0.5).max(4.0);
     let Some(target) = brush_preview_rect(
         destination,
         source.width,
         source.height,
         transform,
         canvas_position,
+        brush_size,
     )
     .and_then(|rect| match dirty_rect {
         Some(dirty) => rect.intersect(dirty),

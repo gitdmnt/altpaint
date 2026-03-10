@@ -83,6 +83,7 @@ impl DesktopApp {
                 self.ui_shell
                     .set_persistent_panel_configs(project.ui_state.plugin_configs);
                 self.refresh_new_document_templates();
+                self.refresh_workspace_presets();
                 self.reset_active_interactions();
                 self.sync_ui_from_document();
                 self.mark_status_dirty();
@@ -109,6 +110,8 @@ impl DesktopApp {
             Command::SaveProjectToPath { path } => self.save_project_to_path(PathBuf::from(path)),
             Command::LoadProject => self.open_project(),
             Command::LoadProjectFromPath { path } => self.load_project(PathBuf::from(path)),
+            Command::ReloadWorkspacePresets => self.reload_workspace_presets(),
+            Command::ApplyWorkspacePreset { preset_id } => self.apply_workspace_preset(&preset_id),
             Command::ReloadPenPresets => self.reload_pen_presets(),
             other => self.execute_document_command(other),
         }

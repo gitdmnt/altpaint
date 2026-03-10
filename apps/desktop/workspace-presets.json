@@ -1,0 +1,134 @@
+{
+  "format_version": 1,
+  "default_preset_id": "default-floating",
+  "presets": [
+    {
+      "id": "default-floating",
+      "label": "Default floating workspace",
+      "ui_state": {
+        "workspace_layout": {
+          "panels": [
+            {
+              "id": "builtin.workspace-layout",
+              "visible": true,
+              "anchor": "top-left",
+              "position": {
+                "x": 24,
+                "y": 72
+              },
+              "size": {
+                "width": 320,
+                "height": 280
+              }
+            },
+            {
+              "id": "builtin.tool-palette",
+              "visible": true,
+              "anchor": "top-left",
+              "position": {
+                "x": 24,
+                "y": 384
+              },
+              "size": {
+                "width": 300,
+                "height": 280
+              }
+            },
+            {
+              "id": "builtin.app-actions",
+              "visible": true,
+              "anchor": "top-left",
+              "position": {
+                "x": 356,
+                "y": 72
+              },
+              "size": {
+                "width": 320,
+                "height": 240
+              }
+            },
+            {
+              "id": "builtin.layers-panel",
+              "visible": true,
+              "anchor": "top-right",
+              "position": {
+                "x": 24,
+                "y": 72
+              },
+              "size": {
+                "width": 320,
+                "height": 320
+              }
+            },
+            {
+              "id": "builtin.color-palette",
+              "visible": true,
+              "anchor": "bottom-left",
+              "position": {
+                "x": 24,
+                "y": 24
+              },
+              "size": {
+                "width": 320,
+                "height": 320
+              }
+            },
+            {
+              "id": "builtin.pen-settings",
+              "visible": true,
+              "anchor": "bottom-right",
+              "position": {
+                "x": 24,
+                "y": 24
+              },
+              "size": {
+                "width": 320,
+                "height": 260
+              }
+            },
+            {
+              "id": "builtin.view-controls",
+              "visible": true,
+              "anchor": "bottom-right",
+              "position": {
+                "x": 376,
+                "y": 24
+              },
+              "size": {
+                "width": 320,
+                "height": 260
+              }
+            },
+            {
+              "id": "builtin.job-progress",
+              "visible": true,
+              "anchor": "bottom-left",
+              "position": {
+                "x": 376,
+                "y": 24
+              },
+              "size": {
+                "width": 280,
+                "height": 180
+              }
+            },
+            {
+              "id": "builtin.snapshot-panel",
+              "visible": true,
+              "anchor": "top-right",
+              "position": {
+                "x": 24,
+                "y": 424
+              },
+              "size": {
+                "width": 280,
+                "height": 180
+              }
+            }
+          ]
+        },
+        "plugin_configs": {}
+      }
+    }
+  ]
+}

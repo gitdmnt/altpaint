@@ -953,6 +953,17 @@ pub(super) fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<
                 path: path.to_string(),
             })
         }
+        "workspace.reload_presets" => Ok(Command::ReloadWorkspacePresets),
+        "workspace.apply_preset" => {
+            let preset_id = descriptor
+                .payload
+                .get("preset_id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "workspace.apply_preset is missing payload.preset_id".to_string())?;
+            Ok(Command::ApplyWorkspacePreset {
+                preset_id: preset_id.to_string(),
+            })
+        }
         "tool.set_active" => {
             let tool = descriptor
                 .payload
@@ -1188,10 +1199,32 @@ fn parse_document_size(input: &str) -> Option<(usize, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use panel_schema::CommandDescriptor;
 
     #[test]
     fn active_tool_name_covers_fill_tools() {
         assert_eq!(active_tool_name(ToolKind::Bucket), "bucket");
         assert_eq!(active_tool_name(ToolKind::LassoBucket), "lasso_bucket");
+    }
+
+    #[test]
+    fn command_from_descriptor_maps_workspace_commands() {
+        assert_eq!(
+            command_from_descriptor(&CommandDescriptor::new("workspace.reload_presets")),
+            Ok(Command::ReloadWorkspacePresets)
+        );
+
+        let mut descriptor = CommandDescriptor::new("workspace.apply_preset");
+        descriptor.payload.insert(
+            "preset_id".to_string(),
+            Value::String("illustration".to_string()),
+        );
+
+        assert_eq!(
+            command_from_descriptor(&descriptor),
+            Ok(Command::ApplyWorkspacePreset {
+                preset_id: "illustration".to_string(),
+            })
+        );
     }
 }

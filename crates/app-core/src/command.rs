@@ -10,17 +10,9 @@ pub enum Command {
     /// 状態を変更しないダミーコマンド。
     Noop,
     /// 指定座標へ1ピクセル描画する最小コマンド。
-    DrawPoint {
-        x: usize,
-        y: usize,
-        pressure: f32,
-    },
+    DrawPoint { x: usize, y: usize, pressure: f32 },
     /// 指定座標へ1ピクセル消去する最小コマンド。
-    ErasePoint {
-        x: usize,
-        y: usize,
-        pressure: f32,
-    },
+    ErasePoint { x: usize, y: usize, pressure: f32 },
     /// 指定した2点の間に最小ストロークを描画する。
     DrawStroke {
         from_x: usize,
@@ -109,4 +101,8 @@ pub enum Command {
     LoadProject,
     /// 指定パスからドキュメントを読み込む。
     LoadProjectFromPath { path: String },
+    /// workspace preset カタログを再読込する。
+    ReloadWorkspacePresets,
+    /// 指定 workspace preset を適用する。
+    ApplyWorkspacePreset { preset_id: String },
 }

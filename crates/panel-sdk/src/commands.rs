@@ -94,6 +94,26 @@ pub mod project {
     }
 }
 
+/// ワークスペース操作コマンド群。
+pub mod workspace {
+    use panel_schema::CommandDescriptor;
+    use serde_json::json;
+
+    /// workspace preset カタログ再読込コマンドを返す。
+    pub fn reload_presets() -> CommandDescriptor {
+        CommandDescriptor::new("workspace.reload_presets")
+    }
+
+    /// 指定 workspace preset 適用コマンドを返す。
+    pub fn apply_preset(preset_id: impl Into<String>) -> CommandDescriptor {
+        let mut descriptor = CommandDescriptor::new("workspace.apply_preset");
+        descriptor
+            .payload
+            .insert("preset_id".to_string(), json!(preset_id.into()));
+        descriptor
+    }
+}
+
 /// ツール操作コマンド群。
 pub mod tool {
     use super::{RgbColor, Tool};
@@ -217,10 +237,9 @@ pub mod view {
     /// キャンバス表示回転角を度単位で設定する。
     pub fn set_rotation_degrees(rotation_degrees: f32) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("view.set_rotation");
-        descriptor.payload.insert(
-            "rotation_degrees".to_string(),
-            json!(rotation_degrees),
-        );
+        descriptor
+            .payload
+            .insert("rotation_degrees".to_string(), json!(rotation_degrees));
         descriptor
     }
 

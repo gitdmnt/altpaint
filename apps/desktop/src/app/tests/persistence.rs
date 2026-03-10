@@ -3,7 +3,13 @@
 use std::path::PathBuf;
 
 use app_core::Command;
-use desktop_support::{DEFAULT_PROJECT_PATH, DesktopProfiler};
+use app_core::{
+    WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState,
+};
+use desktop_support::{
+    DEFAULT_PROJECT_PATH, DesktopProfiler, WorkspacePreset, WorkspacePresetCatalog,
+    save_workspace_preset_catalog,
+};
 use plugin_api::HostAction;
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -95,7 +101,9 @@ fn save_and_load_restore_plugin_shortcut_configs() {
             "template_options": "2894x4093:A4 350dpi (2894×4093)|2480x3508:A4 300dpi (2480×3508)|2048x2048:Square 2048 (2048×2048)|1920x1080:HD Landscape (1920×1080)",
             "save_shortcut": "Ctrl+S",
             "save_as_shortcut": "Ctrl+Shift+S",
-            "open_shortcut": "Ctrl+O"
+            "open_shortcut": "Ctrl+O",
+            "workspace_options": "default-floating:Default floating workspace",
+            "selected_workspace": "default-floating"
         }))
     );
 
@@ -111,7 +119,9 @@ fn save_and_load_restore_plugin_shortcut_configs() {
             "template_options": "2894x4093:A4 350dpi (2894×4093)|2480x3508:A4 300dpi (2480×3508)|2048x2048:Square 2048 (2048×2048)|1920x1080:HD Landscape (1920×1080)",
             "save_shortcut": "Ctrl+S",
             "save_as_shortcut": "Ctrl+Shift+S",
-            "open_shortcut": "Ctrl+O"
+            "open_shortcut": "Ctrl+O",
+            "workspace_options": "default-floating:Default floating workspace",
+            "selected_workspace": "default-floating"
         }))
     );
 
@@ -123,16 +133,6 @@ fn save_and_load_restore_plugin_shortcut_configs() {
 fn load_project_restores_workspace_layout() {
     let path = std::env::temp_dir().join("altpaint-load-test.altp.json");
     let mut source_app = test_app_with_dialogs(TestDialogs::default());
-    let before_ids = source_app
-        .ui_shell
-        .panel_trees()
-        .iter()
-        .map(|panel| panel.id)
-        .collect::<Vec<_>>();
-    let before_index = before_ids
-        .iter()
-        .position(|panel_id| *panel_id == "builtin.layers-panel")
-        .expect("layers panel visible");
     let mut moved = false;
     for _ in 0..3 {
         moved |= source_app.execute_host_action(HostAction::MovePanel {
@@ -147,10 +147,11 @@ fn load_project_restores_workspace_layout() {
             visible: false,
         })
     );
+    let expected_layout = source_app.ui_shell.workspace_layout();
     save_project_to_path(
         &path,
         &source_app.document,
-        &source_app.ui_shell.workspace_layout(),
+        &expected_layout,
         &BTreeMap::new(),
     )
     .expect("project save should succeed");
@@ -166,12 +167,7 @@ fn load_project_restores_workspace_layout() {
             .iter()
             .any(|panel| panel.id == "builtin.tool-palette")
     );
-    let visible_ids = panels.iter().map(|panel| panel.id).collect::<Vec<_>>();
-    let layers_index = visible_ids
-        .iter()
-        .position(|panel_id| *panel_id == "builtin.layers-panel")
-        .expect("layers panel visible");
-    assert!(layers_index < before_index);
+    assert_eq!(app.ui_shell.workspace_layout(), expected_layout);
 
     let _ = std::fs::remove_file(path);
 }
@@ -197,21 +193,18 @@ fn move_panel_host_action_updates_status_without_full_recompose() {
     assert!(profiler.stats.contains_key("compose_dirty_status"));
     assert_eq!(
         update.base_dirty_rect,
-        Some(status_text_bounds(
-            1280,
-            200,
-            &layout,
-            &app.status_text()
-        ))
+        Some(status_text_bounds(1280, 200, &layout, &app.status_text()))
     );
     assert_eq!(
         update.overlay_dirty_rect,
-        app.ui_shell.last_panel_surface_dirty_rect().map(|dirty| crate::frame::Rect {
-            x: dirty.x,
-            y: dirty.y,
-            width: dirty.width,
-            height: dirty.height,
-        })
+        app.ui_shell
+            .last_panel_surface_dirty_rect()
+            .map(|dirty| crate::frame::Rect {
+                x: dirty.x,
+                y: dirty.y,
+                width: dirty.width,
+                height: dirty.height,
+            })
     );
 }
 
@@ -236,21 +229,18 @@ fn set_panel_visibility_updates_status_without_full_recompose() {
     assert!(profiler.stats.contains_key("compose_dirty_status"));
     assert_eq!(
         update.base_dirty_rect,
-        Some(status_text_bounds(
-            1280,
-            200,
-            &layout,
-            &app.status_text()
-        ))
+        Some(status_text_bounds(1280, 200, &layout, &app.status_text()))
     );
     assert_eq!(
         update.overlay_dirty_rect,
-        app.ui_shell.last_panel_surface_dirty_rect().map(|dirty| crate::frame::Rect {
-            x: dirty.x,
-            y: dirty.y,
-            width: dirty.width,
-            height: dirty.height,
-        })
+        app.ui_shell
+            .last_panel_surface_dirty_rect()
+            .map(|dirty| crate::frame::Rect {
+                x: dirty.x,
+                y: dirty.y,
+                width: dirty.width,
+                height: dirty.height,
+            })
     );
 }
 
@@ -295,6 +285,138 @@ fn hiding_panel_clears_previous_overlay_bounds_when_surface_shrinks() {
 }
 
 #[test]
+fn startup_uses_default_workspace_preset_when_project_and_session_are_empty() {
+    let preset_path = unique_test_path("workspace-preset-catalog");
+    save_workspace_preset_catalog(
+        &preset_path,
+        &WorkspacePresetCatalog {
+            format_version: 1,
+            default_preset_id: "test-preset".to_string(),
+            presets: vec![WorkspacePreset {
+                id: "test-preset".to_string(),
+                label: "Test preset".to_string(),
+                ui_state: workspace_persistence::WorkspaceUiState::new(
+                    app_core::WorkspaceLayout {
+                        panels: vec![WorkspacePanelState {
+                            id: "builtin.layers-panel".to_string(),
+                            visible: true,
+                            anchor: WorkspacePanelAnchor::TopRight,
+                            position: Some(WorkspacePanelPosition { x: 40, y: 88 }),
+                            size: Some(WorkspacePanelSize {
+                                width: 320,
+                                height: 260,
+                            }),
+                        }],
+                    },
+                    BTreeMap::new(),
+                ),
+            }],
+        },
+    )
+    .expect("preset save should succeed");
+
+    let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
+        PathBuf::from("/tmp/altpaint-test.altp.json"),
+        Box::new(TestDialogs::default()),
+        unique_test_path("preset-session"),
+        preset_path.clone(),
+    );
+    let entry = app
+        .ui_shell
+        .workspace_layout()
+        .panels
+        .into_iter()
+        .find(|entry| entry.id == "builtin.layers-panel")
+        .expect("layers panel layout exists");
+
+    assert_eq!(entry.anchor, WorkspacePanelAnchor::TopRight);
+    assert_eq!(
+        entry.position,
+        Some(WorkspacePanelPosition { x: 40, y: 88 })
+    );
+
+    let _ = std::fs::remove_file(&preset_path);
+}
+
+#[test]
+fn session_layout_overrides_default_workspace_preset() {
+    let preset_path = unique_test_path("workspace-preset-catalog");
+    save_workspace_preset_catalog(
+        &preset_path,
+        &WorkspacePresetCatalog {
+            format_version: 1,
+            default_preset_id: "test-preset".to_string(),
+            presets: vec![WorkspacePreset {
+                id: "test-preset".to_string(),
+                label: "Test preset".to_string(),
+                ui_state: workspace_persistence::WorkspaceUiState::new(
+                    app_core::WorkspaceLayout {
+                        panels: vec![WorkspacePanelState {
+                            id: "builtin.layers-panel".to_string(),
+                            visible: true,
+                            anchor: WorkspacePanelAnchor::TopRight,
+                            position: Some(WorkspacePanelPosition { x: 40, y: 88 }),
+                            size: Some(WorkspacePanelSize {
+                                width: 320,
+                                height: 260,
+                            }),
+                        }],
+                    },
+                    BTreeMap::new(),
+                ),
+            }],
+        },
+    )
+    .expect("preset save should succeed");
+    let session_path = unique_test_path("preset-session");
+    desktop_support::save_session_state(
+        &session_path,
+        &desktop_support::DesktopSessionState {
+            last_project_path: None,
+            ui_state: workspace_persistence::WorkspaceUiState::new(
+                app_core::WorkspaceLayout {
+                    panels: vec![WorkspacePanelState {
+                        id: "builtin.layers-panel".to_string(),
+                        visible: true,
+                        anchor: WorkspacePanelAnchor::TopLeft,
+                        position: Some(WorkspacePanelPosition { x: 12, y: 24 }),
+                        size: Some(WorkspacePanelSize {
+                            width: 300,
+                            height: 240,
+                        }),
+                    }],
+                },
+                BTreeMap::new(),
+            ),
+        },
+    )
+    .expect("session save should succeed");
+
+    let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
+        PathBuf::from("/tmp/altpaint-test.altp.json"),
+        Box::new(TestDialogs::default()),
+        session_path.clone(),
+        preset_path.clone(),
+    );
+    let entry = app
+        .ui_shell
+        .workspace_layout()
+        .panels
+        .into_iter()
+        .find(|entry| entry.id == "builtin.layers-panel")
+        .expect("layers panel layout exists");
+
+    assert_eq!(entry.anchor, WorkspacePanelAnchor::TopLeft);
+    assert_eq!(
+        entry.position,
+        Some(WorkspacePanelPosition { x: 12, y: 24 })
+    );
+
+    let _ = std::fs::remove_file(session_path);
+    let _ = std::fs::remove_file(preset_path);
+}
+
+#[test]
 fn startup_restores_last_opened_project_from_session() {
     let session_path = unique_test_path("desktop-session");
     let project_path = unique_test_path("startup-project");
@@ -307,10 +429,11 @@ fn startup_restores_last_opened_project_from_session() {
     assert!(source_app.execute_command(Command::SaveProjectAs));
     source_app.wait_for_pending_save_tasks();
 
-    let app = DesktopApp::new_with_dialogs_and_session_path(
+    let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
         PathBuf::from(DEFAULT_PROJECT_PATH),
         Box::new(TestDialogs::default()),
         session_path.clone(),
+        unique_test_path("workspace-presets"),
     );
 
     assert_eq!(app.project_path, project_path);

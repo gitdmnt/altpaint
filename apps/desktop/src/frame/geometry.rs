@@ -120,13 +120,15 @@ pub(crate) fn brush_preview_rect(
     source_height: usize,
     transform: CanvasViewTransform,
     canvas_position: (usize, usize),
+    brush_size: u32,
 ) -> Option<Rect> {
-    render::brush_preview_rect(
+    render::brush_preview_rect_for_diameter(
         to_render_rect(destination),
         source_width,
         source_height,
         transform,
         canvas_position,
+        brush_size.max(1) as f32,
     )
     .map(from_render_rect)
 }

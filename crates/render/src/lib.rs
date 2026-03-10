@@ -164,8 +164,17 @@ impl CanvasScene {
 
     /// キャンバス座標のブラシプレビュー領域を返す。
     pub fn brush_preview_rect(&self, canvas_position: (usize, usize)) -> Option<PixelRect> {
+        self.brush_preview_rect_for_diameter(canvas_position, 1.0)
+    }
+
+    /// ソース座標上のブラシ径を考慮したプレビュー領域を返す。
+    pub fn brush_preview_rect_for_diameter(
+        &self,
+        canvas_position: (usize, usize),
+        brush_diameter: f32,
+    ) -> Option<PixelRect> {
         let (center_x, center_y) = self.map_source_point_to_display(canvas_position)?;
-        let radius = self.scale.max(4.0);
+        let radius = ((brush_diameter.max(1.0) * self.scale) * 0.5).max(4.0);
 
         self.viewport.intersect(PixelRect {
             x: (center_x - radius - 2.0)
@@ -470,6 +479,19 @@ pub fn brush_preview_rect(
 ) -> Option<PixelRect> {
     prepare_canvas_scene(viewport, source_width, source_height, transform)
         .and_then(|scene| scene.brush_preview_rect(canvas_position))
+}
+
+/// ブラシ径を考慮したブラシプレビュー矩形を返す。
+pub fn brush_preview_rect_for_diameter(
+    viewport: PixelRect,
+    source_width: usize,
+    source_height: usize,
+    transform: CanvasViewTransform,
+    canvas_position: (usize, usize),
+    brush_diameter: f32,
+) -> Option<PixelRect> {
+    prepare_canvas_scene(viewport, source_width, source_height, transform)
+        .and_then(|scene| scene.brush_preview_rect_for_diameter(canvas_position, brush_diameter))
 }
 
 /// キャンバス座標を表示座標へ変換する。

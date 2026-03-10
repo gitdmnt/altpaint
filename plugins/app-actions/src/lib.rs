@@ -18,6 +18,7 @@ const NEW_SHORTCUT: state::StringKey = state::string("config.new_shortcut");
 const SAVE_SHORTCUT: state::StringKey = state::string("config.save_shortcut");
 const SAVE_AS_SHORTCUT: state::StringKey = state::string("config.save_as_shortcut");
 const OPEN_SHORTCUT: state::StringKey = state::string("config.open_shortcut");
+const SELECTED_WORKSPACE: state::StringKey = state::string("config.selected_workspace");
 
 fn parse_dimension(value: &str) -> Result<usize, &'static str> {
     let trimmed = value.trim();
@@ -52,6 +53,10 @@ fn apply_template_size(size: &str) -> Result<(), &'static str> {
     batch.set_string(SELECTED_TEMPLATE.as_ref(), normalized);
     batch.apply();
     Ok(())
+}
+
+fn current_workspace_selection() -> String {
+    state_string(SELECTED_WORKSPACE)
 }
 
 #[panel_sdk::panel_init]
@@ -149,6 +154,32 @@ fn select_template() {
 }
 
 #[panel_sdk::panel_handler]
+fn select_workspace() {
+    let value = event_string("value");
+    if value.is_empty() {
+        return;
+    }
+
+    set_state_string(SELECTED_WORKSPACE, &value);
+}
+
+#[panel_sdk::panel_handler]
+fn apply_workspace() {
+    let preset_id = current_workspace_selection();
+    if preset_id.trim().is_empty() {
+        error("workspace preset is required");
+        return;
+    }
+
+    emit_command(&commands::workspace::apply_preset(preset_id));
+}
+
+#[panel_sdk::panel_handler]
+fn reload_workspaces() {
+    emit_command(&commands::workspace::reload_presets());
+}
+
+#[panel_sdk::panel_handler]
 fn save_project() {
     emit_command(&commands::project::save());
 }
@@ -234,17 +265,34 @@ mod tests {
     }
 
     #[test]
+    fn typed_workspace_commands_use_expected_names() {
+        let reload = commands::workspace::reload_presets();
+        let apply = commands::workspace::apply_preset("illustration");
+
+        assert_eq!(reload.name, "workspace.reload_presets");
+        assert!(reload.payload.is_empty());
+        assert_eq!(apply.name, "workspace.apply_preset");
+        assert_eq!(
+            apply.payload.get("preset_id").and_then(|value| value.as_str()),
+            Some("illustration")
+        );
+    }
+
+    #[test]
     fn panel_entrypoints_are_callable_on_native_targets() {
         init();
         show_new_form();
         cancel_forms();
         toggle_shortcuts();
         select_template();
+        select_workspace();
         capture_new_shortcut();
         capture_save_shortcut();
         capture_save_as_shortcut();
         capture_open_shortcut();
         new_project();
+        apply_workspace();
+        reload_workspaces();
         save_project();
         save_project_as();
         load_project();

@@ -26,6 +26,10 @@ impl WorkspaceUiState {
     pub fn into_parts(self) -> (WorkspaceLayout, PluginConfigs) {
         (self.workspace_layout, self.plugin_configs)
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.workspace_layout.panels.is_empty() && self.plugin_configs.is_empty()
+    }
 }
 
 #[cfg(test)]
@@ -39,6 +43,7 @@ mod tests {
                 panels: vec![app_core::WorkspacePanelState {
                     id: "builtin.tool-palette".to_string(),
                     visible: false,
+                    anchor: app_core::WorkspacePanelAnchor::TopLeft,
                     position: None,
                     size: None,
                 }],

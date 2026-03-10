@@ -10,11 +10,12 @@ pub mod workspace;
 
 pub use command::Command;
 pub use document::{
-    BlendMode, CanvasBitmap, CanvasViewTransform, ColorRgba8, DirtyRect, Document, LayerMask,
-    LayerNode, LayerNodeId, Page, PageId, Panel, PanelId, PenPreset, RasterLayer, ToolKind,
-    Work, WorkId, DEFAULT_DOCUMENT_HEIGHT, DEFAULT_DOCUMENT_WIDTH,
+    BlendMode, CanvasBitmap, CanvasViewTransform, ColorRgba8, DEFAULT_DOCUMENT_HEIGHT,
+    DEFAULT_DOCUMENT_WIDTH, DirtyRect, Document, LayerMask, LayerNode, LayerNodeId, Page, PageId,
+    Panel, PanelId, PenPreset, RasterLayer, ToolKind, Work, WorkId,
 };
 pub use error::CoreError;
 pub use workspace::{
-    WorkspaceLayout, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState,
+    WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
+    WorkspacePanelState,
 };

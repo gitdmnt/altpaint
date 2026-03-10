@@ -368,9 +368,6 @@ impl UiShell {
             .panels
             .iter()
             .find(|entry| entry.id == tree.id);
-        let position = state
-            .and_then(|entry| entry.position)
-            .unwrap_or(fallback_position);
         let size = state.and_then(|entry| entry.size).unwrap_or(fallback_size);
         let measured = render::measure_panel_size(
             tree.title,
@@ -391,6 +388,16 @@ impl UiShell {
             .min(viewport_height.max(1));
         let max_x = viewport_width.saturating_sub(width);
         let max_y = viewport_height.saturating_sub(height);
+        let position = state
+            .map(|entry| {
+                entry.resolved_position(
+                    viewport_width,
+                    viewport_height,
+                    WorkspacePanelSize { width, height },
+                    fallback_position,
+                )
+            })
+            .unwrap_or(fallback_position);
 
         PixelRect {
             x: position.x.min(max_x),

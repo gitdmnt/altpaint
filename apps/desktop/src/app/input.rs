@@ -38,12 +38,26 @@ impl DesktopApp {
 
         let transform = self.document.view_transform;
         if let Some(previous) = previous.and_then(|position| {
-            brush_preview_rect(layout, bitmap_width, bitmap_height, transform, position)
+            brush_preview_rect(
+                layout,
+                bitmap_width,
+                bitmap_height,
+                transform,
+                position,
+                self.brush_preview_size().unwrap_or(1),
+            )
         }) {
             self.append_canvas_host_dirty_rect(previous);
         }
         if let Some(next) = next.and_then(|position| {
-            brush_preview_rect(layout, bitmap_width, bitmap_height, transform, position)
+            brush_preview_rect(
+                layout,
+                bitmap_width,
+                bitmap_height,
+                transform,
+                position,
+                self.brush_preview_size().unwrap_or(1),
+            )
         }) {
             self.append_canvas_host_dirty_rect(next);
         }
