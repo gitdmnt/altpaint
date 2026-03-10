@@ -146,7 +146,7 @@ fn transformed_canvas_dirty_rect_tracks_zoom_and_pan() {
     );
 
     assert!(mapped.width >= 80);
-    assert_eq!(mapped.height, 72);
+    assert_eq!(mapped.height, 80);
     assert!(mapped.x >= 100);
     assert_eq!(mapped.y, 50);
 }

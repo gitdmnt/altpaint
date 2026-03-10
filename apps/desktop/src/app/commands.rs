@@ -112,7 +112,22 @@ impl DesktopApp {
             Command::LoadProjectFromPath { path } => self.load_project(PathBuf::from(path)),
             Command::ReloadWorkspacePresets => self.reload_workspace_presets(),
             Command::ApplyWorkspacePreset { preset_id } => self.apply_workspace_preset(&preset_id),
+            Command::SaveWorkspacePreset { preset_id, label } => {
+                self.save_workspace_preset(&preset_id, &label)
+            }
+            Command::ExportWorkspacePreset { preset_id, label } => {
+                self.export_workspace_preset(&preset_id, &label)
+            }
+            Command::ExportWorkspacePresetToPath {
+                preset_id,
+                label,
+                path,
+            } => self.export_workspace_preset_to_path(&preset_id, &label, PathBuf::from(path)),
             Command::ReloadPenPresets => self.reload_pen_presets(),
+            Command::ImportPenPresets => self.import_pen_presets(),
+            Command::ImportPenPresetsFromPath { path } => {
+                self.import_pen_presets_from_path(PathBuf::from(path))
+            }
             other => self.execute_document_command(other),
         }
     }

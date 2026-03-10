@@ -20,13 +20,14 @@
 - 浮動 UI panel の位置保存とドラッグ移動
 - project save/load
 - session save/load
-- workspace preset 読込・再読込・切り替え
+- workspace preset 読込・再読込・切り替え・保存・書き出し
 - `plugins/` 配下の `.altp-panel` + Wasm panel の再帰ロード
 - built-in panel 群の UI DSL + Rust SDK + Wasm 実装
 - panel local state / host snapshot / persistent config
 - 4隅アンカー基準の workspace panel 配置
-- 外部ペンプリセット読込
+- 外部ペンプリセット読込と import report 表示
 - `AltPaintPen` 正規化 format と external brush parse/export module
+- キャンバス無段階回転の render / software raster / GPU sampling
 - 実行時 profiler とタイトル表示
 
 ## workspace 現況
@@ -50,6 +51,7 @@
 ### 組み込みパネル crate
 
 - `plugins/app-actions`
+- `plugins/workspace-presets`
 - `plugins/tool-palette`
 - `plugins/layers-panel`
 - `plugins/color-palette`
@@ -120,6 +122,7 @@
 現在の標準 panel は次である。
 
 - `builtin.app-actions`
+- `builtin.workspace-presets`
 - `builtin.tool-palette`
 - `builtin.layers-panel`
 - `builtin.color-palette`

@@ -579,6 +579,61 @@ fn profile_panel_drag_for_ten_seconds() {
 
 #[test]
 #[ignore = "manual performance profiling"]
+fn profile_view_transform_for_ten_seconds() {
+    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut profiler = DesktopProfiler::new();
+    let viewport = (1280, 800);
+    let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
+
+    let total_duration = perf_duration();
+    let per_case_duration = Duration::from_secs_f64((total_duration.as_secs_f64() / 3.0).max(1.0));
+
+    profile_view_perf_case(
+        "pan",
+        &mut app,
+        &mut profiler,
+        viewport,
+        per_case_duration,
+        |app, iteration| {
+            let direction = if iteration % 2 == 0 { 18.0 } else { -18.0 };
+            app.execute_command(Command::PanView {
+                delta_x: direction,
+                delta_y: direction * 0.5,
+            })
+        },
+    );
+
+    profile_view_perf_case(
+        "zoom",
+        &mut app,
+        &mut profiler,
+        viewport,
+        per_case_duration,
+        |app, iteration| {
+            let zoom = if iteration % 2 == 0 { 1.08 } else { 0.92 };
+            let next = (app.document.view_transform.zoom * zoom).clamp(0.25, 16.0);
+            app.execute_command(Command::SetViewZoom { zoom: next })
+        },
+    );
+
+    profile_view_perf_case(
+        "rotate",
+        &mut app,
+        &mut profiler,
+        viewport,
+        per_case_duration,
+        |app, iteration| {
+            let delta = if iteration % 2 == 0 { 7.5 } else { -7.5 };
+            let next = app.document.view_transform.rotation_degrees + delta;
+            app.execute_command(Command::SetViewRotation {
+                rotation_degrees: next,
+            })
+        },
+    );
+}
+
+#[test]
+#[ignore = "manual performance profiling"]
 fn profile_canvas_brush_sizes_for_ten_seconds() {
     let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
     let mut profiler = DesktopProfiler::new();
@@ -844,6 +899,57 @@ fn emit_panel_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterat
     );
 }
 
+fn emit_view_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterations: u64) {
+    eprintln!(
+        "[view-perf] case={label} duration={elapsed:.2}s iterations={iterations} rate={:.1}Hz",
+        iterations as f64 / elapsed
+    );
+    eprintln!(
+        "[view-perf] case={label} prepare_frame avg={:.3}ms max={:.3}ms | prepare_canvas_scene avg={:.3}ms max={:.3}ms | panel_surface avg={:.3}ms max={:.3}ms",
+        avg_stage_ms(profiler, "prepare_frame"),
+        max_stage_ms(profiler, "prepare_frame"),
+        avg_stage_ms(profiler, "prepare_canvas_scene"),
+        max_stage_ms(profiler, "prepare_canvas_scene"),
+        avg_stage_ms(profiler, "panel_surface"),
+        max_stage_ms(profiler, "panel_surface"),
+    );
+    eprintln!(
+        "[view-perf] case={label} ui_update avg={:.3}ms max={:.3}ms | overlay upload avg={:.2}% ({:.0}px) | base upload avg={:.2}% ({:.0}px)",
+        avg_stage_ms(profiler, "ui_update"),
+        max_stage_ms(profiler, "ui_update"),
+        avg_value(profiler, "overlay_upload_coverage_pct"),
+        avg_value(profiler, "overlay_upload_area_px"),
+        avg_value(profiler, "base_upload_coverage_pct"),
+        avg_value(profiler, "base_upload_area_px"),
+    );
+}
+
+fn profile_view_perf_case(
+    label: &str,
+    app: &mut DesktopApp,
+    profiler: &mut DesktopProfiler,
+    viewport: (usize, usize),
+    duration: Duration,
+    mut step: impl FnMut(&mut DesktopApp, u64) -> bool,
+) {
+    profiler.stats.clear();
+    profiler.value_stats.clear();
+    let started = Instant::now();
+    let mut iterations = 0u64;
+
+    while started.elapsed() < duration {
+        if step(app, iterations) {
+            let update = app.prepare_present_frame(viewport.0, viewport.1, profiler);
+            if update.canvas_updated || update.base_dirty_rect.is_some() || update.overlay_dirty_rect.is_some() {
+                iterations += 1;
+            }
+        }
+    }
+
+    assert!(iterations > 0, "{label} produced updates");
+    emit_view_perf(label, profiler, started.elapsed().as_secs_f64(), iterations);
+}
+
 fn control_points_from_surface(
     app: &DesktopApp,
     predicate: impl Fn(&plugin_api::PanelEvent) -> bool,
@@ -873,7 +979,6 @@ fn pan_view_updates_canvas_without_status_recompose() {
     let mut profiler = DesktopProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();
-    let layout = app.layout.clone().expect("layout exists");
 
     assert!(app.execute_command(Command::PanView {
         delta_x: 32.0,
@@ -884,17 +989,14 @@ fn pan_view_updates_canvas_without_status_recompose() {
     assert!(!profiler.stats.contains_key("compose_full_frame"));
     assert!(!profiler.stats.contains_key("compose_dirty_status"));
     assert!(profiler.stats.contains_key("prepare_canvas_scene"));
-    assert!(profiler.stats.contains_key("compose_dirty_canvas_base"));
     assert!(profiler.stats.contains_key("compose_dirty_panel"));
     assert!(profiler.stats.contains_key("prepare_canvas_scene"));
-    assert!(profiler.stats.contains_key("compose_dirty_canvas_base"));
+    assert!(!profiler.stats.contains_key("compose_dirty_canvas_base"));
     assert!(!profiler.stats.contains_key("compose_dirty_overlay"));
     assert!(update.canvas_updated);
     assert!(update.canvas_transform_changed);
     assert_eq!(update.canvas_dirty_rect, None);
-    assert!(
-        update.base_dirty_rect.expect("base dirty rect").width <= layout.canvas_host_rect.width
-    );
+    assert_eq!(update.base_dirty_rect, None);
     let surface = app.panel_surface.clone().expect("panel surface exists");
     let overlay_dirty = update.overlay_dirty_rect.expect("overlay dirty rect");
     assert!(rect_within_panel_surface(overlay_dirty, &surface));

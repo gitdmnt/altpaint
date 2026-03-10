@@ -112,6 +112,36 @@ pub mod workspace {
             .insert("preset_id".to_string(), json!(preset_id.into()));
         descriptor
     }
+
+    /// 現在の workspace UI 状態を preset カタログへ保存するコマンドを返す。
+    pub fn save_preset(
+        preset_id: impl Into<String>,
+        label: impl Into<String>,
+    ) -> CommandDescriptor {
+        let mut descriptor = CommandDescriptor::new("workspace.save_preset");
+        descriptor
+            .payload
+            .insert("preset_id".to_string(), json!(preset_id.into()));
+        descriptor
+            .payload
+            .insert("label".to_string(), json!(label.into()));
+        descriptor
+    }
+
+    /// 現在の workspace UI 状態を書き出すコマンドを返す。
+    pub fn export_preset(
+        preset_id: impl Into<String>,
+        label: impl Into<String>,
+    ) -> CommandDescriptor {
+        let mut descriptor = CommandDescriptor::new("workspace.export_preset");
+        descriptor
+            .payload
+            .insert("preset_id".to_string(), json!(preset_id.into()));
+        descriptor
+            .payload
+            .insert("label".to_string(), json!(label.into()));
+        descriptor
+    }
 }
 
 /// ツール操作コマンド群。
@@ -190,6 +220,20 @@ pub mod tool {
     /// ペンプリセット再読込コマンドを返す。
     pub fn reload_pen_presets() -> CommandDescriptor {
         CommandDescriptor::new("tool.reload_pen_presets")
+    }
+
+    /// 外部ペンファイル選択付きインポートコマンドを返す。
+    pub fn import_pen_presets() -> CommandDescriptor {
+        CommandDescriptor::new("tool.import_pen_presets")
+    }
+
+    /// 指定パスの外部ペンファイルをインポートするコマンドを返す。
+    pub fn import_pen_path(path: impl Into<String>) -> CommandDescriptor {
+        let mut descriptor = CommandDescriptor::new("tool.import_pen_path");
+        descriptor
+            .payload
+            .insert("path".to_string(), json!(path.into()));
+        descriptor
     }
 }
 

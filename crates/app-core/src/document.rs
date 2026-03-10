@@ -555,6 +555,29 @@ impl Document {
         self.ensure_pen_state();
     }
 
+    pub fn merge_pen_presets(&mut self, pen_presets: Vec<PenPreset>) -> usize {
+        if pen_presets.is_empty() {
+            return 0;
+        }
+
+        let mut merged = 0;
+        for preset in pen_presets {
+            if let Some(existing) = self
+                .pen_presets
+                .iter_mut()
+                .find(|existing| existing.id == preset.id)
+            {
+                *existing = preset;
+            } else {
+                self.pen_presets.push(preset);
+            }
+            merged += 1;
+        }
+
+        self.ensure_pen_state();
+        merged
+    }
+
     pub fn select_next_pen_preset(&mut self) {
         self.cycle_pen_preset(1);
     }
@@ -741,7 +764,12 @@ impl Document {
             | Command::LoadProject
             | Command::LoadProjectFromPath { .. }
             | Command::ReloadWorkspacePresets
-            | Command::ApplyWorkspacePreset { .. } => None,
+            | Command::ApplyWorkspacePreset { .. }
+            | Command::SaveWorkspacePreset { .. }
+            | Command::ExportWorkspacePreset { .. }
+            | Command::ExportWorkspacePresetToPath { .. }
+            | Command::ImportPenPresets
+            | Command::ImportPenPresetsFromPath { .. } => None,
         }
     }
 }

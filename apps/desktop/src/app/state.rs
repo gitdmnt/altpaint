@@ -14,7 +14,7 @@ use storage::load_pen_directory;
 
 use super::DesktopApp;
 use crate::canvas_bridge::CanvasInputState;
-use crate::frame::{Rect, TextureQuad, brush_preview_rect};
+use crate::frame::{Rect, TextureQuad};
 
 const PEN_SETTING_PANEL_IDS: &[&str] = &["builtin.pen-settings", "builtin.tool-palette"];
 const COLOR_PANEL_IDS: &[&str] = &["builtin.color-palette"];
@@ -34,7 +34,8 @@ fn from_render_quad(quad: render::TextureQuad) -> TextureQuad {
         destination: from_render_rect(quad.destination),
         uv_min: quad.uv_min,
         uv_max: quad.uv_max,
-        rotation_turns: quad.rotation_turns,
+        rotation_degrees: quad.rotation_degrees,
+        bbox_size: quad.bbox_size,
         flip_x: quad.flip_x,
         flip_y: quad.flip_y,
     }
@@ -166,6 +167,11 @@ impl DesktopApp {
         self.needs_status_refresh = true;
     }
 
+    /// 高頻度ビュー操作中のステータス更新を後段へ遅延する。
+    pub(super) fn defer_status_refresh(&mut self) {
+        self.deferred_status_refresh = true;
+    }
+
     /// ドキュメント変更後に `UiShell` の再同期を要求する。
     pub(super) fn sync_ui_from_document(&mut self) {
         self.needs_ui_sync = true;
@@ -190,6 +196,31 @@ impl DesktopApp {
         self.mark_panel_surface_dirty();
     }
 
+    /// 高頻度更新で重い panel 同期を後段へ遅延する。
+    pub(super) fn defer_view_panel_sync(&mut self) {
+        self.deferred_view_panel_sync = true;
+    }
+
+    /// 遅延していた view panel 同期を 1 回だけ反映する。
+    pub(crate) fn flush_deferred_view_panel_sync(&mut self) -> bool {
+        if !self.deferred_view_panel_sync {
+            return false;
+        }
+        self.deferred_view_panel_sync = false;
+        self.sync_ui_from_document_panels(VIEW_PANEL_IDS);
+        true
+    }
+
+    /// 遅延していたステータス更新を 1 回だけ反映する。
+    pub(crate) fn flush_deferred_status_refresh(&mut self) -> bool {
+        if !self.deferred_status_refresh {
+            return false;
+        }
+        self.deferred_status_refresh = false;
+        self.mark_status_dirty();
+        true
+    }
+
     /// ベースフレームの全面再構築を要求する。
     pub(super) fn rebuild_present_frame(&mut self) {
         self.needs_full_present_rebuild = true;
@@ -202,6 +233,8 @@ impl DesktopApp {
         self.pending_canvas_background_dirty_rect = None;
         self.pending_canvas_host_dirty_rect = None;
         self.pending_canvas_transform_update = false;
+        self.deferred_view_panel_sync = false;
+        self.deferred_status_refresh = false;
         self.active_panel_drag = None;
         self.pending_panel_press = None;
         self.hover_canvas_position = None;
@@ -219,15 +252,6 @@ impl DesktopApp {
     pub(super) fn append_canvas_dirty_rect(&mut self, dirty: DirtyRect) -> bool {
         self.pending_canvas_dirty_rect = Some(
             self.pending_canvas_dirty_rect
-                .map_or(dirty, |existing| existing.union(dirty)),
-        );
-        true
-    }
-
-    /// キャンバス背景 dirty rect を次回提示用に集約する。
-    pub(super) fn append_canvas_background_dirty_rect(&mut self, dirty: Rect) -> bool {
-        self.pending_canvas_background_dirty_rect = Some(
-            self.pending_canvas_background_dirty_rect
                 .map_or(dirty, |existing| existing.union(dirty)),
         );
         true
@@ -252,38 +276,32 @@ impl DesktopApp {
             self.layout.as_ref().map(|layout| layout.canvas_host_rect)
         {
             let (canvas_width, canvas_height) = self.canvas_dimensions();
-            let background_dirty = render::exposed_canvas_background_rect(
-                render::PixelRect {
-                    x: canvas_viewport_rect.x,
-                    y: canvas_viewport_rect.y,
-                    width: canvas_viewport_rect.width,
-                    height: canvas_viewport_rect.height,
-                },
+            let viewport = render::PixelRect {
+                x: canvas_viewport_rect.x,
+                y: canvas_viewport_rect.y,
+                width: canvas_viewport_rect.width,
+                height: canvas_viewport_rect.height,
+            };
+            let previous_scene = render::prepare_canvas_scene(
+                viewport,
                 canvas_width,
                 canvas_height,
                 previous_transform,
+            );
+            let current_scene = render::prepare_canvas_scene(
+                viewport,
+                canvas_width,
+                canvas_height,
                 self.document.view_transform,
-            )
-            .map(from_render_rect)
-            .unwrap_or(canvas_viewport_rect);
-            self.append_canvas_background_dirty_rect(background_dirty);
+            );
             if let Some(hover_position) = self.hover_canvas_position {
-                let previous_preview = brush_preview_rect(
-                    canvas_viewport_rect,
-                    canvas_width,
-                    canvas_height,
-                    previous_transform,
-                    hover_position,
-                    self.brush_preview_size().unwrap_or(1),
-                );
-                let current_preview = brush_preview_rect(
-                    canvas_viewport_rect,
-                    canvas_width,
-                    canvas_height,
-                    self.document.view_transform,
-                    hover_position,
-                    self.brush_preview_size().unwrap_or(1),
-                );
+                let brush_size = self.brush_preview_size().unwrap_or(1) as f32;
+                let previous_preview = previous_scene
+                    .and_then(|scene| scene.brush_preview_rect_for_diameter(hover_position, brush_size))
+                    .map(from_render_rect);
+                let current_preview = current_scene
+                    .and_then(|scene| scene.brush_preview_rect_for_diameter(hover_position, brush_size))
+                    .map(from_render_rect);
 
                 match (previous_preview, current_preview) {
                     (Some(previous), Some(current)) => {
@@ -337,19 +355,22 @@ impl DesktopApp {
                 self.mark_status_dirty();
                 true
             }
-            Command::SetViewZoom { .. }
-            | Command::RotateView { .. }
+            Command::SetViewZoom { .. } | Command::ResetView => {
+                self.defer_view_panel_sync();
+                self.mark_canvas_transform_dirty(previous_transform);
+                self.defer_status_refresh();
+                true
+            }
+            Command::RotateView { .. }
             | Command::SetViewRotation { .. }
             | Command::FlipViewHorizontally
-            | Command::FlipViewVertically
-            | Command::ResetView => {
-                self.sync_ui_from_document_panels(VIEW_PANEL_IDS);
+            | Command::FlipViewVertically => {
+                self.defer_view_panel_sync();
                 self.mark_canvas_transform_dirty(previous_transform);
-                self.mark_status_dirty();
                 true
             }
             Command::PanView { .. } | Command::SetViewPan { .. } => {
-                self.sync_ui_from_document_panels(VIEW_PANEL_IDS);
+                self.defer_view_panel_sync();
                 self.mark_canvas_transform_dirty(previous_transform)
             }
             Command::AddRasterLayer
@@ -383,7 +404,12 @@ impl DesktopApp {
             | Command::LoadProjectFromPath { .. }
             | Command::ReloadWorkspacePresets
             | Command::ApplyWorkspacePreset { .. }
+            | Command::SaveWorkspacePreset { .. }
+            | Command::ExportWorkspacePreset { .. }
+            | Command::ExportWorkspacePresetToPath { .. }
             | Command::ReloadPenPresets => false,
+            | Command::ImportPenPresets
+            | Command::ImportPenPresetsFromPath { .. } => false,
         }
     }
 

@@ -105,4 +105,18 @@ pub enum Command {
     ReloadWorkspacePresets,
     /// 指定 workspace preset を適用する。
     ApplyWorkspacePreset { preset_id: String },
+    /// 現在の workspace UI 状態を preset カタログへ保存する。
+    SaveWorkspacePreset { preset_id: String, label: String },
+    /// 現在の workspace UI 状態を単一 preset ファイルとして書き出す。
+    ExportWorkspacePreset { preset_id: String, label: String },
+    /// 指定パスへ現在の workspace UI 状態を単一 preset ファイルとして書き出す。
+    ExportWorkspacePresetToPath {
+        preset_id: String,
+        label: String,
+        path: String,
+    },
+    /// 外部ペンファイルを選択して読み込む。
+    ImportPenPresets,
+    /// 指定パスの外部ペンファイルを読み込む。
+    ImportPenPresetsFromPath { path: String },
 }

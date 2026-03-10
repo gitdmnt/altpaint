@@ -157,11 +157,6 @@ impl ApplicationHandler for DesktopRuntime {
                 if let Some(presenter) = &mut self.presenter {
                     presenter.resize(size);
                 }
-                let _ = self.app.prepare_present_frame(
-                    size.width as usize,
-                    size.height as usize,
-                    &mut self.profiler,
-                );
                 self.request_redraw();
             }
             WindowEvent::CursorMoved { position, .. } => {
@@ -215,6 +210,10 @@ impl ApplicationHandler for DesktopRuntime {
                     return;
                 };
                 let _ = self.advance_wheel_animation();
+                if !self.app.is_canvas_interacting() && !self.has_pending_wheel_animation() {
+                    let _ = self.app.flush_deferred_view_panel_sync();
+                    let _ = self.app.flush_deferred_status_refresh();
+                }
                 let Some(presenter) = &mut self.presenter else {
                     return;
                 };

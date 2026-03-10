@@ -1,0 +1,356 @@
+{
+  "format_version": 1,
+  "default_preset_id": "default-floating",
+  "presets": [
+    {
+      "id": "default-floating",
+      "label": "Default floating workspace",
+      "ui_state": {
+        "workspace_layout": {
+          "panels": [
+            {
+              "id": "builtin.workspace-layout",
+              "visible": true,
+              "anchor": "top-left",
+              "position": {
+                "x": 47,
+                "y": 204
+              },
+              "size": {
+                "width": 300,
+                "height": 310
+              }
+            },
+            {
+              "id": "builtin.color-palette",
+              "visible": true,
+              "anchor": "top-right",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 300,
+                "height": 350
+              }
+            },
+            {
+              "id": "builtin.app-actions",
+              "visible": true,
+              "anchor": "top-left",
+              "position": {
+                "x": 141,
+                "y": 59
+              },
+              "size": {
+                "width": 300,
+                "height": 220
+              }
+            },
+            {
+              "id": "builtin.layers-panel",
+              "visible": true,
+              "anchor": "top-left",
+              "position": {
+                "x": 274,
+                "y": 87
+              },
+              "size": {
+                "width": 300,
+                "height": 406
+              }
+            },
+            {
+              "id": "builtin.job-progress",
+              "visible": false,
+              "anchor": "top-left",
+              "position": {
+                "x": 547,
+                "y": 147
+              },
+              "size": {
+                "width": 300,
+                "height": 220
+              }
+            },
+            {
+              "id": "builtin.tool-palette",
+              "visible": true,
+              "anchor": "top-left",
+              "position": {
+                "x": 1341,
+                "y": 539
+              },
+              "size": {
+                "width": 300,
+                "height": 326
+              }
+            },
+            {
+              "id": "builtin.pen-settings",
+              "visible": true,
+              "anchor": "bottom-right",
+              "position": {
+                "x": 0,
+                "y": 145
+              },
+              "size": {
+                "width": 300,
+                "height": 324
+              }
+            },
+            {
+              "id": "builtin.dsl-sample",
+              "visible": false,
+              "anchor": "top-left",
+              "position": {
+                "x": 192,
+                "y": 288
+              },
+              "size": {
+                "width": 300,
+                "height": 220
+              }
+            },
+            {
+              "id": "builtin.snapshot-panel",
+              "visible": false,
+              "anchor": "top-left",
+              "position": {
+                "x": 220,
+                "y": 324
+              },
+              "size": {
+                "width": 300,
+                "height": 220
+              }
+            },
+            {
+              "id": "builtin.view-controls",
+              "visible": true,
+              "anchor": "top-left",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 336,
+                "height": 320
+              }
+            },
+            {
+              "id": "builtin.workspace-presets",
+              "visible": true,
+              "anchor": "bottom-left",
+              "position": {
+                "x": 38,
+                "y": 70
+              },
+              "size": {
+                "width": 325,
+                "height": 252
+              }
+            }
+          ]
+        },
+        "plugin_configs": {
+          "builtin.app-actions": {
+            "default_template_size": "2894x4093",
+            "new_shortcut": "Ctrl+N",
+            "open_shortcut": "Ctrl+O",
+            "save_as_shortcut": "Ctrl+Shift+S",
+            "save_shortcut": "Ctrl+S",
+            "template_options": "2894x4093:A4 350dpi (2894×4093)|2480x3508:A4 300dpi (2480×3508)|2048x2048:Square 2048 (2048×2048)|1920x1080:HD Landscape (1920×1080)"
+          },
+          "builtin.tool-palette": {
+            "bucket_shortcut": "G",
+            "eraser_shortcut": "E",
+            "lasso_bucket_shortcut": "Shift+G",
+            "pen_shortcut": "P",
+            "size_memory": "{\"eraser:builtin.broad-marker\":5,\"pen:builtin.broad-marker\":59,\"pen:builtin.fine-liner\":2,\"pen:builtin.round-pen\":4}"
+          },
+          "builtin.workspace-presets": {
+            "selected_workspace": "default-floating",
+            "selected_workspace_label": "Default floating workspace",
+            "workspace_options": "default-floating:Default floating workspace|2:Default floating workspace2"
+          }
+        }
+      }
+    },
+    {
+      "id": "2",
+      "label": "Default floating workspace2",
+      "ui_state": {
+        "workspace_layout": {
+          "panels": [
+            {
+              "id": "builtin.workspace-layout",
+              "visible": true,
+              "anchor": "top-left",
+              "position": {
+                "x": 47,
+                "y": 204
+              },
+              "size": {
+                "width": 300,
+                "height": 310
+              }
+            },
+            {
+              "id": "builtin.color-palette",
+              "visible": true,
+              "anchor": "top-right",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 300,
+                "height": 350
+              }
+            },
+            {
+              "id": "builtin.app-actions",
+              "visible": true,
+              "anchor": "top-left",
+              "position": {
+                "x": 141,
+                "y": 59
+              },
+              "size": {
+                "width": 300,
+                "height": 220
+              }
+            },
+            {
+              "id": "builtin.layers-panel",
+              "visible": true,
+              "anchor": "top-left",
+              "position": {
+                "x": 821,
+                "y": 59
+              },
+              "size": {
+                "width": 300,
+                "height": 406
+              }
+            },
+            {
+              "id": "builtin.job-progress",
+              "visible": false,
+              "anchor": "top-left",
+              "position": {
+                "x": 547,
+                "y": 147
+              },
+              "size": {
+                "width": 300,
+                "height": 220
+              }
+            },
+            {
+              "id": "builtin.tool-palette",
+              "visible": true,
+              "anchor": "top-left",
+              "position": {
+                "x": 1341,
+                "y": 539
+              },
+              "size": {
+                "width": 300,
+                "height": 326
+              }
+            },
+            {
+              "id": "builtin.pen-settings",
+              "visible": true,
+              "anchor": "bottom-right",
+              "position": {
+                "x": 0,
+                "y": 145
+              },
+              "size": {
+                "width": 300,
+                "height": 324
+              }
+            },
+            {
+              "id": "builtin.dsl-sample",
+              "visible": false,
+              "anchor": "top-left",
+              "position": {
+                "x": 192,
+                "y": 288
+              },
+              "size": {
+                "width": 300,
+                "height": 220
+              }
+            },
+            {
+              "id": "builtin.snapshot-panel",
+              "visible": false,
+              "anchor": "top-left",
+              "position": {
+                "x": 220,
+                "y": 324
+              },
+              "size": {
+                "width": 300,
+                "height": 220
+              }
+            },
+            {
+              "id": "builtin.view-controls",
+              "visible": true,
+              "anchor": "top-left",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 336,
+                "height": 320
+              }
+            },
+            {
+              "id": "builtin.workspace-presets",
+              "visible": true,
+              "anchor": "bottom-left",
+              "position": {
+                "x": 38,
+                "y": 70
+              },
+              "size": {
+                "width": 325,
+                "height": 252
+              }
+            }
+          ]
+        },
+        "plugin_configs": {
+          "builtin.app-actions": {
+            "default_template_size": "2894x4093",
+            "new_shortcut": "Ctrl+N",
+            "open_shortcut": "Ctrl+O",
+            "save_as_shortcut": "Ctrl+Shift+S",
+            "save_shortcut": "Ctrl+S",
+            "template_options": "2894x4093:A4 350dpi (2894×4093)|2480x3508:A4 300dpi (2480×3508)|2048x2048:Square 2048 (2048×2048)|1920x1080:HD Landscape (1920×1080)"
+          },
+          "builtin.tool-palette": {
+            "bucket_shortcut": "G",
+            "eraser_shortcut": "E",
+            "lasso_bucket_shortcut": "Shift+G",
+            "pen_shortcut": "P",
+            "size_memory": "{\"eraser:builtin.broad-marker\":5,\"pen:builtin.broad-marker\":59,\"pen:builtin.fine-liner\":2,\"pen:builtin.round-pen\":4}"
+          },
+          "builtin.workspace-presets": {
+            "selected_workspace": "2",
+            "selected_workspace_label": "Default floating workspace2",
+            "workspace_options": "default-floating:Default floating workspace"
+          }
+        }
+      }
+    }
+  ]
+}

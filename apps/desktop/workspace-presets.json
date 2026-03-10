@@ -48,6 +48,19 @@
               }
             },
             {
+              "id": "builtin.workspace-presets",
+              "visible": true,
+              "anchor": "top-right",
+              "position": {
+                "x": 24,
+                "y": 616
+              },
+              "size": {
+                "width": 320,
+                "height": 180
+              }
+            },
+            {
               "id": "builtin.layers-panel",
               "visible": true,
               "anchor": "top-right",

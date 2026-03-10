@@ -151,9 +151,7 @@ fn plugin_keyboard_capture_updates_persistent_config() {
             "template_options": "2894x4093:A4 350dpi (2894×4093)|2480x3508:A4 300dpi (2480×3508)|2048x2048:Square 2048 (2048×2048)|1920x1080:HD Landscape (1920×1080)",
             "save_shortcut": "Ctrl+S",
             "save_as_shortcut": "Ctrl+Shift+S",
-            "open_shortcut": "Ctrl+O",
-            "workspace_options": "default-floating:Default floating workspace",
-            "selected_workspace": "default-floating"
+            "open_shortcut": "Ctrl+O"
         }))
     );
 }
@@ -206,6 +204,7 @@ fn desktop_app_replaces_builtin_panels_with_phase7_dsl_variants() {
 
     for panel_id in [
         "builtin.app-actions",
+        "builtin.workspace-presets",
         "builtin.tool-palette",
         "builtin.layers-panel",
         "builtin.pen-settings",
@@ -313,7 +312,7 @@ fn execute_command_applies_selected_workspace_preset() {
     assert_eq!(
         app.ui_shell
             .persistent_panel_configs()
-            .get("builtin.app-actions")
+            .get("builtin.workspace-presets")
             .and_then(|config| config.get("selected_workspace"))
             .and_then(|value| value.as_str()),
         Some("illustration")
@@ -323,7 +322,92 @@ fn execute_command_applies_selected_workspace_preset() {
 }
 
 #[test]
-fn execute_command_reloads_workspace_presets_into_app_actions_config() {
+fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
+    let preset_path = unique_workspace_preset_path("workspace-preset-dropdown-apply");
+    save_workspace_preset_catalog(
+        &preset_path,
+        &WorkspacePresetCatalog {
+            format_version: 1,
+            default_preset_id: "default".to_string(),
+            presets: vec![
+                WorkspacePreset {
+                    id: "default".to_string(),
+                    label: "Default".to_string(),
+                    ui_state: WorkspaceUiState::new(
+                        WorkspaceLayout {
+                            panels: vec![WorkspacePanelState {
+                                id: "builtin.layers-panel".to_string(),
+                                visible: true,
+                                anchor: WorkspacePanelAnchor::TopLeft,
+                                position: Some(WorkspacePanelPosition { x: 24, y: 72 }),
+                                size: Some(WorkspacePanelSize {
+                                    width: 320,
+                                    height: 260,
+                                }),
+                            }],
+                        },
+                        BTreeMap::new(),
+                    ),
+                },
+                WorkspacePreset {
+                    id: "illustration".to_string(),
+                    label: "Illustration".to_string(),
+                    ui_state: WorkspaceUiState::new(
+                        WorkspaceLayout {
+                            panels: vec![WorkspacePanelState {
+                                id: "builtin.layers-panel".to_string(),
+                                visible: true,
+                                anchor: WorkspacePanelAnchor::BottomRight,
+                                position: Some(WorkspacePanelPosition { x: 32, y: 40 }),
+                                size: Some(WorkspacePanelSize {
+                                    width: 360,
+                                    height: 300,
+                                }),
+                            }],
+                        },
+                        BTreeMap::new(),
+                    ),
+                },
+            ],
+        },
+    )
+    .expect("workspace preset catalog should save");
+    let mut app = test_app_with_dialogs_and_workspace_preset_path(
+        TestDialogs::default(),
+        preset_path.clone(),
+    );
+
+    assert!(app.dispatch_panel_event(plugin_api::PanelEvent::SetText {
+        panel_id: "builtin.workspace-presets".to_string(),
+        node_id: "workspace.preset.selector".to_string(),
+        value: "illustration".to_string(),
+    }));
+
+    let layout_entry = app
+        .ui_shell
+        .workspace_layout()
+        .panels
+        .into_iter()
+        .find(|panel| panel.id == "builtin.layers-panel")
+        .expect("layers panel should exist");
+    assert_eq!(layout_entry.anchor, WorkspacePanelAnchor::BottomRight);
+    assert_eq!(
+        app.ui_shell
+            .persistent_panel_configs()
+            .get("builtin.workspace-presets")
+            .and_then(|config| config.get("selected_workspace"))
+            .and_then(|value| value.as_str()),
+        Some("illustration")
+    );
+
+    let saved = desktop_support::load_workspace_preset_catalog(&preset_path);
+    assert_eq!(saved.default_preset_id, "illustration");
+
+    let _ = std::fs::remove_file(preset_path);
+}
+
+#[test]
+fn execute_command_reloads_workspace_presets_into_workspace_panel_config() {
     let preset_path = unique_workspace_preset_path("workspace-preset-reload");
     save_workspace_preset_catalog(
         &preset_path,
@@ -369,9 +453,9 @@ fn execute_command_reloads_workspace_presets_into_app_actions_config() {
     let config = app
         .ui_shell
         .persistent_panel_configs()
-        .get("builtin.app-actions")
+        .get("builtin.workspace-presets")
         .cloned()
-        .expect("app actions config should exist");
+        .expect("workspace config should exist");
     assert_eq!(
         config
             .get("workspace_options")
@@ -384,6 +468,109 @@ fn execute_command_reloads_workspace_presets_into_app_actions_config() {
             .and_then(|value| value.as_str()),
         Some("review")
     );
+    assert_eq!(
+        config
+            .get("selected_workspace_label")
+            .and_then(|value| value.as_str()),
+        Some("Review")
+    );
 
     let _ = std::fs::remove_file(preset_path);
+}
+
+#[test]
+fn execute_command_saves_current_workspace_preset_into_catalog() {
+    let preset_path = unique_workspace_preset_path("workspace-preset-save");
+    let mut app = test_app_with_dialogs_and_workspace_preset_path(
+        TestDialogs::default(),
+        preset_path.clone(),
+    );
+
+    assert!(app.execute_host_action(HostAction::SetPanelVisibility {
+        panel_id: "builtin.tool-palette".to_string(),
+        visible: false,
+    }));
+    assert!(app.execute_command(Command::SaveWorkspacePreset {
+        preset_id: "review".to_string(),
+        label: "Review".to_string(),
+    }));
+
+    let saved = desktop_support::load_workspace_preset_catalog(&preset_path);
+    let preset = saved
+        .presets
+        .iter()
+        .find(|preset| preset.id == "review")
+        .expect("saved preset exists");
+    assert!(
+        preset
+            .ui_state
+            .workspace_layout
+            .panels
+            .iter()
+            .any(|panel| panel.id == "builtin.tool-palette" && !panel.visible)
+    );
+
+    let _ = std::fs::remove_file(preset_path);
+}
+
+#[test]
+fn execute_command_exports_workspace_preset_to_dialog_path() {
+    let export_path = unique_workspace_preset_path("workspace-preset-export");
+    let mut app = test_app_with_dialogs(TestDialogs::with_workspace_save_path(export_path.clone()));
+
+    assert!(app.execute_command(Command::ExportWorkspacePreset {
+        preset_id: "exported".to_string(),
+        label: "Exported".to_string(),
+    }));
+
+    let exported = desktop_support::load_workspace_preset_catalog(&export_path);
+    assert_eq!(exported.default_preset_id, "exported");
+    assert_eq!(exported.presets.len(), 1);
+    assert_eq!(exported.presets[0].label, "Exported");
+
+    let _ = std::fs::remove_file(export_path);
+}
+
+#[test]
+fn execute_command_imports_pen_file_and_records_report() {
+    let path = unique_workspace_preset_path("import-pen").with_extension("altp-pen.json");
+    std::fs::write(
+        &path,
+        r#"{
+  "format_version": 2,
+  "id": "imported.pen",
+  "name": "Imported Pen",
+  "base_size": 11,
+  "min_size": 1,
+  "max_size": 32,
+  "spacing_percent": 25,
+  "opacity": 1.0,
+  "flow": 1.0,
+  "pressure_enabled": true,
+  "antialias": true,
+  "stabilization": 0,
+  "engine": "stamp"
+}"#,
+    )
+    .expect("pen file written");
+    let mut app = test_app_with_dialogs(TestDialogs::with_pen_open_path(path.clone()));
+
+    assert!(app.execute_command(Command::ImportPenPresets));
+    assert!(
+        app.document
+            .pen_presets
+            .iter()
+            .any(|preset| preset.id == "imported.pen")
+    );
+    assert_eq!(
+        app.ui_shell
+            .persistent_panel_configs()
+            .get("builtin.tool-palette")
+            .and_then(|config| config.get("last_import_summary"))
+            .and_then(|value| value.as_str())
+            .map(|value| value.contains("imported=1")),
+        Some(true)
+    );
+
+    let _ = std::fs::remove_file(path);
 }

@@ -161,6 +161,11 @@ fn reload_pens() {
 }
 
 #[panel_sdk::panel_handler]
+fn import_pens() {
+    emit_command(&commands::tool::import_pen_presets());
+}
+
+#[panel_sdk::panel_handler]
 fn toggle_shortcuts() {
     toggle_state(SHOW_SHORTCUTS);
 }
@@ -239,6 +244,7 @@ mod tests {
         previous_pen();
         next_pen();
         reload_pens();
+        import_pens();
         toggle_shortcuts();
         capture_pen_shortcut();
         capture_eraser_shortcut();
@@ -271,5 +277,13 @@ mod tests {
             Some("eraser:builtin.round-pen".to_string())
         );
         assert_eq!(size_binding_key("bucket", "builtin.round-pen"), None);
+    }
+
+    #[test]
+    fn import_command_uses_expected_name() {
+        let command = commands::tool::import_pen_presets();
+
+        assert_eq!(command.name, "tool.import_pen_presets");
+        assert!(command.payload.is_empty());
     }
 }

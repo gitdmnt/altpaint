@@ -73,6 +73,15 @@ pub fn default_workspace_preset_catalog() -> WorkspacePresetCatalog {
                             240,
                         ),
                         panel_state(
+                            "builtin.workspace-presets",
+                            true,
+                            WorkspacePanelAnchor::TopRight,
+                            24,
+                            616,
+                            320,
+                            180,
+                        ),
+                        panel_state(
                             "builtin.layers-panel",
                             true,
                             WorkspacePanelAnchor::TopRight,

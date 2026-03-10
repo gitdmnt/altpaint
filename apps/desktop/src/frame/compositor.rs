@@ -10,7 +10,6 @@ use desktop_support::{
 };
 use ui_shell::PanelSurface;
 
-use super::geometry::canvas_scene;
 use super::raster::{
     blit_canvas_with_transform, blit_scaled_rgba_region, draw_brush_preview,
     draw_lasso_preview, draw_text, fill_rect, measured_status_width, stroke_rect,
@@ -202,14 +201,8 @@ fn fill_canvas_host_background(
 ) {
     let display = layout.canvas_host_rect;
     if let Some(display_region) = display.intersect(dirty_rect) {
-        if let Some(drawn_rect) = canvas_scene(display, canvas.width, canvas.height, transform)
-            .and_then(|scene| scene.drawn_rect())
-            .map(super::geometry::from_render_rect)
-        {
-            fill_rect_excluding(frame, display_region, drawn_rect, CANVAS_BACKGROUND);
-        } else {
-            fill_rect(frame, display_region, CANVAS_BACKGROUND);
-        }
+        let _ = (canvas, transform);
+        fill_rect(frame, display_region, CANVAS_BACKGROUND);
     }
 
     let host = layout.canvas_host_rect;
@@ -246,52 +239,6 @@ fn fill_canvas_host_background(
             && region.height > 0
         {
             fill_rect(frame, region, CANVAS_FRAME_BACKGROUND);
-        }
-    }
-}
-
-/// 除外矩形を避けつつ背景色を塗る。
-fn fill_rect_excluding(
-    frame: &mut render::RenderFrame,
-    target: Rect,
-    exclude: Rect,
-    color: [u8; 4],
-) {
-    let Some(overlap) = target.intersect(exclude) else {
-        fill_rect(frame, target, color);
-        return;
-    };
-
-    let regions = [
-        Rect {
-            x: target.x,
-            y: target.y,
-            width: target.width,
-            height: overlap.y.saturating_sub(target.y),
-        },
-        Rect {
-            x: target.x,
-            y: overlap.y + overlap.height,
-            width: target.width,
-            height: (target.y + target.height).saturating_sub(overlap.y + overlap.height),
-        },
-        Rect {
-            x: target.x,
-            y: overlap.y,
-            width: overlap.x.saturating_sub(target.x),
-            height: overlap.height,
-        },
-        Rect {
-            x: overlap.x + overlap.width,
-            y: overlap.y,
-            width: (target.x + target.width).saturating_sub(overlap.x + overlap.width),
-            height: overlap.height,
-        },
-    ];
-
-    for region in regions {
-        if region.width > 0 && region.height > 0 {
-            fill_rect(frame, region, color);
         }
     }
 }
@@ -346,27 +293,16 @@ pub(crate) fn draw_canvas_overlay(
     }
 }
 
-/// パネルホスト領域だけを差分再合成する。
+/// パネルホスト領域だけを overlay 層へ差分反映する。
 pub(crate) fn compose_panel_host_region(
     frame: &mut render::RenderFrame,
-    _layout: &DesktopLayout,
+    layout: &DesktopLayout,
     panel_surface: &PanelSurface,
     dirty_rect: Option<Rect>,
 ) {
-    let destination = Rect {
-        x: panel_surface.x,
-        y: panel_surface.y,
-        width: panel_surface.width,
-        height: panel_surface.height,
-    };
-    if let Some(region) = dirty_rect.and_then(|dirty| destination.intersect(dirty)) {
-        fill_rect(frame, region, [0, 0, 0, 0]);
-    } else if dirty_rect.is_none() {
-        fill_rect(frame, destination, [0, 0, 0, 0]);
-    }
     blit_scaled_rgba_region(
         frame,
-        destination,
+        layout.panel_surface_rect,
         panel_surface.width,
         panel_surface.height,
         panel_surface.pixels.as_slice(),
@@ -392,6 +328,7 @@ pub(crate) fn compose_status_region(
         TEXT_SECONDARY,
     );
 }
+
 
 /// フッター右側のステータス表示領域を返す。
 #[allow(dead_code)]

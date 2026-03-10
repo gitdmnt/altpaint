@@ -1,6 +1,7 @@
 //! `wgpu` を使って UI ベースフレーム・GPU キャンバス・オーバーレイを提示する。
 
 use anyhow::{Context, Result};
+use desktop_support::APP_BACKGROUND;
 use desktop_support::PresentTimings;
 use render::RenderFrame;
 use std::sync::Arc;
@@ -62,6 +63,7 @@ struct LayerUniform {
     uv_min: vec2<f32>,
     uv_max: vec2<f32>,
     transform: vec4<f32>,
+    metrics: vec4<f32>,
 };
 
 @group(0) @binding(0)
@@ -101,21 +103,14 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     return output;
 }
 
-fn rotated_to_source_uv(rotated_uv: vec2<f32>, rotation_turns: i32) -> vec2<f32> {
-    switch rotation_turns {
-        case 1: {
-            return vec2<f32>(rotated_uv.y, 1.0 - rotated_uv.x);
-        }
-        case 2: {
-            return vec2<f32>(1.0 - rotated_uv.x, 1.0 - rotated_uv.y);
-        }
-        case 3: {
-            return vec2<f32>(1.0 - rotated_uv.y, rotated_uv.x);
-        }
-        default: {
-            return rotated_uv;
-        }
-    }
+fn rotated_to_source_uv(rotated_uv: vec2<f32>, rotation_degrees: f32) -> vec2<f32> {
+    let radians = -rotation_degrees * 0.017453292519943295;
+    let cos_theta = cos(radians);
+    let sin_theta = sin(radians);
+    return vec2<f32>(
+        rotated_uv.x * cos_theta - rotated_uv.y * sin_theta,
+        rotated_uv.x * sin_theta + rotated_uv.y * cos_theta,
+    );
 }
 
 @fragment
@@ -124,20 +119,32 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         mix(layer_uniform.uv_min.x, layer_uniform.uv_max.x, input.unit.x),
         mix(layer_uniform.uv_min.y, layer_uniform.uv_max.y, input.unit.y),
     );
+    var rotated_point = vec2<f32>(
+        (rotated_uv.x - 0.5) * layer_uniform.metrics.x,
+        (rotated_uv.y - 0.5) * layer_uniform.metrics.y,
+    );
     if layer_uniform.transform.y > 0.5 {
-        rotated_uv.x = 1.0 - rotated_uv.x;
+        rotated_point.x = -rotated_point.x;
     }
     if layer_uniform.transform.z > 0.5 {
-        rotated_uv.y = 1.0 - rotated_uv.y;
+        rotated_point.y = -rotated_point.y;
     }
-    let uv = rotated_to_source_uv(rotated_uv, i32(layer_uniform.transform.x + 0.5));
+    let source_point = rotated_to_source_uv(rotated_point, layer_uniform.transform.x);
+    let source_size = vec2<f32>(textureDimensions(present_texture));
+    let uv = vec2<f32>(
+        (source_point.x + source_size.x * 0.5) / source_size.x,
+        (source_point.y + source_size.y * 0.5) / source_size.y,
+    );
+    if uv.x < 0.0 || uv.y < 0.0 || uv.x >= 1.0 || uv.y >= 1.0 {
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    }
     return textureSample(present_texture, present_sampler, uv);
 }
 "#;
 
 const LAYER_UNIFORM_VISIBILITY: wgpu::ShaderStages =
     wgpu::ShaderStages::VERTEX.union(wgpu::ShaderStages::FRAGMENT);
-const LAYER_UNIFORM_SIZE: u64 = std::mem::size_of::<[f32; 12]>() as u64;
+const LAYER_UNIFORM_SIZE: u64 = std::mem::size_of::<[f32; 16]>() as u64;
 
 #[derive(Debug)]
 struct UploadedLayerTexture {
@@ -464,7 +471,12 @@ impl WgpuPresenter {
                     resolve_target: None,
                     depth_slice: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: APP_BACKGROUND[0] as f64 / 255.0,
+                            g: APP_BACKGROUND[1] as f64 / 255.0,
+                            b: APP_BACKGROUND[2] as f64 / 255.0,
+                            a: APP_BACKGROUND[3] as f64 / 255.0,
+                        }),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -722,13 +734,14 @@ fn fullscreen_quad(width: u32, height: u32) -> TextureQuad {
         },
         uv_min: [0.0, 0.0],
         uv_max: [1.0, 1.0],
-        rotation_turns: 0,
+        rotation_degrees: 0.0,
+        bbox_size: [width as f32, height as f32],
         flip_x: false,
         flip_y: false,
     }
 }
 
-fn quad_uniform_bytes(quad: TextureQuad, surface_width: u32, surface_height: u32) -> [u8; 48] {
+fn quad_uniform_bytes(quad: TextureQuad, surface_width: u32, surface_height: u32) -> [u8; 64] {
     let surface_width = surface_width.max(1) as f32;
     let surface_height = surface_height.max(1) as f32;
     let left = quad.destination.x as f32 / surface_width * 2.0 - 1.0;
@@ -744,12 +757,16 @@ fn quad_uniform_bytes(quad: TextureQuad, surface_width: u32, surface_height: u32
         quad.uv_min[1],
         quad.uv_max[0],
         quad.uv_max[1],
-        quad.rotation_turns as f32,
+        quad.rotation_degrees,
         if quad.flip_x { 1.0 } else { 0.0 },
         if quad.flip_y { 1.0 } else { 0.0 },
         0.0,
+        quad.bbox_size[0],
+        quad.bbox_size[1],
+        0.0,
+        0.0,
     ];
-    let mut bytes = [0u8; 48];
+    let mut bytes = [0u8; 64];
     for (index, value) in values.into_iter().enumerate() {
         bytes[index * 4..index * 4 + 4].copy_from_slice(&value.to_le_bytes());
     }
@@ -794,7 +811,7 @@ mod tests {
     #[test]
     fn quad_uniform_bytes_maps_fullscreen_quad_to_ndc() {
         let bytes = quad_uniform_bytes(fullscreen_quad(640, 480), 640, 480);
-        let mut values = [0.0f32; 12];
+        let mut values = [0.0f32; 16];
         for (index, chunk) in bytes.chunks_exact(4).enumerate() {
             values[index] = f32::from_le_bytes(chunk.try_into().expect("chunk size"));
         }
@@ -806,6 +823,9 @@ mod tests {
         assert_eq!(values[8], 0.0);
         assert_eq!(values[9], 0.0);
         assert_eq!(values[10], 0.0);
+        assert_eq!(values[11], 0.0);
+        assert_eq!(values[12], 640.0);
+        assert_eq!(values[13], 480.0);
     }
 
     #[test]

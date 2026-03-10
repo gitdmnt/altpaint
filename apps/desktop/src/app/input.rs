@@ -267,8 +267,32 @@ impl DesktopApp {
 
         self.mark_panel_surface_dirty();
         let mut needs_redraw = true;
+        let mut actions = self.ui_shell.handle_panel_event(&event);
 
-        for action in self.ui_shell.handle_panel_event(&event) {
+        if let PanelEvent::SetText {
+            panel_id,
+            node_id,
+            value,
+        } = &event
+            && panel_id == "builtin.workspace-presets"
+            && node_id == "workspace.preset.selector"
+        {
+            let trimmed = value.trim();
+            let already_dispatched = actions.iter().any(|action| {
+                matches!(
+                    action,
+                    HostAction::DispatchCommand(Command::ApplyWorkspacePreset { preset_id })
+                        if preset_id == trimmed
+                )
+            });
+            if !trimmed.is_empty() && !already_dispatched {
+                actions.push(HostAction::DispatchCommand(Command::ApplyWorkspacePreset {
+                    preset_id: trimmed.to_string(),
+                }));
+            }
+        }
+
+        for action in actions {
             needs_redraw |= self.execute_host_action(action);
         }
 

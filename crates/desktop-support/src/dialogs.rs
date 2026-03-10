@@ -11,6 +11,10 @@ pub trait DesktopDialogs {
     fn pick_open_project_path(&self, current_path: &Path) -> Option<PathBuf>;
     /// 保存先のプロジェクトパスを選択する。
     fn pick_save_project_path(&self, current_path: &Path) -> Option<PathBuf>;
+    /// 書き出し先の workspace preset パスを選択する。
+    fn pick_save_workspace_preset_path(&self, current_path: &Path) -> Option<PathBuf>;
+    /// 読み込む外部ペンファイルのパスを選択する。
+    fn pick_open_pen_path(&self, current_path: &Path) -> Option<PathBuf>;
     /// ユーザーへエラー内容を通知する。
     fn show_error(&self, title: &str, message: &str);
 }
@@ -40,6 +44,31 @@ impl DesktopDialogs for NativeDesktopDialogs {
         .map(PathBuf::from)
     }
 
+    /// 既定の workspace preset 保存ダイアログを表示する。
+    fn pick_save_workspace_preset_path(&self, current_path: &Path) -> Option<PathBuf> {
+        tinyfiledialogs::save_file_dialog_with_filter(
+            "Export Workspace Preset",
+            &current_path.to_string_lossy(),
+            &["*.altp-workspace.json", "*.json"],
+            "altpaint workspace preset",
+        )
+        .map(PathBuf::from)
+        .map(normalize_workspace_preset_path)
+    }
+
+    /// 既定の外部ペン読込ダイアログを表示する。
+    fn pick_open_pen_path(&self, current_path: &Path) -> Option<PathBuf> {
+        tinyfiledialogs::open_file_dialog(
+            "Import Pen Preset",
+            &current_path.to_string_lossy(),
+            Some((
+                &["*.altp-pen.json", "*.abr", "*.sut", "*.gbr", "*.json"],
+                "altpaint / Photoshop / Clip Studio / GIMP pen",
+            )),
+        )
+        .map(PathBuf::from)
+    }
+
     /// ネイティブのエラーダイアログを表示する。
     fn show_error(&self, title: &str, message: &str) {
         tinyfiledialogs::message_box_ok(title, message, tinyfiledialogs::MessageBoxIcon::Error);
@@ -52,6 +81,15 @@ pub fn normalize_project_path(path: PathBuf) -> PathBuf {
         path
     } else {
         path.with_extension("altp.json")
+    }
+}
+
+/// 拡張子が省略された workspace preset 保存先へ既定拡張子を補う。
+pub fn normalize_workspace_preset_path(path: PathBuf) -> PathBuf {
+    if path.extension().is_some() {
+        path
+    } else {
+        path.with_extension("altp-workspace.json")
     }
 }
 
@@ -72,6 +110,14 @@ mod tests {
         assert_eq!(
             normalize_project_path(PathBuf::from("sample.json")),
             PathBuf::from("sample.json")
+        );
+    }
+
+    #[test]
+    fn normalize_workspace_preset_path_adds_default_extension() {
+        assert_eq!(
+            normalize_workspace_preset_path(PathBuf::from("workspace-sample")),
+            PathBuf::from("workspace-sample.altp-workspace.json")
         );
     }
 }

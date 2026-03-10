@@ -245,6 +245,22 @@ pub(super) fn blit_canvas_with_transform(
         return;
     }
 
+    if transform.rotation_degrees.rem_euclid(360.0) != 0.0 || transform.flip_x || transform.flip_y {
+        for dst_y in target.y..target.y + target.height {
+            for dst_x in target.x..target.x + target.width {
+                let Some((src_x, src_y)) = scene.map_view_to_canvas(dst_x as i32, dst_y as i32)
+                else {
+                    continue;
+                };
+                let src_index = (src_y * source.width + src_x) * 4;
+                let dst_index = (dst_y * frame.width + dst_x) * 4;
+                frame.pixels[dst_index..dst_index + 4]
+                    .copy_from_slice(&source.pixels[src_index..src_index + 4]);
+            }
+        }
+        return;
+    }
+
     let (offset_x, offset_y) = scene.offset();
     let src_x_runs = build_source_axis_runs(
         target.x,

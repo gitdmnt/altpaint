@@ -21,6 +21,8 @@ static TEST_FILE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 struct TestDialogs {
     open_paths: RefCell<Vec<PathBuf>>,
     save_paths: RefCell<Vec<PathBuf>>,
+    workspace_save_paths: RefCell<Vec<PathBuf>>,
+    pen_open_paths: RefCell<Vec<PathBuf>>,
     errors: RefCell<Vec<(String, String)>>,
 }
 
@@ -30,6 +32,8 @@ impl TestDialogs {
         Self {
             open_paths: RefCell::new(vec![path]),
             save_paths: RefCell::new(Vec::new()),
+            workspace_save_paths: RefCell::new(Vec::new()),
+            pen_open_paths: RefCell::new(Vec::new()),
             errors: RefCell::new(Vec::new()),
         }
     }
@@ -39,6 +43,30 @@ impl TestDialogs {
         Self {
             open_paths: RefCell::new(Vec::new()),
             save_paths: RefCell::new(vec![path]),
+            workspace_save_paths: RefCell::new(Vec::new()),
+            pen_open_paths: RefCell::new(Vec::new()),
+            errors: RefCell::new(Vec::new()),
+        }
+    }
+
+    /// 次回の workspace preset 保存ダイアログが返す単一パスを持つ実装を生成する。
+    fn with_workspace_save_path(path: PathBuf) -> Self {
+        Self {
+            open_paths: RefCell::new(Vec::new()),
+            save_paths: RefCell::new(Vec::new()),
+            workspace_save_paths: RefCell::new(vec![path]),
+            pen_open_paths: RefCell::new(Vec::new()),
+            errors: RefCell::new(Vec::new()),
+        }
+    }
+
+    /// 次回のペン読込ダイアログが返す単一パスを持つ実装を生成する。
+    fn with_pen_open_path(path: PathBuf) -> Self {
+        Self {
+            open_paths: RefCell::new(Vec::new()),
+            save_paths: RefCell::new(Vec::new()),
+            workspace_save_paths: RefCell::new(Vec::new()),
+            pen_open_paths: RefCell::new(vec![path]),
             errors: RefCell::new(Vec::new()),
         }
     }
@@ -53,6 +81,14 @@ impl DesktopDialogs for TestDialogs {
     /// 仕込んだ save パスを一件返す。
     fn pick_save_project_path(&self, _current_path: &Path) -> Option<PathBuf> {
         self.save_paths.borrow_mut().pop()
+    }
+
+    fn pick_save_workspace_preset_path(&self, _current_path: &Path) -> Option<PathBuf> {
+        self.workspace_save_paths.borrow_mut().pop()
+    }
+
+    fn pick_open_pen_path(&self, _current_path: &Path) -> Option<PathBuf> {
+        self.pen_open_paths.borrow_mut().pop()
     }
 
     /// 表示要求されたエラー内容を記録する。

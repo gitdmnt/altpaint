@@ -964,6 +964,40 @@ pub(super) fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<
                 preset_id: preset_id.to_string(),
             })
         }
+        "workspace.save_preset" => {
+            let preset_id = descriptor
+                .payload
+                .get("preset_id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "workspace.save_preset is missing payload.preset_id".to_string())?;
+            let label = descriptor
+                .payload
+                .get("label")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "workspace.save_preset is missing payload.label".to_string())?;
+            Ok(Command::SaveWorkspacePreset {
+                preset_id: preset_id.to_string(),
+                label: label.to_string(),
+            })
+        }
+        "workspace.export_preset" => {
+            let preset_id = descriptor
+                .payload
+                .get("preset_id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    "workspace.export_preset is missing payload.preset_id".to_string()
+                })?;
+            let label = descriptor
+                .payload
+                .get("label")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "workspace.export_preset is missing payload.label".to_string())?;
+            Ok(Command::ExportWorkspacePreset {
+                preset_id: preset_id.to_string(),
+                label: label.to_string(),
+            })
+        }
         "tool.set_active" => {
             let tool = descriptor
                 .payload
@@ -1018,6 +1052,17 @@ pub(super) fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<
         "tool.pen_next" => Ok(Command::SelectNextPenPreset),
         "tool.pen_prev" => Ok(Command::SelectPreviousPenPreset),
         "tool.reload_pen_presets" => Ok(Command::ReloadPenPresets),
+        "tool.import_pen_presets" => Ok(Command::ImportPenPresets),
+        "tool.import_pen_path" => {
+            let path = descriptor
+                .payload
+                .get("path")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "tool.import_pen_path is missing payload.path".to_string())?;
+            Ok(Command::ImportPenPresetsFromPath {
+                path: path.to_string(),
+            })
+        }
         "tool.set_color" => {
             let color = descriptor
                 .payload

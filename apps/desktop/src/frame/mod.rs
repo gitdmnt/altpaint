@@ -151,7 +151,8 @@ pub(crate) struct TextureQuad {
     pub(crate) destination: Rect,
     pub(crate) uv_min: [f32; 2],
     pub(crate) uv_max: [f32; 2],
-    pub(crate) rotation_turns: u8,
+    pub(crate) rotation_degrees: f32,
+    pub(crate) bbox_size: [f32; 2],
     pub(crate) flip_x: bool,
     pub(crate) flip_y: bool,
 }

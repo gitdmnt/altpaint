@@ -24,6 +24,9 @@ state {
   config.eraser_shortcut: string = "E"
   config.bucket_shortcut: string = "G"
   config.lasso_bucket_shortcut: string = "Shift+G"
+  config.last_import_summary: string = ""
+  config.last_import_preview: string = ""
+  config.last_import_issues: string = ""
 }
 
 view {
@@ -41,6 +44,18 @@ view {
         <button id="tool.pen.next" on:click="next_pen">次へ ▶</button>
       </row>
       <button id="tool.pen.reload" on:click="reload_pens">⟳ ペン再読込</button>
+      <button id="tool.pen.import" on:click="import_pens">＋ 外部ペンを読み込み...</button>
+      <when test={state.config.last_import_summary != ""}>
+        <section title="インポート結果">
+          <text>{state.config.last_import_summary}</text>
+          <when test={state.config.last_import_preview != ""}>
+            <text tone="muted">Preview: {state.config.last_import_preview}</text>
+          </when>
+          <when test={state.config.last_import_issues != ""}>
+            <text tone="muted">Issues: {state.config.last_import_issues}</text>
+          </when>
+        </section>
+      </when>
       <button id="tool.shortcuts" on:click="toggle_shortcuts" active={state.show_shortcuts}>⌨ ショートカット</button>
       <when test={state.show_shortcuts}>
         <section title="ショートカット">

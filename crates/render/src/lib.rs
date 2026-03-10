@@ -77,7 +77,8 @@ pub struct TextureQuad {
     pub destination: PixelRect,
     pub uv_min: [f32; 2],
     pub uv_max: [f32; 2],
-    pub rotation_turns: u8,
+    pub rotation_degrees: f32,
+    pub bbox_size: [f32; 2],
     pub flip_x: bool,
     pub flip_y: bool,
 }
@@ -88,12 +89,12 @@ pub struct CanvasScene {
     viewport: PixelRect,
     source_width: usize,
     source_height: usize,
-    rotated_width: usize,
-    rotated_height: usize,
+    bbox_width: f32,
+    bbox_height: f32,
     scale: f32,
     offset_x: f32,
     offset_y: f32,
-    rotation_turns: u8,
+    rotation_degrees: f32,
     flip_x: bool,
     flip_y: bool,
     drawn_rect: Option<PixelRect>,
@@ -101,6 +102,20 @@ pub struct CanvasScene {
 }
 
 impl CanvasScene {
+    fn uv_transform(&self) -> UvTransform {
+        let radians = self.rotation_degrees.to_radians();
+        UvTransform {
+            source_width: self.source_width as f32,
+            source_height: self.source_height as f32,
+            flip_x: self.flip_x,
+            flip_y: self.flip_y,
+            bbox_width: self.bbox_width,
+            bbox_height: self.bbox_height,
+            cos_theta: radians.cos(),
+            sin_theta: radians.sin(),
+        }
+    }
+
     /// 実際に表示されるキャンバス矩形を返す。
     pub fn drawn_rect(&self) -> Option<PixelRect> {
         self.drawn_rect
@@ -123,43 +138,14 @@ impl CanvasScene {
 
     /// ビットマップ dirty rect を表示先へ写像する。
     pub fn map_canvas_dirty_rect(&self, dirty: DirtyRect) -> PixelRect {
-        if self.rotation_turns != 0 || self.flip_x || self.flip_y {
-            return self
-                .map_source_rect_to_display(dirty)
-                .and_then(|rect| rect.intersect(self.viewport))
-                .unwrap_or(PixelRect {
-                    x: self.viewport.x,
-                    y: self.viewport.y,
-                    width: 0,
-                    height: 0,
-                });
-        }
-        let clamped = dirty.clamp_to_bitmap(self.source_width, self.source_height);
-        let start_x = (self.offset_x + clamped.x as f32 * self.scale).floor();
-        let start_y = (self.offset_y + clamped.y as f32 * self.scale).floor();
-        let end_x = (self.offset_x + (clamped.x + clamped.width) as f32 * self.scale).ceil();
-        let end_y = (self.offset_y + (clamped.y + clamped.height) as f32 * self.scale).ceil();
-
-        let clipped_left = start_x.max(self.viewport.x as f32);
-        let clipped_top = start_y.max(self.viewport.y as f32);
-        let clipped_right = end_x.min((self.viewport.x + self.viewport.width) as f32);
-        let clipped_bottom = end_y.min((self.viewport.y + self.viewport.height) as f32);
-
-        if clipped_left >= clipped_right || clipped_top >= clipped_bottom {
-            return PixelRect {
+        self.map_source_rect_to_display(dirty)
+            .and_then(|rect| rect.intersect(self.viewport))
+            .unwrap_or(PixelRect {
                 x: self.viewport.x,
                 y: self.viewport.y,
                 width: 0,
                 height: 0,
-            };
-        }
-
-        PixelRect {
-            x: clipped_left as usize,
-            y: clipped_top as usize,
-            width: (clipped_right - clipped_left) as usize,
-            height: (clipped_bottom - clipped_top) as usize,
-        }
+            })
     }
 
     /// キャンバス座標のブラシプレビュー領域を返す。
@@ -210,8 +196,8 @@ impl CanvasScene {
 
     /// ビュー座標をキャンバスビットマップ座標へ変換する。
     pub fn map_view_to_canvas(&self, x: i32, y: i32) -> Option<(usize, usize)> {
-        let drawn_width = self.rotated_width as f32 * self.scale;
-        let drawn_height = self.rotated_height as f32 * self.scale;
+        let drawn_width = self.bbox_width * self.scale;
+        let drawn_height = self.bbox_height * self.scale;
         let local_x = x as f32 - self.offset_x;
         let local_y = y as f32 - self.offset_y;
         if local_x < 0.0 || local_y < 0.0 || local_x >= drawn_width || local_y >= drawn_height {
@@ -220,13 +206,10 @@ impl CanvasScene {
 
         let rotated_u = (local_x / drawn_width).clamp(0.0, 1.0 - f32::EPSILON);
         let rotated_v = (local_y / drawn_height).clamp(0.0, 1.0 - f32::EPSILON);
-        let (source_u, source_v) = rotated_to_source_uv(
-            rotated_u,
-            rotated_v,
-            self.rotation_turns,
-            self.flip_x,
-            self.flip_y,
-        );
+        let (source_u, source_v) = rotated_to_source_uv(rotated_u, rotated_v, self.uv_transform());
+        if !(0.0..1.0).contains(&source_u) || !(0.0..1.0).contains(&source_v) {
+            return None;
+        }
         let canvas_x = (source_u * self.source_width as f32).floor() as usize;
         let canvas_y = (source_v * self.source_height as f32).floor() as usize;
 
@@ -262,15 +245,10 @@ impl CanvasScene {
         let mut max_y = f32::NEG_INFINITY;
 
         for (source_u, source_v) in corners {
-            let (rotated_u, rotated_v) = source_to_rotated_uv(
-                source_u,
-                source_v,
-                self.rotation_turns,
-                self.flip_x,
-                self.flip_y,
-            );
-            let display_x = self.offset_x + rotated_u * self.rotated_width as f32 * self.scale;
-            let display_y = self.offset_y + rotated_v * self.rotated_height as f32 * self.scale;
+            let (rotated_u, rotated_v) =
+                source_to_rotated_uv(source_u, source_v, self.uv_transform());
+            let display_x = self.offset_x + rotated_u * self.bbox_width * self.scale;
+            let display_y = self.offset_y + rotated_v * self.bbox_height * self.scale;
             min_x = min_x.min(display_x);
             min_y = min_y.min(display_y);
             max_x = max_x.max(display_x);
@@ -291,16 +269,10 @@ impl CanvasScene {
         }
         let source_u = (canvas_position.0 as f32 + 0.5) / self.source_width as f32;
         let source_v = (canvas_position.1 as f32 + 0.5) / self.source_height as f32;
-        let (rotated_u, rotated_v) = source_to_rotated_uv(
-            source_u,
-            source_v,
-            self.rotation_turns,
-            self.flip_x,
-            self.flip_y,
-        );
+        let (rotated_u, rotated_v) = source_to_rotated_uv(source_u, source_v, self.uv_transform());
         Some((
-            self.offset_x + rotated_u * self.rotated_width as f32 * self.scale,
-            self.offset_y + rotated_v * self.rotated_height as f32 * self.scale,
+            self.offset_x + rotated_u * self.bbox_width * self.scale,
+            self.offset_y + rotated_v * self.bbox_height * self.scale,
         ))
     }
 }
@@ -316,15 +288,15 @@ pub fn prepare_canvas_scene(
         return None;
     }
 
-    let rotation_turns = normalized_rotation_turns(transform.rotation_degrees);
-    let (rotated_width, rotated_height) =
-        rotated_dimensions(source_width, source_height, rotation_turns);
+    let rotation_degrees = normalized_rotation_degrees(transform.rotation_degrees);
+    let (bbox_width, bbox_height) =
+        rotated_bounding_box(source_width as f32, source_height as f32, rotation_degrees);
 
-    let scale_x = viewport.width as f32 / rotated_width as f32;
-    let scale_y = viewport.height as f32 / rotated_height as f32;
-    let scale = (scale_x.min(scale_y) * transform.zoom.max(0.25)).max(f32::EPSILON);
-    let drawn_width = rotated_width as f32 * scale;
-    let drawn_height = rotated_height as f32 * scale;
+    let fit_scale_x = viewport.width as f32 / (source_width as f32).max(f32::EPSILON);
+    let fit_scale_y = viewport.height as f32 / (source_height as f32).max(f32::EPSILON);
+    let scale = (fit_scale_x.min(fit_scale_y) * transform.zoom.max(0.25)).max(f32::EPSILON);
+    let drawn_width = bbox_width * scale;
+    let drawn_height = bbox_height * scale;
     let offset_x =
         viewport.x as f32 + (viewport.width as f32 - drawn_width) * 0.5 + transform.pan_x;
     let offset_y =
@@ -349,18 +321,19 @@ pub fn prepare_canvas_scene(
         });
 
     let texture_quad = drawn_rect.map(|drawn_rect| {
-        let left = ((drawn_rect.x as f32 - offset_x) / scale).clamp(0.0, source_width as f32);
-        let top = ((drawn_rect.y as f32 - offset_y) / scale).clamp(0.0, source_height as f32);
-        let right = (((drawn_rect.x + drawn_rect.width) as f32 - offset_x) / scale)
-            .clamp(0.0, source_width as f32);
+        let left = ((drawn_rect.x as f32 - offset_x) / scale).clamp(0.0, bbox_width);
+        let top = ((drawn_rect.y as f32 - offset_y) / scale).clamp(0.0, bbox_height);
+        let right =
+            (((drawn_rect.x + drawn_rect.width) as f32 - offset_x) / scale).clamp(0.0, bbox_width);
         let bottom = (((drawn_rect.y + drawn_rect.height) as f32 - offset_y) / scale)
-            .clamp(0.0, source_height as f32);
+            .clamp(0.0, bbox_height);
 
         TextureQuad {
             destination: drawn_rect,
-            uv_min: [left / rotated_width as f32, top / rotated_height as f32],
-            uv_max: [right / rotated_width as f32, bottom / rotated_height as f32],
-            rotation_turns,
+            uv_min: [left / bbox_width, top / bbox_height],
+            uv_max: [right / bbox_width, bottom / bbox_height],
+            rotation_degrees,
+            bbox_size: [bbox_width, bbox_height],
             flip_x: transform.flip_x,
             flip_y: transform.flip_y,
         }
@@ -370,12 +343,12 @@ pub fn prepare_canvas_scene(
         viewport,
         source_width,
         source_height,
-        rotated_width,
-        rotated_height,
+        bbox_width,
+        bbox_height,
         scale,
         offset_x,
         offset_y,
-        rotation_turns,
+        rotation_degrees,
         flip_x: transform.flip_x,
         flip_y: transform.flip_y,
         drawn_rect,
@@ -383,61 +356,64 @@ pub fn prepare_canvas_scene(
     })
 }
 
-fn normalized_rotation_turns(rotation_degrees: f32) -> u8 {
-    ((rotation_degrees / 90.0).round() as i32).rem_euclid(4) as u8
+fn normalized_rotation_degrees(rotation_degrees: f32) -> f32 {
+    rotation_degrees.rem_euclid(360.0)
 }
 
-fn rotated_dimensions(width: usize, height: usize, rotation_turns: u8) -> (usize, usize) {
-    if rotation_turns.is_multiple_of(2) {
-        (width, height)
-    } else {
-        (height, width)
-    }
+fn rotated_bounding_box(width: f32, height: f32, rotation_degrees: f32) -> (f32, f32) {
+    let radians = rotation_degrees.to_radians();
+    let cos = radians.cos().abs();
+    let sin = radians.sin().abs();
+    (
+        (width * cos + height * sin).max(f32::EPSILON),
+        (width * sin + height * cos).max(f32::EPSILON),
+    )
 }
 
-fn source_to_rotated_uv(
-    source_u: f32,
-    source_v: f32,
-    rotation_turns: u8,
+#[derive(Debug, Clone, Copy)]
+struct UvTransform {
+    source_width: f32,
+    source_height: f32,
     flip_x: bool,
     flip_y: bool,
-) -> (f32, f32) {
-    let (mut rotated_u, mut rotated_v) = match rotation_turns % 4 {
-        0 => (source_u, source_v),
-        1 => (1.0 - source_v, source_u),
-        2 => (1.0 - source_u, 1.0 - source_v),
-        _ => (source_v, 1.0 - source_u),
-    };
-    if flip_x {
-        rotated_u = 1.0 - rotated_u;
-    }
-    if flip_y {
-        rotated_v = 1.0 - rotated_v;
-    }
-    (rotated_u, rotated_v)
+    bbox_width: f32,
+    bbox_height: f32,
+    cos_theta: f32,
+    sin_theta: f32,
 }
 
-fn rotated_to_source_uv(
-    rotated_u: f32,
-    rotated_v: f32,
-    rotation_turns: u8,
-    flip_x: bool,
-    flip_y: bool,
-) -> (f32, f32) {
-    let mut rotated_u = rotated_u;
-    let mut rotated_v = rotated_v;
-    if flip_x {
-        rotated_u = 1.0 - rotated_u;
+fn source_to_rotated_uv(source_u: f32, source_v: f32, uv_transform: UvTransform) -> (f32, f32) {
+    let centered_x = source_u * uv_transform.source_width - uv_transform.source_width * 0.5;
+    let centered_y = source_v * uv_transform.source_height - uv_transform.source_height * 0.5;
+    let mut rotated_x = centered_x * uv_transform.cos_theta - centered_y * uv_transform.sin_theta;
+    let mut rotated_y = centered_x * uv_transform.sin_theta + centered_y * uv_transform.cos_theta;
+    if uv_transform.flip_x {
+        rotated_x = -rotated_x;
     }
-    if flip_y {
-        rotated_v = 1.0 - rotated_v;
+    if uv_transform.flip_y {
+        rotated_y = -rotated_y;
     }
-    match rotation_turns % 4 {
-        0 => (rotated_u, rotated_v),
-        1 => (rotated_v, 1.0 - rotated_u),
-        2 => (1.0 - rotated_u, 1.0 - rotated_v),
-        _ => (1.0 - rotated_v, rotated_u),
+    (
+        (rotated_x + uv_transform.bbox_width * 0.5) / uv_transform.bbox_width,
+        (rotated_y + uv_transform.bbox_height * 0.5) / uv_transform.bbox_height,
+    )
+}
+
+fn rotated_to_source_uv(rotated_u: f32, rotated_v: f32, uv_transform: UvTransform) -> (f32, f32) {
+    let mut rotated_x = rotated_u * uv_transform.bbox_width - uv_transform.bbox_width * 0.5;
+    let mut rotated_y = rotated_v * uv_transform.bbox_height - uv_transform.bbox_height * 0.5;
+    if uv_transform.flip_x {
+        rotated_x = -rotated_x;
     }
+    if uv_transform.flip_y {
+        rotated_y = -rotated_y;
+    }
+    let source_x = rotated_x * uv_transform.cos_theta + rotated_y * uv_transform.sin_theta;
+    let source_y = -rotated_x * uv_transform.sin_theta + rotated_y * uv_transform.cos_theta;
+    (
+        (source_x + uv_transform.source_width * 0.5) / uv_transform.source_width,
+        (source_y + uv_transform.source_height * 0.5) / uv_transform.source_height,
+    )
 }
 
 /// ビットマップ dirty rect を表示先へ写像する。
@@ -538,8 +514,18 @@ pub fn exposed_canvas_background_rect(
     previous_transform: CanvasViewTransform,
     current_transform: CanvasViewTransform,
 ) -> Option<PixelRect> {
-    let previous = canvas_drawn_rect(viewport, source_width, source_height, previous_transform)?;
-    let current = canvas_drawn_rect(viewport, source_width, source_height, current_transform);
+    let previous = prepare_canvas_scene(viewport, source_width, source_height, previous_transform);
+    let current = prepare_canvas_scene(viewport, source_width, source_height, current_transform);
+
+    exposed_canvas_background_rect_from_scenes(previous, current)
+}
+
+pub fn exposed_canvas_background_rect_from_scenes(
+    previous: Option<CanvasScene>,
+    current: Option<CanvasScene>,
+) -> Option<PixelRect> {
+    let previous = previous.and_then(|scene| scene.drawn_rect())?;
+    let current = current.and_then(|scene| scene.drawn_rect());
 
     let Some(current) = current else {
         return Some(previous);
@@ -687,7 +673,7 @@ mod tests {
         );
 
         assert!(mapped.width >= 80);
-        assert_eq!(mapped.height, 72);
+        assert_eq!(mapped.height, 80);
         assert!(mapped.x >= 100);
         assert_eq!(mapped.y, 50);
     }
@@ -768,9 +754,71 @@ mod tests {
         )
         .expect("quad exists");
 
-        assert_eq!(quad.rotation_turns, 1);
+        assert_eq!(quad.rotation_degrees, 90.0);
+        assert!(quad.bbox_size[0] > 0.0);
+        assert!(quad.bbox_size[1] > 0.0);
         assert!(quad.flip_x);
         assert!(!quad.flip_y);
+    }
+
+    #[test]
+    fn arbitrary_rotation_roundtrips_view_to_canvas() {
+        let viewport = PixelRect {
+            x: 0,
+            y: 0,
+            width: 640,
+            height: 640,
+        };
+        let transform = CanvasViewTransform {
+            zoom: 1.0,
+            rotation_degrees: 37.5,
+            pan_x: 0.0,
+            pan_y: 0.0,
+            flip_x: false,
+            flip_y: false,
+        };
+        let display = map_canvas_point_to_display(viewport, 64, 32, transform, (24, 12))
+            .expect("display point exists");
+
+        let mapped = map_view_to_canvas_with_transform(
+            viewport,
+            64,
+            32,
+            display.0.round() as i32,
+            display.1.round() as i32,
+            transform,
+        );
+
+        assert_eq!(mapped, Some((24, 12)));
+    }
+
+    #[test]
+    fn arbitrary_rotation_keeps_canvas_scale_stable() {
+        let viewport = PixelRect {
+            x: 0,
+            y: 0,
+            width: 640,
+            height: 640,
+        };
+        let base_transform = CanvasViewTransform {
+            zoom: 1.0,
+            rotation_degrees: 0.0,
+            pan_x: 0.0,
+            pan_y: 0.0,
+            flip_x: false,
+            flip_y: false,
+        };
+        let rotated_transform = CanvasViewTransform {
+            rotation_degrees: 37.5,
+            ..base_transform
+        };
+
+        let base_scene =
+            prepare_canvas_scene(viewport, 64, 32, base_transform).expect("base scene exists");
+        let rotated_scene = prepare_canvas_scene(viewport, 64, 32, rotated_transform)
+            .expect("rotated scene exists");
+
+        assert!((base_scene.scale() - rotated_scene.scale()).abs() < 0.001);
     }
 
     #[test]

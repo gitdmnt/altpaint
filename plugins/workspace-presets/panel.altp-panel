@@ -1,0 +1,39 @@
+panel {
+  id: "builtin.workspace-presets"
+  title: "ワークスペース"
+  version: 1
+}
+
+permissions {
+  read.document
+  write.command
+}
+
+runtime {
+  wasm: "builtin_panel_workspace_presets.wasm"
+}
+
+state {
+  config.workspace_options: string = "default-floating:Default floating workspace"
+  config.selected_workspace: string = "default-floating"
+  config.selected_workspace_label: string = "Default floating workspace"
+}
+
+view {
+  <column gap=8 padding=8>
+    <section title="プリセット">
+      <dropdown id="workspace.preset.selector" label="既存プリセット" value={state.config.selected_workspace} options={state.config.workspace_options} on:change="select_workspace" />
+      <input id="workspace.preset.id" label="ID" value={state.config.selected_workspace} placeholder="default-floating" on:change="edit_workspace_id" />
+      <input id="workspace.preset.label" label="表示名" value={state.config.selected_workspace_label} placeholder="Default floating workspace" on:change="edit_workspace_label" />
+      <row gap=6>
+        <button id="workspace.load" on:click="load_workspace">読込</button>
+        <button id="workspace.save" on:click="save_workspace">保存</button>
+      </row>
+      <row gap=6>
+        <button id="workspace.export" on:click="export_workspace">書き出し</button>
+        <button id="workspace.reload" on:click="reload_workspaces">再読込</button>
+      </row>
+      <text tone="muted">現在のパネル配置と plugin 設定を preset として保存・書き出しできます。</text>
+    </section>
+  </column>
+}

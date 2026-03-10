@@ -101,9 +101,15 @@ fn save_and_load_restore_plugin_shortcut_configs() {
             "template_options": "2894x4093:A4 350dpi (2894×4093)|2480x3508:A4 300dpi (2480×3508)|2048x2048:Square 2048 (2048×2048)|1920x1080:HD Landscape (1920×1080)",
             "save_shortcut": "Ctrl+S",
             "save_as_shortcut": "Ctrl+Shift+S",
-            "open_shortcut": "Ctrl+O",
+            "open_shortcut": "Ctrl+O"
+        }))
+    );
+    assert_eq!(
+        loaded.ui_state.plugin_configs.get("builtin.workspace-presets"),
+        Some(&json!({
             "workspace_options": "default-floating:Default floating workspace",
-            "selected_workspace": "default-floating"
+            "selected_workspace": "default-floating",
+            "selected_workspace_label": "Default floating workspace"
         }))
     );
 
@@ -119,9 +125,17 @@ fn save_and_load_restore_plugin_shortcut_configs() {
             "template_options": "2894x4093:A4 350dpi (2894×4093)|2480x3508:A4 300dpi (2480×3508)|2048x2048:Square 2048 (2048×2048)|1920x1080:HD Landscape (1920×1080)",
             "save_shortcut": "Ctrl+S",
             "save_as_shortcut": "Ctrl+Shift+S",
-            "open_shortcut": "Ctrl+O",
+            "open_shortcut": "Ctrl+O"
+        }))
+    );
+    assert_eq!(
+        app.ui_shell
+            .persistent_panel_configs()
+            .get("builtin.workspace-presets"),
+        Some(&json!({
             "workspace_options": "default-floating:Default floating workspace",
-            "selected_workspace": "default-floating"
+            "selected_workspace": "default-floating",
+            "selected_workspace_label": "Default floating workspace"
         }))
     );
 
@@ -471,4 +485,73 @@ fn panel_layout_persists_across_restart_via_session() {
     assert_eq!(app.ui_shell.workspace_layout(), expected_layout);
 
     let _ = std::fs::remove_file(session_path);
+}
+
+#[test]
+fn startup_preserves_last_selected_workspace_preset_id() {
+    let preset_path = unique_test_path("workspace-preset-selected");
+    save_workspace_preset_catalog(
+        &preset_path,
+        &WorkspacePresetCatalog {
+            format_version: 1,
+            default_preset_id: "default".to_string(),
+            presets: vec![
+                WorkspacePreset {
+                    id: "default".to_string(),
+                    label: "Default".to_string(),
+                    ui_state: workspace_persistence::WorkspaceUiState::default(),
+                },
+                WorkspacePreset {
+                    id: "review".to_string(),
+                    label: "Review".to_string(),
+                    ui_state: workspace_persistence::WorkspaceUiState::new(
+                        app_core::WorkspaceLayout {
+                            panels: vec![WorkspacePanelState {
+                                id: "builtin.layers-panel".to_string(),
+                                visible: true,
+                                anchor: WorkspacePanelAnchor::BottomRight,
+                                position: Some(WorkspacePanelPosition { x: 32, y: 40 }),
+                                size: Some(WorkspacePanelSize {
+                                    width: 360,
+                                    height: 300,
+                                }),
+                            }],
+                        },
+                        BTreeMap::new(),
+                    ),
+                },
+            ],
+        },
+    )
+    .expect("preset save should succeed");
+
+    let mut source_app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
+        PathBuf::from("/tmp/altpaint-test.altp.json"),
+        Box::new(TestDialogs::default()),
+        unique_test_path("selected-preset-session-source"),
+        preset_path.clone(),
+    );
+    assert!(source_app.execute_command(Command::ApplyWorkspacePreset {
+        preset_id: "review".to_string(),
+    }));
+
+    let restarted = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
+        PathBuf::from("/tmp/altpaint-test.altp.json"),
+        Box::new(TestDialogs::default()),
+        source_app.session_path.clone(),
+        preset_path.clone(),
+    );
+
+    assert_eq!(
+        restarted
+            .ui_shell
+            .persistent_panel_configs()
+            .get("builtin.workspace-presets")
+            .and_then(|config| config.get("selected_workspace"))
+            .and_then(|value| value.as_str()),
+        Some("review")
+    );
+
+    let _ = std::fs::remove_file(source_app.session_path.clone());
+    let _ = std::fs::remove_file(preset_path);
 }

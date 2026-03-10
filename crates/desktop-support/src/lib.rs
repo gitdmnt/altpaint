@@ -13,7 +13,9 @@ pub use config::{
     WINDOW_HEIGHT, WINDOW_PADDING, WINDOW_TITLE, WINDOW_WIDTH, default_panel_dir, default_pen_dir,
     parse_document_size,
 };
-pub use dialogs::{DesktopDialogs, NativeDesktopDialogs, normalize_project_path};
+pub use dialogs::{
+    DesktopDialogs, NativeDesktopDialogs, normalize_project_path, normalize_workspace_preset_path,
+};
 pub use profiler::{DesktopProfiler, PerformanceSnapshot, PresentTimings, StageStats, ValueStats};
 pub use session::{
     DesktopSessionState, default_session_path, load_session_state, save_session_state,
