@@ -8,6 +8,46 @@ use super::*;
 pub(super) const WORKSPACE_PANEL_ID: &str = "builtin.workspace-layout";
 
 impl UiShell {
+    pub(super) fn ensure_workspace_manager_entry(&mut self) {
+        if self
+            .workspace_layout
+            .panels
+            .iter()
+            .any(|entry| entry.id == WORKSPACE_PANEL_ID)
+        {
+            return;
+        }
+
+        self.workspace_layout.panels.insert(
+            0,
+            WorkspacePanelState {
+                id: WORKSPACE_PANEL_ID.to_string(),
+                visible: true,
+                position: Some(default_panel_position(0)),
+                size: Some(WorkspacePanelSize::default()),
+            },
+        );
+    }
+
+    pub(super) fn workspace_panel_entries(&self) -> Vec<(&WorkspacePanelState, &str)> {
+        let panel_titles = self
+            .panels
+            .iter()
+            .map(|panel| (panel.id(), panel.title()))
+            .collect::<std::collections::BTreeMap<_, _>>();
+
+        self.workspace_layout
+            .panels
+            .iter()
+            .filter_map(|entry| {
+                panel_titles
+                    .get(entry.id.as_str())
+                    .copied()
+                    .map(|title| (entry, title))
+            })
+            .collect()
+    }
+
     /// パネルの画面上位置を更新する。
     pub fn move_panel_to(
         &mut self,
@@ -85,6 +125,7 @@ impl UiShell {
 
         self.workspace_layout.panels.swap(index, target_index);
         self.mark_all_panel_content_dirty();
+        self.panel_layout_dirty = true;
         true
     }
 
@@ -107,6 +148,7 @@ impl UiShell {
             self.focused_target = None;
         }
         self.mark_all_panel_content_dirty();
+        self.panel_layout_dirty = true;
         true
     }
 
@@ -121,13 +163,12 @@ impl UiShell {
         });
         self.loaded_panel_ids.clear();
         self.mark_all_panel_content_dirty();
+        self.panel_layout_dirty = true;
     }
 
     /// workspace layout に panel entry が存在することを保証する。
     pub(super) fn ensure_workspace_panel_entry(&mut self, panel_id: &str) {
-        if panel_id == WORKSPACE_PANEL_ID
-            || self.workspace_layout.panels.iter().any(|entry| entry.id == panel_id)
-        {
+        if self.workspace_layout.panels.iter().any(|entry| entry.id == panel_id) {
             return;
         }
 
@@ -141,6 +182,8 @@ impl UiShell {
 
     /// 読み込み済み panel 群と workspace layout の整合を取る。
     pub(super) fn reconcile_workspace_layout(&mut self) {
+        self.ensure_workspace_manager_entry();
+
         let panel_ids = self.panels.iter().map(|panel| panel.id()).collect::<Vec<_>>();
         for panel_id in panel_ids {
             self.ensure_workspace_panel_entry(panel_id);
@@ -193,31 +236,17 @@ impl UiShell {
 
     /// workspace 管理 panel の tree を構築する。
     pub(super) fn workspace_manager_tree(&self) -> PanelTree {
-        let panel_titles = self
-            .panels
-            .iter()
-            .map(|panel| (panel.id(), panel.title()))
-            .collect::<std::collections::BTreeMap<_, _>>();
-        let ordered_entries = self
-            .workspace_layout
-            .panels
-            .iter()
-            .filter(|entry| panel_titles.contains_key(entry.id.as_str()))
-            .collect::<Vec<_>>();
+        let ordered_entries = self.workspace_panel_entries();
 
         let rows = ordered_entries
             .iter()
-            .map(|entry| {
-                let title = panel_titles
-                    .get(entry.id.as_str())
-                    .copied()
-                    .unwrap_or(entry.id.as_str());
+            .map(|(entry, title)| {
                 PanelNode::Row {
                     id: format!("workspace.row.{}", entry.id),
                     children: vec![
                         PanelNode::Text {
                             id: format!("workspace.title.{}", entry.id),
-                            text: title.to_string(),
+                            text: (*title).to_string(),
                         },
                         PanelNode::Button {
                             id: format!("workspace.visibility.{}", entry.id),
@@ -237,7 +266,6 @@ impl UiShell {
                 }
             })
             .collect::<Vec<_>>();
-
         PanelTree {
             id: WORKSPACE_PANEL_ID,
             title: "パネル管理",
@@ -245,7 +273,7 @@ impl UiShell {
                 id: "workspace.root".to_string(),
                 children: vec![PanelNode::Section {
                     id: "workspace.panels".to_string(),
-                    title: "表示中のパネル".to_string(),
+                    title: "表示 / 非表示".to_string(),
                     children: rows,
                 }],
             }],
@@ -272,51 +300,22 @@ pub(super) fn event_panel_id(event: &PanelEvent) -> &str {
 }
 
 /// workspace 管理 panel の event を `HostAction` へ変換する。
-pub(super) fn workspace_panel_actions(nodes: &[PanelNode], event: &PanelEvent) -> Vec<HostAction> {
-    let target_id = match event {
-        PanelEvent::Activate { node_id, .. }
-        | PanelEvent::SetValue { node_id, .. }
-        | PanelEvent::DragValue { node_id, .. }
-        | PanelEvent::SetText { node_id, .. } => node_id,
-        PanelEvent::Keyboard { .. } => return Vec::new(),
-    };
-    find_actions_in_nodes_local(nodes, target_id)
-}
-
-/// ローカル workspace panel node から action 群を探索する。
-fn find_actions_in_nodes_local(nodes: &[PanelNode], target_id: &str) -> Vec<HostAction> {
-    for node in nodes {
-        if let Some(actions) = find_actions_in_node_local(node, target_id) {
-            return actions;
-        }
-    }
-    Vec::new()
-}
-
-/// 単一 node 配下から action 群を探索する。
-fn find_actions_in_node_local(node: &PanelNode, target_id: &str) -> Option<Vec<HostAction>> {
-    match node {
-        PanelNode::Column { children, .. }
-        | PanelNode::Row { children, .. }
-        | PanelNode::Section { children, .. } => children
-            .iter()
-            .find_map(|child| find_actions_in_node_local(child, target_id)),
-        PanelNode::Text { .. } | PanelNode::ColorPreview { .. } => None,
-        PanelNode::ColorWheel { id, action, .. } if id == target_id => Some(vec![action.clone()]),
-        PanelNode::ColorWheel { .. } => None,
-        PanelNode::Button { id, action, .. } if id == target_id => Some(vec![action.clone()]),
-        PanelNode::Button { .. } => None,
-        PanelNode::Slider { id, action, .. } if id == target_id => Some(vec![action.clone()]),
-        PanelNode::Slider { .. } => None,
-        PanelNode::TextInput {
-            id,
-            action: Some(action),
-            ..
-        } if id == target_id => Some(vec![action.clone()]),
-        PanelNode::TextInput { .. } => None,
-        PanelNode::Dropdown { id, action, .. } if id == target_id => Some(vec![action.clone()]),
-        PanelNode::Dropdown { .. } => None,
-        PanelNode::LayerList { id, action, .. } if id == target_id => Some(vec![action.clone()]),
-        PanelNode::LayerList { .. } => None,
+pub(super) fn workspace_panel_actions(ordered_panels: &[(String, bool)], event: &PanelEvent) -> Vec<HostAction> {
+    match event {
+        PanelEvent::Activate { node_id, .. } => node_id
+            .strip_prefix("workspace.visibility.")
+            .map(|panel_id| {
+                let visible = ordered_panels
+                    .iter()
+                    .find(|(candidate, _)| candidate.as_str() == panel_id)
+                    .map(|(_, visible)| *visible)
+                    .unwrap_or(true);
+                vec![HostAction::SetPanelVisibility {
+                    panel_id: panel_id.to_string(),
+                    visible: !visible,
+                }]
+            })
+            .unwrap_or_default(),
+        _ => Vec::new(),
     }
 }

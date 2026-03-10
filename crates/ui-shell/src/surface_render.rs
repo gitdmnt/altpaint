@@ -74,18 +74,13 @@ impl UiShell {
         };
         let floating_panels = self.collect_floating_panels(trees.as_slice(), width, height, render_state);
         let dirty_ids = self.dirty_panel_ids.clone();
+        let previous_rects = self.rendered_panel_rects.clone();
+        let next_rects = panel_rect_map(floating_panels.as_slice());
         let can_incremental_compose = !viewport_changed && self.panel_content_cache.is_some();
         let incremental_dirty = if self.panel_layout_dirty {
-            Some(panel_layout_dirty_rect(
-                &self.rendered_panel_rects,
-                &panel_rect_map(floating_panels.as_slice()),
-            ))
+            Some(panel_layout_dirty_rect(&previous_rects, &next_rects))
         } else if needs_raster && !self.full_panel_raster_dirty && !dirty_ids.is_empty() {
-            Some(panel_subset_dirty_rect(
-                &self.rendered_panel_rects,
-                &panel_rect_map(floating_panels.as_slice()),
-                &dirty_ids,
-            ))
+            Some(panel_subset_dirty_rect(&previous_rects, &next_rects, &dirty_ids))
         } else {
             None
         }
@@ -102,7 +97,7 @@ impl UiShell {
             let composed_surface = if use_incremental_compose {
                 self.compose_panel_surface_incremental(floating_panels.as_slice(), incremental_dirty)
             } else {
-                self.compose_panel_surface(floating_panels.as_slice())
+                self.compose_panel_surface(floating_panels.as_slice(), incremental_dirty)
             };
             self.panel_content_cache = Some(composed_surface.clone());
             result_surface = Some(composed_surface);
@@ -119,7 +114,7 @@ impl UiShell {
         result_surface.unwrap_or_else(|| {
             self.panel_content_cache
                 .clone()
-                .unwrap_or_else(|| self.compose_panel_surface(floating_panels.as_slice()))
+                .unwrap_or_else(|| self.compose_panel_surface(floating_panels.as_slice(), None))
         })
     }
 
@@ -214,12 +209,17 @@ impl UiShell {
         self.last_panel_rasterized_panels = rasterized;
     }
 
-    fn compose_panel_surface(&mut self, floating_panels: &[FloatingPanel<'_>]) -> PanelSurface {
+    fn compose_panel_surface(
+        &mut self,
+        floating_panels: &[FloatingPanel<'_>],
+        dirty_global: Option<PixelRect>,
+    ) -> PanelSurface {
+        let previous_rects = self.rendered_panel_rects.clone();
         let next_rects = panel_rect_map(floating_panels);
         let Some(bounds) = panel_bounds(floating_panels) else {
             self.last_panel_composited_panels = 0;
             self.rendered_panel_rects = next_rects;
-            self.last_panel_surface_dirty_rect = None;
+            self.last_panel_surface_dirty_rect = panel_layout_dirty_rect(&previous_rects, &self.rendered_panel_rects);
             return PanelSurface {
                 x: 0,
                 y: 0,
@@ -231,7 +231,9 @@ impl UiShell {
         };
         self.rendered_panel_rects = next_rects;
         self.last_panel_composited_panels = floating_panels.len();
-        self.last_panel_surface_dirty_rect = Some(bounds);
+        self.last_panel_surface_dirty_rect = dirty_global
+            .or_else(|| panel_layout_dirty_rect(&previous_rects, &self.rendered_panel_rects))
+            .or(Some(bounds));
 
         let mut surface = PanelSurface {
             x: bounds.x,

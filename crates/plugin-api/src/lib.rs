@@ -263,7 +263,9 @@ fn find_actions_in_node(node: &PanelNode, target_id: &str) -> Option<Vec<HostAct
         | PanelNode::Section { children, .. } => children
             .iter()
             .find_map(|child| find_actions_in_node(child, target_id)),
-        PanelNode::Text { .. } | PanelNode::ColorPreview { .. } | PanelNode::ColorWheel { .. } => None,
+        PanelNode::Text { .. } | PanelNode::ColorPreview { .. } | PanelNode::ColorWheel { .. } => {
+            None
+        }
         PanelNode::Button { id, action, .. } if id == target_id => Some(vec![action.clone()]),
         PanelNode::Button { .. } => None,
         PanelNode::Slider { id, action, .. } if id == target_id => Some(vec![action.clone()]),

@@ -56,7 +56,8 @@ impl DesktopApp {
             save_project_to_path(&path, &document, &workspace_layout, &plugin_configs)
                 .map_err(|error| error.to_string())
         });
-        self.pending_save_tasks.push(super::PendingSaveTask { handle });
+        self.pending_save_tasks
+            .push(super::PendingSaveTask { handle });
         self.mark_status_dirty();
         true
     }

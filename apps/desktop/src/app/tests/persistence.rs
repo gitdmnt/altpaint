@@ -204,14 +204,13 @@ fn move_panel_host_action_updates_status_without_full_recompose() {
             &app.status_text()
         ))
     );
-    let surface = app.panel_surface.clone().expect("panel surface exists");
     assert_eq!(
         update.overlay_dirty_rect,
-        Some(crate::frame::Rect {
-            x: surface.x,
-            y: surface.y,
-            width: surface.width,
-            height: surface.height,
+        app.ui_shell.last_panel_surface_dirty_rect().map(|dirty| crate::frame::Rect {
+            x: dirty.x,
+            y: dirty.y,
+            width: dirty.width,
+            height: dirty.height,
         })
     );
 }
@@ -244,14 +243,53 @@ fn set_panel_visibility_updates_status_without_full_recompose() {
             &app.status_text()
         ))
     );
-    let surface = app.panel_surface.clone().expect("panel surface exists");
+    assert_eq!(
+        update.overlay_dirty_rect,
+        app.ui_shell.last_panel_surface_dirty_rect().map(|dirty| crate::frame::Rect {
+            x: dirty.x,
+            y: dirty.y,
+            width: dirty.width,
+            height: dirty.height,
+        })
+    );
+}
+
+#[test]
+fn hiding_panel_clears_previous_overlay_bounds_when_surface_shrinks() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = DesktopProfiler::new();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+    let layout = app.layout.clone().expect("layout exists");
+
+    assert!(app.ui_shell.move_panel_to(
+        "builtin.tool-palette",
+        940,
+        72,
+        layout.window_rect.width,
+        layout.window_rect.height,
+    ));
+    app.mark_panel_surface_dirty();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+    let hidden_panel_rect = app
+        .ui_shell
+        .panel_rect("builtin.tool-palette")
+        .expect("hidden panel rect exists");
+
+    profiler.stats.clear();
+    assert!(app.execute_host_action(HostAction::SetPanelVisibility {
+        panel_id: "builtin.tool-palette".to_string(),
+        visible: false,
+    }));
+    let update = app.prepare_present_frame(1280, 800, &mut profiler);
+
+    assert!(profiler.stats.contains_key("compose_dirty_panel"));
     assert_eq!(
         update.overlay_dirty_rect,
         Some(crate::frame::Rect {
-            x: surface.x,
-            y: surface.y,
-            width: surface.width,
-            height: surface.height,
+            x: hidden_panel_rect.x,
+            y: hidden_panel_rect.y,
+            width: hidden_panel_rect.width,
+            height: hidden_panel_rect.height,
         })
     );
 }

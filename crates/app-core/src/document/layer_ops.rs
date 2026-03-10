@@ -601,6 +601,11 @@ fn composite_panel_bitmap(panel: &Panel) -> CanvasBitmap {
 /// dirty rect に限定して panel bitmap を再合成する。
 fn composite_panel_bitmap_region(panel: &mut Panel, dirty: DirtyRect) {
     let dirty = dirty.clamp_to_bitmap(panel.bitmap.width.max(1), panel.bitmap.height.max(1));
+    if let Some(layer_index) = single_passthrough_layer_index(panel) {
+        copy_bitmap_region(&panel.layers[layer_index].bitmap, &mut panel.bitmap, dirty);
+        return;
+    }
+
     for y in dirty.y..dirty.y + dirty.height {
         for x in dirty.x..dirty.x + dirty.width {
             let index = (y * panel.bitmap.width + x) * 4;
@@ -613,6 +618,34 @@ fn composite_panel_bitmap_region(panel: &mut Panel, dirty: DirtyRect) {
             continue;
         }
         composite_layer_region_into(&mut panel.bitmap, layer, dirty);
+    }
+}
+
+fn single_passthrough_layer_index(panel: &Panel) -> Option<usize> {
+    let mut visible_layers = panel
+        .layers
+        .iter()
+        .enumerate()
+        .filter(|(_, layer)| layer.visible);
+    let (index, layer) = visible_layers.next()?;
+    if visible_layers.next().is_some() {
+        return None;
+    }
+    if layer.mask.is_some() || !matches!(layer.blend_mode, BlendMode::Normal) {
+        return None;
+    }
+    if layer.bitmap.width != panel.bitmap.width || layer.bitmap.height != panel.bitmap.height {
+        return None;
+    }
+    Some(index)
+}
+
+fn copy_bitmap_region(source: &CanvasBitmap, target: &mut CanvasBitmap, dirty: DirtyRect) {
+    let dirty = dirty.clamp_to_bitmap(target.width.min(source.width), target.height.min(source.height));
+    for y in dirty.y..dirty.y + dirty.height {
+        let row_start = (y * target.width + dirty.x) * 4;
+        let row_end = row_start + dirty.width * 4;
+        target.pixels[row_start..row_end].copy_from_slice(&source.pixels[row_start..row_end]);
     }
 }
 

@@ -218,7 +218,10 @@ fn scroll_refresh_does_not_trigger_ui_update() {
     assert_eq!(update.base_dirty_rect, None);
     assert_eq!(update.overlay_dirty_rect, None);
     assert!(!update.canvas_updated);
-    assert_eq!(profiler.stats.get("panel_surface").map(|stat| stat.calls), None);
+    assert_eq!(
+        profiler.stats.get("panel_surface").map(|stat| stat.calls),
+        None
+    );
 }
 
 #[test]
@@ -255,6 +258,35 @@ fn panel_move_recomposes_without_rerasterizing_panel_content() {
             .map(|stat| (stat.samples, stat.total > 0.0)),
         Some((1, true))
     );
+}
+
+#[test]
+fn workspace_manager_panel_can_be_moved() {
+    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut profiler = DesktopProfiler::new();
+    let _ = app.prepare_present_frame(1280, 200, &mut profiler);
+    let layout = app.layout.clone().expect("layout exists");
+    let before = app
+        .ui_shell
+        .panel_rect("builtin.workspace-layout")
+        .expect("workspace panel rect exists");
+
+    assert!(app.ui_shell.move_panel_to(
+        "builtin.workspace-layout",
+        before.x + 80,
+        before.y + 24,
+        layout.window_rect.width,
+        layout.window_rect.height,
+    ));
+    app.mark_panel_surface_dirty();
+    let _ = app.prepare_present_frame(1280, 200, &mut profiler);
+
+    let after = app
+        .ui_shell
+        .panel_rect("builtin.workspace-layout")
+        .expect("workspace panel rect exists");
+    assert_ne!(after, before);
+    assert!(after.x >= before.x + 80 || after.y >= before.y + 24);
 }
 
 #[test]
@@ -306,21 +338,23 @@ fn overlapping_panel_and_canvas_overlay_updates_union_dirty_rects() {
         .ui_shell
         .panel_rect("builtin.layers-panel")
         .expect("panel rect exists");
-    assert!(app.ui_shell.move_panel_to(
-        "builtin.layers-panel",
-        layout
-            .canvas_display_rect
-            .x
-            .saturating_add(layout.canvas_display_rect.width / 2)
-            .saturating_sub(panel_rect.width / 2),
-        layout
-            .canvas_display_rect
-            .y
-            .saturating_add(layout.canvas_display_rect.height / 2)
-            .saturating_sub(panel_rect.height / 2),
-        layout.window_rect.width,
-        layout.window_rect.height,
-    ));
+    assert!(
+        app.ui_shell.move_panel_to(
+            "builtin.layers-panel",
+            layout
+                .canvas_display_rect
+                .x
+                .saturating_add(layout.canvas_display_rect.width / 2)
+                .saturating_sub(panel_rect.width / 2),
+            layout
+                .canvas_display_rect
+                .y
+                .saturating_add(layout.canvas_display_rect.height / 2)
+                .saturating_sub(panel_rect.height / 2),
+            layout.window_rect.width,
+            layout.window_rect.height,
+        )
+    );
     app.mark_panel_surface_dirty();
 
     let update = app.prepare_present_frame(1280, 800, &mut profiler);
@@ -390,7 +424,12 @@ fn profile_color_wheel_drag_for_ten_seconds() {
     let _ = app.handle_pointer_released(end.0, end.1);
 
     assert!(iterations > 0, "color wheel drag produced updates");
-    emit_panel_perf("color-wheel-perf", &profiler, started.elapsed().as_secs_f64(), iterations);
+    emit_panel_perf(
+        "color-wheel-perf",
+        &profiler,
+        started.elapsed().as_secs_f64(),
+        iterations,
+    );
 }
 
 #[test]
@@ -479,7 +518,12 @@ fn profile_slider_drag_for_ten_seconds() {
     let _ = app.handle_pointer_released(end.0, end.1);
 
     assert!(iterations > 0, "slider drag produced updates");
-    emit_panel_perf("slider-perf", &profiler, started.elapsed().as_secs_f64(), iterations);
+    emit_panel_perf(
+        "slider-perf",
+        &profiler,
+        started.elapsed().as_secs_f64(),
+        iterations,
+    );
 }
 
 #[test]
@@ -531,6 +575,78 @@ fn profile_panel_drag_for_ten_seconds() {
 
     let elapsed = started.elapsed().as_secs_f64();
     emit_panel_perf("panel-perf", &profiler, elapsed, iterations);
+}
+
+#[test]
+#[ignore = "manual performance profiling"]
+fn profile_canvas_brush_sizes_for_ten_seconds() {
+    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut profiler = DesktopProfiler::new();
+    let viewport = (1280, 800);
+    let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
+
+    let layout = app.layout.clone().expect("layout exists");
+    let start_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 4) as i32;
+    let end_x = (layout.canvas_display_rect.x + (layout.canvas_display_rect.width * 3) / 4) as i32;
+    let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
+    let total_duration = perf_duration();
+    let combinations = [
+        (ToolKind::Pen, 4u32),
+        (ToolKind::Pen, 128u32),
+        (ToolKind::Pen, 64u32),
+        (ToolKind::Pen, 256u32),
+        (ToolKind::Pen, 512u32),
+        (ToolKind::Eraser, 4u32),
+        (ToolKind::Eraser, 128u32),
+        (ToolKind::Eraser, 64u32),
+        (ToolKind::Eraser, 256u32),
+        (ToolKind::Eraser, 512u32),
+    ];
+    let per_case_seconds = (total_duration.as_secs_f64() / combinations.len() as f64).max(1.0);
+    let per_case_duration = Duration::from_secs_f64(per_case_seconds);
+
+    for (tool, size) in combinations {
+        assert!(app.execute_command(Command::SetActiveTool { tool }));
+        assert!(app.execute_command(Command::SetActivePenSize { size }));
+        let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
+        profiler.stats.clear();
+        profiler.value_stats.clear();
+
+        let started = Instant::now();
+        let mut iterations = 0u64;
+        let mut forward = true;
+        while started.elapsed() < per_case_duration {
+            let (down_x, up_x) = if forward {
+                (start_x, end_x)
+            } else {
+                (end_x, start_x)
+            };
+            app.handle_canvas_pointer("down", down_x, center_y, 1.0);
+            let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
+
+            for step in 1..=8 {
+                let x = down_x + ((up_x - down_x) * step / 8);
+                app.handle_canvas_pointer("drag", x, center_y, 1.0);
+                let update = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
+                if update.canvas_dirty_rect.is_some() {
+                    iterations += 1;
+                }
+            }
+
+            app.handle_canvas_pointer("up", up_x, center_y, 1.0);
+            let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
+            forward = !forward;
+        }
+
+        assert!(iterations > 0, "canvas stroke produced updates");
+        emit_canvas_perf(
+            tool,
+            size,
+            &profiler,
+            started.elapsed().as_secs_f64(),
+            iterations,
+        );
+    }
 }
 
 /// フォーカス移動時の差分更新が UI 全体再同期を引き起こさないことを確認する。
@@ -614,10 +730,7 @@ fn panel_release_without_matching_press_does_not_activate_save() {
 }
 
 fn avg_stage_ms(profiler: &DesktopProfiler, label: &'static str) -> f64 {
-    profiler
-        .stats
-        .get(label)
-        .map_or(0.0, avg_stage_stat_ms)
+    profiler.stats.get(label).map_or(0.0, avg_stage_stat_ms)
 }
 
 fn avg_stage_stat_ms(stat: &StageStats) -> f64 {
@@ -636,10 +749,7 @@ fn max_stage_ms(profiler: &DesktopProfiler, label: &'static str) -> f64 {
 }
 
 fn avg_value(profiler: &DesktopProfiler, label: &'static str) -> f64 {
-    profiler
-        .value_stats
-        .get(label)
-        .map_or(0.0, avg_value_stat)
+    profiler.value_stats.get(label).map_or(0.0, avg_value_stat)
 }
 
 fn avg_value_stat(stat: &ValueStats) -> f64 {
@@ -656,6 +766,39 @@ fn perf_duration() -> Duration {
         .and_then(|value| value.parse::<u64>().ok())
         .map(Duration::from_secs)
         .unwrap_or_else(|| Duration::from_secs(10))
+}
+
+fn emit_canvas_perf(
+    tool: ToolKind,
+    size: u32,
+    profiler: &DesktopProfiler,
+    elapsed: f64,
+    iterations: u64,
+) {
+    let tool_name = match tool {
+        ToolKind::Pen => "pen",
+        ToolKind::Eraser => "eraser",
+        ToolKind::Bucket => "bucket",
+        ToolKind::LassoBucket => "lasso-bucket",
+    };
+    eprintln!(
+        "[canvas-perf] tool={tool_name} size={size} duration={elapsed:.2}s iterations={iterations} rate={:.1}Hz",
+        iterations as f64 / elapsed
+    );
+    eprintln!(
+        "[canvas-perf] tool={tool_name} size={size} prepare_frame avg={:.3}ms max={:.3}ms | prepare_canvas_scene avg={:.3}ms max={:.3}ms",
+        avg_stage_ms(profiler, "prepare_frame"),
+        max_stage_ms(profiler, "prepare_frame"),
+        avg_stage_ms(profiler, "prepare_canvas_scene"),
+        max_stage_ms(profiler, "prepare_canvas_scene"),
+    );
+    eprintln!(
+        "[canvas-perf] tool={tool_name} size={size} canvas upload avg={:.2}% ({:.0}px) | overlay upload avg={:.2}% ({:.0}px)",
+        avg_value(profiler, "canvas_upload_coverage_pct"),
+        avg_value(profiler, "canvas_upload_area_px"),
+        avg_value(profiler, "overlay_upload_coverage_pct"),
+        avg_value(profiler, "overlay_upload_area_px"),
+    );
 }
 
 fn emit_panel_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterations: u64) {

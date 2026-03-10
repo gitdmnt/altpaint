@@ -438,6 +438,8 @@ fn workspace_layout_hides_panel_from_rendered_tree() { let mut shell = shell_wit
 #[test]
 fn workspace_layout_reorders_visible_panels() { let mut shell = shell_with_builtin_panels(); let before_ids = shell.panel_trees().iter().map(|panel| panel.id).collect::<Vec<_>>(); let before_index = before_ids.iter().position(|panel_id| *panel_id == "builtin.layers-panel").expect("layers panel visible"); assert!(shell.move_panel("builtin.layers-panel", PanelMoveDirection::Up)); assert!(shell.move_panel("builtin.layers-panel", PanelMoveDirection::Up)); let visible_ids = shell.panel_trees().iter().map(|panel| panel.id).collect::<Vec<_>>(); let layers_index = visible_ids.iter().position(|panel_id| *panel_id == "builtin.layers-panel").expect("layers panel visible"); assert!(layers_index < before_index); }
 #[test]
+fn workspace_manager_panel_has_layout_entry() { let shell = shell_with_builtin_panels(); assert!(shell.workspace_layout().panels.iter().any(|entry| entry.id == WORKSPACE_PANEL_ID)); }
+#[test]
 fn scrolling_panels_updates_scroll_offset() { let mut shell = shell_with_builtin_panels(); let _ = shell.render_panel_surface(280, 96); assert!(!shell.scroll_panels(6, 96)); assert_eq!(shell.panel_scroll_offset(), 0); }
 #[test]
 fn scrolling_panels_keeps_cached_panel_content() { let mut shell = shell_with_builtin_panels(); let _ = shell.render_panel_surface(280, 96); assert!(!shell.panel_content_dirty); assert!(!shell.scroll_panels(6, 96)); assert!(!shell.panel_content_dirty); }

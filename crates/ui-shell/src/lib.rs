@@ -217,6 +217,7 @@ impl UiShell {
         self.workspace_layout = workspace_layout;
         self.reconcile_workspace_layout();
         self.mark_all_panel_content_dirty();
+        self.panel_layout_dirty = true;
     }
 
     /// 現在 focus 中の `(panel_id, node_id)` を返す。
@@ -273,7 +274,12 @@ impl UiShell {
             self.expanded_dropdown = None;
         }
         if event_panel_id(event) == WORKSPACE_PANEL_ID {
-            let actions = workspace_panel_actions(self.workspace_manager_tree().children.as_slice(), event);
+            let ordered_panels = self
+                .workspace_panel_entries()
+                .into_iter()
+                .map(|(entry, _)| (entry.id.clone(), entry.visible))
+                .collect::<Vec<_>>();
+            let actions = workspace_panel_actions(ordered_panels.as_slice(), event);
             self.mark_all_panel_content_dirty();
             return actions;
         }

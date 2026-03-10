@@ -39,7 +39,9 @@ fn draw_stroke_draws_continuous_line() {
     let mut document = Document::default();
     document.set_active_pen_size(1);
 
-    let dirty = document.draw_stroke(2, 2, 6, 2).expect("panel should exist");
+    let dirty = document
+        .draw_stroke(2, 2, 6, 2)
+        .expect("panel should exist");
 
     let bitmap = &document.work.pages[0].panels[0].bitmap;
     for x in 2..=6 {
@@ -127,7 +129,9 @@ fn canvas_defaults_to_white_background() {
 fn apply_command_switches_active_tool() {
     let mut document = Document::default();
 
-    let dirty = document.apply_command(&Command::SetActiveTool { tool: ToolKind::Pen });
+    let dirty = document.apply_command(&Command::SetActiveTool {
+        tool: ToolKind::Pen,
+    });
 
     assert_eq!(dirty, None);
     assert_eq!(document.active_tool, ToolKind::Pen);
@@ -152,7 +156,10 @@ fn apply_command_switches_active_color() {
     });
 
     assert_eq!(dirty, None);
-    assert_eq!(document.active_color, ColorRgba8::new(0x43, 0xa0, 0x47, 0xff));
+    assert_eq!(
+        document.active_color,
+        ColorRgba8::new(0x43, 0xa0, 0x47, 0xff)
+    );
 }
 
 #[test]
@@ -177,7 +184,9 @@ fn apply_command_draw_stroke_returns_dirty_rect() {
 #[test]
 fn pen_draws_wider_than_single_pixel_default_stroke() {
     let mut document = Document::default();
-    let _ = document.apply_command(&Command::SetActiveTool { tool: ToolKind::Pen });
+    let _ = document.apply_command(&Command::SetActiveTool {
+        tool: ToolKind::Pen,
+    });
     let _ = document.apply_command(&Command::SetActivePenSize { size: 5 });
 
     let dirty = document.draw_point(10, 10).expect("panel should exist");
@@ -189,6 +198,48 @@ fn pen_draws_wider_than_single_pixel_default_stroke() {
     let edge = (10 * bitmap.width + 8) * 4;
     assert_eq!(&bitmap.pixels[center..center + 4], &[0, 0, 0, 255]);
     assert_eq!(&bitmap.pixels[edge..edge + 4], &[0, 0, 0, 255]);
+}
+
+#[test]
+fn wide_stroke_keeps_segment_core_filled() {
+    let mut document = Document::new(128, 128);
+    let _ = document.apply_command(&Command::SetActiveTool {
+        tool: ToolKind::Pen,
+    });
+    let _ = document.apply_command(&Command::SetActivePenSize { size: 24 });
+
+    let dirty = document
+        .draw_stroke(20, 64, 108, 64)
+        .expect("panel should exist");
+
+    assert!(dirty.width >= 88);
+    assert!(dirty.height >= 24);
+    let bitmap = document.active_bitmap().expect("bitmap exists");
+    for x in [20usize, 44, 64, 84, 108] {
+        let index = (64 * bitmap.width + x) * 4;
+        assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
+    }
+}
+
+#[test]
+fn wide_diagonal_stroke_marks_midpoint_pixels() {
+    let mut document = Document::new(128, 128);
+    let _ = document.apply_command(&Command::SetActiveTool {
+        tool: ToolKind::Pen,
+    });
+    let _ = document.apply_command(&Command::SetActivePenSize { size: 18 });
+
+    let dirty = document
+        .draw_stroke(16, 16, 112, 112)
+        .expect("panel should exist");
+
+    assert!(dirty.width >= 96);
+    assert!(dirty.height >= 96);
+    let bitmap = document.active_bitmap().expect("bitmap exists");
+    for (x, y) in [(16usize, 16usize), (64, 64), (112, 112)] {
+        let index = (y * bitmap.width + x) * 4;
+        assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
+    }
 }
 
 #[test]
@@ -231,7 +282,10 @@ fn document_new_uses_requested_canvas_size() {
 fn apply_command_new_document_sized_replaces_bitmap_dimensions() {
     let mut document = Document::default();
 
-    let dirty = document.apply_command(&Command::NewDocumentSized { width: 512, height: 384 });
+    let dirty = document.apply_command(&Command::NewDocumentSized {
+        width: 512,
+        height: 384,
+    });
 
     assert_eq!(dirty, None);
     let bitmap = document.active_bitmap().expect("bitmap exists");
@@ -297,7 +351,11 @@ fn add_raster_layer_uses_created_layer_counter_for_names() {
     let _ = document.apply_command(&Command::AddRasterLayer);
 
     let panel = &document.work.pages[0].panels[0];
-    let names = panel.layers.iter().map(|layer| layer.name.as_str()).collect::<Vec<_>>();
+    let names = panel
+        .layers
+        .iter()
+        .map(|layer| layer.name.as_str())
+        .collect::<Vec<_>>();
     assert_eq!(names, vec!["Layer 1", "Layer 2", "Layer 4"]);
     assert_eq!(panel.created_layer_count, 4);
 }
@@ -339,7 +397,11 @@ fn move_layer_reorders_layers_and_tracks_active_selection() {
     });
 
     let panel = &document.work.pages[0].panels[0];
-    let names = panel.layers.iter().map(|layer| layer.name.as_str()).collect::<Vec<_>>();
+    let names = panel
+        .layers
+        .iter()
+        .map(|layer| layer.name.as_str())
+        .collect::<Vec<_>>();
     assert_eq!(names, vec!["Layer 3", "Layer 1", "Layer 2"]);
     assert_eq!(panel.active_layer_index, 0);
 }
@@ -384,7 +446,9 @@ fn set_active_layer_blend_mode_accepts_custom_formula_string() {
 fn custom_blend_formula_is_applied_during_layer_composition() {
     let mut document = Document::default();
     let panel = &mut document.work.pages[0].panels[0];
-    panel.layers[0].bitmap.draw_point_rgba(0, 0, [64, 64, 64, 255]);
+    panel.layers[0]
+        .bitmap
+        .draw_point_rgba(0, 0, [64, 64, 64, 255]);
 
     let _ = document.apply_command(&Command::AddRasterLayer);
     let _ = document.draw_point(0, 0);
@@ -408,7 +472,10 @@ fn toggle_active_layer_visibility_reveals_underlying_layer() {
 
     let index = (5 * visible_bitmap.width + 5) * 4;
     assert_eq!(&visible_bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
-    assert_eq!(&hidden_bitmap.pixels[index..index + 4], &[255, 255, 255, 255]);
+    assert_eq!(
+        &hidden_bitmap.pixels[index..index + 4],
+        &[255, 255, 255, 255]
+    );
 }
 
 #[test]

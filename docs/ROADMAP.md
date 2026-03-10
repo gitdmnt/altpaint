@@ -261,6 +261,57 @@ UI DSL + Wasm パネル基盤の最小土台を成立させる。
 - そこからホストAPIまたは `Command` 経路を叩ける
 - クラッシュや権限不足をホスト側で制御できる
 
+## フェーズ8.5: `ui-shell` / ワークスペース抽象の再整理
+
+### 目的
+
+パネルランタイムとパネル表示系の責務をさらに切り分け、
+workspace 配置・表示状態・差分更新・パネル性能改善を同じ抽象で扱えるようにする。
+
+このフェーズは、次の tmp 文書にある未解決事項を回収するための差し込みフェーズでもある。
+
+- [docs/tmp/architecture-gap-2026-03-10.md](docs/tmp/architecture-gap-2026-03-10.md)
+- [docs/tmp/ui-shell-runtime-presentation-split-2026-03-10.md](docs/tmp/ui-shell-runtime-presentation-split-2026-03-10.md)
+- [docs/tmp/panel-performance.md](docs/tmp/panel-performance.md)
+- [docs/tmp/refactor_context.md](docs/tmp/refactor_context.md)
+
+### 実装するもの
+
+- `ui-shell` の runtime / presentation 分離の継続
+- panel layout / hit-test / focus / software rendering の内部境界整理
+- workspace panel の reorder / visibility / dirty rect を一貫した抽象へ寄せる
+- パネル dirty rect と panel bitmap cache の再整理
+- テキスト計測キャッシュ、ノードレイアウトキャッシュ、差分 blit の導入
+- `apps/desktop/src/frame.rs` / `runtime.rs` の継続分割
+- 低カバレッジ領域 (`wgpu_canvas`, `workspace`, 各 built-in plugin crate) の回帰テスト補強
+
+### 完了条件
+
+- workspace の並び替え・表示/非表示・差分更新が同じ責務境界で説明できる
+- panel performance 改善を runtime 改修から独立して進められる
+- `ui-shell` の presentation 変更が Wasm runtime 側へ不要に波及しない
+
+## フェーズ8.6: ワークスペース配布とレスポンシブ配置
+
+### 目的
+
+ワークスペース UI を「ローカル状態」から「配布できるレイアウト資産」へ拡張し、
+解像度やウィンドウサイズが変わっても破綻しにくい配置モデルへ移行する。
+
+### 実装するもの
+
+- パネル配置および ON/OFF 状態の配布形式
+- 既定ワークスペース preset の読込/保存/適用
+- パネル座標を 4 隅アンカー基準で保持する配置モデル
+- 画面拡縮・解像度変更時の再配置ルール
+- project / session / 配布 preset の ownership 整理
+
+### 完了条件
+
+- 他環境へ持ち運べる workspace preset を保存・配布できる
+- ウィンドウサイズが変わってもパネル配置が極端に崩れない
+- ローカル session 復元と配布 preset の責務が衝突しない
+
 ## フェーズ9: キャンバス機能の実用化
 
 ### 目的
@@ -279,11 +330,58 @@ UI DSL + Wasm パネル基盤の最小土台を成立させる。
 - マスク最小対応
 - オーバーレイ描画
 
+### このフェーズで追加する差し込み項目
+
+- ペン機能の強化と `altpaint` 標準ペンフォーマットの策定
+- ペンパラメータの schema / versioning / import/export 仕様
+- 大きなキャンバスで高速描画したときの線切れ対策
+
 ### 完了条件
 
 - 実作業で破綻しにくい描画体験がある
 - オーバーレイとキャンバスの責務が分離されている
 - 最低限のペン追加・再読込・幅変更がホスト主導で行える
+
+## フェーズ9.5: ペン互換インポート
+
+### 目的
+
+外部ツールのペン資産を `altpaint` へ取り込み、標準ペンフォーマットへ正規化できるようにする。
+
+### 実装するもの
+
+- CSP ペンデータの parser
+- Photoshop ペンデータの parser
+- 外部形式 → `altpaint` ペン形式への正規化
+- 互換不能項目の degrade policy
+- 変換結果の preview / import report
+
+### 完了条件
+
+- CSP / Photoshop 由来の代表的なペン設定を `altpaint` で再利用できる
+- 互換差分がユーザーへ説明可能である
+- 標準ペンフォーマットが import 拡張の受け皿として機能する
+
+## フェーズ9.6: 無段階回転 renderer 完了
+
+### 目的
+
+plugin / command / host snapshot 側で先行した回転角表現を、renderer 側でも真に任意角対応へ揃える。
+
+このフェーズは主に [docs/tmp/rotation-renderer-followup-2026-03-10.md](docs/tmp/rotation-renderer-followup-2026-03-10.md) の未解決事項を回収する。
+
+### 実装するもの
+
+- キャンバス無段階回転
+- `render::CanvasScene` の quarter turn 依存除去
+- dirty rect / UV / hit test / brush preview / lasso overlay の任意角対応
+- WGPU 経路と software 合成経路の回転モデル統一
+
+### 完了条件
+
+- 非 90 度系回転でも画像が歪まない
+- 入力・表示・dirty rect が同じ回転モデルで整合する
+- view plugin からの回転操作が renderer まで破綻なく伝播する
 
 ## フェーズ10: 複数コマとコマ中心UI
 
@@ -357,6 +455,28 @@ UI DSL + Wasm パネル基盤の最小土台を成立させる。
 ### 完了条件
 
 - 書き出し中でもキャンバス操作やパネル操作が継続できる
+
+## フェーズ13.5: Mod API / filter layer 拡張
+
+### 目的
+
+SDK が UI/command の範囲を超えて、renderer の本質的な処理系へ安全に介入できる拡張点を設ける。
+
+このフェーズは [docs/tmp/rotation-renderer-followup-2026-03-10.md](docs/tmp/rotation-renderer-followup-2026-03-10.md) に追記した render pass 割り込み / filter layer 課題の回収を含む。
+
+### 実装するもの
+
+- render pass への割り込みポイント設計
+- filter layer / post effect の document model
+- `plugin-host` / SDK / ABI の render hook 拡張
+- timeout / fault isolation / fallback policy
+- effect aware な dirty rect / cache / pass graph 再設計
+
+### 完了条件
+
+- SDK から filter layer や post effect を安全に追加できる
+- 拡張が renderer 全体の安定性を壊さない
+- 永続化と再現性を含めて effect chain を扱える
 
 ## フェーズ14: スナップショットと分岐
 
