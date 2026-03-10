@@ -31,10 +31,7 @@ fn parse_dimension(value: &str) -> Result<usize, &'static str> {
         .map_err(|_| "width and height must be positive integers")
 }
 
-fn build_new_project_command(
-    width: &str,
-    height: &str,
-) -> Result<CommandDescriptor, &'static str> {
+fn build_new_project_command(width: &str, height: &str) -> Result<CommandDescriptor, &'static str> {
     let width = parse_dimension(width)?;
     let height = parse_dimension(height)?;
     Ok(commands::project::new_sized(width, height))
@@ -273,7 +270,10 @@ mod tests {
         assert!(reload.payload.is_empty());
         assert_eq!(apply.name, "workspace.apply_preset");
         assert_eq!(
-            apply.payload.get("preset_id").and_then(|value| value.as_str()),
+            apply
+                .payload
+                .get("preset_id")
+                .and_then(|value| value.as_str()),
             Some("illustration")
         );
     }

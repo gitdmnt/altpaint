@@ -213,12 +213,14 @@ mod tests {
                 app_core::WorkspacePanelState {
                     id: "builtin.layers-panel".to_string(),
                     visible: true,
+                    anchor: app_core::WorkspacePanelAnchor::TopLeft,
                     position: None,
                     size: None,
                 },
                 app_core::WorkspacePanelState {
                     id: "builtin.tool-palette".to_string(),
                     visible: false,
+                    anchor: app_core::WorkspacePanelAnchor::TopLeft,
                     position: None,
                     size: None,
                 },

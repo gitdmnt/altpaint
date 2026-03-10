@@ -7,80 +7,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use app_core::PenPreset;
-use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
-struct PenPresetFile {
-    #[serde(default = "default_format_version")]
-    format_version: u32,
-    id: String,
-    name: String,
-    #[serde(default = "default_pen_size")]
-    size: u32,
-    #[serde(default = "default_pen_min_size")]
-    min_size: u32,
-    #[serde(default = "default_pen_max_size")]
-    max_size: u32,
-    #[serde(default = "default_pen_pressure_enabled")]
-    pressure_enabled: bool,
-    #[serde(default = "default_pen_antialias")]
-    antialias: bool,
-    #[serde(default)]
-    stabilization: u8,
-}
-
-fn default_format_version() -> u32 {
-    1
-}
-
-fn default_pen_size() -> u32 {
-    4
-}
-
-fn default_pen_min_size() -> u32 {
-    1
-}
-
-fn default_pen_max_size() -> u32 {
-    64
-}
-
-fn default_pen_pressure_enabled() -> bool {
-    true
-}
-
-fn default_pen_antialias() -> bool {
-    true
-}
-
-impl TryFrom<PenPresetFile> for PenPreset {
-    type Error = String;
-
-    fn try_from(value: PenPresetFile) -> Result<Self, Self::Error> {
-        if value.format_version != 1 {
-            return Err(format!(
-                "unsupported pen preset format version: {}",
-                value.format_version
-            ));
-        }
-        if value.id.trim().is_empty() {
-            return Err("pen preset id must not be empty".to_string());
-        }
-        if value.name.trim().is_empty() {
-            return Err("pen preset name must not be empty".to_string());
-        }
-        let min_size = value.min_size.max(1);
-        let max_size = value.max_size.max(min_size);
-        Ok(PenPreset {
-            id: value.id,
-            name: value.name,
-            size: value.size.clamp(min_size, max_size),
-            pressure_enabled: value.pressure_enabled,
-            antialias: value.antialias,
-            stabilization: value.stabilization.min(100),
-        })
-    }
-}
+use crate::parse_pen_file;
 
 pub fn load_pen_directory(directory: impl AsRef<Path>) -> (Vec<PenPreset>, Vec<String>) {
     let mut files = Vec::new();
@@ -91,7 +19,7 @@ pub fn load_pen_directory(directory: impl AsRef<Path>) -> (Vec<PenPreset>, Vec<S
     let mut presets = Vec::new();
     for file_path in files {
         match load_pen_file(&file_path) {
-            Ok(preset) => presets.push(preset),
+            Ok(mut loaded_presets) => presets.append(&mut loaded_presets),
             Err(error) => diagnostics.push(format!("{}: {error}", file_path.display())),
         }
     }
@@ -102,7 +30,10 @@ pub fn load_pen_directory(directory: impl AsRef<Path>) -> (Vec<PenPreset>, Vec<S
 fn collect_pen_files(directory: &Path, files: &mut Vec<PathBuf>, diagnostics: &mut Vec<String>) {
     let Ok(entries) = fs::read_dir(directory) else {
         if directory.exists() {
-            diagnostics.push(format!("failed to read pen directory: {}", directory.display()));
+            diagnostics.push(format!(
+                "failed to read pen directory: {}",
+                directory.display()
+            ));
         }
         return;
     };
@@ -113,11 +44,7 @@ fn collect_pen_files(directory: &Path, files: &mut Vec<PathBuf>, diagnostics: &m
                 let path = entry.path();
                 if path.is_dir() {
                     collect_pen_files(&path, files, diagnostics);
-                } else if path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.ends_with(".altp-pen.json"))
-                {
+                } else if is_supported_pen_file(&path) {
                     files.push(path);
                 }
             }
@@ -126,15 +53,77 @@ fn collect_pen_files(directory: &Path, files: &mut Vec<PathBuf>, diagnostics: &m
     }
 }
 
-fn load_pen_file(path: &Path) -> Result<PenPreset, String> {
-    let text = fs::read_to_string(path).map_err(|error| error.to_string())?;
-    let file = serde_json::from_str::<PenPresetFile>(&text).map_err(|error| error.to_string())?;
-    PenPreset::try_from(file)
+fn is_supported_pen_file(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    if name.ends_with(".altp-pen.json") {
+        return true;
+    }
+
+    matches!(
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase())
+            .as_deref(),
+        Some("abr" | "sut" | "gbr")
+    )
+}
+
+fn load_pen_file(path: &Path) -> Result<Vec<PenPreset>, String> {
+    let imported = parse_pen_file(path).map_err(|error| error.to_string())?;
+    let mut diagnostics = imported
+        .report
+        .issues
+        .into_iter()
+        .map(|issue| {
+            format!(
+                "{} [{}] {}",
+                issue.severity.severity_label(),
+                issue.code,
+                issue.message
+            )
+        })
+        .collect::<Vec<_>>();
+    let presets = imported
+        .pens
+        .into_iter()
+        .map(|pen| pen.to_runtime_preset())
+        .collect::<Vec<_>>();
+
+    if presets.is_empty() {
+        if diagnostics.is_empty() {
+            diagnostics.push("no importable pens were found".to_string());
+        }
+        return Err(diagnostics.join("; "));
+    }
+
+    Ok(presets)
+}
+
+trait PenImportSeverityLabel {
+    fn severity_label(&self) -> &'static str;
+}
+
+impl PenImportSeverityLabel for crate::PenImportIssueSeverity {
+    fn severity_label(&self) -> &'static str {
+        match self {
+            crate::PenImportIssueSeverity::Info => "info",
+            crate::PenImportIssueSeverity::Warning => "warning",
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn workspace_pen_path(relative: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join(relative)
+    }
 
     fn unique_temp_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -190,6 +179,40 @@ mod tests {
 
         assert!(presets.is_empty());
         assert_eq!(diagnostics.len(), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_pen_directory_imports_supported_external_pen_files() {
+        let source_abr = workspace_pen_path("pens/abr/manga.abr");
+        let source_sut = workspace_pen_path("pens/sut/しげペン改[WEB用].sut");
+        if !source_abr.exists() || !source_sut.exists() {
+            return;
+        }
+
+        let dir = unique_temp_dir("external-pens");
+        std::fs::copy(&source_abr, dir.join("manga.abr")).expect("copy abr");
+        std::fs::copy(&source_sut, dir.join("しげペン改[WEB用].sut")).expect("copy sut");
+
+        let (presets, diagnostics) = load_pen_directory(&dir);
+
+        assert!(
+            presets.iter().any(|preset| preset.id.starts_with("abr.")),
+            "expected imported ABR presets, got {}",
+            presets.len()
+        );
+        assert!(
+            presets.iter().any(|preset| preset.id.starts_with("sut.")),
+            "expected imported SUT presets, got {}",
+            presets.len()
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| !diagnostic.contains("no importable pens")),
+            "unexpected diagnostics: {diagnostics:?}"
+        );
+
         let _ = std::fs::remove_dir_all(dir);
     }
 }
