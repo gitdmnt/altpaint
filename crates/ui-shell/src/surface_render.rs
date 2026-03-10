@@ -1,562 +1,579 @@
-//! `UiShell` の software panel rendering をまとめる。
+//! `UiShell` のパネルレイヤー構築を render へ委譲する。
 //!
-//! panel tree から panel surface を組み立てる測定・描画ロジックを集約し、
-//! runtime 管理層から presentation 実装を分離する。
+//! ここでは panel tree / focus / 永続化済みレイアウトを render 向け DTO へ変換し、
+//! hit-test は `ui-shell` 側へ残したまま、ラスタライズ責務だけを `render` へ移す。
 
-use super::focus::{insert_text_at_char_index, prefix_for_char_count, text_char_len};
+use app_core::{WorkspacePanelPosition, WorkspacePanelSize};
+use render::{FloatingPanel, PanelFocusTarget, PanelRenderState as RenderPanelState, PanelTextInputState, PixelRect};
+use std::collections::{BTreeMap, BTreeSet};
+use std::time::Instant;
+
 use super::*;
 
-const SIDEBAR_BACKGROUND: [u8; 4] = [0x2a, 0x2a, 0x2a, 0xff];
-const PANEL_BACKGROUND: [u8; 4] = [0x1f, 0x1f, 0x1f, 0xff];
-const PANEL_BORDER: [u8; 4] = [0x3f, 0x3f, 0x3f, 0xff];
-const PANEL_TITLE: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
-const SECTION_TITLE: [u8; 4] = [0x9f, 0xb7, 0xff, 0xff];
-const BODY_TEXT: [u8; 4] = [0xd8, 0xd8, 0xd8, 0xff];
-const BUTTON_FILL: [u8; 4] = [0x32, 0x32, 0x32, 0xff];
-const BUTTON_ACTIVE_FILL: [u8; 4] = [0x44, 0x5f, 0xb0, 0xff];
-const BUTTON_BORDER: [u8; 4] = [0x56, 0x56, 0x56, 0xff];
-const BUTTON_ACTIVE_BORDER: [u8; 4] = [0xc6, 0xd4, 0xff, 0xff];
-const BUTTON_FOCUS_BORDER: [u8; 4] = [0x9f, 0xb7, 0xff, 0xff];
-const BUTTON_TEXT: [u8; 4] = [0xf0, 0xf0, 0xf0, 0xff];
-const BUTTON_TEXT_DARK: [u8; 4] = [0x14, 0x14, 0x14, 0xff];
-const SLIDER_TRACK_BACKGROUND: [u8; 4] = [0x2c, 0x2c, 0x2c, 0xff];
-const SLIDER_TRACK_BORDER: [u8; 4] = [0x5f, 0x5f, 0x5f, 0xff];
-const SLIDER_KNOB: [u8; 4] = [0xf0, 0xf0, 0xf0, 0xff];
-const PREVIEW_SWATCH_BORDER: [u8; 4] = [0x74, 0x74, 0x74, 0xff];
-const PANEL_OUTER_PADDING: usize = 8;
-const PANEL_INNER_PADDING: usize = 8;
-const NODE_GAP: usize = 6;
-const SECTION_GAP: usize = 4;
-const SECTION_INDENT: usize = 10;
-const BUTTON_HEIGHT: usize = 24;
-const COLOR_PREVIEW_HEIGHT: usize = 52;
-const COLOR_WHEEL_SIZE: usize = 160;
-const INPUT_BOX_HEIGHT: usize = 24;
-const SLIDER_HEIGHT: usize = 32;
-const SLIDER_TRACK_HEIGHT: usize = 8;
-const SLIDER_TRACK_TOP: usize = 20;
-const SLIDER_KNOB_WIDTH: usize = 8;
-const DROPDOWN_HEIGHT: usize = 24;
-const LAYER_LIST_ITEM_HEIGHT: usize = 38;
-const LAYER_LIST_DETAIL_OFFSET: usize = 18;
-const LAYER_LIST_DRAG_HANDLE_WIDTH: usize = 14;
-const INPUT_BACKGROUND: [u8; 4] = [0x15, 0x15, 0x15, 0xff];
-const INPUT_BORDER: [u8; 4] = [0x56, 0x56, 0x56, 0xff];
-const INPUT_PLACEHOLDER: [u8; 4] = [0x88, 0x88, 0x88, 0xff];
 pub(super) const PANEL_SCROLL_PIXELS_PER_LINE: i32 = 48;
+const DEFAULT_PANEL_WIDTH: usize = 300;
+const DEFAULT_PANEL_HEIGHT: usize = 220;
+const DEFAULT_PANEL_ORIGIN_X: usize = 24;
+const DEFAULT_PANEL_ORIGIN_Y: usize = 72;
+const PANEL_CASCADE_X: usize = 28;
+const PANEL_CASCADE_Y: usize = 36;
+const PANEL_MIN_WIDTH: usize = 180;
+const PANEL_MIN_HEIGHT: usize = 120;
+
+struct OwnedPanelTextInputState {
+    panel_id: String,
+    node_id: String,
+    cursor_chars: usize,
+    preedit: Option<String>,
+}
 
 impl UiShell {
-    /// 現在の panel trees から viewport 向け panel surface を構築する。
+    /// 現在の panel trees から viewport 向け panel layer を構築する。
     pub fn render_panel_surface(&mut self, width: usize, height: usize) -> PanelSurface {
         let width = width.max(1);
         let height = height.max(1);
-        let panel_width = width.saturating_sub(PANEL_OUTER_PADDING * 2);
-        let needs_rebuild = self.panel_content_dirty
-            || self.panel_content_cache.as_ref().is_none_or(|content| content.width != width);
-        if needs_rebuild {
-            self.panel_content_cache = Some(self.build_panel_content_surface(width, panel_width));
-            self.panel_content_dirty = false;
+        let viewport_changed = self
+            .panel_content_viewport
+            .is_none_or(|viewport| viewport != (width, height));
+        let needs_raster = self.panel_content_dirty || viewport_changed || self.panel_bitmap_cache.is_empty();
+        let needs_compose = needs_raster || self.panel_layout_dirty || self.panel_content_cache.is_none();
+
+        self.last_panel_rasterized_panels = 0;
+        self.last_panel_composited_panels = 0;
+        self.last_panel_raster_duration_ms = 0.0;
+        self.last_panel_compose_duration_ms = 0.0;
+        self.last_panel_surface_dirty_rect = None;
+        if viewport_changed {
+            self.full_panel_raster_dirty = true;
+            self.dirty_panel_ids.clear();
         }
 
-        self.panel_content_height = self.panel_content_cache.as_ref().map(|content| content.height).unwrap_or(0);
-        self.panel_scroll_offset = self.panel_scroll_offset.min(self.max_panel_scroll_offset(height));
-
-        viewport_panel_surface(
-            self.panel_content_cache.as_ref().expect("panel content cache exists"),
-            height,
-            self.panel_scroll_offset,
-        )
-    }
-
-    /// panel tree 全体をスクロール前提の content surface へ描画する。
-    fn build_panel_content_surface(&mut self, width: usize, panel_width: usize) -> PanelSurface {
         let trees = self.panel_trees();
         let focused_target = self.focused_target.clone();
         let expanded_dropdown = self.expanded_dropdown.clone();
-        let text_input_states = self.text_input_states.clone();
-        let render_state = PanelRenderState {
-            focused_target: focused_target.as_ref(),
-            expanded_dropdown: expanded_dropdown.as_ref(),
+        let text_input_state_snapshot = self.collect_panel_text_input_states();
+        let text_input_states = text_input_state_snapshot
+            .iter()
+            .map(|state| PanelTextInputState {
+                panel_id: state.panel_id.as_str(),
+                node_id: state.node_id.as_str(),
+                cursor_chars: state.cursor_chars,
+                preedit: state.preedit.as_deref(),
+            })
+            .collect::<Vec<_>>();
+        let render_state = RenderPanelState {
+            focused_target: focused_target.as_ref().map(|target| PanelFocusTarget {
+                panel_id: target.panel_id.as_str(),
+                node_id: target.node_id.as_str(),
+            }),
+            expanded_dropdown: expanded_dropdown.as_ref().map(|target| PanelFocusTarget {
+                panel_id: target.panel_id.as_str(),
+                node_id: target.node_id.as_str(),
+            }),
             text_input_states: &text_input_states,
         };
-        self.panel_content_height = measure_panel_content_height(&trees, panel_width, render_state);
-
-        let content_height = self.panel_content_height.max(1);
-        let mut content = PanelSurface {
-            width,
-            height: content_height,
-            pixels: vec![0; width * content_height * 4],
-            hit_regions: Vec::new(),
-        };
-        fill_rect(&mut content, 0, 0, width, content_height, SIDEBAR_BACKGROUND);
-
-        let mut cursor_y = PANEL_OUTER_PADDING;
-        for tree in trees {
-            let panel_height = measure_panel_tree(&tree, panel_width, render_state);
-            fill_rect(&mut content, PANEL_OUTER_PADDING, cursor_y, panel_width, panel_height, PANEL_BACKGROUND);
-            stroke_rect(&mut content, PANEL_OUTER_PADDING, cursor_y, panel_width, panel_height, PANEL_BORDER);
-            draw_panel_tree(&mut content, &tree, PANEL_OUTER_PADDING, cursor_y, panel_width, render_state);
-            cursor_y += panel_height + PANEL_OUTER_PADDING;
+        let floating_panels = self.collect_floating_panels(trees.as_slice(), width, height, render_state);
+        let dirty_ids = self.dirty_panel_ids.clone();
+        let can_incremental_compose = !viewport_changed && self.panel_content_cache.is_some();
+        let incremental_dirty = if self.panel_layout_dirty {
+            Some(panel_layout_dirty_rect(
+                &self.rendered_panel_rects,
+                &panel_rect_map(floating_panels.as_slice()),
+            ))
+        } else if needs_raster && !self.full_panel_raster_dirty && !dirty_ids.is_empty() {
+            Some(panel_subset_dirty_rect(
+                &self.rendered_panel_rects,
+                &panel_rect_map(floating_panels.as_slice()),
+                &dirty_ids,
+            ))
+        } else {
+            None
+        }
+        .flatten();
+        let use_incremental_compose = can_incremental_compose && incremental_dirty.is_some();
+        let mut result_surface = None;
+        if needs_raster {
+            let started = Instant::now();
+            self.rebuild_panel_bitmaps(floating_panels.as_slice(), render_state);
+            self.last_panel_raster_duration_ms = started.elapsed().as_secs_f64() * 1000.0;
+        }
+        if needs_compose {
+            let started = Instant::now();
+            let composed_surface = if use_incremental_compose {
+                self.compose_panel_surface_incremental(floating_panels.as_slice(), incremental_dirty)
+            } else {
+                self.compose_panel_surface(floating_panels.as_slice())
+            };
+            self.panel_content_cache = Some(composed_surface.clone());
+            result_surface = Some(composed_surface);
+            self.last_panel_compose_duration_ms = started.elapsed().as_secs_f64() * 1000.0;
+            self.panel_content_viewport = Some((width, height));
+            self.panel_content_dirty = false;
+            self.full_panel_raster_dirty = false;
+            self.dirty_panel_ids.clear();
+            self.panel_layout_dirty = false;
         }
 
-        content
+        self.panel_content_height = height;
+        self.panel_scroll_offset = 0;
+        result_surface.unwrap_or_else(|| {
+            self.panel_content_cache
+                .clone()
+                .unwrap_or_else(|| self.compose_panel_surface(floating_panels.as_slice()))
+        })
     }
 
-    /// 現在の content height と viewport height から最大スクロール量を返す。
-    pub(super) fn max_panel_scroll_offset(&self, viewport_height: usize) -> usize {
-        self.panel_content_height.saturating_sub(viewport_height)
-    }
-}
-
-fn viewport_panel_surface(content: &PanelSurface, height: usize, scroll_offset: usize) -> PanelSurface {
-    if scroll_offset == 0 && content.height == height {
-        return content.clone();
-    }
-
-    let mut surface = PanelSurface {
-        width: content.width,
-        height,
-        pixels: vec![0; content.width * height * 4],
-        hit_regions: Vec::new(),
-    };
-    fill_rect(&mut surface, 0, 0, content.width, height, SIDEBAR_BACKGROUND);
-
-    let start_row = scroll_offset.min(content.height.saturating_sub(1));
-    let visible_rows = height.min(content.height.saturating_sub(start_row));
-    let row_bytes = content.width * 4;
-    for row in 0..visible_rows {
-        let src_start = (start_row + row) * row_bytes;
-        let dst_start = row * row_bytes;
-        surface.pixels[dst_start..dst_start + row_bytes]
-            .copy_from_slice(&content.pixels[src_start..src_start + row_bytes]);
+    fn collect_panel_text_input_states(&self) -> Vec<OwnedPanelTextInputState> {
+        self
+            .text_input_states
+            .iter()
+            .map(|((panel_id, node_id), state)| OwnedPanelTextInputState {
+                panel_id: panel_id.clone(),
+                node_id: node_id.clone(),
+                cursor_chars: state.cursor_chars,
+                preedit: state.preedit.clone(),
+            })
+            .collect()
     }
 
-    for region in &content.hit_regions {
-        let region_bottom = region.y + region.height;
-        if region_bottom <= scroll_offset || region.y >= scroll_offset + height {
-            continue;
-        }
-        let top = region.y.saturating_sub(scroll_offset);
-        let bottom = (region_bottom.saturating_sub(scroll_offset)).min(height);
-        if bottom <= top {
-            continue;
-        }
-        surface.hit_regions.push(PanelHitRegion {
-            x: region.x,
-            y: top,
-            width: region.width,
-            height: bottom - top,
-            panel_id: region.panel_id.clone(),
-            node_id: region.node_id.clone(),
-            kind: region.kind.clone(),
-        });
-    }
-
-    surface
-}
-
-fn measure_panel_content_height(trees: &[PanelTree], width: usize, render_state: PanelRenderState<'_>) -> usize {
-    if trees.is_empty() {
-        return PANEL_OUTER_PADDING * 2;
-    }
-
-    let panels_height: usize = trees
-        .iter()
-        .map(|tree| measure_panel_tree(tree, width, render_state) + PANEL_OUTER_PADDING)
-        .sum();
-    PANEL_OUTER_PADDING + panels_height
-}
-
-fn measure_panel_tree(tree: &PanelTree, width: usize, render_state: PanelRenderState<'_>) -> usize {
-    let title_width = width.saturating_sub(PANEL_INNER_PADDING * 2);
-    let title_height = measure_text(tree.title, title_width);
-    let mut content_height = 0;
-    for (index, child) in tree.children.iter().enumerate() {
-        content_height += measure_node(child, tree.id, title_width, render_state);
-        if index + 1 != tree.children.len() {
-            content_height += NODE_GAP;
-        }
-    }
-
-    PANEL_INNER_PADDING * 2 + title_height + 6 + content_height
-}
-
-fn measure_node(node: &PanelNode, panel_id: &str, available_width: usize, render_state: PanelRenderState<'_>) -> usize {
-    match node {
-        PanelNode::Column { children, .. } => children
+    fn collect_floating_panels<'a>(
+        &self,
+        trees: &'a [plugin_api::PanelTree],
+        width: usize,
+        height: usize,
+        render_state: RenderPanelState<'a>,
+    ) -> Vec<FloatingPanel<'a>> {
+        trees
             .iter()
             .enumerate()
-            .map(|(index, child)| measure_node(child, panel_id, available_width, render_state) + usize::from(index + 1 != children.len()) * NODE_GAP)
-            .sum(),
-        PanelNode::Row { children, .. } => {
-            let width_per_child = if children.is_empty() {
-                available_width
-            } else {
-                available_width.saturating_sub(NODE_GAP * children.len().saturating_sub(1)) / children.len()
-            };
-            children.iter().map(|child| measure_node(child, panel_id, width_per_child, render_state)).max().unwrap_or(0)
-        }
-        PanelNode::Section { children, title, .. } => {
-            let title_height = measure_text(title, available_width);
-            let child_width = available_width.saturating_sub(SECTION_INDENT);
-            let mut children_height = 0;
-            for (index, child) in children.iter().enumerate() {
-                children_height += measure_node(child, panel_id, child_width, render_state);
-                if index + 1 != children.len() {
-                    children_height += SECTION_GAP;
-                }
-            }
-            title_height + SECTION_GAP + children_height
-        }
-        PanelNode::Text { text, .. } => measure_text(text, available_width),
-        PanelNode::ColorPreview { .. } => COLOR_PREVIEW_HEIGHT,
-        PanelNode::ColorWheel { label, .. } => {
-            let label_height = if label.is_empty() { 0 } else { measure_text(label, available_width) + 4 };
-            label_height + COLOR_WHEEL_SIZE.min(available_width.max(96))
-        }
-        PanelNode::Button { .. } => BUTTON_HEIGHT,
-        PanelNode::Slider { .. } => SLIDER_HEIGHT,
-        PanelNode::TextInput { label, .. } => {
-            let label_height = if label.is_empty() { 0 } else { measure_text(label, available_width) + 4 };
-            label_height + INPUT_BOX_HEIGHT
-        }
-        PanelNode::Dropdown { id, options, .. } => {
-            let mut height = DROPDOWN_HEIGHT;
-            if render_state.expanded_dropdown.is_some_and(|target| target.panel_id == panel_id && target.node_id == id.as_str()) {
-                height += options.len() * DROPDOWN_HEIGHT;
-            }
-            height
-        }
-        PanelNode::LayerList { label, items, .. } => {
-            let label_height = if label.is_empty() { 0 } else { measure_text(label, available_width) + 4 };
-            label_height + items.len().max(1) * LAYER_LIST_ITEM_HEIGHT
-        }
+            .map(|(index, tree)| FloatingPanel {
+                panel_id: tree.id,
+                title: tree.title,
+                rect: self.panel_rect_for_tree(tree, index, width, height, render_state),
+                tree,
+            })
+            .collect()
     }
-}
 
-fn draw_panel_tree(surface: &mut PanelSurface, tree: &PanelTree, x: usize, y: usize, width: usize, render_state: PanelRenderState<'_>) {
-    let inner_x = x + PANEL_INNER_PADDING;
-    let inner_width = width.saturating_sub(PANEL_INNER_PADDING * 2);
-    let title_height = draw_wrapped_text(surface, inner_x, y + PANEL_INNER_PADDING, tree.title, PANEL_TITLE, inner_width);
-    let mut cursor_y = y + PANEL_INNER_PADDING + title_height + 6;
+    fn rebuild_panel_bitmaps(
+        &mut self,
+        floating_panels: &[FloatingPanel<'_>],
+        render_state: RenderPanelState<'_>,
+    ) {
+        let valid_ids = floating_panels
+            .iter()
+            .map(|panel| panel.panel_id.to_string())
+            .collect::<BTreeSet<_>>();
+        self.rendered_panel_rects = floating_panels
+            .iter()
+            .map(|panel| (panel.panel_id.to_string(), panel.rect))
+            .collect();
+        self.panel_bitmap_cache.retain(|panel_id, _| valid_ids.contains(panel_id));
 
-    for child in &tree.children {
-        let used = draw_node(surface, child, tree.id, inner_x, cursor_y, inner_width, render_state);
-        cursor_y += used + NODE_GAP;
+        let reraster_all = self.full_panel_raster_dirty || self.panel_bitmap_cache.is_empty();
+        let dirty_ids = self.dirty_panel_ids.clone();
+        let mut rasterized = 0usize;
+
+        for panel in floating_panels {
+            if !reraster_all && !dirty_ids.contains(panel.panel_id) {
+                continue;
+            }
+                let layer = render::rasterize_panel_layer(
+                    PixelRect {
+                        x: 0,
+                        y: 0,
+                        width: panel.rect.width.max(1),
+                        height: panel.rect.height.max(1),
+                    },
+                    &[FloatingPanel {
+                        panel_id: panel.panel_id,
+                        title: panel.title,
+                        rect: PixelRect {
+                            x: 0,
+                            y: 0,
+                            width: panel.rect.width,
+                            height: panel.rect.height,
+                        },
+                        tree: panel.tree,
+                    }],
+                    render_state,
+                );
+                self.panel_bitmap_cache.insert(
+                    panel.panel_id.to_string(),
+                    PanelSurface {
+                        x: 0,
+                        y: 0,
+                        width: layer.width,
+                        height: layer.height,
+                        pixels: layer.pixels,
+                        hit_regions: layer.hit_regions,
+                    },
+                );
+                rasterized += 1;
+        }
+        self.last_panel_rasterized_panels = rasterized;
     }
-}
 
-fn draw_node(surface: &mut PanelSurface, node: &PanelNode, panel_id: &str, x: usize, y: usize, available_width: usize, render_state: PanelRenderState<'_>) -> usize {
-    match node {
-        PanelNode::Column { children, .. } => {
-            let mut cursor_y = y;
-            for (index, child) in children.iter().enumerate() {
-                cursor_y += draw_node(surface, child, panel_id, x, cursor_y, available_width, render_state);
-                if index + 1 != children.len() {
-                    cursor_y += NODE_GAP;
-                }
-            }
-            cursor_y.saturating_sub(y)
-        }
-        PanelNode::Row { children, .. } => {
-            let child_width = if children.is_empty() {
-                available_width
-            } else {
-                available_width.saturating_sub(NODE_GAP * children.len().saturating_sub(1)) / children.len()
+    fn compose_panel_surface(&mut self, floating_panels: &[FloatingPanel<'_>]) -> PanelSurface {
+        let next_rects = panel_rect_map(floating_panels);
+        let Some(bounds) = panel_bounds(floating_panels) else {
+            self.last_panel_composited_panels = 0;
+            self.rendered_panel_rects = next_rects;
+            self.last_panel_surface_dirty_rect = None;
+            return PanelSurface {
+                x: 0,
+                y: 0,
+                width: 1,
+                height: 1,
+                pixels: vec![0; 4],
+                hit_regions: Vec::new(),
             };
-            let mut cursor_x = x;
-            let mut max_height = 0;
-            for child in children {
-                let used = draw_node(surface, child, panel_id, cursor_x, y, child_width, render_state);
-                max_height = max_height.max(used);
-                cursor_x += child_width + NODE_GAP;
-            }
-            max_height
-        }
-        PanelNode::Section { title, children, .. } => {
-            let title_height = draw_wrapped_text(surface, x, y, title, SECTION_TITLE, available_width);
-            let child_x = x + SECTION_INDENT;
-            let child_width = available_width.saturating_sub(SECTION_INDENT);
-            let mut cursor_y = y + title_height + SECTION_GAP;
-            for (index, child) in children.iter().enumerate() {
-                cursor_y += draw_node(surface, child, panel_id, child_x, cursor_y, child_width, render_state);
-                if index + 1 != children.len() {
-                    cursor_y += SECTION_GAP;
-                }
-            }
-            cursor_y.saturating_sub(y)
-        }
-        PanelNode::Text { text, .. } => draw_wrapped_text(surface, x, y, text, BODY_TEXT, available_width),
-        PanelNode::ColorPreview { label, color, .. } => {
-            let label_height = draw_wrapped_text(surface, x, y, label, BODY_TEXT, available_width);
-            let swatch_y = y + label_height + 4;
-            let swatch_height = COLOR_PREVIEW_HEIGHT.saturating_sub(label_height + 4).max(12);
-            fill_rect(surface, x, swatch_y, available_width, swatch_height, color.to_rgba8());
-            stroke_rect(surface, x, swatch_y, available_width, swatch_height, PREVIEW_SWATCH_BORDER);
-            COLOR_PREVIEW_HEIGHT
-        }
-        PanelNode::ColorWheel { id, label, hue_degrees, saturation, value, .. } => {
-            let label_height = if label.is_empty() {
-                0
-            } else {
-                draw_wrapped_text(surface, x, y, label, BODY_TEXT, available_width) + 4
-            };
-            let wheel_size = COLOR_WHEEL_SIZE.min(available_width.max(96));
-            let wheel_x = x + available_width.saturating_sub(wheel_size) / 2;
-            let wheel_y = y + label_height;
-            draw_color_wheel(surface, wheel_x, wheel_y, wheel_size, *hue_degrees, *saturation, *value);
-            surface.hit_regions.push(PanelHitRegion {
-                x: wheel_x,
-                y: wheel_y,
-                width: wheel_size,
-                height: wheel_size,
-                panel_id: panel_id.to_string(),
-                node_id: id.clone(),
-                kind: PanelHitKind::ColorWheel {
-                    hue_degrees: *hue_degrees,
-                    saturation: *saturation,
-                    value: *value,
-                },
-            });
-            label_height + wheel_size
-        }
-        PanelNode::Button { id, label, active, fill_color, .. } => {
-            let fill = fill_color.map_or(if *active { BUTTON_ACTIVE_FILL } else { BUTTON_FILL }, ColorRgba8::to_rgba8);
-            let is_focused = render_state.focused_target.is_some_and(|target| target.panel_id == panel_id && target.node_id == id.as_str());
-            fill_rect(surface, x, y, available_width, BUTTON_HEIGHT, fill);
-            stroke_rect(surface, x, y, available_width, BUTTON_HEIGHT, if *active { BUTTON_ACTIVE_BORDER } else { BUTTON_BORDER });
-            if is_focused && available_width > 2 && BUTTON_HEIGHT > 2 {
-                stroke_rect(surface, x + 1, y + 1, available_width - 2, BUTTON_HEIGHT - 2, BUTTON_FOCUS_BORDER);
-            }
-            draw_wrapped_text(surface, x + 6, y + 7, label, button_text_color(*fill_color), available_width.saturating_sub(12));
-            surface.hit_regions.push(PanelHitRegion { x, y, width: available_width, height: BUTTON_HEIGHT, panel_id: panel_id.to_string(), node_id: id.clone(), kind: PanelHitKind::Activate });
-            BUTTON_HEIGHT
-        }
-        PanelNode::Slider { id, label, min, max, value, fill_color, .. } => {
-            let clamped_value = (*value).clamp(*min, *max);
-            let accent = fill_color.unwrap_or(ColorRgba8::new(0x9f, 0xb7, 0xff, 0xff));
-            let track_y = y + SLIDER_TRACK_TOP;
-            let track_width = available_width.max(1);
-            let track_inner_width = track_width.saturating_sub(2);
-            let range = max.saturating_sub(*min).max(1);
-            let progress = clamped_value.saturating_sub(*min);
-            let fill_width = if track_inner_width == 0 { 0 } else { ((progress * track_inner_width) / range).max(1) };
-            let knob_offset = if track_inner_width <= 1 { 0 } else { (progress * (track_inner_width - 1)) / range };
-            let knob_x = (x + 1 + knob_offset).saturating_sub(SLIDER_KNOB_WIDTH / 2).min(x + track_width.saturating_sub(SLIDER_KNOB_WIDTH.min(track_width)));
-            draw_wrapped_text(surface, x, y, &format!("{label}: {clamped_value}"), BODY_TEXT, available_width);
-            fill_rect(surface, x, track_y, track_width, SLIDER_TRACK_HEIGHT, SLIDER_TRACK_BACKGROUND);
-            stroke_rect(surface, x, track_y, track_width, SLIDER_TRACK_HEIGHT, SLIDER_TRACK_BORDER);
-            if fill_width > 0 {
-                fill_rect(surface, x + 1, track_y + 1, fill_width.min(track_inner_width), SLIDER_TRACK_HEIGHT.saturating_sub(2).max(1), accent.to_rgba8());
-            }
-            fill_rect(surface, knob_x, track_y.saturating_sub(3), SLIDER_KNOB_WIDTH.min(track_width), SLIDER_TRACK_HEIGHT + 6, SLIDER_KNOB);
-            stroke_rect(surface, knob_x, track_y.saturating_sub(3), SLIDER_KNOB_WIDTH.min(track_width), SLIDER_TRACK_HEIGHT + 6, SLIDER_TRACK_BORDER);
-            surface.hit_regions.push(PanelHitRegion { x, y, width: track_width, height: SLIDER_HEIGHT, panel_id: panel_id.to_string(), node_id: id.clone(), kind: PanelHitKind::Slider { min: *min, max: *max } });
-            SLIDER_HEIGHT
-        }
-        PanelNode::Dropdown { id, label, value, options, .. } => {
-            let is_focused = render_state.focused_target.is_some_and(|target| target.panel_id == panel_id && target.node_id == id.as_str());
-            let is_expanded = render_state.expanded_dropdown.is_some_and(|target| target.panel_id == panel_id && target.node_id == id.as_str());
-            let selected_label = options.iter().find(|option| option.value == *value).map(|option| option.label.as_str()).unwrap_or(value.as_str());
-            let button_label = if label.is_empty() { format!("{selected_label} ▾") } else { format!("{label}: {selected_label} ▾") };
-            fill_rect(surface, x, y, available_width, DROPDOWN_HEIGHT, BUTTON_FILL);
-            stroke_rect(surface, x, y, available_width, DROPDOWN_HEIGHT, if is_expanded { BUTTON_ACTIVE_BORDER } else { BUTTON_BORDER });
-            if is_focused && available_width > 2 && DROPDOWN_HEIGHT > 2 {
-                stroke_rect(surface, x + 1, y + 1, available_width - 2, DROPDOWN_HEIGHT - 2, BUTTON_FOCUS_BORDER);
-            }
-            draw_wrapped_text(surface, x + 6, y + 7, &button_label, BUTTON_TEXT, available_width.saturating_sub(12));
-            surface.hit_regions.push(PanelHitRegion { x, y, width: available_width, height: DROPDOWN_HEIGHT, panel_id: panel_id.to_string(), node_id: id.clone(), kind: PanelHitKind::Activate });
-            if !is_expanded { return DROPDOWN_HEIGHT; }
-            let mut cursor_y = y + DROPDOWN_HEIGHT;
-            for option in options {
-                let active = option.value == *value;
-                fill_rect(surface, x, cursor_y, available_width, DROPDOWN_HEIGHT, if active { BUTTON_ACTIVE_FILL } else { PANEL_BACKGROUND });
-                stroke_rect(surface, x, cursor_y, available_width, DROPDOWN_HEIGHT, BUTTON_BORDER);
-                draw_wrapped_text(surface, x + 6, cursor_y + 7, &option.label, if active { BUTTON_TEXT } else { BODY_TEXT }, available_width.saturating_sub(12));
-                surface.hit_regions.push(PanelHitRegion { x, y: cursor_y, width: available_width, height: DROPDOWN_HEIGHT, panel_id: panel_id.to_string(), node_id: id.clone(), kind: PanelHitKind::DropdownOption { value: option.value.clone() } });
-                cursor_y += DROPDOWN_HEIGHT;
-            }
-            DROPDOWN_HEIGHT + options.len() * DROPDOWN_HEIGHT
-        }
-        PanelNode::LayerList { id, label, selected_index, items, .. } => {
-            let is_focused = render_state.focused_target.is_some_and(|target| target.panel_id == panel_id && target.node_id == id.as_str());
-            let label_height = if label.is_empty() { 0 } else { draw_wrapped_text(surface, x, y, label, BODY_TEXT, available_width) + 4 };
-            let mut cursor_y = y + label_height;
-            let item_count = items.len().max(1);
-            for index in 0..item_count {
-                let item = items.get(index).cloned().unwrap_or(LayerListItem { label: "<no layers>".to_string(), detail: String::new() });
-                let active = *selected_index == index;
-                fill_rect(surface, x, cursor_y, available_width, LAYER_LIST_ITEM_HEIGHT, if active { BUTTON_ACTIVE_FILL } else { BUTTON_FILL });
-                stroke_rect(surface, x, cursor_y, available_width, LAYER_LIST_ITEM_HEIGHT, if active { BUTTON_ACTIVE_BORDER } else { BUTTON_BORDER });
-                if is_focused && active && available_width > 2 && LAYER_LIST_ITEM_HEIGHT > 2 {
-                    stroke_rect(surface, x + 1, cursor_y + 1, available_width - 2, LAYER_LIST_ITEM_HEIGHT - 2, BUTTON_FOCUS_BORDER);
-                }
-                draw_text_rgba(&mut surface.pixels, surface.width, surface.height, x + 6, cursor_y + 6, &item.label, BUTTON_TEXT);
-                if !item.detail.is_empty() {
-                    draw_text_rgba(&mut surface.pixels, surface.width, surface.height, x + 6, cursor_y + LAYER_LIST_DETAIL_OFFSET, &item.detail, BODY_TEXT);
-                }
-                let grip_x = x + available_width.saturating_sub(LAYER_LIST_DRAG_HANDLE_WIDTH);
-                for offset in [8usize, 14, 20] {
-                    fill_rect(surface, grip_x, cursor_y + offset, 8, 1, BODY_TEXT);
-                }
-                surface.hit_regions.push(PanelHitRegion { x, y: cursor_y, width: available_width, height: LAYER_LIST_ITEM_HEIGHT, panel_id: panel_id.to_string(), node_id: id.clone(), kind: PanelHitKind::LayerListItem { value: index } });
-                cursor_y += LAYER_LIST_ITEM_HEIGHT;
-            }
-            label_height + item_count * LAYER_LIST_ITEM_HEIGHT
-        }
-        PanelNode::TextInput { id, label, value, placeholder, binding_path: _, .. } => {
-            let is_focused = render_state.focused_target.is_some_and(|target| target.panel_id == panel_id && target.node_id == id.as_str());
-            let editor_state = render_state.text_input_states.get(&(panel_id.to_string(), id.clone())).cloned().unwrap_or(TextInputEditorState { cursor_chars: text_char_len(value), preedit: None });
-            let label_height = if label.is_empty() { 0 } else { draw_wrapped_text(surface, x, y, label, BODY_TEXT, available_width) + 4 };
-            let box_y = y + label_height;
-            fill_rect(surface, x, box_y, available_width, INPUT_BOX_HEIGHT, INPUT_BACKGROUND);
-            stroke_rect(surface, x, box_y, available_width, INPUT_BOX_HEIGHT, INPUT_BORDER);
-            if is_focused && available_width > 2 && INPUT_BOX_HEIGHT > 2 {
-                stroke_rect(surface, x + 1, box_y + 1, available_width - 2, INPUT_BOX_HEIGHT - 2, BUTTON_FOCUS_BORDER);
-            }
-            let display_text = if let Some(preedit) = editor_state.preedit.as_deref() { insert_text_at_char_index(value, editor_state.cursor_chars, preedit) } else { value.clone() };
-            let text_to_draw = if display_text.is_empty() { placeholder.clone() } else { display_text.clone() };
-            draw_text_rgba(&mut surface.pixels, surface.width, surface.height, x + 6, box_y + 7, &text_to_draw, if display_text.is_empty() { INPUT_PLACEHOLDER } else { BUTTON_TEXT });
-            if is_focused {
-                let caret_char_index = editor_state.cursor_chars + editor_state.preedit.as_deref().map(text_char_len).unwrap_or(0);
-                let caret_prefix = prefix_for_char_count(&display_text, caret_char_index);
-                let caret_x = (x + 6 + measure_text_width(&caret_prefix)).min(x + available_width.saturating_sub(3));
-                fill_rect(surface, caret_x, box_y + 4, 1, INPUT_BOX_HEIGHT.saturating_sub(8).max(1), BUTTON_FOCUS_BORDER);
-            }
-            surface.hit_regions.push(PanelHitRegion { x, y: box_y, width: available_width, height: INPUT_BOX_HEIGHT, panel_id: panel_id.to_string(), node_id: id.clone(), kind: PanelHitKind::Activate });
-            label_height + INPUT_BOX_HEIGHT
-        }
-    }
-}
+        };
+        self.rendered_panel_rects = next_rects;
+        self.last_panel_composited_panels = floating_panels.len();
+        self.last_panel_surface_dirty_rect = Some(bounds);
 
-fn draw_color_wheel(
-    surface: &mut PanelSurface,
-    x: usize,
-    y: usize,
-    size: usize,
-    hue_degrees: usize,
-    saturation: usize,
-    value: usize,
-) {
-    let size = size.max(1);
-    let center = (size as f32 - 1.0) * 0.5;
-    let outer_radius = center.max(1.0);
-    let inner_radius = outer_radius * 0.72;
-    let square_half = inner_radius * 0.7;
-
-    for local_y in 0..size {
-        for local_x in 0..size {
-            let dx = local_x as f32 - center;
-            let dy = local_y as f32 - center;
-            let distance = (dx * dx + dy * dy).sqrt();
-            let pixel = if distance >= inner_radius && distance <= outer_radius {
-                let hue = dy.atan2(dx).to_degrees().rem_euclid(360.0) as usize;
-                hsv_to_rgba(hue, 100, 100)
-            } else if dx.abs() <= square_half && dy.abs() <= square_half {
-                let local_saturation = (((dx + square_half) / (square_half * 2.0)) * 100.0)
-                    .round()
-                    .clamp(0.0, 100.0) as usize;
-                let local_value = ((1.0 - (dy + square_half) / (square_half * 2.0)) * 100.0)
-                    .round()
-                    .clamp(0.0, 100.0) as usize;
-                hsv_to_rgba(hue_degrees, local_saturation, local_value)
-            } else {
+        let mut surface = PanelSurface {
+            x: bounds.x,
+            y: bounds.y,
+            width: bounds.width.max(1),
+            height: bounds.height.max(1),
+            pixels: vec![0; bounds.width.max(1) * bounds.height.max(1) * 4],
+            hit_regions: Vec::new(),
+        };
+        for panel in floating_panels {
+            let Some(bitmap) = self.panel_bitmap_cache.get(panel.panel_id) else {
                 continue;
             };
-            fill_rect(surface, x + local_x, y + local_y, 1, 1, pixel);
+            let offset_x = panel.rect.x.saturating_sub(bounds.x);
+            let offset_y = panel.rect.y.saturating_sub(bounds.y);
+            blend_panel_bitmap(&mut surface, bitmap, offset_x, offset_y);
+            surface.hit_regions.extend(bitmap.hit_regions.iter().cloned().map(|mut region| {
+                region.x += offset_x;
+                region.y += offset_y;
+                region
+            }));
+        }
+
+        surface
+    }
+
+    fn compose_panel_surface_incremental(
+        &mut self,
+        floating_panels: &[FloatingPanel<'_>],
+        dirty_global: Option<PixelRect>,
+    ) -> PanelSurface {
+        let next_rects = panel_rect_map(floating_panels);
+        let Some(bounds) = panel_bounds(floating_panels) else {
+            self.last_panel_composited_panels = 0;
+            self.rendered_panel_rects = next_rects;
+            self.last_panel_surface_dirty_rect = None;
+            return PanelSurface {
+                x: 0,
+                y: 0,
+                width: 1,
+                height: 1,
+                pixels: vec![0; 4],
+                hit_regions: Vec::new(),
+            };
+        };
+
+        let previous_surface = self.panel_content_cache.take();
+        let previous_rects = self.rendered_panel_rects.clone();
+        let dirty_global = dirty_global.or_else(|| panel_layout_dirty_rect(&previous_rects, &next_rects));
+        self.last_panel_surface_dirty_rect = dirty_global;
+
+        let mut surface = if let Some(mut previous_surface) = previous_surface {
+            if previous_surface.x == bounds.x
+                && previous_surface.y == bounds.y
+                && previous_surface.width == bounds.width.max(1)
+                && previous_surface.height == bounds.height.max(1)
+            {
+                previous_surface.hit_regions.clear();
+                previous_surface
+            } else {
+                let mut surface = PanelSurface {
+                    x: bounds.x,
+                    y: bounds.y,
+                    width: bounds.width.max(1),
+                    height: bounds.height.max(1),
+                    pixels: vec![0; bounds.width.max(1) * bounds.height.max(1) * 4],
+                    hit_regions: Vec::new(),
+                };
+                copy_surface_overlap(&mut surface, &previous_surface);
+                surface
+            }
+        } else {
+            PanelSurface {
+                x: bounds.x,
+                y: bounds.y,
+                width: bounds.width.max(1),
+                height: bounds.height.max(1),
+                pixels: vec![0; bounds.width.max(1) * bounds.height.max(1) * 4],
+                hit_regions: Vec::new(),
+            }
+        };
+
+        let mut composited_panels = 0usize;
+        if let Some(dirty_global) = dirty_global
+            && let Some(local_dirty) = global_rect_to_surface_rect(&surface, dirty_global)
+        {
+            clear_surface_rect(&mut surface, local_dirty);
+            for panel in floating_panels {
+                if panel.rect.intersect(dirty_global).is_none() {
+                    continue;
+                }
+                let Some(bitmap) = self.panel_bitmap_cache.get(panel.panel_id) else {
+                    continue;
+                };
+                let offset_x = panel.rect.x.saturating_sub(bounds.x);
+                let offset_y = panel.rect.y.saturating_sub(bounds.y);
+                blend_panel_bitmap_clipped(
+                    &mut surface,
+                    bitmap,
+                    offset_x,
+                    offset_y,
+                    local_dirty,
+                );
+                composited_panels += 1;
+            }
+        }
+
+        surface.hit_regions = build_hit_regions(&self.panel_bitmap_cache, floating_panels, bounds);
+        self.rendered_panel_rects = next_rects;
+        self.last_panel_composited_panels = composited_panels;
+        surface
+    }
+
+    fn panel_rect_for_tree(
+        &self,
+        tree: &plugin_api::PanelTree,
+        index: usize,
+        viewport_width: usize,
+        viewport_height: usize,
+        render_state: RenderPanelState<'_>,
+    ) -> PixelRect {
+        let fallback_position = WorkspacePanelPosition {
+            x: DEFAULT_PANEL_ORIGIN_X + PANEL_CASCADE_X * index,
+            y: DEFAULT_PANEL_ORIGIN_Y + PANEL_CASCADE_Y * index,
+        };
+        let fallback_size = WorkspacePanelSize {
+            width: DEFAULT_PANEL_WIDTH,
+            height: DEFAULT_PANEL_HEIGHT,
+        };
+        let state = self
+            .workspace_layout
+            .panels
+            .iter()
+            .find(|entry| entry.id == tree.id);
+        let position = state
+            .and_then(|entry| entry.position)
+            .unwrap_or(fallback_position);
+        let size = state.and_then(|entry| entry.size).unwrap_or(fallback_size);
+        let measured = render::measure_panel_size(
+            tree.title,
+            tree,
+            render_state,
+            viewport_width.max(1),
+            viewport_height.max(1),
+        );
+        let width = size
+            .width
+            .max(measured.width)
+            .max(PANEL_MIN_WIDTH)
+            .min(viewport_width.max(1));
+        let height = size
+            .height
+            .max(measured.height)
+            .max(PANEL_MIN_HEIGHT)
+            .min(viewport_height.max(1));
+        let max_x = viewport_width.saturating_sub(width);
+        let max_y = viewport_height.saturating_sub(height);
+
+        PixelRect {
+            x: position.x.min(max_x),
+            y: position.y.min(max_y),
+            width,
+            height,
         }
     }
 
-    let selector_hue = hue_degrees % 360;
-    let selector_angle = (selector_hue as f32).to_radians();
-    let selector_radius = (inner_radius + outer_radius) * 0.5;
-    let selector_x = x + (center + selector_angle.cos() * selector_radius).round().max(0.0) as usize;
-    let selector_y = y + (center + selector_angle.sin() * selector_radius).round().max(0.0) as usize;
-    stroke_rect(surface, selector_x.saturating_sub(2), selector_y.saturating_sub(2), 5, 5, BUTTON_FOCUS_BORDER);
-
-    let sv_x = x + (center - square_half + (square_half * 2.0) * (saturation as f32 / 100.0)).round().max(0.0) as usize;
-    let sv_y = y + (center - square_half + (square_half * 2.0) * (1.0 - value as f32 / 100.0)).round().max(0.0) as usize;
-    stroke_rect(surface, sv_x.saturating_sub(2), sv_y.saturating_sub(2), 5, 5, BUTTON_FOCUS_BORDER);
+    /// 浮動パネルでは共通スクロールを持たないため常に 0 を返す。
+    pub(super) fn max_panel_scroll_offset(&self, _viewport_height: usize) -> usize {
+        0
+    }
 }
 
-fn hsv_to_rgba(hue_degrees: usize, saturation: usize, value: usize) -> [u8; 4] {
-    let h = (hue_degrees % 360) as f32;
-    let s = (saturation.min(100) as f32) / 100.0;
-    let v = (value.min(100) as f32) / 100.0;
-    if s <= f32::EPSILON {
-        let gray = (v * 255.0).round() as u8;
-        return [gray, gray, gray, 0xff];
-    }
+fn blend_panel_bitmap(surface: &mut PanelSurface, bitmap: &PanelSurface, offset_x: usize, offset_y: usize) {
+    blend_panel_bitmap_clipped(
+        surface,
+        bitmap,
+        offset_x,
+        offset_y,
+        PixelRect {
+            x: 0,
+            y: 0,
+            width: surface.width,
+            height: surface.height,
+        },
+    );
+}
 
-    let sector = (h / 60.0).floor();
-    let fraction = h / 60.0 - sector;
-    let p = v * (1.0 - s);
-    let q = v * (1.0 - s * fraction);
-    let t = v * (1.0 - s * (1.0 - fraction));
-    let (r, g, b) = match sector as i32 {
-        0 => (v, t, p),
-        1 => (q, v, p),
-        2 => (p, v, t),
-        3 => (p, q, v),
-        4 => (t, p, v),
-        _ => (v, p, q),
+fn blend_panel_bitmap_clipped(
+    surface: &mut PanelSurface,
+    bitmap: &PanelSurface,
+    offset_x: usize,
+    offset_y: usize,
+    clip_rect: PixelRect,
+) {
+    let panel_rect = PixelRect {
+        x: offset_x,
+        y: offset_y,
+        width: bitmap.width,
+        height: bitmap.height,
+    };
+    let Some(clipped) = panel_rect.intersect(clip_rect) else {
+        return;
+    };
+    let src_start_x = clipped.x.saturating_sub(offset_x);
+    let src_start_y = clipped.y.saturating_sub(offset_y);
+    let row_bytes = clipped.width * 4;
+
+    for row in 0..clipped.height {
+        let src_y = src_start_y + row;
+        let dst_y = clipped.y + row;
+        let src_row_start = (src_y * bitmap.width + src_start_x) * 4;
+        let dst_row_start = (dst_y * surface.width + clipped.x) * 4;
+        surface.pixels[dst_row_start..dst_row_start + row_bytes]
+            .copy_from_slice(&bitmap.pixels[src_row_start..src_row_start + row_bytes]);
+    }
+}
+
+fn panel_rect_map(floating_panels: &[FloatingPanel<'_>]) -> BTreeMap<String, PixelRect> {
+    floating_panels
+        .iter()
+        .map(|panel| (panel.panel_id.to_string(), panel.rect))
+        .collect()
+}
+
+fn panel_bounds(floating_panels: &[FloatingPanel<'_>]) -> Option<PixelRect> {
+    floating_panels
+        .iter()
+        .map(|panel| panel.rect)
+        .reduce(|acc, rect| acc.union(rect))
+}
+
+fn panel_layout_dirty_rect(
+    previous_rects: &BTreeMap<String, PixelRect>,
+    next_rects: &BTreeMap<String, PixelRect>,
+) -> Option<PixelRect> {
+    let mut dirty = None;
+    for (panel_id, next_rect) in next_rects {
+        let changed_rect = match previous_rects.get(panel_id) {
+            Some(previous_rect) if previous_rect == next_rect => None,
+            Some(previous_rect) => Some(previous_rect.union(*next_rect)),
+            None => Some(*next_rect),
+        };
+        if let Some(rect) = changed_rect {
+            dirty = Some(dirty.map_or(rect, |existing: PixelRect| existing.union(rect)));
+        }
+    }
+    for (panel_id, previous_rect) in previous_rects {
+        if !next_rects.contains_key(panel_id) {
+            dirty = Some(dirty.map_or(*previous_rect, |existing: PixelRect| existing.union(*previous_rect)));
+        }
+    }
+    dirty
+}
+
+fn panel_subset_dirty_rect(
+    previous_rects: &BTreeMap<String, PixelRect>,
+    next_rects: &BTreeMap<String, PixelRect>,
+    dirty_ids: &BTreeSet<String>,
+) -> Option<PixelRect> {
+    let mut dirty = None;
+    for panel_id in dirty_ids {
+        let rect = match (previous_rects.get(panel_id), next_rects.get(panel_id)) {
+            (Some(previous), Some(current)) => previous.union(*current),
+            (Some(previous), None) => *previous,
+            (None, Some(current)) => *current,
+            (None, None) => continue,
+        };
+        dirty = Some(dirty.map_or(rect, |existing: PixelRect| existing.union(rect)));
+    }
+    dirty
+}
+
+fn global_rect_to_surface_rect(surface: &PanelSurface, rect: PixelRect) -> Option<PixelRect> {
+    PixelRect {
+        x: surface.x,
+        y: surface.y,
+        width: surface.width,
+        height: surface.height,
+    }
+    .intersect(rect)
+    .map(|intersection| PixelRect {
+        x: intersection.x.saturating_sub(surface.x),
+        y: intersection.y.saturating_sub(surface.y),
+        width: intersection.width,
+        height: intersection.height,
+    })
+}
+
+fn copy_surface_overlap(destination: &mut PanelSurface, source: &PanelSurface) {
+    let Some(overlap) = PixelRect {
+        x: destination.x,
+        y: destination.y,
+        width: destination.width,
+        height: destination.height,
+    }
+    .intersect(PixelRect {
+        x: source.x,
+        y: source.y,
+        width: source.width,
+        height: source.height,
+    }) else {
+        return;
     };
 
-    [
-        (r * 255.0).round() as u8,
-        (g * 255.0).round() as u8,
-        (b * 255.0).round() as u8,
-        0xff,
-    ]
-}
-
-fn button_text_color(fill_color: Option<ColorRgba8>) -> [u8; 4] {
-    let Some(fill_color) = fill_color else { return BUTTON_TEXT; };
-    let luminance = 0.2126 * f32::from(fill_color.r) + 0.7152 * f32::from(fill_color.g) + 0.0722 * f32::from(fill_color.b);
-    if luminance >= 140.0 { BUTTON_TEXT_DARK } else { BUTTON_TEXT }
-}
-
-fn measure_text(text: &str, available_width: usize) -> usize {
-    let lines = wrap_text(text, available_width);
-    lines.len().max(1) * text_line_height()
-}
-
-fn draw_wrapped_text(surface: &mut PanelSurface, x: usize, y: usize, text: &str, color: [u8; 4], available_width: usize) -> usize {
-    let lines = wrap_text(text, available_width);
-    for (index, line) in lines.iter().enumerate() {
-        draw_text_line(surface, x, y + index * text_line_height(), line, color);
-    }
-    lines.len().max(1) * text_line_height()
-}
-
-fn wrap_text(text: &str, available_width: usize) -> Vec<String> {
-    wrap_text_lines(text, available_width)
-}
-
-fn draw_text_line(surface: &mut PanelSurface, x: usize, y: usize, text: &str, color: [u8; 4]) {
-    draw_text_rgba(surface.pixels.as_mut_slice(), surface.width, surface.height, x, y, text, color);
-}
-
-fn fill_rect(surface: &mut PanelSurface, x: usize, y: usize, width: usize, height: usize, color: [u8; 4]) {
-    let max_x = (x + width).min(surface.width);
-    let max_y = (y + height).min(surface.height);
-    for yy in y..max_y {
-        for xx in x..max_x {
-            write_pixel(surface, xx, yy, color);
-        }
+    let src_start_x = overlap.x.saturating_sub(source.x);
+    let src_start_y = overlap.y.saturating_sub(source.y);
+    let dst_start_x = overlap.x.saturating_sub(destination.x);
+    let dst_start_y = overlap.y.saturating_sub(destination.y);
+    let row_bytes = overlap.width * 4;
+    for row in 0..overlap.height {
+        let src_row_start = ((src_start_y + row) * source.width + src_start_x) * 4;
+        let dst_row_start = ((dst_start_y + row) * destination.width + dst_start_x) * 4;
+        destination.pixels[dst_row_start..dst_row_start + row_bytes]
+            .copy_from_slice(&source.pixels[src_row_start..src_row_start + row_bytes]);
     }
 }
 
-fn stroke_rect(surface: &mut PanelSurface, x: usize, y: usize, width: usize, height: usize, color: [u8; 4]) {
-    if width == 0 || height == 0 { return; }
-    fill_rect(surface, x, y, width, 1, color);
-    fill_rect(surface, x, y + height.saturating_sub(1), width, 1, color);
-    fill_rect(surface, x, y, 1, height, color);
-    fill_rect(surface, x + width.saturating_sub(1), y, 1, height, color);
+fn clear_surface_rect(surface: &mut PanelSurface, rect: PixelRect) {
+    for row in 0..rect.height {
+        let row_start = ((rect.y + row) * surface.width + rect.x) * 4;
+        let row_end = row_start + rect.width * 4;
+        surface.pixels[row_start..row_end].fill(0);
+    }
 }
 
-fn write_pixel(surface: &mut PanelSurface, x: usize, y: usize, color: [u8; 4]) {
-    if x >= surface.width || y >= surface.height { return; }
-    let index = (y * surface.width + x) * 4;
-    surface.pixels[index..index + 4].copy_from_slice(&color);
+fn build_hit_regions(
+    bitmap_cache: &BTreeMap<String, PanelSurface>,
+    floating_panels: &[FloatingPanel<'_>],
+    bounds: PixelRect,
+) -> Vec<render::PanelHitRegion> {
+    let mut hit_regions = Vec::new();
+    for panel in floating_panels {
+        let Some(bitmap) = bitmap_cache.get(panel.panel_id) else {
+            continue;
+        };
+        let offset_x = panel.rect.x.saturating_sub(bounds.x);
+        let offset_y = panel.rect.y.saturating_sub(bounds.y);
+        hit_regions.extend(bitmap.hit_regions.iter().cloned().map(|mut region| {
+            region.x += offset_x;
+            region.y += offset_y;
+            region
+        }));
+    }
+    hit_regions
 }

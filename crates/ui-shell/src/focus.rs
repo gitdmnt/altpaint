@@ -25,13 +25,17 @@ impl UiShell {
             return false;
         }
 
+        let previous = self.focused_target.clone();
         self.focused_target = Some(next);
         if let Some(focused) = self.focused_target.clone()
             && let Some((value, _)) = self.text_input_state_for_target(&focused)
         {
             self.ensure_text_input_editor_state(&focused, &value);
         }
-        self.panel_content_dirty = true;
+        if let Some(previous) = previous.as_ref() {
+            self.mark_panel_content_dirty(&previous.panel_id);
+        }
+        self.mark_panel_content_dirty(panel_id);
         true
     }
 
@@ -81,7 +85,8 @@ impl UiShell {
         let next_value = insert_text_at_char_index(&current, editor_state.cursor_chars, &filtered);
         editor_state.cursor_chars += text_char_len(&filtered);
         editor_state.preedit = None;
-        self.text_input_states.insert(text_input_state_key(&target), editor_state);
+        self.text_input_states
+            .insert(text_input_state_key(&target), editor_state);
         self.handle_panel_event(&PanelEvent::SetText {
             panel_id: target.panel_id,
             node_id: target.node_id,
@@ -100,8 +105,9 @@ impl UiShell {
         };
         let mut editor_state = self.editor_state_for_target(&target, &current);
         if editor_state.preedit.take().is_some() {
-            self.text_input_states.insert(text_input_state_key(&target), editor_state);
-            self.panel_content_dirty = true;
+            self.text_input_states
+                .insert(text_input_state_key(&target), editor_state);
+            self.mark_panel_content_dirty(&target.panel_id);
             return true;
         }
         if current.is_empty() || editor_state.cursor_chars == 0 {
@@ -109,7 +115,8 @@ impl UiShell {
         }
         current = remove_char_before_char_index(&current, editor_state.cursor_chars);
         editor_state.cursor_chars -= 1;
-        self.text_input_states.insert(text_input_state_key(&target), editor_state);
+        self.text_input_states
+            .insert(text_input_state_key(&target), editor_state);
         self.handle_panel_event(&PanelEvent::SetText {
             panel_id: target.panel_id,
             node_id: target.node_id,
@@ -128,15 +135,17 @@ impl UiShell {
         };
         let mut editor_state = self.editor_state_for_target(&target, &current);
         if editor_state.preedit.take().is_some() {
-            self.text_input_states.insert(text_input_state_key(&target), editor_state);
-            self.panel_content_dirty = true;
+            self.text_input_states
+                .insert(text_input_state_key(&target), editor_state);
+            self.mark_panel_content_dirty(&target.panel_id);
             return true;
         }
         if editor_state.cursor_chars >= text_char_len(&current) {
             return false;
         }
         let next_value = remove_char_at_char_index(&current, editor_state.cursor_chars);
-        self.text_input_states.insert(text_input_state_key(&target), editor_state);
+        self.text_input_states
+            .insert(text_input_state_key(&target), editor_state);
         self.handle_panel_event(&PanelEvent::SetText {
             panel_id: target.panel_id,
             node_id: target.node_id,
@@ -156,13 +165,15 @@ impl UiShell {
         let mut editor_state = self.editor_state_for_target(&target, &current);
         editor_state.preedit = None;
         let max_chars = text_char_len(&current) as isize;
-        let next_cursor = (editor_state.cursor_chars as isize + delta_chars).clamp(0, max_chars) as usize;
+        let next_cursor =
+            (editor_state.cursor_chars as isize + delta_chars).clamp(0, max_chars) as usize;
         if next_cursor == editor_state.cursor_chars {
             return false;
         }
         editor_state.cursor_chars = next_cursor;
-        self.text_input_states.insert(text_input_state_key(&target), editor_state);
-        self.panel_content_dirty = true;
+        self.text_input_states
+            .insert(text_input_state_key(&target), editor_state);
+        self.mark_panel_content_dirty(&target.panel_id);
         true
     }
 
@@ -195,8 +206,9 @@ impl UiShell {
             return false;
         }
         editor_state.preedit = preedit.filter(|value| !value.is_empty());
-        self.text_input_states.insert(text_input_state_key(&target), editor_state);
-        self.panel_content_dirty = true;
+        self.text_input_states
+            .insert(text_input_state_key(&target), editor_state);
+        self.mark_panel_content_dirty(&target.panel_id);
         true
     }
 
@@ -208,7 +220,9 @@ impl UiShell {
         }
 
         let current_index = self.focused_target.as_ref().and_then(|current| {
-            targets.iter().position(|target| target.panel_id == current.panel_id && target.node_id == current.node_id)
+            targets.iter().position(|target| {
+                target.panel_id == current.panel_id && target.node_id == current.node_id
+            })
         });
         let next_index = match current_index {
             Some(index) => (index as isize + step).rem_euclid(targets.len() as isize) as usize,
@@ -220,8 +234,15 @@ impl UiShell {
             return false;
         }
 
+        let previous = self.focused_target.clone();
         self.focused_target = Some(next);
-        self.panel_content_dirty = true;
+        if let Some(previous) = previous.as_ref() {
+            self.mark_panel_content_dirty(&previous.panel_id);
+        }
+        if let Some(current) = self.focused_target.as_ref() {
+            let panel_id = current.panel_id.clone();
+            self.mark_panel_content_dirty(&panel_id);
+        }
         true
     }
 
@@ -244,7 +265,10 @@ impl UiShell {
     }
 
     /// target に対応する text input 現在値を取得する。
-    pub(super) fn text_input_state_for_target(&self, target: &FocusTarget) -> Option<(String, TextInputMode)> {
+    pub(super) fn text_input_state_for_target(
+        &self,
+        target: &FocusTarget,
+    ) -> Option<(String, TextInputMode)> {
         self.panel_trees()
             .into_iter()
             .find(|tree| tree.id == target.panel_id)
@@ -266,7 +290,11 @@ impl UiShell {
     }
 
     /// target に対する editor state を取得し、現在値に合わせて補正する。
-    fn editor_state_for_target(&self, target: &FocusTarget, current_value: &str) -> TextInputEditorState {
+    fn editor_state_for_target(
+        &self,
+        target: &FocusTarget,
+        current_value: &str,
+    ) -> TextInputEditorState {
         let mut state = self
             .text_input_states
             .get(&text_input_state_key(target))
@@ -294,8 +322,9 @@ impl UiShell {
         }
         editor_state.cursor_chars = next_cursor;
         editor_state.preedit = None;
-        self.text_input_states.insert(text_input_state_key(&target), editor_state);
-        self.panel_content_dirty = true;
+        self.text_input_states
+            .insert(text_input_state_key(&target), editor_state);
+        self.mark_panel_content_dirty(&target.panel_id);
         true
     }
 }
@@ -303,8 +332,14 @@ impl UiShell {
 /// input mode に応じて挿入可能文字だけを残す。
 fn filter_text_input(text: &str, input_mode: TextInputMode) -> String {
     match input_mode {
-        TextInputMode::Text => text.chars().filter(|character| !character.is_control()).collect(),
-        TextInputMode::Numeric => text.chars().filter(|character| character.is_ascii_digit()).collect(),
+        TextInputMode::Text => text
+            .chars()
+            .filter(|character| !character.is_control())
+            .collect(),
+        TextInputMode::Numeric => text
+            .chars()
+            .filter(|character| character.is_ascii_digit())
+            .collect(),
     }
 }
 
@@ -365,6 +400,7 @@ fn remove_byte_range(text: &str, start: usize, end: usize) -> String {
 }
 
 /// 先頭から char_count 文字だけを取り出す。
+#[allow(dead_code)]
 pub(super) fn prefix_for_char_count(text: &str, char_count: usize) -> String {
     text.chars().take(char_count).collect()
 }

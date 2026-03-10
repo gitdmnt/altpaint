@@ -76,6 +76,8 @@ mod tests {
                     panels: vec![app_core::WorkspacePanelState {
                         id: "builtin.tool-palette".to_string(),
                         visible: false,
+                        position: None,
+                        size: None,
                     }],
                 },
                 plugin_configs: BTreeMap::from([(

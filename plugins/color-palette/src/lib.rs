@@ -19,6 +19,13 @@ fn build_color_command(hue: i32, saturation: i32, value: i32) -> CommandDescript
     commands::tool::set_color_hex(format_color(hue, saturation, value))
 }
 
+fn sync_color_state(hue: i32, saturation: i32, value: i32) {
+    set_state_i32(HUE, hue);
+    set_state_i32(SATURATION, saturation);
+    set_state_i32(VALUE, value);
+    set_state_string(ACTIVE_HEX, format_color(hue, saturation, value));
+}
+
 fn hsv_to_rgb(hue: i32, saturation: i32, value: i32) -> RgbColor {
     let h = hue.rem_euclid(360) as f32;
     let s = (saturation.clamp(0, 100) as f32) / 100.0;
@@ -54,10 +61,7 @@ fn init() {}
 #[panel_sdk::panel_sync_host]
 fn sync_host() {
     let (hue, saturation, value) = rgb_to_hsv(host::color::red(), host::color::green(), host::color::blue());
-    set_state_i32(HUE, hue);
-    set_state_i32(SATURATION, saturation);
-    set_state_i32(VALUE, value);
-    set_state_string(ACTIVE_HEX, host::color::active_hex());
+    sync_color_state(hue, saturation, value);
 }
 
 #[panel_sdk::panel_handler]
@@ -70,6 +74,7 @@ fn set_hsv() {
 }
 
 fn emit_color(hue: i32, saturation: i32, value: i32) {
+    sync_color_state(hue, saturation, value);
     emit_command(&build_color_command(hue, saturation, value));
 }
 

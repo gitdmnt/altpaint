@@ -147,7 +147,7 @@ impl DesktopRuntime {
         let Some(layout) = self.app.layout.as_ref() else {
             return false;
         };
-        let on_panel = layout.panel_host_rect.contains(x, y);
+        let on_panel = self.app.panel_is_hovered(x, y);
         let on_canvas = layout.canvas_host_rect.contains(x, y);
         let (delta_x_lines, delta_y_lines) = Self::wheel_delta_lines(delta);
 

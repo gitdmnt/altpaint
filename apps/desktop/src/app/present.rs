@@ -8,8 +8,8 @@ use desktop_support::DesktopProfiler;
 use super::{DesktopApp, PresentFrameUpdate};
 use crate::frame::{
     CanvasCompositeSource, CanvasOverlayState, DesktopLayout, Rect, clear_canvas_host_region,
-    compose_base_frame, compose_overlay_frame, compose_overlay_region,
-    compose_panel_host_region, compose_status_region, status_text_bounds,
+    compose_base_frame, compose_overlay_frame, compose_overlay_region, compose_status_region,
+    status_text_bounds,
 };
 
 impl DesktopApp {
@@ -33,8 +33,22 @@ impl DesktopApp {
         }
 
         if self.needs_ui_sync {
-            profiler.measure("ui_update", || self.ui_shell.update(&self.document));
+            let synced_panels = if self.ui_sync_panel_ids.is_empty() {
+                self.ui_shell.panel_count()
+            } else {
+                self.ui_sync_panel_ids.len()
+            };
+            profiler.record_value("ui_update_panels", synced_panels as f64);
+            profiler.measure("ui_update", || {
+                if self.ui_sync_panel_ids.is_empty() {
+                    self.ui_shell.update(&self.document);
+                } else {
+                    self.ui_shell
+                        .update_panels(&self.document, &self.ui_sync_panel_ids);
+                }
+            });
             self.needs_ui_sync = false;
+            self.ui_sync_panel_ids.clear();
         }
 
         let mut panel_surface_refreshed = false;
@@ -42,17 +56,40 @@ impl DesktopApp {
             let panel_surface_size = self
                 .layout
                 .as_ref()
-                .map(|layout| {
-                    (
-                        layout.panel_surface_rect.width,
-                        layout.panel_surface_rect.height,
-                    )
-                })
+                .map(|layout| (layout.window_rect.width, layout.window_rect.height))
                 .unwrap_or((1, 1));
             let panel_surface = profiler.measure("panel_surface", || {
                 self.ui_shell
                     .render_panel_surface(panel_surface_size.0, panel_surface_size.1)
             });
+            let window_area = (window_width.max(1) * window_height.max(1)) as f64;
+            profiler.record_value("panel_surface_buffer_area_px", (panel_surface.width * panel_surface.height) as f64);
+            profiler.record_value("panel_surface_buffer_width_px", panel_surface.width as f64);
+            profiler.record_value("panel_surface_buffer_height_px", panel_surface.height as f64);
+            profiler.record_value(
+                "panel_surface_window_coverage_pct",
+                ((panel_surface.width * panel_surface.height) as f64 / window_area) * 100.0,
+            );
+            profiler.record_value(
+                "panel_surface_hit_regions",
+                panel_surface.hit_region_count() as f64,
+            );
+            profiler.record_value(
+                "panel_surface_rasterized_panels",
+                self.ui_shell.last_panel_rasterized_panels() as f64,
+            );
+            profiler.record_value(
+                "panel_surface_composited_panels",
+                self.ui_shell.last_panel_composited_panels() as f64,
+            );
+            profiler.record_value(
+                "panel_surface_raster_ms",
+                self.ui_shell.last_panel_raster_duration_ms(),
+            );
+            profiler.record_value(
+                "panel_surface_compose_ms",
+                self.ui_shell.last_panel_compose_duration_ms(),
+            );
             self.panel_surface = Some(panel_surface);
             self.needs_panel_surface_refresh = false;
             panel_surface_refreshed = true;
@@ -63,8 +100,8 @@ impl DesktopApp {
             let layout = self.layout.clone().expect("layout exists");
             let panel_surface = self.panel_surface.clone().unwrap_or_else(|| {
                 self.ui_shell.render_panel_surface(
-                    layout.panel_surface_rect.width,
-                    layout.panel_surface_rect.height,
+                    layout.window_rect.width,
+                    layout.window_rect.height,
                 )
             });
             let status_text = self.status_text();
@@ -90,6 +127,7 @@ impl DesktopApp {
                     window_width,
                     window_height,
                     &layout,
+                    &panel_surface,
                     canvas_source,
                     self.document.view_transform,
                     CanvasOverlayState {
@@ -141,10 +179,38 @@ impl DesktopApp {
         let mut overlay_dirty_rect = None;
 
         if panel_surface_refreshed && let Some(panel_surface) = self.panel_surface.as_ref() {
-            profiler.measure("compose_dirty_panel", || {
-                compose_panel_host_region(base_frame, &layout, panel_surface);
+            let panel_dirty_rect = self.ui_shell.last_panel_surface_dirty_rect().map(|dirty| Rect {
+                x: dirty.x,
+                y: dirty.y,
+                width: dirty.width,
+                height: dirty.height,
             });
-            base_dirty_rect = Some(layout.panel_host_rect);
+            let bitmap = self.document.active_bitmap();
+            let canvas_source = CanvasCompositeSource {
+                width: bitmap.map_or(1, |bitmap| bitmap.width),
+                height: bitmap.map_or(1, |bitmap| bitmap.height),
+                pixels: bitmap.map_or(&[][..], |bitmap| bitmap.pixels.as_slice()),
+            };
+            profiler.measure("compose_dirty_panel", || {
+                compose_overlay_region(
+                    overlay_frame,
+                    &layout,
+                    panel_surface,
+                    canvas_source,
+                    self.document.view_transform,
+                    CanvasOverlayState {
+                        brush_preview: self.hover_canvas_position,
+                        lasso_points: self.canvas_input.lasso_points.clone(),
+                    },
+                    panel_dirty_rect,
+                );
+            });
+            if let Some(panel_dirty_rect) = panel_dirty_rect {
+                overlay_dirty_rect = Some(
+                    overlay_dirty_rect
+                        .map_or(panel_dirty_rect, |existing: Rect| existing.union(panel_dirty_rect)),
+                );
+            }
         }
 
         if let Some(status_text) = status_text.as_deref() {
@@ -159,7 +225,7 @@ impl DesktopApp {
                 );
             });
             base_dirty_rect = Some(
-                base_dirty_rect.map_or(status_rect, |existing| existing.union(status_rect)),
+                base_dirty_rect.map_or(status_rect, |existing: Rect| existing.union(status_rect)),
             );
             self.needs_status_refresh = false;
         }
@@ -184,7 +250,7 @@ impl DesktopApp {
                 );
             });
             base_dirty_rect = Some(
-                base_dirty_rect.map_or(dirty_rect, |existing| existing.union(dirty_rect)),
+                base_dirty_rect.map_or(dirty_rect, |existing: Rect| existing.union(dirty_rect)),
             );
         }
 
@@ -202,6 +268,7 @@ impl DesktopApp {
                 compose_overlay_region(
                     overlay_frame,
                     &layout,
+                    self.panel_surface.as_ref().expect("panel surface exists"),
                     canvas_source,
                     self.document.view_transform,
                     CanvasOverlayState {
@@ -211,35 +278,53 @@ impl DesktopApp {
                     Some(dirty_rect),
                 );
             });
-            overlay_dirty_rect = Some(dirty_rect);
+            overlay_dirty_rect = Some(
+                overlay_dirty_rect.map_or(dirty_rect, |existing: Rect| existing.union(dirty_rect)),
+            );
         }
 
         let canvas_dirty_rect = self.pending_canvas_dirty_rect.take();
         let canvas_transform_changed = std::mem::take(&mut self.pending_canvas_transform_update);
         if let Some(canvas_dirty_rect) = canvas_dirty_rect {
             let dirty = canvas_dirty_rect.clamp_to_bitmap(canvas_width, canvas_height);
+            let canvas_area = (canvas_width.max(1) * canvas_height.max(1)) as f64;
             profiler.record_value(
                 "canvas_upload_area_px",
                 (dirty.width * dirty.height) as f64,
             );
             profiler.record_value("canvas_upload_width_px", dirty.width as f64);
             profiler.record_value("canvas_upload_height_px", dirty.height as f64);
+            profiler.record_value(
+                "canvas_upload_coverage_pct",
+                ((dirty.width * dirty.height) as f64 / canvas_area) * 100.0,
+            );
         }
         if let Some(base_dirty_rect) = base_dirty_rect {
+            let window_area = (window_width.max(1) * window_height.max(1)) as f64;
             profiler.record_value(
                 "base_upload_area_px",
                 (base_dirty_rect.width * base_dirty_rect.height) as f64,
             );
             profiler.record_value("base_upload_width_px", base_dirty_rect.width as f64);
             profiler.record_value("base_upload_height_px", base_dirty_rect.height as f64);
+            profiler.record_value(
+                "base_upload_coverage_pct",
+                ((base_dirty_rect.width * base_dirty_rect.height) as f64 / window_area) * 100.0,
+            );
         }
         if let Some(overlay_dirty_rect) = overlay_dirty_rect {
+            let window_area = (window_width.max(1) * window_height.max(1)) as f64;
             profiler.record_value(
                 "overlay_upload_area_px",
                 (overlay_dirty_rect.width * overlay_dirty_rect.height) as f64,
             );
             profiler.record_value("overlay_upload_width_px", overlay_dirty_rect.width as f64);
             profiler.record_value("overlay_upload_height_px", overlay_dirty_rect.height as f64);
+            profiler.record_value(
+                "overlay_upload_coverage_pct",
+                ((overlay_dirty_rect.width * overlay_dirty_rect.height) as f64 / window_area)
+                    * 100.0,
+            );
         }
         if canvas_dirty_rect.is_some() || canvas_transform_changed {
             profiler.measure("prepare_canvas_scene", || {

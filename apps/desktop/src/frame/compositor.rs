@@ -6,15 +6,15 @@
 use app_core::CanvasViewTransform;
 use desktop_support::{
     APP_BACKGROUND, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND, CANVAS_FRAME_BORDER, FOOTER_HEIGHT,
-    PANEL_FRAME_BACKGROUND, PANEL_FRAME_BORDER, SIDEBAR_BACKGROUND, SIDEBAR_WIDTH, TEXT_PRIMARY,
-    TEXT_SECONDARY, WINDOW_PADDING,
+    TEXT_PRIMARY, TEXT_SECONDARY, WINDOW_PADDING,
 };
 use ui_shell::PanelSurface;
 
 use super::geometry::canvas_scene;
 use super::raster::{
-    blit_canvas_with_transform, blit_scaled_rgba, draw_brush_preview, draw_lasso_preview,
-    draw_text, fill_rect, measured_status_width, stroke_rect, stroke_rect_region,
+    blit_canvas_with_transform, blit_scaled_rgba_region, draw_brush_preview,
+    draw_lasso_preview, draw_text, fill_rect, measured_status_width, stroke_rect,
+    stroke_rect_region,
 };
 use super::{CanvasCompositeSource, CanvasOverlayState, DesktopLayout, Rect};
 
@@ -24,7 +24,7 @@ pub(crate) fn compose_base_frame(
     width: usize,
     height: usize,
     layout: &DesktopLayout,
-    panel_surface: &PanelSurface,
+    _panel_surface: &PanelSurface,
     canvas: CanvasCompositeSource<'_>,
     transform: CanvasViewTransform,
     status_text: &str,
@@ -45,18 +45,6 @@ pub(crate) fn compose_base_frame(
         },
         APP_BACKGROUND,
     );
-    fill_rect(
-        &mut frame,
-        Rect {
-            x: 0,
-            y: 0,
-            width: SIDEBAR_WIDTH.min(width),
-            height,
-        },
-        SIDEBAR_BACKGROUND,
-    );
-    fill_rect(&mut frame, layout.panel_host_rect, PANEL_FRAME_BACKGROUND);
-    stroke_rect(&mut frame, layout.panel_host_rect, PANEL_FRAME_BORDER);
     fill_canvas_host_background(
         &mut frame,
         layout,
@@ -66,33 +54,25 @@ pub(crate) fn compose_base_frame(
     );
     stroke_rect(&mut frame, layout.canvas_host_rect, CANVAS_FRAME_BORDER);
 
-    blit_scaled_rgba(
-        &mut frame,
-        layout.panel_surface_rect,
-        panel_surface.width,
-        panel_surface.height,
-        panel_surface.pixels.as_slice(),
-    );
-
     draw_text(
         &mut frame,
         WINDOW_PADDING,
         WINDOW_PADDING + 4,
-        "Panel host (winit + software panel runtime)",
+        "Background layer",
         TEXT_PRIMARY,
     );
     draw_text(
         &mut frame,
         layout.canvas_host_rect.x,
         WINDOW_PADDING + 4,
-        "Canvas host (winit + wgpu canvas texture)",
+        "Canvas layer (winit + wgpu canvas texture)",
         TEXT_PRIMARY,
     );
     draw_text(
         &mut frame,
         WINDOW_PADDING,
         height.saturating_sub(FOOTER_HEIGHT) + 6,
-        "Built-in panels are rendered by the host panel runtime.",
+        "UI panels are rendered into an independent floating UI layer.",
         TEXT_SECONDARY,
     );
     draw_text(
@@ -111,6 +91,7 @@ pub(crate) fn compose_overlay_frame(
     width: usize,
     height: usize,
     layout: &DesktopLayout,
+    panel_surface: &PanelSurface,
     canvas: CanvasCompositeSource<'_>,
     transform: CanvasViewTransform,
     overlay: CanvasOverlayState,
@@ -120,7 +101,7 @@ pub(crate) fn compose_overlay_frame(
         height,
         pixels: vec![0; width * height * 4],
     };
-    compose_overlay_region(&mut frame, layout, canvas, transform, overlay, None);
+    compose_overlay_region(&mut frame, layout, panel_surface, canvas, transform, overlay, None);
     frame
 }
 
@@ -128,6 +109,7 @@ pub(crate) fn compose_overlay_frame(
 pub(crate) fn compose_overlay_region(
     frame: &mut render::RenderFrame,
     layout: &DesktopLayout,
+    panel_surface: &PanelSurface,
     canvas: CanvasCompositeSource<'_>,
     transform: CanvasViewTransform,
     overlay: CanvasOverlayState,
@@ -141,6 +123,7 @@ pub(crate) fn compose_overlay_region(
     });
     fill_rect(frame, clear_rect, [0, 0, 0, 0]);
     draw_canvas_overlay(frame, layout, canvas, transform, overlay, dirty_rect);
+    compose_panel_host_region(frame, layout, panel_surface, dirty_rect);
 }
 
 /// デスクトップ UI のベースとキャンバス領域を一度に合成する。
@@ -363,17 +346,28 @@ pub(crate) fn draw_canvas_overlay(
 /// パネルホスト領域だけを差分再合成する。
 pub(crate) fn compose_panel_host_region(
     frame: &mut render::RenderFrame,
-    layout: &DesktopLayout,
+    _layout: &DesktopLayout,
     panel_surface: &PanelSurface,
+    dirty_rect: Option<Rect>,
 ) {
-    fill_rect(frame, layout.panel_host_rect, PANEL_FRAME_BACKGROUND);
-    stroke_rect(frame, layout.panel_host_rect, PANEL_FRAME_BORDER);
-    blit_scaled_rgba(
+    let destination = Rect {
+        x: panel_surface.x,
+        y: panel_surface.y,
+        width: panel_surface.width,
+        height: panel_surface.height,
+    };
+    if let Some(region) = dirty_rect.and_then(|dirty| destination.intersect(dirty)) {
+        fill_rect(frame, region, [0, 0, 0, 0]);
+    } else if dirty_rect.is_none() {
+        fill_rect(frame, destination, [0, 0, 0, 0]);
+    }
+    blit_scaled_rgba_region(
         frame,
-        layout.panel_surface_rect,
+        destination,
         panel_surface.width,
         panel_surface.height,
         panel_surface.pixels.as_slice(),
+        dirty_rect,
     );
 }
 

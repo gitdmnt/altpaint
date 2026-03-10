@@ -6,13 +6,18 @@
 use std::thread::JoinHandle;
 
 use app_core::{Command, DirtyRect, Document};
-use desktop_support::{DEFAULT_PROJECT_PATH, DesktopSessionState, default_pen_dir, save_session_state};
+use desktop_support::{
+    DEFAULT_PROJECT_PATH, DesktopSessionState, default_pen_dir, save_session_state,
+};
 use render::RenderFrame;
 use storage::load_pen_directory;
 
 use super::DesktopApp;
 use crate::canvas_bridge::CanvasInputState;
 use crate::frame::{Rect, TextureQuad, brush_preview_rect};
+
+const PEN_SETTING_PANEL_IDS: &[&str] = &["builtin.pen-settings", "builtin.tool-palette"];
+const COLOR_PANEL_IDS: &[&str] = &["builtin.color-palette"];
 
 fn from_render_rect(rect: render::PixelRect) -> Rect {
     Rect {
@@ -46,10 +51,24 @@ pub(crate) struct PresentFrameUpdate {
 
 /// スライダードラッグ中のパネルノード情報を保持する。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PanelDragState {
+pub(crate) enum PanelDragState {
+    Control {
+        panel_id: String,
+        node_id: String,
+        source_value: usize,
+    },
+    Move {
+        panel_id: String,
+        grab_offset_x: usize,
+        grab_offset_y: usize,
+    },
+}
+
+/// ボタン系パネル操作の押下開始情報を保持する。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PanelPressState {
     pub(crate) panel_id: String,
     pub(crate) node_id: String,
-    pub(crate) source_value: usize,
 }
 
 /// 非同期保存タスクの join handle を保持する。
@@ -140,6 +159,24 @@ impl DesktopApp {
     /// ドキュメント変更後に `UiShell` の再同期を要求する。
     pub(super) fn sync_ui_from_document(&mut self) {
         self.needs_ui_sync = true;
+        self.ui_sync_panel_ids.clear();
+        self.mark_panel_surface_dirty();
+    }
+
+    /// 指定 panel 群だけを document から再同期する。
+    pub(super) fn sync_ui_from_document_panels(&mut self, panel_ids: &[&str]) {
+        if panel_ids.is_empty() {
+            return;
+        }
+        if !self.needs_ui_sync {
+            self.ui_sync_panel_ids.clear();
+            self.ui_sync_panel_ids
+                .extend(panel_ids.iter().map(|panel_id| (*panel_id).to_string()));
+        } else if !self.ui_sync_panel_ids.is_empty() {
+            self.ui_sync_panel_ids
+                .extend(panel_ids.iter().map(|panel_id| (*panel_id).to_string()));
+        }
+        self.needs_ui_sync = true;
         self.mark_panel_surface_dirty();
     }
 
@@ -156,6 +193,7 @@ impl DesktopApp {
         self.pending_canvas_host_dirty_rect = None;
         self.pending_canvas_transform_update = false;
         self.active_panel_drag = None;
+        self.pending_panel_press = None;
         self.hover_canvas_position = None;
     }
 
@@ -268,14 +306,22 @@ impl DesktopApp {
                 dirty.is_some_and(|dirty| self.append_canvas_dirty_rect(dirty))
             }
             Command::SetActiveTool { .. }
-            | Command::SetActivePenSize { .. }
+            | Command::SelectNextPenPreset
+            | Command::SelectPreviousPenPreset => {
+                self.sync_ui_from_document_panels(PEN_SETTING_PANEL_IDS);
+                self.mark_status_dirty();
+                true
+            }
+            Command::SetActivePenSize { .. }
             | Command::SetActivePenPressureEnabled { .. }
             | Command::SetActivePenAntialias { .. }
-            | Command::SetActivePenStabilization { .. }
-            | Command::SelectNextPenPreset
-            | Command::SelectPreviousPenPreset
-            | Command::SetActiveColor { .. } => {
-                self.sync_ui_from_document();
+            | Command::SetActivePenStabilization { .. } => {
+                self.sync_ui_from_document_panels(PEN_SETTING_PANEL_IDS);
+                self.mark_status_dirty();
+                true
+            }
+            Command::SetActiveColor { .. } => {
+                self.sync_ui_from_document_panels(COLOR_PANEL_IDS);
                 self.mark_status_dirty();
                 true
             }
@@ -432,4 +478,3 @@ impl DesktopApp {
         self.canvas_input.is_drawing
     }
 }
-

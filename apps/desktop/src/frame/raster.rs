@@ -172,6 +172,25 @@ pub(crate) fn blit_scaled_rgba_region(
         .and_then(|dirty| destination.intersect(dirty))
         .unwrap_or(destination);
 
+    if target.width == 0 || target.height == 0 {
+        return;
+    }
+
+    if destination.width == source_width && destination.height == source_height {
+        let src_start_x = target.x.saturating_sub(destination.x);
+        let src_start_y = target.y.saturating_sub(destination.y);
+        let row_bytes = target.width * 4;
+        for row in 0..target.height {
+            let src_y = src_start_y + row;
+            let dst_y = target.y + row;
+            let src_row_start = (src_y * source_width + src_start_x) * 4;
+            let dst_row_start = (dst_y * frame.width + target.x) * 4;
+            frame.pixels[dst_row_start..dst_row_start + row_bytes]
+                .copy_from_slice(&source_pixels[src_row_start..src_row_start + row_bytes]);
+        }
+        return;
+    }
+
     for dst_y in target.y..target.y + target.height {
         let local_y = dst_y - destination.y;
         let src_y = ((local_y * source_height) / destination.height).min(source_height - 1);
@@ -185,24 +204,6 @@ pub(crate) fn blit_scaled_rgba_region(
                 .copy_from_slice(&source_pixels[src_index..src_index + 4]);
         }
     }
-}
-
-/// RGBA ソース全体を destination へスケーリング転送する。
-pub(super) fn blit_scaled_rgba(
-    frame: &mut render::RenderFrame,
-    destination: Rect,
-    source_width: usize,
-    source_height: usize,
-    source_pixels: &[u8],
-) {
-    blit_scaled_rgba_region(
-        frame,
-        destination,
-        source_width,
-        source_height,
-        source_pixels,
-        None,
-    );
 }
 
 /// キャンバスをビュー変換込みでソフトウェア描画する。

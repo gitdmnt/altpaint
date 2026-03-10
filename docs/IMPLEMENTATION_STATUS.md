@@ -17,6 +17,7 @@
 - 複数ラスタレイヤー、blend mode、簡易マスク、パン/ズーム
 - マウス / touch / wheel によるキャンバス操作
 - dirty rect を使う差分提示
+- 浮動 UI panel の位置保存とドラッグ移動
 - project save/load
 - session save/load
 - `plugins/` 配下の `.altp-panel` + Wasm panel の再帰ロード
@@ -77,7 +78,7 @@
 - `DesktopRuntime` による `winit` event loop
 - `DesktopApp` による状態遷移と副作用統合
 - `wgpu` presenter
-- base frame / canvas texture / overlay frame の 3 層提示
+- background / canvas / UI panel layer の 3 層提示
 - pointer / keyboard / IME の処理
 - panel と canvas の入力ルーティング
 
@@ -146,7 +147,7 @@
 ### 現時点での実装上の特徴
 
 1. `ui-shell` が panel runtime の中心であり、runtime / presentation 分離メモは [docs/tmp/ui-shell-runtime-presentation-split-2026-03-10.md](docs/tmp/ui-shell-runtime-presentation-split-2026-03-10.md) に置いた
-2. `render` は `RenderFrame` に加えて canvas scene / transform 計画 API を持ち、desktop から canvas 幾何計算を受け始めた
+2. `render` は `RenderFrame` に加えて canvas scene / transform 計画 API と floating panel layer の rasterize API を持ち、desktop から canvas 幾何計算と panel draw を受け持つ
 3. `plugin-host` は `ui-shell` の内側で使われる
 4. project 保存と session 保存は既に分離され、共有 UI 永続化 DTO は `workspace-persistence` へ寄せた
 

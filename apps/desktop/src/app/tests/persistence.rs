@@ -197,14 +197,23 @@ fn move_panel_host_action_updates_status_without_full_recompose() {
     assert!(profiler.stats.contains_key("compose_dirty_status"));
     assert_eq!(
         update.base_dirty_rect,
-        Some(layout.panel_host_rect.union(status_text_bounds(
+        Some(status_text_bounds(
             1280,
             200,
             &layout,
             &app.status_text()
-        )))
+        ))
     );
-    assert_eq!(update.overlay_dirty_rect, None);
+    let surface = app.panel_surface.clone().expect("panel surface exists");
+    assert_eq!(
+        update.overlay_dirty_rect,
+        Some(crate::frame::Rect {
+            x: surface.x,
+            y: surface.y,
+            width: surface.width,
+            height: surface.height,
+        })
+    );
 }
 
 /// パネル表示切替が全面再構成ではなく差分更新で反映されることを確認する。
@@ -228,14 +237,23 @@ fn set_panel_visibility_updates_status_without_full_recompose() {
     assert!(profiler.stats.contains_key("compose_dirty_status"));
     assert_eq!(
         update.base_dirty_rect,
-        Some(layout.panel_host_rect.union(status_text_bounds(
+        Some(status_text_bounds(
             1280,
             200,
             &layout,
             &app.status_text()
-        )))
+        ))
     );
-    assert_eq!(update.overlay_dirty_rect, None);
+    let surface = app.panel_surface.clone().expect("panel surface exists");
+    assert_eq!(
+        update.overlay_dirty_rect,
+        Some(crate::frame::Rect {
+            x: surface.x,
+            y: surface.y,
+            width: surface.width,
+            height: surface.height,
+        })
+    );
 }
 
 #[test]

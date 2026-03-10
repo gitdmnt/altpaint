@@ -7,19 +7,21 @@ mod dsl;
 mod focus;
 mod presentation;
 mod surface_render;
-mod text;
 mod tree_query;
 mod workspace;
 
 #[cfg(test)]
 mod tests;
 
-pub use text::{
-    draw_text_rgba, line_height as text_line_height, measure_text_width, text_backend_name,
+pub use render::{
+    draw_text_rgba, measure_text_width, text_backend_name, text_line_height,
     wrap_text_lines,
 };
 
-use app_core::{ColorRgba8, Command, Document, ToolKind, WorkspaceLayout, WorkspacePanelState};
+use app_core::{
+    ColorRgba8, Command, Document, ToolKind, WorkspaceLayout, WorkspacePanelPosition,
+    WorkspacePanelSize, WorkspacePanelState,
+};
 use panel_dsl::{AttrValue as DslAttrValue, PanelDefinition, StateField, ViewElement, ViewNode};
 use panel_schema::{CommandDescriptor, Diagnostic, PanelEventRequest, PanelInitRequest, StatePatch};
 use plugin_api::{
@@ -28,30 +30,48 @@ use plugin_api::{
 };
 use plugin_host::{PluginHostError, WasmPanelRuntime};
 pub use presentation::PanelSurface;
-use presentation::{FocusTarget, PanelRenderState, TextInputEditorState};
+use presentation::{FocusTarget, TextInputEditorState};
 use serde_json::{json, Map, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use surface_render::PANEL_SCROLL_PIXELS_PER_LINE;
 use workspace::{event_panel_id, workspace_panel_actions, WORKSPACE_PANEL_ID};
 
-use crate::presentation::{PanelHitKind, PanelHitRegion};
-
 /// パネルホストとして振る舞う UI シェル。
 pub struct UiShell {
     /// 登録済みの panel plugin 一覧。
     panels: Vec<Box<dyn PanelPlugin>>,
-    /// 最新の document snapshot。
-    latest_document: Option<Document>,
     /// DSL 読込由来 panel id 群。
     loaded_panel_ids: Vec<String>,
     /// panel 並び順と表示状態。
     workspace_layout: WorkspaceLayout,
     /// スクロール前 content surface のキャッシュ。
     panel_content_cache: Option<PanelSurface>,
+    /// 現在キャッシュしている panel surface の生成元 viewport サイズ。
+    panel_content_viewport: Option<(usize, usize)>,
+    /// 個別パネルごとのラスタライズ済み content キャッシュ。
+    panel_bitmap_cache: BTreeMap<String, PanelSurface>,
+    /// 直近描画で使った実効パネル矩形。
+    rendered_panel_rects: BTreeMap<String, render::PixelRect>,
     /// panel content を再構築すべきかのフラグ。
     panel_content_dirty: bool,
+    /// 次回 rasterize が全パネル対象かどうか。
+    full_panel_raster_dirty: bool,
+    /// 次回 rasterize が必要な panel id 群。
+    dirty_panel_ids: BTreeSet<String>,
+    /// パネル位置だけが変化し、再合成だけで済むかどうかのフラグ。
+    panel_layout_dirty: bool,
+    /// 直近の render_panel_surface 呼び出しで再ラスタライズしたパネル数。
+    last_panel_rasterized_panels: usize,
+    /// 直近の render_panel_surface 呼び出しで再合成したパネル数。
+    last_panel_composited_panels: usize,
+    /// 直近の panel rasterize に要した時間。
+    last_panel_raster_duration_ms: f64,
+    /// 直近の panel compose に要した時間。
+    last_panel_compose_duration_ms: f64,
+    /// 直近の panel surface 更新で実際に変化したグローバル矩形。
+    last_panel_surface_dirty_rect: Option<render::PixelRect>,
     /// 現在の縦スクロール量。
     panel_scroll_offset: usize,
     /// content 全体の高さ。
@@ -71,11 +91,21 @@ impl UiShell {
     pub fn new() -> Self {
         Self {
             panels: Vec::new(),
-            latest_document: None,
             loaded_panel_ids: Vec::new(),
             workspace_layout: WorkspaceLayout::default(),
             panel_content_cache: None,
+            panel_content_viewport: None,
+            panel_bitmap_cache: BTreeMap::new(),
+            rendered_panel_rects: BTreeMap::new(),
             panel_content_dirty: true,
+            full_panel_raster_dirty: true,
+            dirty_panel_ids: BTreeSet::new(),
+            panel_layout_dirty: true,
+            last_panel_rasterized_panels: 0,
+            last_panel_composited_panels: 0,
+            last_panel_raster_duration_ms: 0.0,
+            last_panel_compose_duration_ms: 0.0,
+            last_panel_surface_dirty_rect: None,
             panel_scroll_offset: 0,
             panel_content_height: 0,
             focused_target: None,
@@ -87,9 +117,6 @@ impl UiShell {
 
     /// panel plugin を 1 つ登録する。
     pub fn register_panel(&mut self, mut panel: Box<dyn PanelPlugin>) {
-        if let Some(document) = self.latest_document.as_ref() {
-            panel.update(document);
-        }
         if let Some(config) = self.persistent_panel_configs.get(panel.id()) {
             panel.restore_persistent_config(config);
         }
@@ -97,7 +124,7 @@ impl UiShell {
         self.panels.retain(|registered| registered.id() != panel.id());
         self.panels.push(panel);
         self.reconcile_workspace_layout();
-        self.panel_content_dirty = true;
+        self.mark_all_panel_content_dirty();
     }
 
     /// ディレクトリ以下の DSL panel を再帰ロードする。
@@ -133,11 +160,33 @@ impl UiShell {
 
     /// 最新 document を panel 群へ配送する。
     pub fn update(&mut self, document: &Document) {
-        self.latest_document = Some(document.clone());
-        for panel in &mut self.panels {
-            panel.update(document);
+        self.update_panel_subset(document, None);
+    }
+
+    /// 指定 panel 群だけへ最新 document を配送する。
+    pub fn update_panels(&mut self, document: &Document, panel_ids: &BTreeSet<String>) {
+        if panel_ids.is_empty() {
+            self.update(document);
+            return;
         }
-        self.panel_content_dirty = true;
+        self.update_panel_subset(document, Some(panel_ids));
+    }
+
+    fn update_panel_subset(&mut self, document: &Document, panel_ids: Option<&BTreeSet<String>>) {
+        let mut changed_panels = Vec::new();
+        for panel in &mut self.panels {
+            if panel_ids.is_some_and(|panel_ids| !panel_ids.contains(panel.id())) {
+                continue;
+            }
+            let previous_tree = panel.panel_tree();
+            panel.update(document);
+            if panel.panel_tree() != previous_tree {
+                changed_panels.push(panel.id().to_string());
+            }
+        }
+        for panel_id in changed_panels {
+            self.mark_panel_content_dirty(&panel_id);
+        }
     }
 
     /// 登録済み panel 数を返す。
@@ -167,12 +216,29 @@ impl UiShell {
     pub fn set_workspace_layout(&mut self, workspace_layout: WorkspaceLayout) {
         self.workspace_layout = workspace_layout;
         self.reconcile_workspace_layout();
-        self.panel_content_dirty = true;
+        self.mark_all_panel_content_dirty();
     }
 
     /// 現在 focus 中の `(panel_id, node_id)` を返す。
     pub fn focused_target(&self) -> Option<(&str, &str)> {
         self.focused_target.as_ref().map(|target| (target.panel_id.as_str(), target.node_id.as_str()))
+    }
+
+    /// 直近の panel refresh で再ラスタライズしたパネル数を返す。
+    pub fn last_panel_rasterized_panels(&self) -> usize { self.last_panel_rasterized_panels }
+
+    /// 直近の panel refresh で再合成したパネル数を返す。
+    pub fn last_panel_composited_panels(&self) -> usize { self.last_panel_composited_panels }
+
+    /// 直近の panel rasterize に要した時間をミリ秒で返す。
+    pub fn last_panel_raster_duration_ms(&self) -> f64 { self.last_panel_raster_duration_ms }
+
+    /// 直近の panel compose に要した時間をミリ秒で返す。
+    pub fn last_panel_compose_duration_ms(&self) -> f64 { self.last_panel_compose_duration_ms }
+
+    /// 直近の panel surface 更新で変化したグローバル dirty rect を返す。
+    pub fn last_panel_surface_dirty_rect(&self) -> Option<render::PixelRect> {
+        self.last_panel_surface_dirty_rect
     }
 
     /// 現在の panel スクロール量を返す。
@@ -197,7 +263,7 @@ impl UiShell {
             if self.is_dropdown_target(panel_id, node_id) {
                 let dropdown = FocusTarget { panel_id: panel_id.clone(), node_id: node_id.clone() };
                 self.expanded_dropdown = if self.expanded_dropdown.as_ref() == Some(&dropdown) { None } else { Some(dropdown) };
-                self.panel_content_dirty = true;
+                self.mark_panel_content_dirty(panel_id);
                 return Vec::new();
             }
         }
@@ -208,11 +274,28 @@ impl UiShell {
         }
         if event_panel_id(event) == WORKSPACE_PANEL_ID {
             let actions = workspace_panel_actions(self.workspace_manager_tree().children.as_slice(), event);
-            self.panel_content_dirty = true;
+            self.mark_all_panel_content_dirty();
             return actions;
         }
-        let actions = self.panels.iter_mut().flat_map(|panel| panel.handle_event(event)).collect();
-        self.panel_content_dirty = true;
+        let Some(panel) = self
+            .panels
+            .iter_mut()
+            .find(|panel| panel.id() == event_panel_id(event))
+        else {
+            return Vec::new();
+        };
+        let (actions, dirty_panel_id) = {
+            let previous_tree = panel.panel_tree();
+            let previous_config = panel.persistent_config();
+            let actions = panel.handle_event(event);
+            let dirty_panel_id = (panel.panel_tree() != previous_tree
+                || panel.persistent_config() != previous_config)
+                .then(|| panel.id().to_string());
+            (actions, dirty_panel_id)
+        };
+        if let Some(panel_id) = dirty_panel_id {
+            self.mark_panel_content_dirty(&panel_id);
+        }
         actions
     }
 
@@ -239,7 +322,7 @@ impl UiShell {
             actions.extend(panel_actions);
         }
         if handled {
-            self.panel_content_dirty = true;
+            self.mark_all_panel_content_dirty();
         }
         (handled, actions)
     }
@@ -260,7 +343,20 @@ impl UiShell {
                 panel.restore_persistent_config(config);
             }
         }
+        self.mark_all_panel_content_dirty();
+    }
+
+    pub(crate) fn mark_all_panel_content_dirty(&mut self) {
         self.panel_content_dirty = true;
+        self.full_panel_raster_dirty = true;
+        self.dirty_panel_ids.clear();
+    }
+
+    pub(crate) fn mark_panel_content_dirty(&mut self, panel_id: &str) {
+        self.panel_content_dirty = true;
+        if !self.full_panel_raster_dirty {
+            self.dirty_panel_ids.insert(panel_id.to_string());
+        }
     }
 }
 

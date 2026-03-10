@@ -2,29 +2,7 @@ use std::collections::BTreeMap;
 
 use plugin_api::PanelEvent;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum PanelHitKind {
-    Activate,
-    Slider { min: usize, max: usize },
-    ColorWheel {
-        hue_degrees: usize,
-        saturation: usize,
-        value: usize,
-    },
-    LayerListItem { value: usize },
-    DropdownOption { value: String },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PanelHitRegion {
-    pub(crate) x: usize,
-    pub(crate) y: usize,
-    pub(crate) width: usize,
-    pub(crate) height: usize,
-    pub(crate) panel_id: String,
-    pub(crate) node_id: String,
-    pub(crate) kind: PanelHitKind,
-}
+pub(crate) use render::{PanelHitKind, PanelHitRegion};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FocusTarget {
@@ -38,6 +16,7 @@ pub(crate) struct TextInputEditorState {
     pub(crate) preedit: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub(crate) struct PanelRenderState<'a> {
     pub(crate) focused_target: Option<&'a FocusTarget>,
@@ -47,6 +26,8 @@ pub(crate) struct PanelRenderState<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PanelSurface {
+    pub x: usize,
+    pub y: usize,
     pub width: usize,
     pub height: usize,
     pub pixels: Vec<u8>,
@@ -54,6 +35,10 @@ pub struct PanelSurface {
 }
 
 impl PanelSurface {
+    pub fn hit_region_count(&self) -> usize {
+        self.hit_regions.len()
+    }
+
     pub fn hit_test(&self, x: usize, y: usize) -> Option<PanelEvent> {
         self.hit_regions
             .iter()
@@ -64,7 +49,21 @@ impl PanelSurface {
                     && x < region.x + region.width
                     && y < region.y + region.height
             })
-            .map(|region| panel_event_for_region(region, x, y))
+                    .and_then(|region| panel_event_for_region(region, x, y))
+                }
+
+                pub fn move_panel_hit_test(&self, x: usize, y: usize) -> Option<String> {
+                self.hit_regions
+                    .iter()
+                    .rev()
+                    .find(|region| {
+                    x >= region.x
+                        && y >= region.y
+                        && x < region.x + region.width
+                        && y < region.y + region.height
+                        && matches!(region.kind, PanelHitKind::MovePanel)
+                    })
+                    .map(|region| region.panel_id.clone())
     }
 
     pub fn drag_event(
@@ -96,13 +95,13 @@ impl PanelSurface {
                 .iter()
                 .rev()
                 .find(|region| region.panel_id == panel_id && region.node_id == node_id)
-                .map(|region| panel_event_for_region(region, x, y)),
+                .and_then(|region| panel_event_for_region(region, x, y)),
             PanelHitKind::ColorWheel { .. } => self
                 .hit_regions
                 .iter()
                 .rev()
                 .find(|region| region.panel_id == panel_id && region.node_id == node_id)
-                .map(|region| panel_event_for_region(region, x, y)),
+                .and_then(|region| panel_event_for_region(region, x, y)),
             PanelHitKind::LayerListItem { .. } => self
                 .hit_regions
                 .iter()
@@ -125,13 +124,16 @@ impl PanelSurface {
                     }),
                     _ => None,
                 }),
-            PanelHitKind::Activate | PanelHitKind::DropdownOption { .. } => None,
+            PanelHitKind::MovePanel
+            | PanelHitKind::Activate
+            | PanelHitKind::DropdownOption { .. } => None,
         }
     }
 }
 
-fn panel_event_for_region(region: &PanelHitRegion, x: usize, y: usize) -> PanelEvent {
-    match &region.kind {
+fn panel_event_for_region(region: &PanelHitRegion, x: usize, y: usize) -> Option<PanelEvent> {
+    Some(match &region.kind {
+        PanelHitKind::MovePanel => return None,
         PanelHitKind::Activate => PanelEvent::Activate {
             panel_id: region.panel_id.clone(),
             node_id: region.node_id.clone(),
@@ -160,7 +162,7 @@ fn panel_event_for_region(region: &PanelHitRegion, x: usize, y: usize) -> PanelE
             node_id: region.node_id.clone(),
             value: value.clone(),
         },
-    }
+    })
 }
 
 fn slider_value_for_position(

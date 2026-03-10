@@ -161,6 +161,7 @@
 
 - `Document` から `RenderFrame` を作る最小入口
 - `CanvasViewTransform` から canvas scene / quad / dirty 写像 / view 座標変換を導く
+- floating panel layer のラスタライズと panel hit region 生成
 
 #### `apps/desktop`
 
@@ -168,8 +169,8 @@
 
 - `winit` event loop
 - `wgpu` presenter
-- desktop fixed layout
-- CPU 側 base / overlay frame 合成
+- desktop fixed layout と panel drag のような副作用 orchestration
+- CPU 側 background / UI layer 合成
 - canvas input routing
 - `DesktopApp` による副作用統合
 
@@ -251,15 +252,15 @@
 
 現在の提示は 3 層で考える。
 
-1. **UI ベース層**
+1. **背景層**
    - CPU で生成
-   - 背景、パネル、ステータス、キャンバス host 枠
+   - 背景、ステータス、キャンバス host 枠
 2. **キャンバス層**
    - GPU texture として保持
    - パン/ズームは quad と UV で適用
-3. **オーバーレイ層**
-   - CPU で生成
-   - ブラシプレビューなどの上物
+3. **UI パネル層**
+   - `render` が floating panel を GUI ラスタライズする
+   - panel とブラシプレビューなど、キャンバス上に重なる UI を保持する
 
 この方針の目的は、パン/ズーム時に CPU 側でキャンバス全体を焼き直さないことにある。
 
@@ -322,7 +323,7 @@
 - `CommandDescriptor` から `Command` への変換
 - panel local state / persistent config 管理
 - layout / hit-test / focus / scroll / text input
-- software panel rendering
+- panel rasterize は `render` へ委譲
 
 問題は、これらが1つのクレートに同居すると、次の変更が互いに巻き込まれることである。
 
@@ -355,6 +356,7 @@
 - パン/ズーム時の露出背景計算
 - ブラシプレビュー矩形の計算
 - canvas quad / UV の計算
+- floating panel draw と panel layer 用 hit region 生成
 - 「何を base / canvas / overlay 更新にするか」の scene 判定
 
 逆に、次は `apps/desktop` に残す。
@@ -363,8 +365,15 @@
 - `wgpu` device / queue / surface / presenter
 - native window / IME / pointer / keyboard の収集
 - desktop 固定レイアウトや status bar などのホスト固有 chrome
+- OS pointer を panel move / canvas input / panel event へ振り分ける副作用
 
-つまり、`render` は「canvas 表示計算と更新計画」、`apps/desktop` は「OS/GPU 所有と最終提示 orchestration」へ寄せる。
+つまり、`render` は「canvas 表示計算と panel layer rasterize を含む更新計画」、`apps/desktop` は「OS/GPU 所有と最終提示 orchestration」へ寄せる。
+
+補足:
+
+- panel の **hit-test 自体は `ui-shell` に残す**
+- 理由は、hit-test が GPU 資源制御ではなく panel event / focus / text input へ接続する UI 意味論だからである
+- `render` は hit region の生成までを担当し、`ui-shell` がそれを `PanelEvent` へ解釈する
 
 ## 追加クレート判断基準
 
@@ -390,7 +399,7 @@
 
 ### `ui-shell` に置くべきもの
 
-- panel runtime / panel draw / panel input の責務
+- panel runtime / panel input / host action 解釈の責務
 
 ### `apps/desktop` に置くべきもの
 

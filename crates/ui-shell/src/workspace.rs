@@ -8,6 +8,69 @@ use super::*;
 pub(super) const WORKSPACE_PANEL_ID: &str = "builtin.workspace-layout";
 
 impl UiShell {
+    /// パネルの画面上位置を更新する。
+    pub fn move_panel_to(
+        &mut self,
+        panel_id: &str,
+        x: usize,
+        y: usize,
+        viewport_width: usize,
+        viewport_height: usize,
+    ) -> bool {
+        let Some(entry) = self
+            .workspace_layout
+            .panels
+            .iter_mut()
+            .find(|entry| entry.id == panel_id)
+        else {
+            return false;
+        };
+
+        let size = self
+            .rendered_panel_rects
+            .get(panel_id)
+            .copied()
+            .map(|rect| WorkspacePanelSize {
+                width: rect.width,
+                height: rect.height,
+            })
+            .or(entry.size)
+            .unwrap_or_default();
+        let next_position = WorkspacePanelPosition {
+            x: x.min(viewport_width.saturating_sub(size.width.max(1))),
+            y: y.min(viewport_height.saturating_sub(size.height.max(1))),
+        };
+        if entry.position == Some(next_position) {
+            return false;
+        }
+
+        entry.position = Some(next_position);
+        entry.size = Some(size);
+        self.panel_layout_dirty = true;
+        true
+    }
+
+    /// 現在のパネル矩形を返す。
+    pub fn panel_rect(&self, panel_id: &str) -> Option<render::PixelRect> {
+        if let Some(rect) = self.rendered_panel_rects.get(panel_id) {
+            return Some(*rect);
+        }
+
+        let entry = self
+            .workspace_layout
+            .panels
+            .iter()
+            .find(|entry| entry.id == panel_id)?;
+        let position = entry.position?;
+        let size = entry.size.unwrap_or_default();
+        Some(render::PixelRect {
+            x: position.x,
+            y: position.y,
+            width: size.width,
+            height: size.height,
+        })
+    }
+
     /// パネル順序を上下へ移動する。
     pub fn move_panel(&mut self, panel_id: &str, direction: PanelMoveDirection) -> bool {
         let Some(index) = self.workspace_layout.panels.iter().position(|entry| entry.id == panel_id) else {
@@ -21,7 +84,7 @@ impl UiShell {
         };
 
         self.workspace_layout.panels.swap(index, target_index);
-        self.panel_content_dirty = true;
+        self.mark_all_panel_content_dirty();
         true
     }
 
@@ -43,7 +106,7 @@ impl UiShell {
         if !visible && self.focused_target.as_ref().is_some_and(|target| target.panel_id == panel_id) {
             self.focused_target = None;
         }
-        self.panel_content_dirty = true;
+        self.mark_all_panel_content_dirty();
         true
     }
 
@@ -57,7 +120,7 @@ impl UiShell {
             !self.loaded_panel_ids.iter().any(|loaded_id| loaded_id == panel.id())
         });
         self.loaded_panel_ids.clear();
-        self.panel_content_dirty = true;
+        self.mark_all_panel_content_dirty();
     }
 
     /// workspace layout に panel entry が存在することを保証する。
@@ -71,6 +134,8 @@ impl UiShell {
         self.workspace_layout.panels.push(WorkspacePanelState {
             id: panel_id.to_string(),
             visible: true,
+            position: Some(default_panel_position(self.workspace_layout.panels.len())),
+            size: Some(WorkspacePanelSize::default()),
         });
     }
 
@@ -79,6 +144,15 @@ impl UiShell {
         let panel_ids = self.panels.iter().map(|panel| panel.id()).collect::<Vec<_>>();
         for panel_id in panel_ids {
             self.ensure_workspace_panel_entry(panel_id);
+        }
+
+        for (index, entry) in self.workspace_layout.panels.iter_mut().enumerate() {
+            if entry.position.is_none() {
+                entry.position = Some(default_panel_position(index));
+            }
+            if entry.size.is_none() {
+                entry.size = Some(WorkspacePanelSize::default());
+            }
         }
 
         if self.focused_target.as_ref().is_some_and(|target| !self.panel_is_visible(&target.panel_id)) {
@@ -193,6 +267,13 @@ impl UiShell {
                 }],
             }],
         }
+    }
+}
+
+fn default_panel_position(index: usize) -> WorkspacePanelPosition {
+    WorkspacePanelPosition {
+        x: 24 + index * 28,
+        y: 72 + index * 36,
     }
 }
 

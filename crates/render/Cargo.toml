@@ -6,4 +6,8 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+ab_glyph.workspace = true
 app-core = { path = "../app-core" }
+font8x8.workspace = true
+fontdb.workspace = true
+plugin-api = { path = "../plugin-api" }

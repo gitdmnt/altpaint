@@ -10,6 +10,7 @@ mod state;
 #[cfg(test)]
 mod tests;
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 #[cfg(test)]
@@ -25,7 +26,7 @@ use render::RenderFrame;
 use serde_json::{Map, Value, json};
 use ui_shell::{PanelSurface, UiShell};
 
-use self::state::{PanelDragState, PendingSaveTask, PresentFrameUpdate};
+use self::state::{PanelDragState, PanelPressState, PendingSaveTask, PresentFrameUpdate};
 use crate::canvas_bridge::CanvasInputState;
 use crate::frame::DesktopLayout;
 
@@ -49,8 +50,10 @@ pub(crate) struct DesktopApp {
     pending_canvas_host_dirty_rect: Option<crate::frame::Rect>,
     pending_canvas_transform_update: bool,
     active_panel_drag: Option<PanelDragState>,
+    pending_panel_press: Option<PanelPressState>,
     hover_canvas_position: Option<(usize, usize)>,
     needs_ui_sync: bool,
+    ui_sync_panel_ids: BTreeSet<String>,
     needs_panel_surface_refresh: bool,
     needs_status_refresh: bool,
     needs_full_present_rebuild: bool,
@@ -134,8 +137,10 @@ impl DesktopApp {
             pending_canvas_host_dirty_rect: None,
             pending_canvas_transform_update: false,
             active_panel_drag: None,
+            pending_panel_press: None,
             hover_canvas_position: None,
             needs_ui_sync: true,
+            ui_sync_panel_ids: BTreeSet::new(),
             needs_panel_surface_refresh: true,
             needs_status_refresh: false,
             needs_full_present_rebuild: true,

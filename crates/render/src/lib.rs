@@ -3,7 +3,20 @@
 //! フェーズ2では、`Document` 内の最初のコマにあるラスタビットマップを
 //! フレームバッファとして取り出す最小描画経路を定義する。
 
+mod panel;
+mod text;
+
 use app_core::{CanvasViewTransform, DirtyRect, Document};
+
+pub use panel::{
+    FloatingPanel, MeasuredPanelSize, PanelFocusTarget, PanelHitKind, PanelHitRegion,
+    PanelRenderState, PanelTextInputState, RasterizedPanelLayer, measure_panel_size,
+    rasterize_panel_layer,
+};
+pub use text::{
+    draw_text_rgba, line_height as text_line_height, measure_text_width, text_backend_name,
+    wrap_text_lines,
+};
 
 /// 画面上のピクセル矩形を表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -179,7 +192,10 @@ impl CanvasScene {
     }
 
     /// キャンバス座標を表示座標へ変換する。
-    pub fn map_canvas_point_to_display(&self, canvas_position: (usize, usize)) -> Option<(f32, f32)> {
+    pub fn map_canvas_point_to_display(
+        &self,
+        canvas_position: (usize, usize),
+    ) -> Option<(f32, f32)> {
         self.map_source_point_to_display(canvas_position)
     }
 
@@ -214,10 +230,22 @@ impl CanvasScene {
     fn map_source_rect_to_display(&self, dirty: DirtyRect) -> Option<PixelRect> {
         let dirty = dirty.clamp_to_bitmap(self.source_width, self.source_height);
         let corners = [
-            (dirty.x as f32 / self.source_width as f32, dirty.y as f32 / self.source_height as f32),
-            ((dirty.x + dirty.width) as f32 / self.source_width as f32, dirty.y as f32 / self.source_height as f32),
-            (dirty.x as f32 / self.source_width as f32, (dirty.y + dirty.height) as f32 / self.source_height as f32),
-            ((dirty.x + dirty.width) as f32 / self.source_width as f32, (dirty.y + dirty.height) as f32 / self.source_height as f32),
+            (
+                dirty.x as f32 / self.source_width as f32,
+                dirty.y as f32 / self.source_height as f32,
+            ),
+            (
+                (dirty.x + dirty.width) as f32 / self.source_width as f32,
+                dirty.y as f32 / self.source_height as f32,
+            ),
+            (
+                dirty.x as f32 / self.source_width as f32,
+                (dirty.y + dirty.height) as f32 / self.source_height as f32,
+            ),
+            (
+                (dirty.x + dirty.width) as f32 / self.source_width as f32,
+                (dirty.y + dirty.height) as f32 / self.source_height as f32,
+            ),
         ];
         let mut min_x = f32::INFINITY;
         let mut min_y = f32::INFINITY;
@@ -280,7 +308,8 @@ pub fn prepare_canvas_scene(
     }
 
     let rotation_turns = normalized_rotation_turns(transform.rotation_degrees);
-    let (rotated_width, rotated_height) = rotated_dimensions(source_width, source_height, rotation_turns);
+    let (rotated_width, rotated_height) =
+        rotated_dimensions(source_width, source_height, rotation_turns);
 
     let scale_x = viewport.width as f32 / rotated_width as f32;
     let scale_y = viewport.height as f32 / rotated_height as f32;
@@ -592,13 +621,14 @@ mod tests {
     fn render_frame_uses_first_panel_bitmap() {
         let mut document = Document::default();
         document.draw_stroke(1, 2, 4, 2);
+        let expected_bitmap = &document.work.pages[0].panels[0].bitmap;
 
         let context = RenderContext::new();
         let frame = context.render_frame(&document);
 
-        // ドキュメントのデフォルトは幅64・高さ64のビットマップを持つため、フレームも同じサイズであること。
-        assert_eq!(frame.width, 64);
-        assert_eq!(frame.height, 64);
+        // ドキュメント先頭パネルのビットマップ寸法がフレームへ反映されること。
+        assert_eq!(frame.width, expected_bitmap.width);
+        assert_eq!(frame.height, expected_bitmap.height);
 
         // ドキュメントのストローク描画結果がフレームへ反映されること。
         let index = (2 * frame.width + 1) * 4;

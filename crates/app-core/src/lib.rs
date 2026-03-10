@@ -15,4 +15,6 @@ pub use document::{
     Work, WorkId, DEFAULT_DOCUMENT_HEIGHT, DEFAULT_DOCUMENT_WIDTH,
 };
 pub use error::CoreError;
-pub use workspace::{WorkspaceLayout, WorkspacePanelState};
+pub use workspace::{
+    WorkspaceLayout, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState,
+};

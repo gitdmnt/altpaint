@@ -69,6 +69,7 @@ graph TD
     desktop --> wpersist[workspace-persistence]
 
     render --> appcore
+    render --> pluginapi
     storage --> appcore
     dsupport --> appcore
     pluginapi --> appcore
@@ -98,6 +99,7 @@ graph TD
 
 - `app-core` は workspace 内の土台であり、ローカル依存を持たない
 - `render` / `storage` / `desktop-support` / `plugin-api` / `workspace-persistence` は `app-core` に依存する周辺クレートである
+- `render` は floating panel rasterize のため `plugin-api` にも依存する
 - `ui-shell` が現在の**パネルランタイム統合点**であり、DSL 読み込み・Wasm 実行・Panel 描画をまとめて持っている
 - `plugin-host` は `ui-shell` の内側で使われ、`apps/desktop` は直接依存していない
 - `panel-sdk` は plugin author 向け表面 API であり、macro を含む唯一の作者向け入口である
@@ -133,11 +135,13 @@ graph TD
 
 - `Document` から `RenderFrame` を得る最小描画入口
 - `CanvasViewTransform` から canvas scene / quad / dirty 写像 / view 座標変換を得る
+- floating panel layer の GUI ラスタライズ
+- panel hit region の生成
 
 現状の実態:
 
-- かなり薄いクレートであり、`Document` の先頭 `Panel` の bitmap を `RenderFrame` として返すのが中心
-- dirty rect の最終的な表示変換や UI/overlay 合成は、まだ主に `apps/desktop` 側にある
+- canvas 幾何に加えて floating panel layer の rasterize を持つようになった
+- ただし最終 upload と GPU presenter orchestration は、まだ主に `apps/desktop` 側にある
 
 ### `plugin-api`
 

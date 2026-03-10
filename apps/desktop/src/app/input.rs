@@ -7,10 +7,11 @@ use app_core::{Command, ToolKind};
 use plugin_api::{HostAction, PanelEvent};
 
 use super::{DesktopApp, PanelDragState};
+use crate::app::state::PanelPressState;
 use crate::canvas_bridge::{
     CanvasInputState, CanvasPointerEvent, map_view_to_canvas_with_transform,
 };
-use crate::frame::{brush_preview_rect, map_view_to_surface, map_view_to_surface_clamped};
+use crate::frame::{Rect, brush_preview_rect, map_view_to_surface, map_view_to_surface_clamped};
 
 impl DesktopApp {
     /// 現在のポインタ位置からキャンバスホバー状態を更新する。
@@ -61,11 +62,15 @@ impl DesktopApp {
         y: i32,
         pressure: f32,
     ) -> bool {
+        if self.begin_panel_interaction(x, y) {
+            return true;
+        }
+
         if self.canvas_position_from_window(x, y).is_some() {
             return self.handle_canvas_pointer("down", x, y, pressure);
         }
 
-        self.begin_panel_interaction(x, y)
+        false
     }
 
     /// ポインタ解放を現在の操作状態に応じて処理する。
@@ -84,6 +89,8 @@ impl DesktopApp {
             return self.handle_canvas_pointer("up", x, y, pressure);
         }
         if self.active_panel_drag.take().is_some() {
+            self.pending_panel_press = None;
+            self.persist_session_state();
             return false;
         }
         self.handle_panel_pointer(x, y)
@@ -113,27 +120,62 @@ impl DesktopApp {
 
     /// パネル上の押下開始を解釈して、必要ならドラッグ状態を開始する。
     fn begin_panel_interaction(&mut self, x: i32, y: i32) -> bool {
+        self.pending_panel_press = None;
+        if let Some(panel_id) = self.panel_move_hit_from_window(x, y) {
+            let Some((surface_x, surface_y)) = self.panel_surface_coordinates_from_window(x, y) else {
+                return false;
+            };
+            let Some(panel_rect) = self.ui_shell.panel_rect(&panel_id) else {
+                return false;
+            };
+            self.active_panel_drag = Some(PanelDragState::Move {
+                panel_id,
+                grab_offset_x: surface_x.saturating_sub(panel_rect.x),
+                grab_offset_y: surface_y.saturating_sub(panel_rect.y),
+            });
+            return true;
+        }
+
         let Some(event) = self.panel_event_from_window(x, y) else {
             self.active_panel_drag = None;
             return false;
         };
 
         match &event {
+            PanelEvent::Activate { panel_id, node_id } => {
+                let changed = self.ui_shell.focus_panel_node(panel_id, node_id);
+                self.pending_panel_press = Some(PanelPressState {
+                    panel_id: panel_id.clone(),
+                    node_id: node_id.clone(),
+                });
+                self.refresh_panel_surface_if_changed(changed)
+            }
             PanelEvent::SetValue {
                 panel_id,
                 node_id,
                 value,
             } => {
-                self.active_panel_drag = Some(PanelDragState {
+                self.active_panel_drag = Some(PanelDragState::Control {
                     panel_id: panel_id.clone(),
                     node_id: node_id.clone(),
                     source_value: *value,
                 });
                 self.dispatch_panel_event(event)
             }
-            PanelEvent::Activate { .. }
-            | PanelEvent::DragValue { .. }
-            | PanelEvent::SetText { .. }
+            PanelEvent::SetText {
+                panel_id,
+                node_id,
+                ..
+            } => {
+                let drag_state = PanelDragState::Control {
+                    panel_id: panel_id.clone(),
+                    node_id: node_id.clone(),
+                    source_value: 0,
+                };
+                self.active_panel_drag = Some(drag_state);
+                self.dispatch_panel_event(event)
+            }
+            PanelEvent::DragValue { .. }
             | PanelEvent::Keyboard { .. } => false,
         }
     }
@@ -143,19 +185,65 @@ impl DesktopApp {
         let Some(state) = self.active_panel_drag.clone() else {
             return false;
         };
-        let Some(event) = self.panel_drag_event_from_window(&state, x, y) else {
-            return false;
-        };
-        let changed = self.dispatch_panel_event(event.clone());
-        self.advance_panel_drag_source(&event);
-        changed
+        match state {
+            PanelDragState::Control {
+                ref panel_id,
+                ref node_id,
+                ..
+            } => {
+                let Some(event) = self.panel_drag_event_from_window(&state, x, y).or_else(|| {
+                    let event = self.panel_event_from_window(x, y)?;
+                    match &event {
+                        PanelEvent::SetValue {
+                            panel_id: event_panel_id,
+                            node_id: event_node_id,
+                            ..
+                        }
+                        | PanelEvent::SetText {
+                            panel_id: event_panel_id,
+                            node_id: event_node_id,
+                            ..
+                        } if *event_panel_id == *panel_id && *event_node_id == *node_id => Some(event),
+                        _ => None,
+                    }
+                }) else {
+                    return false;
+                };
+                let _changed = self.dispatch_panel_event(event.clone());
+                self.advance_panel_drag_source(&event);
+                true
+            }
+            PanelDragState::Move {
+                panel_id,
+                grab_offset_x,
+                grab_offset_y,
+            } => {
+                let Some(layout) = self.layout.as_ref() else {
+                    return false;
+                };
+                let Some((surface_x, surface_y)) = self.panel_surface_coordinates_from_window(x, y) else {
+                    return false;
+                };
+                let changed = self.ui_shell.move_panel_to(
+                    &panel_id,
+                    surface_x.saturating_sub(grab_offset_x),
+                    surface_y.saturating_sub(grab_offset_y),
+                    layout.window_rect.width,
+                    layout.window_rect.height,
+                );
+                if changed {
+                    self.mark_panel_surface_dirty();
+                }
+                changed
+            }
+        }
     }
 
     pub(crate) fn advance_panel_drag_source(&mut self, event: &PanelEvent) {
         if let PanelEvent::DragValue { to, .. } = event
-            && let Some(active_drag) = self.active_panel_drag.as_mut()
+            && let Some(PanelDragState::Control { source_value, .. }) = self.active_panel_drag.as_mut()
         {
-            active_drag.source_value = *to;
+            *source_value = *to;
         }
     }
 
@@ -184,8 +272,23 @@ impl DesktopApp {
     /// パネル上の単発ポインタイベントを処理する。
     fn handle_panel_pointer(&mut self, x: i32, y: i32) -> bool {
         let Some(event) = self.panel_event_from_window(x, y) else {
+            self.pending_panel_press = None;
             return false;
         };
+        let should_dispatch = matches!(
+            (&self.pending_panel_press, &event),
+            (
+                Some(PanelPressState { panel_id, node_id }),
+                PanelEvent::Activate {
+                    panel_id: released_panel_id,
+                    node_id: released_node_id,
+                }
+            ) if panel_id == released_panel_id && node_id == released_node_id
+        );
+        self.pending_panel_press = None;
+        if !should_dispatch {
+            return false;
+        }
         self.dispatch_panel_event(event)
     }
 
@@ -439,16 +542,35 @@ impl DesktopApp {
 
     /// ウィンドウ座標からパネルイベントを逆引きする。
     fn panel_event_from_window(&self, x: i32, y: i32) -> Option<PanelEvent> {
-        let layout = self.layout.as_ref()?;
         let panel_surface = self.panel_surface.as_ref()?;
-        let (surface_x, surface_y) = map_view_to_surface(
+        let (surface_x, surface_y) = self.panel_surface_coordinates_from_window(x, y)?;
+        panel_surface.hit_test(surface_x, surface_y)
+    }
+
+    pub(crate) fn panel_is_hovered(&self, x: i32, y: i32) -> bool {
+        self.panel_move_hit_from_window(x, y).is_some() || self.panel_event_from_window(x, y).is_some()
+    }
+
+    fn panel_move_hit_from_window(&self, x: i32, y: i32) -> Option<String> {
+        let panel_surface = self.panel_surface.as_ref()?;
+        let (surface_x, surface_y) = self.panel_surface_coordinates_from_window(x, y)?;
+        panel_surface.move_panel_hit_test(surface_x, surface_y)
+    }
+
+    fn panel_surface_coordinates_from_window(&self, x: i32, y: i32) -> Option<(usize, usize)> {
+        let panel_surface = self.panel_surface.as_ref()?;
+        map_view_to_surface(
             panel_surface.width,
             panel_surface.height,
-            layout.panel_surface_rect,
+            Rect {
+                x: panel_surface.x,
+                y: panel_surface.y,
+                width: panel_surface.width,
+                height: panel_surface.height,
+            },
             x,
             y,
-        )?;
-        panel_surface.hit_test(surface_x, surface_y)
+        )
     }
 
     /// ドラッグ継続中のパネルノードへ値変更イベントを生成する。
@@ -458,19 +580,31 @@ impl DesktopApp {
         x: i32,
         y: i32,
     ) -> Option<PanelEvent> {
-        let layout = self.layout.as_ref()?;
+        let PanelDragState::Control {
+            panel_id,
+            node_id,
+            source_value,
+        } = state
+        else {
+            return None;
+        };
         let panel_surface = self.panel_surface.as_ref()?;
         let (surface_x, surface_y) = map_view_to_surface_clamped(
             panel_surface.width,
             panel_surface.height,
-            layout.panel_surface_rect,
+            Rect {
+                x: panel_surface.x,
+                y: panel_surface.y,
+                width: panel_surface.width,
+                height: panel_surface.height,
+            },
             x,
             y,
         )?;
         panel_surface.drag_event(
-            &state.panel_id,
-            &state.node_id,
-            state.source_value,
+            panel_id,
+            node_id,
+            *source_value,
             surface_x,
             surface_y,
         )

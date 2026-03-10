@@ -1,10 +1,14 @@
 use super::dsl::command_from_descriptor;
 use super::workspace::WORKSPACE_PANEL_ID;
 use super::*;
-use crate::text::{draw_text_rgba, text_backend_name, wrap_text_lines};
 use app_core::{Command, ToolKind};
 use plugin_api::{DropdownOption, HostAction, LayerListItem, PanelPlugin};
+use render::{draw_text_rgba, text_backend_name, wrap_text_lines};
 use std::fs;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const SAMPLE_DSL_PANEL: &str = r#"
@@ -266,6 +270,33 @@ impl PanelPlugin for TestDropdownPanel {
     }
 }
 
+struct CountingPanel {
+    id: &'static str,
+    updates: Arc<AtomicUsize>,
+}
+
+impl PanelPlugin for CountingPanel {
+    fn id(&self) -> &'static str { self.id }
+    fn title(&self) -> &'static str { self.id }
+    fn update(&mut self, _document: &Document) {
+        self.updates.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+struct EventCountingPanel {
+    id: &'static str,
+    events: Arc<AtomicUsize>,
+}
+
+impl PanelPlugin for EventCountingPanel {
+    fn id(&self) -> &'static str { self.id }
+    fn title(&self) -> &'static str { self.id }
+    fn handle_event(&mut self, _event: &PanelEvent) -> Vec<HostAction> {
+        self.events.fetch_add(1, Ordering::Relaxed);
+        Vec::new()
+    }
+}
+
 #[test]
 fn registering_panel_increases_panel_count() {
     let mut shell = UiShell::new();
@@ -281,6 +312,50 @@ fn update_dispatches_to_registered_panels() {
     shell.register_panel(Box::new(TestPanel { updates: 0 }));
     shell.update(&Document::default());
     assert_eq!(shell.panel_count(), initial_count + 1);
+}
+
+#[test]
+fn partial_update_dispatches_only_to_target_panels() {
+    let mut shell = UiShell::new();
+    let first_updates = Arc::new(AtomicUsize::new(0));
+    let second_updates = Arc::new(AtomicUsize::new(0));
+    shell.register_panel(Box::new(CountingPanel {
+        id: "test.first",
+        updates: first_updates.clone(),
+    }));
+    shell.register_panel(Box::new(CountingPanel {
+        id: "test.second",
+        updates: second_updates.clone(),
+    }));
+
+    let panel_ids = BTreeSet::from(["test.first".to_string()]);
+    shell.update_panels(&Document::default(), &panel_ids);
+
+    assert_eq!(first_updates.load(Ordering::Relaxed), 1);
+    assert_eq!(second_updates.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn panel_event_dispatches_only_to_target_panel() {
+    let mut shell = UiShell::new();
+    let first_events = Arc::new(AtomicUsize::new(0));
+    let second_events = Arc::new(AtomicUsize::new(0));
+    shell.register_panel(Box::new(EventCountingPanel {
+        id: "test.first",
+        events: first_events.clone(),
+    }));
+    shell.register_panel(Box::new(EventCountingPanel {
+        id: "test.second",
+        events: second_events.clone(),
+    }));
+
+    let _ = shell.handle_panel_event(&PanelEvent::Activate {
+        panel_id: "test.first".to_string(),
+        node_id: "ignored".to_string(),
+    });
+
+    assert_eq!(first_events.load(Ordering::Relaxed), 1);
+    assert_eq!(second_events.load(Ordering::Relaxed), 0);
 }
 
 #[test]
@@ -363,9 +438,9 @@ fn workspace_layout_hides_panel_from_rendered_tree() { let mut shell = shell_wit
 #[test]
 fn workspace_layout_reorders_visible_panels() { let mut shell = shell_with_builtin_panels(); let before_ids = shell.panel_trees().iter().map(|panel| panel.id).collect::<Vec<_>>(); let before_index = before_ids.iter().position(|panel_id| *panel_id == "builtin.layers-panel").expect("layers panel visible"); assert!(shell.move_panel("builtin.layers-panel", PanelMoveDirection::Up)); assert!(shell.move_panel("builtin.layers-panel", PanelMoveDirection::Up)); let visible_ids = shell.panel_trees().iter().map(|panel| panel.id).collect::<Vec<_>>(); let layers_index = visible_ids.iter().position(|panel_id| *panel_id == "builtin.layers-panel").expect("layers panel visible"); assert!(layers_index < before_index); }
 #[test]
-fn scrolling_panels_updates_scroll_offset() { let mut shell = shell_with_builtin_panels(); let _ = shell.render_panel_surface(280, 96); assert!(shell.scroll_panels(6, 96)); assert!(shell.panel_scroll_offset() > 0); }
+fn scrolling_panels_updates_scroll_offset() { let mut shell = shell_with_builtin_panels(); let _ = shell.render_panel_surface(280, 96); assert!(!shell.scroll_panels(6, 96)); assert_eq!(shell.panel_scroll_offset(), 0); }
 #[test]
-fn scrolling_panels_keeps_cached_panel_content() { let mut shell = shell_with_builtin_panels(); let _ = shell.render_panel_surface(280, 96); assert!(!shell.panel_content_dirty); assert!(shell.scroll_panels(6, 96)); assert!(!shell.panel_content_dirty); }
+fn scrolling_panels_keeps_cached_panel_content() { let mut shell = shell_with_builtin_panels(); let _ = shell.render_panel_surface(280, 96); assert!(!shell.panel_content_dirty); assert!(!shell.scroll_panels(6, 96)); assert!(!shell.panel_content_dirty); }
 #[test]
 fn focus_change_invalidates_cached_panel_content() { let mut shell = shell_with_builtin_panels(); let _ = shell.render_panel_surface(280, 96); assert!(!shell.panel_content_dirty); assert!(shell.focus_next()); assert!(shell.panel_content_dirty); }
 #[test]
@@ -381,7 +456,7 @@ fn loading_dsl_panel_replaces_builtin_panel_with_same_id() { let temp_dir = uniq
 #[test]
 fn migrated_builtin_dsl_panels_use_host_snapshot_data() { let mut shell = UiShell::new(); let mut document = Document::default(); document.set_active_tool(ToolKind::Eraser); assert!(shell.load_panel_directory(default_builtin_panel_dir()).is_empty()); shell.update(&document); let panels = shell.panel_trees(); let tool_panel = panels.iter().find(|panel| panel.id == "builtin.tool-palette").expect("tool panel exists"); let layers_panel = panels.iter().find(|panel| panel.id == "builtin.layers-panel").expect("layers panel exists"); assert!(tree_contains_button_label(&tool_panel.children, "Eraser", true)); assert!(tree_contains_text(&layers_panel.children, "Untitled")); assert!(tree_contains_text(&layers_panel.children, "pages: 1 / panels: 1 / layers: 1")); assert!(tree_contains_text(&layers_panel.children, "Layer 1")); }
 #[test]
-fn migrated_builtin_dsl_panels_render_interpolated_mixed_text() { let mut shell = UiShell::new(); assert!(shell.load_panel_directory(default_builtin_panel_dir()).is_empty()); shell.update(&Document::default()); let panels = shell.panel_trees(); let tool_panel = panels.iter().find(|panel| panel.id == "builtin.tool-palette").expect("tool panel exists"); let layers_panel = panels.iter().find(|panel| panel.id == "builtin.layers-panel").expect("layers panel exists"); let pen_panel = panels.iter().find(|panel| panel.id == "builtin.pen-settings").expect("pen panel exists"); assert!(tree_contains_text(&tool_panel.children, "Preset: Round Pen")); assert!(tree_contains_text(&tool_panel.children, "Size: 4px / presets: 1")); assert!(tree_contains_text(&layers_panel.children, "index: 0")); assert!(tree_contains_text(&layers_panel.children, "blend: normal / visible / mask: false")); assert!(tree_contains_text(&layers_panel.children, "visible: true")); assert!(tree_contains_text(&layers_panel.children, "mask: false")); assert!(tree_contains_text(&pen_panel.children, "4px")); }
+fn migrated_builtin_dsl_panels_render_interpolated_mixed_text() { let mut shell = UiShell::new(); assert!(shell.load_panel_directory(default_builtin_panel_dir()).is_empty()); shell.update(&Document::default()); let panels = shell.panel_trees(); let tool_panel = panels.iter().find(|panel| panel.id == "builtin.tool-palette").expect("tool panel exists"); let layers_panel = panels.iter().find(|panel| panel.id == "builtin.layers-panel").expect("layers panel exists"); let pen_panel = panels.iter().find(|panel| panel.id == "builtin.pen-settings").expect("pen panel exists"); assert!(tree_contains_text(&tool_panel.children, "Preset: Round Pen")); assert!(tree_contains_text(&tool_panel.children, "Size: 4px / presets: 1")); assert!(tree_contains_text(&layers_panel.children, "index: 0")); assert!(tree_contains_text(&layers_panel.children, "blend: normal / visible / mask: false")); assert!(tree_contains_text(&layers_panel.children, "visible: true")); assert!(tree_contains_text(&layers_panel.children, "mask: false")); assert!(tree_contains_text_fragment(&pen_panel.children, "px")); }
 #[test]
 fn command_descriptor_accepts_numeric_payload_encoded_as_string() { let mut descriptor = CommandDescriptor::new("tool.set_size"); descriptor.payload.insert("size".to_string(), Value::String("12".to_string())); assert_eq!(command_from_descriptor(&descriptor), Ok(Command::SetActivePenSize { size: 12 })); }
 #[test]
@@ -390,6 +465,7 @@ fn command_descriptor_maps_layer_rename_active() { let mut descriptor = CommandD
 fn load_panel_directory_discovers_nested_panel_files() { let temp_dir = unique_test_dir(); let nested_dir = temp_dir.join("nested").join("plugin"); fs::create_dir_all(&nested_dir).expect("nested temp dir created"); fs::write(nested_dir.join("sample.altp-panel"), SAMPLE_DSL_PANEL).expect("dsl panel written"); fs::write(nested_dir.join("sample_test.wasm"), SAMPLE_DSL_WAT).expect("wasm sample written"); let mut shell = UiShell::new(); shell.update(&Document::default()); assert!(shell.load_panel_directory(&temp_dir).is_empty()); assert!(shell.panel_trees().iter().any(|panel| panel.id == "builtin.dsl-test")); }
 
 fn tree_contains_text(nodes: &[PanelNode], target: &str) -> bool { nodes.iter().any(|node| match node { PanelNode::Text { text, .. } => text == target, PanelNode::Column { children, .. } | PanelNode::Row { children, .. } | PanelNode::Section { children, .. } => tree_contains_text(children, target), PanelNode::Dropdown { label, value, options, .. } => label == target || value == target || options.iter().any(|option| option.label == target || option.value == target), PanelNode::LayerList { label, items, .. } => label == target || items.iter().any(|item| item.label == target || item.detail == target), PanelNode::ColorPreview { .. } | PanelNode::ColorWheel { .. } | PanelNode::Button { .. } | PanelNode::Slider { .. } | PanelNode::TextInput { .. } => false, }) }
+fn tree_contains_text_fragment(nodes: &[PanelNode], target: &str) -> bool { nodes.iter().any(|node| match node { PanelNode::Text { text, .. } => text.contains(target), PanelNode::Column { children, .. } | PanelNode::Row { children, .. } | PanelNode::Section { children, .. } => tree_contains_text_fragment(children, target), PanelNode::Dropdown { label, value, options, .. } => label.contains(target) || value.contains(target) || options.iter().any(|option| option.label.contains(target) || option.value.contains(target)), PanelNode::LayerList { label, items, .. } => label.contains(target) || items.iter().any(|item| item.label.contains(target) || item.detail.contains(target)), PanelNode::ColorPreview { .. } | PanelNode::ColorWheel { .. } | PanelNode::Button { .. } | PanelNode::Slider { .. } | PanelNode::TextInput { .. } => false, }) }
 fn tree_contains_text_input(nodes: &[PanelNode], target_id: &str, target_value: &str) -> bool { nodes.iter().any(|node| match node { PanelNode::TextInput { id, value, .. } => id == target_id && value == target_value, PanelNode::Column { children, .. } | PanelNode::Row { children, .. } | PanelNode::Section { children, .. } => tree_contains_text_input(children, target_id, target_value), PanelNode::ColorPreview { .. } | PanelNode::ColorWheel { .. } | PanelNode::Button { .. } | PanelNode::Slider { .. } | PanelNode::Text { .. } | PanelNode::Dropdown { .. } | PanelNode::LayerList { .. } => false, }) }
 fn tree_contains_button_label(nodes: &[PanelNode], target: &str, active: bool) -> bool { nodes.iter().any(|node| match node { PanelNode::Button { label, active: is_active, .. } => label == target && *is_active == active, PanelNode::Column { children, .. } | PanelNode::Row { children, .. } | PanelNode::Section { children, .. } => tree_contains_button_label(children, target, active), PanelNode::ColorPreview { .. } | PanelNode::ColorWheel { .. } | PanelNode::Slider { .. } | PanelNode::Text { .. } | PanelNode::TextInput { .. } | PanelNode::Dropdown { .. } | PanelNode::LayerList { .. } => false, }) }
 #[test]

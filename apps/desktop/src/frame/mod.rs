@@ -6,7 +6,7 @@
 mod compositor;
 mod geometry;
 mod raster;
-use desktop_support::{FOOTER_HEIGHT, HEADER_HEIGHT, SIDEBAR_WIDTH, WINDOW_PADDING};
+use desktop_support::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
 
 #[allow(unused_imports)]
 pub(crate) use compositor::{
@@ -81,6 +81,7 @@ impl Rect {
 /// デスクトップ UI の固定レイアウト情報。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DesktopLayout {
+    pub(crate) window_rect: Rect,
     pub(crate) panel_host_rect: Rect,
     pub(crate) panel_surface_rect: Rect,
     pub(crate) canvas_host_rect: Rect,
@@ -95,27 +96,19 @@ impl DesktopLayout {
         canvas_width: usize,
         canvas_height: usize,
     ) -> Self {
-        let sidebar_width = SIDEBAR_WIDTH.min(window_width);
-        let sidebar_inner_width = sidebar_width.saturating_sub(WINDOW_PADDING * 2).max(1);
-        let panel_host_rect = Rect {
-            x: WINDOW_PADDING,
-            y: WINDOW_PADDING + HEADER_HEIGHT + WINDOW_PADDING,
-            width: sidebar_inner_width,
-            height: window_height
-                .saturating_sub(HEADER_HEIGHT)
-                .saturating_sub(FOOTER_HEIGHT)
-                .saturating_sub(WINDOW_PADDING * 3)
-                .max(1),
+        let window_rect = Rect {
+            x: 0,
+            y: 0,
+            width: window_width.max(1),
+            height: window_height.max(1),
         };
-        let panel_surface_rect = panel_host_rect;
+        let panel_host_rect = window_rect;
+        let panel_surface_rect = window_rect;
 
         let canvas_host_rect = Rect {
-            x: sidebar_width + WINDOW_PADDING,
+            x: WINDOW_PADDING,
             y: WINDOW_PADDING + HEADER_HEIGHT + WINDOW_PADDING,
-            width: window_width
-                .saturating_sub(sidebar_width)
-                .saturating_sub(WINDOW_PADDING * 2)
-                .max(1),
+            width: window_width.saturating_sub(WINDOW_PADDING * 2).max(1),
             height: window_height
                 .saturating_sub(HEADER_HEIGHT)
                 .saturating_sub(FOOTER_HEIGHT)
@@ -126,6 +119,7 @@ impl DesktopLayout {
             fit_rect(canvas_width.max(1), canvas_height.max(1), canvas_host_rect);
 
         Self {
+            window_rect,
             panel_host_rect,
             panel_surface_rect,
             canvas_host_rect,
