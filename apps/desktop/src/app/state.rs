@@ -7,16 +7,17 @@ use std::thread::JoinHandle;
 
 use app_core::{BitmapEdit, CanvasDirtyRect, ClampToCanvasBounds, Command, Document, MergeInSpace};
 use desktop_support::{
-    DEFAULT_PROJECT_PATH, DesktopSessionState, default_pen_dir, save_session_state,
+    DEFAULT_PROJECT_PATH, DesktopSessionState, default_pen_dir, default_tool_dir,
+    save_session_state,
 };
 use render::RenderFrame;
-use storage::load_pen_directory;
+use storage::{load_pen_directory, load_tool_directory};
 
 use super::DesktopApp;
 use crate::canvas_bridge::CanvasInputState;
 use crate::frame::{PanelNavigatorEntry, PanelNavigatorOverlay, Rect, TextureQuad};
 
-const PEN_SETTING_PANEL_IDS: &[&str] = &["builtin.pen-settings", "builtin.tool-palette"];
+const TOOL_PANEL_IDS: &[&str] = &["builtin.pen-settings", "builtin.tool-palette"];
 const COLOR_PANEL_IDS: &[&str] = &["builtin.color-palette"];
 const VIEW_PANEL_IDS: &[&str] = &["builtin.view-controls"];
 
@@ -399,9 +400,10 @@ impl DesktopApp {
         let _dirty = self.document.apply_command(&command);
         match command {
             Command::SetActiveTool { .. }
+            | Command::SelectTool { .. }
             | Command::SelectNextPenPreset
             | Command::SelectPreviousPenPreset => {
-                self.sync_ui_from_document_panels(PEN_SETTING_PANEL_IDS);
+                self.sync_ui_from_document_panels(TOOL_PANEL_IDS);
                 self.mark_status_dirty();
                 true
             }
@@ -409,7 +411,7 @@ impl DesktopApp {
             | Command::SetActivePenPressureEnabled { .. }
             | Command::SetActivePenAntialias { .. }
             | Command::SetActivePenStabilization { .. } => {
-                self.sync_ui_from_document_panels(PEN_SETTING_PANEL_IDS);
+                self.sync_ui_from_document_panels(TOOL_PANEL_IDS);
                 self.mark_status_dirty();
                 true
             }
@@ -466,6 +468,8 @@ impl DesktopApp {
                 true
             }
             Command::NewDocumentSized { .. } => {
+                let _ = Self::reload_tool_catalog_into_document(&mut self.document);
+                let _ = Self::reload_pen_presets_into_document(&mut self.document);
                 self.reset_active_interactions();
                 self.refresh_canvas_frame();
                 self.sync_ui_from_document();
@@ -596,6 +600,19 @@ impl DesktopApp {
             return false;
         }
         document.replace_pen_presets(presets);
+        true
+    }
+
+    /// 既定ツールディレクトリからツールカタログを再読込する。
+    pub(super) fn reload_tool_catalog_into_document(document: &mut Document) -> bool {
+        let (tools, diagnostics) = load_tool_directory(default_tool_dir());
+        for diagnostic in diagnostics {
+            eprintln!("tool catalog load warning: {diagnostic}");
+        }
+        if tools.is_empty() {
+            return false;
+        }
+        document.replace_tool_catalog(tools);
         true
     }
 

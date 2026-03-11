@@ -102,6 +102,16 @@ pub mod tool {
         host_string("tool.active")
     }
 
+    /// アクティブツール ID を返す。
+    pub fn active_id() -> String {
+        host_string("tool.active_id")
+    }
+
+    /// アクティブツールの表示名を返す。
+    pub fn active_label() -> String {
+        host_string("tool.active_label")
+    }
+
     /// 指定ツールがアクティブなら true を返す。
     pub fn is_active(tool: Tool) -> bool {
         active_name().eq_ignore_ascii_case(tool.as_str())
@@ -110,6 +120,26 @@ pub mod tool {
     /// ペン名を返す。
     pub fn pen_name() -> String {
         host_string("tool.pen_name")
+    }
+
+    /// ツールカタログ JSON を返す。
+    pub fn catalog_json() -> String {
+        host_string("tool.catalog_json")
+    }
+
+    /// アクティブツールの設定定義 JSON を返す。
+    pub fn active_settings_json() -> String {
+        host_string("tool.active_settings_json")
+    }
+
+    /// アクティブツールを管轄するプラグイン ID を返す。
+    pub fn active_provider_plugin_id() -> String {
+        host_string("tool.active_provider_plugin_id")
+    }
+
+    /// アクティブツールの描画計算プラグイン ID を返す。
+    pub fn active_drawing_plugin_id() -> String {
+        host_string("tool.active_drawing_plugin_id")
     }
 
     /// ペン ID を返す。
@@ -150,6 +180,26 @@ pub mod tool {
     /// 手ぶれ補正強さを返す。
     pub fn pen_stabilization() -> i32 {
         host_i32("tool.pen_stabilization")
+    }
+
+    /// 現在ツールが `size` 設定を公開するなら true を返す。
+    pub fn supports_size() -> bool {
+        crate::runtime::host_bool("tool.supports_size")
+    }
+
+    /// 現在ツールが `pressure_enabled` 設定を公開するなら true を返す。
+    pub fn supports_pressure_enabled() -> bool {
+        crate::runtime::host_bool("tool.supports_pressure_enabled")
+    }
+
+    /// 現在ツールが `antialias` 設定を公開するなら true を返す。
+    pub fn supports_antialias() -> bool {
+        crate::runtime::host_bool("tool.supports_antialias")
+    }
+
+    /// 現在ツールが `stabilization` 設定を公開するなら true を返す。
+    pub fn supports_stabilization() -> bool {
+        crate::runtime::host_bool("tool.supports_stabilization")
     }
 }
 

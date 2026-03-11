@@ -207,6 +207,36 @@ fn apply_command_switches_active_tool() {
 }
 
 #[test]
+fn apply_command_selects_registered_tool_by_id() {
+    let mut document = Document::default();
+
+    let dirty = document.apply_command(&Command::SelectTool {
+        tool_id: "builtin.eraser".to_string(),
+    });
+
+    assert_eq!(dirty, None);
+    assert_eq!(document.active_tool, ToolKind::Eraser);
+    assert_eq!(document.active_tool_id, "builtin.eraser");
+}
+
+#[test]
+fn resolve_paint_plugin_context_uses_active_tool_metadata() {
+    let mut document = Document::default();
+    assert!(document.set_active_tool_by_id("builtin.eraser"));
+
+    let context = document
+        .resolve_paint_plugin_context(7)
+        .expect("paint plugin context");
+
+    assert_eq!(context.tool, ToolKind::Eraser);
+    assert_eq!(context.tool_id, "builtin.eraser");
+    assert_eq!(context.provider_plugin_id, "plugins/default-erasers-plugin");
+    assert_eq!(context.drawing_plugin_id, "builtin.bitmap");
+    assert!(context.tool_settings.iter().any(|setting| setting.key == "size"));
+    assert_eq!(context.layer_count, 1);
+}
+
+#[test]
 fn apply_command_updates_pen_size() {
     let mut document = Document::default();
 

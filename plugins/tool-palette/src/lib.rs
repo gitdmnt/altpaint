@@ -12,6 +12,11 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 const ACTIVE_TOOL: state::StringKey = state::string("active_tool");
+const ACTIVE_TOOL_ID: state::StringKey = state::string("active_tool_id");
+const ACTIVE_TOOL_LABEL: state::StringKey = state::string("active_tool_label");
+const TOOL_OPTIONS: state::StringKey = state::string("tool_options");
+const PROVIDER_PLUGIN_ID: state::StringKey = state::string("provider_plugin_id");
+const DRAWING_PLUGIN_ID: state::StringKey = state::string("drawing_plugin_id");
 const PEN_NAME: state::StringKey = state::string("pen_name");
 const PEN_SIZE: state::IntKey = state::int("pen_size");
 const PEN_COUNT: state::IntKey = state::int("pen_count");
@@ -28,15 +33,43 @@ fn build_tool_command(tool: Tool) -> CommandDescriptor {
     commands::tool::set_active(tool)
 }
 
+fn build_tool_options(catalog_json: &str) -> String {
+    serde_json::from_str::<Vec<Value>>(catalog_json)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let id = entry.get("id")?.as_str()?;
+            let name = entry.get("name")?.as_str()?;
+            Some(format!("{id}:{name}"))
+        })
+        .collect::<Vec<_>>()
+        .join("|")
+}
+
 #[panel_sdk::panel_init]
 fn init() {}
 
 #[panel_sdk::panel_sync_host]
 fn sync_host() {
     set_state_string(ACTIVE_TOOL, host::tool::active_name());
+    set_state_string(ACTIVE_TOOL_ID, host::tool::active_id());
+    set_state_string(ACTIVE_TOOL_LABEL, host::tool::active_label());
+    set_state_string(TOOL_OPTIONS, build_tool_options(&host::tool::catalog_json()));
+    set_state_string(PROVIDER_PLUGIN_ID, host::tool::active_provider_plugin_id());
+    set_state_string(DRAWING_PLUGIN_ID, host::tool::active_drawing_plugin_id());
     set_state_string(PEN_NAME, host::tool::pen_name());
     set_state_i32(PEN_SIZE, host::tool::pen_size());
     set_state_i32(PEN_COUNT, host::tool::pen_count());
+}
+
+#[panel_sdk::panel_handler]
+fn select_tool() {
+    let tool_id = event_string("value");
+    if tool_id.trim().is_empty() {
+        return;
+    }
+    emit_command(&commands::tool::select_tool(tool_id.trim()));
 }
 
 fn capture_shortcut(target: &str) {
@@ -252,6 +285,7 @@ mod tests {
         activate_bucket();
         activate_lasso_bucket();
         activate_panel_rect();
+        select_tool();
         previous_pen();
         next_pen();
         reload_pens();
@@ -291,10 +325,33 @@ mod tests {
     }
 
     #[test]
+    fn tool_options_are_built_from_catalog_json() {
+        let options = build_tool_options(
+            r#"[
+  {"id":"builtin.pen","name":"Pen"},
+  {"id":"builtin.eraser","name":"Eraser"}
+]"#,
+        );
+
+        assert_eq!(options, "builtin.pen:Pen|builtin.eraser:Eraser");
+    }
+
+    #[test]
     fn import_command_uses_expected_name() {
         let command = commands::tool::import_pen_presets();
 
         assert_eq!(command.name, "tool.import_pen_presets");
         assert!(command.payload.is_empty());
+    }
+
+    #[test]
+    fn select_tool_command_uses_expected_name() {
+        let command = commands::tool::select_tool("builtin.pen");
+
+        assert_eq!(command.name, "tool.select");
+        assert_eq!(
+            command.payload.get("tool_id").and_then(|value| value.as_str()),
+            Some("builtin.pen")
+        );
     }
 }

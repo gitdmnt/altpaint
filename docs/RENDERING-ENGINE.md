@@ -205,14 +205,21 @@ MVPで対象にする合成モード:
 
 ## 描画データフロー
 
-1. `app-core` が現在の `Document` とセッション状態を持つ
-2. 描画要求が来る
-3. `render` が表示対象コマ、ビュー変換、dirty 範囲を解決する
-4. 必要なタイルまたは dirty bitmap 範囲だけ再合成する
-5. `apps/desktop` が UI ベースフレームとオーバーレイフレームを CPU で組み立てる
-6. `apps/desktop` がキャンバス bitmap を GPU テクスチャへ差分アップロードする
-7. `apps/desktop` が `render` の返した quad / UV を GPU へ渡す
-8. GPU が base → canvas → overlay の順に合成提示する
+1. `apps/desktop` が入力種別、筆圧、window 座標を受け取る
+2. `apps/desktop` が view 変換を使って canvas 座標へ変換する
+3. `app-core` が active panel 内判定と active layer / composited bitmap / active color / active tool metadata を解決する
+4. desktop host が active tool の drawing plugin を呼び、更新用 bitmap を得る
+5. `app-core` が active layer へ bitmap edit を反映する
+6. `render` が dirty rect と表示変換に基づいて更新領域を計画する
+7. `apps/desktop` が UI ベースフレームとオーバーレイフレームを CPU で組み立てる
+8. `apps/desktop` がキャンバス bitmap を GPU テクスチャへ差分アップロードする
+9. `apps/desktop` が `render` の返した quad / UV を GPU へ渡す
+10. GPU が base → canvas → overlay の順に合成提示する
+
+補足:
+
+- dirty rect による差分更新は、描画意味論ではなく表示更新の責務なので、`render` と presenter 側で扱う
+- drawing plugin 自身は「どの bitmap をどう更新するか」に集中し、最終提示戦略は持たない
 
 ## 責務分割の現在地
 

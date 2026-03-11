@@ -161,6 +161,7 @@ impl DesktopApp {
             active_workspace_preset_id = selected_preset_id;
         }
         let mut document = document;
+        Self::reload_tool_catalog_into_document(&mut document);
         Self::reload_pen_presets_into_document(&mut document);
         ui_shell.update(&document);
 

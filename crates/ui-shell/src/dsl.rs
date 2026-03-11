@@ -793,6 +793,7 @@ fn active_tool_name(tool: ToolKind) -> &'static str {
     }
 }
 fn build_host_snapshot(document: &Document) -> Value {
+    let active_tool_definition = document.active_tool_definition().cloned();
     let active_page = document.active_page();
     let active_panel = document.active_panel();
     let layers = active_panel.map(|panel| panel.layers.iter().map(|layer| json!({ "name": layer.name, "blend_mode": layer.blend_mode.as_str(), "visible": layer.visible, "masked": layer.mask.is_some() })).collect::<Vec<_>>()).unwrap_or_else(|| vec![json!({ "name": "Layer 1", "blend_mode": "normal", "visible": true, "masked": false })]);
@@ -849,6 +850,10 @@ fn build_host_snapshot(document: &Document) -> Value {
         })
         .unwrap_or_else(|| "(0, 0) 0×0".to_string());
     let active_pen = document.active_pen_preset().cloned().unwrap_or_default();
+    let tool_catalog_json = serde_json::to_string(&document.tool_catalog)
+        .unwrap_or_else(|_| "[]".to_string());
+    let active_tool_settings_json = serde_json::to_string(document.active_tool_settings())
+        .unwrap_or_else(|_| "[]".to_string());
     json!({
         "document": {
             "title": document.work.title,
@@ -873,6 +878,19 @@ fn build_host_snapshot(document: &Document) -> Value {
         },
         "tool": {
             "active": active_tool_name(document.active_tool),
+            "active_id": document.active_tool_id,
+            "active_label": active_tool_definition
+                .as_ref()
+                .map(|tool| tool.name.clone())
+                .unwrap_or_else(|| active_tool_name(document.active_tool).to_string()),
+            "catalog_json": tool_catalog_json,
+            "active_settings_json": active_tool_settings_json,
+            "active_provider_plugin_id": document.active_tool_provider_plugin_id().unwrap_or_default(),
+            "active_drawing_plugin_id": document.active_tool_drawing_plugin_id().unwrap_or_default(),
+            "supports_size": document.active_tool_settings().iter().any(|setting| setting.key == "size"),
+            "supports_pressure_enabled": document.active_tool_settings().iter().any(|setting| setting.key == "pressure_enabled"),
+            "supports_antialias": document.active_tool_settings().iter().any(|setting| setting.key == "antialias"),
+            "supports_stabilization": document.active_tool_settings().iter().any(|setting| setting.key == "stabilization"),
             "pen_name": active_pen.name,
             "pen_id": active_pen.id,
             "pen_presets_json": serde_json::to_string(&document.pen_presets).unwrap_or_else(|_| "[]".to_string()),
@@ -1055,6 +1073,16 @@ pub(super) fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<
                 other => return Err(format!("unsupported tool kind: {other}")),
             };
             Ok(Command::SetActiveTool { tool })
+        }
+        "tool.select" => {
+            let tool_id = descriptor
+                .payload
+                .get("tool_id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "tool.select is missing payload.tool_id".to_string())?;
+            Ok(Command::SelectTool {
+                tool_id: tool_id.to_string(),
+            })
         }
         "tool.set_size" => {
             let size = descriptor

@@ -24,11 +24,13 @@
 - session save/load
 - workspace preset 読込・再読込・切り替え・保存・書き出し
 - `plugins/` 配下の `.altp-panel` + Wasm panel の再帰ロード
+- `tools/` 配下の描画ツール定義 (`*.altp-tool.json`) の再帰ロード
 - built-in panel 群の UI DSL + Rust SDK + Wasm 実装
 - panel local state / host snapshot / persistent config
 - 4隅アンカー基準の workspace panel 配置
 - 外部ペンプリセット読込と import report 表示
 - `AltPaintPen` 正規化 format と external brush parse/export module
+- tool catalog に基づく `tool-palette` / `pen-settings` 同期
 - pen input plugin がビットマップ差分を返す描画フロー
 - キャンバス無段階回転の render / software raster / GPU sampling
 - 実行時 profiler とタイトル表示
@@ -75,6 +77,7 @@
 - `BlendMode`
 - `CanvasViewTransform`
 - `PenPreset`
+- `ToolDefinition`
 - `WorkspaceLayout`
 
 現状の中心は、`Document::apply_command(...)` を通じて編集状態を変える形である。
@@ -89,6 +92,7 @@
 - background / canvas / UI panel layer の 3 層提示
 - pointer / keyboard / IME の処理
 - panel と canvas の入力ルーティング
+- 起動時の `plugins/` / `tools/` / `pens/` カタログ読込
 
 ### 3. パネル基盤
 
@@ -164,6 +168,7 @@
 2. `render` は `RenderFrame` に加えて canvas scene / transform 計画 API と floating panel layer の rasterize API を持ち、desktop から canvas 幾何計算と panel draw を受け持つ
 3. `plugin-host` は `ui-shell` の内側で使われる
 4. project 保存と session 保存は既に分離され、共有 UI 永続化 DTO は `workspace-persistence` へ寄せた
+5. `tool-palette` は host snapshot から tool catalog を受け取り、`pen-settings` は active tool が公開する設定キーに応じて UI を出し分ける
 
 ## 到達済みフェーズの整理
 

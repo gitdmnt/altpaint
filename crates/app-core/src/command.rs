@@ -11,6 +11,8 @@ pub enum Command {
     Noop,
     /// 現在のアクティブツールを切り替える。
     SetActiveTool { tool: ToolKind },
+    /// 登録済みツール ID を指定して現在のアクティブツールを切り替える。
+    SelectTool { tool_id: String },
     /// 現在のアクティブペンサイズを切り替える。
     SetActivePenSize { size: u32 },
     /// アクティブペンの筆圧有効状態を切り替える。

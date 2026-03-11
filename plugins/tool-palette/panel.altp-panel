@@ -15,6 +15,11 @@ runtime {
 
 state {
   active_tool: string = "pen"
+  active_tool_id: string = "builtin.pen"
+  active_tool_label: string = "Pen"
+  tool_options: string = "builtin.pen:Pen"
+  provider_plugin_id: string = "plugins/default-pens-plugin"
+  drawing_plugin_id: string = "builtin.bitmap"
   pen_name: string = ""
   pen_size: int = 1
   pen_count: int = 0
@@ -33,6 +38,12 @@ state {
 view {
   <column gap=8 padding=8>
     <section title="ツール">
+      <dropdown id="tool.catalog" label="登録ツール" value={state.active_tool_id} options={state.tool_options} on:change="select_tool" />
+      <text>選択中: {state.active_tool_label}</text>
+      <text tone="muted">ID: {state.active_tool_id}</text>
+      <text tone="muted">管轄 plugin: {state.provider_plugin_id}</text>
+      <text tone="muted">描画 plugin: {state.drawing_plugin_id}</text>
+      <separator></separator>
       <button id="tool.pen" on:click="activate_pen" active={state.active_tool == "pen"}>✏ ペン</button>
       <button id="tool.eraser" on:click="activate_eraser" active={state.active_tool == "eraser"}>⌫ 消しゴム</button>
       <button id="tool.bucket" on:click="activate_bucket" active={state.active_tool == "bucket"}>🪣 塗りつぶし</button>

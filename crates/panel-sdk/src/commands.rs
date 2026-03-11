@@ -161,6 +161,15 @@ pub mod tool {
         descriptor
     }
 
+    /// 登録済みツール ID を指定してアクティブツールを変更する。
+    pub fn select_tool(tool_id: impl Into<String>) -> CommandDescriptor {
+        let mut descriptor = CommandDescriptor::new("tool.select");
+        descriptor
+            .payload
+            .insert("tool_id".to_string(), json!(tool_id.into()));
+        descriptor
+    }
+
     /// 16 進カラー文字列の設定コマンドを返す。
     pub fn set_color_hex(color: impl Into<String>) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("tool.set_color");

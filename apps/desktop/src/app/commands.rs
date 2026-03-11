@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::thread;
 
-use app_core::{Command, PaintInput, PaintPluginContext};
+use app_core::{Command, PaintInput};
 use desktop_support::normalize_project_path;
 use plugin_api::HostAction;
 use storage::{load_project_from_path, save_project_to_path};
@@ -17,40 +17,22 @@ use crate::app::drawing::STANDARD_BITMAP_PLUGIN_ID;
 impl DesktopApp {
     /// キャンバス入力を描画プラグインへ渡してビットマップ差分として適用する。
     pub(super) fn execute_paint_input(&mut self, input: PaintInput) -> bool {
-        // 入力位置がアクティブパネルの範囲内かを確認する。範囲外なら無視する。
-        let Some(bounds) = self.document.active_panel_bounds() else {
-            return false;
-        };
         let points_inside = match &input {
             PaintInput::Stamp { at, .. } | PaintInput::FloodFill { at } => {
-                bounds.contains(at.x.saturating_add(bounds.x), at.y.saturating_add(bounds.y))
-                //-----------------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ TODO: ここの座標変換が分かりづらいので、明示的なメソッドに切り出す
+                self.document.active_panel_contains_local_point(*at)
             }
             PaintInput::StrokeSegment { from, to, .. } => {
-                bounds.contains(
-                    from.x.saturating_add(bounds.x),
-                    from.y.saturating_add(bounds.y),
-                ) || bounds.contains(to.x.saturating_add(bounds.x), to.y.saturating_add(bounds.y))
+                self.document.active_panel_contains_local_point(*from)
+                    || self.document.active_panel_contains_local_point(*to)
             }
-            PaintInput::LassoFill { points } => !points.is_empty(),
+            PaintInput::LassoFill { points } => points
+                .iter()
+                .any(|point| self.document.active_panel_contains_local_point(*point)),
         };
         if !points_inside {
             return false;
         }
 
-        // 使用中のペンとアクティブレイヤーのビットマップを取得して、描画プラグインへ入力とコンテキストを渡す。
-        let Some(pen) = self.document.active_pen_preset().cloned() else {
-            return false;
-        };
-        // アクティブレイヤーのビットマップと、全レイヤーを合成したビットマップの両方を渡す。
-        // 前者は通常の描画に、後者は塗り潰しの境界判定などに使うことを想定している。
-        let Some(active_layer_bitmap) = self.document.active_layer_bitmap() else {
-            return false;
-        };
-        let Some(composited_bitmap) = self.document.active_bitmap() else {
-            return false;
-        };
-        // ペンのサイズは、筆圧に応じて変化する場合があるため、入力イベントごとに解決する。
         let resolved_size = match &input {
             PaintInput::Stamp { pressure, .. } | PaintInput::StrokeSegment { pressure, .. } => {
                 self.document.resolved_paint_size_with_pressure(*pressure)
@@ -59,17 +41,10 @@ impl DesktopApp {
                 self.document.active_pen_size.max(1)
             }
         };
-        let plugin_id = pen.plugin_id.clone();
-
-        let context = PaintPluginContext {
-            tool: self.document.active_tool,
-            color: self.document.active_color,
-            pen: &pen,
-            resolved_size,
-            active_layer_bitmap,
-            composited_bitmap,
-            active_layer_is_background: self.document.active_layer_is_background().unwrap_or(false),
+        let Some(context) = self.document.resolve_paint_plugin_context(resolved_size) else {
+            return false;
         };
+        let plugin_id = context.drawing_plugin_id.to_string();
         let edits = self
             .paint_plugins
             .get(&plugin_id)
@@ -129,6 +104,7 @@ impl DesktopApp {
             Ok(project) => {
                 self.project_path = path;
                 self.document = project.document;
+                let _ = Self::reload_tool_catalog_into_document(&mut self.document);
                 let _ = self.reload_pen_presets();
                 self.ui_shell
                     .set_workspace_layout(project.ui_state.workspace_layout);

@@ -11,7 +11,7 @@ pub use config::{
     INPUT_SAMPLING_TARGET_HZ, PANEL_FRAME_BACKGROUND, PANEL_FRAME_BORDER,
     PERFORMANCE_SNAPSHOT_WINDOW, SIDEBAR_BACKGROUND, SIDEBAR_WIDTH, TEXT_PRIMARY, TEXT_SECONDARY,
     WINDOW_HEIGHT, WINDOW_PADDING, WINDOW_TITLE, WINDOW_WIDTH, default_panel_dir, default_pen_dir,
-    parse_document_size,
+    default_tool_dir, parse_document_size,
 };
 pub use dialogs::{
     DesktopDialogs, NativeDesktopDialogs, normalize_project_path, normalize_workspace_preset_path,

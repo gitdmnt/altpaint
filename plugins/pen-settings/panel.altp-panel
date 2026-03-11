@@ -15,28 +15,58 @@ runtime {
 
 state {
   pen_name: string = ""
+  active_tool_id: string = "builtin.pen"
+  active_tool_label: string = "Pen"
+  provider_plugin_id: string = "plugins/default-pens-plugin"
+  drawing_plugin_id: string = "builtin.bitmap"
   size: int = 1
   size_slider: int = 0
   size_input: string = "1"
-  tool_label: string = "Pen / Eraser Width"
+  tool_label: string = "Pen Width"
   pressure_enabled: bool = true
   antialias: bool = true
   stabilization: int = 0
+  supports_size: bool = true
+  supports_pressure: bool = true
+  supports_antialias: bool = true
+  supports_stabilization: bool = true
+  has_settings: bool = true
 }
 
 view {
   <column gap=8 padding=8>
-    <section title="太さ">
+    <section title="現在のツール">
+      <text>{state.active_tool_label}</text>
+      <text tone="muted">ID: {state.active_tool_id}</text>
+      <text tone="muted">管轄 plugin: {state.provider_plugin_id}</text>
+      <text tone="muted">描画 plugin: {state.drawing_plugin_id}</text>
+    </section>
+    <when test={state.supports_size}>
+      <section title="太さ">
       <text>{state.pen_name}</text>
       <text>{state.tool_label}: {state.size}px</text>
       <slider id="pen.size" label="サイズ" min={0} max={1000} value={state.size_slider} fill="#90CAF9" on:change="set_pen_size"></slider>
       <input id="pen.size.input" label="数値入力" value={state.size_input} bind="size_input" mode="numeric" placeholder="1" on:change="set_pen_size_text" />
-    </section>
-    <section title="描画特性">
-      <button id="pen.pressure" on:click="toggle_pressure" active={state.pressure_enabled}>筆圧</button>
-      <button id="pen.antialias" on:click="toggle_antialias" active={state.antialias}>なめらか</button>
-      <text>手ぶれ補正: {state.stabilization}%</text>
-      <slider id="pen.stabilization" label="手ぶれ補正" min={0} max={100} value={state.stabilization} fill="#A5D6A7" on:change="set_stabilization"></slider>
-    </section>
+      </section>
+    </when>
+    <when test={state.supports_pressure || state.supports_antialias || state.supports_stabilization}>
+      <section title="描画特性">
+        <when test={state.supports_pressure}>
+          <button id="pen.pressure" on:click="toggle_pressure" active={state.pressure_enabled}>筆圧</button>
+        </when>
+        <when test={state.supports_antialias}>
+          <button id="pen.antialias" on:click="toggle_antialias" active={state.antialias}>なめらか</button>
+        </when>
+        <when test={state.supports_stabilization}>
+          <text>手ぶれ補正: {state.stabilization}%</text>
+          <slider id="pen.stabilization" label="手ぶれ補正" min={0} max={100} value={state.stabilization} fill="#A5D6A7" on:change="set_stabilization"></slider>
+        </when>
+      </section>
+    </when>
+    <when test={state.has_settings == false}>
+      <section title="設定">
+        <text tone="muted">このツールに設定可能項目はありません。</text>
+      </section>
+    </when>
   </column>
 }

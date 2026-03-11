@@ -2,7 +2,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::{
-    CanvasBitmap, CanvasDirtyRect, ColorRgba8, PanelLocalPoint, PenPreset, ToolKind,
+    CanvasBitmap, CanvasDirtyRect, ColorRgba8, PanelLocalPoint, PenPreset,
+    ToolSettingDefinition, ToolKind,
 };
 
 /// 描画プラグインが受け取る最小入力イベント。
@@ -28,12 +29,18 @@ pub enum PaintInput {
 /// 描画プラグインへホストが渡す読み取り専用コンテキスト。
 pub struct PaintPluginContext<'a> {
     pub tool: ToolKind,
+    pub tool_id: &'a str,
+    pub provider_plugin_id: &'a str,
+    pub drawing_plugin_id: &'a str,
+    pub tool_settings: &'a [ToolSettingDefinition],
     pub color: ColorRgba8,
     pub pen: &'a PenPreset,
     pub resolved_size: u32,
     pub active_layer_bitmap: &'a CanvasBitmap,
     pub composited_bitmap: &'a CanvasBitmap,
     pub active_layer_is_background: bool,
+    pub active_layer_index: usize,
+    pub layer_count: usize,
 }
 
 /// `bitmap_a` と既存 `bitmap_b` から結果ビットマップを作る合成関数。

@@ -1,0 +1,8 @@
+{
+  "id": "builtin.bucket",
+  "name": "Bucket",
+  "kind": "Bucket",
+  "provider_plugin_id": "plugins/default-fill-tools-plugin",
+  "drawing_plugin_id": "builtin.bitmap",
+  "settings": []
+}

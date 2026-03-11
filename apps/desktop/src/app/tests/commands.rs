@@ -45,6 +45,18 @@ fn execute_command_updates_document_tool() {
     assert_eq!(app.document.active_tool, ToolKind::Eraser);
 }
 
+#[test]
+fn execute_command_select_tool_updates_document_tool_id() {
+    let mut app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+
+    let _ = app.execute_command(Command::SelectTool {
+        tool_id: "builtin.eraser".to_string(),
+    });
+
+    assert_eq!(app.document.active_tool, ToolKind::Eraser);
+    assert_eq!(app.document.active_tool_id, "builtin.eraser");
+}
+
 /// 色変更コマンドがドキュメントへ反映されることを確認する。
 #[test]
 fn execute_command_updates_document_color() {
@@ -235,6 +247,18 @@ fn reload_pen_presets_reads_default_pen_directory() {
 
     assert!(app.execute_command(Command::ReloadPenPresets));
     assert!(app.document.pen_presets.len() >= 3);
+}
+
+#[test]
+fn startup_loads_tool_catalog_from_default_tool_directory() {
+    let app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+
+    assert!(app.document.tool_catalog.len() >= 5);
+    assert!(app
+        .document
+        .tool_catalog
+        .iter()
+        .any(|tool| tool.id == "builtin.pen" && tool.provider_plugin_id == "plugins/default-pens-plugin"));
 }
 
 #[test]

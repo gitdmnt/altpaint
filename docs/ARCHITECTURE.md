@@ -173,6 +173,12 @@
 - CPU 側 background / UI layer 合成
 - canvas input routing
 - `DesktopApp` による副作用統合
+- `tools/` / `pens/` / `plugins/` の起動時ロード
+
+補足:
+
+- ペン入力の種類、筆圧、ウィンドウ座標の取得は `apps/desktop` が担う
+- window 座標から canvas 座標への変換も `apps/desktop` が `render` の view 変換 API を使って解決する
 
 重要事項:
 
@@ -213,13 +219,25 @@
 1. OS input
 2. `apps/desktop::runtime`
 3. `apps/desktop::app::input`
-4. `canvas_bridge`
-5. `Command`
-6. `Document::apply_command(...)`
-7. dirty 集約
-8. frame/presenter 更新
+4. `canvas_bridge` による window -> canvas 変換
+5. `app-core::Document` が active panel 内判定と layer/context 解決を行う
+6. `app-core` が active tool の provider plugin id / drawing plugin id / settings を引く
+7. desktop host が drawing plugin を呼び、bitmap edit を受け取る
+8. `Document::apply_bitmap_edits_to_active_layer(...)`
+9. `render` / presenter 更新
 
 この経路の目的は、入力解釈とドメイン更新を分けることにある。
+
+### 1.1 ツールカタログ境界
+
+描画ツールは `tools/` 配下の定義ファイルからロードする。
+
+- 各ツール定義は `id`, `name`, `kind` に加えて、**管轄 plugin id** と **描画計算 plugin id** を持つ
+- 通常ツールは `plugins/default-pens-plugin`, `plugins/default-erasers-plugin` などを provider plugin として持つ
+- 特別な描画処理を持つツールは、`tools/` 側の定義に加えて `plugins/` 側へ専用 drawing plugin を置く
+- drawing plugin は、ホストへ公開する設定項目定義と、入力/レイヤー/合成済み bitmap を受けて更新用 bitmap を返す責務を持つ
+
+現在の最小実装では、drawing plugin が公開する設定項目定義を `ToolDefinition.settings` として `Document` 内へキャッシュし、`tool-palette` と `pen-settings` が host snapshot 経由で参照する。
 
 ### 2. パネルイベント境界
 

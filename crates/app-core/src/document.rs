@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::Command;
+use crate::{Command, PaintPluginContext, PanelLocalPoint};
 
 mod bitmap;
 mod layer_ops;
@@ -46,6 +46,72 @@ pub enum ToolKind {
     Bucket,
     LassoBucket,
     PanelRect,
+}
+
+/// ツール設定 UI の入力種別。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ToolSettingControl {
+    Slider,
+    Checkbox,
+}
+
+/// 描画ツールが公開する設定項目定義。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolSettingDefinition {
+    pub key: String,
+    pub label: String,
+    pub control: ToolSettingControl,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<i32>,
+}
+
+impl ToolSettingDefinition {
+    pub fn slider(
+        key: impl Into<String>,
+        label: impl Into<String>,
+        min: i32,
+        max: i32,
+    ) -> Self {
+        Self {
+            key: key.into(),
+            label: label.into(),
+            control: ToolSettingControl::Slider,
+            min: Some(min),
+            max: Some(max),
+        }
+    }
+
+    pub fn checkbox(key: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            label: label.into(),
+            control: ToolSettingControl::Checkbox,
+            min: None,
+            max: None,
+        }
+    }
+}
+
+/// `tools/` 配下からロードされる描画ツール定義。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolDefinition {
+    pub id: String,
+    pub name: String,
+    pub kind: ToolKind,
+    pub provider_plugin_id: String,
+    #[serde(default = "default_bitmap_plugin_id")]
+    pub drawing_plugin_id: String,
+    #[serde(default)]
+    pub settings: Vec<ToolSettingDefinition>,
+}
+
+impl ToolDefinition {
+    pub fn supports_setting(&self, key: &str) -> bool {
+        self.settings.iter().any(|setting| setting.key == key)
+    }
 }
 
 pub const DEFAULT_DOCUMENT_WIDTH: usize = 2894;
@@ -162,6 +228,10 @@ fn default_pen_plugin_id() -> String {
     "builtin.bitmap".to_string()
 }
 
+fn default_bitmap_plugin_id() -> String {
+    "builtin.bitmap".to_string()
+}
+
 fn default_pen_pressure_enabled() -> bool {
     true
 }
@@ -192,6 +262,67 @@ fn default_active_pen_preset_id() -> String {
 
 fn default_active_page_index() -> usize {
     0
+}
+
+fn default_tool_catalog() -> Vec<ToolDefinition> {
+    vec![
+        ToolDefinition {
+            id: "builtin.pen".to_string(),
+            name: "Pen".to_string(),
+            kind: ToolKind::Pen,
+            provider_plugin_id: "plugins/default-pens-plugin".to_string(),
+            drawing_plugin_id: default_bitmap_plugin_id(),
+            settings: vec![
+                ToolSettingDefinition::slider("size", "太さ", 1, 10_000),
+                ToolSettingDefinition::checkbox("pressure_enabled", "筆圧"),
+                ToolSettingDefinition::checkbox("antialias", "なめらか"),
+                ToolSettingDefinition::slider("stabilization", "手ぶれ補正", 0, 100),
+            ],
+        },
+        ToolDefinition {
+            id: "builtin.eraser".to_string(),
+            name: "Eraser".to_string(),
+            kind: ToolKind::Eraser,
+            provider_plugin_id: "plugins/default-erasers-plugin".to_string(),
+            drawing_plugin_id: default_bitmap_plugin_id(),
+            settings: vec![
+                ToolSettingDefinition::slider("size", "太さ", 1, 10_000),
+                ToolSettingDefinition::checkbox("antialias", "なめらか"),
+                ToolSettingDefinition::slider("stabilization", "手ぶれ補正", 0, 100),
+            ],
+        },
+        ToolDefinition {
+            id: "builtin.bucket".to_string(),
+            name: "Bucket".to_string(),
+            kind: ToolKind::Bucket,
+            provider_plugin_id: "plugins/default-fill-tools-plugin".to_string(),
+            drawing_plugin_id: default_bitmap_plugin_id(),
+            settings: Vec::new(),
+        },
+        ToolDefinition {
+            id: "builtin.lasso-bucket".to_string(),
+            name: "Lasso Bucket".to_string(),
+            kind: ToolKind::LassoBucket,
+            provider_plugin_id: "plugins/default-fill-tools-plugin".to_string(),
+            drawing_plugin_id: default_bitmap_plugin_id(),
+            settings: Vec::new(),
+        },
+        ToolDefinition {
+            id: "builtin.panel-rect".to_string(),
+            name: "Panel Rect".to_string(),
+            kind: ToolKind::PanelRect,
+            provider_plugin_id: "plugins/default-panel-tools-plugin".to_string(),
+            drawing_plugin_id: default_bitmap_plugin_id(),
+            settings: Vec::new(),
+        },
+    ]
+}
+
+fn default_active_tool_id() -> String {
+    default_tool_catalog()
+        .first()
+        .map(|tool| tool.id.clone())
+        .unwrap_or_else(|| "builtin.pen".to_string())
 }
 
 fn default_active_panel_index() -> usize {
@@ -231,9 +362,15 @@ pub struct Document {
     pub work: Work,
     /// 現在の最小ツール状態。
     pub active_tool: ToolKind,
+    /// 現在アクティブな登録ツール ID。
+    #[serde(default = "default_active_tool_id")]
+    pub active_tool_id: String,
     /// 現在のブラシ色。
     #[serde(default)]
     pub active_color: ColorRgba8,
+    /// 起動時に `tools/` から読み込まれるツールカタログ。
+    #[serde(default = "default_tool_catalog")]
+    pub tool_catalog: Vec<ToolDefinition>,
     /// 現在ロード済みのペンプリセット列。
     #[serde(default = "default_pen_presets")]
     pub pen_presets: Vec<PenPreset>,
@@ -598,6 +735,11 @@ impl Document {
     pub fn new(width: usize, height: usize) -> Self {
         let width = width.max(1);
         let height = height.max(1);
+        let tool_catalog = default_tool_catalog();
+        let active_tool_id = tool_catalog
+            .first()
+            .map(|tool| tool.id.clone())
+            .unwrap_or_else(default_active_tool_id);
         let pen_presets = default_pen_presets();
         let active_pen_preset_id = pen_presets
             .first()
@@ -619,7 +761,9 @@ impl Document {
                 ..Work::default()
             },
             active_tool: ToolKind::default(),
+            active_tool_id,
             active_color: ColorRgba8::default(),
+            tool_catalog,
             pen_presets,
             active_pen_preset_id,
             active_pen_size,
@@ -685,6 +829,86 @@ impl Document {
     pub fn active_layer_is_background(&self) -> Option<bool> {
         let panel = self.active_panel()?;
         Some(panel.active_layer_index == 0)
+    }
+
+    pub fn active_panel_contains_canvas_point(&self, point: crate::CanvasPoint) -> bool {
+        self.active_panel_bounds()
+            .is_some_and(|bounds| bounds.contains_canvas_point(point))
+    }
+
+    pub fn active_panel_contains_local_point(&self, point: PanelLocalPoint) -> bool {
+        self.active_panel_bounds()
+            .and_then(|bounds| bounds.panel_local_to_canvas(point))
+            .is_some()
+    }
+
+    pub fn active_panel_canvas_to_local(
+        &self,
+        point: crate::CanvasPoint,
+    ) -> Option<PanelLocalPoint> {
+        self.active_panel_bounds()
+            .and_then(|bounds| bounds.canvas_to_panel_local(point))
+    }
+
+    pub fn active_panel_local_to_canvas(
+        &self,
+        point: PanelLocalPoint,
+    ) -> Option<crate::CanvasPoint> {
+        self.active_panel_bounds()
+            .and_then(|bounds| bounds.panel_local_to_canvas(point))
+    }
+
+    pub fn tool_definition(&self, tool_id: &str) -> Option<&ToolDefinition> {
+        self.tool_catalog.iter().find(|tool| tool.id == tool_id)
+    }
+
+    pub fn active_tool_definition(&self) -> Option<&ToolDefinition> {
+        self.tool_definition(&self.active_tool_id)
+            .or_else(|| self.tool_catalog.iter().find(|tool| tool.kind == self.active_tool))
+            .or_else(|| self.tool_catalog.first())
+    }
+
+    pub fn active_tool_provider_plugin_id(&self) -> Option<&str> {
+        self.active_tool_definition()
+            .map(|tool| tool.provider_plugin_id.as_str())
+    }
+
+    pub fn active_tool_drawing_plugin_id(&self) -> Option<&str> {
+        self.active_tool_definition()
+            .map(|tool| tool.drawing_plugin_id.as_str())
+    }
+
+    pub fn active_tool_settings(&self) -> &[ToolSettingDefinition] {
+        self.active_tool_definition()
+            .map(|tool| tool.settings.as_slice())
+            .unwrap_or(&[])
+    }
+
+    pub fn resolve_paint_plugin_context(
+        &self,
+        resolved_size: u32,
+    ) -> Option<PaintPluginContext<'_>> {
+        let active_tool = self.active_tool_definition()?;
+        let active_pen = self.active_pen_preset()?;
+        let active_panel = self.active_panel()?;
+        let active_layer_bitmap = self.active_layer_bitmap()?;
+        let composited_bitmap = self.active_bitmap()?;
+
+        Some(PaintPluginContext {
+            tool: active_tool.kind,
+            tool_id: active_tool.id.as_str(),
+            provider_plugin_id: active_tool.provider_plugin_id.as_str(),
+            drawing_plugin_id: active_tool.drawing_plugin_id.as_str(),
+            tool_settings: active_tool.settings.as_slice(),
+            color: self.active_color,
+            pen: active_pen,
+            resolved_size,
+            active_layer_bitmap,
+            composited_bitmap,
+            active_layer_is_background: self.active_layer_is_background().unwrap_or(false),
+            active_layer_index: active_panel.active_layer_index,
+            layer_count: active_panel.layers.len(),
+        })
     }
 
     pub fn active_panel_bounds(&self) -> Option<PanelBounds> {
@@ -787,6 +1011,18 @@ impl Document {
 
     pub fn set_active_tool(&mut self, tool: ToolKind) {
         self.active_tool = tool;
+        if let Some(tool_definition) = self.tool_catalog.iter().find(|entry| entry.kind == tool) {
+            self.active_tool_id = tool_definition.id.clone();
+        }
+    }
+
+    pub fn set_active_tool_by_id(&mut self, tool_id: &str) -> bool {
+        let Some(tool_definition) = self.tool_definition(tool_id).cloned() else {
+            return false;
+        };
+        self.active_tool = tool_definition.kind;
+        self.active_tool_id = tool_definition.id;
+        true
     }
 
     pub fn set_active_pen_size(&mut self, size: u32) {
@@ -826,6 +1062,15 @@ impl Document {
             pen_presets
         };
         self.ensure_pen_state();
+    }
+
+    pub fn replace_tool_catalog(&mut self, tool_catalog: Vec<ToolDefinition>) {
+        self.tool_catalog = if tool_catalog.is_empty() {
+            default_tool_catalog()
+        } else {
+            tool_catalog
+        };
+        self.ensure_tool_state();
     }
 
     pub fn merge_pen_presets(&mut self, pen_presets: Vec<PenPreset>) -> usize {
@@ -883,6 +1128,7 @@ impl Document {
     }
 
     pub fn normalize_phase9_state(&mut self) {
+        self.ensure_tool_state();
         if self.work.pages.is_empty() {
             self.work.pages.push(Page::default());
         }
@@ -911,6 +1157,10 @@ impl Document {
     pub fn apply_command(&mut self, command: &Command) -> Option<crate::CanvasDirtyRect> {
         match command {
             Command::Noop => None,
+            Command::SelectTool { tool_id } => {
+                let _ = self.set_active_tool_by_id(tool_id);
+                None
+            }
             Command::SetActiveTool { tool } => {
                 self.set_active_tool(*tool);
                 None

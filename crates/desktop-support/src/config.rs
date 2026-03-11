@@ -65,6 +65,14 @@ pub fn default_pen_dir() -> PathBuf {
         .join("pens")
 }
 
+/// 既定の描画ツール定義ディレクトリを返す。
+pub fn default_tool_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("tools")
+}
+
 /// 文字列からドキュメント寸法を解釈する。
 pub fn parse_document_size(input: &str) -> Option<(usize, usize)> {
     let normalized = input.replace(['×', ',', ';'], "x");

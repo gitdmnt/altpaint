@@ -3,6 +3,7 @@ mod pen_format;
 mod pen_presets;
 mod project_file;
 mod project_sqlite;
+mod tool_catalog;
 
 pub use pen_exchange::{
     ImportedPenSet, PenExchangeError, PenFileKind, PenImportIssue, PenImportIssueSeverity,
@@ -24,3 +25,4 @@ pub use project_sqlite::{
     DEFAULT_PROJECT_CHUNK_SIZE, PersistedPanelSnapshot, PersistedPanelSnapshotSummary,
     ProjectIndex, ProjectPageSummary, ProjectPanelSummary, ProjectSaveMode, ProjectSaveOptions,
 };
+pub use tool_catalog::load_tool_directory;

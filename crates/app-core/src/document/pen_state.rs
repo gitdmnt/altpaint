@@ -42,6 +42,34 @@ impl Document {
         }
     }
 
+    pub(super) fn ensure_tool_state(&mut self) {
+        if self.tool_catalog.is_empty() {
+            self.tool_catalog = super::default_tool_catalog();
+        }
+
+        if let Some(tool_definition) = self
+            .tool_catalog
+            .iter()
+            .find(|tool| tool.id == self.active_tool_id)
+            .cloned()
+        {
+            self.active_tool = tool_definition.kind;
+            self.active_tool_id = tool_definition.id;
+            return;
+        }
+
+        if let Some(tool_definition) = self
+            .tool_catalog
+            .iter()
+            .find(|tool| tool.kind == self.active_tool)
+            .cloned()
+            .or_else(|| self.tool_catalog.first().cloned())
+        {
+            self.active_tool = tool_definition.kind;
+            self.active_tool_id = tool_definition.id;
+        }
+    }
+
     /// 現在ツールに応じた実効描画サイズを返す。
     #[allow(dead_code)]
     pub(super) fn active_draw_size(&self) -> u32 {

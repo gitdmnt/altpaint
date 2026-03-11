@@ -1,0 +1,8 @@
+{
+  "id": "builtin.lasso-bucket",
+  "name": "Lasso Bucket",
+  "kind": "LassoBucket",
+  "provider_plugin_id": "plugins/default-fill-tools-plugin",
+  "drawing_plugin_id": "builtin.bitmap",
+  "settings": []
+}

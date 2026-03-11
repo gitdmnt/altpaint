@@ -6,6 +6,10 @@ use panel_sdk::{
 };
 
 const PEN_NAME: state::StringKey = state::string("pen_name");
+const ACTIVE_TOOL_ID: state::StringKey = state::string("active_tool_id");
+const ACTIVE_TOOL_LABEL: state::StringKey = state::string("active_tool_label");
+const PROVIDER_PLUGIN_ID: state::StringKey = state::string("provider_plugin_id");
+const DRAWING_PLUGIN_ID: state::StringKey = state::string("drawing_plugin_id");
 const PEN_SIZE: state::IntKey = state::int("size");
 const PEN_SIZE_SLIDER: state::IntKey = state::int("size_slider");
 const PEN_SIZE_INPUT: state::StringKey = state::string("size_input");
@@ -13,6 +17,11 @@ const TOOL_LABEL: state::StringKey = state::string("tool_label");
 const PEN_PRESSURE: state::BoolKey = state::bool("pressure_enabled");
 const PEN_ANTIALIAS: state::BoolKey = state::bool("antialias");
 const PEN_STABILIZATION: state::IntKey = state::int("stabilization");
+const SUPPORTS_SIZE: state::BoolKey = state::bool("supports_size");
+const SUPPORTS_PRESSURE: state::BoolKey = state::bool("supports_pressure");
+const SUPPORTS_ANTIALIAS: state::BoolKey = state::bool("supports_antialias");
+const SUPPORTS_STABILIZATION: state::BoolKey = state::bool("supports_stabilization");
+const HAS_SETTINGS: state::BoolKey = state::bool("has_settings");
 
 const LOG_SIZE_SLIDER_MAX: i32 = 1000;
 const MAX_TOOL_SIZE: f32 = 10000.0;
@@ -25,6 +34,10 @@ fn sync_host() {
     let active_tool = host::tool::active_name();
     let size = host::tool::pen_size().max(1);
     set_state_string(PEN_NAME, host::tool::pen_name());
+    set_state_string(ACTIVE_TOOL_ID, host::tool::active_id());
+    set_state_string(ACTIVE_TOOL_LABEL, host::tool::active_label());
+    set_state_string(PROVIDER_PLUGIN_ID, host::tool::active_provider_plugin_id());
+    set_state_string(DRAWING_PLUGIN_ID, host::tool::active_drawing_plugin_id());
     set_state_i32(PEN_SIZE, size);
     set_state_i32(PEN_SIZE_SLIDER, size_to_slider(size));
     set_state_string(PEN_SIZE_INPUT, size.to_string());
@@ -32,13 +45,27 @@ fn sync_host() {
         TOOL_LABEL,
         if active_tool.eq_ignore_ascii_case("eraser") {
             "Eraser Width"
-        } else {
+        } else if active_tool.eq_ignore_ascii_case("pen") {
             "Pen Width"
+        } else {
+            "Tool Size"
         },
     );
     set_state_bool(PEN_PRESSURE, host::tool::pen_pressure_enabled());
     set_state_bool(PEN_ANTIALIAS, host::tool::pen_antialias());
     set_state_i32(PEN_STABILIZATION, host::tool::pen_stabilization());
+    let supports_size = host::tool::supports_size();
+    let supports_pressure = host::tool::supports_pressure_enabled();
+    let supports_antialias = host::tool::supports_antialias();
+    let supports_stabilization = host::tool::supports_stabilization();
+    set_state_bool(SUPPORTS_SIZE, supports_size);
+    set_state_bool(SUPPORTS_PRESSURE, supports_pressure);
+    set_state_bool(SUPPORTS_ANTIALIAS, supports_antialias);
+    set_state_bool(SUPPORTS_STABILIZATION, supports_stabilization);
+    set_state_bool(
+        HAS_SETTINGS,
+        supports_size || supports_pressure || supports_antialias || supports_stabilization,
+    );
 }
 
 fn size_to_slider(size: i32) -> i32 {

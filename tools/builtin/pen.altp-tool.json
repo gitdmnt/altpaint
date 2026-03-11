@@ -1,0 +1,33 @@
+{
+  "id": "builtin.pen",
+  "name": "Pen",
+  "kind": "Pen",
+  "provider_plugin_id": "plugins/default-pens-plugin",
+  "drawing_plugin_id": "builtin.bitmap",
+  "settings": [
+    {
+      "key": "size",
+      "label": "太さ",
+      "control": "slider",
+      "min": 1,
+      "max": 10000
+    },
+    {
+      "key": "pressure_enabled",
+      "label": "筆圧",
+      "control": "checkbox"
+    },
+    {
+      "key": "antialias",
+      "label": "なめらか",
+      "control": "checkbox"
+    },
+    {
+      "key": "stabilization",
+      "label": "手ぶれ補正",
+      "control": "slider",
+      "min": 0,
+      "max": 100
+    }
+  ]
+}
