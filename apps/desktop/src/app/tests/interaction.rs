@@ -169,7 +169,7 @@ fn panel_scroll_requests_surface_offset_change() {
     let _ = app.prepare_present_frame(1280, 120, &mut profiler);
 
     assert!(!app.scroll_panel_surface(6));
-    assert_eq!(app.ui_shell.panel_scroll_offset(), 0);
+    assert_eq!(app.panel_presentation.panel_scroll_offset(), 0);
 }
 
 /// 色相環操作でドキュメント色が更新されることを確認する。
@@ -235,7 +235,7 @@ fn overlapping_panel_button_press_takes_priority_over_canvas_input() {
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
 
-    assert!(app.ui_shell.move_panel_to(
+    assert!(app.panel_presentation.move_panel_to(
         "builtin.tool-palette",
         layout.canvas_display_rect.x + 24,
         layout.canvas_display_rect.y + 24,
@@ -271,7 +271,7 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
 
-    assert!(app.ui_shell.move_panel_to(
+    assert!(app.panel_presentation.move_panel_to(
         "builtin.layers-panel",
         layout.canvas_display_rect.x + 32,
         layout.canvas_display_rect.y + 32,
@@ -282,7 +282,7 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
     let before_position = app
-        .ui_shell
+        .panel_presentation
         .workspace_layout()
         .panels
         .into_iter()
@@ -308,9 +308,12 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
     let _ = app.handle_pointer_released(drag.x, drag.y);
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
-    let after = app.ui_shell.panel_rect("builtin.layers-panel").expect("panel rect exists");
+    let after = app
+        .panel_presentation
+        .panel_rect("builtin.layers-panel")
+        .expect("panel rect exists");
     let after_position = app
-        .ui_shell
+        .panel_presentation
         .workspace_layout()
         .panels
         .into_iter()
@@ -389,7 +392,7 @@ fn panel_move_recomposes_without_rerasterizing_panel_content() {
     profiler.value_stats.clear();
     let layout = app.layout.clone().expect("layout exists");
 
-    assert!(app.ui_shell.move_panel_to(
+    assert!(app.panel_presentation.move_panel_to(
         "builtin.layers-panel",
         80,
         96,
@@ -423,11 +426,11 @@ fn workspace_manager_panel_can_be_moved() {
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
     let before = app
-        .ui_shell
+        .panel_presentation
         .panel_rect("builtin.workspace-layout")
         .expect("workspace panel rect exists");
 
-    assert!(app.ui_shell.move_panel_to(
+    assert!(app.panel_presentation.move_panel_to(
         "builtin.workspace-layout",
         before.x + 80,
         before.y + 24,
@@ -438,7 +441,7 @@ fn workspace_manager_panel_can_be_moved() {
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
 
     let after = app
-        .ui_shell
+        .panel_presentation
         .panel_rect("builtin.workspace-layout")
         .expect("workspace panel rect exists");
     assert_ne!(after, before);
@@ -452,7 +455,7 @@ fn panel_move_dirty_rect_covers_previous_and_current_overlay_bounds() {
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
 
-    assert!(app.ui_shell.move_panel_to(
+    assert!(app.panel_presentation.move_panel_to(
         "builtin.layers-panel",
         940,
         540,
@@ -463,7 +466,7 @@ fn panel_move_dirty_rect_covers_previous_and_current_overlay_bounds() {
 
     let update = app.prepare_present_frame(1280, 800, &mut profiler);
     let expected = app
-        .ui_shell
+        .panel_presentation
         .last_panel_surface_dirty_rect()
         .map(|dirty| crate::frame::Rect {
             x: dirty.x,
@@ -491,11 +494,11 @@ fn overlapping_panel_and_canvas_overlay_updates_union_dirty_rects() {
         .expect("hover dirty rect exists");
 
     let panel_rect = app
-        .ui_shell
+        .panel_presentation
         .panel_rect("builtin.layers-panel")
         .expect("panel rect exists");
     assert!(
-        app.ui_shell.move_panel_to(
+        app.panel_presentation.move_panel_to(
             "builtin.layers-panel",
             layout
                 .canvas_display_rect
@@ -515,7 +518,7 @@ fn overlapping_panel_and_canvas_overlay_updates_union_dirty_rects() {
 
     let update = app.prepare_present_frame(1280, 800, &mut profiler);
     let expected_panel_dirty = app
-        .ui_shell
+        .panel_presentation
         .last_panel_surface_dirty_rect()
         .map(|dirty| crate::frame::Rect {
             x: dirty.x,
@@ -712,7 +715,7 @@ fn profile_panel_drag_for_ten_seconds() {
     while started.elapsed() < duration {
         let layout = app.layout.clone().expect("layout exists");
         let (x, y) = positions[position_index % positions.len()];
-        let changed = app.ui_shell.move_panel_to(
+        let changed = app.panel_presentation.move_panel_to(
             "builtin.layers-panel",
             x,
             y,

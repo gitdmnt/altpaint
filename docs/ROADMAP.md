@@ -221,6 +221,7 @@
 - snapshot / branch
 - テキスト流し込み
 - 高度な tool plugin / child tool 構成
+- ペン pipeline 拡張: 将来的には rust-gpu を使ってパイプラインを生成する脱出ハッチを設け、物理シミュレーションのような描画も可能とする
 
 ### 完了条件
 

@@ -1,15 +1,14 @@
 [package]
-name = "ui-shell"
+name = "panel-runtime"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
 [dependencies]
-ab_glyph.workspace = true
 app-core = { path = "../app-core" }
-font8x8.workspace = true
-fontdb.workspace = true
-panel-runtime = { path = "../panel-runtime" }
+panel-dsl = { path = "../panel-dsl" }
+panel-schema = { path = "../panel-schema" }
 plugin-api = { path = "../plugin-api" }
-render = { path = "../render" }
+plugin-host = { path = "../plugin-host" }
+serde_json.workspace = true

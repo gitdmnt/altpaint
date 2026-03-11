@@ -15,8 +15,8 @@ fn panel_dispatch_keyboard_path_activates_save_action() {
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
 
     assert!(
-        app.ui_shell
-            .focus_panel_node("builtin.app-actions", "app.save")
+        app.panel_presentation
+            .focus_panel_node(&app.panel_runtime, "builtin.app-actions", "app.save")
     );
     assert_eq!(app.activate_focused_panel_control(), Some(Command::SaveProject));
 }

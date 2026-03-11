@@ -22,7 +22,7 @@ impl DesktopApp {
             .collect::<Vec<_>>()
             .join("|");
 
-        let mut configs = self.ui_shell.persistent_panel_configs();
+        let mut configs = self.panel_runtime.persistent_panel_configs();
         let entry = configs
             .entry("builtin.app-actions".to_string())
             .or_insert_with(|| Value::Object(Map::new()));
@@ -40,7 +40,8 @@ impl DesktopApp {
                     .unwrap_or_else(|| "2894x4093".to_string())
             ),
         );
-        self.ui_shell.set_persistent_panel_configs(configs);
+        self.panel_runtime.replace_persistent_panel_configs(configs);
+        self.panel_presentation.reconcile_runtime_panels(&self.panel_runtime);
     }
 
     pub(crate) fn refresh_workspace_presets(&mut self) {
@@ -60,7 +61,7 @@ impl DesktopApp {
             .map(|preset| preset.label.clone())
             .unwrap_or_else(|| selected_workspace.clone());
 
-        let mut configs = self.ui_shell.persistent_panel_configs();
+        let mut configs = self.panel_runtime.persistent_panel_configs();
         let entry = configs
             .entry(WORKSPACE_PRESET_PANEL_ID.to_string())
             .or_insert_with(|| Value::Object(Map::new()));
@@ -78,7 +79,8 @@ impl DesktopApp {
             json!(selected_workspace_label),
         );
         self.active_workspace_preset_id = selected_workspace;
-        self.ui_shell.set_persistent_panel_configs(configs);
+        self.panel_runtime.replace_persistent_panel_configs(configs);
+        self.panel_presentation.reconcile_runtime_panels(&self.panel_runtime);
     }
 
     pub(crate) fn reload_workspace_presets(&mut self) -> bool {

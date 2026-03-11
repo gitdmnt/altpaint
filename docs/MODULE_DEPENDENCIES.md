@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、**2026-03-10 時点の実装コードを正本として**、workspace 内のクレートと主要モジュールの依存関係を整理するための文書である。
+この文書は、**2026-03-12 時点の実装コードを正本として**、workspace 内のクレートと主要モジュールの依存関係を整理するための文書である。
 
 主に次を明確にする。
 
@@ -43,12 +43,13 @@
 - `panel-schema`
 - `panel-sdk`
 - `panel-macros`
+- `panel-runtime`
 - `apps/desktop`
 
 補足:
 
 - `crates/canvas` はフェーズ2で追加済みである。
-- フェーズ3で `crates/panel-runtime` を追加候補とする。
+- `crates/panel-runtime` はフェーズ3で追加済みである。
 - `panel-sdk` / `panel-macros` は将来 `plugin-sdk` 系へ寄せる方針とする。
 
 ### 組み込みパネル crate
@@ -73,6 +74,7 @@ graph TD
     desktop[apps/desktop] --> appcore[app-core]
   desktop --> canvas[canvas]
     desktop --> render[render]
+    desktop --> panelruntime[panel-runtime]
     desktop --> uishell[ui-shell]
     desktop --> pluginapi[plugin-api]
     desktop --> storage[storage]
@@ -87,11 +89,14 @@ graph TD
     dsupport --> appcore
     pluginapi --> appcore
 
-    uishell --> appcore
     uishell --> pluginapi
-    uishell --> pds[panel-dsl]
-    uishell --> pschema[panel-schema]
-    uishell --> phost[plugin-host]
+    uishell --> panelruntime
+
+    panelruntime --> appcore
+    panelruntime --> pluginapi
+    panelruntime --> pds[panel-dsl]
+    panelruntime --> pschema[panel-schema]
+    panelruntime --> phost[plugin-host]
 
     wpersist[workspace-persistence] --> appcore
 
@@ -114,8 +119,9 @@ graph TD
 - `canvas` / `render` / `storage` / `desktop-support` / `plugin-api` / `workspace-persistence` は `app-core` に依存する周辺クレートである
 - `canvas` は `render` の view mapping API を使うが、project I/O や panel runtime へは依存しない
 - `render` は floating panel rasterize のため `plugin-api` にも依存する
-- `ui-shell` が現在の**パネルランタイム統合点**であり、DSL 読み込み・Wasm 実行・Panel 描画をまとめて持っている
-- `plugin-host` は `ui-shell` の内側で使われ、`apps/desktop` は直接依存していない
+- `panel-runtime` が現在の panel runtime 統合点であり、DSL 読み込み・Wasm 実行・host sync を持つ
+- `ui-shell` は `panel-runtime` に依存する presentation crate になった
+- `plugin-host` は `panel-runtime` の内側で使われ、`apps/desktop` は直接依存していない
 - `panel-sdk` は plugin author 向け表面 API であり、macro を含む唯一の作者向け入口である
 
 ## 将来の配置判断用メモ
@@ -463,8 +469,8 @@ project file と session file は役割が異なる。
 
 1. `main.rs` が `DesktopRuntime::run(...)` を呼ぶ
 2. `DesktopRuntime` が `DesktopApp::new(...)` を構築する
-3. `apps/desktop/src/app/bootstrap.rs` が session / project / workspace preset を解決し、`UiShell` と `Document` の初期状態を組み立てる
-4. `UiShell` が `plugins/` 以下の `.altp-panel` を再帰探索してロードする
+3. `apps/desktop/src/app/bootstrap.rs` が session / project / workspace preset を解決し、`PanelRuntime` / `PanelPresentation` と `Document` の初期状態を組み立てる
+4. `PanelRuntime` が `plugins/` 以下の `.altp-panel` を再帰探索してロードする
 5. 各 panel について `DslPanelPlugin` が Wasm runtime を初期化する
 6. `DesktopRuntime` が `winit` window と `wgpu` presenter を用意する
 
@@ -484,8 +490,8 @@ project file と session file は役割が異なる。
 
 1. pointer / keyboard event が `DesktopApp` に届く
 2. `apps/desktop/src/app/panel_dispatch.rs` が panel hit-test / drag / host action 適用を中継する
-3. `UiShell` が hit-test / focus / text input 編集を行う
-4. 対象 panel が DSL/Wasm panel なら `DslPanelPlugin::handle_event(...)` が呼ばれる
+3. `PanelPresentation` が hit-test / focus / text input 編集を行う
+4. 対象 panel が runtime へ forward されると `DslPanelPlugin::handle_event(...)` が呼ばれる
 5. 必要なら `plugin-host` を通じて Wasm handler を実行する
 6. `StatePatch` を panel local state に適用する
 7. `CommandDescriptor` を `HostAction::DispatchCommand(...)` 等へ変換する
@@ -496,7 +502,7 @@ project file と session file は役割が異なる。
 1. `apps/desktop/src/app/command_router.rs` が保存/読込 command を受ける
 2. `apps/desktop/src/app/background_tasks.rs` が project save task を起動または回収する
 3. project 保存は `storage` へ委譲する
-4. workspace layout / plugin config は `UiShell` から取り出して一緒に保存する
+4. workspace layout は `PanelPresentation`、plugin config は `PanelRuntime` から取り出して一緒に保存する
 5. session 保存は `apps/desktop/src/app/io_state.rs` 経由で `desktop-support` へ委譲する
 
 ## 現在の境界で重要なこと
@@ -509,18 +515,14 @@ project file と session file は役割が異なる。
 - UI や GPU の型を `app-core` に入れない
 - 保存形式と panel runtime は `app-core` の外側に置く
 
-### `ui-shell` は現状かなり多機能
+### `panel-runtime` と `ui-shell` の現在境界
 
-現実のコードでは、`ui-shell` は以下を同時に持っている。
+現実のコードでは、Phase 3 後の責務は次のように分かれている。
 
-- panel registry
-- panel layout / hit-test / software render
-- DSL evaluation
-- Wasm runtime bridge
-- focus / text input / config persistence
-- runtime / presentation の二軸同居
+- `panel-runtime`: panel registry、DSL evaluation、Wasm runtime bridge、host sync、config persistence
+- `ui-shell`: panel layout / hit-test / software render、focus / text input
 
-そのため、現在の `ui-shell` は「単なる UI shell」より広く、**panel runtime 統合クレート**として読む方が実態に近い。
+そのため、現在は `panel-runtime` を runtime 側の正本、`ui-shell` を presentation 側の正本として読むのが実態に近い。
 
 ### `render` はまだ薄い
 

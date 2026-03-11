@@ -1,8 +1,9 @@
 //! `frame` モジュールの合成・座標変換テストをまとめる。
 
 use app_core::{CanvasDirtyRect, CanvasPoint, CanvasViewTransform, PanelSurfacePoint, WindowPoint};
+use panel_runtime::PanelRuntime;
 use render::RenderFrame;
-use ui_shell::UiShell;
+use ui_shell::PanelPresentation;
 
 use super::*;
 
@@ -67,8 +68,9 @@ fn panel_surface_fills_panel_host_rect() {
 #[test]
 fn compose_desktop_frame_writes_panel_and_canvas_regions() {
     let layout = DesktopLayout::new(640, 480, 64, 64);
-    let mut shell = UiShell::new();
-    let panel_surface = shell.render_panel_surface(264, 800);
+    let runtime = PanelRuntime::new();
+    let mut presentation = PanelPresentation::new();
+    let panel_surface = presentation.render_panel_surface(&runtime, 264, 800);
     let frame = compose_desktop_frame(
         640,
         480,
@@ -186,8 +188,9 @@ fn brush_preview_rect_expands_with_larger_brush_size() {
 #[test]
 fn overlay_frame_draws_panel_navigator_when_multiple_panels_exist() {
     let layout = DesktopLayout::new(640, 480, 64, 64);
-    let mut shell = UiShell::new();
-    let panel_surface = shell.render_panel_surface(640, 480);
+    let runtime = PanelRuntime::new();
+    let mut presentation = PanelPresentation::new();
+    let panel_surface = presentation.render_panel_surface(&runtime, 640, 480);
     let overlay = compose_overlay_frame(
         640,
         480,

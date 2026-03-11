@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、2026-03-11 時点の `altpaint` が**コード上で実際にどう分割され、どこに責務が集中しているか**を整理するための現況文書である。
+この文書は、2026-03-12 時点の `altpaint` が**コード上で実際にどう分割され、どこに責務が集中しているか**を整理するための現況文書である。
 
 この文書は理想図ではない。現状の事実をまとめる。
 
@@ -18,8 +18,10 @@
    - desktop host 全体の状態遷移と副作用の統合点
 2. `app-core::Document`
    - ドメイン状態と編集コマンドの中心
-3. `ui-shell::UiShell`
-   - panel runtime と panel presentation の統合点
+3. `panel-runtime::PanelRuntime`
+   - panel discovery / DSL-Wasm bridge / host snapshot sync / panel config の中心
+4. `ui-shell::PanelPresentation`
+   - panel workspace layout / focus / hit-test / surface render の中心
 
 このため、crate は分かれているが、実際の責務はまだ太い単位に集中している。
 
@@ -36,7 +38,7 @@
 - canvas 入力と panel 入力の振り分け
 - project / session / workspace preset / tools / pens / panels の起動時読込
 - base / canvas / overlay の三層提示
-- `canvas` runtime と `UiShell` の orchestration
+- `canvas` runtime、`PanelRuntime`、`PanelPresentation` の orchestration
 
 主なモジュール:
 
@@ -140,9 +142,9 @@
 - `render` は育っているが、最終提示戦略や desktop 固有フレーム合成はまだ `apps/desktop` に強く残る。
 - 名前の期待ほど「描画のすべて」を持っているわけではない。
 
-### 4. `crates/ui-shell`
+### 4. `crates/panel-runtime`
 
-現在の panel runtime 統合層であり、次を担う。
+現在の panel runtime 層であり、次を担う。
 
 - panel registry
 - `.altp-panel` の再帰読込
@@ -150,15 +152,31 @@
 - Wasm panel runtime の呼び出し
 - host snapshot 同期
 - panel local state / persistent config 管理
-- workspace layout 管理
-- focus / scroll / text input
-- panel surface の構築
-- panel event 解釈
+- runtime 側 panel tree cache
 
 主なモジュール:
 
 - `src/lib.rs`
-- `src/dsl.rs`
+- `src/registry.rs`
+- `src/dsl_loader.rs`
+- `src/dsl_panel.rs`
+- `src/host_sync.rs`
+- `src/config.rs`
+
+### 5. `crates/ui-shell`
+
+現在の panel presentation 層であり、次を担う。
+
+- workspace layout 管理
+- focus / scroll / text input
+- panel surface の構築
+- panel hit-test
+- workspace manager tree の付加
+- panel event の presentation 側解釈
+
+主なモジュール:
+
+- `src/lib.rs`
 - `src/presentation.rs`
 - `src/surface_render.rs`
 - `src/workspace.rs`
@@ -167,8 +185,8 @@
 
 補足:
 
-- 名前は `ui-shell` だが、実態は panel runtime と panel presentation の両方を持つ統合層である。
-- ここが現在もっとも責務が集中している境界の一つである。
+- `ui-shell` は Phase 3 で panel runtime を手放し、presentation 中心の crate になった。
+- `apps/desktop` は `PanelRuntime` と `PanelPresentation` を明示的に所有する。
 
 ### 5. `crates/plugin-api`
 
@@ -304,8 +322,8 @@ workspace member として存在するもの:
 | `app-core`      | `crates/app-core`                          | `crates/app-core`      | `Document` に tool / pen state が残る |
 | `render`        | `crates/render`                            | `crates/render`        | desktop 固有 compose がまだ外に残る   |
 | `canvas`        | `crates/canvas`                            | `crates/canvas`        | runtime / gesture / bitmap op を集約  |
-| `ui-shell`      | `crates/ui-shell`                          | `crates/ui-shell`      | runtime と presentation が同居中      |
-| `panel-runtime` | `crates/ui-shell` 内部に内包               | `crates/panel-runtime` | フェーズ3で切り出し候補               |
+| `ui-shell`      | `crates/ui-shell`                          | `crates/ui-shell`      | presentation 中心へ整理済み           |
+| `panel-runtime` | `crates/panel-runtime`                     | `crates/panel-runtime` | Phase 3 で新設済み                    |
 | `plugin-host`   | `crates/plugin-host`                       | `crates/plugin-host`   | panel Wasm runtime 専用               |
 | `panel-dsl`     | `crates/panel-dsl`                         | `crates/panel-dsl`     | 純粋 parse 層として維持しやすい       |
 | `plugin-sdk`    | `crates/panel-sdk` + `crates/panel-macros` | `crates/plugin-sdk` 系 | 物理名と論理名がまだずれる            |
@@ -316,7 +334,7 @@ workspace member として存在するもの:
 
 1. `apps/desktop` が window / GPU / event loop を初期化する
 2. `DesktopApp::new(...)` が session / project / workspace preset を読む
-3. `UiShell` が `plugins/` 以下の `.altp-panel` を再帰ロードする
+3. `PanelRuntime` が `plugins/` 以下の `.altp-panel` を再帰ロードする
 4. `storage` が `tools/` と `pens/` を読み、`Document` へ反映する
 5. `canvas::CanvasRuntime` が paint plugin registry を初期化する
 6. `render` と `wgpu_canvas` が最初の提示を行う
@@ -336,7 +354,7 @@ workspace member として存在するもの:
 
 1. `panel-dsl` が `.altp-panel` を parse / validate する
 2. `plugin-host` が Wasm panel runtime を起動する
-3. `UiShell` が host snapshot を panel 側へ同期する
+3. `PanelRuntime` が host snapshot を panel 側へ同期する
 4. panel event は `PanelEvent` と `HostAction` に変換される
 5. `DesktopApp` が `Command` または host side effect として処理する
 6. `render` が panel surface と hit region を作る
@@ -354,7 +372,7 @@ workspace member として存在するもの:
 
 次が集まりすぎている。
 
-- document と UI shell の所有
+- document と panel runtime / panel presentation の所有
 - project / session / workspace preset I/O
 - tool / pen / panel catalog 読込
 - canvas runtime と panel runtime の橋渡し
@@ -404,28 +422,25 @@ workspace member として存在するもの:
 - `crates/app-core/src/document.rs`: document state と tool / pen state が集中する
 - `crates/app-core/src/painting.rs`: `PaintPluginContext`、`BitmapEdit`、compositor が集中する
 
-### `UiShell`
+### `PanelRuntime` / `PanelPresentation`
 
-次が同居している。
+Phase 3 後は次のように分担する。
 
-- panel discovery
-- DSL / Wasm runtime
-- state patch / host sync
-- workspace layout
-- focus / scroll / text input
-- panel surface 生成
+- `PanelRuntime`: panel discovery、DSL / Wasm runtime、state patch / host sync、persistent config
+- `PanelPresentation`: workspace layout、focus / scroll / text input、panel surface 生成
 
 集中箇所（ファイル単位）:
 
-- `crates/ui-shell/src/lib.rs`: registry、update、persistent config、公開 facade が集中する
-- `crates/ui-shell/src/dsl.rs`: panel file 探索、DSL 評価、Wasm bridge、state patch 適用が集中する
+- `crates/panel-runtime/src/registry.rs`: registry、update、persistent config、event dispatch が集中する
+- `crates/panel-runtime/src/dsl_panel.rs`: DSL 評価、Wasm bridge、state patch 適用が集中する
 - `crates/ui-shell/src/workspace.rs`: workspace layout、panel move/visibility、manager tree が集中する
+- `crates/ui-shell/src/surface_render.rs`: panel surface compose と dirty rect 計算が集中する
 
 ## 命名と実態のズレ
 
 ### `ui-shell`
 
-名前より実態は「panel runtime 統合層」である。
+名前は `ui-shell` のままだが、実態は panel presentation crate である。
 
 ### `render`
 
@@ -443,11 +458,13 @@ workspace member として存在するもの:
 
 次の責務は重要だが、まだ独立した crate / module として確立していない。
 
-- `canvas` と呼べる独立層
-- `panel-runtime` と呼べる独立層
-- project / workspace を plugin 主導で扱う一般 plugin runtime
-- panel runtime と panel presentation の明確な分離
-- tool 実行 plugin と host runtime の安定境界
+- project / workspace を plugin 主導で扱う一般 plugin runtime（フェーズ4で予定）
+- tool 実行 plugin と host runtime の安定境界（フェーズ4で予定）
+
+補足:
+
+- `canvas` 独立層はフェーズ2で `crates/canvas` として確立済みである。
+- `DesktopApp` の责务分割はフェーズ1で `bootstrap` / `command_router` / `panel_dispatch` / `io_state` / `services` / `present_state` / `background_tasks` に分割済みである。
 
 ## 既存テストの責務境界棚卸し
 
@@ -462,20 +479,20 @@ workspace member として存在するもの:
 
 今後 crate / module 単位へ移したい代表例:
 
-- canvas 座標変換、eraser/stroke/fill の期待値テスト → 将来 `crates/canvas`
-- panel dispatch、host action 適用、focus/control activation → `apps/desktop` 内の `panel_dispatch` / `command_router`
-- dirty rect と panel 差分 compose の検証 → `crates/render`
-- workspace preset config 同期や bootstrap 復元 → `apps/desktop` 内の `bootstrap` / `services`
+- canvas 座標変換、eraser/stroke/fill の期待値テスト → `crates/canvas` に移転済み（フェーズ2完了）
+- panel dispatch、host action 適用、focus/control activation → `panel_dispatch_tests.rs` / `command_router_tests.rs` として分割済み（フェーズ1完了）
+- dirty rect と panel 差分 compose の検証 → `crates/render`（フェーズ5で予定）
+- workspace preset config 同期や bootstrap 復元 → `bootstrap_tests.rs` として分割済み（フェーズ1完了）
 
 ### `crates/ui-shell/src/tests.rs`
 
-- 現在は runtime bridge と presentation の両方を 1 ファイルで検証している
-- DSL 読込、Wasm bridge、focus、dropdown、text input、surface render が同居している
+- 現在は presentation 側の基本回帰を小さく検証している
+- focus と runtime panel tree 連携の最小回帰を持つ
 
 今後分離したい代表例:
 
-- DSL/Wasm/host snapshot sync → 将来 `crates/panel-runtime`
-- hit-test、focus、text input、surface render → `crates/ui-shell/src/presentation/*`
+- DSL/Wasm/host snapshot sync → `crates/panel-runtime/src/tests.rs`
+- hit-test、focus、text input、surface render → `crates/ui-shell` 側で継続拡張
 
 ### `crates/panel-sdk/src/tests.rs`
 

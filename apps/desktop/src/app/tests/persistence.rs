@@ -35,7 +35,7 @@ fn execute_command_load_project_uses_native_dialog_path() {
     save_project_to_path(
         &path,
         &source_app.document,
-        &source_app.ui_shell.workspace_layout(),
+        &source_app.panel_presentation.workspace_layout(),
         &BTreeMap::new(),
     )
     .expect("project save should succeed");
@@ -45,8 +45,8 @@ fn execute_command_load_project_uses_native_dialog_path() {
     app.wait_for_pending_save_tasks();
     assert_eq!(app.io_state.project_path, path);
     assert!(
-        !app.ui_shell
-            .panel_trees()
+        !app.panel_presentation
+            .panel_trees(&app.panel_runtime)
             .iter()
             .any(|panel| panel.id == "builtin.tool-palette")
     );
@@ -116,7 +116,7 @@ fn save_and_load_restore_plugin_shortcut_configs() {
     let mut app = test_app_with_dialogs(TestDialogs::with_open_path(path.clone()));
     assert!(app.execute_command(Command::LoadProject));
     assert_eq!(
-        app.ui_shell
+        app.panel_runtime
             .persistent_panel_configs()
             .get("builtin.app-actions"),
         Some(&json!({
@@ -129,7 +129,7 @@ fn save_and_load_restore_plugin_shortcut_configs() {
         }))
     );
     assert_eq!(
-        app.ui_shell
+        app.panel_runtime
             .persistent_panel_configs()
             .get("builtin.workspace-presets"),
         Some(&json!({
@@ -161,7 +161,7 @@ fn load_project_restores_workspace_layout() {
             visible: false,
         })
     );
-    let expected_layout = source_app.ui_shell.workspace_layout();
+    let expected_layout = source_app.panel_presentation.workspace_layout();
     save_project_to_path(
         &path,
         &source_app.document,
@@ -175,13 +175,13 @@ fn load_project_restores_workspace_layout() {
         path: path.to_string_lossy().to_string(),
     }));
 
-    let panels = app.ui_shell.panel_trees();
+    let panels = app.panel_presentation.panel_trees(&app.panel_runtime);
     assert!(
         !panels
             .iter()
             .any(|panel| panel.id == "builtin.tool-palette")
     );
-    assert_eq!(app.ui_shell.workspace_layout(), expected_layout);
+    assert_eq!(app.panel_presentation.workspace_layout(), expected_layout);
 
     let _ = std::fs::remove_file(path);
 }
@@ -211,7 +211,7 @@ fn move_panel_host_action_updates_status_without_full_recompose() {
     );
     assert_eq!(
         update.overlay_dirty_rect,
-        app.ui_shell
+        app.panel_presentation
             .last_panel_surface_dirty_rect()
             .map(|dirty| crate::frame::Rect {
                 x: dirty.x,
@@ -247,7 +247,7 @@ fn set_panel_visibility_updates_status_without_full_recompose() {
     );
     assert_eq!(
         update.overlay_dirty_rect,
-        app.ui_shell
+        app.panel_presentation
             .last_panel_surface_dirty_rect()
             .map(|dirty| crate::frame::Rect {
                 x: dirty.x,
@@ -265,7 +265,7 @@ fn hiding_panel_clears_previous_overlay_bounds_when_surface_shrinks() {
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
 
-    assert!(app.ui_shell.move_panel_to(
+    assert!(app.panel_presentation.move_panel_to(
         "builtin.tool-palette",
         940,
         72,
@@ -275,7 +275,7 @@ fn hiding_panel_clears_previous_overlay_bounds_when_surface_shrinks() {
     app.mark_panel_surface_dirty();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let hidden_panel_rect = app
-        .ui_shell
+        .panel_presentation
         .panel_rect("builtin.tool-palette")
         .expect("hidden panel rect exists");
 
@@ -336,7 +336,7 @@ fn startup_uses_default_workspace_preset_when_project_and_session_are_empty() {
         preset_path.clone(),
     );
     let entry = app
-        .ui_shell
+        .panel_presentation
         .workspace_layout()
         .panels
         .into_iter()
@@ -413,7 +413,7 @@ fn session_layout_overrides_default_workspace_preset() {
         preset_path.clone(),
     );
     let entry = app
-        .ui_shell
+        .panel_presentation
         .workspace_layout()
         .panels
         .into_iter()
@@ -473,16 +473,16 @@ fn panel_layout_persists_across_restart_via_session() {
             visible: false,
         })
     );
-    let expected_layout = source_app.ui_shell.workspace_layout();
+    let expected_layout = source_app.panel_presentation.workspace_layout();
 
     let app = test_app_with_dialogs_and_session_path(TestDialogs::default(), session_path.clone());
-    let panels = app.ui_shell.panel_trees();
+    let panels = app.panel_presentation.panel_trees(&app.panel_runtime);
     assert!(
         !panels
             .iter()
             .any(|panel| panel.id == "builtin.tool-palette")
     );
-    assert_eq!(app.ui_shell.workspace_layout(), expected_layout);
+    assert_eq!(app.panel_presentation.workspace_layout(), expected_layout);
 
     let _ = std::fs::remove_file(session_path);
 }
@@ -544,7 +544,7 @@ fn startup_preserves_last_selected_workspace_preset_id() {
 
     assert_eq!(
         restarted
-            .ui_shell
+            .panel_runtime
             .persistent_panel_configs()
             .get("builtin.workspace-presets")
             .and_then(|config| config.get("selected_workspace"))

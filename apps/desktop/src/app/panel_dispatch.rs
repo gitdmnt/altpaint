@@ -38,7 +38,7 @@ impl DesktopApp {
     pub(super) fn begin_panel_interaction(&mut self, point: WindowPoint) -> bool {
         self.panel_interaction.pending_panel_press = None;
         if let Some(panel_id) = self.panel_move_hit_from_window(point) {
-            let Some(panel_rect) = self.ui_shell.panel_rect(&panel_id) else {
+            let Some(panel_rect) = self.panel_presentation.panel_rect(&panel_id) else {
                 return false;
             };
             self.panel_interaction.active_panel_drag = Some(PanelDragState::Move {
@@ -56,7 +56,9 @@ impl DesktopApp {
 
         match &event {
             PanelEvent::Activate { panel_id, node_id } => {
-                let changed = self.ui_shell.focus_panel_node(panel_id, node_id);
+                let changed = self
+                    .panel_presentation
+                    .focus_panel_node(&self.panel_runtime, panel_id, node_id);
                 self.panel_interaction.pending_panel_press = Some(PanelPressState {
                     panel_id: panel_id.clone(),
                     node_id: node_id.clone(),
@@ -138,7 +140,7 @@ impl DesktopApp {
                 };
                 let window_x = point.x.max(0) as usize;
                 let window_y = point.y.max(0) as usize;
-                let changed = self.ui_shell.move_panel_to(
+                let changed = self.panel_presentation.move_panel_to(
                     &panel_id,
                     window_x.saturating_sub(grab_offset_x),
                     window_y.saturating_sub(grab_offset_y),
@@ -177,9 +179,18 @@ impl DesktopApp {
         key: &str,
         repeat: bool,
     ) -> bool {
-        let (handled, actions) = self.ui_shell.handle_keyboard_event(shortcut, key, repeat);
+        let runtime = self.panel_runtime.dispatch_keyboard(shortcut, key, repeat);
+        let handled = runtime.handled;
         let mut changed = handled;
-        for action in actions {
+        if runtime.config_changed {
+            self.persist_session_state();
+        }
+        if !runtime.changed_panel_ids.is_empty() {
+            self.panel_presentation
+                .mark_runtime_panels_dirty(&runtime.changed_panel_ids);
+            changed = true;
+        }
+        for action in runtime.actions {
             changed |= self.execute_host_action(action);
         }
         self.refresh_panel_surface_if_changed(changed)
@@ -194,7 +205,7 @@ impl DesktopApp {
                 panel_id,
                 direction,
             } => {
-                let changed = self.ui_shell.move_panel(&panel_id, direction);
+                let changed = self.panel_presentation.move_panel(&panel_id, direction);
                 if changed {
                     self.mark_panel_surface_dirty();
                     self.mark_status_dirty();
@@ -203,7 +214,9 @@ impl DesktopApp {
                 changed
             }
             HostAction::SetPanelVisibility { panel_id, visible } => {
-                let changed = self.ui_shell.set_panel_visibility(&panel_id, visible);
+                let changed = self
+                    .panel_presentation
+                    .set_panel_visibility(&panel_id, visible);
                 if changed {
                     self.mark_panel_surface_dirty();
                     self.mark_status_dirty();
@@ -216,15 +229,36 @@ impl DesktopApp {
 
     /// パネルイベントを `UiShell` とホストアクションへ流す。
     pub(super) fn dispatch_panel_event(&mut self, event: PanelEvent) -> bool {
-        let mut changed = false;
-        let previous_configs = self.ui_shell.persistent_panel_configs();
-        if let PanelEvent::Activate { panel_id, node_id } = &event {
-            changed |= self.ui_shell.focus_panel_node(panel_id, node_id);
-        }
+        self.dispatch_panel_event_with_command(event).0
+    }
 
-        self.mark_panel_surface_dirty();
+    fn dispatch_panel_event_with_command(
+        &mut self,
+        event: PanelEvent,
+    ) -> (bool, Option<app_core::Command>) {
+        let mut changed = false;
+        let previous_configs = self.panel_runtime.persistent_panel_configs();
+
         let mut needs_redraw = true;
-        let mut actions = self.ui_shell.handle_panel_event(&event);
+        let mut first_command = None;
+        let presentation = self
+            .panel_presentation
+            .handle_panel_event(&self.panel_runtime, &event);
+        changed |= presentation.changed;
+        let mut actions = presentation.actions;
+
+        if presentation.forward_to_runtime {
+            let runtime = self.panel_runtime.dispatch_event(&event);
+            if runtime.config_changed || self.panel_runtime.persistent_panel_configs() != previous_configs {
+                self.persist_session_state();
+            }
+            if !runtime.changed_panel_ids.is_empty() {
+                self.panel_presentation
+                    .mark_runtime_panels_dirty(&runtime.changed_panel_ids);
+                changed = true;
+            }
+            actions.extend(runtime.actions);
+        }
 
         if let PanelEvent::SetText {
             panel_id,
@@ -252,14 +286,23 @@ impl DesktopApp {
         }
 
         for action in actions {
+            if first_command.is_none()
+                && let HostAction::DispatchCommand(command) = &action
+            {
+                first_command = Some(command.clone());
+            }
             needs_redraw |= self.execute_host_action(action);
         }
 
-        if self.ui_shell.persistent_panel_configs() != previous_configs {
+        if self.panel_runtime.persistent_panel_configs() != previous_configs {
             self.persist_session_state();
         }
 
-        changed || needs_redraw
+        let changed = changed || needs_redraw;
+        if changed {
+            self.mark_panel_surface_dirty();
+        }
+        (changed, first_command)
     }
 
     /// パネル上の単発ポインタイベントを処理する。
@@ -287,76 +330,91 @@ impl DesktopApp {
 
     /// フォーカスを次のパネル操作対象へ進める。
     pub(crate) fn focus_next_panel_control(&mut self) -> bool {
-        let changed = self.ui_shell.focus_next();
+        let changed = self.panel_presentation.focus_next(&self.panel_runtime);
         self.refresh_panel_surface_if_changed(changed)
     }
 
     /// フォーカスを前のパネル操作対象へ戻す。
     pub(crate) fn focus_previous_panel_control(&mut self) -> bool {
-        let changed = self.ui_shell.focus_previous();
+        let changed = self.panel_presentation.focus_previous(&self.panel_runtime);
         self.refresh_panel_surface_if_changed(changed)
     }
 
     /// 現在フォーカス中のパネル操作対象をアクティブ化する。
     pub(crate) fn activate_focused_panel_control(&mut self) -> Option<app_core::Command> {
-        let actions = self.ui_shell.activate_focused();
-        let mut dispatched = None;
-        for action in actions {
-            if let HostAction::DispatchCommand(command) = &action
-                && dispatched.is_none()
-            {
-                dispatched = Some(command.clone());
-            }
-            let _ = self.execute_host_action(action);
-        }
-        dispatched
+        let event = self.panel_presentation.activate_focused()?;
+        self.dispatch_panel_event_with_command(event).1
     }
 
     /// フォーカス中のテキスト入力へ文字列を挿入する。
     pub(crate) fn insert_text_into_focused_panel_input(&mut self, text: &str) -> bool {
-        let changed = self.ui_shell.insert_text_into_focused_input(text);
-        self.refresh_panel_surface_if_changed(changed)
+        let Some(event) = self
+            .panel_presentation
+            .insert_text_into_focused_input(&self.panel_runtime, text)
+        else {
+            return false;
+        };
+        self.dispatch_panel_event(event)
     }
 
     /// フォーカス中のテキスト入力で後退削除を行う。
     pub(crate) fn backspace_focused_panel_input(&mut self) -> bool {
-        let changed = self.ui_shell.backspace_focused_input();
-        self.refresh_panel_surface_if_changed(changed)
+        let Some(event) = self
+            .panel_presentation
+            .backspace_focused_input(&self.panel_runtime)
+        else {
+            return false;
+        };
+        self.dispatch_panel_event(event)
     }
 
     /// フォーカス中のテキスト入力で前方削除を行う。
     pub(crate) fn delete_focused_panel_input(&mut self) -> bool {
-        let changed = self.ui_shell.delete_focused_input();
-        self.refresh_panel_surface_if_changed(changed)
+        let Some(event) = self
+            .panel_presentation
+            .delete_focused_input(&self.panel_runtime)
+        else {
+            return false;
+        };
+        self.dispatch_panel_event(event)
     }
 
     /// フォーカス中のテキスト入力カーソルを相対移動する。
     pub(crate) fn move_focused_panel_input_cursor(&mut self, delta_chars: isize) -> bool {
-        let changed = self.ui_shell.move_focused_input_cursor(delta_chars);
+        let changed = self
+            .panel_presentation
+            .move_focused_input_cursor(&self.panel_runtime, delta_chars);
         self.refresh_panel_surface_if_changed(changed)
     }
 
     /// フォーカス中のテキスト入力カーソルを先頭へ移動する。
     pub(crate) fn move_focused_panel_input_cursor_to_start(&mut self) -> bool {
-        let changed = self.ui_shell.move_focused_input_cursor_to_start();
+        let changed = self
+            .panel_presentation
+            .move_focused_input_cursor_to_start(&self.panel_runtime);
         self.refresh_panel_surface_if_changed(changed)
     }
 
     /// フォーカス中のテキスト入力カーソルを末尾へ移動する。
     pub(crate) fn move_focused_panel_input_cursor_to_end(&mut self) -> bool {
-        let changed = self.ui_shell.move_focused_input_cursor_to_end();
+        let changed = self
+            .panel_presentation
+            .move_focused_input_cursor_to_end(&self.panel_runtime);
         self.refresh_panel_surface_if_changed(changed)
     }
 
     /// IME の preedit 文字列をフォーカス中入力へ反映する。
     pub(crate) fn set_focused_panel_input_preedit(&mut self, preedit: Option<String>) -> bool {
-        let changed = self.ui_shell.set_focused_input_preedit(preedit);
+        let changed = self
+            .panel_presentation
+            .set_focused_input_preedit(&self.panel_runtime, preedit);
         self.refresh_panel_surface_if_changed(changed)
     }
 
     /// フォーカス中の入力がテキスト入力かどうかを返す。
     pub(crate) fn has_focused_panel_input(&self) -> bool {
-        self.ui_shell.has_focused_text_input()
+        self.panel_presentation
+            .has_focused_text_input(&self.panel_runtime)
     }
 
     /// パネル面を垂直スクロールする。
@@ -370,7 +428,7 @@ impl DesktopApp {
             return false;
         }
 
-        let changed = self.ui_shell.scroll_panels(delta_lines, viewport_height);
+        let changed = self.panel_presentation.scroll_panels(delta_lines, viewport_height);
         self.refresh_panel_surface_if_changed(changed)
     }
 

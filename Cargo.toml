@@ -1,12 +1,11 @@
 [workspace]
 members = [
-  # Planned during the roadmap refactor:
-  # - crates/panel-runtime
   "crates/canvas",
   "crates/app-core",
   "crates/desktop-support",
   "crates/panel-dsl",
   "crates/panel-macros",
+  "crates/panel-runtime",
   "crates/panel-schema",
   "crates/panel-sdk",
   "crates/plugin-host",

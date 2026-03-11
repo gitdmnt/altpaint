@@ -4,6 +4,8 @@
 //! shell 本体から UI 管理ロジックを分離する。
 
 use super::*;
+use panel_runtime::PanelRuntime;
+use plugin_api::{PanelMoveDirection, PanelNode, PanelTree};
 
 pub(super) const WORKSPACE_PANEL_ID: &str = "builtin.workspace-layout";
 const HIDDEN_BY_DEFAULT_PANEL_IDS: &[&str] = &["builtin.panel-list"];
@@ -19,7 +21,7 @@ pub(super) fn default_panel_state(panel_id: &str, index: usize) -> WorkspacePane
     }
 }
 
-impl UiShell {
+impl PanelPresentation {
     pub(super) fn ensure_workspace_manager_entry(&mut self) {
         if self
             .workspace_layout
@@ -36,11 +38,14 @@ impl UiShell {
         );
     }
 
-    pub(super) fn workspace_panel_entries(&self) -> Vec<(&WorkspacePanelState, &str)> {
-        let panel_titles = self
-            .panels
-            .iter()
-            .map(|panel| (panel.id(), panel.title()))
+    pub(super) fn workspace_panel_entries(
+        &self,
+        runtime: &PanelRuntime,
+    ) -> Vec<(&WorkspacePanelState, String)> {
+        let panel_titles = runtime
+            .panel_trees()
+            .into_iter()
+            .map(|tree| (tree.id, tree.title.to_string()))
             .collect::<std::collections::BTreeMap<_, _>>();
 
         self.workspace_layout
@@ -49,7 +54,7 @@ impl UiShell {
             .filter_map(|entry| {
                 panel_titles
                     .get(entry.id.as_str())
-                    .copied()
+                    .cloned()
                     .map(|title| (entry, title))
             })
             .collect()
@@ -170,20 +175,6 @@ impl UiShell {
         true
     }
 
-    /// DSL 由来で読み込んだ panel 群だけをアンロードする。
-    pub(super) fn remove_loaded_panels(&mut self) {
-        if self.loaded_panel_ids.is_empty() {
-            return;
-        }
-
-        self.panels.retain(|panel| {
-            !self.loaded_panel_ids.iter().any(|loaded_id| loaded_id == panel.id())
-        });
-        self.loaded_panel_ids.clear();
-        self.mark_all_panel_content_dirty();
-        self.panel_layout_dirty = true;
-    }
-
     /// workspace layout に panel entry が存在することを保証する。
     pub(super) fn ensure_workspace_panel_entry(&mut self, panel_id: &str) {
         if self.workspace_layout.panels.iter().any(|entry| entry.id == panel_id) {
@@ -196,10 +187,9 @@ impl UiShell {
     }
 
     /// 読み込み済み panel 群と workspace layout の整合を取る。
-    pub(super) fn reconcile_workspace_layout(&mut self) {
+    pub(super) fn reconcile_workspace_layout(&mut self, panel_ids: Vec<&'static str>) {
         self.ensure_workspace_manager_entry();
 
-        let panel_ids = self.panels.iter().map(|panel| panel.id()).collect::<Vec<_>>();
         for panel_id in panel_ids {
             self.ensure_workspace_panel_entry(panel_id);
         }
@@ -218,8 +208,8 @@ impl UiShell {
         }
     }
 
-    /// 現在の可視順に従って panel iterator を返す。
-    pub(super) fn visible_panels_in_order(&self) -> impl Iterator<Item = &dyn PanelPlugin> {
+    /// 現在の可視順に従って panel tree 一覧を返す。
+    pub(super) fn visible_panels_in_order(&self, runtime: &PanelRuntime) -> Vec<PanelTree> {
         let ordered_ids = self
             .workspace_layout
             .panels
@@ -227,12 +217,17 @@ impl UiShell {
             .map(|entry| entry.id.as_str())
             .collect::<Vec<_>>();
 
-        ordered_ids.into_iter().filter_map(|panel_id| {
-            self.panels
-                .iter()
-                .find(|panel| panel.id() == panel_id && self.panel_is_visible(panel_id))
-                .map(|panel| panel.as_ref())
-        })
+        let panel_trees = runtime
+            .panel_trees()
+            .into_iter()
+            .map(|tree| (tree.id, tree))
+            .collect::<std::collections::BTreeMap<_, _>>();
+
+        ordered_ids
+            .into_iter()
+            .filter(|panel_id| self.panel_is_visible(panel_id))
+            .filter_map(|panel_id| panel_trees.get(panel_id).cloned())
+            .collect()
     }
 
     /// panel が現在可視かを判定する。
@@ -250,8 +245,8 @@ impl UiShell {
     }
 
     /// workspace 管理 panel の tree を構築する。
-    pub(super) fn workspace_manager_tree(&self) -> PanelTree {
-        let ordered_entries = self.workspace_panel_entries();
+    pub(super) fn workspace_manager_tree(&self, runtime: &PanelRuntime) -> PanelTree {
+        let ordered_entries = self.workspace_panel_entries(runtime);
 
         let rows = ordered_entries
             .iter()
@@ -261,7 +256,7 @@ impl UiShell {
                     children: vec![
                         PanelNode::Text {
                             id: format!("workspace.title.{}", entry.id),
-                            text: (*title).to_string(),
+                            text: title.clone(),
                         },
                         PanelNode::Button {
                             id: format!("workspace.visibility.{}", entry.id),

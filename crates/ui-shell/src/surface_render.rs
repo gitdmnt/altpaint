@@ -4,6 +4,7 @@
 //! hit-test は `ui-shell` 側へ残したまま、ラスタライズ責務だけを `render` へ移す。
 
 use app_core::{WorkspacePanelPosition, WorkspacePanelSize};
+use panel_runtime::PanelRuntime;
 use render::{FloatingPanel, PanelFocusTarget, PanelRenderState as RenderPanelState, PanelTextInputState, PixelRect};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
@@ -27,9 +28,15 @@ struct OwnedPanelTextInputState {
     preedit: Option<String>,
 }
 
-impl UiShell {
+impl PanelPresentation {
     /// 現在の panel trees から viewport 向け panel layer を構築する。
-    pub fn render_panel_surface(&mut self, width: usize, height: usize) -> PanelSurface {
+    pub fn render_panel_surface(
+        &mut self,
+        runtime: &PanelRuntime,
+        width: usize,
+        height: usize,
+    ) -> PanelSurface {
+        self.reconcile_runtime_panels(runtime);
         let width = width.max(1);
         let height = height.max(1);
         let viewport_changed = self
@@ -55,7 +62,7 @@ impl UiShell {
             self.dirty_panel_ids.clear();
         }
 
-        let trees = self.panel_trees();
+        let trees = self.panel_trees(runtime);
         let focused_target = self.focused_target.clone();
         let expanded_dropdown = self.expanded_dropdown.clone();
         let text_input_state_snapshot = self.collect_panel_text_input_states();
@@ -79,7 +86,8 @@ impl UiShell {
             }),
             text_input_states: &text_input_states,
         };
-        let floating_panels = self.collect_floating_panels(trees.as_slice(), width, height, render_state);
+        let floating_panels =
+            self.collect_floating_panels(trees.as_slice(), width, height, render_state);
         let dirty_ids = self.dirty_panel_ids.clone();
         let previous_rects = self.rendered_panel_rects.clone();
         let next_rects = panel_rect_map(floating_panels.as_slice());
@@ -121,7 +129,7 @@ impl UiShell {
         result_surface.unwrap_or_else(|| {
             self.panel_content_cache
                 .clone()
-                .unwrap_or_else(|| self.compose_panel_surface(floating_panels.as_slice(), None))
+                    .unwrap_or_else(|| self.compose_panel_surface(floating_panels.as_slice(), None))
         })
     }
 

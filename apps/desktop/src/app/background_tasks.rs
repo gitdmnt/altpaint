@@ -17,8 +17,8 @@ impl DesktopApp {
     /// 現在の document / workspace 状態を非同期保存タスクへ積む。
     pub(super) fn enqueue_save_project(&mut self, path: PathBuf) -> bool {
         let document = self.document.clone();
-        let workspace_layout = self.ui_shell.workspace_layout();
-        let plugin_configs = self.ui_shell.persistent_panel_configs();
+        let workspace_layout = self.panel_presentation.workspace_layout();
+        let plugin_configs = self.panel_runtime.persistent_panel_configs();
         let handle = thread::spawn(move || {
             save_project_to_path(&path, &document, &workspace_layout, &plugin_configs)
                 .map_err(|error| error.to_string())

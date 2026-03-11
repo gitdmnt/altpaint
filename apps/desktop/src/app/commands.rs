@@ -61,10 +61,11 @@ impl DesktopApp {
                 self.document = project.document;
                 let _ = Self::reload_tool_catalog_into_document(&mut self.document);
                 let _ = self.reload_pen_presets();
-                self.ui_shell
-                    .set_workspace_layout(project.ui_state.workspace_layout);
-                self.ui_shell
-                    .set_persistent_panel_configs(project.ui_state.plugin_configs);
+                self.panel_presentation
+                    .replace_workspace_layout(project.ui_state.workspace_layout);
+                self.panel_runtime
+                    .replace_persistent_panel_configs(project.ui_state.plugin_configs);
+                self.panel_presentation.reconcile_runtime_panels(&self.panel_runtime);
                 self.refresh_new_document_templates();
                 self.refresh_workspace_presets();
                 self.reset_active_interactions();

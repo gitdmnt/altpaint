@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、2026-03-11 時点の `altpaint` が**実際にどこまで実装されているか**を短く把握するための現況整理である。
+この文書は、2026-03-12 時点の `altpaint` が**実際にどこまで実装されているか**を短く把握するための現況整理である。
 
 この文書は理想図ではなく現況の要約であり、次と役割を分ける。
 
@@ -44,6 +44,7 @@
 - `storage`
 - `desktop-support`
 - `plugin-api`
+- `panel-runtime`
 - `ui-shell`
 - `workspace-persistence`
 - `plugin-host`
@@ -149,7 +150,8 @@
 - `panel-sdk`: panel 作者向け SDK
 - `panel-macros`: panel export 用 proc-macro
 - `plugin-host`: `wasmtime` ベース runtime
-- `ui-shell`: panel runtime と presentation の統合点
+- `panel-runtime`: panel discovery / DSL-Wasm bridge / host snapshot sync / persistent config
+- `ui-shell`: panel presentation / workspace layout / focus / hit-test / surface render
 
 ### 5. 永続化
 
@@ -221,11 +223,11 @@
 1. `apps/desktop::DesktopApp`
 2. `app-core::Document`
 3. `canvas::CanvasRuntime`
-4. `ui-shell::UiShell`
+4. `panel-runtime::PanelRuntime` と `ui-shell::PanelPresentation`
 
 ### 現在の特徴
 
-1. `ui-shell` は panel runtime と presentation の両方を持つ
+1. panel runtime は `panel-runtime`、panel presentation は `ui-shell` に分離された
 2. `render` は canvas 表示計算と panel rasterize を持つが、最終提示の中心ではまだない
 3. project 保存と session 保存は分離されている
 4. built-in panel は file-based plugin 構成へかなり寄っている
@@ -255,17 +257,17 @@
 ### 強い点
 
 - host 主導の desktop runtime が一周している
-- `render`、panel runtime、storage が独立 crate として成立している
+- `render`、`panel-runtime`、storage が独立 crate として成立している
 - `canvas` が独立 crate として成立し、desktop から bitmap op と gesture state machine を切り離せた
 - built-in panel の file-based plugin 化が進んでいる
 - project / session / workspace preset が一応つながっている
 
 ### まだ途中の点
 
-- `DesktopApp` に責務が集まりすぎている
+- `DesktopApp` は `bootstrap` / `command_router` / `panel_dispatch` / `io_state` / `services` / `present_state` / `background_tasks` に分割されたが、orchestration として依然として規模が大きい（フェーズ1完了、フェーズ4以降で継続改善）
 - `Document` が tool / pen runtime state をまだ広く抱えている
-- `ui-shell` が runtime と presentation を兼務している
-- project / workspace I/O は plugin 主導ではない
+- `DesktopApp` が `PanelRuntime` と `PanelPresentation` の orchestration をまだ厚く抱えている
+- project / workspace I/O は plugin 主導ではない（フェーズ4で予定）
 - tool catalog / pen setting の plugin-first 化はまだ途中である
 
 ## いま読むべき関連文書

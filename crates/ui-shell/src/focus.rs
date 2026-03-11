@@ -5,12 +5,19 @@
 
 use super::tree_query::{collect_focus_targets, find_dropdown_node, find_text_input_value};
 use super::*;
+use panel_runtime::PanelRuntime;
+use plugin_api::{PanelEvent, TextInputMode};
 
-impl UiShell {
+impl PanelPresentation {
     /// 指定 panel node へ focus を移す。
-    pub fn focus_panel_node(&mut self, panel_id: &str, node_id: &str) -> bool {
+    pub fn focus_panel_node(
+        &mut self,
+        runtime: &PanelRuntime,
+        panel_id: &str,
+        node_id: &str,
+    ) -> bool {
         let exists = self
-            .focusable_targets()
+            .focusable_targets(runtime)
             .iter()
             .any(|target| target.panel_id == panel_id && target.node_id == node_id);
         if !exists {
@@ -28,7 +35,7 @@ impl UiShell {
         let previous = self.focused_target.clone();
         self.focused_target = Some(next);
         if let Some(focused) = self.focused_target.clone()
-            && let Some((value, _)) = self.text_input_state_for_target(&focused)
+            && let Some((value, _)) = self.text_input_state_for_target(runtime, &focused)
         {
             self.ensure_text_input_editor_state(&focused, &value);
         }
@@ -40,46 +47,50 @@ impl UiShell {
     }
 
     /// 次の focusable target へ移動する。
-    pub fn focus_next(&mut self) -> bool {
-        self.move_focus(1)
+    pub fn focus_next(&mut self, runtime: &PanelRuntime) -> bool {
+        self.move_focus(runtime, 1)
     }
 
     /// 前の focusable target へ移動する。
-    pub fn focus_previous(&mut self) -> bool {
-        self.move_focus(-1)
+    pub fn focus_previous(&mut self, runtime: &PanelRuntime) -> bool {
+        self.move_focus(runtime, -1)
     }
 
     /// 現在 focus 中の node を activate する。
-    pub fn activate_focused(&mut self) -> Vec<HostAction> {
+    pub fn activate_focused(&mut self) -> Option<PanelEvent> {
         let Some(target) = self.focused_target.clone() else {
-            return Vec::new();
+            return None;
         };
 
-        self.handle_panel_event(&PanelEvent::Activate {
+        Some(PanelEvent::Activate {
             panel_id: target.panel_id,
             node_id: target.node_id,
         })
     }
 
     /// focus 中の node が text input かを返す。
-    pub fn has_focused_text_input(&self) -> bool {
+    pub fn has_focused_text_input(&self, runtime: &PanelRuntime) -> bool {
         self.focused_target
             .as_ref()
-            .and_then(|target| self.text_input_state_for_target(target))
+            .and_then(|target| self.text_input_state_for_target(runtime, target))
             .is_some()
     }
 
     /// focus 中の text input へ文字列を挿入する。
-    pub fn insert_text_into_focused_input(&mut self, text: &str) -> bool {
+    pub fn insert_text_into_focused_input(
+        &mut self,
+        runtime: &PanelRuntime,
+        text: &str,
+    ) -> Option<PanelEvent> {
         let Some(target) = self.focused_target.clone() else {
-            return false;
+            return None;
         };
-        let Some((current, input_mode)) = self.text_input_state_for_target(&target) else {
-            return false;
+        let Some((current, input_mode)) = self.text_input_state_for_target(runtime, &target) else {
+            return None;
         };
         let filtered = filter_text_input(text, input_mode);
         if filtered.is_empty() {
-            return false;
+            return None;
         }
         let mut editor_state = self.editor_state_for_target(&target, &current);
         let next_value = insert_text_at_char_index(&current, editor_state.cursor_chars, &filtered);
@@ -87,79 +98,82 @@ impl UiShell {
         editor_state.preedit = None;
         self.text_input_states
             .insert(text_input_state_key(&target), editor_state);
-        self.handle_panel_event(&PanelEvent::SetText {
+        Some(PanelEvent::SetText {
             panel_id: target.panel_id,
             node_id: target.node_id,
             value: next_value,
-        });
-        true
+        })
     }
 
     /// focus 中の text input で backspace を実行する。
-    pub fn backspace_focused_input(&mut self) -> bool {
+    pub fn backspace_focused_input(&mut self, runtime: &PanelRuntime) -> Option<PanelEvent> {
         let Some(target) = self.focused_target.clone() else {
-            return false;
+            return None;
         };
-        let Some((mut current, _)) = self.text_input_state_for_target(&target) else {
-            return false;
+        let Some((mut current, _)) = self.text_input_state_for_target(runtime, &target) else {
+            return None;
         };
         let mut editor_state = self.editor_state_for_target(&target, &current);
         if editor_state.preedit.take().is_some() {
             self.text_input_states
                 .insert(text_input_state_key(&target), editor_state);
             self.mark_panel_content_dirty(&target.panel_id);
-            return true;
+            return Some(PanelEvent::Activate {
+                panel_id: target.panel_id,
+                node_id: target.node_id,
+            });
         }
         if current.is_empty() || editor_state.cursor_chars == 0 {
-            return false;
+            return None;
         }
         current = remove_char_before_char_index(&current, editor_state.cursor_chars);
         editor_state.cursor_chars -= 1;
         self.text_input_states
             .insert(text_input_state_key(&target), editor_state);
-        self.handle_panel_event(&PanelEvent::SetText {
+        Some(PanelEvent::SetText {
             panel_id: target.panel_id,
             node_id: target.node_id,
             value: current,
-        });
-        true
+        })
     }
 
     /// focus 中の text input で delete を実行する。
-    pub fn delete_focused_input(&mut self) -> bool {
+    pub fn delete_focused_input(&mut self, runtime: &PanelRuntime) -> Option<PanelEvent> {
         let Some(target) = self.focused_target.clone() else {
-            return false;
+            return None;
         };
-        let Some((current, _)) = self.text_input_state_for_target(&target) else {
-            return false;
+        let Some((current, _)) = self.text_input_state_for_target(runtime, &target) else {
+            return None;
         };
         let mut editor_state = self.editor_state_for_target(&target, &current);
         if editor_state.preedit.take().is_some() {
             self.text_input_states
                 .insert(text_input_state_key(&target), editor_state);
             self.mark_panel_content_dirty(&target.panel_id);
-            return true;
+            return Some(PanelEvent::Activate {
+                panel_id: target.panel_id,
+                node_id: target.node_id,
+            });
         }
         if editor_state.cursor_chars >= text_char_len(&current) {
-            return false;
+            return None;
         }
         let next_value = remove_char_at_char_index(&current, editor_state.cursor_chars);
         self.text_input_states
             .insert(text_input_state_key(&target), editor_state);
-        self.handle_panel_event(&PanelEvent::SetText {
+        Some(PanelEvent::SetText {
             panel_id: target.panel_id,
             node_id: target.node_id,
             value: next_value,
-        });
-        true
+        })
     }
 
     /// focus 中の text input の caret を相対移動する。
-    pub fn move_focused_input_cursor(&mut self, delta_chars: isize) -> bool {
+    pub fn move_focused_input_cursor(&mut self, runtime: &PanelRuntime, delta_chars: isize) -> bool {
         let Some(target) = self.focused_target.clone() else {
             return false;
         };
-        let Some((current, _)) = self.text_input_state_for_target(&target) else {
+        let Some((current, _)) = self.text_input_state_for_target(runtime, &target) else {
             return false;
         };
         let mut editor_state = self.editor_state_for_target(&target, &current);
@@ -178,27 +192,31 @@ impl UiShell {
     }
 
     /// caret を先頭へ移動する。
-    pub fn move_focused_input_cursor_to_start(&mut self) -> bool {
-        self.set_focused_input_cursor(0)
+    pub fn move_focused_input_cursor_to_start(&mut self, runtime: &PanelRuntime) -> bool {
+        self.set_focused_input_cursor(runtime, 0)
     }
 
     /// caret を末尾へ移動する。
-    pub fn move_focused_input_cursor_to_end(&mut self) -> bool {
+    pub fn move_focused_input_cursor_to_end(&mut self, runtime: &PanelRuntime) -> bool {
         let Some(target) = self.focused_target.clone() else {
             return false;
         };
-        let Some((current, _)) = self.text_input_state_for_target(&target) else {
+        let Some((current, _)) = self.text_input_state_for_target(runtime, &target) else {
             return false;
         };
-        self.set_focused_input_cursor(text_char_len(&current))
+        self.set_focused_input_cursor(runtime, text_char_len(&current))
     }
 
     /// IME preedit を設定する。
-    pub fn set_focused_input_preedit(&mut self, preedit: Option<String>) -> bool {
+    pub fn set_focused_input_preedit(
+        &mut self,
+        runtime: &PanelRuntime,
+        preedit: Option<String>,
+    ) -> bool {
         let Some(target) = self.focused_target.clone() else {
             return false;
         };
-        let Some((current, _)) = self.text_input_state_for_target(&target) else {
+        let Some((current, _)) = self.text_input_state_for_target(runtime, &target) else {
             return false;
         };
         let mut editor_state = self.editor_state_for_target(&target, &current);
@@ -213,8 +231,8 @@ impl UiShell {
     }
 
     /// focusable targets を巡回して focus を移動する。
-    fn move_focus(&mut self, step: isize) -> bool {
-        let targets = self.focusable_targets();
+    fn move_focus(&mut self, runtime: &PanelRuntime, step: isize) -> bool {
+        let targets = self.focusable_targets(runtime);
         if targets.is_empty() {
             return false;
         }
@@ -247,17 +265,17 @@ impl UiShell {
     }
 
     /// 現在表示中の tree から focusable target 一覧を構築する。
-    fn focusable_targets(&self) -> Vec<FocusTarget> {
+    fn focusable_targets(&self, runtime: &PanelRuntime) -> Vec<FocusTarget> {
         let mut targets = Vec::new();
-        for tree in self.panel_trees() {
+        for tree in self.panel_trees(runtime) {
             collect_focus_targets(tree.id, &tree.children, &mut targets);
         }
         targets
     }
 
     /// 指定 target が dropdown かを判定する。
-    pub(super) fn is_dropdown_target(&self, panel_id: &str, node_id: &str) -> bool {
-        self.panel_trees()
+    pub(super) fn is_dropdown_target(&self, runtime: &PanelRuntime, panel_id: &str, node_id: &str) -> bool {
+        self.panel_trees(runtime)
             .into_iter()
             .find(|tree| tree.id == panel_id)
             .map(|tree| find_dropdown_node(&tree.children, node_id).is_some())
@@ -267,9 +285,10 @@ impl UiShell {
     /// target に対応する text input 現在値を取得する。
     pub(super) fn text_input_state_for_target(
         &self,
+        runtime: &PanelRuntime,
         target: &FocusTarget,
     ) -> Option<(String, TextInputMode)> {
-        self.panel_trees()
+        self.panel_trees(runtime)
             .into_iter()
             .find(|tree| tree.id == target.panel_id)
             .and_then(|tree| find_text_input_value(&tree.children, &target.node_id))
@@ -308,11 +327,11 @@ impl UiShell {
     }
 
     /// focus 中 input の caret を絶対位置へ移す。
-    fn set_focused_input_cursor(&mut self, cursor_chars: usize) -> bool {
+    fn set_focused_input_cursor(&mut self, runtime: &PanelRuntime, cursor_chars: usize) -> bool {
         let Some(target) = self.focused_target.clone() else {
             return false;
         };
-        let Some((current, _)) = self.text_input_state_for_target(&target) else {
+        let Some((current, _)) = self.text_input_state_for_target(runtime, &target) else {
             return false;
         };
         let mut editor_state = self.editor_state_for_target(&target, &current);

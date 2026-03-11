@@ -35,17 +35,28 @@ impl DesktopApp {
 
         if self.needs_ui_sync {
             let synced_panels = if self.ui_sync_panel_ids.is_empty() {
-                self.ui_shell.panel_count()
+                self.panel_runtime.panel_count()
             } else {
                 self.ui_sync_panel_ids.len()
             };
             profiler.record_value("ui_update_panels", synced_panels as f64);
             profiler.measure("ui_update", || {
                 if self.ui_sync_panel_ids.is_empty() {
-                    self.ui_shell.update(&self.document);
+                    let changed = self.panel_runtime.sync_document(&self.document);
+                    self.panel_presentation.reconcile_runtime_panels(&self.panel_runtime);
+                    if !changed.is_empty() {
+                        self.panel_presentation.mark_runtime_panels_dirty(&changed);
+                        self.mark_panel_surface_dirty();
+                    }
                 } else {
-                    self.ui_shell
-                        .update_panels(&self.document, &self.ui_sync_panel_ids);
+                    let changed = self
+                        .panel_runtime
+                        .sync_document_panels(&self.document, &self.ui_sync_panel_ids);
+                    self.panel_presentation.reconcile_runtime_panels(&self.panel_runtime);
+                    if !changed.is_empty() {
+                        self.panel_presentation.mark_runtime_panels_dirty(&changed);
+                        self.mark_panel_surface_dirty();
+                    }
                 }
             });
             self.needs_ui_sync = false;
@@ -60,8 +71,11 @@ impl DesktopApp {
                 .map(|layout| (layout.window_rect.width, layout.window_rect.height))
                 .unwrap_or((1, 1));
             let panel_surface = profiler.measure("panel_surface", || {
-                self.ui_shell
-                    .render_panel_surface(panel_surface_size.0, panel_surface_size.1)
+                self.panel_presentation.render_panel_surface(
+                    &self.panel_runtime,
+                    panel_surface_size.0,
+                    panel_surface_size.1,
+                )
             });
             let window_area = (window_width.max(1) * window_height.max(1)) as f64;
             profiler.record_value("panel_surface_buffer_area_px", (panel_surface.width * panel_surface.height) as f64);
@@ -77,19 +91,19 @@ impl DesktopApp {
             );
             profiler.record_value(
                 "panel_surface_rasterized_panels",
-                self.ui_shell.last_panel_rasterized_panels() as f64,
+                self.panel_presentation.last_panel_rasterized_panels() as f64,
             );
             profiler.record_value(
                 "panel_surface_composited_panels",
-                self.ui_shell.last_panel_composited_panels() as f64,
+                self.panel_presentation.last_panel_composited_panels() as f64,
             );
             profiler.record_value(
                 "panel_surface_raster_ms",
-                self.ui_shell.last_panel_raster_duration_ms(),
+                self.panel_presentation.last_panel_raster_duration_ms(),
             );
             profiler.record_value(
                 "panel_surface_compose_ms",
-                self.ui_shell.last_panel_compose_duration_ms(),
+                self.panel_presentation.last_panel_compose_duration_ms(),
             );
             self.panel_surface = Some(panel_surface);
             self.needs_panel_surface_refresh = false;
@@ -185,7 +199,7 @@ impl DesktopApp {
         let mut overlay_dirty_rect = None;
 
         if panel_surface_refreshed && let Some(panel_surface) = self.panel_surface.as_ref() {
-            let panel_dirty_rect = self.ui_shell.last_panel_surface_dirty_rect().map(|dirty| Rect {
+            let panel_dirty_rect = self.panel_presentation.last_panel_surface_dirty_rect().map(|dirty| Rect {
                 x: dirty.x,
                 y: dirty.y,
                 width: dirty.width,

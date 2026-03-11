@@ -29,8 +29,9 @@ use app_core::{CanvasPoint, Document};
 use desktop_support::{
     DesktopDialogs, NativeDesktopDialogs, WorkspacePresetCatalog, default_workspace_preset_path,
 };
+use panel_runtime::PanelRuntime;
 use render::RenderFrame;
-use ui_shell::{PanelSurface, UiShell};
+use ui_shell::{PanelPresentation, PanelSurface};
 
 use self::io_state::DesktopIoState;
 #[cfg(test)]
@@ -49,7 +50,8 @@ pub(super) const TOOL_PALETTE_PANEL_ID: &str = "builtin.tool-palette";
 /// ランタイムから利用されるデスクトップアプリ本体を表す。
 pub(crate) struct DesktopApp {
     pub(crate) document: Document,
-    pub(crate) ui_shell: UiShell,
+    pub(crate) panel_runtime: PanelRuntime,
+    pub(crate) panel_presentation: PanelPresentation,
     pub(crate) io_state: DesktopIoState,
     workspace_presets: WorkspacePresetCatalog,
     active_workspace_preset_id: String,
@@ -111,7 +113,8 @@ impl DesktopApp {
 
         let mut app = Self {
             document: bootstrap.document,
-            ui_shell: bootstrap.ui_shell,
+            panel_runtime: bootstrap.panel_runtime,
+            panel_presentation: bootstrap.panel_presentation,
             io_state: DesktopIoState::new(
                 bootstrap.project_path,
                 session_path,

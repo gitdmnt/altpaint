@@ -16,8 +16,8 @@ use super::{DesktopApp, TOOL_PALETTE_PANEL_ID};
 impl DesktopApp {
     pub(super) fn capture_workspace_ui_state(&self) -> WorkspaceUiState {
         WorkspaceUiState::new(
-            self.ui_shell.workspace_layout(),
-            self.ui_shell.persistent_panel_configs(),
+            self.panel_presentation.workspace_layout(),
+            self.panel_runtime.persistent_panel_configs(),
         )
     }
 
@@ -222,7 +222,7 @@ impl DesktopApp {
             .collect::<Vec<_>>()
             .join(" / ");
 
-        let mut configs = self.ui_shell.persistent_panel_configs();
+        let mut configs = self.panel_runtime.persistent_panel_configs();
         let entry = configs
             .entry(TOOL_PALETTE_PANEL_ID.to_string())
             .or_insert_with(|| Value::Object(Map::new()));
@@ -244,7 +244,8 @@ impl DesktopApp {
         );
         object.insert("last_import_preview".to_string(), json!(preview));
         object.insert("last_import_issues".to_string(), json!(issues));
-        self.ui_shell.set_persistent_panel_configs(configs);
+        self.panel_runtime.replace_persistent_panel_configs(configs);
+        self.panel_presentation.reconcile_runtime_panels(&self.panel_runtime);
     }
 
     /// 既定ペンディレクトリからプリセットを再読込する。
@@ -293,7 +294,7 @@ impl DesktopApp {
             .and_then(|value| value.to_str())
             .unwrap_or(DEFAULT_PROJECT_PATH);
         let hidden_panels = self
-            .ui_shell
+            .panel_presentation
             .workspace_layout()
             .panels
             .iter()

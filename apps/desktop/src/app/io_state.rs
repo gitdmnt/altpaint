@@ -40,8 +40,8 @@ impl DesktopApp {
         DesktopSessionState {
             last_project_path: Some(self.io_state.project_path.clone()),
             ui_state: workspace_persistence::WorkspaceUiState::new(
-                self.ui_shell.workspace_layout(),
-                self.ui_shell.persistent_panel_configs(),
+                self.panel_presentation.workspace_layout(),
+                self.panel_runtime.persistent_panel_configs(),
             ),
         }
     }

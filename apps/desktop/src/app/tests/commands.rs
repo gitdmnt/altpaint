@@ -106,8 +106,8 @@ fn keyboard_panel_focus_can_activate_app_action() {
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
 
     assert!(
-        app.ui_shell
-            .focus_panel_node("builtin.app-actions", "app.save")
+        app.panel_presentation
+            .focus_panel_node(&app.panel_runtime, "builtin.app-actions", "app.save")
     );
     assert_eq!(
         app.activate_focused_panel_control(),
@@ -154,7 +154,7 @@ fn plugin_keyboard_capture_updates_persistent_config() {
     assert!(app.activate_panel_control("builtin.app-actions", "app.shortcut.new"));
     assert!(app.dispatch_keyboard_shortcut("Ctrl+Alt+N", "N", false));
 
-    let configs = app.ui_shell.persistent_panel_configs();
+    let configs = app.panel_runtime.persistent_panel_configs();
     assert_eq!(
         configs.get("builtin.app-actions"),
         Some(&json!({
@@ -201,8 +201,8 @@ fn desktop_app_loads_phase6_sample_panel_from_default_ui_directory() {
             .exists()
     );
     assert!(
-        app.ui_shell
-            .panel_trees()
+        app.panel_presentation
+            .panel_trees(&app.panel_runtime)
             .iter()
             .any(|panel| panel.id == "builtin.dsl-sample")
     );
@@ -212,7 +212,7 @@ fn desktop_app_loads_phase6_sample_panel_from_default_ui_directory() {
 #[test]
 fn desktop_app_replaces_builtin_panels_with_phase7_dsl_variants() {
     let app = test_app_with_dialogs(TestDialogs::default());
-    let panels = app.ui_shell.panel_trees();
+    let panels = app.panel_presentation.panel_trees(&app.panel_runtime);
 
     for panel_id in [
         "builtin.app-actions",
@@ -322,7 +322,7 @@ fn execute_command_applies_selected_workspace_preset() {
     }));
 
     let layout_entry = app
-        .ui_shell
+        .panel_presentation
         .workspace_layout()
         .panels
         .into_iter()
@@ -334,7 +334,7 @@ fn execute_command_applies_selected_workspace_preset() {
         Some(WorkspacePanelPosition { x: 32, y: 40 })
     );
     assert_eq!(
-        app.ui_shell
+        app.panel_runtime
             .persistent_panel_configs()
             .get("builtin.workspace-presets")
             .and_then(|config| config.get("selected_workspace"))
@@ -408,7 +408,7 @@ fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
     }));
 
     let layout_entry = app
-        .ui_shell
+        .panel_presentation
         .workspace_layout()
         .panels
         .into_iter()
@@ -416,7 +416,7 @@ fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
         .expect("layers panel should exist");
     assert_eq!(layout_entry.anchor, WorkspacePanelAnchor::BottomRight);
     assert_eq!(
-        app.ui_shell
+        app.panel_runtime
             .persistent_panel_configs()
             .get("builtin.workspace-presets")
             .and_then(|config| config.get("selected_workspace"))
@@ -475,7 +475,7 @@ fn execute_command_reloads_workspace_presets_into_workspace_panel_config() {
     assert!(app.execute_command(Command::ReloadWorkspacePresets));
 
     let config = app
-        .ui_shell
+        .panel_runtime
         .persistent_panel_configs()
         .get("builtin.workspace-presets")
         .cloned()
@@ -587,7 +587,7 @@ fn execute_command_imports_pen_file_and_records_report() {
             .any(|preset| preset.id == "imported.pen")
     );
     assert_eq!(
-        app.ui_shell
+        app.panel_runtime
             .persistent_panel_configs()
             .get("builtin.tool-palette")
             .and_then(|config| config.get("last_import_summary"))

@@ -9,14 +9,16 @@ use desktop_support::{
     load_session_state, load_workspace_preset_catalog, save_canvas_templates,
     save_workspace_preset_catalog,
 };
-use ui_shell::UiShell;
+use panel_runtime::PanelRuntime;
+use ui_shell::PanelPresentation;
 use workspace_persistence::WorkspaceUiState;
 
 use super::{DesktopApp, panel_config_sync::selected_workspace_preset_id_from_configs};
 
 pub(super) struct BootstrapState {
     pub(super) document: Document,
-    pub(super) ui_shell: UiShell,
+    pub(super) panel_runtime: PanelRuntime,
+    pub(super) panel_presentation: PanelPresentation,
     pub(super) project_path: PathBuf,
     pub(super) workspace_presets: WorkspacePresetCatalog,
     pub(super) active_workspace_preset_id: String,
@@ -37,13 +39,13 @@ impl DesktopApp {
             .unwrap_or_default();
         let workspace_presets = load_workspace_preset_catalog(workspace_preset_path);
         let mut active_workspace_preset_id = workspace_presets.default_preset_id.clone();
-        let mut ui_shell = Self::load_ui_shell(
+        let (mut panel_runtime, mut panel_presentation) = Self::load_panel_system(
             &workspace_presets,
             loaded_project.as_ref().map(|project| &project.ui_state),
             session.as_ref().map(|state| &state.ui_state),
         );
         if let Some(selected_preset_id) = selected_workspace_preset_id_from_configs(
-            &ui_shell.persistent_panel_configs(),
+            &panel_runtime.persistent_panel_configs(),
         )
         .filter(|preset_id| {
             workspace_presets
@@ -57,45 +59,50 @@ impl DesktopApp {
         let mut document = document;
         Self::reload_tool_catalog_into_document(&mut document);
         Self::reload_pen_presets_into_document(&mut document);
-        ui_shell.update(&document);
+        let _changed_panels = panel_runtime.sync_document(&document);
+        panel_presentation.reconcile_runtime_panels(&panel_runtime);
 
         BootstrapState {
             document,
-            ui_shell,
+            panel_runtime,
+            panel_presentation,
             project_path,
             workspace_presets,
             active_workspace_preset_id,
         }
     }
 
-    fn load_ui_shell(
+    fn load_panel_system(
         workspace_presets: &WorkspacePresetCatalog,
         project_ui_state: Option<&WorkspaceUiState>,
         session_ui_state: Option<&WorkspaceUiState>,
-    ) -> UiShell {
-        let mut ui_shell = UiShell::new();
-        let _ = ui_shell.load_panel_directory(default_panel_dir());
+    ) -> (PanelRuntime, PanelPresentation) {
+        let mut panel_runtime = PanelRuntime::new();
+        let mut panel_presentation = PanelPresentation::new();
+        let _ = panel_runtime.load_panel_directory(default_panel_dir());
+        panel_presentation.reconcile_runtime_panels(&panel_runtime);
 
         if let Some(default_preset) = workspace_presets
             .presets
             .iter()
             .find(|preset| preset.id == workspace_presets.default_preset_id)
         {
-            apply_ui_state_to_shell(&mut ui_shell, &default_preset.ui_state);
+            apply_ui_state_to_panel_system(&mut panel_runtime, &mut panel_presentation, &default_preset.ui_state);
         }
         if let Some(project_ui_state) = project_ui_state {
-            apply_ui_state_to_shell(&mut ui_shell, project_ui_state);
+            apply_ui_state_to_panel_system(&mut panel_runtime, &mut panel_presentation, project_ui_state);
         }
         if let Some(session_ui_state) = session_ui_state {
-            apply_ui_state_to_shell(&mut ui_shell, session_ui_state);
+            apply_ui_state_to_panel_system(&mut panel_runtime, &mut panel_presentation, session_ui_state);
         }
-        ui_shell
+        (panel_runtime, panel_presentation)
     }
 
     pub(super) fn apply_workspace_ui_state(&mut self, ui_state: WorkspaceUiState) {
         let (workspace_layout, plugin_configs) = ui_state.into_parts();
-        self.ui_shell.set_workspace_layout(workspace_layout);
-        self.ui_shell.set_persistent_panel_configs(plugin_configs);
+        self.panel_presentation.replace_workspace_layout(workspace_layout);
+        self.panel_runtime.replace_persistent_panel_configs(plugin_configs);
+        self.panel_presentation.reconcile_runtime_panels(&self.panel_runtime);
         self.refresh_new_document_templates();
         self.refresh_workspace_presets();
         self.reset_active_interactions();
@@ -152,11 +159,16 @@ fn resolve_startup_project_path(
         .unwrap_or(project_path)
 }
 
-fn apply_ui_state_to_shell(ui_shell: &mut UiShell, ui_state: &WorkspaceUiState) {
+fn apply_ui_state_to_panel_system(
+    panel_runtime: &mut PanelRuntime,
+    panel_presentation: &mut PanelPresentation,
+    ui_state: &WorkspaceUiState,
+) {
     if !ui_state.workspace_layout.panels.is_empty() {
-        ui_shell.set_workspace_layout(ui_state.workspace_layout.clone());
+        panel_presentation.replace_workspace_layout(ui_state.workspace_layout.clone());
     }
     if !ui_state.plugin_configs.is_empty() {
-        ui_shell.set_persistent_panel_configs(ui_state.plugin_configs.clone());
+        panel_runtime.replace_persistent_panel_configs(ui_state.plugin_configs.clone());
     }
+    panel_presentation.reconcile_runtime_panels(panel_runtime);
 }
