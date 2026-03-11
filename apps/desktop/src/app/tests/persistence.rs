@@ -43,7 +43,7 @@ fn execute_command_load_project_uses_native_dialog_path() {
     let mut app = test_app_with_dialogs(TestDialogs::with_open_path(path.clone()));
     assert!(app.execute_command(Command::LoadProject));
     app.wait_for_pending_save_tasks();
-    assert_eq!(app.project_path, path);
+    assert_eq!(app.io_state.project_path, path);
     assert!(
         !app.ui_shell
             .panel_trees()
@@ -51,7 +51,7 @@ fn execute_command_load_project_uses_native_dialog_path() {
             .any(|panel| panel.id == "builtin.tool-palette")
     );
 
-    let _ = std::fs::remove_file(app.project_path.clone());
+    let _ = std::fs::remove_file(app.io_state.project_path.clone());
 }
 
 /// 保存先選択付き保存で現在パスとワークスペース状態が永続化されることを確認する。
@@ -69,7 +69,7 @@ fn save_project_as_updates_project_path_and_persists_workspace_layout() {
     app.wait_for_pending_save_tasks();
 
     let loaded = load_project_from_path(&path).expect("saved project should load");
-    assert_eq!(app.project_path, path);
+    assert_eq!(app.io_state.project_path, path);
     assert!(
         loaded
             .ui_state
@@ -79,7 +79,7 @@ fn save_project_as_updates_project_path_and_persists_workspace_layout() {
             .any(|entry| entry.id == "builtin.tool-palette" && !entry.visible)
     );
 
-    let _ = std::fs::remove_file(app.project_path.clone());
+    let _ = std::fs::remove_file(app.io_state.project_path.clone());
 }
 
 #[test]
@@ -450,11 +450,11 @@ fn startup_restores_last_opened_project_from_session() {
         unique_test_path("workspace-presets"),
     );
 
-    assert_eq!(app.project_path, project_path);
+    assert_eq!(app.io_state.project_path, project_path);
     assert_eq!(app.document.work.title, "Recovered Project");
 
     let _ = std::fs::remove_file(session_path);
-    let _ = std::fs::remove_file(app.project_path.clone());
+    let _ = std::fs::remove_file(app.io_state.project_path.clone());
 }
 
 #[test]
@@ -538,7 +538,7 @@ fn startup_preserves_last_selected_workspace_preset_id() {
     let restarted = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
         PathBuf::from("/tmp/altpaint-test.altp.json"),
         Box::new(TestDialogs::default()),
-        source_app.session_path.clone(),
+        source_app.io_state.session_path.clone(),
         preset_path.clone(),
     );
 
@@ -552,6 +552,6 @@ fn startup_preserves_last_selected_workspace_preset_id() {
         Some("review")
     );
 
-    let _ = std::fs::remove_file(source_app.session_path.clone());
+    let _ = std::fs::remove_file(source_app.io_state.session_path.clone());
     let _ = std::fs::remove_file(preset_path);
 }

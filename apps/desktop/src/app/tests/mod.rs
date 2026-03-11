@@ -2,8 +2,11 @@
 //!
 //! ダイアログ差し替えやパネルツリー探索など、複数テストで共有する補助をここへ置く。
 
+mod bootstrap_tests;
+mod command_router_tests;
 mod commands;
 mod interaction;
+mod panel_dispatch_tests;
 mod persistence;
 
 use std::cell::RefCell;

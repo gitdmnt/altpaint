@@ -424,7 +424,7 @@ project file と session file は役割が異なる。
 
 1. `main.rs` が `DesktopRuntime::run(...)` を呼ぶ
 2. `DesktopRuntime` が `DesktopApp::new(...)` を構築する
-3. `DesktopApp` が session を読み、project を読み、`UiShell` を初期化する
+3. `apps/desktop/src/app/bootstrap.rs` が session / project / workspace preset を解決し、`UiShell` と `Document` の初期状態を組み立てる
 4. `UiShell` が `plugins/` 以下の `.altp-panel` を再帰探索してロードする
 5. 各 panel について `DslPanelPlugin` が Wasm runtime を初期化する
 6. `DesktopRuntime` が `winit` window と `wgpu` presenter を用意する
@@ -434,28 +434,30 @@ project file と session file は役割が異なる。
 1. OS pointer event が `runtime.rs` に届く
 2. `DesktopApp::handle_pointer_*` が panel/canvas を振り分ける
 3. canvas 側は `canvas_bridge.rs` で座標変換する
-4. `Command` が生成され `DesktopApp::execute_command(...)` に入る
+4. `Command` は `apps/desktop/src/app/command_router.rs` の `DesktopApp::execute_command(...)` に入る
 5. `Document::apply_command(...)` が実データを更新する
-6. dirty rect / transform 更新 / UI 再同期要求が蓄積される
+6. dirty rect / transform 更新 / UI 再同期要求は主に `apps/desktop/src/app/present_state.rs` に蓄積される
 7. `prepare_present_frame(...)` が base/overlay/canvas 更新情報を組み立てる
 8. `wgpu_canvas.rs` が 3 層を提示する
 
 ### パネルイベントフロー
 
 1. pointer / keyboard event が `DesktopApp` に届く
-2. `UiShell` が hit-test / focus / text input 編集を行う
-3. 対象 panel が DSL/Wasm panel なら `DslPanelPlugin::handle_event(...)` が呼ばれる
-4. 必要なら `plugin-host` を通じて Wasm handler を実行する
-5. `StatePatch` を panel local state に適用する
-6. `CommandDescriptor` を `HostAction::DispatchCommand(...)` 等へ変換する
-7. `DesktopApp::execute_host_action(...)` が `Command` や workspace 操作を実行する
+2. `apps/desktop/src/app/panel_dispatch.rs` が panel hit-test / drag / host action 適用を中継する
+3. `UiShell` が hit-test / focus / text input 編集を行う
+4. 対象 panel が DSL/Wasm panel なら `DslPanelPlugin::handle_event(...)` が呼ばれる
+5. 必要なら `plugin-host` を通じて Wasm handler を実行する
+6. `StatePatch` を panel local state に適用する
+7. `CommandDescriptor` を `HostAction::DispatchCommand(...)` 等へ変換する
+8. `apps/desktop/src/app/panel_dispatch.rs` の `DesktopApp::execute_host_action(...)` が `Command` や workspace 操作を実行する
 
 ### 保存・読込フロー
 
-1. `DesktopApp` が保存/読込 command を受ける
-2. project 保存は `storage` へ委譲する
-3. workspace layout / plugin config は `UiShell` から取り出して一緒に保存する
-4. session 保存は `desktop-support` へ委譲する
+1. `apps/desktop/src/app/command_router.rs` が保存/読込 command を受ける
+2. `apps/desktop/src/app/background_tasks.rs` が project save task を起動または回収する
+3. project 保存は `storage` へ委譲する
+4. workspace layout / plugin config は `UiShell` から取り出して一緒に保存する
+5. session 保存は `apps/desktop/src/app/io_state.rs` 経由で `desktop-support` へ委譲する
 
 ## 現在の境界で重要なこと
 

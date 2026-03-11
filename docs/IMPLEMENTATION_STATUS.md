@@ -78,12 +78,14 @@
 - `DesktopRuntime` による `winit` event loop
 - `WgpuPresenter` による base / canvas / overlay の三層提示
 - `DesktopApp` による document / UI / I/O / present の統合
+- `apps/desktop/src/app/bootstrap.rs` / `command_router.rs` / `panel_dispatch.rs` / `present_state.rs` / `background_tasks.rs` / `io_state.rs` / `services.rs` への責務分割の着手
 - pointer / keyboard / IME の処理
 - panel と canvas の入力ルーティング
 - 起動時の `plugins/` / `tools/` / `pens/` の読込
 
 補足:
 
+- `DesktopApp` は依然として orchestration の中心だが、constructor / command routing / panel dispatch / I/O state は module 分割が始まっている。
 - built-in paint plugin の実行は、現時点ではまだ `apps/desktop/src/app/drawing.rs` にある。
 
 ### 2. ドメインと document モデル

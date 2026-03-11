@@ -200,7 +200,7 @@ fn normalized_shortcut_includes_active_modifiers() {
 #[test]
 fn builtin_shortcut_dispatches_save_project() {
     let mut runtime = test_runtime();
-    runtime.app.project_path = std::env::temp_dir().join(format!(
+    runtime.app.io_state.project_path = std::env::temp_dir().join(format!(
         "altpaint-runtime-save-shortcut-{}.altp.json",
         std::process::id()
     ));

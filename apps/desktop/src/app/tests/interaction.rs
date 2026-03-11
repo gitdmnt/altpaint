@@ -325,7 +325,7 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
 #[test]
 fn layer_list_drag_keeps_dragged_layer_selected_while_reordering() {
     let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    app.active_panel_drag = Some(PanelDragState::Control {
+    app.panel_interaction.active_panel_drag = Some(PanelDragState::Control {
         panel_id: "builtin.layers-panel".to_string(),
         node_id: "layers.list".to_string(),
         source_value: 2,
@@ -338,7 +338,7 @@ fn layer_list_drag_keeps_dragged_layer_selected_while_reordering() {
         to: 1,
     });
     assert_eq!(
-        app.active_panel_drag.as_ref().and_then(|drag| match drag {
+        app.panel_interaction.active_panel_drag.as_ref().and_then(|drag| match drag {
             PanelDragState::Control { source_value, .. } => Some(*source_value),
             PanelDragState::Move { .. } => None,
         }),
@@ -352,7 +352,7 @@ fn layer_list_drag_keeps_dragged_layer_selected_while_reordering() {
         to: 0,
     });
     assert_eq!(
-        app.active_panel_drag.as_ref().and_then(|drag| match drag {
+        app.panel_interaction.active_panel_drag.as_ref().and_then(|drag| match drag {
             PanelDragState::Control { source_value, .. } => Some(*source_value),
             PanelDragState::Move { .. } => None,
         }),

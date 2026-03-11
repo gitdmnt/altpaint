@@ -21,6 +21,7 @@
 - 既存の責務集中を温存するような暫定回避を増やさない
 - 変更のたびにテスト・`clippy`・関連文書更新まで含める
 - `target/` は読まない、編集しない
+- ファイル構造の最適化とサイズ削減が目的なので不要なファイルはどんどん消してコンパクトにする
 
 ## フェーズ実行ルール
 
@@ -29,7 +30,7 @@
 1. 既存ファイルの責務棚卸し
 2. 新規 module / crate / test file 作成
 3. 呼び出し側の import / dependency 更新
-4. 旧 API の削除または thin wrapper 化
+4. 旧 API の削除
 5. テスト追加・更新
 6. `docs/IMPLEMENTATION_STATUS.md` / `docs/CURRENT_ARCHITECTURE.md` / `docs/MODULE_DEPENDENCIES.md` の追従
 

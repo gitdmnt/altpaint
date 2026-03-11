@@ -1,15 +1,10 @@
-//! プロジェクト I/O と `Command` / `HostAction` 適用を `DesktopApp` へ追加する。
-//!
-//! 永続化やホストアクションのような副作用をここへ寄せ、
-//! 入力処理と描画処理から外部依存を分離する。
+//! プロジェクト I/O と paint 実行補助を扱う。
 
 use std::path::PathBuf;
-use std::thread;
 
-use app_core::{Command, PaintInput};
+use app_core::PaintInput;
 use desktop_support::normalize_project_path;
-use plugin_api::HostAction;
-use storage::{load_project_from_path, save_project_to_path};
+use storage::load_project_from_path;
 
 use super::DesktopApp;
 use crate::app::drawing::STANDARD_BITMAP_PLUGIN_ID;
@@ -55,54 +50,48 @@ impl DesktopApp {
     }
 
     /// 現在のプロジェクトパスへ保存を行う。
-    fn save_project_to_current_path(&mut self) -> bool {
-        self.enqueue_save_project(self.project_path.clone())
+    pub(super) fn save_project_to_current_path(&mut self) -> bool {
+        self.enqueue_save_project(self.io_state.project_path.clone())
     }
 
     /// 保存先を選んでプロジェクトを保存する。
-    fn save_project_as(&mut self) -> bool {
-        let Some(path) = self.dialogs.pick_save_project_path(&self.project_path) else {
+    pub(super) fn save_project_as(&mut self) -> bool {
+        let Some(path) = self
+            .io_state
+            .dialogs
+            .pick_save_project_path(&self.io_state.project_path)
+        else {
             return false;
         };
         self.save_project_to_path(path)
     }
 
     /// 指定パスへプロジェクトを保存し、状態上の現在パスも更新する。
-    fn save_project_to_path(&mut self, path: PathBuf) -> bool {
-        self.project_path = normalize_project_path(path);
+    pub(super) fn save_project_to_path(&mut self, path: PathBuf) -> bool {
+        self.io_state.project_path = normalize_project_path(path);
         self.mark_status_dirty();
         self.persist_session_state();
         self.save_project_to_current_path()
     }
 
-    fn enqueue_save_project(&mut self, path: PathBuf) -> bool {
-        let document = self.document.clone();
-        let workspace_layout = self.ui_shell.workspace_layout();
-        let plugin_configs = self.ui_shell.persistent_panel_configs();
-        let handle = thread::spawn(move || {
-            save_project_to_path(&path, &document, &workspace_layout, &plugin_configs)
-                .map_err(|error| error.to_string())
-        });
-        self.pending_save_tasks
-            .push(super::PendingSaveTask { handle });
-        self.mark_status_dirty();
-        true
-    }
-
     /// 開く対象を選んでプロジェクトを読み込む。
-    fn open_project(&mut self) -> bool {
-        let Some(path) = self.dialogs.pick_open_project_path(&self.project_path) else {
+    pub(super) fn open_project(&mut self) -> bool {
+        let Some(path) = self
+            .io_state
+            .dialogs
+            .pick_open_project_path(&self.io_state.project_path)
+        else {
             return false;
         };
         self.load_project(path)
     }
 
     /// 指定パスのプロジェクトを読み込み、UI 状態も復元する。
-    fn load_project(&mut self, path: PathBuf) -> bool {
+    pub(super) fn load_project(&mut self, path: PathBuf) -> bool {
         let path = normalize_project_path(path);
         match load_project_from_path(&path) {
             Ok(project) => {
-                self.project_path = path;
+                self.io_state.project_path = path;
                 self.document = project.document;
                 let _ = Self::reload_tool_catalog_into_document(&mut self.document);
                 let _ = self.reload_pen_presets();
@@ -122,92 +111,8 @@ impl DesktopApp {
             Err(error) => {
                 let message = format!("failed to load project: {error}");
                 eprintln!("{message}");
-                self.dialogs.show_error("Open failed", &message);
+                self.io_state.dialogs.show_error("Open failed", &message);
                 false
-            }
-        }
-    }
-
-    /// アプリケーション全体で扱うコマンドを解釈して適用する。
-    pub(crate) fn execute_command(&mut self, command: Command) -> bool {
-        self.poll_background_tasks();
-        match command {
-            Command::NewDocument => self.activate_panel_control("builtin.app-actions", "app.new"),
-            Command::SaveProject => self.save_project_to_current_path(),
-            Command::SaveProjectAs => self.save_project_as(),
-            Command::SaveProjectToPath { path } => self.save_project_to_path(PathBuf::from(path)),
-            Command::LoadProject => self.open_project(),
-            Command::LoadProjectFromPath { path } => self.load_project(PathBuf::from(path)),
-            Command::ReloadWorkspacePresets => self.reload_workspace_presets(),
-            Command::ApplyWorkspacePreset { preset_id } => self.apply_workspace_preset(&preset_id),
-            Command::SaveWorkspacePreset { preset_id, label } => {
-                self.save_workspace_preset(&preset_id, &label)
-            }
-            Command::ExportWorkspacePreset { preset_id, label } => {
-                self.export_workspace_preset(&preset_id, &label)
-            }
-            Command::ExportWorkspacePresetToPath {
-                preset_id,
-                label,
-                path,
-            } => self.export_workspace_preset_to_path(&preset_id, &label, PathBuf::from(path)),
-            Command::ReloadPenPresets => self.reload_pen_presets(),
-            Command::ImportPenPresets => self.import_pen_presets(),
-            Command::ImportPenPresetsFromPath { path } => {
-                self.import_pen_presets_from_path(PathBuf::from(path))
-            }
-            other => self.execute_document_command(other),
-        }
-    }
-
-    /// 指定パネルノードを擬似的にアクティブ化する。
-    pub(super) fn activate_panel_control(&mut self, panel_id: &str, node_id: &str) -> bool {
-        self.dispatch_panel_event(plugin_api::PanelEvent::Activate {
-            panel_id: panel_id.to_string(),
-            node_id: node_id.to_string(),
-        })
-    }
-
-    /// グローバルキーボードショートカットをパネルプラグインへ配送する。
-    pub(crate) fn dispatch_keyboard_shortcut(
-        &mut self,
-        shortcut: &str,
-        key: &str,
-        repeat: bool,
-    ) -> bool {
-        let (handled, actions) = self.ui_shell.handle_keyboard_event(shortcut, key, repeat);
-        let mut changed = handled;
-        for action in actions {
-            changed |= self.execute_host_action(action);
-        }
-        self.refresh_panel_surface_if_changed(changed)
-    }
-
-    /// パネルランタイムから返されたホストアクションを実行する。
-    pub(crate) fn execute_host_action(&mut self, action: HostAction) -> bool {
-        match action {
-            HostAction::DispatchCommand(command) => self.execute_command(command),
-            HostAction::InvokePanelHandler { .. } => false,
-            HostAction::MovePanel {
-                panel_id,
-                direction,
-            } => {
-                let changed = self.ui_shell.move_panel(&panel_id, direction);
-                if changed {
-                    self.mark_panel_surface_dirty();
-                    self.mark_status_dirty();
-                    self.persist_session_state();
-                }
-                changed
-            }
-            HostAction::SetPanelVisibility { panel_id, visible } => {
-                let changed = self.ui_shell.set_panel_visibility(&panel_id, visible);
-                if changed {
-                    self.mark_panel_surface_dirty();
-                    self.mark_status_dirty();
-                    self.persist_session_state();
-                }
-                changed
             }
         }
     }

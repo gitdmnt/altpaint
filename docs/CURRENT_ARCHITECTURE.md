@@ -333,8 +333,15 @@ workspace member として存在するもの:
 
 集中箇所（ファイル単位）:
 
-- `apps/desktop/src/app/mod.rs`: constructor、起動復元、preset/template 同期、helper 群が集中する
-- `apps/desktop/src/app/input.rs`: canvas/panel 振り分け、panel drag、gesture 状態が集中する
+- `apps/desktop/src/app/mod.rs`: `DesktopApp` 定義、constructor wiring、薄い公開 API が残る
+- `apps/desktop/src/app/bootstrap.rs`: 起動時の session / project / workspace preset 復元が集約される
+- `apps/desktop/src/app/command_router.rs`: document command と I/O command の分岐が集約される
+- `apps/desktop/src/app/panel_dispatch.rs`: panel drag、host action、focus / text input dispatch が集約される
+- `apps/desktop/src/app/io_state.rs`: `project_path` / `session_path` / `workspace_preset_path` / dialogs / background save queue をまとめる
+- `apps/desktop/src/app/background_tasks.rs`: 非同期 save task の起動と回収を扱う
+- `apps/desktop/src/app/services.rs`: tool / pen reload、pen import、status 生成を扱う
+- `apps/desktop/src/app/present_state.rs`: dirty rect、present flag、UI 再同期要求が集約される
+- `apps/desktop/src/app/input.rs`: canvas gesture と window→canvas 変換がまだ集中する
 - `apps/desktop/src/app/present.rs`: dirty rect、panel surface refresh、frame compose 指示が集中する
 - `apps/desktop/src/app/drawing.rs`: built-in paint runtime と bitmap op が集中する
 
@@ -401,8 +408,11 @@ workspace member として存在するもの:
 
 ### `apps/desktop/src/app/tests/*`
 
+- `bootstrap_tests.rs`: 起動復元と session 起点の project 復元を分離して検証し始めた
+- `command_router_tests.rs`: document command と I/O command の経路を薄く固定し始めた
 - `commands.rs`: command dispatch、shortcut、preset 同期、built-in panel 置換確認をまとめて抱えている
 - `interaction.rs`: canvas 入力、panel 入力、drag、color wheel、present 前提の振る舞いをまとめて抱えている
+- `panel_dispatch_tests.rs`: panel dispatch と drag source 更新の回帰を分離し始めた
 - `persistence.rs`: project save/load、workspace layout 復元、plugin config 永続化、差分 present 検証をまとめて抱えている
 
 今後 crate / module 単位へ移したい代表例:
