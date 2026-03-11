@@ -4,11 +4,11 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use app_core::{CanvasPoint, CanvasViewportPoint, ColorRgba8, Command, PanelSurfacePoint, WindowPoint, ToolKind};
+use canvas::{CanvasPointerEvent, map_view_to_canvas_with_transform};
 use desktop_support::{DesktopProfiler, StageStats, ValueStats};
 
 use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::{DesktopApp, PanelDragState};
-use crate::canvas_bridge::{CanvasPointerEvent, map_view_to_canvas_with_transform};
 
 fn rect_within_panel_surface(rect: crate::frame::Rect, surface: &ui_shell::PanelSurface) -> bool {
     rect.x >= surface.x

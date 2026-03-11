@@ -36,7 +36,7 @@
 - canvas 入力と panel 入力の振り分け
 - project / session / workspace preset / tools / pens / panels の起動時読込
 - base / canvas / overlay の三層提示
-- built-in paint plugin 実行
+- `canvas` runtime と `UiShell` の orchestration
 
 主なモジュール:
 
@@ -45,19 +45,23 @@
 - `src/runtime/pointer.rs`
 - `src/runtime/keyboard.rs`
 - `src/app/mod.rs`
+- `src/app/bootstrap.rs`
+- `src/app/command_router.rs`
+- `src/app/panel_dispatch.rs`
+- `src/app/services.rs`
+- `src/app/background_tasks.rs`
 - `src/app/input.rs`
 - `src/app/commands.rs`
 - `src/app/state.rs`
 - `src/app/present.rs`
 - `src/app/drawing.rs`
-- `src/canvas_bridge.rs`
 - `src/frame/`
 - `src/wgpu_canvas.rs`
 
 補足:
 
 - `DesktopApp` は単なる状態コンテナではなく、現状では host orchestration の中心である。
-- `src/app/drawing.rs` に built-in の描画処理があり、描画ツール実行ランタイムの一部まで desktop 側に置かれている。
+- `src/app/drawing.rs` は `canvas::CanvasRuntime` を再公開するだけの薄い wrapper になった。
 
 ### 2. `crates/app-core`
 
@@ -71,7 +75,7 @@
 - `PenPreset`
 - `ToolDefinition`
 - `WorkspaceLayout`
-- paint plugin 実行に必要な文脈解決の一部
+- `BitmapEdit` / `PaintInput` / compositor などの共有 paint primitive
 
 主なモジュール:
 
@@ -85,10 +89,34 @@
 
 補足:
 
-- ドメイン純度は高いが、`Document` が tool catalog や paint plugin 文脈に近い責務まで持ち始めている。
-- 将来の `canvas` 相当責務は、現在 `app-core`、`apps/desktop`、`render` に分散している。
+- ドメイン純度は高いが、`Document` が tool catalog や pen runtime state を広く持っている。
+- paint context 構築そのものは `canvas::context_builder` へ移った。
 
-### 3. `crates/render`
+### 3. `crates/canvas`
+
+現在の canvas runtime / input / bitmap op 層であり、次を担う。
+
+- `CanvasRuntime`
+- `CanvasInputState`
+- view-to-canvas 変換
+- canvas gesture state machine
+- `Document` からの paint context 構築
+- built-in bitmap paint plugin
+- stamp / stroke / flood fill / lasso fill
+- panel rect preview の render bridge
+
+主なモジュール:
+
+- `src/runtime.rs`
+- `src/context_builder.rs`
+- `src/input_state.rs`
+- `src/view_mapping.rs`
+- `src/gesture.rs`
+- `src/render_bridge.rs`
+- `src/plugins/builtin_bitmap.rs`
+- `src/ops/`
+
+### 4. `crates/render`
 
 現在の描画計画・表示幾何・panel software rasterize 層であり、次を担う。
 
@@ -270,17 +298,17 @@ workspace member として存在するもの:
 
 現状コードを基準に見たとき、移動先として固定したい境界は次である。
 
-| 論理名          | 現在の主配置                                  | 目標配置               | 現状メモ                              |
-| --------------- | --------------------------------------------- | ---------------------- | ------------------------------------- |
-| `desktopApp`    | `apps/desktop`                                | `apps/desktop`         | 現在は orchestration 以外も広く抱える |
-| `app-core`      | `crates/app-core`                             | `crates/app-core`      | `Document` に runtime 寄り責務が残る  |
-| `render`        | `crates/render`                               | `crates/render`        | desktop 固有 compose がまだ外に残る   |
-| `canvas`        | `apps/desktop` + `app-core` + `render` に分散 | `crates/canvas`        | まだ crate が存在しない               |
-| `ui-shell`      | `crates/ui-shell`                             | `crates/ui-shell`      | runtime と presentation が同居中      |
-| `panel-runtime` | `crates/ui-shell` 内部に内包                  | `crates/panel-runtime` | フェーズ3で切り出し候補               |
-| `plugin-host`   | `crates/plugin-host`                          | `crates/plugin-host`   | panel Wasm runtime 専用               |
-| `panel-dsl`     | `crates/panel-dsl`                            | `crates/panel-dsl`     | 純粋 parse 層として維持しやすい       |
-| `plugin-sdk`    | `crates/panel-sdk` + `crates/panel-macros`    | `crates/plugin-sdk` 系 | 物理名と論理名がまだずれる            |
+| 論理名          | 現在の主配置                               | 目標配置               | 現状メモ                              |
+| --------------- | ------------------------------------------ | ---------------------- | ------------------------------------- |
+| `desktopApp`    | `apps/desktop`                             | `apps/desktop`         | 現在は orchestration 以外も広く抱える |
+| `app-core`      | `crates/app-core`                          | `crates/app-core`      | `Document` に tool / pen state が残る |
+| `render`        | `crates/render`                            | `crates/render`        | desktop 固有 compose がまだ外に残る   |
+| `canvas`        | `crates/canvas`                            | `crates/canvas`        | runtime / gesture / bitmap op を集約  |
+| `ui-shell`      | `crates/ui-shell`                          | `crates/ui-shell`      | runtime と presentation が同居中      |
+| `panel-runtime` | `crates/ui-shell` 内部に内包               | `crates/panel-runtime` | フェーズ3で切り出し候補               |
+| `plugin-host`   | `crates/plugin-host`                       | `crates/plugin-host`   | panel Wasm runtime 専用               |
+| `panel-dsl`     | `crates/panel-dsl`                         | `crates/panel-dsl`     | 純粋 parse 層として維持しやすい       |
+| `plugin-sdk`    | `crates/panel-sdk` + `crates/panel-macros` | `crates/plugin-sdk` 系 | 物理名と論理名がまだずれる            |
 
 ## 現在の runtime flow
 
@@ -290,17 +318,19 @@ workspace member として存在するもの:
 2. `DesktopApp::new(...)` が session / project / workspace preset を読む
 3. `UiShell` が `plugins/` 以下の `.altp-panel` を再帰ロードする
 4. `storage` が `tools/` と `pens/` を読み、`Document` へ反映する
-5. `render` と `wgpu_canvas` が最初の提示を行う
+5. `canvas::CanvasRuntime` が paint plugin registry を初期化する
+6. `render` と `wgpu_canvas` が最初の提示を行う
 
 ### 2. 入力から描画まで
 
 1. OS 入力を `runtime/pointer.rs` と `runtime/keyboard.rs` が正規化する
 2. `app/input.rs` が canvas / panel / panel move を振り分ける
-3. canvas 入力は `canvas_bridge` と `render::CanvasScene` を使って canvas 座標へ変換する
-4. `Document` が active tool と paint context を解決する
-5. `apps/desktop/src/app/drawing.rs` の paint plugin が bitmap 差分を作る
-6. 差分を `Document` に適用する
-7. `app/present.rs` と `wgpu_canvas.rs` が dirty rect ベースで再提示する
+3. `canvas::view_mapping` が window/view 座標を canvas 座標へ変換する
+4. `canvas::gesture` が down / drag / up を `PaintInput` または panel rect preview へ変換する
+5. `canvas::context_builder` が `Document` から paint context を解決する
+6. `canvas::runtime` が built-in plugin を呼んで bitmap 差分を作る
+7. 差分を `Document` に適用する
+8. `app/present.rs` と `wgpu_canvas.rs` が dirty rect ベースで再提示する
 
 ### 3. パネル
 
@@ -327,7 +357,7 @@ workspace member として存在するもの:
 - document と UI shell の所有
 - project / session / workspace preset I/O
 - tool / pen / panel catalog 読込
-- paint plugin registry
+- canvas runtime と panel runtime の橋渡し
 - dirty rect と present planning
 - panel drag と input state
 
@@ -339,11 +369,27 @@ workspace member として存在するもの:
 - `apps/desktop/src/app/panel_dispatch.rs`: panel drag、host action、focus / text input dispatch が集約される
 - `apps/desktop/src/app/io_state.rs`: `project_path` / `session_path` / `workspace_preset_path` / dialogs / background save queue をまとめる
 - `apps/desktop/src/app/background_tasks.rs`: 非同期 save task の起動と回収を扱う
-- `apps/desktop/src/app/services.rs`: tool / pen reload、pen import、status 生成を扱う
+- `apps/desktop/src/app/services.rs`: workspace preset 操作、tool / pen reload、pen import、status 生成を扱う
 - `apps/desktop/src/app/present_state.rs`: dirty rect、present flag、UI 再同期要求が集約される
-- `apps/desktop/src/app/input.rs`: canvas gesture と window→canvas 変換がまだ集中する
+- `apps/desktop/src/app/input.rs`: window→canvas 変換と panel/canvas ルーティングが残る
 - `apps/desktop/src/app/present.rs`: dirty rect、panel surface refresh、frame compose 指示が集中する
-- `apps/desktop/src/app/drawing.rs`: built-in paint runtime と bitmap op が集中する
+
+### `CanvasRuntime`
+
+次が `canvas` に集約された。
+
+- bitmap paint plugin registry
+- `Document` 由来の paint context 構築
+- stroke / fill / erase / lasso の bitmap op
+- lasso / panel rect / drag の input state machine
+
+集中箇所（ファイル単位）:
+
+- `crates/canvas/src/runtime.rs`: plugin 実行入口
+- `crates/canvas/src/context_builder.rs`: `Document` からの runtime 文脈構築
+- `crates/canvas/src/gesture.rs`: canvas gesture state machine
+- `crates/canvas/src/plugins/builtin_bitmap.rs`: built-in bitmap plugin
+- `crates/canvas/src/ops/*`: stamp / stroke / flood fill / lasso fill / composite
 
 ### `Document`
 
@@ -352,11 +398,10 @@ workspace member として存在するもの:
 - ドメインモデル
 - `Command` 適用
 - tool / pen runtime 状態
-- paint plugin 文脈解決
 
 集中箇所（ファイル単位）:
 
-- `crates/app-core/src/document.rs`: document state、tool state、paint context 解決が集中する
+- `crates/app-core/src/document.rs`: document state と tool / pen state が集中する
 - `crates/app-core/src/painting.rs`: `PaintPluginContext`、`BitmapEdit`、compositor が集中する
 
 ### `UiShell`

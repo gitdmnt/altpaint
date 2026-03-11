@@ -3,12 +3,13 @@
 //! OS 由来の生イベントをドキュメント編集やパネル操作へ変換し、
 //! ランタイム側が UI 詳細を知らずに済むようにする。
 
-use app_core::{CanvasPoint, Command, PaintInput, ToolKind, WindowPoint};
+use app_core::{CanvasPoint, Command, ToolKind, WindowPoint};
+use canvas::{
+    CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, CanvasPointerEvent,
+    advance_pointer_gesture, map_view_to_canvas_with_transform,
+};
 
 use super::DesktopApp;
-use crate::canvas_bridge::{
-    CanvasInputState, CanvasPointerEvent, map_view_to_canvas_with_transform,
-};
 use crate::frame::brush_preview_rect;
 
 impl DesktopApp {
@@ -137,177 +138,109 @@ impl DesktopApp {
         point: WindowPoint,
         pressure: f32,
     ) -> bool {
+        let Some(pointer_action) = pointer_action(action) else {
+            return false;
+        };
         let canvas_position = self.canvas_position_from_window(point).or_else(|| {
             (action != "down" && self.canvas_input.is_drawing)
                 .then(|| self.canvas_position_from_window_clamped(point))
                 .flatten()
         });
         let Some(page_point) = canvas_position else {
-            if action == "up" {
-                self.canvas_input = CanvasInputState::default();
+            if pointer_action == CanvasPointerAction::Up {
+                self.canvas_input.reset();
             }
             return false;
         };
 
         let active_tool = self.document.active_tool;
-        if active_tool == ToolKind::PanelRect {
-            return self.handle_panel_rect_pointer(action, page_point);
-        }
+        let active_panel_bounds = self.document.active_panel_bounds();
 
         let page_point = if action != "down" && self.canvas_input.is_drawing {
-            self.clamp_page_position_to_active_panel(page_point)
+            active_panel_bounds
+                .and_then(|bounds| bounds.clamp_canvas_point(page_point))
                 .unwrap_or(page_point)
         } else {
             page_point
         };
-        let inside_active_panel = self.page_position_in_active_panel(page_point).is_some();
-        if !inside_active_panel {
-            if action == "up" {
-                self.canvas_input = CanvasInputState::default();
+        let inside_active_panel = active_panel_bounds
+            .is_some_and(|bounds| bounds.contains_canvas_point(page_point));
+        if active_tool != ToolKind::PanelRect && !inside_active_panel {
+            if pointer_action == CanvasPointerAction::Up {
+                self.canvas_input.reset();
             }
             return false;
         }
 
-        match action {
-            "down" => {
-                if active_tool == ToolKind::Bucket {
-                    let Some(local_point) = self.page_to_active_panel_local(page_point) else {
-                        return false;
-                    };
-                    return self.execute_paint_input(PaintInput::FloodFill { at: local_point });
-                }
-                self.canvas_input.is_drawing = true;
-                self.canvas_input.last_position = Some(page_point);
-                self.canvas_input.last_smoothed_position =
-                    Some((page_point.x as f32, page_point.y as f32));
-                if active_tool == ToolKind::LassoBucket {
-                    self.canvas_input.lasso_points.clear();
-                    self.canvas_input.lasso_points.push(page_point);
-                    if let Some(layout) = self.layout.as_ref() {
-                        self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
-                    }
-                    return false;
-                }
-                let Some(local_point) = self.page_to_active_panel_local(page_point) else {
-                    return false;
-                };
-                self.execute_paint_input(PaintInput::Stamp {
-                    at: local_point,
-                    pressure,
-                })
-            }
-            "drag" if self.canvas_input.is_drawing => {
-                if active_tool == ToolKind::LassoBucket {
-                    if self.canvas_input.lasso_points.last().copied() != Some(page_point) {
-                        self.canvas_input.lasso_points.push(page_point);
-                        if let Some(layout) = self.layout.as_ref() {
-                            self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
-                        }
-                    }
-                    self.canvas_input.last_position = Some(page_point);
-                    return false;
-                }
-                let next_position = self.stabilized_canvas_position(page_point);
-                let from = self.canvas_input.last_position;
-                if from == Some(next_position) {
-                    return false;
-                }
-                let changed = from
-                    .and_then(|previous| {
-                        Some((
-                            self.page_to_active_panel_local(previous)?,
-                            self.page_to_active_panel_local(next_position)?,
-                        ))
-                    })
-                    .is_some_and(|(from_local, to_local)| {
-                        self.execute_paint_input(PaintInput::StrokeSegment {
-                            from: from_local,
-                            to: to_local,
-                            pressure,
-                        })
-                    });
-                self.canvas_input.last_position = Some(next_position);
-                changed
-            }
-            "up" => {
-                if active_tool == ToolKind::LassoBucket {
-                    let changed = if self.canvas_input.lasso_points.len() >= 3 {
-                        let Some(local_points) = self
-                            .canvas_input
-                            .lasso_points
-                            .iter()
-                            .map(|&point| self.page_to_active_panel_local(point))
-                            .collect::<Option<Vec<_>>>()
-                        else {
-                            self.canvas_input = CanvasInputState::default();
-                            return false;
-                        };
-                        self.execute_paint_input(PaintInput::LassoFill {
-                            points: local_points,
-                        })
-                    } else {
-                        false
-                    };
-                    if let Some(layout) = self.layout.as_ref() {
-                        self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
-                    }
-                    self.canvas_input = CanvasInputState::default();
-                    return changed;
-                }
-                let from = self.canvas_input.last_position;
-                let changed = if self.canvas_input.is_drawing && from != Some(page_point) {
-                    from.and_then(|previous| {
-                        Some((
-                            self.page_to_active_panel_local(previous)?,
-                            self.page_to_active_panel_local(page_point)?,
-                        ))
-                    })
-                    .is_some_and(|(from_local, to_local)| {
-                        self.execute_paint_input(PaintInput::StrokeSegment {
-                            from: from_local,
-                            to: to_local,
-                            pressure,
-                        })
-                    })
-                } else {
-                    false
-                };
-                self.canvas_input = CanvasInputState::default();
-                changed
-            }
-            _ => false,
-        }
-    }
-
-    fn stabilized_canvas_position(&mut self, point: CanvasPoint) -> CanvasPoint {
-        if self.document.active_tool != ToolKind::Pen {
-            self.canvas_input.last_smoothed_position = Some((point.x as f32, point.y as f32));
-            return point;
-        }
         let stabilization = self
             .document
             .active_pen_preset()
             .map(|preset| preset.stabilization)
             .unwrap_or_default();
-        if stabilization == 0 {
-            self.canvas_input.last_smoothed_position = Some((point.x as f32, point.y as f32));
-            return point;
-        }
-
-        let blend = (1.0 / (1.0 + stabilization as f32 / 12.0)).clamp(0.05, 1.0);
-        let previous = self
-            .canvas_input
-            .last_smoothed_position
-            .unwrap_or((point.x as f32, point.y as f32));
-        let next = (
-            previous.0 + (point.x as f32 - previous.0) * blend,
-            previous.1 + (point.y as f32 - previous.1) * blend,
+        let update = advance_pointer_gesture(
+            &mut self.canvas_input,
+            pointer_action,
+            page_point,
+            active_tool,
+            pressure,
+            stabilization,
+            |canvas_point| active_panel_bounds.and_then(|bounds| bounds.canvas_to_panel_local(canvas_point)),
         );
-        self.canvas_input.last_smoothed_position = Some(next);
-        CanvasPoint::new(
-            next.0.round().max(0.0) as usize,
-            next.1.round().max(0.0) as usize,
-        )
+
+        match update {
+            CanvasGestureUpdate::None => false,
+            CanvasGestureUpdate::Paint(input) => {
+                let changed = self.execute_paint_input(input);
+                if active_tool == ToolKind::LassoBucket
+                    && pointer_action == CanvasPointerAction::Up
+                    && let Some(layout) = self.layout.as_ref()
+                {
+                    self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
+                }
+                changed
+            }
+            CanvasGestureUpdate::LassoPreviewChanged => {
+                if let Some(layout) = self.layout.as_ref() {
+                    self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
+                }
+                false
+            }
+            CanvasGestureUpdate::PanelRectPreviewChanged => {
+                if let Some(layout) = self.layout.as_ref() {
+                    self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
+                }
+                true
+            }
+            CanvasGestureUpdate::PanelRectCommitted { anchor, current } => {
+                let (page_width, page_height) = self.document.active_page_dimensions();
+                let preview_state = CanvasInputState {
+                    is_drawing: false,
+                    last_position: Some(current),
+                    last_smoothed_position: None,
+                    lasso_points: Vec::new(),
+                    panel_rect_anchor: Some(anchor),
+                };
+                let created = canvas::panel_creation_preview_bounds(
+                    &preview_state,
+                    page_width,
+                    page_height,
+                )
+                .filter(|bounds| bounds.width >= 8 && bounds.height >= 8)
+                .is_some_and(|bounds| {
+                    self.execute_command(Command::CreatePanel {
+                        x: bounds.x,
+                        y: bounds.y,
+                        width: bounds.width,
+                        height: bounds.height,
+                    })
+                });
+                if let Some(layout) = self.layout.as_ref() {
+                    self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
+                    return true;
+                }
+                created
+            }
+        }
     }
 
     /// ウィンドウ座標をキャンバスビットマップ座標へ変換する。
@@ -368,59 +301,13 @@ impl DesktopApp {
         let bounds = self.document.active_panel_bounds()?;
         bounds.contains_canvas_point(point).then_some(point)
     }
+}
 
-    fn page_to_active_panel_local(&self, point: CanvasPoint) -> Option<app_core::PanelLocalPoint> {
-        let bounds = self.document.active_panel_bounds()?;
-        bounds.canvas_to_panel_local(point)
+fn pointer_action(action: &str) -> Option<CanvasPointerAction> {
+    match action {
+        "down" => Some(CanvasPointerAction::Down),
+        "drag" => Some(CanvasPointerAction::Drag),
+        "up" => Some(CanvasPointerAction::Up),
+        _ => None,
     }
-
-    fn clamp_page_position_to_active_panel(&self, point: CanvasPoint) -> Option<CanvasPoint> {
-        let bounds = self.document.active_panel_bounds()?;
-        bounds.clamp_canvas_point(point)
-    }
-
-    fn handle_panel_rect_pointer(&mut self, action: &str, point: CanvasPoint) -> bool {
-        match action {
-            "down" => {
-                self.canvas_input.is_drawing = true;
-                self.canvas_input.panel_rect_anchor = Some(point);
-                self.canvas_input.last_position = Some(point);
-                if let Some(layout) = self.layout.as_ref() {
-                    self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
-                }
-                true
-            }
-            "drag" if self.canvas_input.is_drawing => {
-                if self.canvas_input.last_position == Some(point) {
-                    return false;
-                }
-                self.canvas_input.last_position = Some(point);
-                if let Some(layout) = self.layout.as_ref() {
-                    self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
-                }
-                true
-            }
-            "up" => {
-                let preview = self.panel_creation_preview_bounds();
-                let created = preview
-                    .filter(|bounds| bounds.width >= 8 && bounds.height >= 8)
-                    .is_some_and(|bounds| {
-                        self.execute_command(Command::CreatePanel {
-                            x: bounds.x,
-                            y: bounds.y,
-                            width: bounds.width,
-                            height: bounds.height,
-                        })
-                    });
-                self.canvas_input = CanvasInputState::default();
-                if let Some(layout) = self.layout.as_ref() {
-                    self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
-                    return true;
-                }
-                created
-            }
-            _ => false,
-        }
-    }
-
 }

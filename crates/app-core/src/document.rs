@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{Command, PaintPluginContext, PanelLocalPoint};
+use crate::{Command, PanelLocalPoint};
 
 mod bitmap;
 mod layer_ops;
@@ -882,33 +882,6 @@ impl Document {
         self.active_tool_definition()
             .map(|tool| tool.settings.as_slice())
             .unwrap_or(&[])
-    }
-
-    pub fn resolve_paint_plugin_context(
-        &self,
-        resolved_size: u32,
-    ) -> Option<PaintPluginContext<'_>> {
-        let active_tool = self.active_tool_definition()?;
-        let active_pen = self.active_pen_preset()?;
-        let active_panel = self.active_panel()?;
-        let active_layer_bitmap = self.active_layer_bitmap()?;
-        let composited_bitmap = self.active_bitmap()?;
-
-        Some(PaintPluginContext {
-            tool: active_tool.kind,
-            tool_id: active_tool.id.as_str(),
-            provider_plugin_id: active_tool.provider_plugin_id.as_str(),
-            drawing_plugin_id: active_tool.drawing_plugin_id.as_str(),
-            tool_settings: active_tool.settings.as_slice(),
-            color: self.active_color,
-            pen: active_pen,
-            resolved_size,
-            active_layer_bitmap,
-            composited_bitmap,
-            active_layer_is_background: self.active_layer_is_background().unwrap_or(false),
-            active_layer_index: active_panel.active_layer_index,
-            layer_count: active_panel.layers.len(),
-        })
     }
 
     pub fn active_panel_bounds(&self) -> Option<PanelBounds> {

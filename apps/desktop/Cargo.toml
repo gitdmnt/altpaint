@@ -8,6 +8,7 @@ authors.workspace = true
 [dependencies]
 anyhow.workspace = true
 app-core = { path = "../../crates/app-core" }
+canvas = { path = "../../crates/canvas" }
 desktop-support = { path = "../../crates/desktop-support" }
 plugin-api = { path = "../../crates/plugin-api" }
 pollster.workspace = true

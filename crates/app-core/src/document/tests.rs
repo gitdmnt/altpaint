@@ -220,20 +220,19 @@ fn apply_command_selects_registered_tool_by_id() {
 }
 
 #[test]
-fn resolve_paint_plugin_context_uses_active_tool_metadata() {
+fn active_tool_definition_uses_registered_tool_metadata() {
     let mut document = Document::default();
     assert!(document.set_active_tool_by_id("builtin.eraser"));
 
-    let context = document
-        .resolve_paint_plugin_context(7)
-        .expect("paint plugin context");
+    let tool = document
+        .active_tool_definition()
+        .expect("active tool definition");
 
-    assert_eq!(context.tool, ToolKind::Eraser);
-    assert_eq!(context.tool_id, "builtin.eraser");
-    assert_eq!(context.provider_plugin_id, "plugins/default-erasers-plugin");
-    assert_eq!(context.drawing_plugin_id, "builtin.bitmap");
-    assert!(context.tool_settings.iter().any(|setting| setting.key == "size"));
-    assert_eq!(context.layer_count, 1);
+    assert_eq!(tool.kind, ToolKind::Eraser);
+    assert_eq!(tool.id, "builtin.eraser");
+    assert_eq!(tool.provider_plugin_id, "plugins/default-erasers-plugin");
+    assert_eq!(tool.drawing_plugin_id, "builtin.bitmap");
+    assert!(tool.settings.iter().any(|setting| setting.key == "size"));
 }
 
 #[test]

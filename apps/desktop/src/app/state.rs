@@ -1,6 +1,7 @@
 //! `DesktopApp` のキャンバスフレーム状態と overlay 補助を定義する。
 
 use app_core::{CanvasDirtyRect, ClampToCanvasBounds};
+
 use super::DesktopApp;
 use crate::frame::{PanelNavigatorEntry, PanelNavigatorOverlay};
 
@@ -79,21 +80,8 @@ impl DesktopApp {
     }
 
     pub(super) fn panel_creation_preview_bounds(&self) -> Option<app_core::PanelBounds> {
-        let anchor = self.canvas_input.panel_rect_anchor?;
-        let current = self.canvas_input.last_position?;
         let (page_width, page_height) = self.document.active_page_dimensions();
-        let left = anchor.x.min(current.x).min(page_width.saturating_sub(1));
-        let top = anchor.y.min(current.y).min(page_height.saturating_sub(1));
-        let right = anchor.x.max(current.x).min(page_width.saturating_sub(1));
-        let bottom = anchor.y.max(current.y).min(page_height.saturating_sub(1));
-        let width = right.saturating_sub(left).saturating_add(1);
-        let height = bottom.saturating_sub(top).saturating_add(1);
-        (width > 0 && height > 0).then_some(app_core::PanelBounds {
-            x: left,
-            y: top,
-            width,
-            height,
-        })
+        canvas::panel_creation_preview_bounds(&self.canvas_input, page_width, page_height)
     }
 
     pub(super) fn panel_navigator_overlay(&self) -> Option<PanelNavigatorOverlay> {

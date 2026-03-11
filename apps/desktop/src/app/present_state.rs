@@ -5,7 +5,6 @@ use std::collections::BTreeSet;
 use app_core::{BitmapEdit, CanvasDirtyRect, MergeInSpace};
 
 use super::DesktopApp;
-use crate::canvas_bridge::CanvasInputState;
 use crate::frame::Rect;
 
 /// 差分提示のために更新領域を集約した結果を表す。
@@ -90,7 +89,7 @@ impl DesktopApp {
 
     /// 読み込みや新規作成の前に対話中状態を初期化する。
     pub(super) fn reset_active_interactions(&mut self) {
-        self.canvas_input = CanvasInputState::default();
+        self.canvas_input.reset();
         self.pending_canvas_dirty_rect = None;
         self.pending_canvas_background_dirty_rect = None;
         self.pending_canvas_host_dirty_rect = None;

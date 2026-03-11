@@ -7,45 +7,11 @@ use desktop_support::normalize_project_path;
 use storage::load_project_from_path;
 
 use super::DesktopApp;
-use crate::app::drawing::STANDARD_BITMAP_PLUGIN_ID;
 
 impl DesktopApp {
     /// キャンバス入力を描画プラグインへ渡してビットマップ差分として適用する。
     pub(super) fn execute_paint_input(&mut self, input: PaintInput) -> bool {
-        let points_inside = match &input {
-            PaintInput::Stamp { at, .. } | PaintInput::FloodFill { at } => {
-                self.document.active_panel_contains_local_point(*at)
-            }
-            PaintInput::StrokeSegment { from, to, .. } => {
-                self.document.active_panel_contains_local_point(*from)
-                    || self.document.active_panel_contains_local_point(*to)
-            }
-            PaintInput::LassoFill { points } => points
-                .iter()
-                .any(|point| self.document.active_panel_contains_local_point(*point)),
-        };
-        if !points_inside {
-            return false;
-        }
-
-        let resolved_size = match &input {
-            PaintInput::Stamp { pressure, .. } | PaintInput::StrokeSegment { pressure, .. } => {
-                self.document.resolved_paint_size_with_pressure(*pressure)
-            }
-            PaintInput::FloodFill { .. } | PaintInput::LassoFill { .. } => {
-                self.document.active_pen_size.max(1)
-            }
-        };
-        let Some(context) = self.document.resolve_paint_plugin_context(resolved_size) else {
-            return false;
-        };
-        let plugin_id = context.drawing_plugin_id.to_string();
-        let edits = self
-            .paint_plugins
-            .get(&plugin_id)
-            .or_else(|| self.paint_plugins.get(STANDARD_BITMAP_PLUGIN_ID))
-            .map(|plugin| plugin.process(&input, &context))
-            .unwrap_or_default();
+        let edits = self.paint_runtime.execute_paint_input(&self.document, &input);
         self.apply_bitmap_edits(edits)
     }
 

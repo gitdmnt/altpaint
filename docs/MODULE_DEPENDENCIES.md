@@ -26,11 +26,12 @@
 
 ## workspace パッケージ一覧
 
-2026-03-10 時点の workspace package は次の通り。
+2026-03-11 時点の workspace package は次の通り。
 
 ### 中核クレート
 
 - `app-core`
+- `canvas`
 - `render`
 - `storage`
 - `desktop-support`
@@ -46,7 +47,7 @@
 
 補足:
 
-- フェーズ2以降で `crates/canvas` を追加予定とする。
+- `crates/canvas` はフェーズ2で追加済みである。
 - フェーズ3で `crates/panel-runtime` を追加候補とする。
 - `panel-sdk` / `panel-macros` は将来 `plugin-sdk` 系へ寄せる方針とする。
 
@@ -70,6 +71,7 @@
 ```mermaid
 graph TD
     desktop[apps/desktop] --> appcore[app-core]
+  desktop --> canvas[canvas]
     desktop --> render[render]
     desktop --> uishell[ui-shell]
     desktop --> pluginapi[plugin-api]
@@ -77,6 +79,8 @@ graph TD
     desktop --> dsupport[desktop-support]
     desktop --> wpersist[workspace-persistence]
 
+  canvas --> appcore
+  canvas --> render
     render --> appcore
     render --> pluginapi
     storage --> appcore
@@ -107,7 +111,8 @@ graph TD
 ### 依存関係の要点
 
 - `app-core` は workspace 内の土台であり、ローカル依存を持たない
-- `render` / `storage` / `desktop-support` / `plugin-api` / `workspace-persistence` は `app-core` に依存する周辺クレートである
+- `canvas` / `render` / `storage` / `desktop-support` / `plugin-api` / `workspace-persistence` は `app-core` に依存する周辺クレートである
+- `canvas` は `render` の view mapping API を使うが、project I/O や panel runtime へは依存しない
 - `render` は floating panel rasterize のため `plugin-api` にも依存する
 - `ui-shell` が現在の**パネルランタイム統合点**であり、DSL 読み込み・Wasm 実行・Panel 描画をまとめて持っている
 - `plugin-host` は `ui-shell` の内側で使われ、`apps/desktop` は直接依存していない
@@ -163,6 +168,33 @@ graph TD
 - `wgpu`
 - Wasm ランタイム
 - パネル DSL parser
+
+補足:
+
+- `PaintPluginContext` や `BitmapEdit` などの共有 primitive は持つが、paint context の具体的な組み立ては `canvas` 側へ移した
+
+### `canvas`
+
+担当:
+
+- `CanvasRuntime`
+- `CanvasInputState`
+- `advance_pointer_gesture(...)` による input state machine
+- `build_paint_context(...)` による `Document` 読み取り文脈の構築
+- built-in bitmap paint plugin
+- stamp / stroke / flood fill / lasso fill / composite
+- view-to-canvas 変換と panel rect preview bridge
+
+主要モジュール:
+
+- `runtime.rs`
+- `context_builder.rs`
+- `gesture.rs`
+- `input_state.rs`
+- `view_mapping.rs`
+- `render_bridge.rs`
+- `plugins/builtin_bitmap.rs`
+- `ops/*`
 
 ### `render`
 
@@ -345,9 +377,9 @@ graph TD
 - `app/commands.rs`
 - `app/input.rs`
 - `app/present.rs`
-- `canvas_bridge.rs`
 - `frame.rs`
 - `wgpu_canvas.rs`
+- `../../crates/canvas/src/*`
 
 ### `plugins/*`
 
@@ -373,15 +405,22 @@ apps/desktop/main.rs
         -> app/input.rs
         -> app/present.rs
      -> frame.rs
-     -> canvas_bridge.rs
      -> wgpu_canvas.rs
+
+crates/canvas/src/lib.rs
+  -> runtime.rs
+  -> context_builder.rs
+  -> gesture.rs
+  -> view_mapping.rs
+  -> plugins/builtin_bitmap.rs
+  -> ops/*
 ```
 
 役割分担:
 
 - `runtime.rs`: OS イベントと再描画サイクル
 - `app/*`: 状態変化と副作用
-- `canvas_bridge.rs`: gesture -> `Command` と desktop 側の薄い入力橋渡し
+- `crates/canvas/src/*`: gesture / runtime / bitmap op / view mapping
 - `frame.rs`: CPU 側フレーム構築と desktop 固有の差分矩形計算
 - `wgpu_canvas.rs`: 実 GPU 提示
 
@@ -433,12 +472,13 @@ project file と session file は役割が異なる。
 
 1. OS pointer event が `runtime.rs` に届く
 2. `DesktopApp::handle_pointer_*` が panel/canvas を振り分ける
-3. canvas 側は `canvas_bridge.rs` で座標変換する
-4. `Command` は `apps/desktop/src/app/command_router.rs` の `DesktopApp::execute_command(...)` に入る
-5. `Document::apply_command(...)` が実データを更新する
-6. dirty rect / transform 更新 / UI 再同期要求は主に `apps/desktop/src/app/present_state.rs` に蓄積される
-7. `prepare_present_frame(...)` が base/overlay/canvas 更新情報を組み立てる
-8. `wgpu_canvas.rs` が 3 層を提示する
+3. `canvas::view_mapping` が view 座標を canvas 座標へ変換する
+4. `canvas::gesture` が down / drag / up を `PaintInput` や panel rect preview へ変換する
+5. `canvas::runtime` が `Document` と built-in plugin から bitmap 差分を作る
+6. `Document::apply_bitmap_edits_to_active_layer(...)` が実データを更新する
+7. dirty rect / transform 更新 / UI 再同期要求は主に `apps/desktop/src/app/present_state.rs` に蓄積される
+8. `prepare_present_frame(...)` が base/overlay/canvas 更新情報を組み立てる
+9. `wgpu_canvas.rs` が 3 層を提示する
 
 ### パネルイベントフロー
 

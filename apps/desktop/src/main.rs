@@ -4,7 +4,6 @@
 //! このファイルは起動順序の宣言だけを担う。
 
 mod app;
-mod canvas_bridge;
 mod frame;
 mod runtime;
 mod wgpu_canvas;

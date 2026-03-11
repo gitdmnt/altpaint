@@ -39,6 +39,7 @@
 ### 中核 crate
 
 - `app-core`
+- `canvas`
 - `render`
 - `storage`
 - `desktop-support`
@@ -78,15 +79,15 @@
 - `DesktopRuntime` による `winit` event loop
 - `WgpuPresenter` による base / canvas / overlay の三層提示
 - `DesktopApp` による document / UI / I/O / present の統合
-- `apps/desktop/src/app/bootstrap.rs` / `command_router.rs` / `panel_dispatch.rs` / `present_state.rs` / `background_tasks.rs` / `io_state.rs` / `services.rs` への責務分割の着手
+- `apps/desktop/src/app/bootstrap.rs` / `command_router.rs` / `panel_dispatch.rs` / `present_state.rs` / `background_tasks.rs` / `io_state.rs` / `services.rs` への責務分割
 - pointer / keyboard / IME の処理
 - panel と canvas の入力ルーティング
 - 起動時の `plugins/` / `tools/` / `pens/` の読込
 
 補足:
 
-- `DesktopApp` は依然として orchestration の中心だが、constructor / command routing / panel dispatch / I/O state は module 分割が始まっている。
-- built-in paint plugin の実行は、現時点ではまだ `apps/desktop/src/app/drawing.rs` にある。
+- `DesktopApp` は依然として orchestration の中心だが、constructor / command routing / panel dispatch / I/O state / workspace preset 操作は module 分割済みである。
+- `apps/desktop/src/app/drawing.rs` は薄い wrapper になり、built-in paint plugin 実行本体は `crates/canvas` へ移った。
 
 ### 2. ドメインと document モデル
 
@@ -100,11 +101,28 @@
 - `PenPreset`
 - `ToolDefinition`
 - `WorkspaceLayout`
-- paint plugin 文脈の一部
+- `BitmapEdit` / `PaintInput` / compositor などの共有 paint primitive
 
 現状の状態変更の中心は `Document::apply_command(...)` である。
 
-### 3. 描画と表示計画
+補足:
+
+- `Document::resolve_paint_plugin_context(...)` は削除され、paint context の組み立ては `canvas::context_builder` へ移った。
+
+### 3. canvas runtime
+
+`canvas` には次がある。
+
+- `CanvasRuntime`
+- `CanvasInputState`
+- `CanvasPointerEvent` と view-to-canvas 変換
+- `advance_pointer_gesture(...)` による gesture state machine
+- `build_paint_context(...)` による `Document` からの runtime 文脈構築
+- built-in bitmap paint plugin
+- stamp / stroke / flood fill / lasso fill の bitmap op
+- `panel_creation_preview_bounds(...)` による render bridge
+
+### 4. 描画と表示計画
 
 `render` には次がある。
 
@@ -187,22 +205,23 @@
 - `storage::tool_catalog` が `tools/` から tool 定義を読む
 - `Document` が active tool と設定を保持する
 - `tool-palette` と `pen-settings` が host snapshot を読む
-- paint plugin 実行は host 側 built-in 実装が中心
+- paint plugin 実行は `canvas::CanvasRuntime` が担当する
 - `storage` が外部ペン preset を読み、`AltPaintPen` 正規化 format を扱う
 
 補足:
 
-- ツール UI は plugin 化されているが、実際の差分生成ランタイムはまだ host 中心である。
+- ツール UI は plugin 化されているが、project / workspace I/O はまだ plugin-first 化の途中である。
 
 ## runtime と依存関係の現況
 
 ### 現在の実行上の中心
 
-現在の実装は、主に次の 3 点へ責務が集中している。
+現在の実装は、主に次の 4 点へ責務が集中している。
 
 1. `apps/desktop::DesktopApp`
 2. `app-core::Document`
-3. `ui-shell::UiShell`
+3. `canvas::CanvasRuntime`
+4. `ui-shell::UiShell`
 
 ### 現在の特徴
 
@@ -237,17 +256,17 @@
 
 - host 主導の desktop runtime が一周している
 - `render`、panel runtime、storage が独立 crate として成立している
+- `canvas` が独立 crate として成立し、desktop から bitmap op と gesture state machine を切り離せた
 - built-in panel の file-based plugin 化が進んでいる
 - project / session / workspace preset が一応つながっている
 
 ### まだ途中の点
 
 - `DesktopApp` に責務が集まりすぎている
-- `Document` が tool / paint runtime 寄りの責務まで抱えている
+- `Document` が tool / pen runtime state をまだ広く抱えている
 - `ui-shell` が runtime と presentation を兼務している
-- `canvas` と呼べる独立層がまだ存在しない
 - project / workspace I/O は plugin 主導ではない
-- ツール差分生成は host 内蔵実装依存が残る
+- tool catalog / pen setting の plugin-first 化はまだ途中である
 
 ## いま読むべき関連文書
 
