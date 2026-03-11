@@ -9,26 +9,6 @@ use crate::document::ToolKind;
 pub enum Command {
     /// 状態を変更しないダミーコマンド。
     Noop,
-    /// 指定座標へ1ピクセル描画する最小コマンド。
-    DrawPoint { x: usize, y: usize, pressure: f32 },
-    /// 指定座標へ1ピクセル消去する最小コマンド。
-    ErasePoint { x: usize, y: usize, pressure: f32 },
-    /// 指定した2点の間に最小ストロークを描画する。
-    DrawStroke {
-        from_x: usize,
-        from_y: usize,
-        to_x: usize,
-        to_y: usize,
-        pressure: f32,
-    },
-    /// 指定した2点の間を白で消去する。
-    EraseStroke {
-        from_x: usize,
-        from_y: usize,
-        to_x: usize,
-        to_y: usize,
-        pressure: f32,
-    },
     /// 現在のアクティブツールを切り替える。
     SetActiveTool { tool: ToolKind },
     /// 現在のアクティブペンサイズを切り替える。
@@ -47,10 +27,6 @@ pub enum Command {
     ReloadPenPresets,
     /// 現在のブラシ色を切り替える。
     SetActiveColor { color: ColorRgba8 },
-    /// 閉領域バケツ塗りを行う。
-    FillRegion { x: usize, y: usize },
-    /// 投げ縄で囲った領域を塗り潰す。
-    FillLasso { points: Vec<(usize, usize)> },
     /// 指定矩形のコマを現在ページへ追加する。
     CreatePanel {
         x: usize,

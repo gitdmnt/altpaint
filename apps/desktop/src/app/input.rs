@@ -3,7 +3,7 @@
 //! OS 由来の生イベントをドキュメント編集やパネル操作へ変換し、
 //! ランタイム側が UI 詳細を知らずに済むようにする。
 
-use app_core::{CanvasPoint, Command, ToolKind, WindowPoint};
+use app_core::{CanvasPoint, Command, PaintInput, ToolKind, WindowPoint};
 use plugin_api::{HostAction, PanelEvent};
 
 use super::{DesktopApp, PanelDragState};
@@ -459,10 +459,10 @@ impl DesktopApp {
         match action {
             "down" => {
                 if active_tool == ToolKind::Bucket {
-                    return self.execute_command(Command::FillRegion {
-                        x: page_point.x,
-                        y: page_point.y,
-                    });
+                    let Some(local_point) = self.page_to_active_panel_local(page_point) else {
+                        return false;
+                    };
+                    return self.execute_paint_input(PaintInput::FloodFill { at: local_point });
                 }
                 self.canvas_input.is_drawing = true;
                 self.canvas_input.last_position = Some(page_point);
@@ -476,7 +476,13 @@ impl DesktopApp {
                     }
                     return false;
                 }
-                self.execute_canvas_command(page_point, None, pressure)
+                let Some(local_point) = self.page_to_active_panel_local(page_point) else {
+                    return false;
+                };
+                self.execute_paint_input(PaintInput::Stamp {
+                    at: local_point,
+                    pressure,
+                })
             }
             "drag" if self.canvas_input.is_drawing => {
                 if active_tool == ToolKind::LassoBucket {
@@ -494,7 +500,20 @@ impl DesktopApp {
                 if from == Some(next_position) {
                     return false;
                 }
-                let changed = self.execute_canvas_command(next_position, from, pressure);
+                let changed = from
+                    .and_then(|previous| {
+                        Some((
+                            self.page_to_active_panel_local(previous)?,
+                            self.page_to_active_panel_local(next_position)?,
+                        ))
+                    })
+                    .is_some_and(|(from_local, to_local)| {
+                        self.execute_paint_input(PaintInput::StrokeSegment {
+                            from: from_local,
+                            to: to_local,
+                            pressure,
+                        })
+                    });
                 self.canvas_input.last_position = Some(next_position);
                 changed
             }
@@ -511,11 +530,8 @@ impl DesktopApp {
                             self.canvas_input = CanvasInputState::default();
                             return false;
                         };
-                        self.execute_command(Command::FillLasso {
-                            points: local_points
-                                .into_iter()
-                                .map(|point| (point.x, point.y))
-                                .collect(),
+                        self.execute_paint_input(PaintInput::LassoFill {
+                            points: local_points,
                         })
                     } else {
                         false
@@ -528,7 +544,19 @@ impl DesktopApp {
                 }
                 let from = self.canvas_input.last_position;
                 let changed = if self.canvas_input.is_drawing && from != Some(page_point) {
-                    self.execute_canvas_command(page_point, from, pressure)
+                    from.and_then(|previous| {
+                        Some((
+                            self.page_to_active_panel_local(previous)?,
+                            self.page_to_active_panel_local(page_point)?,
+                        ))
+                    })
+                    .is_some_and(|(from_local, to_local)| {
+                        self.execute_paint_input(PaintInput::StrokeSegment {
+                            from: from_local,
+                            to: to_local,
+                            pressure,
+                        })
+                    })
                 } else {
                     false
                 };

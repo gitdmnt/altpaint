@@ -29,6 +29,7 @@
 - 4隅アンカー基準の workspace panel 配置
 - 外部ペンプリセット読込と import report 表示
 - `AltPaintPen` 正規化 format と external brush parse/export module
+- pen input plugin がビットマップ差分を返す描画フロー
 - キャンバス無段階回転の render / software raster / GPU sampling
 - 実行時 profiler とタイトル表示
 

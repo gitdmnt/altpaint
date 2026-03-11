@@ -326,12 +326,22 @@ mod tests {
         Document::new(64, 64)
     }
 
+    fn draw_test_point(document: &mut Document, x: usize, y: usize) {
+        let color = document.active_color.to_rgba8();
+        if let Some(panel) = document.active_panel_mut() {
+            let _ = panel.layers[0]
+                .bitmap
+                .draw_point_sized_rgba(x, y, color, 1, true);
+            panel.bitmap = panel.layers[0].bitmap.clone();
+        }
+    }
+
     fn benchmark_document(width: usize, height: usize) -> Document {
         let mut document = Document::new(width, height);
         document.set_active_color(ColorRgba8::new(0x11, 0x66, 0xcc, 0xff));
 
         for offset in (0..width.min(height)).step_by(25) {
-            let _ = document.draw_point(offset, offset);
+            draw_test_point(&mut document, offset, offset);
         }
 
         document
@@ -396,7 +406,7 @@ mod tests {
         let path = temp_path("roundtrip");
         let mut document = small_document();
         document.set_active_color(ColorRgba8::new(0x8e, 0x24, 0xaa, 0xff));
-        let _ = document.draw_point(5, 6);
+        draw_test_point(&mut document, 5, 6);
 
         save_document_to_path(&path, &document).expect("save should succeed");
         let loaded = load_document_from_path(&path).expect("load should succeed");
@@ -492,7 +502,7 @@ mod tests {
         let path = temp_path("sqlite-format");
         let mut document = Document::new(256, 256);
         document.set_active_color(ColorRgba8::new(0x12, 0x34, 0x56, 0xff));
-        let _ = document.draw_point(32, 48);
+        draw_test_point(&mut document, 32, 48);
 
         let project =
             AltpaintProjectFile::new(&document, &WorkspaceLayout::default(), &BTreeMap::new());

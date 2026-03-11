@@ -6,40 +6,77 @@
 use std::path::PathBuf;
 use std::thread;
 
-use app_core::{CanvasPoint, Command};
+use app_core::{Command, PaintInput, PaintPluginContext};
 use desktop_support::normalize_project_path;
 use plugin_api::HostAction;
 use storage::{load_project_from_path, save_project_to_path};
 
 use super::DesktopApp;
-use crate::canvas_bridge::command_for_canvas_gesture;
+use crate::app::drawing::STANDARD_BITMAP_PLUGIN_ID;
 
 impl DesktopApp {
-    /// キャンバス入力から編集コマンドを組み立てて適用する。
-    pub(super) fn execute_canvas_command(
-        &mut self,
-        current: CanvasPoint,
-        from: Option<CanvasPoint>,
-        pressure: f32,
-    ) -> bool {
+    /// キャンバス入力を描画プラグインへ渡してビットマップ差分として適用する。
+    pub(super) fn execute_paint_input(&mut self, input: PaintInput) -> bool {
+        // 入力位置がアクティブパネルの範囲内かを確認する。範囲外なら無視する。
         let Some(bounds) = self.document.active_panel_bounds() else {
             return false;
         };
-        if !bounds.contains_canvas_point(current) {
+        let points_inside = match &input {
+            PaintInput::Stamp { at, .. } | PaintInput::FloodFill { at } => {
+                bounds.contains(at.x.saturating_add(bounds.x), at.y.saturating_add(bounds.y))
+                //-----------------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ TODO: ここの座標変換が分かりづらいので、明示的なメソッドに切り出す
+            }
+            PaintInput::StrokeSegment { from, to, .. } => {
+                bounds.contains(
+                    from.x.saturating_add(bounds.x),
+                    from.y.saturating_add(bounds.y),
+                ) || bounds.contains(to.x.saturating_add(bounds.x), to.y.saturating_add(bounds.y))
+            }
+            PaintInput::LassoFill { points } => !points.is_empty(),
+        };
+        if !points_inside {
             return false;
         }
 
-        let Some(local_current) = bounds.canvas_to_panel_local(current) else {
+        // 使用中のペンとアクティブレイヤーのビットマップを取得して、描画プラグインへ入力とコンテキストを渡す。
+        let Some(pen) = self.document.active_pen_preset().cloned() else {
             return false;
         };
-        let local_previous = from.and_then(|previous| bounds.canvas_to_panel_local(previous));
-        let command = command_for_canvas_gesture(
-            self.document.active_tool,
-            local_current,
-            local_previous,
-            pressure,
-        );
-        self.execute_command(command)
+        // アクティブレイヤーのビットマップと、全レイヤーを合成したビットマップの両方を渡す。
+        // 前者は通常の描画に、後者は塗り潰しの境界判定などに使うことを想定している。
+        let Some(active_layer_bitmap) = self.document.active_layer_bitmap() else {
+            return false;
+        };
+        let Some(composited_bitmap) = self.document.active_bitmap() else {
+            return false;
+        };
+        // ペンのサイズは、筆圧に応じて変化する場合があるため、入力イベントごとに解決する。
+        let resolved_size = match &input {
+            PaintInput::Stamp { pressure, .. } | PaintInput::StrokeSegment { pressure, .. } => {
+                self.document.resolved_paint_size_with_pressure(*pressure)
+            }
+            PaintInput::FloodFill { .. } | PaintInput::LassoFill { .. } => {
+                self.document.active_pen_size.max(1)
+            }
+        };
+        let plugin_id = pen.plugin_id.clone();
+
+        let context = PaintPluginContext {
+            tool: self.document.active_tool,
+            color: self.document.active_color,
+            pen: &pen,
+            resolved_size,
+            active_layer_bitmap,
+            composited_bitmap,
+            active_layer_is_background: self.document.active_layer_is_background().unwrap_or(false),
+        };
+        let edits = self
+            .paint_plugins
+            .get(&plugin_id)
+            .or_else(|| self.paint_plugins.get(STANDARD_BITMAP_PLUGIN_ID))
+            .map(|plugin| plugin.process(&input, &context))
+            .unwrap_or_default();
+        self.apply_bitmap_edits(edits)
     }
 
     /// 現在のプロジェクトパスへ保存を行う。

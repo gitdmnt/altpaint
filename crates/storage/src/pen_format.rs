@@ -1,4 +1,4 @@
-use app_core::PenPreset;
+use app_core::{PenPreset, PenRuntimeEngine, PenTipBitmap};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -150,6 +150,8 @@ pub struct AltPaintPen {
     pub format_version: u32,
     pub id: String,
     pub name: String,
+    #[serde(default = "default_plugin_id")]
+    pub plugin_id: String,
     #[serde(default)]
     pub engine: PenEngine,
     #[serde(default = "default_base_size", alias = "size")]
@@ -188,6 +190,7 @@ impl Default for AltPaintPen {
             format_version: current_pen_format_version(),
             id: PenPreset::default().id,
             name: PenPreset::default().name,
+            plugin_id: default_plugin_id(),
             engine: PenEngine::default(),
             base_size: default_base_size(),
             min_size: default_min_size(),
@@ -225,6 +228,11 @@ impl AltPaintPen {
                 "pen name must not be empty".to_string(),
             ));
         }
+        if self.plugin_id.trim().is_empty() {
+            return Err(PenExchangeError::InvalidData(
+                "pen plugin_id must not be empty".to_string(),
+            ));
+        }
         if self.min_size <= 0.0 {
             return Err(PenExchangeError::InvalidData(
                 "pen min_size must be greater than zero".to_string(),
@@ -258,10 +266,20 @@ impl AltPaintPen {
         PenPreset {
             id: self.id.clone(),
             name: self.name.clone(),
+            plugin_id: self.plugin_id.clone(),
             size,
             pressure_enabled: self.pressure_enabled,
             antialias: self.antialias,
             stabilization: self.stabilization.min(100),
+            engine: match self.engine {
+                PenEngine::Stamp => PenRuntimeEngine::Stamp,
+                PenEngine::Generated => PenRuntimeEngine::Generated,
+            },
+            spacing_percent: self.spacing_percent,
+            rotation_degrees: self.rotation_deg,
+            opacity: self.opacity,
+            flow: self.flow,
+            tip: self.tip.as_ref().map(runtime_tip_from_storage),
         }
     }
 
@@ -269,12 +287,22 @@ impl AltPaintPen {
         Self {
             id: preset.id.clone(),
             name: preset.name.clone(),
+            plugin_id: preset.plugin_id.clone(),
             base_size: preset.size as f32,
             min_size: 1.0,
             max_size: 64.0_f32.max(preset.size as f32),
             pressure_enabled: preset.pressure_enabled,
             antialias: preset.antialias,
             stabilization: preset.stabilization,
+            engine: match preset.engine {
+                PenRuntimeEngine::Stamp => PenEngine::Stamp,
+                PenRuntimeEngine::Generated => PenEngine::Generated,
+            },
+            spacing_percent: preset.spacing_percent,
+            rotation_deg: preset.rotation_degrees,
+            opacity: preset.opacity,
+            flow: preset.flow,
+            tip: preset.tip.as_ref().map(storage_tip_from_runtime),
             ..Self::default()
         }
     }
@@ -314,6 +342,7 @@ impl TryFrom<LegacyAltPaintPen> for AltPaintPen {
             format_version: CURRENT_PEN_FORMAT_VERSION,
             id: value.id,
             name: value.name,
+            plugin_id: default_plugin_id(),
             base_size: value.size.max(1) as f32,
             min_size: value.min_size.max(1) as f32,
             max_size: value.max_size.max(value.min_size.max(1)) as f32,
@@ -354,8 +383,60 @@ fn current_pen_format_version() -> u32 {
     CURRENT_PEN_FORMAT_VERSION
 }
 
+fn default_plugin_id() -> String {
+    "builtin.bitmap".to_string()
+}
+
 fn legacy_format_version() -> u32 {
     1
+}
+
+fn runtime_tip_from_storage(tip: &PenTip) -> PenTipBitmap {
+    match tip {
+        PenTip::AlphaMask8 {
+            width,
+            height,
+            data_base64,
+        } => PenTipBitmap::AlphaMask8 {
+            width: *width,
+            height: *height,
+            data: BASE64.decode(data_base64).unwrap_or_default(),
+        },
+        PenTip::Rgba8 {
+            width,
+            height,
+            data_base64,
+        } => PenTipBitmap::Rgba8 {
+            width: *width,
+            height: *height,
+            data: BASE64.decode(data_base64).unwrap_or_default(),
+        },
+        PenTip::PngBlob {
+            width,
+            height,
+            png_base64,
+        } => PenTipBitmap::PngBlob {
+            width: *width,
+            height: *height,
+            png: BASE64.decode(png_base64).unwrap_or_default(),
+        },
+    }
+}
+
+fn storage_tip_from_runtime(tip: &PenTipBitmap) -> PenTip {
+    match tip {
+        PenTipBitmap::AlphaMask8 {
+            width,
+            height,
+            data,
+        } => PenTip::from_alpha_mask(*width, *height, data),
+        PenTipBitmap::Rgba8 {
+            width,
+            height,
+            data,
+        } => PenTip::from_rgba(*width, *height, data),
+        PenTipBitmap::PngBlob { width, height, png } => PenTip::from_png_blob(*width, *height, png),
+    }
 }
 
 fn default_base_size() -> f32 {

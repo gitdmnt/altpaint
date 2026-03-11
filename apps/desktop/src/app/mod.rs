@@ -4,6 +4,7 @@
 //! ランタイムから見た「状態付きのアプリ本体」として振る舞う。
 
 mod commands;
+mod drawing;
 mod input;
 mod present;
 mod state;
@@ -49,6 +50,7 @@ pub(crate) struct DesktopApp {
     workspace_presets: desktop_support::WorkspacePresetCatalog,
     active_workspace_preset_id: String,
     dialogs: Box<dyn DesktopDialogs>,
+    paint_plugins: drawing::PaintPluginRegistry,
     canvas_input: CanvasInputState,
     pub(crate) panel_surface: Option<PanelSurface>,
     pub(crate) layout: Option<DesktopLayout>,
@@ -171,6 +173,7 @@ impl DesktopApp {
             workspace_presets: preset_catalog,
             active_workspace_preset_id,
             dialogs,
+            paint_plugins: drawing::default_paint_plugins(),
             canvas_input: CanvasInputState::default(),
             panel_surface: None,
             layout: None,

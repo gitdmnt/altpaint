@@ -52,10 +52,12 @@ pub const DEFAULT_DOCUMENT_WIDTH: usize = 2894;
 pub const DEFAULT_DOCUMENT_HEIGHT: usize = 4093;
 
 /// 外部読込可能な最小ペンプリセットを表す。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PenPreset {
     pub id: String,
     pub name: String,
+    #[serde(default = "default_pen_plugin_id")]
+    pub plugin_id: String,
     #[serde(default = "default_pen_size")]
     pub size: u32,
     #[serde(default = "default_pen_pressure_enabled")]
@@ -64,6 +66,18 @@ pub struct PenPreset {
     pub antialias: bool,
     #[serde(default)]
     pub stabilization: u8,
+    #[serde(default)]
+    pub engine: PenRuntimeEngine,
+    #[serde(default = "default_spacing_percent")]
+    pub spacing_percent: f32,
+    #[serde(default)]
+    pub rotation_degrees: f32,
+    #[serde(default = "default_pen_opacity")]
+    pub opacity: f32,
+    #[serde(default = "default_pen_flow")]
+    pub flow: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tip: Option<PenTipBitmap>,
 }
 
 impl PenPreset {
@@ -79,10 +93,63 @@ impl Default for PenPreset {
         Self {
             id: "builtin.round-pen".to_string(),
             name: "Round Pen".to_string(),
+            plugin_id: default_pen_plugin_id(),
             size: default_pen_size(),
             pressure_enabled: default_pen_pressure_enabled(),
             antialias: default_pen_antialias(),
             stabilization: 0,
+            engine: PenRuntimeEngine::default(),
+            spacing_percent: default_spacing_percent(),
+            rotation_degrees: 0.0,
+            opacity: default_pen_opacity(),
+            flow: default_pen_flow(),
+            tip: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum PenRuntimeEngine {
+    #[default]
+    Stamp,
+    Generated,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum PenTipBitmap {
+    AlphaMask8 {
+        width: u32,
+        height: u32,
+        data: Vec<u8>,
+    },
+    Rgba8 {
+        width: u32,
+        height: u32,
+        data: Vec<u8>,
+    },
+    PngBlob {
+        width: u32,
+        height: u32,
+        png: Vec<u8>,
+    },
+}
+
+impl PenTipBitmap {
+    pub fn width(&self) -> u32 {
+        match self {
+            Self::AlphaMask8 { width, .. }
+            | Self::Rgba8 { width, .. }
+            | Self::PngBlob { width, .. } => *width,
+        }
+    }
+
+    pub fn height(&self) -> u32 {
+        match self {
+            Self::AlphaMask8 { height, .. }
+            | Self::Rgba8 { height, .. }
+            | Self::PngBlob { height, .. } => *height,
         }
     }
 }
@@ -91,12 +158,28 @@ fn default_pen_size() -> u32 {
     4
 }
 
+fn default_pen_plugin_id() -> String {
+    "builtin.bitmap".to_string()
+}
+
 fn default_pen_pressure_enabled() -> bool {
     true
 }
 
 fn default_pen_antialias() -> bool {
     true
+}
+
+fn default_spacing_percent() -> f32 {
+    25.0
+}
+
+fn default_pen_opacity() -> f32 {
+    1.0
+}
+
+fn default_pen_flow() -> f32 {
+    1.0
 }
 
 fn default_pen_presets() -> Vec<PenPreset> {
@@ -592,6 +675,18 @@ impl Document {
         self.active_panel().map(|panel| &panel.bitmap)
     }
 
+    pub fn active_layer_bitmap(&self) -> Option<&CanvasBitmap> {
+        let panel = self.active_panel()?;
+        panel.layers
+            .get(panel.active_layer_index.min(panel.layers.len().saturating_sub(1)))
+            .map(|layer| &layer.bitmap)
+    }
+
+    pub fn active_layer_is_background(&self) -> Option<bool> {
+        let panel = self.active_panel()?;
+        Some(panel.active_layer_index == 0)
+    }
+
     pub fn active_panel_bounds(&self) -> Option<PanelBounds> {
         self.active_panel().map(|panel| panel.bounds)
     }
@@ -783,6 +878,10 @@ impl Document {
             .unwrap_or(0)
     }
 
+    pub fn resolved_paint_size_with_pressure(&self, pressure: f32) -> u32 {
+        self.active_draw_size_with_pressure(pressure)
+    }
+
     pub fn normalize_phase9_state(&mut self) {
         if self.work.pages.is_empty() {
             self.work.pages.push(Page::default());
@@ -812,26 +911,6 @@ impl Document {
     pub fn apply_command(&mut self, command: &Command) -> Option<crate::CanvasDirtyRect> {
         match command {
             Command::Noop => None,
-            Command::DrawPoint { x, y, pressure } => {
-                self.draw_point_with_pressure(*x, *y, *pressure)
-            }
-            Command::ErasePoint { x, y, pressure } => {
-                self.erase_point_with_pressure(*x, *y, *pressure)
-            }
-            Command::DrawStroke {
-                from_x,
-                from_y,
-                to_x,
-                to_y,
-                pressure,
-            } => self.draw_stroke_with_pressure(*from_x, *from_y, *to_x, *to_y, *pressure),
-            Command::EraseStroke {
-                from_x,
-                from_y,
-                to_x,
-                to_y,
-                pressure,
-            } => self.erase_stroke_with_pressure(*from_x, *from_y, *to_x, *to_y, *pressure),
             Command::SetActiveTool { tool } => {
                 self.set_active_tool(*tool);
                 None
@@ -865,8 +944,6 @@ impl Document {
                 self.set_active_color(*color);
                 None
             }
-            Command::FillRegion { x, y } => self.fill_region(*x, *y),
-            Command::FillLasso { points } => self.fill_lasso(points),
             Command::CreatePanel {
                 x,
                 y,

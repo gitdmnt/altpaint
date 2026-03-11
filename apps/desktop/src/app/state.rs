@@ -5,7 +5,7 @@
 
 use std::thread::JoinHandle;
 
-use app_core::{CanvasDirtyRect, ClampToCanvasBounds, Command, Document, MergeInSpace};
+use app_core::{BitmapEdit, CanvasDirtyRect, ClampToCanvasBounds, Command, Document, MergeInSpace};
 use desktop_support::{
     DEFAULT_PROJECT_PATH, DesktopSessionState, default_pen_dir, save_session_state,
 };
@@ -318,6 +318,16 @@ impl DesktopApp {
         true
     }
 
+    /// 描画プラグインが返したビットマップ差分をドキュメントへ反映する。
+    pub(super) fn apply_bitmap_edits(&mut self, edits: Vec<BitmapEdit>) -> bool {
+        self.document
+            .apply_bitmap_edits_to_active_layer(&edits)
+            .is_some_and(|dirty| {
+                self.refresh_canvas_frame_region(dirty);
+                self.append_canvas_dirty_rect(dirty)
+            })
+    }
+
     /// キャンバスホスト dirty rect を次回提示用に集約する。
     pub(super) fn append_canvas_host_dirty_rect(&mut self, dirty: Rect) -> bool {
         self.pending_canvas_host_dirty_rect = Some(
@@ -386,19 +396,8 @@ impl DesktopApp {
     /// ドキュメント変更系コマンドを適用し、dirty 状態を更新する。
     pub(super) fn execute_document_command(&mut self, command: Command) -> bool {
         let previous_transform = self.document.view_transform;
-        let dirty = self.document.apply_command(&command);
+        let _dirty = self.document.apply_command(&command);
         match command {
-            Command::DrawPoint { .. }
-            | Command::DrawStroke { .. }
-            | Command::ErasePoint { .. }
-            | Command::EraseStroke { .. }
-            | Command::FillRegion { .. }
-            | Command::FillLasso { .. } => {
-                dirty.is_some_and(|dirty| {
-                    self.refresh_canvas_frame_region(dirty);
-                    self.append_canvas_dirty_rect(dirty)
-                })
-            }
             Command::SetActiveTool { .. }
             | Command::SelectNextPenPreset
             | Command::SelectPreviousPenPreset => {
@@ -486,7 +485,7 @@ impl DesktopApp {
             | Command::SaveWorkspacePreset { .. }
             | Command::ExportWorkspacePreset { .. }
             | Command::ExportWorkspacePresetToPath { .. }
-            | Command::ReloadPenPresets => false,
+            | Command::ReloadPenPresets
             | Command::ImportPenPresets
             | Command::ImportPenPresetsFromPath { .. } => false,
         }

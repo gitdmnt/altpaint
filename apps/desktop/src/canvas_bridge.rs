@@ -5,9 +5,7 @@
 //! キャンバス表示座標と編集コマンドの間の座標変換、
 //! およびビューへの入力イベントからのコマンド生成を担当する。
 
-use app_core::{
-    CanvasPoint, CanvasViewTransform, CanvasViewportPoint, Command, PanelLocalPoint, ToolKind,
-};
+use app_core::{CanvasPoint, CanvasViewTransform, CanvasViewportPoint};
 use render::RenderFrame;
 
 /// キャンバス入力中の最小状態を表す。
@@ -45,46 +43,6 @@ pub fn map_view_to_canvas_with_transform(
         event.position,
         transform,
     )
-}
-
-/// ツール種別と前回位置からキャンバス編集コマンドを生成する。
-pub fn command_for_canvas_gesture(
-    tool: ToolKind,
-    current: PanelLocalPoint,
-    previous: Option<PanelLocalPoint>,
-    pressure: f32,
-) -> Command {
-    match (tool, previous) {
-        (ToolKind::Pen, Some(previous)) => Command::DrawStroke {
-            from_x: previous.x,
-            from_y: previous.y,
-            to_x: current.x,
-            to_y: current.y,
-            pressure,
-        },
-        (ToolKind::Eraser, Some(previous)) => Command::EraseStroke {
-            from_x: previous.x,
-            from_y: previous.y,
-            to_x: current.x,
-            to_y: current.y,
-            pressure,
-        },
-        (ToolKind::Pen, None) => Command::DrawPoint {
-            x: current.x,
-            y: current.y,
-            pressure,
-        },
-        (ToolKind::Eraser, None) => Command::ErasePoint {
-            x: current.x,
-            y: current.y,
-            pressure,
-        },
-        (ToolKind::Bucket, _) => Command::FillRegion {
-            x: current.x,
-            y: current.y,
-        },
-        (ToolKind::LassoBucket | ToolKind::PanelRect, _) => Command::Noop,
-    }
 }
 
 #[cfg(test)]
@@ -149,26 +107,5 @@ mod tests {
         );
 
         assert_eq!(mapped, Some(CanvasPoint::new(32, 32)));
-    }
-
-    #[test]
-    fn pen_drag_becomes_draw_stroke() {
-        let command = command_for_canvas_gesture(
-            ToolKind::Pen,
-            PanelLocalPoint::new(4, 5),
-            Some(PanelLocalPoint::new(1, 2)),
-            1.0,
-        );
-
-        assert_eq!(
-            command,
-            Command::DrawStroke {
-                from_x: 1,
-                from_y: 2,
-                to_x: 4,
-                to_y: 5,
-                pressure: 1.0,
-            }
-        );
     }
 }

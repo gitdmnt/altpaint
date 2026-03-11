@@ -3,12 +3,12 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use app_core::{CanvasPoint, CanvasViewportPoint, ColorRgba8, Command, PanelLocalPoint, PanelSurfacePoint, WindowPoint, ToolKind};
+use app_core::{CanvasPoint, CanvasViewportPoint, ColorRgba8, Command, PanelSurfacePoint, WindowPoint, ToolKind};
 use desktop_support::{DesktopProfiler, StageStats, ValueStats};
 
 use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::{DesktopApp, PanelDragState};
-use crate::canvas_bridge::{CanvasPointerEvent, command_for_canvas_gesture, map_view_to_canvas_with_transform};
+use crate::canvas_bridge::{CanvasPointerEvent, map_view_to_canvas_with_transform};
 
 fn rect_within_panel_surface(rect: crate::frame::Rect, surface: &ui_shell::PanelSurface) -> bool {
     rect.x >= surface.x
@@ -37,26 +37,29 @@ fn canvas_position_maps_view_center_into_bitmap_bounds() {
     assert_eq!(position, Some(CanvasPoint::new(32, 32)));
 }
 
-/// 消しゴムドラッグが erase stroke コマンドになることを確認する。
+/// 消しゴムドラッグが描画プラグイン経由で既存ピクセルを消去することを確認する。
 #[test]
-fn eraser_drag_becomes_erase_stroke_command() {
-    let command = command_for_canvas_gesture(
-        ToolKind::Eraser,
-        PanelLocalPoint::new(7, 8),
-        Some(PanelLocalPoint::new(3, 4)),
-        1.0,
-    );
+fn eraser_drag_clears_existing_pixels() {
+    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut profiler = DesktopProfiler::new();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+    let layout = app.layout.clone().expect("layout exists");
+    let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
+    let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    assert_eq!(
-        command,
-        Command::EraseStroke {
-            from_x: 3,
-            from_y: 4,
-            to_x: 7,
-            to_y: 8,
-            pressure: 1.0,
-        }
-    );
+    app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer("up", WindowPoint::new(center_x, center_y), 1.0);
+    let _ = app.execute_command(Command::SetActiveTool {
+        tool: ToolKind::Eraser,
+    });
+    app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer("up", WindowPoint::new(center_x, center_y), 1.0);
+
+    let frame = render::RenderContext::new().render_frame(&app.document);
+    let bitmap_x = frame.width / 2;
+    let bitmap_y = frame.height / 2;
+    let index = (bitmap_y * frame.width + bitmap_x) * 4;
+    assert_eq!(&frame.pixels[index..index + 4], &[255, 255, 255, 255]);
 }
 
 /// キャンバスドラッグで黒いピクセルが描画されることを確認する。

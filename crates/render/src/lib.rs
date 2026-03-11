@@ -660,7 +660,12 @@ mod tests {
             width: 120,
             height: 80,
         });
-        document.draw_stroke(1, 2, 4, 2);
+        if let Some(panel) = document.active_panel_mut() {
+            let _ = panel.layers[0]
+                .bitmap
+                .draw_line_sized_rgba(1, 2, 4, 2, [0, 0, 0, 255], 1, true);
+            panel.bitmap = panel.layers[0].bitmap.clone();
+        }
 
         let context = RenderContext::new();
         let frame = context.render_frame(&document);

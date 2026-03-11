@@ -1,6 +1,76 @@
 use super::*;
 use crate::{CanvasDirtyRect, ClampToCanvasBounds, MergeInSpace};
 
+fn apply_layer_brush(
+    document: &mut Document,
+    paint: impl FnOnce(&mut CanvasBitmap, bool) -> CanvasDirtyRect,
+) -> Option<CanvasDirtyRect> {
+    let panel_bounds = document.active_panel_bounds()?;
+    let (page_width, page_height) = document.active_page_dimensions();
+    let panel = document.active_panel_mut()?;
+    super::layer_ops::ensure_panel_layers(panel);
+    let is_background = panel.active_layer_index == 0;
+    let local_dirty = {
+        let layer = &mut panel.layers[panel.active_layer_index];
+        paint(&mut layer.bitmap, is_background)
+    };
+    panel.bitmap = super::layer_ops::composite_panel_bitmap(panel);
+    Some(
+        CanvasDirtyRect {
+            x: local_dirty.x.saturating_add(panel_bounds.x),
+            y: local_dirty.y.saturating_add(panel_bounds.y),
+            width: local_dirty.width,
+            height: local_dirty.height,
+        }
+        .clamp_to_canvas_bounds(page_width.max(1), page_height.max(1)),
+    )
+}
+
+fn draw_point(document: &mut Document, x: usize, y: usize) -> Option<CanvasDirtyRect> {
+    let color = document.active_color.to_rgba8();
+    let size = document.resolved_paint_size_with_pressure(1.0);
+    let antialias = document
+        .active_pen_preset()
+        .map(|preset| preset.antialias)
+        .unwrap_or(true);
+    apply_layer_brush(document, |bitmap, _| {
+        bitmap.draw_point_sized_rgba(x, y, color, size, antialias)
+    })
+}
+
+fn draw_stroke(
+    document: &mut Document,
+    from_x: usize,
+    from_y: usize,
+    to_x: usize,
+    to_y: usize,
+) -> Option<CanvasDirtyRect> {
+    let color = document.active_color.to_rgba8();
+    let size = document.resolved_paint_size_with_pressure(1.0);
+    let antialias = document
+        .active_pen_preset()
+        .map(|preset| preset.antialias)
+        .unwrap_or(true);
+    apply_layer_brush(document, |bitmap, _| {
+        bitmap.draw_line_sized_rgba(from_x, from_y, to_x, to_y, color, size, antialias)
+    })
+}
+
+fn erase_point(document: &mut Document, x: usize, y: usize) -> Option<CanvasDirtyRect> {
+    let size = document.resolved_paint_size_with_pressure(1.0);
+    let antialias = document
+        .active_pen_preset()
+        .map(|preset| preset.antialias)
+        .unwrap_or(true);
+    apply_layer_brush(document, |bitmap, is_background| {
+        if is_background {
+            bitmap.erase_point_sized(x, y, size, antialias)
+        } else {
+            bitmap.draw_point_sized_rgba(x, y, [0, 0, 0, 0], size, antialias)
+        }
+    })
+}
+
 /// 最小ドキュメント構造がフェーズ0の前提を満たすことを確認する。
 #[test]
 fn default_document_has_single_page_single_panel_single_layer() {
@@ -26,7 +96,7 @@ fn draw_point_marks_target_pixel_black() {
     let mut document = Document::default();
     document.set_active_pen_size(1);
 
-    let dirty = document.draw_point(3, 4).expect("panel should exist");
+    let dirty = draw_point(&mut document, 3, 4).expect("panel should exist");
 
     let bitmap = &document.work.pages[0].panels[0].bitmap;
     let index = (4 * bitmap.width + 3) * 4;
@@ -40,9 +110,7 @@ fn draw_stroke_draws_continuous_line() {
     let mut document = Document::default();
     document.set_active_pen_size(1);
 
-    let dirty = document
-        .draw_stroke(2, 2, 6, 2)
-        .expect("panel should exist");
+    let dirty = draw_stroke(&mut document, 2, 2, 6, 2).expect("panel should exist");
 
     let bitmap = &document.work.pages[0].panels[0].bitmap;
     for x in 2..=6 {
@@ -56,9 +124,9 @@ fn draw_stroke_draws_continuous_line() {
 fn erase_point_marks_target_pixel_white() {
     let mut document = Document::default();
     document.set_active_pen_size(1);
-    let _ = document.draw_point(3, 4);
+    let _ = draw_point(&mut document, 3, 4);
 
-    let dirty = document.erase_point(3, 4).expect("panel should exist");
+    let dirty = erase_point(&mut document, 3, 4).expect("panel should exist");
 
     let bitmap = &document.work.pages[0].panels[0].bitmap;
     let index = (4 * bitmap.width + 3) * 4;
@@ -94,7 +162,7 @@ fn draw_point_uses_active_color() {
     let mut document = Document::default();
     document.set_active_color(ColorRgba8::new(0xe5, 0x39, 0x35, 0xff));
 
-    let _ = document.draw_point(3, 4);
+    let _ = draw_point(&mut document, 3, 4);
 
     let bitmap = &document.work.pages[0].panels[0].bitmap;
     let index = (4 * bitmap.width + 3) * 4;
@@ -164,17 +232,11 @@ fn apply_command_switches_active_color() {
 }
 
 #[test]
-fn apply_command_draw_stroke_returns_dirty_rect() {
+fn bitmap_edit_style_stroke_returns_dirty_rect() {
     let mut document = Document::default();
     let _ = document.apply_command(&Command::SetActivePenSize { size: 1 });
 
-    let dirty = document.apply_command(&Command::DrawStroke {
-        from_x: 1,
-        from_y: 1,
-        to_x: 3,
-        to_y: 1,
-        pressure: 1.0,
-    });
+    let dirty = draw_stroke(&mut document, 1, 1, 3, 1);
 
     assert_eq!(dirty, Some(CanvasDirtyRect::from_inclusive_points(1, 1, 3, 1)));
     let bitmap = &document.work.pages[0].panels[0].bitmap;
@@ -190,7 +252,7 @@ fn pen_draws_wider_than_single_pixel_default_stroke() {
     });
     let _ = document.apply_command(&Command::SetActivePenSize { size: 5 });
 
-    let dirty = document.draw_point(10, 10).expect("panel should exist");
+    let dirty = draw_point(&mut document, 10, 10).expect("panel should exist");
 
     assert!(dirty.width >= 5);
     assert!(dirty.height >= 5);
@@ -209,9 +271,7 @@ fn wide_stroke_keeps_segment_core_filled() {
     });
     let _ = document.apply_command(&Command::SetActivePenSize { size: 24 });
 
-    let dirty = document
-        .draw_stroke(20, 64, 108, 64)
-        .expect("panel should exist");
+    let dirty = draw_stroke(&mut document, 20, 64, 108, 64).expect("panel should exist");
 
     assert!(dirty.width >= 88);
     assert!(dirty.height >= 24);
@@ -230,9 +290,7 @@ fn wide_diagonal_stroke_marks_midpoint_pixels() {
     });
     let _ = document.apply_command(&Command::SetActivePenSize { size: 18 });
 
-    let dirty = document
-        .draw_stroke(16, 16, 112, 112)
-        .expect("panel should exist");
+    let dirty = draw_stroke(&mut document, 16, 16, 112, 112).expect("panel should exist");
 
     assert!(dirty.width >= 96);
     assert!(dirty.height >= 96);
@@ -254,6 +312,7 @@ fn cycling_pen_presets_updates_active_size() {
             pressure_enabled: true,
             antialias: true,
             stabilization: 0,
+            ..PenPreset::default()
         },
         PenPreset {
             id: "bold".to_string(),
@@ -262,6 +321,7 @@ fn cycling_pen_presets_updates_active_size() {
             pressure_enabled: true,
             antialias: true,
             stabilization: 0,
+            ..PenPreset::default()
         },
     ]);
 
@@ -452,7 +512,7 @@ fn custom_blend_formula_is_applied_during_layer_composition() {
         .draw_point_rgba(0, 0, [64, 64, 64, 255]);
 
     let _ = document.apply_command(&Command::AddRasterLayer);
-    let _ = document.draw_point(0, 0);
+    let _ = draw_point(&mut document, 0, 0);
     let _ = document.apply_command(&Command::SetActiveLayerBlendMode {
         mode: BlendMode::parse_name("max(src, dst)").expect("custom mode"),
     });
@@ -465,7 +525,7 @@ fn custom_blend_formula_is_applied_during_layer_composition() {
 fn toggle_active_layer_visibility_reveals_underlying_layer() {
     let mut document = Document::default();
     let _ = document.apply_command(&Command::AddRasterLayer);
-    let _ = document.draw_point(5, 5);
+    let _ = draw_point(&mut document, 5, 5);
 
     let visible_bitmap = document.active_bitmap().expect("bitmap exists").clone();
     let _ = document.apply_command(&Command::ToggleActiveLayerVisibility);
@@ -483,7 +543,7 @@ fn toggle_active_layer_visibility_reveals_underlying_layer() {
 fn toggle_active_layer_mask_applies_demo_mask() {
     let mut document = Document::default();
     let _ = document.apply_command(&Command::AddRasterLayer);
-    let _ = document.draw_point(1, 1);
+    let _ = draw_point(&mut document, 1, 1);
 
     let before_mask = document.active_bitmap().expect("bitmap exists").clone();
     let _ = document.apply_command(&Command::ToggleActiveLayerMask);
@@ -527,7 +587,7 @@ fn panel_local_draw_returns_page_space_dirty_rect() {
     });
     document.set_active_pen_size(1);
 
-    let dirty = document.draw_point(2, 3).expect("dirty rect exists");
+    let dirty = draw_point(&mut document, 2, 3).expect("dirty rect exists");
 
     assert_eq!(dirty, CanvasDirtyRect::from_inclusive_points(42, 35, 42, 35));
 }
@@ -552,7 +612,7 @@ fn panel_selection_switches_edit_target() {
     let _ = document.apply_command(&Command::SelectPanel { index: 1 });
     document.set_active_pen_size(1);
 
-    let _ = document.draw_point(2, 3);
+    let _ = draw_point(&mut document, 2, 3);
 
     let first_panel = &document.work.pages[0].panels[0];
     let second_panel = &document.work.pages[0].panels[1];

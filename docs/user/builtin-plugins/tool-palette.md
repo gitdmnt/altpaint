@@ -55,8 +55,8 @@ active_tool と一致するボタンは active=true になります。
 
 - Pen → Command::SetActiveTool { tool: ToolKind::Pen }
 - Eraser → Command::SetActiveTool { tool: ToolKind::Eraser }
-- Bucket → Command::FillRegion 系ツールへの切替 command
-- Lasso Bucket → Command::FillLasso 系ツールへの切替 command
+- Bucket → paint plugin による flood fill を使うツールへの切替 command
+- Lasso Bucket → paint plugin による lasso fill を使うツールへの切替 command
 - Prev/Next Pen → ペンプリセット切替 command
 - Reload Pens → `pens/` 再読込 command
 - keyboard handler → `config.*` の shortcut と一致したら対応ツール切替 command を発行
