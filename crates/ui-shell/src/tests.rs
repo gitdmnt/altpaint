@@ -1,7 +1,7 @@
 use super::dsl::command_from_descriptor;
 use super::workspace::WORKSPACE_PANEL_ID;
 use super::*;
-use app_core::{Command, ToolKind};
+use app_core::{Command, PanelSurfacePoint, ToolKind};
 use plugin_api::{DropdownOption, HostAction, LayerListItem, PanelPlugin};
 use render::{draw_text_rgba, text_backend_name, wrap_text_lines};
 use std::fs;
@@ -373,9 +373,9 @@ fn color_palette_color_wheel_event_returns_color_command_action() { let mut shel
 #[test]
 fn color_palette_tree_contains_live_preview() { let shell = shell_with_builtin_panels(); let panels = shell.panel_trees(); let color_panel = panels.iter().find(|panel| panel.id == "builtin.color-palette").expect("color panel exists"); fn has_preview(items: &[PanelNode]) -> bool { items.iter().any(|item| match item { PanelNode::ColorPreview { .. } => true, PanelNode::Column { children, .. } | PanelNode::Row { children, .. } | PanelNode::Section { children, .. } => has_preview(children), PanelNode::Text { .. } | PanelNode::Button { .. } | PanelNode::ColorWheel { .. } | PanelNode::Slider { .. } | PanelNode::TextInput { .. } | PanelNode::Dropdown { .. } | PanelNode::LayerList { .. } => false, }) } assert!(has_preview(&color_panel.children)); }
 #[test]
-fn rendered_panel_surface_maps_color_wheel_region_to_text_event() { let mut shell = shell_with_builtin_panels(); let surface = shell.render_panel_surface(280, 800); let mut found = None; 'outer: for y in 0..surface.height { for x in 0..surface.width { if let Some(PanelEvent::SetText { panel_id, node_id, value }) = surface.hit_test(x, y) && panel_id == "builtin.color-palette" && node_id == "color.wheel" { found = Some(value); break 'outer; } } } assert!(found.is_some()); }
+fn rendered_panel_surface_maps_color_wheel_region_to_text_event() { let mut shell = shell_with_builtin_panels(); let surface = shell.render_panel_surface(280, 800); let mut found = None; 'outer: for y in 0..surface.height { for x in 0..surface.width { if let Some(PanelEvent::SetText { panel_id, node_id, value }) = surface.hit_test_at(PanelSurfacePoint::new(x, y)) && panel_id == "builtin.color-palette" && node_id == "color.wheel" { found = Some(value); break 'outer; } } } assert!(found.is_some()); }
 #[test]
-fn rendered_panel_surface_contains_clickable_button_region() { let mut shell = shell_with_builtin_panels(); let surface = shell.render_panel_surface(280, 3200); let mut found = None; 'outer: for y in 0..surface.height { for x in 0..surface.width { if let Some(PanelEvent::Activate { panel_id, node_id }) = surface.hit_test(x, y) && panel_id == "builtin.tool-palette" && node_id == "tool.pen" { found = Some((x, y)); break 'outer; } } } assert!(found.is_some()); }
+fn rendered_panel_surface_contains_clickable_button_region() { let mut shell = shell_with_builtin_panels(); let surface = shell.render_panel_surface(280, 3200); let mut found = None; 'outer: for y in 0..surface.height { for x in 0..surface.width { if let Some(PanelEvent::Activate { panel_id, node_id }) = surface.hit_test_at(PanelSurfacePoint::new(x, y)) && panel_id == "builtin.tool-palette" && node_id == "tool.pen" { found = Some((x, y)); break 'outer; } } } assert!(found.is_some()); }
 #[test]
 fn rendered_layer_list_drag_maps_to_drag_value_event() {
     let mut shell = UiShell::new();
@@ -392,7 +392,7 @@ fn rendered_layer_list_drag_maps_to_drag_value_event() {
                 panel_id,
                 node_id,
                 value,
-            }) = surface.hit_test(x, y)
+            }) = surface.hit_test_at(PanelSurfacePoint::new(x, y))
                 && panel_id == "test.layer-list"
                 && node_id == "layers.list"
             {
@@ -407,7 +407,7 @@ fn rendered_layer_list_drag_maps_to_drag_value_event() {
     }
 
     let (target_x, target_y) = target.expect("target layer hit exists");
-    let drag_event = surface.drag_event("test.layer-list", "layers.list", 0, target_x, target_y);
+    let drag_event = surface.drag_event_at("test.layer-list", "layers.list", 0, PanelSurfacePoint::new(target_x, target_y));
     assert_eq!(
         drag_event,
         Some(PanelEvent::DragValue {
@@ -420,7 +420,7 @@ fn rendered_layer_list_drag_maps_to_drag_value_event() {
     assert!(source.is_some());
 }
 #[test]
-fn dropdown_expands_and_option_hit_sets_text_event() { let mut shell = UiShell::new(); shell.register_panel(Box::new(TestDropdownPanel)); shell.update(&Document::default()); let collapsed = shell.render_panel_surface(280, 200); let (root_x, root_y) = (0..collapsed.height).find_map(|y| { (0..collapsed.width).find_map(|x| match collapsed.hit_test(x, y) { Some(PanelEvent::Activate { panel_id, node_id }) if panel_id == "test.dropdown" && node_id == "blend.mode" => Some((x, y)), _ => None, }) }).expect("dropdown root exists"); assert!(shell.handle_panel_event(&PanelEvent::Activate { panel_id: "test.dropdown".to_string(), node_id: "blend.mode".to_string(), }).is_empty()); let expanded = shell.render_panel_surface(280, 240); let option_event = (0..expanded.height).find_map(|y| { (0..expanded.width).find_map(|x| match expanded.hit_test(x, y) { Some(PanelEvent::SetText { panel_id, node_id, value }) if panel_id == "test.dropdown" && node_id == "blend.mode" && value == "multiply" => Some((x, y)), _ => None, }) }).expect("dropdown option exists"); assert!(root_x < expanded.width && root_y < expanded.height); assert!(option_event.0 < expanded.width && option_event.1 < expanded.height); }
+fn dropdown_expands_and_option_hit_sets_text_event() { let mut shell = UiShell::new(); shell.register_panel(Box::new(TestDropdownPanel)); shell.update(&Document::default()); let collapsed = shell.render_panel_surface(280, 200); let (root_x, root_y) = (0..collapsed.height).find_map(|y| { (0..collapsed.width).find_map(|x| match collapsed.hit_test_at(PanelSurfacePoint::new(x, y)) { Some(PanelEvent::Activate { panel_id, node_id }) if panel_id == "test.dropdown" && node_id == "blend.mode" => Some((x, y)), _ => None, }) }).expect("dropdown root exists"); assert!(shell.handle_panel_event(&PanelEvent::Activate { panel_id: "test.dropdown".to_string(), node_id: "blend.mode".to_string(), }).is_empty()); let expanded = shell.render_panel_surface(280, 240); let option_event = (0..expanded.height).find_map(|y| { (0..expanded.width).find_map(|x| match expanded.hit_test_at(PanelSurfacePoint::new(x, y)) { Some(PanelEvent::SetText { panel_id, node_id, value }) if panel_id == "test.dropdown" && node_id == "blend.mode" && value == "multiply" => Some((x, y)), _ => None, }) }).expect("dropdown option exists"); assert!(root_x < expanded.width && root_y < expanded.height); assert!(option_event.0 < expanded.width && option_event.1 < expanded.height); }
 #[test]
 fn focus_navigation_can_activate_focused_button() { let mut shell = shell_with_builtin_panels(); assert!(shell.focus_next()); assert_eq!(shell.focused_target(), Some(("builtin.workspace-layout", "workspace.visibility.builtin.app-actions"))); assert!(shell.focus_panel_node("builtin.app-actions", "app.save")); assert_eq!(shell.activate_focused(), vec![HostAction::DispatchCommand(Command::SaveProject)]); }
 #[test]
@@ -462,11 +462,15 @@ fn loading_dsl_panel_replaces_builtin_panel_with_same_id() { let temp_dir = uniq
 #[test]
 fn migrated_builtin_dsl_panels_use_host_snapshot_data() { let mut shell = UiShell::new(); let mut document = Document::default(); document.set_active_tool(ToolKind::Eraser); assert!(shell.load_panel_directory(default_builtin_panel_dir()).is_empty()); shell.update(&document); let panels = shell.panel_trees(); let tool_panel = panels.iter().find(|panel| panel.id == "builtin.tool-palette").expect("tool panel exists"); let layers_panel = panels.iter().find(|panel| panel.id == "builtin.layers-panel").expect("layers panel exists"); assert!(tree_contains_button_label(&tool_panel.children, "⌫ 消しゴム", true)); assert!(tree_contains_text(&layers_panel.children, "Untitled")); assert!(tree_contains_text(&layers_panel.children, "ページ 1 / パネル 1 / レイヤー 1")); assert!(tree_contains_text(&layers_panel.children, "Layer 1")); }
 #[test]
+fn builtin_panel_list_uses_active_panel_snapshot_data() { let mut shell = UiShell::new(); let mut document = Document::new(320, 240); document.add_panel(); document.select_panel(1); assert!(shell.load_panel_directory(default_builtin_panel_dir()).is_empty()); assert!(shell.set_panel_visibility("builtin.panel-list", true)); shell.update(&document); let panels = shell.panel_trees(); let panel_list = panels.iter().find(|panel| panel.id == "builtin.panel-list").expect("panel list exists"); assert!(tree_contains_text(panel_list.children.as_slice(), "ページ 1 / コマ 2 / 総数 2")); assert!(tree_contains_text_fragment(panel_list.children.as_slice(), "143×216")); assert!(tree_contains_text(panel_list.children.as_slice(), "コマ 2")); }
+#[test]
 fn migrated_builtin_dsl_panels_render_interpolated_mixed_text() { let mut shell = UiShell::new(); assert!(shell.load_panel_directory(default_builtin_panel_dir()).is_empty()); shell.update(&Document::default()); let panels = shell.panel_trees(); let tool_panel = panels.iter().find(|panel| panel.id == "builtin.tool-palette").expect("tool panel exists"); let layers_panel = panels.iter().find(|panel| panel.id == "builtin.layers-panel").expect("layers panel exists"); let pen_panel = panels.iter().find(|panel| panel.id == "builtin.pen-settings").expect("pen panel exists"); assert!(tree_contains_text(&tool_panel.children, "プリセット: Round Pen")); assert!(tree_contains_text(&tool_panel.children, "サイズ: 4px / 登録数: 1")); assert!(tree_contains_text(&layers_panel.children, "番号: 0")); assert!(tree_contains_text(&layers_panel.children, "表示: true")); assert!(tree_contains_text(&layers_panel.children, "マスク: false")); assert!(tree_contains_text_fragment(&layers_panel.children, "合成: normal / 表示 / マスク: なし")); assert!(tree_contains_text_fragment(&pen_panel.children, "px")); }
 #[test]
 fn command_descriptor_accepts_numeric_payload_encoded_as_string() { let mut descriptor = CommandDescriptor::new("tool.set_size"); descriptor.payload.insert("size".to_string(), Value::String("12".to_string())); assert_eq!(command_from_descriptor(&descriptor), Ok(Command::SetActivePenSize { size: 12 })); }
 #[test]
 fn command_descriptor_maps_layer_rename_active() { let mut descriptor = CommandDescriptor::new("layer.rename_active"); descriptor.payload.insert("name".to_string(), Value::String("Ink".to_string())); assert_eq!(command_from_descriptor(&descriptor), Ok(Command::RenameActiveLayer { name: "Ink".to_string() })); }
+#[test]
+fn command_descriptor_maps_panel_selection_commands() { let mut descriptor = CommandDescriptor::new("panel.select"); descriptor.payload.insert("index".to_string(), Value::String("2".to_string())); assert_eq!(command_from_descriptor(&descriptor), Ok(Command::SelectPanel { index: 2 })); assert_eq!(command_from_descriptor(&CommandDescriptor::new("panel.select_next")), Ok(Command::SelectNextPanel)); assert_eq!(command_from_descriptor(&CommandDescriptor::new("panel.select_previous")), Ok(Command::SelectPreviousPanel)); assert_eq!(command_from_descriptor(&CommandDescriptor::new("panel.focus_active")), Ok(Command::FocusActivePanel)); }
 #[test]
 fn load_panel_directory_discovers_nested_panel_files() { let temp_dir = unique_test_dir(); let nested_dir = temp_dir.join("nested").join("plugin"); fs::create_dir_all(&nested_dir).expect("nested temp dir created"); fs::write(nested_dir.join("sample.altp-panel"), SAMPLE_DSL_PANEL).expect("dsl panel written"); fs::write(nested_dir.join("sample_test.wasm"), SAMPLE_DSL_WAT).expect("wasm sample written"); let mut shell = UiShell::new(); shell.update(&Document::default()); assert!(shell.load_panel_directory(&temp_dir).is_empty()); assert!(shell.panel_trees().iter().any(|panel| panel.id == "builtin.dsl-test")); }
 

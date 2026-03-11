@@ -17,6 +17,7 @@ members = [
   "plugins/workspace-presets",
   "plugins/tool-palette",
   "plugins/view-controls",
+  "plugins/panel-list",
   "plugins/layers-panel",
   "plugins/color-palette",
   "plugins/pen-settings",

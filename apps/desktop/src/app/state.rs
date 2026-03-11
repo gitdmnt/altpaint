@@ -5,7 +5,7 @@
 
 use std::thread::JoinHandle;
 
-use app_core::{Command, DirtyRect, Document};
+use app_core::{CanvasDirtyRect, ClampToCanvasBounds, Command, Document, MergeInSpace};
 use desktop_support::{
     DEFAULT_PROJECT_PATH, DesktopSessionState, default_pen_dir, save_session_state,
 };
@@ -14,7 +14,7 @@ use storage::load_pen_directory;
 
 use super::DesktopApp;
 use crate::canvas_bridge::CanvasInputState;
-use crate::frame::{Rect, TextureQuad};
+use crate::frame::{PanelNavigatorEntry, PanelNavigatorOverlay, Rect, TextureQuad};
 
 const PEN_SETTING_PANEL_IDS: &[&str] = &["builtin.pen-settings", "builtin.tool-palette"];
 const COLOR_PANEL_IDS: &[&str] = &["builtin.color-palette"];
@@ -46,7 +46,7 @@ fn from_render_quad(quad: render::TextureQuad) -> TextureQuad {
 pub(crate) struct PresentFrameUpdate {
     pub(crate) base_dirty_rect: Option<crate::frame::Rect>,
     pub(crate) overlay_dirty_rect: Option<crate::frame::Rect>,
-    pub(crate) canvas_dirty_rect: Option<DirtyRect>,
+    pub(crate) canvas_dirty_rect: Option<CanvasDirtyRect>,
     pub(crate) canvas_transform_changed: bool,
     pub(crate) canvas_updated: bool,
 }
@@ -85,8 +85,69 @@ impl DesktopApp {
             app_core::ToolKind::Pen | app_core::ToolKind::Eraser => {
                 Some(self.document.active_pen_size.max(1))
             }
-            app_core::ToolKind::Bucket | app_core::ToolKind::LassoBucket => None,
+            app_core::ToolKind::Bucket
+            | app_core::ToolKind::LassoBucket
+            | app_core::ToolKind::PanelRect => None,
         }
+    }
+
+    pub(super) fn refresh_canvas_frame(&mut self) {
+        self.canvas_frame = Some(render::RenderContext::new().render_frame(&self.document));
+    }
+
+    pub(super) fn refresh_canvas_frame_region(&mut self, dirty: CanvasDirtyRect) {
+        let Some(frame) = self.canvas_frame.as_mut() else {
+            self.refresh_canvas_frame();
+            return;
+        };
+        let Some(page) = self.document.active_page() else {
+            self.refresh_canvas_frame();
+            return;
+        };
+        let Some(panel) = self.document.active_panel() else {
+            self.refresh_canvas_frame();
+            return;
+        };
+
+        if frame.width != page.width.max(1) || frame.height != page.height.max(1) {
+            self.refresh_canvas_frame();
+            return;
+        }
+
+        let dirty = dirty.clamp_to_canvas_bounds(frame.width, frame.height);
+        if dirty.width == 0 || dirty.height == 0 {
+            return;
+        }
+
+        let panel_bounds = panel.bounds;
+        let panel_right = panel_bounds.x.saturating_add(panel.bitmap.width);
+        let panel_bottom = panel_bounds.y.saturating_add(panel.bitmap.height);
+        let dirty_right = dirty.x.saturating_add(dirty.width);
+        let dirty_bottom = dirty.y.saturating_add(dirty.height);
+        let copy_left = dirty.x.max(panel_bounds.x);
+        let copy_top = dirty.y.max(panel_bounds.y);
+        let copy_right = dirty_right.min(panel_right).min(frame.width);
+        let copy_bottom = dirty_bottom.min(panel_bottom).min(frame.height);
+
+        if copy_left >= copy_right || copy_top >= copy_bottom {
+            return;
+        }
+
+        let copy_width = copy_right - copy_left;
+        for row in copy_top..copy_bottom {
+            let local_y = row.saturating_sub(panel_bounds.y);
+            let local_x = copy_left.saturating_sub(panel_bounds.x);
+            let src_row_start = (local_y * panel.bitmap.width + local_x) * 4;
+            let src_row_end = src_row_start + copy_width * 4;
+            let dst_row_start = (row * frame.width + copy_left) * 4;
+            let dst_row_end = dst_row_start + copy_width * 4;
+            frame.pixels[dst_row_start..dst_row_end]
+                .copy_from_slice(&panel.bitmap.pixels[src_row_start..src_row_end]);
+        }
+    }
+
+    pub(crate) fn canvas_frame(&self) -> Option<&RenderFrame> {
+        self.canvas_frame.as_ref()
     }
 
     /// 現在のデスクトップセッションとして保存すべき状態を組み立てる。
@@ -249,10 +310,10 @@ impl DesktopApp {
     }
 
     /// キャンバス dirty rect を次回提示用に集約する。
-    pub(super) fn append_canvas_dirty_rect(&mut self, dirty: DirtyRect) -> bool {
+    pub(super) fn append_canvas_dirty_rect(&mut self, dirty: CanvasDirtyRect) -> bool {
         self.pending_canvas_dirty_rect = Some(
             self.pending_canvas_dirty_rect
-                .map_or(dirty, |existing| existing.union(dirty)),
+                .map_or(dirty, |existing| existing.merge(dirty)),
         );
         true
     }
@@ -333,7 +394,10 @@ impl DesktopApp {
             | Command::EraseStroke { .. }
             | Command::FillRegion { .. }
             | Command::FillLasso { .. } => {
-                dirty.is_some_and(|dirty| self.append_canvas_dirty_rect(dirty))
+                dirty.is_some_and(|dirty| {
+                    self.refresh_canvas_frame_region(dirty);
+                    self.append_canvas_dirty_rect(dirty)
+                })
             }
             Command::SetActiveTool { .. }
             | Command::SelectNextPenPreset
@@ -383,6 +447,20 @@ impl DesktopApp {
             | Command::SetActiveLayerBlendMode { .. }
             | Command::ToggleActiveLayerVisibility
             | Command::ToggleActiveLayerMask => {
+                self.refresh_canvas_frame();
+                self.sync_ui_from_document();
+                self.mark_status_dirty();
+                self.rebuild_present_frame();
+                true
+            }
+            Command::AddPanel
+            | Command::CreatePanel { .. }
+            | Command::RemoveActivePanel
+            | Command::SelectPanel { .. }
+            | Command::SelectNextPanel
+            | Command::SelectPreviousPanel
+            | Command::FocusActivePanel => {
+                self.refresh_canvas_frame();
                 self.sync_ui_from_document();
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
@@ -390,6 +468,7 @@ impl DesktopApp {
             }
             Command::NewDocumentSized { .. } => {
                 self.reset_active_interactions();
+                self.refresh_canvas_frame();
                 self.sync_ui_from_document();
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
@@ -433,7 +512,7 @@ impl DesktopApp {
     /// 現在のキャンバス表示計画を返す。
     pub(crate) fn canvas_scene(&self) -> Option<render::CanvasScene> {
         let layout = self.layout.as_ref()?;
-        let bitmap = self.document.active_bitmap()?;
+        let bitmap = self.canvas_frame()?;
         render::prepare_canvas_scene(
             render::PixelRect {
                 x: layout.canvas_host_rect.x,
@@ -449,10 +528,52 @@ impl DesktopApp {
 
     /// アクティブビットマップ寸法を返す。
     pub(super) fn canvas_dimensions(&self) -> (usize, usize) {
-        self.document
-            .active_bitmap()
+        self.canvas_frame
+            .as_ref()
             .map(|bitmap| (bitmap.width, bitmap.height))
             .unwrap_or((1, 1))
+    }
+
+    pub(super) fn active_panel_mask_overlay(&self) -> Option<app_core::PanelBounds> {
+        let page = self.document.active_page()?;
+        let bounds = self.document.active_panel_bounds()?;
+        (page.panels.len() > 1 || bounds != app_core::PanelBounds::full_page(page.width, page.height))
+            .then_some(bounds)
+    }
+
+    pub(super) fn panel_creation_preview_bounds(&self) -> Option<app_core::PanelBounds> {
+        let anchor = self.canvas_input.panel_rect_anchor?;
+        let current = self.canvas_input.last_position?;
+        let (page_width, page_height) = self.document.active_page_dimensions();
+        let left = anchor.x.min(current.x).min(page_width.saturating_sub(1));
+        let top = anchor.y.min(current.y).min(page_height.saturating_sub(1));
+        let right = anchor.x.max(current.x).min(page_width.saturating_sub(1));
+        let bottom = anchor.y.max(current.y).min(page_height.saturating_sub(1));
+        let width = right.saturating_sub(left).saturating_add(1);
+        let height = bottom.saturating_sub(top).saturating_add(1);
+        (width > 0 && height > 0).then_some(app_core::PanelBounds {
+            x: left,
+            y: top,
+            width,
+            height,
+        })
+    }
+
+    pub(super) fn panel_navigator_overlay(&self) -> Option<PanelNavigatorOverlay> {
+        let page = self.document.active_page()?;
+        (page.panels.len() > 1).then(|| PanelNavigatorOverlay {
+            page_width: page.width,
+            page_height: page.height,
+            panels: page
+                .panels
+                .iter()
+                .enumerate()
+                .map(|(index, panel)| PanelNavigatorEntry {
+                    bounds: panel.bounds,
+                    active: index == self.document.active_panel_index(),
+                })
+                .collect(),
+        })
     }
 
     /// 既定ペンディレクトリからプリセットを再読込する。
@@ -494,7 +615,7 @@ impl DesktopApp {
             .filter(|entry| !entry.visible)
             .count();
         format!(
-            "file={} / tool={:?} / pen={} {}px / color={} / zoom={:.2}x / pages={} / panels={} / hidden={}",
+            "file={} / tool={:?} / pen={} {}px / color={} / zoom={:.2}x / page={} / panel={}/{} / pages={} / panels={} / hidden={}",
             file_name,
             self.document.active_tool,
             self.document
@@ -504,6 +625,9 @@ impl DesktopApp {
             self.document.active_pen_size,
             self.document.active_color.hex_rgb(),
             self.document.view_transform.zoom,
+            self.document.active_page_index() + 1,
+            self.document.active_panel_index() + 1,
+            self.document.active_page_panel_count().max(1),
             self.document.work.pages.len(),
             self.document
                 .work

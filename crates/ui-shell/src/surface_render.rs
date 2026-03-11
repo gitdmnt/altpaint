@@ -35,6 +35,13 @@ impl UiShell {
         let viewport_changed = self
             .panel_content_viewport
             .is_none_or(|viewport| viewport != (width, height));
+        if self
+            .panel_measure_viewport
+            .is_none_or(|viewport| viewport != (width, height))
+        {
+            self.panel_measured_size_cache.clear();
+            self.panel_measure_viewport = Some((width, height));
+        }
         let needs_raster = self.panel_content_dirty || viewport_changed || self.panel_bitmap_cache.is_empty();
         let needs_compose = needs_raster || self.panel_layout_dirty || self.panel_content_cache.is_none();
 
@@ -132,7 +139,7 @@ impl UiShell {
     }
 
     fn collect_floating_panels<'a>(
-        &self,
+        &mut self,
         trees: &'a [plugin_api::PanelTree],
         width: usize,
         height: usize,
@@ -348,7 +355,7 @@ impl UiShell {
     }
 
     fn panel_rect_for_tree(
-        &self,
+        &mut self,
         tree: &plugin_api::PanelTree,
         index: usize,
         viewport_width: usize,
@@ -369,13 +376,18 @@ impl UiShell {
             .iter()
             .find(|entry| entry.id == tree.id);
         let size = state.and_then(|entry| entry.size).unwrap_or(fallback_size);
-        let measured = render::measure_panel_size(
-            tree.title,
-            tree,
-            render_state,
-            viewport_width.max(1),
-            viewport_height.max(1),
-        );
+        let measured = *self
+            .panel_measured_size_cache
+            .entry(tree.id.to_string())
+            .or_insert_with(|| {
+                render::measure_panel_size(
+                    tree.title,
+                    tree,
+                    render_state,
+                    viewport_width.max(1),
+                    viewport_height.max(1),
+                )
+            });
         let width = size
             .width
             .max(measured.width)

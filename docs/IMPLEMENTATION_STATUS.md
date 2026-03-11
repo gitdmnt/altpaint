@@ -18,7 +18,9 @@
 - マウス / touch / wheel によるキャンバス操作
 - dirty rect を使う差分提示
 - 浮動 UI panel の位置保存とドラッグ移動
-- project save/load
+- SQLite ベース project save/load
+- page / panel 単位の project index / 部分ロード
+- layer bitmap のチャンク保存と current snapshot 永続化
 - session save/load
 - workspace preset 読込・再読込・切り替え・保存・書き出し
 - `plugins/` 配下の `.altp-panel` + Wasm panel の再帰ロード
@@ -28,6 +30,7 @@
 - 外部ペンプリセット読込と import report 表示
 - `AltPaintPen` 正規化 format と external brush parse/export module
 - キャンバス無段階回転の render / software raster / GPU sampling
+- 複数コマ保持、アクティブコマ切替、コマ境界ナビゲータ、コマ一覧 panel
 - 実行時 profiler とタイトル表示
 
 ## workspace 現況
@@ -58,6 +61,7 @@
 - `plugins/pen-settings`
 - `plugins/job-progress`
 - `plugins/snapshot-panel`
+- `plugins/panel-list`
 
 ## 実装済みの主要領域
 
@@ -103,8 +107,12 @@
 
 `storage` には次がある。
 
-- project save/load
+- SQLite ベース project save/load
 - `format_version` 管理
+- page / panel 単位の部分ロード API
+- layer bitmap の chunk 保存
+- current panel snapshot の永続化
+- full / delta save mode を差し込める save option
 - `WorkspaceLayout` 永続化
 - `plugin_configs` 永続化
 - pen preset 読込
@@ -170,11 +178,13 @@
 - フェーズ5: 標準パネルの host 描画
 - フェーズ6: panel 基盤 crate と UI DSL parser
 - フェーズ7: built-in panel の UI DSL + Wasm 移植
+- フェーズ10: 複数コマとコマ中心UI
 
 ### 最小到達済み
 
 - フェーズ8: 外部 Wasm panel runtime の基盤
 - フェーズ9: 実用寄りキャンバス機能の最小形
+- フェーズ11: 保存形式の本格化
 
 ## 既知の現在地
 
@@ -191,6 +201,10 @@
 - panel permission は宣言に比べ検証がまだ薄い
 - jobs / snapshot / export はまだ最小プレースホルダ寄りである
 - Undo/Redo や高度なドキュメント操作は未実装である
+
+補足:
+
+- フェーズ10 では、`Document` のアクティブコマ選択、複数コマ追加/削除、`builtin.panel-list`、view-controls からのコマ中心導線、overlay 上のコマ境界ナビゲータを導入した
 
 ## いま読むべき関連文書
 

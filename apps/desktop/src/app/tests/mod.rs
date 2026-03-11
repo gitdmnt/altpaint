@@ -18,7 +18,7 @@ static TEST_FILE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// テストごとに返却パスと表示エラーを制御できるダイアログ実装を表す。
 #[derive(Default)]
-struct TestDialogs {
+pub(crate) struct TestDialogs {
     open_paths: RefCell<Vec<PathBuf>>,
     save_paths: RefCell<Vec<PathBuf>>,
     workspace_save_paths: RefCell<Vec<PathBuf>>,
@@ -133,7 +133,7 @@ fn test_app_with_dialogs_and_workspace_preset_path(
     )
 }
 
-fn unique_test_path(name: &str) -> PathBuf {
+pub(crate) fn unique_test_path(name: &str) -> PathBuf {
     let id = TEST_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!("altpaint-{name}-{}-{id}.json", std::process::id()))
 }

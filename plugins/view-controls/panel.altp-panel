@@ -35,6 +35,13 @@ view {
       <slider id="view.pan.y" label="上下移動" min={0} max={4000} value={state.pan_y_slider} fill="#CE93D8" on:change="set_pan_y"></slider>
       <text>回転: {state.rotation_label}</text>
       <slider id="view.rotation" label="回転" min={0} max={359} value={state.rotation_slider} fill="#FFCC80" on:change="set_rotation"></slider>
+      <section title="コマ中心ビュー">
+        <row gap=6>
+          <button id="panel.prev" on:click="previous_panel">← 前のコマ</button>
+          <button id="panel.next" on:click="next_panel">次のコマ →</button>
+        </row>
+        <button id="panel.focus" on:click="focus_active_panel">選択中コマを中央表示</button>
+      </section>
       <section title="回転 / 反転">
         <row gap=6>
           <button id="view.flip.x" on:click="flip_horizontal" active={state.flip_x}>↔ 左右反転</button>

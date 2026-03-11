@@ -8,6 +8,8 @@ mod geometry;
 mod raster;
 use desktop_support::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
 
+use app_core::CanvasPoint;
+
 #[allow(unused_imports)]
 pub(crate) use compositor::{
     clear_canvas_host_region, compose_base_frame, compose_canvas_host_region,
@@ -18,12 +20,14 @@ pub(crate) use compositor::{
 pub(crate) use geometry::{
     brush_preview_rect, canvas_drawn_rect, canvas_texture_quad, exposed_canvas_background_rect,
     fit_rect, map_canvas_dirty_to_display, map_canvas_dirty_to_display_with_transform,
-    map_view_to_surface, map_view_to_surface_clamped,
+    map_window_to_panel_surface, map_window_to_panel_surface_clamped,
 };
 #[cfg(test)]
-use raster::{SourceAxisRun, build_source_axis_runs, fill_rgba_block};
+pub(crate) use raster::blit_scaled_rgba_region;
 #[allow(unused_imports)]
-pub(crate) use raster::{blit_scaled_rgba_region, scroll_canvas_region};
+pub(crate) use raster::scroll_canvas_region;
+#[cfg(test)]
+use raster::{SourceAxisRun, build_source_axis_runs, fill_rgba_block};
 
 /// 合成対象の矩形を表す軽量な座標型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -140,9 +144,27 @@ pub(crate) struct CanvasCompositeSource<'a> {
 /// キャンバス上の一時オーバーレイ状態を保持する。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct CanvasOverlayState {
-    pub(crate) brush_preview: Option<(usize, usize)>,
+    pub(crate) brush_preview: Option<CanvasPoint>,
     pub(crate) brush_size: Option<u32>,
-    pub(crate) lasso_points: Vec<(usize, usize)>,
+    pub(crate) lasso_points: Vec<CanvasPoint>,
+    pub(crate) active_panel_bounds: Option<app_core::PanelBounds>,
+    pub(crate) panel_navigator: Option<PanelNavigatorOverlay>,
+    pub(crate) panel_creation_preview: Option<app_core::PanelBounds>,
+}
+
+/// コマ境界ナビゲータに表示する 1 件分の情報。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PanelNavigatorEntry {
+    pub(crate) bounds: app_core::PanelBounds,
+    pub(crate) active: bool,
+}
+
+/// ページ内コマを俯瞰表示する簡易ナビゲータ情報。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PanelNavigatorOverlay {
+    pub(crate) page_width: usize,
+    pub(crate) page_height: usize,
+    pub(crate) panels: Vec<PanelNavigatorEntry>,
 }
 
 /// GPU 上で提示するテクスチャ付き矩形を表す。

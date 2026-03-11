@@ -50,8 +50,12 @@ pub struct UiShell {
     panel_content_cache: Option<PanelSurface>,
     /// 現在キャッシュしている panel surface の生成元 viewport サイズ。
     panel_content_viewport: Option<(usize, usize)>,
+    /// 個別パネルごとの tree キャッシュ。
+    panel_tree_cache: BTreeMap<String, PanelTree>,
     /// 個別パネルごとのラスタライズ済み content キャッシュ。
     panel_bitmap_cache: BTreeMap<String, PanelSurface>,
+    /// 個別パネルごとの計測済みサイズキャッシュ。
+    panel_measured_size_cache: BTreeMap<String, render::MeasuredPanelSize>,
     /// 直近描画で使った実効パネル矩形。
     rendered_panel_rects: BTreeMap<String, render::PixelRect>,
     /// panel content を再構築すべきかのフラグ。
@@ -76,6 +80,8 @@ pub struct UiShell {
     panel_scroll_offset: usize,
     /// content 全体の高さ。
     panel_content_height: usize,
+    /// 計測済みサイズキャッシュに対応する viewport サイズ。
+    panel_measure_viewport: Option<(usize, usize)>,
     /// 現在 focus 中の node。
     focused_target: Option<FocusTarget>,
     /// 展開中 dropdown。
@@ -95,7 +101,9 @@ impl UiShell {
             workspace_layout: WorkspaceLayout::default(),
             panel_content_cache: None,
             panel_content_viewport: None,
+            panel_tree_cache: BTreeMap::new(),
             panel_bitmap_cache: BTreeMap::new(),
+            panel_measured_size_cache: BTreeMap::new(),
             rendered_panel_rects: BTreeMap::new(),
             panel_content_dirty: true,
             full_panel_raster_dirty: true,
@@ -108,6 +116,7 @@ impl UiShell {
             last_panel_surface_dirty_rect: None,
             panel_scroll_offset: 0,
             panel_content_height: 0,
+            panel_measure_viewport: None,
             focused_target: None,
             expanded_dropdown: None,
             text_input_states: BTreeMap::new(),
@@ -122,7 +131,12 @@ impl UiShell {
         }
         self.ensure_workspace_panel_entry(panel.id());
         self.panels.retain(|registered| registered.id() != panel.id());
+        self.panel_tree_cache.remove(panel.id());
         self.panels.push(panel);
+        if let Some(panel) = self.panels.last() {
+            self.panel_tree_cache
+                .insert(panel.id().to_string(), panel.panel_tree());
+        }
         self.reconcile_workspace_layout();
         self.mark_all_panel_content_dirty();
     }
@@ -178,9 +192,16 @@ impl UiShell {
             if panel_ids.is_some_and(|panel_ids| !panel_ids.contains(panel.id())) {
                 continue;
             }
-            let previous_tree = panel.panel_tree();
+            let previous_tree = self
+                .panel_tree_cache
+                .get(panel.id())
+                .cloned()
+                .unwrap_or_else(|| panel.panel_tree());
             panel.update(document);
-            if panel.panel_tree() != previous_tree {
+            let next_tree = panel.panel_tree();
+            self.panel_tree_cache
+                .insert(panel.id().to_string(), next_tree.clone());
+            if next_tree != previous_tree {
                 changed_panels.push(panel.id().to_string());
             }
         }
@@ -205,7 +226,12 @@ impl UiShell {
     /// workspace 管理 panel を含む `PanelTree` 一覧を返す。
     pub fn panel_trees(&self) -> Vec<PanelTree> {
         let mut trees = vec![self.workspace_manager_tree()];
-        trees.extend(self.visible_panels_in_order().map(|panel| panel.panel_tree()));
+        trees.extend(self.visible_panels_in_order().map(|panel| {
+            self.panel_tree_cache
+                .get(panel.id())
+                .cloned()
+                .unwrap_or_else(|| panel.panel_tree())
+        }));
         trees
     }
 
@@ -291,10 +317,17 @@ impl UiShell {
             return Vec::new();
         };
         let (actions, dirty_panel_id) = {
-            let previous_tree = panel.panel_tree();
+            let previous_tree = self
+                .panel_tree_cache
+                .get(panel.id())
+                .cloned()
+                .unwrap_or_else(|| panel.panel_tree());
             let previous_config = panel.persistent_config();
             let actions = panel.handle_event(event);
-            let dirty_panel_id = (panel.panel_tree() != previous_tree
+            let next_tree = panel.panel_tree();
+            self.panel_tree_cache
+                .insert(panel.id().to_string(), next_tree.clone());
+            let dirty_panel_id = (next_tree != previous_tree
                 || panel.persistent_config() != previous_config)
                 .then(|| panel.id().to_string());
             (actions, dirty_panel_id)
@@ -313,7 +346,11 @@ impl UiShell {
             if !panel.handles_keyboard_event() {
                 continue;
             }
-            let previous_tree = panel.panel_tree();
+            let previous_tree = self
+                .panel_tree_cache
+                .get(panel.id())
+                .cloned()
+                .unwrap_or_else(|| panel.panel_tree());
             let previous_config = panel.persistent_config();
             let panel_actions = panel.handle_event(&PanelEvent::Keyboard {
                 panel_id: panel.id().to_string(),
@@ -321,8 +358,11 @@ impl UiShell {
                 key: key.to_string(),
                 repeat,
             });
+            let next_tree = panel.panel_tree();
+            self.panel_tree_cache
+                .insert(panel.id().to_string(), next_tree.clone());
             let keyboard_handled = !panel_actions.is_empty()
-                || panel.panel_tree() != previous_tree
+                || next_tree != previous_tree
                 || panel.persistent_config() != previous_config;
             handled |= keyboard_handled;
             actions.extend(panel_actions);
@@ -356,6 +396,9 @@ impl UiShell {
         self.panel_content_dirty = true;
         self.full_panel_raster_dirty = true;
         self.dirty_panel_ids.clear();
+        self.panel_tree_cache.clear();
+        self.panel_measured_size_cache.clear();
+        self.panel_measure_viewport = None;
     }
 
     pub(crate) fn mark_panel_content_dirty(&mut self, panel_id: &str) {
@@ -363,6 +406,8 @@ impl UiShell {
         if !self.full_panel_raster_dirty {
             self.dirty_panel_ids.insert(panel_id.to_string());
         }
+        self.panel_tree_cache.remove(panel_id);
+        self.panel_measured_size_cache.remove(panel_id);
     }
 }
 

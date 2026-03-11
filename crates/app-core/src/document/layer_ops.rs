@@ -6,56 +6,75 @@
 use std::iter::Peekable;
 use std::str::Chars;
 
+use crate::{CanvasDirtyRect, ClampToCanvasBounds, MergeInSpace};
+
 use super::{
-    BlendMode, CanvasBitmap, DirtyRect, Document, LayerMask, LayerNodeId, Panel, RasterLayer,
+    BlendMode, CanvasBitmap, Document, LayerMask, LayerNodeId, Panel, RasterLayer,
 };
 
+fn local_dirty_to_page_dirty(
+    dirty: CanvasDirtyRect,
+    panel_bounds: super::PanelBounds,
+    page_width: usize,
+    page_height: usize,
+) -> CanvasDirtyRect {
+    CanvasDirtyRect {
+        x: dirty.x.saturating_add(panel_bounds.x),
+        y: dirty.y.saturating_add(panel_bounds.y),
+        width: dirty.width,
+        height: dirty.height,
+    }
+    .clamp_to_canvas_bounds(page_width.max(1), page_height.max(1))
+}
+
 impl Document {
-    /// 先頭のコマのビットマップへ1点描画する。
-    pub fn draw_point(&mut self, x: usize, y: usize) -> Option<DirtyRect> {
+    /// アクティブコマのビットマップへ1点描画する。
+    pub fn draw_point(&mut self, x: usize, y: usize) -> Option<CanvasDirtyRect> {
         self.draw_point_with_pressure(x, y, 1.0)
     }
 
-    /// 先頭のコマのビットマップへ筆圧付きで1点描画する。
+    /// アクティブコマのビットマップへ筆圧付きで1点描画する。
     pub fn draw_point_with_pressure(
         &mut self,
         x: usize,
         y: usize,
         pressure: f32,
-    ) -> Option<DirtyRect> {
+    ) -> Option<CanvasDirtyRect> {
+        let panel_bounds = self.active_panel_bounds()?;
+        let (page_width, page_height) = self.active_page_dimensions();
         let color = self.active_color.to_rgba8();
         let size = self.active_draw_size_with_pressure(pressure);
         let antialias = self
             .active_pen_preset()
             .map(|preset| preset.antialias)
             .unwrap_or(true);
-        if let Some(panel) = self
-            .work
-            .pages
-            .first_mut()
-            .and_then(|page| page.panels.first_mut())
-        {
+        if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
             let dirty = draw_on_active_layer(panel, x, y, color, false, size, antialias);
             composite_panel_bitmap_region(panel, dirty);
-            return Some(dirty);
+            return Some(local_dirty_to_page_dirty(
+                dirty,
+                panel_bounds,
+                page_width,
+                page_height,
+            ));
         }
 
         None
     }
 
-    /// 先頭のコマのビットマップへ最小ストロークを描画する。
+    /// アクティブコマのビットマップへ最小ストロークを描画する。
     pub fn draw_stroke(
         &mut self,
         from_x: usize,
         from_y: usize,
         to_x: usize,
         to_y: usize,
-    ) -> Option<DirtyRect> {
+    ) -> Option<CanvasDirtyRect> {
         self.draw_stroke_with_pressure(from_x, from_y, to_x, to_y, 1.0)
     }
 
-    /// 先頭のコマのビットマップへ筆圧付きストロークを描画する。
+    /// アクティブコマのビットマップへ筆圧付きストロークを描画する。
     pub fn draw_stroke_with_pressure(
         &mut self,
         from_x: usize,
@@ -63,32 +82,34 @@ impl Document {
         to_x: usize,
         to_y: usize,
         pressure: f32,
-    ) -> Option<DirtyRect> {
+    ) -> Option<CanvasDirtyRect> {
+        let panel_bounds = self.active_panel_bounds()?;
+        let (page_width, page_height) = self.active_page_dimensions();
         let color = self.active_color.to_rgba8();
         let size = self.active_draw_size_with_pressure(pressure);
         let antialias = self
             .active_pen_preset()
             .map(|preset| preset.antialias)
             .unwrap_or(true);
-        if let Some(panel) = self
-            .work
-            .pages
-            .first_mut()
-            .and_then(|page| page.panels.first_mut())
-        {
+        if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
             let dirty = draw_line_on_active_layer(
                 panel, from_x, from_y, to_x, to_y, color, false, size, antialias,
             );
             composite_panel_bitmap_region(panel, dirty);
-            return Some(dirty);
+            return Some(local_dirty_to_page_dirty(
+                dirty,
+                panel_bounds,
+                page_width,
+                page_height,
+            ));
         }
 
         None
     }
 
     /// アクティブレイヤー上の1点を消去する。
-    pub fn erase_point(&mut self, x: usize, y: usize) -> Option<DirtyRect> {
+    pub fn erase_point(&mut self, x: usize, y: usize) -> Option<CanvasDirtyRect> {
         self.erase_point_with_pressure(x, y, 1.0)
     }
 
@@ -98,22 +119,24 @@ impl Document {
         x: usize,
         y: usize,
         pressure: f32,
-    ) -> Option<DirtyRect> {
+    ) -> Option<CanvasDirtyRect> {
+        let panel_bounds = self.active_panel_bounds()?;
+        let (page_width, page_height) = self.active_page_dimensions();
         let size = self.active_draw_size_with_pressure(pressure);
         let antialias = self
             .active_pen_preset()
             .map(|preset| preset.antialias)
             .unwrap_or(true);
-        if let Some(panel) = self
-            .work
-            .pages
-            .first_mut()
-            .and_then(|page| page.panels.first_mut())
-        {
+        if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
             let dirty = draw_on_active_layer(panel, x, y, [0, 0, 0, 0], true, size, antialias);
             composite_panel_bitmap_region(panel, dirty);
-            return Some(dirty);
+            return Some(local_dirty_to_page_dirty(
+                dirty,
+                panel_bounds,
+                page_width,
+                page_height,
+            ));
         }
 
         None
@@ -126,7 +149,7 @@ impl Document {
         from_y: usize,
         to_x: usize,
         to_y: usize,
-    ) -> Option<DirtyRect> {
+    ) -> Option<CanvasDirtyRect> {
         self.erase_stroke_with_pressure(from_x, from_y, to_x, to_y, 1.0)
     }
 
@@ -138,18 +161,15 @@ impl Document {
         to_x: usize,
         to_y: usize,
         pressure: f32,
-    ) -> Option<DirtyRect> {
+    ) -> Option<CanvasDirtyRect> {
+        let panel_bounds = self.active_panel_bounds()?;
+        let (page_width, page_height) = self.active_page_dimensions();
         let size = self.active_draw_size_with_pressure(pressure);
         let antialias = self
             .active_pen_preset()
             .map(|preset| preset.antialias)
             .unwrap_or(true);
-        if let Some(panel) = self
-            .work
-            .pages
-            .first_mut()
-            .and_then(|page| page.panels.first_mut())
-        {
+        if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
             let dirty = draw_line_on_active_layer(
                 panel,
@@ -163,20 +183,23 @@ impl Document {
                 antialias,
             );
             composite_panel_bitmap_region(panel, dirty);
-            return Some(dirty);
+            return Some(local_dirty_to_page_dirty(
+                dirty,
+                panel_bounds,
+                page_width,
+                page_height,
+            ));
         }
 
         None
     }
 
     /// 閉領域バケツ塗りを行う。
-    pub fn fill_region(&mut self, x: usize, y: usize) -> Option<DirtyRect> {
+    pub fn fill_region(&mut self, x: usize, y: usize) -> Option<CanvasDirtyRect> {
+        let panel_bounds = self.active_panel_bounds()?;
+        let (page_width, page_height) = self.active_page_dimensions();
         let color = self.active_color.to_rgba8();
-        let panel = self
-            .work
-            .pages
-            .first_mut()
-            .and_then(|page| page.panels.first_mut())?;
+        let panel = self.active_panel_mut()?;
         ensure_panel_layers(panel);
         let target = panel.bitmap.pixel_rgba(x, y)?;
         if target == color {
@@ -184,7 +207,7 @@ impl Document {
         }
         let mut stack = vec![(x, y)];
         let mut visited = vec![false; panel.bitmap.width.saturating_mul(panel.bitmap.height)];
-        let mut dirty: Option<DirtyRect> = None;
+        let mut dirty: Option<CanvasDirtyRect> = None;
 
         while let Some((current_x, current_y)) = stack.pop() {
             if current_x >= panel.bitmap.width || current_y >= panel.bitmap.height {
@@ -203,7 +226,7 @@ impl Document {
                 .bitmap
                 .set_pixel_rgba(current_x, current_y, color);
             dirty = Some(match dirty {
-                Some(current) => current.union(rect),
+                Some(current) => current.merge(rect),
                 None => rect,
             });
 
@@ -223,20 +246,23 @@ impl Document {
 
         let dirty = dirty?;
         composite_panel_bitmap_region(panel, dirty);
-        Some(dirty)
+        Some(local_dirty_to_page_dirty(
+            dirty,
+            panel_bounds,
+            page_width,
+            page_height,
+        ))
     }
 
     /// 投げ縄ポリゴン内部を塗り潰す。
-    pub fn fill_lasso(&mut self, points: &[(usize, usize)]) -> Option<DirtyRect> {
+    pub fn fill_lasso(&mut self, points: &[(usize, usize)]) -> Option<CanvasDirtyRect> {
         if points.len() < 3 {
             return None;
         }
+        let panel_bounds = self.active_panel_bounds()?;
+        let (page_width, page_height) = self.active_page_dimensions();
         let color = self.active_color.to_rgba8();
-        let panel = self
-            .work
-            .pages
-            .first_mut()
-            .and_then(|page| page.panels.first_mut())?;
+        let panel = self.active_panel_mut()?;
         ensure_panel_layers(panel);
         let min_x = points.iter().map(|(x, _)| *x).min()?;
         let min_y = points.iter().map(|(_, y)| *y).min()?;
@@ -244,7 +270,7 @@ impl Document {
         let max_y = points.iter().map(|(_, y)| *y).max()?;
         let width_limit = panel.bitmap.width.saturating_sub(1);
         let height_limit = panel.bitmap.height.saturating_sub(1);
-        let mut dirty: Option<DirtyRect> = None;
+        let mut dirty: Option<CanvasDirtyRect> = None;
 
         for y in min_y..=max_y.min(height_limit) {
             for x in min_x..=max_x.min(width_limit) {
@@ -255,7 +281,7 @@ impl Document {
                     .bitmap
                     .set_pixel_rgba(x, y, color);
                 dirty = Some(match dirty {
-                    Some(current) => current.union(rect),
+                    Some(current) => current.merge(rect),
                     None => rect,
                 });
             }
@@ -263,17 +289,17 @@ impl Document {
 
         let dirty = dirty?;
         composite_panel_bitmap_region(panel, dirty);
-        Some(dirty)
+        Some(local_dirty_to_page_dirty(
+            dirty,
+            panel_bounds,
+            page_width,
+            page_height,
+        ))
     }
 
     /// 透過レイヤーを末尾へ追加して選択する。
     pub fn add_raster_layer(&mut self) {
-        if let Some(panel) = self
-            .work
-            .pages
-            .first_mut()
-            .and_then(|page| page.panels.first_mut())
-        {
+        if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
             panel.created_layer_count = panel.created_layer_count.saturating_add(1);
             let next_index = panel.created_layer_count;
@@ -291,12 +317,7 @@ impl Document {
 
     /// アクティブレイヤーを削除するが、最後の1枚は残す。
     pub fn remove_active_layer(&mut self) {
-        if let Some(panel) = self
-            .work
-            .pages
-            .first_mut()
-            .and_then(|page| page.panels.first_mut())
-        {
+        if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
             if panel.layers.len() <= 1 {
                 return;
@@ -312,12 +333,7 @@ impl Document {
 
     /// アクティブレイヤーを指定 index へ切り替える。
     pub fn select_layer(&mut self, index: usize) {
-        if let Some(panel) = self
-            .work
-            .pages
-            .first_mut()
-            .and_then(|page| page.panels.first_mut())
-        {
+        if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
             panel.active_layer_index = index.min(panel.layers.len().saturating_sub(1));
             sync_root_layer_summary(panel);
@@ -326,12 +342,7 @@ impl Document {
 
     /// アクティブレイヤー名を更新する。
     pub fn rename_active_layer(&mut self, name: &str) {
-        if let Some(panel) = self
-            .work
-            .pages
-            .first_mut()
-            .and_then(|page| page.panels.first_mut())
-        {
+        if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
             if let Some(layer) = panel.layers.get_mut(panel.active_layer_index) {
                 layer.name = name.to_string();
@@ -342,12 +353,7 @@ impl Document {
 
     /// レイヤー順序を入れ替え、選択 index も追従させる。
     pub fn move_layer(&mut self, from_index: usize, to_index: usize) {
-        if let Some(panel) = self
-            .work
-            .pages
-            .first_mut()
-            .and_then(|page| page.panels.first_mut())
-        {
+        if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
             if panel.layers.len() <= 1 {
                 return;
@@ -377,12 +383,7 @@ impl Document {
 
     /// 次のレイヤーへ循環選択する。
     pub fn select_next_layer(&mut self) {
-        if let Some(panel) = self
-            .work
-            .pages
-            .first_mut()
-            .and_then(|page| page.panels.first_mut())
-        {
+        if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
             panel.active_layer_index = (panel.active_layer_index + 1) % panel.layers.len().max(1);
             sync_root_layer_summary(panel);
@@ -391,12 +392,7 @@ impl Document {
 
     /// アクティブレイヤーの blend mode を次へ循環する。
     pub fn cycle_active_layer_blend_mode(&mut self) {
-        if let Some(panel) = self
-            .work
-            .pages
-            .first_mut()
-            .and_then(|page| page.panels.first_mut())
-        {
+        if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
             if let Some(layer) = panel.layers.get_mut(panel.active_layer_index) {
                 layer.blend_mode = layer.blend_mode.next();
@@ -407,12 +403,7 @@ impl Document {
 
     /// アクティブレイヤーの blend mode を明示設定する。
     pub fn set_active_layer_blend_mode(&mut self, mode: BlendMode) {
-        if let Some(panel) = self
-            .work
-            .pages
-            .first_mut()
-            .and_then(|page| page.panels.first_mut())
-        {
+        if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
             if let Some(layer) = panel.layers.get_mut(panel.active_layer_index) {
                 layer.blend_mode = mode;
@@ -423,12 +414,7 @@ impl Document {
 
     /// アクティブレイヤーの可視状態を反転する。
     pub fn toggle_active_layer_visibility(&mut self) {
-        if let Some(panel) = self
-            .work
-            .pages
-            .first_mut()
-            .and_then(|page| page.panels.first_mut())
-        {
+        if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
             if let Some(layer) = panel.layers.get_mut(panel.active_layer_index) {
                 layer.visible = !layer.visible;
@@ -439,12 +425,7 @@ impl Document {
 
     /// アクティブレイヤーにデモ用マスクを付与または解除する。
     pub fn toggle_active_layer_mask(&mut self) {
-        if let Some(panel) = self
-            .work
-            .pages
-            .first_mut()
-            .and_then(|page| page.panels.first_mut())
-        {
+        if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
             if let Some(layer) = panel.layers.get_mut(panel.active_layer_index) {
                 layer.mask = if layer.mask.is_some() {
@@ -503,7 +484,7 @@ fn draw_on_active_layer(
     erase: bool,
     size: u32,
     antialias: bool,
-) -> DirtyRect {
+) -> CanvasDirtyRect {
     let active_index = panel
         .active_layer_index
         .min(panel.layers.len().saturating_sub(1));
@@ -536,7 +517,7 @@ fn draw_line_on_active_layer(
     erase: bool,
     size: u32,
     antialias: bool,
-) -> DirtyRect {
+) -> CanvasDirtyRect {
     let active_index = panel
         .active_layer_index
         .min(panel.layers.len().saturating_sub(1));
@@ -576,9 +557,17 @@ fn point_in_polygon(x: f32, y: f32, points: &[(usize, usize)]) -> bool {
 }
 
 /// 全レイヤーを合成して panel bitmap を再構築する。
-fn composite_panel_bitmap(panel: &Panel) -> CanvasBitmap {
-    let width = panel.bitmap.width.max(1);
-    let height = panel.bitmap.height.max(1);
+pub(super) fn composite_panel_bitmap(panel: &Panel) -> CanvasBitmap {
+    let width = panel
+        .layers
+        .first()
+        .map(|layer| layer.bitmap.width.max(1))
+        .unwrap_or_else(|| panel.bitmap.width.max(1));
+    let height = panel
+        .layers
+        .first()
+        .map(|layer| layer.bitmap.height.max(1))
+        .unwrap_or_else(|| panel.bitmap.height.max(1));
     let mut result = CanvasBitmap::transparent(width, height);
     for layer in &panel.layers {
         if !layer.visible {
@@ -587,7 +576,7 @@ fn composite_panel_bitmap(panel: &Panel) -> CanvasBitmap {
         composite_layer_region_into(
             &mut result,
             layer,
-            DirtyRect {
+            CanvasDirtyRect {
                 x: 0,
                 y: 0,
                 width,
@@ -599,8 +588,8 @@ fn composite_panel_bitmap(panel: &Panel) -> CanvasBitmap {
 }
 
 /// dirty rect に限定して panel bitmap を再合成する。
-fn composite_panel_bitmap_region(panel: &mut Panel, dirty: DirtyRect) {
-    let dirty = dirty.clamp_to_bitmap(panel.bitmap.width.max(1), panel.bitmap.height.max(1));
+fn composite_panel_bitmap_region(panel: &mut Panel, dirty: CanvasDirtyRect) {
+    let dirty = dirty.clamp_to_canvas_bounds(panel.bitmap.width.max(1), panel.bitmap.height.max(1));
     if let Some(layer_index) = single_passthrough_layer_index(panel) {
         copy_bitmap_region(&panel.layers[layer_index].bitmap, &mut panel.bitmap, dirty);
         return;
@@ -640,45 +629,56 @@ fn single_passthrough_layer_index(panel: &Panel) -> Option<usize> {
     Some(index)
 }
 
-fn copy_bitmap_region(source: &CanvasBitmap, target: &mut CanvasBitmap, dirty: DirtyRect) {
-    let dirty = dirty.clamp_to_bitmap(target.width.min(source.width), target.height.min(source.height));
+fn copy_bitmap_region(source: &CanvasBitmap, target: &mut CanvasBitmap, dirty: CanvasDirtyRect) {
+    let dirty = dirty.clamp_to_canvas_bounds(
+        target.width.min(source.width),
+        target.height.min(source.height),
+    );
     for y in dirty.y..dirty.y + dirty.height {
-        let row_start = (y * target.width + dirty.x) * 4;
-        let row_end = row_start + dirty.width * 4;
-        target.pixels[row_start..row_end].copy_from_slice(&source.pixels[row_start..row_end]);
+        let source_row_start = (y * source.width + dirty.x) * 4;
+        let source_row_end = source_row_start + dirty.width * 4;
+        let target_row_start = (y * target.width + dirty.x) * 4;
+        let target_row_end = target_row_start + dirty.width * 4;
+        target.pixels[target_row_start..target_row_end]
+            .copy_from_slice(&source.pixels[source_row_start..source_row_end]);
     }
 }
 
 /// 単一レイヤーの dirty rect だけを target bitmap へ合成する。
-fn composite_layer_region_into(target: &mut CanvasBitmap, layer: &RasterLayer, dirty: DirtyRect) {
+fn composite_layer_region_into(
+    target: &mut CanvasBitmap,
+    layer: &RasterLayer,
+    dirty: CanvasDirtyRect,
+) {
     let custom_formula = match &layer.blend_mode {
         BlendMode::Custom(formula) => CustomBlendFormula::parse(formula),
         BlendMode::Normal | BlendMode::Multiply | BlendMode::Screen | BlendMode::Add => None,
     };
-    let dirty = dirty.clamp_to_bitmap(
+    let dirty = dirty.clamp_to_canvas_bounds(
         target.width.min(layer.bitmap.width).max(1),
         target.height.min(layer.bitmap.height).max(1),
     );
     for y in dirty.y..dirty.y + dirty.height {
         for x in dirty.x..dirty.x + dirty.width {
-            let index = (y * target.width + x) * 4;
+            let target_index = (y * target.width + x) * 4;
+            let source_index = (y * layer.bitmap.width + x) * 4;
             let mut src = [
-                layer.bitmap.pixels[index],
-                layer.bitmap.pixels[index + 1],
-                layer.bitmap.pixels[index + 2],
-                layer.bitmap.pixels[index + 3],
+                layer.bitmap.pixels[source_index],
+                layer.bitmap.pixels[source_index + 1],
+                layer.bitmap.pixels[source_index + 2],
+                layer.bitmap.pixels[source_index + 3],
             ];
             if let Some(mask) = &layer.mask {
                 src[3] = ((src[3] as u16 * mask.alpha_at(x, y) as u16) / 255) as u8;
             }
             let dst = [
-                target.pixels[index],
-                target.pixels[index + 1],
-                target.pixels[index + 2],
-                target.pixels[index + 3],
+                target.pixels[target_index],
+                target.pixels[target_index + 1],
+                target.pixels[target_index + 2],
+                target.pixels[target_index + 3],
             ];
             let blended = blend_pixel(dst, src, &layer.blend_mode, custom_formula.as_ref());
-            target.pixels[index..index + 4].copy_from_slice(&blended);
+            target.pixels[target_index..target_index + 4].copy_from_slice(&blended);
         }
     }
 }

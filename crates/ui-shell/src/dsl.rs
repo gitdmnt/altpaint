@@ -789,22 +789,44 @@ fn active_tool_name(tool: ToolKind) -> &'static str {
         ToolKind::Eraser => "eraser",
         ToolKind::Bucket => "bucket",
         ToolKind::LassoBucket => "lasso_bucket",
+        ToolKind::PanelRect => "panel_rect",
     }
 }
 fn build_host_snapshot(document: &Document) -> Value {
-    let active_panel = document
-        .work
-        .pages
-        .first()
-        .and_then(|page| page.panels.first());
+    let active_page = document.active_page();
+    let active_panel = document.active_panel();
     let layers = active_panel.map(|panel| panel.layers.iter().map(|layer| json!({ "name": layer.name, "blend_mode": layer.blend_mode.as_str(), "visible": layer.visible, "masked": layer.mask.is_some() })).collect::<Vec<_>>()).unwrap_or_else(|| vec![json!({ "name": "Layer 1", "blend_mode": "normal", "visible": true, "masked": false })]);
     let layers_json = serde_json::to_string(&layers).unwrap_or_else(|_| "[]".to_string());
+    let panels = active_page
+        .map(|page| {
+            page.panels
+                .iter()
+                .enumerate()
+                .map(|(index, panel)| {
+                    json!({
+                        "name": format!("コマ {}", index + 1),
+                        "detail": format!(
+                            "{}×{} / ({}, {})",
+                            panel.bounds.width,
+                            panel.bounds.height,
+                            panel.bounds.x,
+                            panel.bounds.y,
+                        ),
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(|| vec![json!({ "name": "コマ 1", "detail": "0×0 / (0, 0)" })]);
+    let panels_json = serde_json::to_string(&panels).unwrap_or_else(|_| "[]".to_string());
     let layer_count = active_panel.map(|panel| panel.layers.len()).unwrap_or(1);
     let active_layer_index = active_panel
         .map(|panel| panel.active_layer_index)
         .unwrap_or(0);
     let active_layer = active_panel.and_then(|panel| panel.layers.get(panel.active_layer_index));
     let page_count = document.work.pages.len();
+    let active_page_number = document.active_page_index() + 1;
+    let active_panel_number = document.active_panel_index() + 1;
+    let active_page_panel_count = document.active_page_panel_count();
     let panel_count = document
         .work
         .pages
@@ -814,18 +836,38 @@ fn build_host_snapshot(document: &Document) -> Value {
     let active_layer_name = active_layer
         .map(|layer| layer.name.clone())
         .unwrap_or_else(|| "<no layer>".to_string());
+    let active_panel_label = format!(
+        "ページ {} / コマ {}",
+        active_page_number, active_panel_number
+    );
+    let active_panel_bounds = active_panel
+        .map(|panel| {
+            format!(
+                "({}, {}) {}×{}",
+                panel.bounds.x, panel.bounds.y, panel.bounds.width, panel.bounds.height,
+            )
+        })
+        .unwrap_or_else(|| "(0, 0) 0×0".to_string());
     let active_pen = document.active_pen_preset().cloned().unwrap_or_default();
     json!({
         "document": {
             "title": document.work.title,
             "page_count": page_count,
             "panel_count": panel_count,
+            "active_page_number": active_page_number,
+            "active_page_panel_count": active_page_panel_count,
+            "active_panel_index": document.active_panel_index(),
+            "active_panel_number": active_panel_number,
+            "active_panel_label": active_panel_label,
+            "active_panel_bounds": active_panel_bounds,
             "active_layer_name": active_layer_name,
             "layer_count": layer_count,
             "active_layer_index": active_layer_index,
             "active_layer_blend_mode": active_layer.map(|layer| layer.blend_mode.as_str()).unwrap_or("normal"),
             "active_layer_visible": active_layer.map(|layer| layer.visible).unwrap_or(true),
             "active_layer_masked": active_layer.and_then(|layer| layer.mask.as_ref()).is_some(),
+            "panels": panels,
+            "panels_json": panels_json,
             "layers": layers,
             "layers_json": layers_json,
         },
@@ -1009,6 +1051,7 @@ pub(super) fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<
                 "eraser" => ToolKind::Eraser,
                 "bucket" => ToolKind::Bucket,
                 "lasso_bucket" => ToolKind::LassoBucket,
+                "panel_rect" => ToolKind::PanelRect,
                 other => return Err(format!("unsupported tool kind: {other}")),
             };
             Ok(Command::SetActiveTool { tool })
@@ -1125,6 +1168,21 @@ pub(super) fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<
         }
         "layer.toggle_visibility" => Ok(Command::ToggleActiveLayerVisibility),
         "layer.toggle_mask" => Ok(Command::ToggleActiveLayerMask),
+        "panel.add" => Ok(Command::AddPanel),
+        "panel.remove" => Ok(Command::RemoveActivePanel),
+        "panel.select" => {
+            let index = descriptor
+                .payload
+                .get("index")
+                .and_then(payload_u64)
+                .ok_or_else(|| "panel.select is missing payload.index".to_string())?;
+            Ok(Command::SelectPanel {
+                index: index as usize,
+            })
+        }
+        "panel.select_next" => Ok(Command::SelectNextPanel),
+        "panel.select_previous" => Ok(Command::SelectPreviousPanel),
+        "panel.focus_active" => Ok(Command::FocusActivePanel),
         "view.reset" => Ok(Command::ResetView),
         "view.zoom" => {
             let zoom = descriptor
@@ -1250,6 +1308,7 @@ mod tests {
     fn active_tool_name_covers_fill_tools() {
         assert_eq!(active_tool_name(ToolKind::Bucket), "bucket");
         assert_eq!(active_tool_name(ToolKind::LassoBucket), "lasso_bucket");
+        assert_eq!(active_tool_name(ToolKind::PanelRect), "panel_rect");
     }
 
     #[test]

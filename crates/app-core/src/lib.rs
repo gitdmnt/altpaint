@@ -4,15 +4,21 @@
 //! 今後の変更経路の入口になる `Command` 型だけを定義する。
 
 pub mod command;
+pub mod coordinates;
 pub mod document;
 pub mod error;
 pub mod workspace;
 
 pub use command::Command;
+pub use coordinates::{
+    CanvasDirtyRect, CanvasDisplayPoint, CanvasPoint, CanvasViewportPoint, ClampToCanvasBounds,
+    MergeInSpace, PanelLocalPoint, PanelSurfaceDirtyRect, PanelSurfacePoint, PanelSurfaceRect,
+    WindowDirtyRect, WindowPoint, WindowRect,
+};
 pub use document::{
     BlendMode, CanvasBitmap, CanvasViewTransform, ColorRgba8, DEFAULT_DOCUMENT_HEIGHT,
-    DEFAULT_DOCUMENT_WIDTH, DirtyRect, Document, LayerMask, LayerNode, LayerNodeId, Page, PageId,
-    Panel, PanelId, PenPreset, RasterLayer, ToolKind, Work, WorkId,
+    DEFAULT_DOCUMENT_WIDTH, Document, LayerMask, LayerNode, LayerNodeId, Page, PageId, Panel,
+    PanelBounds, PanelId, PenPreset, RasterLayer, ToolKind, Work, WorkId,
 };
 pub use error::CoreError;
 pub use workspace::{

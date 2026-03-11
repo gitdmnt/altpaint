@@ -1,0 +1,52 @@
+panel {
+  id: "builtin.panel-list"
+  title: "コマ一覧"
+  version: 1
+}
+
+permissions {
+  read.document
+  write.command
+}
+
+runtime {
+  wasm: "builtin_panel_panel_list.wasm"
+}
+
+state {
+  title: string = ""
+  active_page_number: int = 1
+  active_panel_number: int = 1
+  active_panel_index: int = 0
+  active_page_panel_count: int = 1
+  active_panel_bounds: string = "(0, 0) 0×0"
+  panels_json: string = "[]"
+}
+
+view {
+  <column gap=8 padding=8>
+    <section title="現在のコマ">
+      <text>{state.title}</text>
+      <text>ページ {state.active_page_number} / コマ {state.active_panel_number} / 総数 {state.active_page_panel_count}</text>
+      <text>境界: {state.active_panel_bounds}</text>
+      <row gap=6>
+        <button id="panel.prev" on:click="select_previous_panel">← 前</button>
+        <button id="panel.next" on:click="select_next_panel">次 →</button>
+        <button id="panel.focus" on:click="focus_active_panel">中央表示</button>
+      </row>
+    </section>
+    <section title="コマ一覧">
+      <row gap=6>
+        <button id="panel.add" on:click="add_panel">＋ 追加</button>
+        <button id="panel.remove" on:click="remove_panel">－ 削除</button>
+      </row>
+      <layer-list
+        id="panel.list"
+        label="ページ内コマ"
+        items={state.panels_json}
+        selected={state.active_panel_index}
+        on:change="handle_panel_list"
+      />
+    </section>
+  </column>
+}

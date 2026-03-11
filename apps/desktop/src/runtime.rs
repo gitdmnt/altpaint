@@ -246,7 +246,7 @@ impl ApplicationHandler for DesktopRuntime {
                     width: rect.width as u32,
                     height: rect.height as u32,
                 });
-                let canvas_layer = self.app.document.active_bitmap().and_then(|bitmap| {
+                let canvas_layer = self.app.canvas_frame().and_then(|bitmap| {
                     self.app.canvas_texture_quad().map(|quad| CanvasLayer {
                         source: TextureSource {
                             width: bitmap.width as u32,

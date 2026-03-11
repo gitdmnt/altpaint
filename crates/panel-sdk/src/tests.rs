@@ -82,6 +82,7 @@ fn typed_tool_commands_hide_payload_keys() {
 #[test]
 fn typed_tool_commands_cover_remaining_variants() {
     assert_eq!(commands::Tool::Pen.as_str(), "pen");
+    assert_eq!(commands::Tool::PanelRect.as_str(), "panel_rect");
     assert_eq!(
         commands::tool::set_color_hex("#ABCDEF")
             .payload

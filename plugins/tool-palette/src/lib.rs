@@ -21,6 +21,7 @@ const PEN_SHORTCUT: state::StringKey = state::string("config.pen_shortcut");
 const ERASER_SHORTCUT: state::StringKey = state::string("config.eraser_shortcut");
 const BUCKET_SHORTCUT: state::StringKey = state::string("config.bucket_shortcut");
 const LASSO_BUCKET_SHORTCUT: state::StringKey = state::string("config.lasso_bucket_shortcut");
+const PANEL_RECT_SHORTCUT: state::StringKey = state::string("config.panel_rect_shortcut");
 const SIZE_MEMORY: state::StringKey = state::string("config.size_memory");
 
 fn build_tool_command(tool: Tool) -> CommandDescriptor {
@@ -146,6 +147,11 @@ fn activate_lasso_bucket() {
 }
 
 #[panel_sdk::panel_handler]
+fn activate_panel_rect() {
+    emit_command(&build_tool_command(Tool::PanelRect));
+}
+
+#[panel_sdk::panel_handler]
 fn previous_pen() {
     switch_pen_with_size_restore(-1);
 }
@@ -215,6 +221,10 @@ fn keyboard() {
     }
     if shortcut_matches(&state_string(LASSO_BUCKET_SHORTCUT), &shortcut) {
         activate_lasso_bucket();
+        return;
+    }
+    if shortcut_matches(&state_string(PANEL_RECT_SHORTCUT), &shortcut) {
+        activate_panel_rect();
     }
 }
 
@@ -241,6 +251,7 @@ mod tests {
         activate_eraser();
         activate_bucket();
         activate_lasso_bucket();
+        activate_panel_rect();
         previous_pen();
         next_pen();
         reload_pens();

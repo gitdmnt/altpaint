@@ -2,20 +2,29 @@ use std::fs;
 use std::io::Cursor;
 use std::path::Path;
 
-use app_core::{Document, WorkspaceLayout};
+use app_core::{Document, Page, PageId, Panel, PanelId, WorkId, WorkspaceLayout};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use thiserror::Error;
 use workspace_persistence::{PluginConfigs, WorkspaceUiState};
 
+use crate::project_sqlite::{
+    DEFAULT_PROJECT_CHUNK_SIZE, PersistedPanelSnapshot, PersistedPanelSnapshotSummary,
+    ProjectIndex, ProjectPageSummary, ProjectPanelSummary, ProjectSaveMode, ProjectSaveOptions,
+    is_sqlite_project_path, load_page_from_sqlite_path, load_panel_from_sqlite_path,
+    load_panel_snapshot_from_sqlite_path, load_project_from_sqlite_path,
+    load_project_index_from_sqlite_path, save_project_to_sqlite_path,
+};
+
 fn workspace_layout_is_empty(layout: &WorkspaceLayout) -> bool {
     layout.panels.is_empty()
 }
 
-pub const CURRENT_FORMAT_VERSION: u32 = 6;
+pub const CURRENT_FORMAT_VERSION: u32 = 7;
 const BINARY_MAGIC: &[u8; 8] = b"ALTPBIN\0";
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
+#[cfg(test)]
 const ZSTD_COMPRESSION_LEVEL: i32 = 3;
 
 #[derive(Debug, Clone)]
@@ -74,12 +83,25 @@ pub enum StorageError {
     Compress(#[source] std::io::Error),
     #[error("failed to decompress project file: {0}")]
     Decompress(#[source] std::io::Error),
+    #[error("sqlite failed: {0}")]
+    Sqlite(#[from] rusqlite::Error),
     #[error("failed to deserialize legacy json project file: {0}")]
     DeserializeLegacyJson(#[source] serde_json::Error),
+    #[error("failed to serialize metadata json: {0}")]
+    SerializeMetadataJson(#[source] serde_json::Error),
+    #[error("failed to deserialize metadata json: {0}")]
+    DeserializeMetadataJson(#[source] serde_json::Error),
+    #[error("invalid project file: {0}")]
+    InvalidProject(String),
+    #[error("page not found in project: {0}")]
+    PageNotFound(u64),
+    #[error("panel not found in project: page={page_id}, panel={panel_id}")]
+    PanelNotFound { page_id: u64, panel_id: u64 },
     #[error("failed to access project file: {0}")]
     Io(#[from] std::io::Error),
 }
 
+#[cfg(test)]
 fn serialize_project(project: &AltpaintProjectFile) -> Result<Vec<u8>, StorageError> {
     let encoded = rmp_serde::to_vec(project).map_err(StorageError::Encode)?;
     let compressed = zstd::stream::encode_all(Cursor::new(encoded), ZSTD_COMPRESSION_LEVEL)
@@ -121,11 +143,24 @@ pub fn save_project_to_path(
     workspace_layout: &WorkspaceLayout,
     plugin_configs: &BTreeMap<String, Value>,
 ) -> Result<(), StorageError> {
+    save_project_to_path_with_options(
+        path,
+        document,
+        workspace_layout,
+        plugin_configs,
+        ProjectSaveOptions::default(),
+    )
+}
+
+pub fn save_project_to_path_with_options(
+    path: impl AsRef<Path>,
+    document: &Document,
+    workspace_layout: &WorkspaceLayout,
+    plugin_configs: &BTreeMap<String, Value>,
+    options: ProjectSaveOptions,
+) -> Result<(), StorageError> {
     let path = path.as_ref();
-    let project = AltpaintProjectFile::new(document, workspace_layout, plugin_configs);
-    let serialized = serialize_project(&project)?;
-    fs::write(path, serialized)?;
-    Ok(())
+    save_project_to_sqlite_path(path, document, workspace_layout, plugin_configs, options)
 }
 
 pub fn load_document_from_path(path: impl AsRef<Path>) -> Result<Document, StorageError> {
@@ -133,6 +168,11 @@ pub fn load_document_from_path(path: impl AsRef<Path>) -> Result<Document, Stora
 }
 
 pub fn load_project_from_path(path: impl AsRef<Path>) -> Result<LoadedProject, StorageError> {
+    let path = path.as_ref();
+    if is_sqlite_project_path(path)? {
+        return load_project_from_sqlite_path(path);
+    }
+
     let bytes = fs::read(path)?;
     let project = deserialize_project(&bytes)?;
 
@@ -154,10 +194,131 @@ pub fn load_project_from_path(path: impl AsRef<Path>) -> Result<LoadedProject, S
     Ok(LoadedProject { document, ui_state })
 }
 
+pub fn load_project_index_from_path(path: impl AsRef<Path>) -> Result<ProjectIndex, StorageError> {
+    let path = path.as_ref();
+    if is_sqlite_project_path(path)? {
+        return load_project_index_from_sqlite_path(path);
+    }
+
+    let bytes = fs::read(path)?;
+    let project = deserialize_project(&bytes)?;
+    if !(1..=CURRENT_FORMAT_VERSION).contains(&project.format_version) {
+        return Err(StorageError::UnsupportedFormatVersion(
+            project.format_version,
+        ));
+    }
+
+    let loaded = load_project_from_path(path)?;
+    Ok(derive_project_index(
+        project.format_version,
+        DEFAULT_PROJECT_CHUNK_SIZE,
+        ProjectSaveMode::Full,
+        &loaded,
+        Vec::new(),
+    ))
+}
+
+pub fn load_page_from_path(path: impl AsRef<Path>, page_id: PageId) -> Result<Page, StorageError> {
+    let path = path.as_ref();
+    if is_sqlite_project_path(path)? {
+        return load_page_from_sqlite_path(path, page_id);
+    }
+
+    let project = load_project_from_path(path)?;
+    project
+        .document
+        .work
+        .pages
+        .into_iter()
+        .find(|page| page.id == page_id)
+        .ok_or(StorageError::PageNotFound(page_id.0))
+}
+
+pub fn load_panel_from_path(
+    path: impl AsRef<Path>,
+    page_id: PageId,
+    panel_id: PanelId,
+) -> Result<Panel, StorageError> {
+    let path = path.as_ref();
+    if is_sqlite_project_path(path)? {
+        return load_panel_from_sqlite_path(path, page_id, panel_id);
+    }
+
+    let page = load_page_from_path(path, page_id)?;
+    page.panels
+        .into_iter()
+        .find(|panel| panel.id == panel_id)
+        .ok_or(StorageError::PanelNotFound {
+            page_id: page_id.0,
+            panel_id: panel_id.0,
+        })
+}
+
+pub fn load_panel_snapshot_from_path(
+    path: impl AsRef<Path>,
+    snapshot_id: &str,
+) -> Result<Option<PersistedPanelSnapshot>, StorageError> {
+    let path = path.as_ref();
+    if is_sqlite_project_path(path)? {
+        return load_panel_snapshot_from_sqlite_path(path, snapshot_id);
+    }
+    Ok(None)
+}
+
+fn derive_project_index(
+    format_version: u32,
+    chunk_size: usize,
+    save_mode: ProjectSaveMode,
+    loaded: &LoadedProject,
+    snapshots: Vec<PersistedPanelSnapshotSummary>,
+) -> ProjectIndex {
+    let snapshot_map =
+        snapshots
+            .iter()
+            .fold(BTreeMap::<u64, Vec<String>>::new(), |mut map, snapshot| {
+                map.entry(snapshot.panel_id.0)
+                    .or_default()
+                    .push(snapshot.snapshot_id.clone());
+                map
+            });
+
+    ProjectIndex {
+        format_version,
+        work_id: WorkId(loaded.document.work.id.0),
+        title: loaded.document.work.title.clone(),
+        save_mode,
+        chunk_size,
+        pages: loaded
+            .document
+            .work
+            .pages
+            .iter()
+            .map(|page| ProjectPageSummary {
+                id: page.id,
+                panels: page
+                    .panels
+                    .iter()
+                    .map(|panel| ProjectPanelSummary {
+                        id: panel.id,
+                        width: panel.bitmap.width,
+                        height: panel.bitmap.height,
+                        layer_count: panel.layers.len(),
+                        snapshot_ids: snapshot_map.get(&panel.id.0).cloned().unwrap_or_default(),
+                    })
+                    .collect(),
+            })
+            .collect(),
+        workspace_layout: loaded.ui_state.workspace_layout.clone(),
+        plugin_configs: loaded.ui_state.plugin_configs.clone(),
+        snapshots,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::{ColorRgba8, Document};
+    use app_core::{BlendMode, ColorRgba8, Document, LayerMask, Page, PageId, PanelId};
+    use rusqlite::Connection;
     use std::time::Instant;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -182,6 +343,52 @@ mod tests {
             .expect("time should be monotonic")
             .as_nanos();
         std::env::temp_dir().join(format!("altpaint-{name}-{unique}.altp"))
+    }
+
+    fn multi_page_document() -> Document {
+        let mut document = Document::new(16, 16);
+        document.work.title = "Phase 11 test".to_string();
+
+        let mut second_panel = Document::new(8, 8).work.pages[0].panels[0].clone();
+        second_panel.id = PanelId(2);
+        second_panel.layers[0].name = "Blue layer".to_string();
+        second_panel.layers[0]
+            .bitmap
+            .set_pixel_rgba(2, 3, [0x22, 0x44, 0xaa, 0xff]);
+        second_panel.bitmap = second_panel.layers[0].bitmap.clone();
+
+        let mut third_panel = Document::new(8, 8).work.pages[0].panels[0].clone();
+        third_panel.id = PanelId(3);
+        third_panel.layers[0]
+            .bitmap
+            .set_pixel_rgba(1, 1, [0x55, 0x99, 0x22, 0xff]);
+        third_panel.bitmap = third_panel.layers[0].bitmap.clone();
+        third_panel.layers.push(app_core::RasterLayer {
+            id: app_core::LayerNodeId(99),
+            name: "Overlay".to_string(),
+            visible: true,
+            blend_mode: BlendMode::Multiply,
+            bitmap: {
+                let mut bitmap = app_core::CanvasBitmap::transparent(8, 8);
+                let _ = bitmap.set_pixel_rgba(1, 1, [0x33, 0x66, 0x11, 0x80]);
+                bitmap
+            },
+            mask: Some(LayerMask {
+                width: 8,
+                height: 8,
+                alpha: vec![255; 64],
+            }),
+        });
+
+        document.work.pages[0].id = PageId(10);
+        document.work.pages[0].panels.push(second_panel);
+        document.work.pages.push(Page {
+            id: PageId(20),
+            width: 8,
+            height: 8,
+            panels: vec![third_panel],
+        });
+        document
     }
 
     #[test]
@@ -281,8 +488,8 @@ mod tests {
     }
 
     #[test]
-    fn save_project_writes_binary_header_and_reduces_size_vs_json() {
-        let path = temp_path("binary-format");
+    fn save_project_writes_sqlite_header_and_chunk_tables() {
+        let path = temp_path("sqlite-format");
         let mut document = Document::new(256, 256);
         document.set_active_color(ColorRgba8::new(0x12, 0x34, 0x56, 0xff));
         let _ = document.draw_point(32, 48);
@@ -300,10 +507,100 @@ mod tests {
         )
         .expect("save should succeed");
         let saved = fs::read(&path).expect("saved project should be readable");
+        let connection = Connection::open(&path).expect("sqlite open should succeed");
+        let chunk_count = connection
+            .query_row("SELECT COUNT(*) FROM layer_chunks", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .expect("chunk count query should succeed");
 
-        assert!(saved.starts_with(BINARY_MAGIC));
-        assert!(saved[BINARY_MAGIC.len()..].starts_with(&ZSTD_MAGIC));
-        assert!(saved.len() < legacy_json.len());
+        assert!(saved.starts_with(crate::project_sqlite::SQLITE_HEADER));
+        assert!(chunk_count > 0);
+        assert!(saved.len() < legacy_json.len().saturating_mul(2));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn load_project_index_reports_pages_panels_and_snapshots() {
+        let path = temp_path("project-index");
+        let document = multi_page_document();
+
+        save_project_to_path(
+            &path,
+            &document,
+            &WorkspaceLayout::default(),
+            &BTreeMap::new(),
+        )
+        .expect("save should succeed");
+
+        let index = load_project_index_from_path(&path).expect("index load should succeed");
+
+        assert_eq!(index.format_version, CURRENT_FORMAT_VERSION);
+        assert_eq!(index.pages.len(), 2);
+        assert_eq!(index.pages[0].id, PageId(10));
+        assert_eq!(index.pages[0].panels.len(), 2);
+        assert_eq!(index.pages[1].id, PageId(20));
+        assert_eq!(index.pages[1].panels[0].layer_count, 2);
+        assert_eq!(index.snapshots.len(), 3);
+        assert!(
+            index
+                .snapshots
+                .iter()
+                .any(|snapshot| snapshot.snapshot_id == "page:10:panel:2:current")
+        );
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn load_page_from_sqlite_returns_requested_page_only() {
+        let path = temp_path("partial-page");
+        let document = multi_page_document();
+
+        save_project_to_path(
+            &path,
+            &document,
+            &WorkspaceLayout::default(),
+            &BTreeMap::new(),
+        )
+        .expect("save should succeed");
+
+        let page = load_page_from_path(&path, PageId(20)).expect("page load should succeed");
+
+        assert_eq!(page.id, PageId(20));
+        assert_eq!(page.panels.len(), 1);
+        assert_eq!(page.panels[0].id, PanelId(3));
+        assert_eq!(
+            page.panels[0].bitmap.pixel_rgba(1, 1),
+            Some([0x55, 0x99, 0x22, 0xff])
+        );
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn load_panel_snapshot_restores_current_composited_bitmap() {
+        let path = temp_path("snapshot");
+        let document = multi_page_document();
+        let expected = document.work.pages[0].panels[1].bitmap.pixel_rgba(2, 3);
+
+        save_project_to_path_with_options(
+            &path,
+            &document,
+            &WorkspaceLayout::default(),
+            &BTreeMap::new(),
+            ProjectSaveOptions::default(),
+        )
+        .expect("save should succeed");
+
+        let snapshot = load_panel_snapshot_from_path(&path, "page:10:panel:2:current")
+            .expect("snapshot load should succeed")
+            .expect("snapshot should exist");
+
+        assert_eq!(snapshot.summary.page_id, PageId(10));
+        assert_eq!(snapshot.summary.panel_id, PanelId(2));
+        assert_eq!(snapshot.bitmap.pixel_rgba(2, 3), expected);
 
         let _ = fs::remove_file(path);
     }

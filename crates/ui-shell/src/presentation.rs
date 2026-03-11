@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use app_core::{PanelSurfacePoint, PanelSurfaceRect};
 use plugin_api::PanelEvent;
 
 pub(crate) use render::{PanelHitKind, PanelHitRegion};
@@ -35,44 +36,58 @@ pub struct PanelSurface {
 }
 
 impl PanelSurface {
+    pub fn from_pixels(x: usize, y: usize, width: usize, height: usize, pixels: Vec<u8>) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+            pixels,
+            hit_regions: Vec::new(),
+        }
+    }
+
     pub fn hit_region_count(&self) -> usize {
         self.hit_regions.len()
     }
 
-    pub fn hit_test(&self, x: usize, y: usize) -> Option<PanelEvent> {
+    pub fn global_bounds(&self) -> PanelSurfaceRect {
+        PanelSurfaceRect::new(self.x, self.y, self.width, self.height)
+    }
+
+    pub fn hit_test_at(&self, point: PanelSurfacePoint) -> Option<PanelEvent> {
         self.hit_regions
             .iter()
             .rev()
             .find(|region| {
-                x >= region.x
-                    && y >= region.y
-                    && x < region.x + region.width
-                    && y < region.y + region.height
+                point.x >= region.x
+                    && point.y >= region.y
+                    && point.x < region.x + region.width
+                    && point.y < region.y + region.height
             })
-                    .and_then(|region| panel_event_for_region(region, x, y))
-                }
-
-                pub fn move_panel_hit_test(&self, x: usize, y: usize) -> Option<String> {
-                self.hit_regions
-                    .iter()
-                    .rev()
-                    .find(|region| {
-                    x >= region.x
-                        && y >= region.y
-                        && x < region.x + region.width
-                        && y < region.y + region.height
-                        && matches!(region.kind, PanelHitKind::MovePanel)
-                    })
-                    .map(|region| region.panel_id.clone())
+            .and_then(|region| panel_event_for_region(region, point))
     }
 
-    pub fn drag_event(
+    pub fn move_panel_hit_test_at(&self, point: PanelSurfacePoint) -> Option<String> {
+        self.hit_regions
+            .iter()
+            .rev()
+            .find(|region| {
+                point.x >= region.x
+                    && point.y >= region.y
+                    && point.x < region.x + region.width
+                    && point.y < region.y + region.height
+                    && matches!(region.kind, PanelHitKind::MovePanel)
+            })
+            .map(|region| region.panel_id.clone())
+    }
+
+    pub fn drag_event_at(
         &self,
         panel_id: &str,
         node_id: &str,
         source_value: usize,
-        x: usize,
-        y: usize,
+        point: PanelSurfacePoint,
     ) -> Option<PanelEvent> {
         let source_region = self
             .hit_regions
@@ -95,13 +110,13 @@ impl PanelSurface {
                 .iter()
                 .rev()
                 .find(|region| region.panel_id == panel_id && region.node_id == node_id)
-                .and_then(|region| panel_event_for_region(region, x, y)),
+                .and_then(|region| panel_event_for_region(region, point)),
             PanelHitKind::ColorWheel { .. } => self
                 .hit_regions
                 .iter()
                 .rev()
                 .find(|region| region.panel_id == panel_id && region.node_id == node_id)
-                .and_then(|region| panel_event_for_region(region, x, y)),
+                .and_then(|region| panel_event_for_region(region, point)),
             PanelHitKind::LayerListItem { .. } => self
                 .hit_regions
                 .iter()
@@ -109,10 +124,10 @@ impl PanelSurface {
                 .find(|region| {
                     region.panel_id == panel_id
                         && region.node_id == node_id
-                        && x >= region.x
-                        && y >= region.y
-                        && x < region.x + region.width
-                        && y < region.y + region.height
+                        && point.x >= region.x
+                        && point.y >= region.y
+                        && point.x < region.x + region.width
+                        && point.y < region.y + region.height
                         && matches!(&region.kind, PanelHitKind::LayerListItem { .. })
                 })
                 .and_then(|region| match &region.kind {
@@ -131,7 +146,7 @@ impl PanelSurface {
     }
 }
 
-fn panel_event_for_region(region: &PanelHitRegion, x: usize, y: usize) -> Option<PanelEvent> {
+fn panel_event_for_region(region: &PanelHitRegion, point: PanelSurfacePoint) -> Option<PanelEvent> {
     Some(match &region.kind {
         PanelHitKind::MovePanel => return None,
         PanelHitKind::Activate => PanelEvent::Activate {
@@ -141,7 +156,7 @@ fn panel_event_for_region(region: &PanelHitRegion, x: usize, y: usize) -> Option
         PanelHitKind::Slider { min, max } => PanelEvent::SetValue {
             panel_id: region.panel_id.clone(),
             node_id: region.node_id.clone(),
-            value: slider_value_for_position(region, *min, *max, x, y),
+            value: slider_value_for_position(region, *min, *max, point),
         },
         PanelHitKind::ColorWheel {
             hue_degrees,
@@ -150,7 +165,13 @@ fn panel_event_for_region(region: &PanelHitRegion, x: usize, y: usize) -> Option
         } => PanelEvent::SetText {
             panel_id: region.panel_id.clone(),
             node_id: region.node_id.clone(),
-            value: color_wheel_value_for_position(region, x, y, *hue_degrees, *saturation, *value),
+            value: color_wheel_value_for_position(
+                region,
+                point,
+                *hue_degrees,
+                *saturation,
+                *value,
+            ),
         },
         PanelHitKind::LayerListItem { value } => PanelEvent::SetValue {
             panel_id: region.panel_id.clone(),
@@ -169,27 +190,25 @@ fn slider_value_for_position(
     region: &PanelHitRegion,
     min: usize,
     max: usize,
-    x: usize,
-    _y: usize,
+    point: PanelSurfacePoint,
 ) -> usize {
     if max <= min || region.width <= 1 {
         return min;
     }
 
-    let local_x = x.clamp(region.x, region.x + region.width - 1) - region.x;
+    let local_x = point.x.clamp(region.x, region.x + region.width - 1) - region.x;
     min + ((max - min) * local_x) / (region.width - 1)
 }
 
 fn color_wheel_value_for_position(
     region: &PanelHitRegion,
-    x: usize,
-    y: usize,
+    point: PanelSurfacePoint,
     hue_degrees: usize,
     saturation: usize,
     value: usize,
 ) -> String {
-    let local_x = x.saturating_sub(region.x) as f32;
-    let local_y = y.saturating_sub(region.y) as f32;
+    let local_x = point.x.saturating_sub(region.x) as f32;
+    let local_y = point.y.saturating_sub(region.y) as f32;
     let size = region.width.min(region.height).max(1) as f32;
     let center = (size - 1.0) * 0.5;
     let dx = local_x - center;

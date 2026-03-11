@@ -3,7 +3,7 @@
 //! RGBA fill・scale blit・スクロールコピー・ブラシプレビュー描画のような
 //! 画素操作をここへ閉じ込め、上位の合成ロジックから分離する。
 
-use app_core::CanvasViewTransform;
+use app_core::{CanvasDisplayPoint, CanvasPoint, CanvasViewTransform};
 use ui_shell::{draw_text_rgba, measure_text_width};
 
 use super::geometry::{brush_preview_rect, canvas_scene, map_canvas_point_to_display};
@@ -155,6 +155,7 @@ pub(super) fn stroke_rect_region(
 }
 
 /// RGBA ソースをスケーリングしつつ dirty rect 範囲だけ転送する。
+#[cfg(test)]
 pub(crate) fn blit_scaled_rgba_region(
     frame: &mut render::RenderFrame,
     destination: Rect,
@@ -206,6 +207,39 @@ pub(crate) fn blit_scaled_rgba_region(
     }
 }
 
+/// RGBA ソースをグローバル座標の destination へそのまま転送する。
+pub(crate) fn blit_rgba_region_at(
+    frame: &mut render::RenderFrame,
+    destination: Rect,
+    source_width: usize,
+    source_height: usize,
+    source_pixels: &[u8],
+    dirty_rect: Option<Rect>,
+) {
+    if destination.width == 0 || destination.height == 0 || source_width == 0 || source_height == 0 {
+        return;
+    }
+
+    let target = dirty_rect
+        .and_then(|dirty| destination.intersect(dirty))
+        .unwrap_or(destination);
+    if target.width == 0 || target.height == 0 {
+        return;
+    }
+
+    let src_start_x = target.x.saturating_sub(destination.x);
+    let src_start_y = target.y.saturating_sub(destination.y);
+    let row_bytes = target.width * 4;
+    for row in 0..target.height {
+        let src_y = src_start_y + row;
+        let dst_y = target.y + row;
+        let src_row_start = (src_y * source_width + src_start_x) * 4;
+        let dst_row_start = (dst_y * frame.width + target.x) * 4;
+        frame.pixels[dst_row_start..dst_row_start + row_bytes]
+            .copy_from_slice(&source_pixels[src_row_start..src_row_start + row_bytes]);
+    }
+}
+
 /// キャンバスをビュー変換込みでソフトウェア描画する。
 #[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn blit_canvas_with_transform(
@@ -248,11 +282,14 @@ pub(super) fn blit_canvas_with_transform(
     if transform.rotation_degrees.rem_euclid(360.0) != 0.0 || transform.flip_x || transform.flip_y {
         for dst_y in target.y..target.y + target.height {
             for dst_x in target.x..target.x + target.width {
-                let Some((src_x, src_y)) = scene.map_view_to_canvas(dst_x as i32, dst_y as i32)
+                let Some(source_point) = scene.map_view_to_canvas(app_core::CanvasViewportPoint::new(
+                    dst_x as i32,
+                    dst_y as i32,
+                ))
                 else {
                     continue;
                 };
-                let src_index = (src_y * source.width + src_x) * 4;
+                let src_index = (source_point.y * source.width + source_point.x) * 4;
                 let dst_index = (dst_y * frame.width + dst_x) * 4;
                 frame.pixels[dst_index..dst_index + 4]
                     .copy_from_slice(&source.pixels[src_index..src_index + 4]);
@@ -491,7 +528,7 @@ pub(super) fn draw_brush_preview(
     destination: Rect,
     source: CanvasCompositeSource<'_>,
     transform: CanvasViewTransform,
-    canvas_position: (usize, usize),
+    canvas_position: CanvasPoint,
     brush_size: u32,
     dirty_rect: Option<Rect>,
 ) {
@@ -501,7 +538,7 @@ pub(super) fn draw_brush_preview(
     let Some(scene) = canvas_scene(destination, source.width, source.height, transform) else {
         return;
     };
-    let Some((center_x, center_y)) = scene.map_canvas_point_to_display(canvas_position) else {
+    let Some(center) = scene.map_canvas_point_to_display(canvas_position) else {
         return;
     };
     let radius = ((brush_size.max(1) as f32 * scene.scale()) * 0.5).max(4.0);
@@ -522,8 +559,8 @@ pub(super) fn draw_brush_preview(
     for y in target.y..target.y + target.height {
         let row_start = y * frame.width * 4;
         for x in target.x..target.x + target.width {
-            let dx = x as f32 + 0.5 - center_x;
-            let dy = y as f32 + 0.5 - center_y;
+            let dx = x as f32 + 0.5 - center.x;
+            let dy = y as f32 + 0.5 - center.y;
             let distance = (dx * dx + dy * dy).sqrt();
             if (distance - radius).abs() <= 1.0 {
                 let index = row_start + x * 4;
@@ -539,7 +576,7 @@ pub(super) fn draw_lasso_preview(
     destination: Rect,
     source: CanvasCompositeSource<'_>,
     transform: CanvasViewTransform,
-    points: &[(usize, usize)],
+    points: &[CanvasPoint],
     dirty_rect: Option<Rect>,
 ) {
     if points.len() < 2 || source.width == 0 || source.height == 0 {
@@ -571,15 +608,15 @@ pub(super) fn draw_lasso_preview(
 
 fn draw_overlay_line(
     frame: &mut render::RenderFrame,
-    start: (f32, f32),
-    end: (f32, f32),
+    start: CanvasDisplayPoint,
+    end: CanvasDisplayPoint,
     dirty_rect: Option<Rect>,
     color: [u8; 4],
 ) {
-    let min_x = start.0.min(end.0).floor().max(0.0) as usize;
-    let min_y = start.1.min(end.1).floor().max(0.0) as usize;
-    let max_x = start.0.max(end.0).ceil().min(frame.width as f32) as usize;
-    let max_y = start.1.max(end.1).ceil().min(frame.height as f32) as usize;
+    let min_x = start.x.min(end.x).floor().max(0.0) as usize;
+    let min_y = start.y.min(end.y).floor().max(0.0) as usize;
+    let max_x = start.x.max(end.x).ceil().min(frame.width as f32) as usize;
+    let max_y = start.y.max(end.y).ceil().min(frame.height as f32) as usize;
     let bounds = Rect {
         x: min_x.saturating_sub(2),
         y: min_y.saturating_sub(2),
@@ -593,8 +630,8 @@ fn draw_overlay_line(
         return;
     };
 
-    let dx = end.0 - start.0;
-    let dy = end.1 - start.1;
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
     let length_sq = dx * dx + dy * dy;
     if length_sq <= f32::EPSILON {
         return;
@@ -605,9 +642,9 @@ fn draw_overlay_line(
         for x in target.x..target.x + target.width {
             let px = x as f32 + 0.5;
             let py = y as f32 + 0.5;
-            let t = (((px - start.0) * dx + (py - start.1) * dy) / length_sq).clamp(0.0, 1.0);
-            let closest_x = start.0 + dx * t;
-            let closest_y = start.1 + dy * t;
+            let t = (((px - start.x) * dx + (py - start.y) * dy) / length_sq).clamp(0.0, 1.0);
+            let closest_x = start.x + dx * t;
+            let closest_y = start.y + dy * t;
             let distance = ((px - closest_x).powi(2) + (py - closest_y).powi(2)).sqrt();
             if distance <= 1.25 {
                 let index = row_start + x * 4;

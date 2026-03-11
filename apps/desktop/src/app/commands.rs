@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::thread;
 
-use app_core::Command;
+use app_core::{CanvasPoint, Command};
 use desktop_support::normalize_project_path;
 use plugin_api::HostAction;
 use storage::{load_project_from_path, save_project_to_path};
@@ -18,12 +18,27 @@ impl DesktopApp {
     /// キャンバス入力から編集コマンドを組み立てて適用する。
     pub(super) fn execute_canvas_command(
         &mut self,
-        x: usize,
-        y: usize,
-        from: Option<(usize, usize)>,
+        current: CanvasPoint,
+        from: Option<CanvasPoint>,
         pressure: f32,
     ) -> bool {
-        let command = command_for_canvas_gesture(self.document.active_tool, (x, y), from, pressure);
+        let Some(bounds) = self.document.active_panel_bounds() else {
+            return false;
+        };
+        if !bounds.contains_canvas_point(current) {
+            return false;
+        }
+
+        let Some(local_current) = bounds.canvas_to_panel_local(current) else {
+            return false;
+        };
+        let local_previous = from.and_then(|previous| bounds.canvas_to_panel_local(previous));
+        let command = command_for_canvas_gesture(
+            self.document.active_tool,
+            local_current,
+            local_previous,
+            pressure,
+        );
         self.execute_command(command)
     }
 

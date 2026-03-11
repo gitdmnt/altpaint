@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::{WindowPoint, WindowRect};
+
 fn is_visible_by_default() -> bool {
     true
 }
@@ -124,6 +126,18 @@ impl WorkspacePanelState {
         }
     }
 
+    /// アンカーとオフセットから実際の左上グローバル座標を解決する。
+    pub fn resolved_window_position(
+        &self,
+        viewport: WindowRect,
+        panel_size: WorkspacePanelSize,
+        fallback: WorkspacePanelPosition,
+    ) -> WindowPoint {
+        let position =
+            self.resolved_position(viewport.width, viewport.height, panel_size, fallback);
+        WindowPoint::new(position.x as i32, position.y as i32)
+    }
+
     /// 実際の左上座標を現在の viewport 基準のアンカーオフセットへ変換する。
     pub fn set_position_from_absolute(
         &mut self,
@@ -178,6 +192,22 @@ impl WorkspacePanelState {
         self.anchor = anchor;
         self.position = Some(position);
         self.size = Some(panel_size);
+    }
+
+    /// 実際の左上グローバル座標を現在の viewport 基準アンカーオフセットへ変換する。
+    pub fn set_position_from_window_point(
+        &mut self,
+        point: WindowPoint,
+        viewport: WindowRect,
+        panel_size: WorkspacePanelSize,
+    ) {
+        self.set_position_from_absolute(
+            point.x.max(0) as usize,
+            point.y.max(0) as usize,
+            viewport.width,
+            viewport.height,
+            panel_size,
+        );
     }
 }
 

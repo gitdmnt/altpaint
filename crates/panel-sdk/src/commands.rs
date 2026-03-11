@@ -7,6 +7,7 @@ pub enum Tool {
     Eraser,
     Bucket,
     LassoBucket,
+    PanelRect,
 }
 
 impl Tool {
@@ -17,6 +18,7 @@ impl Tool {
             Self::Eraser => "eraser",
             Self::Bucket => "bucket",
             Self::LassoBucket => "lasso_bucket",
+            Self::PanelRect => "panel_rect",
         }
     }
 }
@@ -300,6 +302,44 @@ pub mod view {
     /// ビューリセットコマンドを返す。
     pub fn reset() -> CommandDescriptor {
         CommandDescriptor::new("view.reset")
+    }
+}
+
+/// コマ操作コマンド群。
+pub mod panel {
+    use panel_schema::CommandDescriptor;
+    use serde_json::json;
+
+    /// 新しいコマを追加するコマンドを返す。
+    pub fn add() -> CommandDescriptor {
+        CommandDescriptor::new("panel.add")
+    }
+
+    /// アクティブコマを削除するコマンドを返す。
+    pub fn remove() -> CommandDescriptor {
+        CommandDescriptor::new("panel.remove")
+    }
+
+    /// 指定 index のコマを選択するコマンドを返す。
+    pub fn select(index: usize) -> CommandDescriptor {
+        let mut descriptor = CommandDescriptor::new("panel.select");
+        descriptor.payload.insert("index".to_string(), json!(index));
+        descriptor
+    }
+
+    /// 次のコマを選択するコマンドを返す。
+    pub fn select_next() -> CommandDescriptor {
+        CommandDescriptor::new("panel.select_next")
+    }
+
+    /// 前のコマを選択するコマンドを返す。
+    pub fn select_previous() -> CommandDescriptor {
+        CommandDescriptor::new("panel.select_previous")
+    }
+
+    /// アクティブコマ中心の表示へ戻すコマンドを返す。
+    pub fn focus_active() -> CommandDescriptor {
+        CommandDescriptor::new("panel.focus_active")
     }
 }
 

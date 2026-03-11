@@ -173,6 +173,7 @@ pub struct WgpuPresenter {
     base_layer: Option<UploadedLayerTexture>,
     overlay_layer: Option<UploadedLayerTexture>,
     canvas_layer: Option<UploadedLayerTexture>,
+    upload_scratch: Vec<u8>,
 }
 
 fn preferred_present_mode(modes: &[wgpu::PresentMode]) -> wgpu::PresentMode {
@@ -320,6 +321,7 @@ impl WgpuPresenter {
             base_layer: None,
             overlay_layer: None,
             canvas_layer: None,
+            upload_scratch: Vec::new(),
         })
     }
 
@@ -381,12 +383,14 @@ impl WgpuPresenter {
         let upload_started = Instant::now();
         let base_upload = Self::upload_layer(
             &self.queue,
+            &mut self.upload_scratch,
             self.base_layer.as_mut(),
             scene.base_layer.source,
             scene.base_layer.upload_region,
         );
         let overlay_upload = Self::upload_layer(
             &self.queue,
+            &mut self.upload_scratch,
             self.overlay_layer.as_mut(),
             scene.overlay_layer.source,
             scene.overlay_layer.upload_region,
@@ -394,6 +398,7 @@ impl WgpuPresenter {
         let canvas_upload = if let Some(canvas_layer) = scene.canvas_layer {
             Self::upload_layer(
                 &self.queue,
+                &mut self.upload_scratch,
                 self.canvas_layer.as_mut(),
                 canvas_layer.source,
                 canvas_layer.upload_region,
@@ -578,6 +583,7 @@ impl WgpuPresenter {
 
     fn upload_layer(
         queue: &wgpu::Queue,
+        scratch: &mut Vec<u8>,
         layer: Option<&mut UploadedLayerTexture>,
         source: TextureSource<'_>,
         upload_region: Option<UploadRegion>,
@@ -598,7 +604,7 @@ impl WgpuPresenter {
         }
 
         if let Some(region) = upload_region {
-            let bytes = upload_texture_region(queue, layer, source, region);
+            let bytes = upload_texture_region(queue, scratch, layer, source, region);
             return LayerUploadStats {
                 duration: started.elapsed(),
                 bytes,
@@ -668,6 +674,7 @@ fn upload_full_texture(
 
 fn upload_texture_region(
     queue: &wgpu::Queue,
+    scratch: &mut Vec<u8>,
     layer: &UploadedLayerTexture,
     source: TextureSource<'_>,
     region: UploadRegion,
@@ -684,7 +691,11 @@ fn upload_texture_region(
         return 0;
     }
 
-    let mut packed = vec![0; (copy_width * copy_height * 4) as usize];
+    let packed_len = (copy_width * copy_height * 4) as usize;
+    if scratch.len() < packed_len {
+        scratch.resize(packed_len, 0);
+    }
+    let packed = &mut scratch[..packed_len];
     let row_pixels = source.width as usize;
     let copy_width_usize = copy_width as usize;
     let region_x = region.x as usize;
@@ -708,7 +719,7 @@ fn upload_texture_region(
             },
             aspect: wgpu::TextureAspect::All,
         },
-        packed.as_slice(),
+        packed,
         wgpu::TexelCopyBufferLayout {
             offset: 0,
             bytes_per_row: Some(copy_width * 4),

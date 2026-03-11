@@ -3,7 +3,9 @@
 //! 表示矩形・dirty rect・ビュー座標変換の責務を合成処理から分離し、
 //! 計算ロジックを副作用のない関数として再利用しやすくする。
 
-use app_core::{CanvasViewTransform, DirtyRect};
+use app_core::{
+    CanvasDirtyRect, CanvasPoint, CanvasViewTransform, PanelSurfacePoint, WindowPoint, WindowRect,
+};
 
 use super::{Rect, TextureQuad};
 
@@ -83,7 +85,7 @@ pub(crate) fn fit_rect(source_width: usize, source_height: usize, target: Rect) 
 /// ビットマップ dirty rect を表示先の矩形へ写像する。
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn map_canvas_dirty_to_display(
-    dirty: DirtyRect,
+    dirty: CanvasDirtyRect,
     destination: Rect,
     source_width: usize,
     source_height: usize,
@@ -99,7 +101,7 @@ pub(crate) fn map_canvas_dirty_to_display(
 
 /// ビュー変換を考慮して dirty rect を表示先へ写像する。
 pub(crate) fn map_canvas_dirty_to_display_with_transform(
-    dirty: DirtyRect,
+    dirty: CanvasDirtyRect,
     destination: Rect,
     source_width: usize,
     source_height: usize,
@@ -120,7 +122,7 @@ pub(crate) fn brush_preview_rect(
     source_width: usize,
     source_height: usize,
     transform: CanvasViewTransform,
-    canvas_position: (usize, usize),
+    canvas_position: CanvasPoint,
     brush_size: u32,
 ) -> Option<Rect> {
     render::brush_preview_rect_for_diameter(
@@ -140,8 +142,8 @@ pub(crate) fn map_canvas_point_to_display(
     source_width: usize,
     source_height: usize,
     transform: CanvasViewTransform,
-    canvas_position: (usize, usize),
-) -> Option<(f32, f32)> {
+    canvas_position: CanvasPoint,
+) -> Option<app_core::CanvasDisplayPoint> {
     render::map_canvas_point_to_display(
         to_render_rect(destination),
         source_width,
@@ -205,49 +207,40 @@ pub(crate) fn canvas_texture_quad(
 }
 
 /// ビュー座標をパネルサーフェス座標へ変換する。
-pub(crate) fn map_view_to_surface(
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn map_window_to_panel_surface(
     surface_width: usize,
     surface_height: usize,
     rect: Rect,
-    x: i32,
-    y: i32,
-) -> Option<(usize, usize)> {
+    point: WindowPoint,
+) -> Option<PanelSurfacePoint> {
     if surface_width == 0 || surface_height == 0 || rect.width == 0 || rect.height == 0 {
         return None;
     }
-    if !rect.contains(x, y) {
-        return None;
-    }
 
-    let local_x = (x - rect.x as i32) as f32;
-    let local_y = (y - rect.y as i32) as f32;
-    Some((
-        (((local_x / rect.width as f32) * surface_width as f32).floor() as usize)
+    let window_rect = WindowRect::new(rect.x, rect.y, rect.width, rect.height);
+    let local = window_rect.to_panel_surface_point(point)?;
+    Some(PanelSurfacePoint::new(
+        (((local.x as f32 / rect.width as f32) * surface_width as f32).floor() as usize)
             .min(surface_width.saturating_sub(1)),
-        (((local_y / rect.height as f32) * surface_height as f32).floor() as usize)
+        (((local.y as f32 / rect.height as f32) * surface_height as f32).floor() as usize)
             .min(surface_height.saturating_sub(1)),
     ))
 }
 
 /// ビュー外座標もクランプしたうえでサーフェス座標へ変換する。
-pub(crate) fn map_view_to_surface_clamped(
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn map_window_to_panel_surface_clamped(
     surface_width: usize,
     surface_height: usize,
     rect: Rect,
-    x: i32,
-    y: i32,
-) -> Option<(usize, usize)> {
+    point: WindowPoint,
+) -> Option<PanelSurfacePoint> {
     if surface_width == 0 || surface_height == 0 || rect.width == 0 || rect.height == 0 {
         return None;
     }
 
-    let clamped_x = x.clamp(
-        rect.x as i32,
-        (rect.x + rect.width.saturating_sub(1)) as i32,
-    );
-    let clamped_y = y.clamp(
-        rect.y as i32,
-        (rect.y + rect.height.saturating_sub(1)) as i32,
-    );
-    map_view_to_surface(surface_width, surface_height, rect, clamped_x, clamped_y)
+    let window_rect = WindowRect::new(rect.x, rect.y, rect.width, rect.height);
+    let clamped_point = window_rect.clamp_point(point)?;
+    map_window_to_panel_surface(surface_width, surface_height, rect, clamped_point)
 }

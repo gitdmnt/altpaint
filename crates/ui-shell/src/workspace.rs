@@ -6,12 +6,13 @@
 use super::*;
 
 pub(super) const WORKSPACE_PANEL_ID: &str = "builtin.workspace-layout";
+const HIDDEN_BY_DEFAULT_PANEL_IDS: &[&str] = &["builtin.panel-list"];
 
 pub(super) fn default_panel_state(panel_id: &str, index: usize) -> WorkspacePanelState {
     let (anchor, position) = default_panel_anchor_and_position(panel_id, index);
     WorkspacePanelState {
         id: panel_id.to_string(),
-        visible: true,
+        visible: !HIDDEN_BY_DEFAULT_PANEL_IDS.contains(&panel_id),
         anchor,
         position: Some(position),
         size: Some(WorkspacePanelSize::default()),

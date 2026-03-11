@@ -11,11 +11,22 @@ use desktop_support::{
 use ui_shell::PanelSurface;
 
 use super::raster::{
-    blit_canvas_with_transform, blit_scaled_rgba_region, draw_brush_preview,
-    draw_lasso_preview, draw_text, fill_rect, measured_status_width, stroke_rect,
-    stroke_rect_region,
+    blit_canvas_with_transform, blit_rgba_region_at, draw_brush_preview, draw_lasso_preview,
+    draw_text, fill_rect, measured_status_width, stroke_rect, stroke_rect_region,
 };
-use super::{CanvasCompositeSource, CanvasOverlayState, DesktopLayout, Rect};
+use super::{
+    CanvasCompositeSource, CanvasOverlayState, DesktopLayout, PanelNavigatorOverlay, Rect,
+};
+
+const PANEL_NAVIGATOR_BACKGROUND: [u8; 4] = [0x10, 0x16, 0x21, 0xdd];
+const PANEL_NAVIGATOR_BORDER: [u8; 4] = [0x90, 0xa4, 0xae, 0xff];
+const PANEL_NAVIGATOR_PANEL: [u8; 4] = [0x4f, 0x5b, 0x6d, 0xd0];
+const PANEL_NAVIGATOR_ACTIVE: [u8; 4] = [0xff, 0xc1, 0x07, 0xff];
+const ACTIVE_PANEL_MASK: [u8; 4] = [0x00, 0x00, 0x00, 0x90];
+const ACTIVE_PANEL_BORDER: [u8; 4] = [0xff, 0xc1, 0x07, 0xff];
+const ACTIVE_PANEL_FILL: [u8; 4] = [0xff, 0xc1, 0x07, 0x18];
+const PANEL_PREVIEW_BORDER: [u8; 4] = [0x80, 0xde, 0xea, 0xff];
+const PANEL_PREVIEW_FILL: [u8; 4] = [0x80, 0xde, 0xea, 0x32];
 
 /// パネル面・キャンバス面・ステータス表示をまとめて最終フレームへ合成する。
 #[cfg_attr(not(test), allow(dead_code))]
@@ -102,7 +113,15 @@ pub(crate) fn compose_overlay_frame(
         height,
         pixels: vec![0; width * height * 4],
     };
-    compose_overlay_region(&mut frame, layout, panel_surface, canvas, transform, overlay, None);
+    compose_overlay_region(
+        &mut frame,
+        layout,
+        panel_surface,
+        canvas,
+        transform,
+        overlay,
+        None,
+    );
     frame
 }
 
@@ -270,6 +289,16 @@ pub(crate) fn draw_canvas_overlay(
     overlay: CanvasOverlayState,
     dirty_rect: Option<Rect>,
 ) {
+    if let Some(active_panel_bounds) = overlay.active_panel_bounds {
+        draw_active_panel_mask(
+            frame,
+            layout,
+            canvas,
+            transform,
+            active_panel_bounds,
+            dirty_rect,
+        );
+    }
     if let (Some(position), Some(brush_size)) = (overlay.brush_preview, overlay.brush_size) {
         draw_brush_preview(
             frame,
@@ -291,6 +320,238 @@ pub(crate) fn draw_canvas_overlay(
             dirty_rect,
         );
     }
+    if let Some(preview_bounds) = overlay.panel_creation_preview {
+        draw_panel_creation_preview(frame, layout, canvas, transform, preview_bounds, dirty_rect);
+    }
+    if let Some(panel_navigator) = overlay.panel_navigator.as_ref() {
+        draw_panel_navigator(frame, layout, panel_navigator, dirty_rect);
+    }
+}
+
+fn draw_active_panel_mask(
+    frame: &mut render::RenderFrame,
+    layout: &DesktopLayout,
+    canvas: CanvasCompositeSource<'_>,
+    transform: CanvasViewTransform,
+    bounds: app_core::PanelBounds,
+    dirty_rect: Option<Rect>,
+) {
+    if canvas.width == 0 || canvas.height == 0 || bounds.width == 0 || bounds.height == 0 {
+        return;
+    }
+    let viewport = render::PixelRect {
+        x: layout.canvas_host_rect.x,
+        y: layout.canvas_host_rect.y,
+        width: layout.canvas_host_rect.width,
+        height: layout.canvas_host_rect.height,
+    };
+
+    let outside_regions = [
+        app_core::CanvasDirtyRect {
+            x: 0,
+            y: 0,
+            width: canvas.width,
+            height: bounds.y,
+        },
+        app_core::CanvasDirtyRect {
+            x: 0,
+            y: bounds.y.saturating_add(bounds.height),
+            width: canvas.width,
+            height: canvas
+                .height
+                .saturating_sub(bounds.y.saturating_add(bounds.height)),
+        },
+        app_core::CanvasDirtyRect {
+            x: 0,
+            y: bounds.y,
+            width: bounds.x,
+            height: bounds.height,
+        },
+        app_core::CanvasDirtyRect {
+            x: bounds.x.saturating_add(bounds.width),
+            y: bounds.y,
+            width: canvas
+                .width
+                .saturating_sub(bounds.x.saturating_add(bounds.width)),
+            height: bounds.height,
+        },
+    ];
+    for region in outside_regions
+        .into_iter()
+        .filter(|region| region.width > 0 && region.height > 0)
+    {
+        let mapped = render::map_canvas_dirty_to_display_with_transform(
+            region,
+            viewport,
+            canvas.width,
+            canvas.height,
+            transform,
+        );
+        let rect = Rect {
+            x: mapped.x,
+            y: mapped.y,
+            width: mapped.width,
+            height: mapped.height,
+        };
+        if let Some(dirty_rect) = dirty_rect
+            && rect.intersect(dirty_rect).is_none()
+        {
+            continue;
+        }
+        fill_rect(frame, rect, ACTIVE_PANEL_MASK);
+    }
+
+    let mapped = render::map_canvas_dirty_to_display_with_transform(
+        app_core::CanvasDirtyRect {
+            x: bounds.x,
+            y: bounds.y,
+            width: bounds.width,
+            height: bounds.height,
+        },
+        viewport,
+        canvas.width,
+        canvas.height,
+        transform,
+    );
+    let panel_rect = Rect {
+        x: mapped.x,
+        y: mapped.y,
+        width: mapped.width,
+        height: mapped.height,
+    };
+    if let Some(dirty_rect) = dirty_rect
+        && panel_rect.intersect(dirty_rect).is_none()
+    {
+        return;
+    }
+    fill_rect(frame, panel_rect, ACTIVE_PANEL_FILL);
+    stroke_rect(frame, panel_rect, ACTIVE_PANEL_BORDER);
+}
+
+fn draw_panel_creation_preview(
+    frame: &mut render::RenderFrame,
+    layout: &DesktopLayout,
+    canvas: CanvasCompositeSource<'_>,
+    transform: CanvasViewTransform,
+    bounds: app_core::PanelBounds,
+    dirty_rect: Option<Rect>,
+) {
+    if canvas.width == 0 || canvas.height == 0 || bounds.width == 0 || bounds.height == 0 {
+        return;
+    }
+    let mapped = render::map_canvas_dirty_to_display_with_transform(
+        app_core::CanvasDirtyRect {
+            x: bounds.x,
+            y: bounds.y,
+            width: bounds.width,
+            height: bounds.height,
+        },
+        render::PixelRect {
+            x: layout.canvas_host_rect.x,
+            y: layout.canvas_host_rect.y,
+            width: layout.canvas_host_rect.width,
+            height: layout.canvas_host_rect.height,
+        },
+        canvas.width,
+        canvas.height,
+        transform,
+    );
+    let rect = Rect {
+        x: mapped.x,
+        y: mapped.y,
+        width: mapped.width,
+        height: mapped.height,
+    };
+    if let Some(dirty_rect) = dirty_rect
+        && rect.intersect(dirty_rect).is_none()
+    {
+        return;
+    }
+    fill_rect(frame, rect, PANEL_PREVIEW_FILL);
+    stroke_rect(frame, rect, PANEL_PREVIEW_BORDER);
+}
+
+fn draw_panel_navigator(
+    frame: &mut render::RenderFrame,
+    layout: &DesktopLayout,
+    panel_navigator: &PanelNavigatorOverlay,
+    dirty_rect: Option<Rect>,
+) {
+    if panel_navigator.page_width == 0
+        || panel_navigator.page_height == 0
+        || panel_navigator.panels.len() <= 1
+    {
+        return;
+    }
+
+    let max_width = layout.canvas_host_rect.width.clamp(96, 180);
+    let max_height = layout.canvas_host_rect.height.clamp(96, 180);
+    let inner_max_width = max_width.saturating_sub(16).max(1);
+    let inner_max_height = max_height.saturating_sub(16).max(1);
+    let scale_x = inner_max_width as f32 / panel_navigator.page_width as f32;
+    let scale_y = inner_max_height as f32 / panel_navigator.page_height as f32;
+    let scale = scale_x.min(scale_y).max(f32::EPSILON);
+    let scaled_width = ((panel_navigator.page_width as f32 * scale).round() as usize).max(1);
+    let scaled_height = ((panel_navigator.page_height as f32 * scale).round() as usize).max(1);
+    let navigator = Rect {
+        x: layout
+            .canvas_host_rect
+            .x
+            .saturating_add(layout.canvas_host_rect.width)
+            .saturating_sub(scaled_width + 16)
+            .saturating_sub(12),
+        y: layout.canvas_host_rect.y + 12,
+        width: scaled_width + 16,
+        height: scaled_height + 16,
+    };
+
+    if let Some(dirty_rect) = dirty_rect
+        && navigator.intersect(dirty_rect).is_none()
+    {
+        return;
+    }
+
+    fill_rect(frame, navigator, PANEL_NAVIGATOR_BACKGROUND);
+    stroke_rect(frame, navigator, PANEL_NAVIGATOR_BORDER);
+    let inner = Rect {
+        x: navigator.x + 8,
+        y: navigator.y + 8,
+        width: scaled_width,
+        height: scaled_height,
+    };
+    stroke_rect(frame, inner, PANEL_NAVIGATOR_BORDER);
+
+    for panel in &panel_navigator.panels {
+        let rect = Rect {
+            x: inner.x + ((panel.bounds.x as f32 * scale).round() as usize),
+            y: inner.y + ((panel.bounds.y as f32 * scale).round() as usize),
+            width: ((panel.bounds.width as f32 * scale).round() as usize).max(1),
+            height: ((panel.bounds.height as f32 * scale).round() as usize).max(1),
+        };
+        fill_rect(
+            frame,
+            rect,
+            if panel.active {
+                [
+                    PANEL_NAVIGATOR_ACTIVE[0],
+                    PANEL_NAVIGATOR_ACTIVE[1],
+                    PANEL_NAVIGATOR_ACTIVE[2],
+                    0x40,
+                ]
+            } else {
+                PANEL_NAVIGATOR_PANEL
+            },
+        );
+        stroke_rect(
+            frame,
+            rect,
+            if panel.active {
+                PANEL_NAVIGATOR_ACTIVE
+            } else {
+                PANEL_NAVIGATOR_BORDER
+            },
+        );
+    }
 }
 
 /// パネルホスト領域だけを overlay 層へ差分反映する。
@@ -300,9 +561,15 @@ pub(crate) fn compose_panel_host_region(
     panel_surface: &PanelSurface,
     dirty_rect: Option<Rect>,
 ) {
-    blit_scaled_rgba_region(
+    let _ = layout;
+    blit_rgba_region_at(
         frame,
-        layout.panel_surface_rect,
+        Rect {
+            x: panel_surface.x,
+            y: panel_surface.y,
+            width: panel_surface.width,
+            height: panel_surface.height,
+        },
         panel_surface.width,
         panel_surface.height,
         panel_surface.pixels.as_slice(),
@@ -328,7 +595,6 @@ pub(crate) fn compose_status_region(
         TEXT_SECONDARY,
     );
 }
-
 
 /// フッター右側のステータス表示領域を返す。
 #[allow(dead_code)]

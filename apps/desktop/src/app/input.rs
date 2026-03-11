@@ -3,7 +3,7 @@
 //! OS 由来の生イベントをドキュメント編集やパネル操作へ変換し、
 //! ランタイム側が UI 詳細を知らずに済むようにする。
 
-use app_core::{Command, ToolKind};
+use app_core::{CanvasPoint, Command, ToolKind, WindowPoint};
 use plugin_api::{HostAction, PanelEvent};
 
 use super::{DesktopApp, PanelDragState};
@@ -11,13 +11,13 @@ use crate::app::state::PanelPressState;
 use crate::canvas_bridge::{
     CanvasInputState, CanvasPointerEvent, map_view_to_canvas_with_transform,
 };
-use crate::frame::{Rect, brush_preview_rect, map_view_to_surface, map_view_to_surface_clamped};
+use crate::frame::brush_preview_rect;
 
 impl DesktopApp {
     /// 現在のポインタ位置からキャンバスホバー状態を更新する。
     pub(crate) fn update_canvas_hover(&mut self, x: i32, y: i32) -> bool {
         let previous = self.hover_canvas_position;
-        let next = self.canvas_position_from_window(x, y);
+        let next = self.hover_canvas_position_from_window(WindowPoint::new(x, y));
         if next == self.hover_canvas_position {
             return false;
         }
@@ -27,14 +27,7 @@ impl DesktopApp {
             self.rebuild_present_frame();
             return true;
         };
-        let Some((bitmap_width, bitmap_height)) = self
-            .document
-            .active_bitmap()
-            .map(|bitmap| (bitmap.width, bitmap.height))
-        else {
-            self.rebuild_present_frame();
-            return true;
-        };
+        let (bitmap_width, bitmap_height) = self.canvas_dimensions();
 
         let transform = self.document.view_transform;
         if let Some(previous) = previous.and_then(|position| {
@@ -76,12 +69,17 @@ impl DesktopApp {
         y: i32,
         pressure: f32,
     ) -> bool {
-        if self.begin_panel_interaction(x, y) {
+        let point = WindowPoint::new(x, y);
+        if self.begin_panel_interaction(point) {
             return true;
         }
 
-        if self.canvas_position_from_window(x, y).is_some() {
-            return self.handle_canvas_pointer("down", x, y, pressure);
+        if self.canvas_display_contains_window(point) {
+            return self.handle_canvas_pointer("down", point, pressure);
+        }
+
+        if self.canvas_position_from_window(point).is_some() {
+            return self.handle_canvas_pointer("down", point, pressure);
         }
 
         false
@@ -99,15 +97,16 @@ impl DesktopApp {
         y: i32,
         pressure: f32,
     ) -> bool {
+        let point = WindowPoint::new(x, y);
         if self.canvas_input.is_drawing {
-            return self.handle_canvas_pointer("up", x, y, pressure);
+            return self.handle_canvas_pointer("up", point, pressure);
         }
         if self.active_panel_drag.take().is_some() {
             self.pending_panel_press = None;
             self.persist_session_state();
             return false;
         }
-        self.handle_panel_pointer(x, y)
+        self.handle_panel_pointer(point)
     }
 
     /// ポインタ移動をドラッグ中の対象へ配送する。
@@ -121,33 +120,34 @@ impl DesktopApp {
         y: i32,
         pressure: f32,
     ) -> bool {
+        let point = WindowPoint::new(x, y);
         if self.canvas_input.is_drawing {
-            return self.handle_canvas_pointer("drag", x, y, pressure);
+            return self.handle_canvas_pointer("drag", point, pressure);
         }
 
         if self.active_panel_drag.is_some() {
-            return self.drag_panel_interaction(x, y);
+            return self.drag_panel_interaction(point);
         }
 
         false
     }
 
     /// パネル上の押下開始を解釈して、必要ならドラッグ状態を開始する。
-    fn begin_panel_interaction(&mut self, x: i32, y: i32) -> bool {
+    fn begin_panel_interaction(&mut self, point: WindowPoint) -> bool {
         self.pending_panel_press = None;
-        if let Some(panel_id) = self.panel_move_hit_from_window(x, y) {
+        if let Some(panel_id) = self.panel_move_hit_from_window(point) {
             let Some(panel_rect) = self.ui_shell.panel_rect(&panel_id) else {
                 return false;
             };
             self.active_panel_drag = Some(PanelDragState::Move {
                 panel_id,
-                grab_offset_x: (x.max(0) as usize).saturating_sub(panel_rect.x),
-                grab_offset_y: (y.max(0) as usize).saturating_sub(panel_rect.y),
+                grab_offset_x: (point.x.max(0) as usize).saturating_sub(panel_rect.x),
+                grab_offset_y: (point.y.max(0) as usize).saturating_sub(panel_rect.y),
             });
             return true;
         }
 
-        let Some(event) = self.panel_event_from_window(x, y) else {
+        let Some(event) = self.panel_event_from_window(point) else {
             self.active_panel_drag = None;
             return false;
         };
@@ -174,9 +174,7 @@ impl DesktopApp {
                 self.dispatch_panel_event(event)
             }
             PanelEvent::SetText {
-                panel_id,
-                node_id,
-                ..
+                panel_id, node_id, ..
             } => {
                 let drag_state = PanelDragState::Control {
                     panel_id: panel_id.clone(),
@@ -186,13 +184,12 @@ impl DesktopApp {
                 self.active_panel_drag = Some(drag_state);
                 self.dispatch_panel_event(event)
             }
-            PanelEvent::DragValue { .. }
-            | PanelEvent::Keyboard { .. } => false,
+            PanelEvent::DragValue { .. } | PanelEvent::Keyboard { .. } => false,
         }
     }
 
     /// スライダードラッグ中の移動イベントを現在ノードへ配送する。
-    fn drag_panel_interaction(&mut self, x: i32, y: i32) -> bool {
+    fn drag_panel_interaction(&mut self, point: WindowPoint) -> bool {
         let Some(state) = self.active_panel_drag.clone() else {
             return false;
         };
@@ -202,22 +199,27 @@ impl DesktopApp {
                 ref node_id,
                 ..
             } => {
-                let Some(event) = self.panel_drag_event_from_window(&state, x, y).or_else(|| {
-                    let event = self.panel_event_from_window(x, y)?;
-                    match &event {
-                        PanelEvent::SetValue {
-                            panel_id: event_panel_id,
-                            node_id: event_node_id,
-                            ..
+                let Some(event) = self
+                    .panel_drag_event_from_window(&state, point)
+                    .or_else(|| {
+                        let event = self.panel_event_from_window(point)?;
+                        match &event {
+                            PanelEvent::SetValue {
+                                panel_id: event_panel_id,
+                                node_id: event_node_id,
+                                ..
+                            }
+                            | PanelEvent::SetText {
+                                panel_id: event_panel_id,
+                                node_id: event_node_id,
+                                ..
+                            } if *event_panel_id == *panel_id && *event_node_id == *node_id => {
+                                Some(event)
+                            }
+                            _ => None,
                         }
-                        | PanelEvent::SetText {
-                            panel_id: event_panel_id,
-                            node_id: event_node_id,
-                            ..
-                        } if *event_panel_id == *panel_id && *event_node_id == *node_id => Some(event),
-                        _ => None,
-                    }
-                }) else {
+                    })
+                else {
                     return false;
                 };
                 let _changed = self.dispatch_panel_event(event.clone());
@@ -232,8 +234,8 @@ impl DesktopApp {
                 let Some(layout) = self.layout.as_ref() else {
                     return false;
                 };
-                let window_x = x.max(0) as usize;
-                let window_y = y.max(0) as usize;
+                let window_x = point.x.max(0) as usize;
+                let window_y = point.y.max(0) as usize;
                 let changed = self.ui_shell.move_panel_to(
                     &panel_id,
                     window_x.saturating_sub(grab_offset_x),
@@ -251,7 +253,8 @@ impl DesktopApp {
 
     pub(crate) fn advance_panel_drag_source(&mut self, event: &PanelEvent) {
         if let PanelEvent::DragValue { to, .. } = event
-            && let Some(PanelDragState::Control { source_value, .. }) = self.active_panel_drag.as_mut()
+            && let Some(PanelDragState::Control { source_value, .. }) =
+                self.active_panel_drag.as_mut()
         {
             *source_value = *to;
         }
@@ -304,8 +307,8 @@ impl DesktopApp {
     }
 
     /// パネル上の単発ポインタイベントを処理する。
-    fn handle_panel_pointer(&mut self, x: i32, y: i32) -> bool {
-        let Some(event) = self.panel_event_from_window(x, y) else {
+    fn handle_panel_pointer(&mut self, point: WindowPoint) -> bool {
+        let Some(event) = self.panel_event_from_window(point) else {
             self.pending_panel_press = None;
             return false;
         };
@@ -419,16 +422,15 @@ impl DesktopApp {
     pub(crate) fn handle_canvas_pointer(
         &mut self,
         action: &str,
-        x: i32,
-        y: i32,
+        point: WindowPoint,
         pressure: f32,
     ) -> bool {
-        let canvas_position = self.canvas_position_from_window(x, y).or_else(|| {
+        let canvas_position = self.canvas_position_from_window(point).or_else(|| {
             (action != "down" && self.canvas_input.is_drawing)
-                .then(|| self.canvas_position_from_window_clamped(x, y))
+                .then(|| self.canvas_position_from_window_clamped(point))
                 .flatten()
         });
-        let Some((canvas_x, canvas_y)) = canvas_position else {
+        let Some(page_point) = canvas_position else {
             if action == "up" {
                 self.canvas_input = CanvasInputState::default();
             }
@@ -436,53 +438,84 @@ impl DesktopApp {
         };
 
         let active_tool = self.document.active_tool;
+        if active_tool == ToolKind::PanelRect {
+            return self.handle_panel_rect_pointer(action, page_point);
+        }
+
+        let page_point = if action != "down" && self.canvas_input.is_drawing {
+            self.clamp_page_position_to_active_panel(page_point)
+                .unwrap_or(page_point)
+        } else {
+            page_point
+        };
+        let inside_active_panel = self.page_position_in_active_panel(page_point).is_some();
+        if !inside_active_panel {
+            if action == "up" {
+                self.canvas_input = CanvasInputState::default();
+            }
+            return false;
+        }
+
         match action {
             "down" => {
                 if active_tool == ToolKind::Bucket {
                     return self.execute_command(Command::FillRegion {
-                        x: canvas_x,
-                        y: canvas_y,
+                        x: page_point.x,
+                        y: page_point.y,
                     });
                 }
                 self.canvas_input.is_drawing = true;
-                self.canvas_input.last_position = Some((canvas_x, canvas_y));
-                self.canvas_input.last_smoothed_position = Some((canvas_x as f32, canvas_y as f32));
+                self.canvas_input.last_position = Some(page_point);
+                self.canvas_input.last_smoothed_position =
+                    Some((page_point.x as f32, page_point.y as f32));
                 if active_tool == ToolKind::LassoBucket {
                     self.canvas_input.lasso_points.clear();
-                    self.canvas_input.lasso_points.push((canvas_x, canvas_y));
+                    self.canvas_input.lasso_points.push(page_point);
                     if let Some(layout) = self.layout.as_ref() {
                         self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
                     }
                     return false;
                 }
-                self.execute_canvas_command(canvas_x, canvas_y, None, pressure)
+                self.execute_canvas_command(page_point, None, pressure)
             }
             "drag" if self.canvas_input.is_drawing => {
                 if active_tool == ToolKind::LassoBucket {
-                    if self.canvas_input.lasso_points.last().copied() != Some((canvas_x, canvas_y)) {
-                        self.canvas_input.lasso_points.push((canvas_x, canvas_y));
+                    if self.canvas_input.lasso_points.last().copied() != Some(page_point) {
+                        self.canvas_input.lasso_points.push(page_point);
                         if let Some(layout) = self.layout.as_ref() {
                             self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
                         }
                     }
-                    self.canvas_input.last_position = Some((canvas_x, canvas_y));
+                    self.canvas_input.last_position = Some(page_point);
                     return false;
                 }
-                let (next_x, next_y) = self.stabilized_canvas_position(canvas_x, canvas_y);
-                let next_position = (next_x, next_y);
+                let next_position = self.stabilized_canvas_position(page_point);
                 let from = self.canvas_input.last_position;
                 if from == Some(next_position) {
                     return false;
                 }
-                let changed = self.execute_canvas_command(next_x, next_y, from, pressure);
+                let changed = self.execute_canvas_command(next_position, from, pressure);
                 self.canvas_input.last_position = Some(next_position);
                 changed
             }
             "up" => {
                 if active_tool == ToolKind::LassoBucket {
                     let changed = if self.canvas_input.lasso_points.len() >= 3 {
+                        let Some(local_points) = self
+                            .canvas_input
+                            .lasso_points
+                            .iter()
+                            .map(|&point| self.page_to_active_panel_local(point))
+                            .collect::<Option<Vec<_>>>()
+                        else {
+                            self.canvas_input = CanvasInputState::default();
+                            return false;
+                        };
                         self.execute_command(Command::FillLasso {
-                            points: self.canvas_input.lasso_points.clone(),
+                            points: local_points
+                                .into_iter()
+                                .map(|point| (point.x, point.y))
+                                .collect(),
                         })
                     } else {
                         false
@@ -494,9 +527,8 @@ impl DesktopApp {
                     return changed;
                 }
                 let from = self.canvas_input.last_position;
-                let changed = if self.canvas_input.is_drawing && from != Some((canvas_x, canvas_y))
-                {
-                    self.execute_canvas_command(canvas_x, canvas_y, from, pressure)
+                let changed = if self.canvas_input.is_drawing && from != Some(page_point) {
+                    self.execute_canvas_command(page_point, from, pressure)
                 } else {
                     false
                 };
@@ -507,10 +539,10 @@ impl DesktopApp {
         }
     }
 
-    fn stabilized_canvas_position(&mut self, x: usize, y: usize) -> (usize, usize) {
+    fn stabilized_canvas_position(&mut self, point: CanvasPoint) -> CanvasPoint {
         if self.document.active_tool != ToolKind::Pen {
-            self.canvas_input.last_smoothed_position = Some((x as f32, y as f32));
-            return (x, y);
+            self.canvas_input.last_smoothed_position = Some((point.x as f32, point.y as f32));
+            return point;
         }
         let stabilization = self
             .document
@@ -518,55 +550,73 @@ impl DesktopApp {
             .map(|preset| preset.stabilization)
             .unwrap_or_default();
         if stabilization == 0 {
-            self.canvas_input.last_smoothed_position = Some((x as f32, y as f32));
-            return (x, y);
+            self.canvas_input.last_smoothed_position = Some((point.x as f32, point.y as f32));
+            return point;
         }
 
         let blend = (1.0 / (1.0 + stabilization as f32 / 12.0)).clamp(0.05, 1.0);
         let previous = self
             .canvas_input
             .last_smoothed_position
-            .unwrap_or((x as f32, y as f32));
+            .unwrap_or((point.x as f32, point.y as f32));
         let next = (
-            previous.0 + (x as f32 - previous.0) * blend,
-            previous.1 + (y as f32 - previous.1) * blend,
+            previous.0 + (point.x as f32 - previous.0) * blend,
+            previous.1 + (point.y as f32 - previous.1) * blend,
         );
         self.canvas_input.last_smoothed_position = Some(next);
-        (next.0.round().max(0.0) as usize, next.1.round().max(0.0) as usize)
+        CanvasPoint::new(
+            next.0.round().max(0.0) as usize,
+            next.1.round().max(0.0) as usize,
+        )
     }
 
     /// ウィンドウ座標をキャンバスビットマップ座標へ変換する。
-    fn canvas_position_from_window(&self, x: i32, y: i32) -> Option<(usize, usize)> {
+    fn canvas_position_from_window(&self, point: WindowPoint) -> Option<CanvasPoint> {
         let layout = self.layout.as_ref()?;
-        if !layout.canvas_host_rect.contains(x, y) {
+        if !layout.canvas_host_rect.contains(point.x, point.y) {
             return None;
         }
 
-        self.canvas_position_from_window_clamped(x, y)
+        self.canvas_position_from_window_clamped(point)
+    }
+
+    fn canvas_display_contains_window(&self, point: WindowPoint) -> bool {
+        self.layout
+            .as_ref()
+            .is_some_and(|layout| layout.canvas_display_rect.contains(point.x, point.y))
+    }
+
+    fn hover_canvas_position_from_window(&self, point: WindowPoint) -> Option<CanvasPoint> {
+        let position = self.canvas_position_from_window(point)?;
+        match self.document.active_tool {
+            ToolKind::PanelRect => Some(position),
+            ToolKind::Pen | ToolKind::Eraser | ToolKind::Bucket | ToolKind::LassoBucket => self
+                .page_position_in_active_panel(position)
+                .map(|_| position),
+        }
     }
 
     /// ウィンドウ座標をキャンバスビットマップ座標へクランプ付きで変換する。
-    fn canvas_position_from_window_clamped(&self, x: i32, y: i32) -> Option<(usize, usize)> {
+    pub(crate) fn canvas_position_from_window_clamped(
+        &self,
+        point: WindowPoint,
+    ) -> Option<CanvasPoint> {
         let layout = self.layout.as_ref()?;
-        let clamped_x = x.clamp(
-            layout.canvas_host_rect.x as i32,
-            (layout.canvas_host_rect.x + layout.canvas_host_rect.width.saturating_sub(1)) as i32,
+        let window_rect = app_core::WindowRect::new(
+            layout.canvas_host_rect.x,
+            layout.canvas_host_rect.y,
+            layout.canvas_host_rect.width,
+            layout.canvas_host_rect.height,
         );
-        let clamped_y = y.clamp(
-            layout.canvas_host_rect.y as i32,
-            (layout.canvas_host_rect.y + layout.canvas_host_rect.height.saturating_sub(1)) as i32,
-        );
-
-        let bitmap = self.document.active_bitmap()?;
+        let viewport_point = window_rect.clamp_to_canvas_viewport_point(point)?;
         map_view_to_canvas_with_transform(
             &render::RenderFrame {
-                width: bitmap.width,
-                height: bitmap.height,
+                width: self.canvas_dimensions().0,
+                height: self.canvas_dimensions().1,
                 pixels: Vec::new(),
             },
             CanvasPointerEvent {
-                x: clamped_x - layout.canvas_host_rect.x as i32,
-                y: clamped_y - layout.canvas_host_rect.y as i32,
+                position: viewport_point,
                 width: layout.canvas_host_rect.width as i32,
                 height: layout.canvas_host_rect.height as i32,
             },
@@ -574,45 +624,97 @@ impl DesktopApp {
         )
     }
 
+    fn page_position_in_active_panel(&self, point: CanvasPoint) -> Option<CanvasPoint> {
+        let bounds = self.document.active_panel_bounds()?;
+        bounds.contains_canvas_point(point).then_some(point)
+    }
+
+    fn page_to_active_panel_local(&self, point: CanvasPoint) -> Option<app_core::PanelLocalPoint> {
+        let bounds = self.document.active_panel_bounds()?;
+        bounds.canvas_to_panel_local(point)
+    }
+
+    fn clamp_page_position_to_active_panel(&self, point: CanvasPoint) -> Option<CanvasPoint> {
+        let bounds = self.document.active_panel_bounds()?;
+        bounds.clamp_canvas_point(point)
+    }
+
+    fn handle_panel_rect_pointer(&mut self, action: &str, point: CanvasPoint) -> bool {
+        match action {
+            "down" => {
+                self.canvas_input.is_drawing = true;
+                self.canvas_input.panel_rect_anchor = Some(point);
+                self.canvas_input.last_position = Some(point);
+                if let Some(layout) = self.layout.as_ref() {
+                    self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
+                }
+                true
+            }
+            "drag" if self.canvas_input.is_drawing => {
+                if self.canvas_input.last_position == Some(point) {
+                    return false;
+                }
+                self.canvas_input.last_position = Some(point);
+                if let Some(layout) = self.layout.as_ref() {
+                    self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
+                }
+                true
+            }
+            "up" => {
+                let preview = self.panel_creation_preview_bounds();
+                let created = preview
+                    .filter(|bounds| bounds.width >= 8 && bounds.height >= 8)
+                    .is_some_and(|bounds| {
+                        self.execute_command(Command::CreatePanel {
+                            x: bounds.x,
+                            y: bounds.y,
+                            width: bounds.width,
+                            height: bounds.height,
+                        })
+                    });
+                self.canvas_input = CanvasInputState::default();
+                if let Some(layout) = self.layout.as_ref() {
+                    self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
+                    return true;
+                }
+                created
+            }
+            _ => false,
+        }
+    }
+
     /// ウィンドウ座標からパネルイベントを逆引きする。
-    fn panel_event_from_window(&self, x: i32, y: i32) -> Option<PanelEvent> {
+    fn panel_event_from_window(&self, point: WindowPoint) -> Option<PanelEvent> {
         let panel_surface = self.panel_surface.as_ref()?;
-        let (surface_x, surface_y) = self.panel_surface_coordinates_from_window(x, y)?;
-        panel_surface.hit_test(surface_x, surface_y)
+        let surface_point = self.panel_surface_coordinates_from_window(point)?;
+        panel_surface.hit_test_at(surface_point)
     }
 
     pub(crate) fn panel_is_hovered(&self, x: i32, y: i32) -> bool {
-        self.panel_move_hit_from_window(x, y).is_some() || self.panel_event_from_window(x, y).is_some()
+        let point = WindowPoint::new(x, y);
+        self.panel_move_hit_from_window(point).is_some()
+            || self.panel_event_from_window(point).is_some()
     }
 
-    fn panel_move_hit_from_window(&self, x: i32, y: i32) -> Option<String> {
+    fn panel_move_hit_from_window(&self, point: WindowPoint) -> Option<String> {
         let panel_surface = self.panel_surface.as_ref()?;
-        let (surface_x, surface_y) = self.panel_surface_coordinates_from_window(x, y)?;
-        panel_surface.move_panel_hit_test(surface_x, surface_y)
+        let surface_point = self.panel_surface_coordinates_from_window(point)?;
+        panel_surface.move_panel_hit_test_at(surface_point)
     }
 
-    fn panel_surface_coordinates_from_window(&self, x: i32, y: i32) -> Option<(usize, usize)> {
+    fn panel_surface_coordinates_from_window(
+        &self,
+        point: WindowPoint,
+    ) -> Option<app_core::PanelSurfacePoint> {
         let panel_surface = self.panel_surface.as_ref()?;
-        map_view_to_surface(
-            panel_surface.width,
-            panel_surface.height,
-            Rect {
-                x: panel_surface.x,
-                y: panel_surface.y,
-                width: panel_surface.width,
-                height: panel_surface.height,
-            },
-            x,
-            y,
-        )
+        panel_surface.global_bounds().to_surface_point(point)
     }
 
     /// ドラッグ継続中のパネルノードへ値変更イベントを生成する。
     fn panel_drag_event_from_window(
         &self,
         state: &PanelDragState,
-        x: i32,
-        y: i32,
+        point: WindowPoint,
     ) -> Option<PanelEvent> {
         let PanelDragState::Control {
             panel_id,
@@ -623,24 +725,9 @@ impl DesktopApp {
             return None;
         };
         let panel_surface = self.panel_surface.as_ref()?;
-        let (surface_x, surface_y) = map_view_to_surface_clamped(
-            panel_surface.width,
-            panel_surface.height,
-            Rect {
-                x: panel_surface.x,
-                y: panel_surface.y,
-                width: panel_surface.width,
-                height: panel_surface.height,
-            },
-            x,
-            y,
-        )?;
-        panel_surface.drag_event(
-            panel_id,
-            node_id,
-            *source_value,
-            surface_x,
-            surface_y,
-        )
+        let surface_point = panel_surface
+            .global_bounds()
+            .clamp_to_surface_point(point)?;
+        panel_surface.drag_event_at(panel_id, node_id, *source_value, surface_point)
     }
 }

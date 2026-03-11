@@ -3,12 +3,12 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use app_core::{ColorRgba8, Command, ToolKind};
+use app_core::{CanvasPoint, CanvasViewportPoint, ColorRgba8, Command, PanelLocalPoint, PanelSurfacePoint, WindowPoint, ToolKind};
 use desktop_support::{DesktopProfiler, StageStats, ValueStats};
 
 use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::{DesktopApp, PanelDragState};
-use crate::canvas_bridge::{CanvasPointerEvent, command_for_canvas_gesture, map_view_to_canvas};
+use crate::canvas_bridge::{CanvasPointerEvent, command_for_canvas_gesture, map_view_to_canvas_with_transform};
 
 fn rect_within_panel_surface(rect: crate::frame::Rect, surface: &ui_shell::PanelSurface) -> bool {
     rect.x >= surface.x
@@ -20,27 +20,32 @@ fn rect_within_panel_surface(rect: crate::frame::Rect, surface: &ui_shell::Panel
 /// ビュー中央がキャンバス中央へ変換されることを確認する。
 #[test]
 fn canvas_position_maps_view_center_into_bitmap_bounds() {
-    let position = map_view_to_canvas(
+    let position = map_view_to_canvas_with_transform(
         &render::RenderFrame {
             width: 64,
             height: 64,
             pixels: vec![255; 64 * 64 * 4],
         },
         CanvasPointerEvent {
-            x: 320,
-            y: 320,
+            position: CanvasViewportPoint::new(320, 320),
             width: 640,
             height: 640,
         },
+        app_core::CanvasViewTransform::default(),
     );
 
-    assert_eq!(position, Some((32, 32)));
+    assert_eq!(position, Some(CanvasPoint::new(32, 32)));
 }
 
 /// 消しゴムドラッグが erase stroke コマンドになることを確認する。
 #[test]
 fn eraser_drag_becomes_erase_stroke_command() {
-    let command = command_for_canvas_gesture(ToolKind::Eraser, (7, 8), Some((3, 4)), 1.0);
+    let command = command_for_canvas_gesture(
+        ToolKind::Eraser,
+        PanelLocalPoint::new(7, 8),
+        Some(PanelLocalPoint::new(3, 4)),
+        1.0,
+    );
 
     assert_eq!(
         command,
@@ -64,9 +69,9 @@ fn canvas_drag_draws_black_pixels() {
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    app.handle_canvas_pointer("down", center_x, center_y, 1.0);
-    app.handle_canvas_pointer("drag", center_x + 20, center_y, 1.0);
-    app.handle_canvas_pointer("up", center_x + 20, center_y, 1.0);
+    app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer("drag", WindowPoint::new(center_x + 20, center_y), 1.0);
+    app.handle_canvas_pointer("up", WindowPoint::new(center_x + 20, center_y), 1.0);
 
     let frame = render::RenderContext::new().render_frame(&app.document);
     assert!(
@@ -90,8 +95,8 @@ fn canvas_drag_draws_using_selected_color() {
     let _ = app.execute_command(Command::SetActiveColor {
         color: ColorRgba8::new(0x43, 0xa0, 0x47, 0xff),
     });
-    app.handle_canvas_pointer("down", center_x, center_y, 1.0);
-    app.handle_canvas_pointer("up", center_x, center_y, 1.0);
+    app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer("up", WindowPoint::new(center_x, center_y), 1.0);
 
     let frame = render::RenderContext::new().render_frame(&app.document);
     assert!(
@@ -100,6 +105,57 @@ fn canvas_drag_draws_using_selected_color() {
             .chunks_exact(4)
             .any(|pixel| pixel == [0x43, 0xa0, 0x47, 0xff])
     );
+}
+
+#[test]
+fn panel_rect_tool_creates_panel_from_dragged_page_rect() {
+    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut profiler = DesktopProfiler::new();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+    assert!(app.execute_command(Command::SetActiveTool {
+        tool: ToolKind::PanelRect,
+    }));
+
+    let layout = app.layout.clone().expect("layout exists");
+    let start_window = (
+        layout.canvas_display_rect.x as i32 + layout.canvas_display_rect.width as i32 / 4,
+        layout.canvas_display_rect.y as i32 + layout.canvas_display_rect.height as i32 / 4,
+    );
+    let end_window = (
+        layout.canvas_display_rect.x as i32 + layout.canvas_display_rect.width as i32 * 3 / 5,
+        layout.canvas_display_rect.y as i32 + layout.canvas_display_rect.height as i32 / 2,
+    );
+    let start = app
+        .canvas_position_from_window_clamped(WindowPoint::new(start_window.0, start_window.1))
+        .expect("start page position");
+    let end = app
+        .canvas_position_from_window_clamped(WindowPoint::new(end_window.0, end_window.1))
+        .expect("end page position");
+
+    assert!(app.handle_canvas_pointer(
+        "down",
+        WindowPoint::new(start_window.0, start_window.1),
+        1.0,
+    ));
+    assert!(app.handle_canvas_pointer(
+        "drag",
+        WindowPoint::new(end_window.0, end_window.1),
+        1.0,
+    ));
+    assert!(app.handle_canvas_pointer(
+        "up",
+        WindowPoint::new(end_window.0, end_window.1),
+        1.0,
+    ));
+
+    let page = app.document.active_page().expect("active page");
+    assert_eq!(page.panels.len(), 2);
+    let created = page.panels.last().expect("created panel");
+    assert_eq!(created.bounds.x, start.x.min(end.x));
+    assert_eq!(created.bounds.y, start.y.min(end.y));
+    assert_eq!(created.bounds.width, start.x.max(end.x) - start.x.min(end.x) + 1);
+    assert_eq!(created.bounds.height, start.y.max(end.y) - start.y.min(end.y) + 1);
+    assert_eq!(app.document.active_panel_index(), 1);
 }
 
 /// パネルスクロール要求でスクロールオフセットが更新されることを確認する。
@@ -144,11 +200,14 @@ fn panel_color_wheel_pointer_press_is_handled() {
                 panel_id,
                 node_id,
                 value,
-            }) = surface.hit_test(x, y)
+            }) = surface.hit_test_at(PanelSurfacePoint::new(x, y))
                 && panel_id == "builtin.color-palette"
                 && node_id == "color.wheel"
             {
-                if surface.move_panel_hit_test(x, y).is_some() {
+                if surface
+                    .move_panel_hit_test_at(PanelSurfacePoint::new(x, y))
+                    .is_some()
+                {
                     continue;
                 }
                 let window = to_window(x, y);
@@ -164,6 +223,100 @@ fn panel_color_wheel_pointer_press_is_handled() {
     let (press_x, press_y, _) = first_hit.expect("first draggable color wheel hit exists");
 
     assert!(app.handle_pointer_pressed(press_x, press_y));
+}
+
+#[test]
+fn overlapping_panel_button_press_takes_priority_over_canvas_input() {
+    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut profiler = DesktopProfiler::new();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+    let layout = app.layout.clone().expect("layout exists");
+
+    assert!(app.ui_shell.move_panel_to(
+        "builtin.tool-palette",
+        layout.canvas_display_rect.x + 24,
+        layout.canvas_display_rect.y + 24,
+        layout.window_rect.width,
+        layout.window_rect.height,
+    ));
+    app.mark_panel_surface_dirty();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+
+    let surface = app.panel_surface.clone().expect("panel surface exists");
+    let (button_x, button_y) = (0..surface.height)
+        .find_map(|y| {
+            (0..surface.width).find_map(|x| match surface.hit_test_at(PanelSurfacePoint::new(x, y)) {
+                Some(plugin_api::PanelEvent::Activate { panel_id, node_id })
+                    if panel_id == "builtin.tool-palette" && node_id == "tool.eraser" =>
+                {
+                    Some((surface.x as i32 + x as i32, surface.y as i32 + y as i32))
+                }
+                _ => None,
+            })
+        })
+        .expect("tool button hit exists");
+
+    assert!(app.handle_pointer_pressed(button_x, button_y));
+    assert!(app.handle_pointer_released(button_x, button_y));
+    assert_eq!(app.document.active_tool, ToolKind::Eraser);
+}
+
+#[test]
+fn overlapping_panel_drag_takes_priority_over_canvas_input() {
+    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut profiler = DesktopProfiler::new();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+    let layout = app.layout.clone().expect("layout exists");
+
+    assert!(app.ui_shell.move_panel_to(
+        "builtin.layers-panel",
+        layout.canvas_display_rect.x + 32,
+        layout.canvas_display_rect.y + 32,
+        layout.window_rect.width,
+        layout.window_rect.height,
+    ));
+    app.mark_panel_surface_dirty();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+
+    let before_position = app
+        .ui_shell
+        .workspace_layout()
+        .panels
+        .into_iter()
+        .find(|panel| panel.id == "builtin.layers-panel")
+        .and_then(|panel| panel.position)
+        .expect("stored panel position exists");
+    let surface = app.panel_surface.clone().expect("panel surface exists");
+    let (press_x, press_y) = (0..surface.height)
+        .find_map(|y| {
+            (0..surface.width).find_map(|x| {
+                surface
+                    .move_panel_hit_test_at(PanelSurfacePoint::new(x, y))
+                    .filter(|panel_id| panel_id == "builtin.layers-panel")
+                    .map(|_| (surface.x as i32 + x as i32, surface.y as i32 + y as i32))
+            })
+        })
+        .expect("move-panel hit exists");
+    let press = WindowPoint::new(press_x, press_y);
+    let drag = WindowPoint::new(press.x + 96, press.y + 48);
+
+    assert!(app.handle_pointer_pressed(press.x, press.y));
+    assert!(app.handle_pointer_dragged(drag.x, drag.y));
+    let _ = app.handle_pointer_released(drag.x, drag.y);
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+
+    let after = app.ui_shell.panel_rect("builtin.layers-panel").expect("panel rect exists");
+    let after_position = app
+        .ui_shell
+        .workspace_layout()
+        .panels
+        .into_iter()
+        .find(|panel| panel.id == "builtin.layers-panel")
+        .and_then(|panel| panel.position)
+        .expect("stored panel position exists");
+    assert_ne!((after_position.x, after_position.y), (before_position.x, before_position.y));
+    assert!(after.x >= layout.canvas_display_rect.x);
+    assert!(after.y >= layout.canvas_display_rect.y);
 }
 
 #[test]
@@ -676,19 +829,19 @@ fn profile_canvas_brush_sizes_for_ten_seconds() {
             } else {
                 (end_x, start_x)
             };
-            app.handle_canvas_pointer("down", down_x, center_y, 1.0);
+            app.handle_canvas_pointer("down", WindowPoint::new(down_x, center_y), 1.0);
             let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
 
             for step in 1..=8 {
                 let x = down_x + ((up_x - down_x) * step / 8);
-                app.handle_canvas_pointer("drag", x, center_y, 1.0);
+                app.handle_canvas_pointer("drag", WindowPoint::new(x, center_y), 1.0);
                 let update = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
                 if update.canvas_dirty_rect.is_some() {
                     iterations += 1;
                 }
             }
 
-            app.handle_canvas_pointer("up", up_x, center_y, 1.0);
+            app.handle_canvas_pointer("up", WindowPoint::new(up_x, center_y), 1.0);
             let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
             forward = !forward;
         }
@@ -769,7 +922,7 @@ fn panel_release_without_matching_press_does_not_activate_save() {
 
     let (save_x, save_y) = (0..surface.height)
         .find_map(|y| {
-            (0..surface.width).find_map(|x| match surface.hit_test(x, y) {
+            (0..surface.width).find_map(|x| match surface.hit_test_at(PanelSurfacePoint::new(x, y)) {
                 Some(plugin_api::PanelEvent::Activate { panel_id, node_id })
                     if panel_id == "builtin.app-actions" && node_id == "app.save" =>
                 {
@@ -835,6 +988,7 @@ fn emit_canvas_perf(
         ToolKind::Eraser => "eraser",
         ToolKind::Bucket => "bucket",
         ToolKind::LassoBucket => "lasso-bucket",
+        ToolKind::PanelRect => "panel-rect",
     };
     eprintln!(
         "[canvas-perf] tool={tool_name} size={size} duration={elapsed:.2}s iterations={iterations} rate={:.1}Hz",
@@ -958,7 +1112,7 @@ fn control_points_from_surface(
     let mut points = Vec::new();
     for y in 0..surface.height {
         for x in 0..surface.width {
-            let Some(event) = surface.hit_test(x, y) else {
+            let Some(event) = surface.hit_test_at(PanelSurfacePoint::new(x, y)) else {
                 continue;
             };
             if predicate(&event) {
@@ -989,17 +1143,15 @@ fn pan_view_updates_canvas_without_status_recompose() {
     assert!(!profiler.stats.contains_key("compose_full_frame"));
     assert!(!profiler.stats.contains_key("compose_dirty_status"));
     assert!(profiler.stats.contains_key("prepare_canvas_scene"));
-    assert!(profiler.stats.contains_key("compose_dirty_panel"));
-    assert!(profiler.stats.contains_key("prepare_canvas_scene"));
+    assert!(!profiler.stats.contains_key("compose_dirty_panel"));
+    assert!(!profiler.stats.contains_key("panel_surface"));
     assert!(!profiler.stats.contains_key("compose_dirty_canvas_base"));
     assert!(!profiler.stats.contains_key("compose_dirty_overlay"));
     assert!(update.canvas_updated);
     assert!(update.canvas_transform_changed);
     assert_eq!(update.canvas_dirty_rect, None);
     assert_eq!(update.base_dirty_rect, None);
-    let surface = app.panel_surface.clone().expect("panel surface exists");
-    let overlay_dirty = update.overlay_dirty_rect.expect("overlay dirty rect");
-    assert!(rect_within_panel_surface(overlay_dirty, &surface));
+    assert_eq!(update.overlay_dirty_rect, None);
 }
 
 #[test]
@@ -1047,7 +1199,7 @@ fn new_document_sized_resets_active_interactions() {
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    assert!(app.handle_canvas_pointer("down", center_x, center_y, 1.0));
+    assert!(app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0));
     assert!(app.update_canvas_hover(center_x, center_y));
     assert!(app.canvas_input.is_drawing);
     assert!(app.hover_canvas_position.is_some());

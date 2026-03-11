@@ -6,7 +6,10 @@
 mod panel;
 mod text;
 
-use app_core::{CanvasViewTransform, DirtyRect, Document};
+use app_core::{
+    CanvasDirtyRect, CanvasDisplayPoint, CanvasPoint, CanvasViewTransform,
+    CanvasViewportPoint, ClampToCanvasBounds, Document,
+};
 
 pub use panel::{
     FloatingPanel, MeasuredPanelSize, PanelFocusTarget, PanelHitKind, PanelHitRegion,
@@ -137,7 +140,7 @@ impl CanvasScene {
     }
 
     /// ビットマップ dirty rect を表示先へ写像する。
-    pub fn map_canvas_dirty_rect(&self, dirty: DirtyRect) -> PixelRect {
+    pub fn map_canvas_dirty_rect(&self, dirty: CanvasDirtyRect) -> PixelRect {
         self.map_source_rect_to_display(dirty)
             .and_then(|rect| rect.intersect(self.viewport))
             .unwrap_or(PixelRect {
@@ -149,37 +152,37 @@ impl CanvasScene {
     }
 
     /// キャンバス座標のブラシプレビュー領域を返す。
-    pub fn brush_preview_rect(&self, canvas_position: (usize, usize)) -> Option<PixelRect> {
+    pub fn brush_preview_rect(&self, canvas_position: CanvasPoint) -> Option<PixelRect> {
         self.brush_preview_rect_for_diameter(canvas_position, 1.0)
     }
 
     /// ソース座標上のブラシ径を考慮したプレビュー領域を返す。
     pub fn brush_preview_rect_for_diameter(
         &self,
-        canvas_position: (usize, usize),
+        canvas_position: CanvasPoint,
         brush_diameter: f32,
     ) -> Option<PixelRect> {
-        let (center_x, center_y) = self.map_source_point_to_display(canvas_position)?;
+        let center = self.map_source_point_to_display(canvas_position)?;
         let radius = ((brush_diameter.max(1.0) * self.scale) * 0.5).max(4.0);
 
         self.viewport.intersect(PixelRect {
-            x: (center_x - radius - 2.0)
+            x: (center.x - radius - 2.0)
                 .floor()
                 .max(self.viewport.x as f32) as usize,
-            y: (center_y - radius - 2.0)
+            y: (center.y - radius - 2.0)
                 .floor()
                 .max(self.viewport.y as f32) as usize,
-            width: ((center_x + radius + 2.0)
+            width: ((center.x + radius + 2.0)
                 .ceil()
                 .min((self.viewport.x + self.viewport.width) as f32)
-                - (center_x - radius - 2.0)
+                - (center.x - radius - 2.0)
                     .floor()
                     .max(self.viewport.x as f32))
             .max(1.0) as usize,
-            height: ((center_y + radius + 2.0)
+            height: ((center.y + radius + 2.0)
                 .ceil()
                 .min((self.viewport.y + self.viewport.height) as f32)
-                - (center_y - radius - 2.0)
+                - (center.y - radius - 2.0)
                     .floor()
                     .max(self.viewport.y as f32))
             .max(1.0) as usize,
@@ -189,17 +192,17 @@ impl CanvasScene {
     /// キャンバス座標を表示座標へ変換する。
     pub fn map_canvas_point_to_display(
         &self,
-        canvas_position: (usize, usize),
-    ) -> Option<(f32, f32)> {
+        canvas_position: CanvasPoint,
+    ) -> Option<CanvasDisplayPoint> {
         self.map_source_point_to_display(canvas_position)
     }
 
     /// ビュー座標をキャンバスビットマップ座標へ変換する。
-    pub fn map_view_to_canvas(&self, x: i32, y: i32) -> Option<(usize, usize)> {
+    pub fn map_view_to_canvas(&self, point: CanvasViewportPoint) -> Option<CanvasPoint> {
         let drawn_width = self.bbox_width * self.scale;
         let drawn_height = self.bbox_height * self.scale;
-        let local_x = x as f32 - self.offset_x;
-        let local_y = y as f32 - self.offset_y;
+        let local_x = point.x as f32 - self.offset_x;
+        let local_y = point.y as f32 - self.offset_y;
         if local_x < 0.0 || local_y < 0.0 || local_x >= drawn_width || local_y >= drawn_height {
             return None;
         }
@@ -213,14 +216,14 @@ impl CanvasScene {
         let canvas_x = (source_u * self.source_width as f32).floor() as usize;
         let canvas_y = (source_v * self.source_height as f32).floor() as usize;
 
-        Some((
+        Some(CanvasPoint::new(
             canvas_x.min(self.source_width.saturating_sub(1)),
             canvas_y.min(self.source_height.saturating_sub(1)),
         ))
     }
 
-    fn map_source_rect_to_display(&self, dirty: DirtyRect) -> Option<PixelRect> {
-        let dirty = dirty.clamp_to_bitmap(self.source_width, self.source_height);
+    fn map_source_rect_to_display(&self, dirty: CanvasDirtyRect) -> Option<PixelRect> {
+        let dirty = dirty.clamp_to_canvas_bounds(self.source_width, self.source_height);
         let corners = [
             (
                 dirty.x as f32 / self.source_width as f32,
@@ -263,14 +266,17 @@ impl CanvasScene {
         })
     }
 
-    fn map_source_point_to_display(&self, canvas_position: (usize, usize)) -> Option<(f32, f32)> {
-        if canvas_position.0 >= self.source_width || canvas_position.1 >= self.source_height {
+    fn map_source_point_to_display(
+        &self,
+        canvas_position: CanvasPoint,
+    ) -> Option<CanvasDisplayPoint> {
+        if canvas_position.x >= self.source_width || canvas_position.y >= self.source_height {
             return None;
         }
-        let source_u = (canvas_position.0 as f32 + 0.5) / self.source_width as f32;
-        let source_v = (canvas_position.1 as f32 + 0.5) / self.source_height as f32;
+        let source_u = (canvas_position.x as f32 + 0.5) / self.source_width as f32;
+        let source_v = (canvas_position.y as f32 + 0.5) / self.source_height as f32;
         let (rotated_u, rotated_v) = source_to_rotated_uv(source_u, source_v, self.uv_transform());
-        Some((
+        Some(CanvasDisplayPoint::new(
             self.offset_x + rotated_u * self.bbox_width * self.scale,
             self.offset_y + rotated_v * self.bbox_height * self.scale,
         ))
@@ -418,7 +424,7 @@ fn rotated_to_source_uv(rotated_u: f32, rotated_v: f32, uv_transform: UvTransfor
 
 /// ビットマップ dirty rect を表示先へ写像する。
 pub fn map_canvas_dirty_to_display_with_transform(
-    dirty: DirtyRect,
+    dirty: CanvasDirtyRect,
     viewport: PixelRect,
     source_width: usize,
     source_height: usize,
@@ -451,7 +457,7 @@ pub fn brush_preview_rect(
     source_width: usize,
     source_height: usize,
     transform: CanvasViewTransform,
-    canvas_position: (usize, usize),
+    canvas_position: CanvasPoint,
 ) -> Option<PixelRect> {
     prepare_canvas_scene(viewport, source_width, source_height, transform)
         .and_then(|scene| scene.brush_preview_rect(canvas_position))
@@ -463,7 +469,7 @@ pub fn brush_preview_rect_for_diameter(
     source_width: usize,
     source_height: usize,
     transform: CanvasViewTransform,
-    canvas_position: (usize, usize),
+    canvas_position: CanvasPoint,
     brush_diameter: f32,
 ) -> Option<PixelRect> {
     prepare_canvas_scene(viewport, source_width, source_height, transform)
@@ -476,8 +482,8 @@ pub fn map_canvas_point_to_display(
     source_width: usize,
     source_height: usize,
     transform: CanvasViewTransform,
-    canvas_position: (usize, usize),
-) -> Option<(f32, f32)> {
+    canvas_position: CanvasPoint,
+) -> Option<CanvasDisplayPoint> {
     prepare_canvas_scene(viewport, source_width, source_height, transform)
         .and_then(|scene| scene.map_canvas_point_to_display(canvas_position))
 }
@@ -498,12 +504,11 @@ pub fn map_view_to_canvas_with_transform(
     viewport: PixelRect,
     source_width: usize,
     source_height: usize,
-    x: i32,
-    y: i32,
+    point: CanvasViewportPoint,
     transform: CanvasViewTransform,
-) -> Option<(usize, usize)> {
+) -> Option<CanvasPoint> {
     prepare_canvas_scene(viewport, source_width, source_height, transform)
-        .and_then(|scene| scene.map_view_to_canvas(x, y))
+        .and_then(|scene| scene.map_view_to_canvas(point))
 }
 
 /// パン・ズーム変化で露出した背景領域を返す。
@@ -609,14 +614,35 @@ impl RenderContext {
         document
     }
 
-    /// ドキュメントから最初のコマのビットマップをフレームへ変換する。
+    /// ドキュメントからアクティブコマをページ座標系へ配置したフレームを作る。
     pub fn render_frame(&self, document: &Document) -> RenderFrame {
-        let panel = &document.work.pages[0].panels[0];
-        RenderFrame {
-            width: panel.bitmap.width,
-            height: panel.bitmap.height,
-            pixels: panel.bitmap.pixels.clone(),
+        let page = document.active_page().unwrap_or(&document.work.pages[0]);
+        let panel = document.active_panel().unwrap_or(&page.panels[0]);
+        let mut frame = RenderFrame {
+            width: page.width.max(1),
+            height: page.height.max(1),
+            pixels: vec![255; page.width.max(1) * page.height.max(1) * 4],
+        };
+
+        let copy_width = panel
+            .bitmap
+            .width
+            .min(panel.bounds.width)
+            .min(frame.width.saturating_sub(panel.bounds.x));
+        let copy_height = panel
+            .bitmap
+            .height
+            .min(panel.bounds.height)
+            .min(frame.height.saturating_sub(panel.bounds.y));
+        for row in 0..copy_height {
+            let src_row_start = row * panel.bitmap.width * 4;
+            let dst_row_start = ((panel.bounds.y + row) * frame.width + panel.bounds.x) * 4;
+            let row_bytes = copy_width * 4;
+            frame.pixels[dst_row_start..dst_row_start + row_bytes]
+                .copy_from_slice(&panel.bitmap.pixels[src_row_start..src_row_start + row_bytes]);
         }
+
+        frame
     }
 }
 
@@ -626,29 +652,33 @@ mod tests {
 
     /// 描画フレームが最小キャンバスサイズを正しく反映することを確認する。
     #[test]
-    fn render_frame_uses_first_panel_bitmap() {
-        let mut document = Document::default();
+    fn render_frame_places_active_panel_bitmap_inside_page() {
+        let mut document = Document::new(320, 240);
+        let _ = document.apply_command(&app_core::Command::CreatePanel {
+            x: 40,
+            y: 32,
+            width: 120,
+            height: 80,
+        });
         document.draw_stroke(1, 2, 4, 2);
-        let expected_bitmap = &document.work.pages[0].panels[0].bitmap;
 
         let context = RenderContext::new();
         let frame = context.render_frame(&document);
 
-        // ドキュメント先頭パネルのビットマップ寸法がフレームへ反映されること。
-        assert_eq!(frame.width, expected_bitmap.width);
-        assert_eq!(frame.height, expected_bitmap.height);
+        assert_eq!(frame.width, 320);
+        assert_eq!(frame.height, 240);
 
-        // ドキュメントのストローク描画結果がフレームへ反映されること。
-        let index = (2 * frame.width + 1) * 4;
+        let index = ((32 + 2) * frame.width + (40 + 1)) * 4;
         assert_eq!(&frame.pixels[index..index + 4], &[0, 0, 0, 255]);
-        let end_index = (2 * frame.width + 4) * 4;
+        let end_index = ((32 + 2) * frame.width + (40 + 4)) * 4;
         assert_eq!(&frame.pixels[end_index..end_index + 4], &[0, 0, 0, 255]);
+        assert_eq!(&frame.pixels[0..4], &[255, 255, 255, 255]);
     }
 
     #[test]
     fn transformed_canvas_dirty_rect_tracks_zoom_and_pan() {
         let mapped = map_canvas_dirty_to_display_with_transform(
-            DirtyRect {
+            CanvasDirtyRect {
                 x: 16,
                 y: 16,
                 width: 8,
@@ -717,8 +747,7 @@ mod tests {
             },
             64,
             64,
-            352,
-            320,
+            CanvasViewportPoint::new(352, 320),
             CanvasViewTransform {
                 zoom: 2.0,
                 rotation_degrees: 0.0,
@@ -729,7 +758,7 @@ mod tests {
             },
         );
 
-        assert_eq!(mapped, Some((32, 32)));
+        assert_eq!(mapped, Some(CanvasPoint::new(32, 32)));
     }
 
     #[test]
@@ -777,19 +806,18 @@ mod tests {
             flip_x: false,
             flip_y: false,
         };
-        let display = map_canvas_point_to_display(viewport, 64, 32, transform, (24, 12))
+        let display = map_canvas_point_to_display(viewport, 64, 32, transform, CanvasPoint::new(24, 12))
             .expect("display point exists");
 
         let mapped = map_view_to_canvas_with_transform(
             viewport,
             64,
             32,
-            display.0.round() as i32,
-            display.1.round() as i32,
+            CanvasViewportPoint::new(display.x.round() as i32, display.y.round() as i32),
             transform,
         );
 
-        assert_eq!(mapped, Some((24, 12)));
+        assert_eq!(mapped, Some(CanvasPoint::new(24, 12)));
     }
 
     #[test]
@@ -832,8 +860,7 @@ mod tests {
             },
             64,
             32,
-            320,
-            160,
+            CanvasViewportPoint::new(320, 160),
             CanvasViewTransform {
                 zoom: 1.0,
                 rotation_degrees: 90.0,

@@ -1,4 +1,5 @@
 use super::*;
+use crate::{CanvasDirtyRect, ClampToCanvasBounds, MergeInSpace};
 
 /// 最小ドキュメント構造がフェーズ0の前提を満たすことを確認する。
 #[test]
@@ -30,7 +31,7 @@ fn draw_point_marks_target_pixel_black() {
     let bitmap = &document.work.pages[0].panels[0].bitmap;
     let index = (4 * bitmap.width + 3) * 4;
     assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
-    assert_eq!(dirty, DirtyRect::from_inclusive_points(3, 4, 3, 4));
+    assert_eq!(dirty, CanvasDirtyRect::from_inclusive_points(3, 4, 3, 4));
 }
 
 /// ストローク描画が始点と終点の間を連続的に塗ることを確認する。
@@ -48,7 +49,7 @@ fn draw_stroke_draws_continuous_line() {
         let index = (2 * bitmap.width + x) * 4;
         assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
     }
-    assert_eq!(dirty, DirtyRect::from_inclusive_points(2, 2, 6, 2));
+    assert_eq!(dirty, CanvasDirtyRect::from_inclusive_points(2, 2, 6, 2));
 }
 
 #[test]
@@ -62,7 +63,7 @@ fn erase_point_marks_target_pixel_white() {
     let bitmap = &document.work.pages[0].panels[0].bitmap;
     let index = (4 * bitmap.width + 3) * 4;
     assert_eq!(&bitmap.pixels[index..index + 4], &[255, 255, 255, 255]);
-    assert_eq!(dirty, DirtyRect::from_inclusive_points(3, 4, 3, 4));
+    assert_eq!(dirty, CanvasDirtyRect::from_inclusive_points(3, 4, 3, 4));
 }
 
 #[test]
@@ -103,12 +104,12 @@ fn draw_point_uses_active_color() {
 /// dirty矩形のunionが両方を含む最小矩形になることを確認する。
 #[test]
 fn dirty_rect_union_merges_bounds() {
-    let left = DirtyRect::from_inclusive_points(2, 3, 4, 5);
-    let right = DirtyRect::from_inclusive_points(6, 1, 7, 4);
+    let left = CanvasDirtyRect::from_inclusive_points(2, 3, 4, 5);
+    let right = CanvasDirtyRect::from_inclusive_points(6, 1, 7, 4);
 
     assert_eq!(
-        left.union(right),
-        DirtyRect {
+        left.merge(right),
+        CanvasDirtyRect {
             x: 2,
             y: 1,
             width: 6,
@@ -175,7 +176,7 @@ fn apply_command_draw_stroke_returns_dirty_rect() {
         pressure: 1.0,
     });
 
-    assert_eq!(dirty, Some(DirtyRect::from_inclusive_points(1, 1, 3, 1)));
+    assert_eq!(dirty, Some(CanvasDirtyRect::from_inclusive_points(1, 1, 3, 1)));
     let bitmap = &document.work.pages[0].panels[0].bitmap;
     let index = (bitmap.width + 2) * 4;
     assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
@@ -294,7 +295,7 @@ fn apply_command_new_document_sized_replaces_bitmap_dimensions() {
 
 #[test]
 fn dirty_rect_clamps_to_bitmap_bounds() {
-    let rect = DirtyRect {
+    let rect = CanvasDirtyRect {
         x: 60,
         y: 62,
         width: 10,
@@ -302,8 +303,8 @@ fn dirty_rect_clamps_to_bitmap_bounds() {
     };
 
     assert_eq!(
-        rect.clamp_to_bitmap(64, 64),
-        DirtyRect {
+        rect.clamp_to_canvas_bounds(64, 64),
+        CanvasDirtyRect {
             x: 60,
             y: 62,
             width: 4,
@@ -491,4 +492,114 @@ fn toggle_active_layer_mask_applies_demo_mask() {
     let index = (before_mask.width + 1) * 4;
     assert_eq!(&before_mask.pixels[index..index + 4], &[0, 0, 0, 255]);
     assert_eq!(&after_mask.pixels[index..index + 4], &[255, 255, 255, 255]);
+}
+
+#[test]
+fn create_panel_command_adds_rectangular_panel_without_relayout() {
+    let mut document = Document::new(320, 240);
+
+    let _ = document.apply_command(&Command::CreatePanel {
+        x: 40,
+        y: 32,
+        width: 120,
+        height: 80,
+    });
+
+    assert_eq!(document.active_page_panel_count(), 2);
+    let panel = document.active_panel().expect("active panel exists");
+    assert_eq!(panel.bounds, PanelBounds {
+        x: 40,
+        y: 32,
+        width: 120,
+        height: 80,
+    });
+    assert_eq!((panel.bitmap.width, panel.bitmap.height), (120, 80));
+}
+
+#[test]
+fn panel_local_draw_returns_page_space_dirty_rect() {
+    let mut document = Document::new(320, 240);
+    let _ = document.apply_command(&Command::CreatePanel {
+        x: 40,
+        y: 32,
+        width: 120,
+        height: 80,
+    });
+    document.set_active_pen_size(1);
+
+    let dirty = document.draw_point(2, 3).expect("dirty rect exists");
+
+    assert_eq!(dirty, CanvasDirtyRect::from_inclusive_points(42, 35, 42, 35));
+}
+
+#[test]
+fn add_panel_selects_new_active_panel() {
+    let mut document = Document::new(320, 240);
+
+    let _ = document.apply_command(&Command::AddPanel);
+
+    assert_eq!(document.active_page_panel_count(), 2);
+    assert_eq!(document.active_panel_index(), 1);
+    let active_panel = document.active_panel().expect("active panel exists");
+    assert!(active_panel.bounds.width > 0);
+    assert!(active_panel.bounds.height > 0);
+}
+
+#[test]
+fn panel_selection_switches_edit_target() {
+    let mut document = Document::new(128, 128);
+    let _ = document.apply_command(&Command::AddPanel);
+    let _ = document.apply_command(&Command::SelectPanel { index: 1 });
+    document.set_active_pen_size(1);
+
+    let _ = document.draw_point(2, 3);
+
+    let first_panel = &document.work.pages[0].panels[0];
+    let second_panel = &document.work.pages[0].panels[1];
+    let first_index = (3 * first_panel.bitmap.width + 2) * 4;
+    let second_index = (3 * second_panel.bitmap.width + 2) * 4;
+    assert_eq!(&first_panel.bitmap.pixels[first_index..first_index + 4], &[255, 255, 255, 255]);
+    assert_eq!(&second_panel.bitmap.pixels[second_index..second_index + 4], &[0, 0, 0, 255]);
+}
+
+#[test]
+fn select_previous_panel_wraps_to_last_panel() {
+    let mut document = Document::new(256, 256);
+    let _ = document.apply_command(&Command::AddPanel);
+    let _ = document.apply_command(&Command::SelectPanel { index: 0 });
+
+    let _ = document.apply_command(&Command::SelectPreviousPanel);
+
+    assert_eq!(document.active_panel_index(), 1);
+}
+
+#[test]
+fn remove_active_panel_keeps_single_panel_minimum() {
+    let mut document = Document::new(256, 256);
+    let _ = document.apply_command(&Command::RemoveActivePanel);
+
+    assert_eq!(document.active_page_panel_count(), 1);
+
+    let _ = document.apply_command(&Command::AddPanel);
+    let _ = document.apply_command(&Command::RemoveActivePanel);
+
+    assert_eq!(document.active_page_panel_count(), 1);
+    assert_eq!(document.active_panel_index(), 0);
+}
+
+#[test]
+fn focus_active_panel_resets_view_transform() {
+    let mut document = Document::new(256, 256);
+    document.set_view_transform(CanvasViewTransform {
+        zoom: 2.5,
+        rotation_degrees: 33.0,
+        pan_x: 40.0,
+        pan_y: -20.0,
+        flip_x: true,
+        flip_y: false,
+    });
+
+    let _ = document.apply_command(&Command::FocusActivePanel);
+
+    assert_eq!(document.view_transform, CanvasViewTransform::default());
 }

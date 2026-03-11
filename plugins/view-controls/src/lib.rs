@@ -127,6 +127,21 @@ fn reset_view() {
 }
 
 #[panel_sdk::panel_handler]
+fn focus_active_panel() {
+    emit_command(&commands::panel::focus_active());
+}
+
+#[panel_sdk::panel_handler]
+fn previous_panel() {
+    emit_command(&commands::panel::select_previous());
+}
+
+#[panel_sdk::panel_handler]
+fn next_panel() {
+    emit_command(&commands::panel::select_next());
+}
+
+#[panel_sdk::panel_handler]
 fn flip_horizontal() {
     emit_command(&commands::view::flip_horizontal());
 }
@@ -155,6 +170,9 @@ mod tests {
         set_pan_y(1950);
         set_rotation(270);
         reset_view();
+        focus_active_panel();
+        previous_panel();
+        next_panel();
         flip_horizontal();
         flip_vertical();
     }

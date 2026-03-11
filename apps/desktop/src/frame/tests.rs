@@ -1,7 +1,6 @@
 //! `frame` モジュールの合成・座標変換テストをまとめる。
 
-use app_core::CanvasViewTransform;
-use app_core::DirtyRect;
+use app_core::{CanvasDirtyRect, CanvasPoint, CanvasViewTransform, PanelSurfacePoint, WindowPoint};
 use render::RenderFrame;
 use ui_shell::UiShell;
 
@@ -10,7 +9,7 @@ use super::*;
 /// ビュー右下がサーフェス右下へ写像されることを確認する。
 #[test]
 fn map_view_to_surface_maps_bottom_right_corner() {
-    let mapped = map_view_to_surface(
+    let mapped = map_window_to_panel_surface(
         264,
         800,
         Rect {
@@ -19,17 +18,16 @@ fn map_view_to_surface_maps_bottom_right_corner() {
             width: 264,
             height: 800,
         },
-        271,
-        839,
+        WindowPoint::new(271, 839),
     );
 
-    assert_eq!(mapped, Some((263, 799)));
+    assert_eq!(mapped, Some(PanelSurfacePoint::new(263, 799)));
 }
 
 /// サーフェス外座標が境界へクランプされることを確認する。
 #[test]
 fn map_view_to_surface_clamped_limits_outside_coordinates() {
-    let mapped = map_view_to_surface_clamped(
+    let mapped = map_window_to_panel_surface_clamped(
         264,
         800,
         Rect {
@@ -38,11 +36,10 @@ fn map_view_to_surface_clamped_limits_outside_coordinates() {
             width: 264,
             height: 800,
         },
-        500,
-        -10,
+        WindowPoint::new(500, -10),
     );
 
-    assert_eq!(mapped, Some((263, 0)));
+    assert_eq!(mapped, Some(PanelSurfacePoint::new(263, 0)));
 }
 
 /// レイアウト計算がキャンバスをホスト矩形へ収めることを確認する。
@@ -96,7 +93,7 @@ fn compose_desktop_frame_writes_panel_and_canvas_regions() {
 #[test]
 fn canvas_dirty_rect_maps_into_display_rect() {
     let mapped = map_canvas_dirty_to_display(
-        DirtyRect {
+        CanvasDirtyRect {
             x: 16,
             y: 16,
             width: 8,
@@ -121,7 +118,7 @@ fn canvas_dirty_rect_maps_into_display_rect() {
 #[test]
 fn transformed_canvas_dirty_rect_tracks_zoom_and_pan() {
     let mapped = map_canvas_dirty_to_display_with_transform(
-        DirtyRect {
+        CanvasDirtyRect {
             x: 16,
             y: 16,
             width: 8,
@@ -163,7 +160,7 @@ fn brush_preview_rect_expands_with_larger_brush_size() {
         64,
         64,
         CanvasViewTransform::default(),
-        (32, 32),
+        CanvasPoint::new(32, 32),
         4,
     )
     .expect("small preview exists");
@@ -177,13 +174,83 @@ fn brush_preview_rect_expands_with_larger_brush_size() {
         64,
         64,
         CanvasViewTransform::default(),
-        (32, 32),
+        CanvasPoint::new(32, 32),
         24,
     )
     .expect("large preview exists");
 
     assert!(large.width > small.width);
     assert!(large.height > small.height);
+}
+
+#[test]
+fn overlay_frame_draws_panel_navigator_when_multiple_panels_exist() {
+    let layout = DesktopLayout::new(640, 480, 64, 64);
+    let mut shell = UiShell::new();
+    let panel_surface = shell.render_panel_surface(640, 480);
+    let overlay = compose_overlay_frame(
+        640,
+        480,
+        &layout,
+        &panel_surface,
+        CanvasCompositeSource {
+            width: 64,
+            height: 64,
+            pixels: &[0; 64 * 64 * 4],
+        },
+        CanvasViewTransform::default(),
+        CanvasOverlayState {
+            brush_preview: None,
+            brush_size: None,
+            lasso_points: Vec::new(),
+            active_panel_bounds: None,
+            panel_navigator: Some(PanelNavigatorOverlay {
+                page_width: 320,
+                page_height: 240,
+                panels: vec![
+                    PanelNavigatorEntry {
+                        bounds: app_core::PanelBounds {
+                            x: 12,
+                            y: 12,
+                            width: 143,
+                            height: 216,
+                        },
+                        active: false,
+                    },
+                    PanelNavigatorEntry {
+                        bounds: app_core::PanelBounds {
+                            x: 165,
+                            y: 12,
+                            width: 143,
+                            height: 216,
+                        },
+                        active: true,
+                    },
+                ],
+            }),
+            panel_creation_preview: None,
+        },
+    );
+
+    assert!(overlay.pixels.chunks_exact(4).any(|pixel| pixel[3] != 0));
+}
+
+#[test]
+fn compose_panel_host_region_respects_global_panel_surface_bounds() {
+    let layout = DesktopLayout::new(640, 480, 64, 64);
+    let mut frame = RenderFrame {
+        width: 640,
+        height: 480,
+        pixels: vec![0; 640 * 480 * 4],
+    };
+    let panel_surface = ui_shell::PanelSurface::from_pixels(120, 80, 8, 6, vec![0xaa; 8 * 6 * 4]);
+
+    compose_panel_host_region(&mut frame, &layout, &panel_surface, None);
+
+    let inside = ((80 * frame.width) + 120) * 4;
+    let outside = ((40 * frame.width) + 40) * 4;
+    assert_eq!(&frame.pixels[inside..inside + 4], &[0xaa, 0xaa, 0xaa, 0xaa]);
+    assert_eq!(&frame.pixels[outside..outside + 4], &[0, 0, 0, 0]);
 }
 
 #[test]

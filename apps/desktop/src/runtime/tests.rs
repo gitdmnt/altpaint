@@ -7,18 +7,59 @@ use winit::event::MouseScrollDelta;
 use winit::event::TouchPhase;
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 
+use crate::app::DesktopApp;
+
 use super::DesktopRuntime;
 use super::keyboard::{normalized_key_name, supports_editing_repeat};
+
+fn test_runtime() -> DesktopRuntime {
+    DesktopRuntime {
+        app: DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
+            PathBuf::from("/tmp/altpaint-test.altp.json"),
+            Box::new(crate::app::tests::TestDialogs::default()),
+            crate::app::tests::unique_test_path("runtime-session"),
+            crate::app::tests::unique_test_path("runtime-workspace-presets"),
+        ),
+        window: None,
+        presenter: None,
+        last_cursor_position: None,
+        last_cursor_position_f64: None,
+        last_touch_pressure: 1.0,
+        pending_wheel_pan: (0.0, 0.0),
+        pending_wheel_zoom_lines: 0.0,
+        active_touch_id: None,
+        profiler: DesktopProfiler::new(),
+        modifiers: ModifiersState::default(),
+    }
+}
+
+fn canvas_input_point(runtime: &DesktopRuntime, min_right_space: i32, min_bottom_space: i32) -> (i32, i32) {
+    let layout = runtime.app.layout.clone().expect("layout exists");
+    let start_x = layout.canvas_display_rect.x as i32 + 16;
+    let end_x = ((layout.canvas_display_rect.x + layout.canvas_display_rect.width) as i32)
+        .saturating_sub(min_right_space.max(16));
+    let start_y = layout.canvas_display_rect.y as i32 + 16;
+    let end_y = ((layout.canvas_display_rect.y + layout.canvas_display_rect.height) as i32)
+        .saturating_sub(min_bottom_space.max(16));
+
+    for y in start_y..end_y {
+        for x in start_x..end_x {
+            if !runtime.app.panel_is_hovered(x, y) {
+                return (x, y);
+            }
+        }
+    }
+
+    panic!("expected an uncovered canvas point");
+}
 
 /// タッチ開始と移動でキャンバス描画が行われることを確認する。
 #[test]
 fn touch_started_and_moved_draws_black_pixels() {
-    let mut runtime = DesktopRuntime::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut runtime = test_runtime();
     let mut profiler = DesktopProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 800, &mut profiler);
-    let layout = runtime.app.layout.clone().expect("layout exists");
-    let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
-    let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
+    let (center_x, center_y) = canvas_input_point(&runtime, 32, 32);
 
     assert!(runtime.handle_touch_phase(1, TouchPhase::Started, center_x, center_y, None));
     assert!(runtime.handle_touch_phase(1, TouchPhase::Moved, center_x + 20, center_y, None));
@@ -31,12 +72,10 @@ fn touch_started_and_moved_draws_black_pixels() {
 /// タッチキャンセルで追跡中のタッチ ID が解除されることを確認する。
 #[test]
 fn touch_cancelled_stops_active_touch_tracking() {
-    let mut runtime = DesktopRuntime::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut runtime = test_runtime();
     let mut profiler = DesktopProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 800, &mut profiler);
-    let layout = runtime.app.layout.clone().expect("layout exists");
-    let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
-    let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
+    let (center_x, center_y) = canvas_input_point(&runtime, 16, 16);
 
     assert!(runtime.handle_touch_phase(7, TouchPhase::Started, center_x, center_y, None));
     assert_eq!(runtime.active_touch_id, Some(7));
@@ -48,12 +87,10 @@ fn touch_cancelled_stops_active_touch_tracking() {
 /// raw mouse delta でも描画を継続できることを確認する。
 #[test]
 fn raw_mouse_motion_draws_between_cursor_events() {
-    let mut runtime = DesktopRuntime::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut runtime = test_runtime();
     let mut profiler = DesktopProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 800, &mut profiler);
-    let layout = runtime.app.layout.clone().expect("layout exists");
-    let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
-    let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
+    let (center_x, center_y) = canvas_input_point(&runtime, 80, 16);
 
     runtime.last_cursor_position = Some((center_x, center_y));
     runtime.last_cursor_position_f64 = Some((center_x as f64, center_y as f64));
@@ -67,12 +104,10 @@ fn raw_mouse_motion_draws_between_cursor_events() {
 
 #[test]
 fn pixel_wheel_pan_accepts_sub_line_delta() {
-    let mut runtime = DesktopRuntime::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut runtime = test_runtime();
     let mut profiler = DesktopProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 800, &mut profiler);
-    let layout = runtime.app.layout.clone().expect("layout exists");
-    let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
-    let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
+    let (center_x, center_y) = canvas_input_point(&runtime, 16, 16);
     runtime.last_cursor_position = Some((center_x, center_y));
 
     let before = runtime.app.document.view_transform.pan_y;
@@ -84,12 +119,10 @@ fn pixel_wheel_pan_accepts_sub_line_delta() {
 
 #[test]
 fn wheel_pan_animation_continues_after_initial_event() {
-    let mut runtime = DesktopRuntime::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut runtime = test_runtime();
     let mut profiler = DesktopProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 800, &mut profiler);
-    let layout = runtime.app.layout.clone().expect("layout exists");
-    let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
-    let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
+    let (center_x, center_y) = canvas_input_point(&runtime, 16, 16);
     runtime.last_cursor_position = Some((center_x, center_y));
 
     let before = runtime.app.document.view_transform.pan_y;
@@ -106,12 +139,10 @@ fn wheel_pan_animation_continues_after_initial_event() {
 
 #[test]
 fn shift_wheel_converts_vertical_scroll_into_horizontal_pan() {
-    let mut runtime = DesktopRuntime::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut runtime = test_runtime();
     let mut profiler = DesktopProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 800, &mut profiler);
-    let layout = runtime.app.layout.clone().expect("layout exists");
-    let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
-    let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
+    let (center_x, center_y) = canvas_input_point(&runtime, 16, 16);
     runtime.last_cursor_position = Some((center_x, center_y));
     runtime.modifiers = ModifiersState::SHIFT;
 
@@ -122,12 +153,10 @@ fn shift_wheel_converts_vertical_scroll_into_horizontal_pan() {
 
 #[test]
 fn control_wheel_changes_zoom() {
-    let mut runtime = DesktopRuntime::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut runtime = test_runtime();
     let mut profiler = DesktopProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 800, &mut profiler);
-    let layout = runtime.app.layout.clone().expect("layout exists");
-    let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
-    let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
+    let (center_x, center_y) = canvas_input_point(&runtime, 16, 16);
     runtime.last_cursor_position = Some((center_x, center_y));
     runtime.modifiers = ModifiersState::CONTROL;
 
@@ -138,7 +167,7 @@ fn control_wheel_changes_zoom() {
 
 #[test]
 fn mouse_button_without_cursor_position_is_ignored() {
-    let mut runtime = DesktopRuntime::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut runtime = test_runtime();
 
     assert!(!runtime.handle_mouse_button(winit::event::ElementState::Pressed));
 }
@@ -159,7 +188,7 @@ fn editing_repeat_support_matches_text_navigation_keys() {
 
 #[test]
 fn normalized_shortcut_includes_active_modifiers() {
-    let mut runtime = DesktopRuntime::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut runtime = test_runtime();
     runtime.modifiers = ModifiersState::CONTROL | ModifiersState::SHIFT;
 
     assert_eq!(
@@ -170,7 +199,7 @@ fn normalized_shortcut_includes_active_modifiers() {
 
 #[test]
 fn builtin_shortcut_dispatches_save_project() {
-    let mut runtime = DesktopRuntime::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut runtime = test_runtime();
     runtime.app.project_path = std::env::temp_dir().join(format!(
         "altpaint-runtime-save-shortcut-{}.altp.json",
         std::process::id()
@@ -184,7 +213,7 @@ fn builtin_shortcut_dispatches_save_project() {
 
 #[test]
 fn builtin_shortcut_can_move_focus_backward() {
-    let mut runtime = DesktopRuntime::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut runtime = test_runtime();
     let mut profiler = DesktopProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 200, &mut profiler);
     runtime.modifiers = ModifiersState::SHIFT;

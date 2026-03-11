@@ -391,6 +391,8 @@ plugin / command / host snapshot 側で先行した回転角表現を、renderer
 
 ## フェーズ10: 複数コマとコマ中心UI
 
+補足: 2026-03-11 時点で、最小実装として複数コマ保持、コマ一覧パネル、アクティブコマ切替、コマ境界ナビゲータ、コマ中心ビュー導線を導入した。
+
 ### 目的
 
 `altpaint` 独自のコマ中心ワークフローへ踏み込む。
@@ -426,6 +428,8 @@ plugin / command / host snapshot 側で先行した回転角表現を、renderer
 
 - コマ/ページ単位のロード戦略が成立する
 - 大きな作品でメモリ全展開を避けられる
+
+補足: 2026-03-11 時点で、`storage` は SQLite 単一ファイル形式、layer chunk 保存、current panel snapshot 永続化、page / panel 単位の部分ロード API を持つ。
 
 ## フェーズ12: テキスト流し込み最小版
 

@@ -3,6 +3,7 @@
 //! CPU 側ではパネル UI・背景・ステータス・オーバーレイを保持し、
 //! キャンバス本体は GPU テクスチャとして別経路で提示する。
 
+use app_core::ClampToCanvasBounds;
 use desktop_support::DesktopProfiler;
 
 use super::{DesktopApp, PresentFrameUpdate};
@@ -98,14 +99,9 @@ impl DesktopApp {
         if self.needs_full_present_rebuild || self.base_frame.is_none() || self.overlay_frame.is_none()
         {
             let layout = self.layout.clone().expect("layout exists");
-            let panel_surface = self.panel_surface.clone().unwrap_or_else(|| {
-                self.ui_shell.render_panel_surface(
-                    layout.window_rect.width,
-                    layout.window_rect.height,
-                )
-            });
+            let panel_surface = self.panel_surface.as_ref().expect("panel surface exists");
             let status_text = self.status_text();
-            let bitmap = self.document.active_bitmap();
+            let bitmap = self.canvas_frame.as_ref();
             let canvas_source = CanvasCompositeSource {
                 width: bitmap.map_or(1, |bitmap| bitmap.width),
                 height: bitmap.map_or(1, |bitmap| bitmap.height),
@@ -116,7 +112,7 @@ impl DesktopApp {
                     window_width,
                     window_height,
                     &layout,
-                    &panel_surface,
+                    panel_surface,
                     canvas_source,
                     self.document.view_transform,
                     &status_text,
@@ -127,13 +123,16 @@ impl DesktopApp {
                     window_width,
                     window_height,
                     &layout,
-                    &panel_surface,
+                    panel_surface,
                     canvas_source,
                     self.document.view_transform,
                     CanvasOverlayState {
                         brush_preview: self.hover_canvas_position,
                         brush_size: self.brush_preview_size(),
                         lasso_points: self.canvas_input.lasso_points.clone(),
+                        active_panel_bounds: self.active_panel_mask_overlay(),
+                        panel_navigator: self.panel_navigator_overlay(),
+                        panel_creation_preview: self.panel_creation_preview_bounds(),
                     },
                 )
             });
@@ -154,7 +153,7 @@ impl DesktopApp {
             return PresentFrameUpdate {
                 base_dirty_rect: Some(window_rect),
                 overlay_dirty_rect: Some(window_rect),
-                canvas_dirty_rect: bitmap.map(|bitmap| app_core::DirtyRect {
+                canvas_dirty_rect: bitmap.map(|bitmap| app_core::CanvasDirtyRect {
                     x: 0,
                     y: 0,
                     width: bitmap.width,
@@ -168,6 +167,11 @@ impl DesktopApp {
         let layout = self.layout.clone().expect("layout exists");
         let status_text = self.needs_status_refresh.then(|| self.status_text());
         let brush_preview_size = self.brush_preview_size();
+        let hover_canvas_position = self.hover_canvas_position;
+        let lasso_points = self.canvas_input.lasso_points.clone();
+        let active_panel_bounds = self.active_panel_mask_overlay();
+        let panel_navigator = self.panel_navigator_overlay();
+        let panel_creation_preview = self.panel_creation_preview_bounds();
         let Some(base_frame) = self.base_frame.as_mut() else {
             self.rebuild_present_frame();
             return PresentFrameUpdate::default();
@@ -187,7 +191,7 @@ impl DesktopApp {
                 width: dirty.width,
                 height: dirty.height,
             });
-            let bitmap = self.document.active_bitmap();
+            let bitmap = self.canvas_frame.as_ref();
             let canvas_source = CanvasCompositeSource {
                 width: bitmap.map_or(1, |bitmap| bitmap.width),
                 height: bitmap.map_or(1, |bitmap| bitmap.height),
@@ -201,9 +205,12 @@ impl DesktopApp {
                     canvas_source,
                     self.document.view_transform,
                     CanvasOverlayState {
-                        brush_preview: self.hover_canvas_position,
+                        brush_preview: hover_canvas_position,
                         brush_size: brush_preview_size,
-                        lasso_points: self.canvas_input.lasso_points.clone(),
+                        lasso_points: lasso_points.clone(),
+                        active_panel_bounds,
+                        panel_navigator: panel_navigator.clone(),
+                        panel_creation_preview,
                     },
                     panel_dirty_rect,
                 );
@@ -237,7 +244,7 @@ impl DesktopApp {
             && dirty_rect.width > 0
             && dirty_rect.height > 0
         {
-            let bitmap = self.document.active_bitmap();
+            let bitmap = self.canvas_frame.as_ref();
             let canvas_source = CanvasCompositeSource {
                 width: bitmap.map_or(1, |bitmap| bitmap.width),
                 height: bitmap.map_or(1, |bitmap| bitmap.height),
@@ -261,7 +268,7 @@ impl DesktopApp {
             && dirty_rect.width > 0
             && dirty_rect.height > 0
         {
-            let bitmap = self.document.active_bitmap();
+            let bitmap = self.canvas_frame.as_ref();
             let canvas_source = CanvasCompositeSource {
                 width: bitmap.map_or(1, |bitmap| bitmap.width),
                 height: bitmap.map_or(1, |bitmap| bitmap.height),
@@ -275,9 +282,12 @@ impl DesktopApp {
                     canvas_source,
                     self.document.view_transform,
                     CanvasOverlayState {
-                        brush_preview: self.hover_canvas_position,
+                        brush_preview: hover_canvas_position,
                         brush_size: brush_preview_size,
-                        lasso_points: self.canvas_input.lasso_points.clone(),
+                        lasso_points: lasso_points.clone(),
+                        active_panel_bounds,
+                        panel_navigator: panel_navigator.clone(),
+                        panel_creation_preview,
                     },
                     Some(dirty_rect),
                 );
@@ -290,7 +300,7 @@ impl DesktopApp {
         let canvas_dirty_rect = self.pending_canvas_dirty_rect.take();
         let canvas_transform_changed = std::mem::take(&mut self.pending_canvas_transform_update);
         if let Some(canvas_dirty_rect) = canvas_dirty_rect {
-            let dirty = canvas_dirty_rect.clamp_to_bitmap(canvas_width, canvas_height);
+            let dirty = canvas_dirty_rect.clamp_to_canvas_bounds(canvas_width, canvas_height);
             let canvas_area = (canvas_width.max(1) * canvas_height.max(1)) as f64;
             profiler.record_value(
                 "canvas_upload_area_px",

@@ -51,6 +51,13 @@ pub enum Command {
     FillRegion { x: usize, y: usize },
     /// 投げ縄で囲った領域を塗り潰す。
     FillLasso { points: Vec<(usize, usize)> },
+    /// 指定矩形のコマを現在ページへ追加する。
+    CreatePanel {
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+    },
     /// キャンバス表示倍率を設定する。
     SetViewZoom { zoom: f32 },
     /// キャンバス表示を平行移動する。
@@ -87,6 +94,18 @@ pub enum Command {
     ToggleActiveLayerVisibility,
     /// アクティブレイヤーの最小デモマスクを切り替える。
     ToggleActiveLayerMask,
+    /// 新しいコマを現在ページへ追加する。
+    AddPanel,
+    /// 現在のアクティブコマを削除する。
+    RemoveActivePanel,
+    /// アクティブコマを指定 index に切り替える。
+    SelectPanel { index: usize },
+    /// 次のコマをアクティブにする。
+    SelectNextPanel,
+    /// 前のコマをアクティブにする。
+    SelectPreviousPanel,
+    /// アクティブコマ中心の表示へ戻す。
+    FocusActivePanel,
     /// 新規ドキュメントを作成する。
     NewDocument,
     /// 指定サイズで新規ドキュメントを作成する。

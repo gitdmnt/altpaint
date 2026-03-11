@@ -3,7 +3,9 @@
 //! ドメイン型定義から描画アルゴリズムを分離し、`Document` 本体の責務を
 //! 状態遷移に集中させる。
 
-use super::{CanvasBitmap, DirtyRect};
+use crate::{CanvasDirtyRect, ClampToCanvasBounds};
+
+use super::CanvasBitmap;
 
 impl CanvasBitmap {
     /// 白背景で初期化された新しいビットマップを作る。
@@ -32,17 +34,17 @@ impl CanvasBitmap {
     }
 
     /// ビットマップ内の1点を黒で塗る。
-    pub fn draw_point(&mut self, x: usize, y: usize) -> DirtyRect {
+    pub fn draw_point(&mut self, x: usize, y: usize) -> CanvasDirtyRect {
         self.draw_point_rgba(x, y, [0, 0, 0, 255])
     }
 
     /// ビットマップ内の1点を任意色で塗る。
-    pub fn draw_point_rgba(&mut self, x: usize, y: usize, rgba: [u8; 4]) -> DirtyRect {
+    pub fn draw_point_rgba(&mut self, x: usize, y: usize, rgba: [u8; 4]) -> CanvasDirtyRect {
         self.write_pixel(x, y, rgba)
     }
 
     /// ビットマップ内の1点を白で塗る。
-    pub fn erase_point(&mut self, x: usize, y: usize) -> DirtyRect {
+    pub fn erase_point(&mut self, x: usize, y: usize) -> CanvasDirtyRect {
         self.write_pixel(x, y, [255, 255, 255, 255])
     }
 
@@ -54,7 +56,7 @@ impl CanvasBitmap {
         rgba: [u8; 4],
         size: u32,
         antialias: bool,
-    ) -> DirtyRect {
+    ) -> CanvasDirtyRect {
         if size <= 1 {
             return self.draw_point_rgba(x, y, rgba);
         }
@@ -68,7 +70,7 @@ impl CanvasBitmap {
         y: usize,
         size: u32,
         antialias: bool,
-    ) -> DirtyRect {
+    ) -> CanvasDirtyRect {
         if size <= 1 {
             return self.erase_point(x, y);
         }
@@ -88,7 +90,7 @@ impl CanvasBitmap {
         from_y: usize,
         to_x: usize,
         to_y: usize,
-    ) -> DirtyRect {
+    ) -> CanvasDirtyRect {
         self.draw_line_rgba(from_x, from_y, to_x, to_y, [0, 0, 0, 255])
     }
 
@@ -100,7 +102,7 @@ impl CanvasBitmap {
         to_x: usize,
         to_y: usize,
         rgba: [u8; 4],
-    ) -> DirtyRect {
+    ) -> CanvasDirtyRect {
         let mut x0 = from_x as isize;
         let mut y0 = from_y as isize;
         let x1 = to_x as isize;
@@ -132,7 +134,7 @@ impl CanvasBitmap {
             }
         }
 
-        DirtyRect::from_inclusive_points(from_x, from_y, to_x, to_y)
+        CanvasDirtyRect::from_inclusive_points(from_x, from_y, to_x, to_y)
     }
 
     /// 2点間を白で線消去する。
@@ -142,7 +144,7 @@ impl CanvasBitmap {
         from_y: usize,
         to_x: usize,
         to_y: usize,
-    ) -> DirtyRect {
+    ) -> CanvasDirtyRect {
         let mut x0 = from_x as isize;
         let mut y0 = from_y as isize;
         let x1 = to_x as isize;
@@ -174,7 +176,7 @@ impl CanvasBitmap {
             }
         }
 
-        DirtyRect::from_inclusive_points(from_x, from_y, to_x, to_y)
+        CanvasDirtyRect::from_inclusive_points(from_x, from_y, to_x, to_y)
     }
 
     /// 指定サイズの円形ブラシで線描画する。
@@ -188,7 +190,7 @@ impl CanvasBitmap {
         rgba: [u8; 4],
         size: u32,
         antialias: bool,
-    ) -> DirtyRect {
+    ) -> CanvasDirtyRect {
         if size <= 1 {
             return self.draw_line_rgba(from_x, from_y, to_x, to_y, rgba);
         }
@@ -204,7 +206,7 @@ impl CanvasBitmap {
         to_y: usize,
         size: u32,
         antialias: bool,
-    ) -> DirtyRect {
+    ) -> CanvasDirtyRect {
         if size <= 1 {
             return self.erase_line(from_x, from_y, to_x, to_y);
         }
@@ -234,14 +236,14 @@ impl CanvasBitmap {
     }
 
     /// 単一ピクセルを上書きし、その dirty rect を返す。
-    pub fn set_pixel_rgba(&mut self, x: usize, y: usize, rgba: [u8; 4]) -> DirtyRect {
+    pub fn set_pixel_rgba(&mut self, x: usize, y: usize, rgba: [u8; 4]) -> CanvasDirtyRect {
         self.write_pixel(x, y, rgba)
     }
 
     /// 単一ピクセルを書き換え、その dirty rect を返す。
-    fn write_pixel(&mut self, x: usize, y: usize, rgba: [u8; 4]) -> DirtyRect {
+    fn write_pixel(&mut self, x: usize, y: usize, rgba: [u8; 4]) -> CanvasDirtyRect {
         if x >= self.width || y >= self.height {
-            return DirtyRect::from_inclusive_points(
+            return CanvasDirtyRect::from_inclusive_points(
                 x.min(self.width.saturating_sub(1)),
                 y.min(self.height.saturating_sub(1)),
                 x.min(self.width.saturating_sub(1)),
@@ -255,7 +257,7 @@ impl CanvasBitmap {
         self.pixels[index + 2] = rgba[2];
         self.pixels[index + 3] = rgba[3];
 
-        DirtyRect::from_inclusive_points(x, y, x, y)
+        CanvasDirtyRect::from_inclusive_points(x, y, x, y)
     }
 
     /// 円形ブラシを線分上に連続配置して太線を描く。
@@ -269,7 +271,7 @@ impl CanvasBitmap {
         size: u32,
         rgba: [u8; 4],
         antialias: bool,
-    ) -> DirtyRect {
+    ) -> CanvasDirtyRect {
         self.paint_capsule(
             from_x as f32 + 0.5,
             from_y as f32 + 0.5,
@@ -289,7 +291,7 @@ impl CanvasBitmap {
         size: u32,
         rgba: [u8; 4],
         antialias: bool,
-    ) -> DirtyRect {
+    ) -> CanvasDirtyRect {
         self.paint_capsule(
             center_x as f32 + 0.5,
             center_y as f32 + 0.5,
@@ -311,7 +313,7 @@ impl CanvasBitmap {
         size: u32,
         rgba: [u8; 4],
         antialias: bool,
-    ) -> DirtyRect {
+    ) -> CanvasDirtyRect {
         let radius = (size.max(1) as f32) * 0.5;
         let antialias_outer = radius + if antialias { 0.75 } else { 0.0 };
         let left = (start_x.min(end_x) - antialias_outer).floor().max(0.0) as usize;
@@ -320,7 +322,7 @@ impl CanvasBitmap {
         let bottom = (start_y.max(end_y) + antialias_outer).ceil().max(0.0) as usize;
 
         if self.width == 0 || self.height == 0 {
-            return DirtyRect {
+            return CanvasDirtyRect {
                 x: 0,
                 y: 0,
                 width: 0,
@@ -445,11 +447,11 @@ impl CanvasBitmap {
 
         changed_bounds
             .map(|(min_x, min_y, max_x, max_y)| {
-                DirtyRect::from_inclusive_points(min_x, min_y, max_x, max_y)
+                CanvasDirtyRect::from_inclusive_points(min_x, min_y, max_x, max_y)
             })
             .unwrap_or_else(|| {
-                DirtyRect::from_inclusive_points(left, top, right, bottom)
-                    .clamp_to_bitmap(self.width, self.height)
+                CanvasDirtyRect::from_inclusive_points(left, top, right, bottom)
+                    .clamp_to_canvas_bounds(self.width, self.height)
             })
     }
 
@@ -536,9 +538,9 @@ impl CanvasBitmap {
         }
     }
 
-    fn blend_pixel(&mut self, x: usize, y: usize, rgba: [u8; 4], coverage: f32) -> DirtyRect {
+    fn blend_pixel(&mut self, x: usize, y: usize, rgba: [u8; 4], coverage: f32) -> CanvasDirtyRect {
         if x >= self.width || y >= self.height {
-            return DirtyRect::from_inclusive_points(
+            return CanvasDirtyRect::from_inclusive_points(
                 x.min(self.width.saturating_sub(1)),
                 y.min(self.height.saturating_sub(1)),
                 x.min(self.width.saturating_sub(1)),
@@ -579,7 +581,7 @@ impl CanvasBitmap {
         self.pixels[index + 1] = (out_g * 255.0).round().clamp(0.0, 255.0) as u8;
         self.pixels[index + 2] = (out_b * 255.0).round().clamp(0.0, 255.0) as u8;
         self.pixels[index + 3] = (out_alpha * 255.0).round().clamp(0.0, 255.0) as u8;
-        DirtyRect::from_inclusive_points(x, y, x, y)
+        CanvasDirtyRect::from_inclusive_points(x, y, x, y)
     }
 }
 

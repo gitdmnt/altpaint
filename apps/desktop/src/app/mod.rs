@@ -8,7 +8,7 @@ mod input;
 mod present;
 mod state;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -16,7 +16,7 @@ use std::path::PathBuf;
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use app_core::Document;
+use app_core::{CanvasPoint, Document};
 use desktop_support::{
     DEFAULT_PROJECT_PATH, DesktopDialogs, NativeDesktopDialogs, default_canvas_template_path,
     default_canvas_templates, default_panel_dir, default_workspace_preset_catalog,
@@ -52,15 +52,16 @@ pub(crate) struct DesktopApp {
     canvas_input: CanvasInputState,
     pub(crate) panel_surface: Option<PanelSurface>,
     pub(crate) layout: Option<DesktopLayout>,
+    canvas_frame: Option<RenderFrame>,
     base_frame: Option<RenderFrame>,
     overlay_frame: Option<RenderFrame>,
-    pending_canvas_dirty_rect: Option<app_core::DirtyRect>,
+    pending_canvas_dirty_rect: Option<app_core::CanvasDirtyRect>,
     pending_canvas_background_dirty_rect: Option<crate::frame::Rect>,
     pending_canvas_host_dirty_rect: Option<crate::frame::Rect>,
     pending_canvas_transform_update: bool,
     active_panel_drag: Option<PanelDragState>,
     pending_panel_press: Option<PanelPressState>,
-    hover_canvas_position: Option<(usize, usize)>,
+    hover_canvas_position: Option<CanvasPoint>,
     needs_ui_sync: bool,
     ui_sync_panel_ids: BTreeSet<String>,
     deferred_view_panel_sync: bool,
@@ -173,6 +174,7 @@ impl DesktopApp {
             canvas_input: CanvasInputState::default(),
             panel_surface: None,
             layout: None,
+            canvas_frame: None,
             base_frame: None,
             overlay_frame: None,
             pending_canvas_dirty_rect: None,
@@ -191,6 +193,7 @@ impl DesktopApp {
             needs_full_present_rebuild: true,
             pending_save_tasks: Vec::new(),
         };
+        app.refresh_canvas_frame();
         app.ensure_workspace_presets_file(&app.workspace_preset_path);
         app.ensure_canvas_templates_file();
         app.refresh_new_document_templates();

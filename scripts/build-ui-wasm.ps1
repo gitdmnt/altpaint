@@ -22,6 +22,7 @@ try {
         @{ Package = 'builtin-panel-workspace-presets'; Destination = 'plugins/workspace-presets/builtin_panel_workspace_presets.wasm' },
         @{ Package = 'builtin-panel-tool-palette'; Destination = 'plugins/tool-palette/builtin_panel_tool_palette.wasm' },
         @{ Package = 'builtin-panel-view-controls'; Destination = 'plugins/view-controls/builtin_panel_view_controls.wasm' },
+        @{ Package = 'builtin-panel-panel-list'; Destination = 'plugins/panel-list/builtin_panel_panel_list.wasm' },
         @{ Package = 'builtin-panel-layers-panel'; Destination = 'plugins/layers-panel/builtin_panel_layers_panel.wasm' },
         @{ Package = 'builtin-panel-color-palette'; Destination = 'plugins/color-palette/builtin_panel_color_palette.wasm' },
         @{ Package = 'builtin-panel-pen-settings'; Destination = 'plugins/pen-settings/builtin_panel_pen_settings.wasm' },

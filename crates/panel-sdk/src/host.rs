@@ -19,6 +19,36 @@ pub mod document {
         host_i32("document.panel_count")
     }
 
+    /// 現在のページ番号を返す。
+    pub fn active_page_number() -> i32 {
+        host_i32("document.active_page_number")
+    }
+
+    /// 現在ページ内のコマ数を返す。
+    pub fn active_page_panel_count() -> i32 {
+        host_i32("document.active_page_panel_count")
+    }
+
+    /// 現在のコマ番号を返す。
+    pub fn active_panel_number() -> i32 {
+        host_i32("document.active_panel_number")
+    }
+
+    /// 現在のコマ index を返す。
+    pub fn active_panel_index() -> i32 {
+        host_i32("document.active_panel_index")
+    }
+
+    /// 現在のコマラベルを返す。
+    pub fn active_panel_label() -> String {
+        host_string("document.active_panel_label")
+    }
+
+    /// 現在のコマ矩形を返す。
+    pub fn active_panel_bounds() -> String {
+        host_string("document.active_panel_bounds")
+    }
+
     /// レイヤー数を返す。
     pub fn layer_count() -> i32 {
         host_i32("document.layer_count")
@@ -52,6 +82,11 @@ pub mod document {
     /// レイヤー JSON を返す。
     pub fn layers_json() -> String {
         host_string("document.layers_json")
+    }
+
+    /// コマ一覧 JSON を返す。
+    pub fn panels_json() -> String {
+        host_string("document.panels_json")
     }
 }
 

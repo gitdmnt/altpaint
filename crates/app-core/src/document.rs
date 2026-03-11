@@ -6,7 +6,7 @@ mod bitmap;
 mod layer_ops;
 mod pen_state;
 
-use self::layer_ops::ensure_panel_layers;
+use self::layer_ops::{composite_panel_bitmap, ensure_panel_layers};
 
 /// ホストと保存形式の間で共有する最小RGBA色。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,6 +45,7 @@ pub enum ToolKind {
     Eraser,
     Bucket,
     LassoBucket,
+    PanelRect,
 }
 
 pub const DEFAULT_DOCUMENT_WIDTH: usize = 2894;
@@ -106,6 +107,22 @@ fn default_active_pen_preset_id() -> String {
     PenPreset::default().id
 }
 
+fn default_active_page_index() -> usize {
+    0
+}
+
+fn default_active_panel_index() -> usize {
+    0
+}
+
+fn default_page_width() -> usize {
+    DEFAULT_DOCUMENT_WIDTH
+}
+
+fn default_page_height() -> usize {
+    DEFAULT_DOCUMENT_HEIGHT
+}
+
 /// 作品を識別する最小ID型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct WorkId(pub u64);
@@ -143,6 +160,12 @@ pub struct Document {
     /// 現在の可変幅ペンサイズ。
     #[serde(default = "default_pen_size")]
     pub active_pen_size: u32,
+    /// 現在アクティブなページ index。
+    #[serde(default = "default_active_page_index")]
+    pub active_page_index: usize,
+    /// 現在アクティブなコマ index。
+    #[serde(default = "default_active_panel_index")]
+    pub active_panel_index: usize,
     /// キャンバスの表示変換状態。
     pub view_transform: CanvasViewTransform,
 }
@@ -173,6 +196,12 @@ impl Default for Work {
 pub struct Page {
     /// ページID。
     pub id: PageId,
+    /// ページの基準幅。
+    #[serde(default = "default_page_width")]
+    pub width: usize,
+    /// ページの基準高さ。
+    #[serde(default = "default_page_height")]
+    pub height: usize,
     /// ページ内に含まれるコマ列。
     pub panels: Vec<Panel>,
 }
@@ -181,8 +210,85 @@ impl Default for Page {
     fn default() -> Self {
         Self {
             id: PageId(1),
+            width: default_page_width(),
+            height: default_page_height(),
             panels: vec![Panel::default()],
         }
+    }
+}
+
+/// ページ内のコマ矩形を表す。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PanelBounds {
+    pub x: usize,
+    pub y: usize,
+    pub width: usize,
+    pub height: usize,
+}
+
+impl PanelBounds {
+    pub fn full_page(width: usize, height: usize) -> Self {
+        Self {
+            x: 0,
+            y: 0,
+            width: width.max(1),
+            height: height.max(1),
+        }
+    }
+
+    fn is_empty(self) -> bool {
+        self.width == 0 || self.height == 0
+    }
+
+    pub fn contains(self, x: usize, y: usize) -> bool {
+        x >= self.x
+            && y >= self.y
+            && x < self.x.saturating_add(self.width)
+            && y < self.y.saturating_add(self.height)
+    }
+
+    pub fn contains_canvas_point(self, point: crate::CanvasPoint) -> bool {
+        self.contains(point.x, point.y)
+    }
+
+    pub fn canvas_to_panel_local(
+        self,
+        point: crate::CanvasPoint,
+    ) -> Option<crate::PanelLocalPoint> {
+        self.contains_canvas_point(point)
+            .then_some(crate::PanelLocalPoint::new(
+                point.x.saturating_sub(self.x),
+                point.y.saturating_sub(self.y),
+            ))
+    }
+
+    pub fn clamp_canvas_point(self, point: crate::CanvasPoint) -> Option<crate::CanvasPoint> {
+        if self.is_empty() {
+            return None;
+        }
+
+        let max_x = self.x.saturating_add(self.width.saturating_sub(1));
+        let max_y = self.y.saturating_add(self.height.saturating_sub(1));
+        Some(crate::CanvasPoint::new(
+            point.x.clamp(self.x, max_x),
+            point.y.clamp(self.y, max_y),
+        ))
+    }
+
+    pub fn panel_local_to_canvas(
+        self,
+        point: crate::PanelLocalPoint,
+    ) -> Option<crate::CanvasPoint> {
+        (point.x < self.width && point.y < self.height).then_some(crate::CanvasPoint::new(
+            self.x.saturating_add(point.x),
+            self.y.saturating_add(point.y),
+        ))
+    }
+}
+
+impl Default for PanelBounds {
+    fn default() -> Self {
+        Self::full_page(DEFAULT_DOCUMENT_WIDTH, DEFAULT_DOCUMENT_HEIGHT)
     }
 }
 
@@ -194,6 +300,9 @@ impl Default for Page {
 pub struct Panel {
     /// コマID。
     pub id: PanelId,
+    /// ページ内でのコマ矩形。
+    #[serde(default)]
+    pub bounds: PanelBounds,
     /// このコマが持つレイヤーツリーのルート。
     pub root_layer: LayerNode,
     /// フェーズ2の最小ラスタキャンバス。
@@ -211,9 +320,21 @@ pub struct Panel {
 
 impl Default for Panel {
     fn default() -> Self {
-        let background = RasterLayer::background(LayerNodeId(1), "Layer 1".to_string(), 64, 64);
+        Self::new_blank(PanelId(1), DEFAULT_DOCUMENT_WIDTH, DEFAULT_DOCUMENT_HEIGHT)
+    }
+}
+
+impl Panel {
+    pub fn new_blank(id: PanelId, width: usize, height: usize) -> Self {
+        let background = RasterLayer::background(
+            LayerNodeId(1),
+            "Layer 1".to_string(),
+            width.max(1),
+            height.max(1),
+        );
         Self {
-            id: PanelId(1),
+            id,
+            bounds: PanelBounds::full_page(width, height),
             root_layer: LayerNode::default(),
             bitmap: background.bitmap.clone(),
             layers: vec![background],
@@ -347,78 +468,6 @@ impl RasterLayer {
     }
 }
 
-/// キャンバス上で変更が発生した矩形領域。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DirtyRect {
-    /// 左上X座標。
-    pub x: usize,
-    /// 左上Y座標。
-    pub y: usize,
-    /// 横幅。
-    pub width: usize,
-    /// 高さ。
-    pub height: usize,
-}
-
-impl DirtyRect {
-    /// 左上と右下の両端を含む矩形を作る。
-    pub fn from_inclusive_points(from_x: usize, from_y: usize, to_x: usize, to_y: usize) -> Self {
-        let min_x = from_x.min(to_x);
-        let min_y = from_y.min(to_y);
-        let max_x = from_x.max(to_x);
-        let max_y = from_y.max(to_y);
-
-        Self {
-            x: min_x,
-            y: min_y,
-            width: max_x - min_x + 1,
-            height: max_y - min_y + 1,
-        }
-    }
-
-    /// 2つのdirty矩形を包含する最小矩形を返す。
-    pub fn union(self, other: Self) -> Self {
-        let left = self.x.min(other.x);
-        let top = self.y.min(other.y);
-        let right = (self.x + self.width).max(other.x + other.width);
-        let bottom = (self.y + self.height).max(other.y + other.height);
-
-        Self {
-            x: left,
-            y: top,
-            width: right - left,
-            height: bottom - top,
-        }
-    }
-
-    /// ビットマップ境界に収まるよう矩形をクランプする。
-    pub fn clamp_to_bitmap(self, width: usize, height: usize) -> Self {
-        if width == 0 || height == 0 {
-            return Self {
-                x: 0,
-                y: 0,
-                width: 0,
-                height: 0,
-            };
-        }
-
-        let max_x = width - 1;
-        let max_y = height - 1;
-        let left = self.x.min(max_x);
-        let top = self.y.min(max_y);
-        let right = self
-            .x
-            .saturating_add(self.width.saturating_sub(1))
-            .min(max_x);
-        let bottom = self
-            .y
-            .saturating_add(self.height.saturating_sub(1))
-            .min(max_y);
-
-        Self::from_inclusive_points(left, top, right, bottom)
-    }
-}
-
 /// 将来のズーム・回転・パンに備える表示変換状態。
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct CanvasViewTransform {
@@ -466,8 +515,6 @@ impl Document {
     pub fn new(width: usize, height: usize) -> Self {
         let width = width.max(1);
         let height = height.max(1);
-        let background =
-            RasterLayer::background(LayerNodeId(1), "Layer 1".to_string(), width, height);
         let pen_presets = default_pen_presets();
         let active_pen_preset_id = pen_presets
             .first()
@@ -481,12 +528,9 @@ impl Document {
         Self {
             work: Work {
                 pages: vec![Page {
-                    panels: vec![Panel {
-                        bitmap: background.bitmap.clone(),
-                        layers: vec![background],
-                        active_layer_index: 0,
-                        ..Panel::default()
-                    }],
+                    width,
+                    height,
+                    panels: vec![Panel::new_blank(PanelId(1), width, height)],
                     ..Page::default()
                 }],
                 ..Work::default()
@@ -496,16 +540,150 @@ impl Document {
             pen_presets,
             active_pen_preset_id,
             active_pen_size,
+            active_page_index: default_active_page_index(),
+            active_panel_index: default_active_panel_index(),
             view_transform: CanvasViewTransform::default(),
         }
     }
 
+    pub fn active_page_index(&self) -> usize {
+        self.active_page_index
+            .min(self.work.pages.len().saturating_sub(1))
+    }
+
+    pub fn active_panel_index(&self) -> usize {
+        self.active_page()
+            .map(|page| {
+                self.active_panel_index
+                    .min(page.panels.len().saturating_sub(1))
+            })
+            .unwrap_or(0)
+    }
+
+    pub fn active_page(&self) -> Option<&Page> {
+        self.work.pages.get(self.active_page_index())
+    }
+
+    pub fn active_page_mut(&mut self) -> Option<&mut Page> {
+        let index = self
+            .active_page_index
+            .min(self.work.pages.len().saturating_sub(1));
+        self.work.pages.get_mut(index)
+    }
+
+    pub fn active_panel(&self) -> Option<&Panel> {
+        let panel_index = self.active_panel_index();
+        self.active_page()
+            .and_then(|page| page.panels.get(panel_index))
+    }
+
+    pub fn active_panel_mut(&mut self) -> Option<&mut Panel> {
+        let page_index = self
+            .active_page_index
+            .min(self.work.pages.len().saturating_sub(1));
+        let panel_index = self.active_panel_index;
+        self.work.pages.get_mut(page_index).and_then(|page| {
+            let clamped_index = panel_index.min(page.panels.len().saturating_sub(1));
+            page.panels.get_mut(clamped_index)
+        })
+    }
+
     pub fn active_bitmap(&self) -> Option<&CanvasBitmap> {
-        self.work
-            .pages
-            .first()
-            .and_then(|page| page.panels.first())
-            .map(|panel| &panel.bitmap)
+        self.active_panel().map(|panel| &panel.bitmap)
+    }
+
+    pub fn active_panel_bounds(&self) -> Option<PanelBounds> {
+        self.active_panel().map(|panel| panel.bounds)
+    }
+
+    pub fn active_page_panel_count(&self) -> usize {
+        self.active_page()
+            .map(|page| page.panels.len())
+            .unwrap_or(0)
+    }
+
+    pub fn active_page_dimensions(&self) -> (usize, usize) {
+        self.active_page()
+            .map(|page| (page.width.max(1), page.height.max(1)))
+            .unwrap_or((1, 1))
+    }
+
+    pub fn select_panel(&mut self, index: usize) {
+        let page_index = self.active_page_index();
+        if let Some(page) = self.work.pages.get(page_index) {
+            self.active_panel_index = index.min(page.panels.len().saturating_sub(1));
+        }
+    }
+
+    pub fn select_next_panel(&mut self) {
+        if let Some(page) = self.active_page() {
+            let panel_count = page.panels.len().max(1);
+            self.active_panel_index = (self.active_panel_index() + 1) % panel_count;
+        }
+    }
+
+    pub fn select_previous_panel(&mut self) {
+        if let Some(page) = self.active_page() {
+            let panel_count = page.panels.len().max(1);
+            self.active_panel_index = (self.active_panel_index() + panel_count - 1) % panel_count;
+        }
+    }
+
+    pub fn add_panel(&mut self) {
+        let next_id = next_panel_id(&self.work.pages);
+        let page_index = self.active_page_index();
+        let Some(page) = self.work.pages.get_mut(page_index) else {
+            return;
+        };
+
+        let next_count = page.panels.len().saturating_add(1);
+        let next_bounds = default_panel_grid_bounds(page.width, page.height, next_count);
+        let new_bounds = next_bounds
+            .last()
+            .copied()
+            .unwrap_or_else(|| PanelBounds::full_page(page.width, page.height));
+        let mut panel = Panel::new_blank(next_id, new_bounds.width, new_bounds.height);
+        panel.bounds = new_bounds;
+        page.panels.push(panel);
+        relayout_page_panels(page);
+        self.active_panel_index = page.panels.len().saturating_sub(1);
+        self.focus_active_panel_view();
+    }
+
+    pub fn create_panel(&mut self, bounds: PanelBounds) {
+        let next_id = next_panel_id(&self.work.pages);
+        let page_index = self.active_page_index();
+        let Some(page) = self.work.pages.get_mut(page_index) else {
+            return;
+        };
+        let Some(bounds) = clamp_panel_bounds(bounds, page.width, page.height) else {
+            return;
+        };
+
+        let mut panel = Panel::new_blank(next_id, bounds.width, bounds.height);
+        panel.bounds = bounds;
+        page.panels.push(panel);
+        self.active_panel_index = page.panels.len().saturating_sub(1);
+        self.focus_active_panel_view();
+    }
+
+    pub fn remove_active_panel(&mut self) {
+        let page_index = self.active_page_index();
+        let active_panel_index = self.active_panel_index();
+        let Some(page) = self.work.pages.get_mut(page_index) else {
+            return;
+        };
+        if page.panels.len() <= 1 {
+            return;
+        }
+        page.panels.remove(active_panel_index);
+        relayout_page_panels(page);
+        self.active_panel_index = active_panel_index.min(page.panels.len().saturating_sub(1));
+        self.focus_active_panel_view();
+    }
+
+    pub fn focus_active_panel_view(&mut self) {
+        self.view_transform = CanvasViewTransform::default();
     }
 
     pub fn set_view_transform(&mut self, transform: CanvasViewTransform) {
@@ -606,14 +784,32 @@ impl Document {
     }
 
     pub fn normalize_phase9_state(&mut self) {
+        if self.work.pages.is_empty() {
+            self.work.pages.push(Page::default());
+        }
+        self.active_page_index = self.active_page_index();
         for page in &mut self.work.pages {
+            page.width = page.width.max(1);
+            page.height = page.height.max(1);
+            if page.panels.is_empty() {
+                page.panels
+                    .push(Panel::new_blank(PanelId(1), page.width, page.height));
+            }
+            let needs_relayout = page.panels.iter().any(|panel| panel.bounds.is_empty());
             for panel in &mut page.panels {
+                if panel.bounds.is_empty() {
+                    panel.bounds = PanelBounds::full_page(page.width, page.height);
+                }
                 ensure_panel_layers(panel);
             }
+            if needs_relayout {
+                relayout_page_panels(page);
+            }
         }
+        self.active_panel_index = self.active_panel_index();
     }
 
-    pub fn apply_command(&mut self, command: &Command) -> Option<DirtyRect> {
+    pub fn apply_command(&mut self, command: &Command) -> Option<crate::CanvasDirtyRect> {
         match command {
             Command::Noop => None,
             Command::DrawPoint { x, y, pressure } => {
@@ -671,6 +867,20 @@ impl Document {
             }
             Command::FillRegion { x, y } => self.fill_region(*x, *y),
             Command::FillLasso { points } => self.fill_lasso(points),
+            Command::CreatePanel {
+                x,
+                y,
+                width,
+                height,
+            } => {
+                self.create_panel(PanelBounds {
+                    x: *x,
+                    y: *y,
+                    width: *width,
+                    height: *height,
+                });
+                None
+            }
             Command::SetViewZoom { zoom } => {
                 self.view_transform.zoom = zoom.clamp(0.25, 16.0);
                 None
@@ -750,6 +960,33 @@ impl Document {
                 self.toggle_active_layer_mask();
                 None
             }
+            Command::AddPanel => {
+                self.add_panel();
+                None
+            }
+            Command::RemoveActivePanel => {
+                self.remove_active_panel();
+                None
+            }
+            Command::SelectPanel { index } => {
+                self.select_panel(*index);
+                self.focus_active_panel_view();
+                None
+            }
+            Command::SelectNextPanel => {
+                self.select_next_panel();
+                self.focus_active_panel_view();
+                None
+            }
+            Command::SelectPreviousPanel => {
+                self.select_previous_panel();
+                self.focus_active_panel_view();
+                None
+            }
+            Command::FocusActivePanel => {
+                self.focus_active_panel_view();
+                None
+            }
             Command::NewDocument => {
                 *self = Document::default();
                 None
@@ -771,6 +1008,152 @@ impl Document {
             | Command::ImportPenPresets
             | Command::ImportPenPresetsFromPath { .. } => None,
         }
+    }
+}
+
+fn next_panel_id(pages: &[Page]) -> PanelId {
+    let next = pages
+        .iter()
+        .flat_map(|page| page.panels.iter())
+        .map(|panel| panel.id.0)
+        .max()
+        .unwrap_or(0)
+        .saturating_add(1);
+    PanelId(next)
+}
+
+fn default_panel_grid_bounds(
+    page_width: usize,
+    page_height: usize,
+    panel_count: usize,
+) -> Vec<PanelBounds> {
+    let panel_count = panel_count.max(1);
+    if panel_count == 1 {
+        return vec![PanelBounds::full_page(page_width, page_height)];
+    }
+
+    let page_width = page_width.max(1);
+    let page_height = page_height.max(1);
+    let columns = (panel_count as f32).sqrt().ceil() as usize;
+    let rows = panel_count.div_ceil(columns);
+    let margin_x = ((page_width as f32 * 0.04).round() as usize).clamp(12, 96);
+    let margin_y = ((page_height as f32 * 0.04).round() as usize).clamp(12, 96);
+    let gap_x = ((page_width as f32 * 0.015).round() as usize).clamp(8, 48);
+    let gap_y = ((page_height as f32 * 0.015).round() as usize).clamp(8, 48);
+    let available_width = page_width
+        .saturating_sub(margin_x * 2)
+        .saturating_sub(gap_x * columns.saturating_sub(1));
+    let available_height = page_height
+        .saturating_sub(margin_y * 2)
+        .saturating_sub(gap_y * rows.saturating_sub(1));
+    let cell_width = (available_width / columns.max(1)).max(64);
+    let cell_height = (available_height / rows.max(1)).max(64);
+
+    (0..panel_count)
+        .map(|index| {
+            let row = index / columns.max(1);
+            let column = index % columns.max(1);
+            PanelBounds {
+                x: margin_x + column * (cell_width + gap_x),
+                y: margin_y + row * (cell_height + gap_y),
+                width: cell_width.min(page_width.max(1)),
+                height: cell_height.min(page_height.max(1)),
+            }
+        })
+        .collect()
+}
+
+fn relayout_page_panels(page: &mut Page) {
+    let bounds = default_panel_grid_bounds(page.width, page.height, page.panels.len());
+    for (panel, next_bounds) in page.panels.iter_mut().zip(bounds.into_iter()) {
+        resize_panel_to_bounds(panel, next_bounds.width, next_bounds.height);
+        panel.bounds = next_bounds;
+    }
+}
+
+fn clamp_panel_bounds(
+    bounds: PanelBounds,
+    page_width: usize,
+    page_height: usize,
+) -> Option<PanelBounds> {
+    let page_width = page_width.max(1);
+    let page_height = page_height.max(1);
+    let x = bounds.x.min(page_width.saturating_sub(1));
+    let y = bounds.y.min(page_height.saturating_sub(1));
+    let max_width = page_width.saturating_sub(x);
+    let max_height = page_height.saturating_sub(y);
+    let width = bounds.width.min(max_width);
+    let height = bounds.height.min(max_height);
+    (width > 0 && height > 0).then_some(PanelBounds {
+        x,
+        y,
+        width,
+        height,
+    })
+}
+
+fn resize_panel_to_bounds(panel: &mut Panel, width: usize, height: usize) {
+    let width = width.max(1);
+    let height = height.max(1);
+    if panel.bitmap.width == width && panel.bitmap.height == height {
+        return;
+    }
+
+    ensure_panel_layers(panel);
+    for layer in &mut panel.layers {
+        layer.bitmap = resize_bitmap_nearest(&layer.bitmap, width, height);
+        if let Some(mask) = layer.mask.as_mut() {
+            *mask = resize_mask_nearest(mask, width, height);
+        }
+    }
+    panel.bitmap = composite_panel_bitmap(panel);
+}
+
+fn resize_bitmap_nearest(bitmap: &CanvasBitmap, width: usize, height: usize) -> CanvasBitmap {
+    let width = width.max(1);
+    let height = height.max(1);
+    if bitmap.width == width && bitmap.height == height {
+        return bitmap.clone();
+    }
+
+    let mut resized = CanvasBitmap::transparent(width, height);
+    for y in 0..height {
+        let source_y = (((y as f32 / height as f32) * bitmap.height as f32).floor() as usize)
+            .min(bitmap.height.saturating_sub(1));
+        for x in 0..width {
+            let source_x = (((x as f32 / width as f32) * bitmap.width as f32).floor() as usize)
+                .min(bitmap.width.saturating_sub(1));
+            let source_index = (source_y * bitmap.width + source_x) * 4;
+            let target_index = (y * width + x) * 4;
+            resized.pixels[target_index..target_index + 4]
+                .copy_from_slice(&bitmap.pixels[source_index..source_index + 4]);
+        }
+    }
+    resized
+}
+
+fn resize_mask_nearest(mask: &LayerMask, width: usize, height: usize) -> LayerMask {
+    let width = width.max(1);
+    let height = height.max(1);
+    if mask.width == width && mask.height == height {
+        return mask.clone();
+    }
+
+    let mut alpha = vec![0; width.saturating_mul(height)];
+    for y in 0..height {
+        let source_y = (((y as f32 / height as f32) * mask.height as f32).floor() as usize)
+            .min(mask.height.saturating_sub(1));
+        for x in 0..width {
+            let source_x = (((x as f32 / width as f32) * mask.width as f32).floor() as usize)
+                .min(mask.width.saturating_sub(1));
+            alpha[y * width + x] = mask.alpha_at(source_x, source_y);
+        }
+    }
+
+    LayerMask {
+        width,
+        height,
+        alpha,
     }
 }
 
