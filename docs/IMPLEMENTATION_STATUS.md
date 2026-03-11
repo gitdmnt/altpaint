@@ -30,7 +30,6 @@
 - 外部ペンプリセット読込と import report 表示
 - `AltPaintPen` 正規化 format と external brush parse/export module
 - キャンバス無段階回転の render / software raster / GPU sampling
-- 複数コマ保持、アクティブコマ切替、コマ境界ナビゲータ、コマ一覧 panel
 - 実行時 profiler とタイトル表示
 
 ## workspace 現況
@@ -61,7 +60,6 @@
 - `plugins/pen-settings`
 - `plugins/job-progress`
 - `plugins/snapshot-panel`
-- `plugins/panel-list`
 
 ## 実装済みの主要領域
 
@@ -178,7 +176,6 @@
 - フェーズ5: 標準パネルの host 描画
 - フェーズ6: panel 基盤 crate と UI DSL parser
 - フェーズ7: built-in panel の UI DSL + Wasm 移植
-- フェーズ10: 複数コマとコマ中心UI
 
 ### 最小到達済み
 
@@ -201,10 +198,6 @@
 - panel permission は宣言に比べ検証がまだ薄い
 - jobs / snapshot / export はまだ最小プレースホルダ寄りである
 - Undo/Redo や高度なドキュメント操作は未実装である
-
-補足:
-
-- フェーズ10 では、`Document` のアクティブコマ選択、複数コマ追加/削除、`builtin.panel-list`、view-controls からのコマ中心導線、overlay 上のコマ境界ナビゲータを導入した
 
 ## いま読むべき関連文書
 
