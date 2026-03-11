@@ -265,3 +265,6 @@
 - 「今どう実装されているか」はコードと `CURRENT_ARCHITECTURE.md` を優先する
 - 「どうあるべきか」は `ARCHITECTURE.md` を優先する
 - 「次に何を崩さず進めるか」は `ROADMAP.md` を優先する
+- フェーズ完了ごとの文書同期は `IMPLEMENTATION_STATUS.md` → `CURRENT_ARCHITECTURE.md` → `MODULE_DEPENDENCIES.md` を最小セットとして固定する
+- コード変更後に文書を追記する順序を守り、文書だけを先行させない
+- フェーズ0の判断基準として、`canvas` / `panel-runtime` / `plugin-sdk` 系の命名と配置規約を文書で先に固定した

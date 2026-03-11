@@ -1,5 +1,8 @@
 [workspace]
 members = [
+  # Planned during the roadmap refactor:
+  # - crates/canvas
+  # - crates/panel-runtime
   "crates/app-core",
   "crates/desktop-support",
   "crates/panel-dsl",

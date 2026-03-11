@@ -44,10 +44,19 @@
 - `panel-macros`
 - `apps/desktop`
 
+補足:
+
+- フェーズ2以降で `crates/canvas` を追加予定とする。
+- フェーズ3で `crates/panel-runtime` を追加候補とする。
+- `panel-sdk` / `panel-macros` は将来 `plugin-sdk` 系へ寄せる方針とする。
+
 ### 組み込みパネル crate
 
 - `plugins/app-actions`
+- `plugins/workspace-presets`
 - `plugins/tool-palette`
+- `plugins/view-controls`
+- `plugins/panel-list`
 - `plugins/layers-panel`
 - `plugins/color-palette`
 - `plugins/pen-settings`
@@ -103,6 +112,32 @@ graph TD
 - `ui-shell` が現在の**パネルランタイム統合点**であり、DSL 読み込み・Wasm 実行・Panel 描画をまとめて持っている
 - `plugin-host` は `ui-shell` の内側で使われ、`apps/desktop` は直接依存していない
 - `panel-sdk` は plugin author 向け表面 API であり、macro を含む唯一の作者向け入口である
+
+## 将来の配置判断用メモ
+
+この節は**現状の compile-time 依存ではなく、今後の責務移動先を固定するためのメモ**である。
+
+```mermaid
+graph TD
+  desktop[apps/desktop] --> appcore[app-core]
+  desktop --> render[render]
+  desktop --> canvas[canvas]
+  desktop --> uishell[ui-shell]
+  uishell --> panelruntime[panel-runtime]
+  panelruntime --> pds[panel-dsl]
+  panelruntime --> phost[plugin-host]
+  plugins[plugins/*] --> pluginsdk[plugin-sdk]
+```
+
+| 論理名          | 置く責務                                              | 置かない責務                                  |
+| --------------- | ----------------------------------------------------- | --------------------------------------------- |
+| `desktopApp`    | event loop、OS I/O、GPU 所有、subsystem orchestration | canvas op、panel runtime 詳細、project 意味論 |
+| `app-core`      | pure state、`Document`、`Command`                     | desktop / `wgpu` / `plugin-host` 依存         |
+| `render`        | frame plan、dirty rect、座標変換、compose 計算        | project / workspace I/O                       |
+| `canvas`        | gesture 解釈、tool runtime、bitmap op                 | panel runtime                                 |
+| `ui-shell`      | panel presentation、host facade                       | Wasm runtime 詳細                             |
+| `panel-runtime` | DSL/Wasm/runtime sync                                 | panel surface 描画                            |
+| `plugin-sdk`    | plugin 作者向け API                                   | host 内部型の露出                             |
 
 ## クレート別の実責務
 
@@ -460,11 +495,15 @@ project file と session file は役割が異なる。
 ## 今後も守るべき依存ルール
 
 1. `app-core` に `winit` / `wgpu` / `wasmtime` を入れない
-2. `plugins/*` から host 内部クレートへ直接依存させない
-3. panel の ABI DTO は `panel-schema` に閉じ込める
-4. desktop 固有の I/O や dialog は `desktop-support` に寄せる
-5. project 永続化は `storage`、session 永続化は `desktop-support` に分ける
-6. `apps/desktop` だけが OS window と GPU presenter を所有する
+2. `app-core` から `apps/desktop` / `plugin-host` を参照しない
+3. `plugins/*` から host 内部クレートへ直接依存させない
+4. panel の ABI DTO は `panel-schema` に閉じ込める
+5. desktop 固有の I/O や dialog は `desktop-support` に寄せる
+6. project 永続化は `storage`、session 永続化は `desktop-support` に分ける
+7. `apps/desktop` だけが OS window と GPU presenter を所有する
+8. `render` に project / workspace I/O の意味論を入れない
+9. `ui-shell` presentation 側へ Wasm runtime 詳細を持ち込まない
+10. `canvas` に panel runtime を入れない
 
 ## リファクタリング候補
 

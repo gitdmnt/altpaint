@@ -177,6 +177,16 @@
 - `target/` やビルド成果物は読まない
 - 作業をする際にはなるべくサブエージェントを活用する。
 
+## 新規ファイル配置規約
+
+- `runtime/`: 外部 runtime や stateful bridge を置く
+- `presentation/`: layout、hit-test、focus、text input、surface 生成を置く
+- `services/`: project / workspace / export / catalog など I/O orchestration を置く
+- `ops/`: canvas や render の高頻度オペレーションを置く
+- `tests/`: crate / module 単位の境界テストを置く
+- `lib.rs`: module 宣言、re-export、薄い公開 API だけに寄せる
+- `lib.rs` に巨大実装を戻さない
+
 
 ## 開発ワークフロー
 
@@ -216,6 +226,8 @@
 - 修正作業では、Issue と作業ブランチを前提に進める
 - 実装前に、先に追加すべきテストを考える
 - 実装後は `cargo test` と `cargo clippy --workspace --all-targets` を確認する
+- フェーズ完了ごとに少なくとも `docs/IMPLEMENTATION_STATUS.md` / `docs/CURRENT_ARCHITECTURE.md` / `docs/MODULE_DEPENDENCIES.md` を更新する
+- 文書更新はコード変更直後に行い、「コードが正本」の順序を崩さない
 - ユーザーに質問や確認がある際は、確認ツールを使ってReasoning/Considering中に確認する。ユーザーにメッセージを差し戻すことが許可されるのは、全てのタスクが終了したときのみ
 
 ## 人間向け補足

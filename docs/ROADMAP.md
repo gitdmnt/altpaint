@@ -58,13 +58,17 @@
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) の目標構造を正本化
 - [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md) の現況整理維持
-- [docs/tmp/tasks-2026.md](docs/tmp/tasks-2026.md) の追従更新
+- [docs/tmp/tasks-2026-03-11.md](docs/tmp/tasks-2026-03-11.md) の追従更新
 - crate / module の命名方針整理
+- `crates/canvas` / `crates/panel-runtime` / `plugin-sdk` 系の命名を先に固定
 
 ### 完了条件
 
-- 「どこへ置くべきか」を文書で即答できる
-- 新規実装が `DesktopApp` / `UiShell` / `Document` へ無秩序に集中しない
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) に責務表、配置草案、配置規約がある
+- [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md) に集中箇所とテスト棚卸しがある
+- [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md) に依存禁止事項と将来配置図がある
+- [Cargo.toml](../Cargo.toml) に `crates/canvas` / `crates/panel-runtime` の計画コメントがある
+- 新規実装が `DesktopApp` / `UiShell` / `Document` へ無秩序に集中しない判断基準が文書化されている
 
 ## フェーズ1: `desktopApp` の縮小
 
@@ -81,8 +85,10 @@
 
 ### 完了条件
 
-- `desktopApp` が主に event loop / I/O / 呼び出し順制御を担う
-- canvas 実行や panel runtime 内部事情が `desktopApp` に残りすぎない
+- `apps/desktop/src/app/services.rs`、`apps/desktop/src/app/io_state.rs`、`apps/desktop/src/app/bootstrap.rs`、`apps/desktop/src/app/command_router.rs`、`apps/desktop/src/app/panel_dispatch.rs`、`apps/desktop/src/app/present_state.rs`、`apps/desktop/src/app/background_tasks.rs` が存在する
+- `apps/desktop/src/app/mod.rs` は constructor / type 定義 / 薄い公開 API 中心になる
+- `apps/desktop/src/app/tests/` が bootstrap / command router / panel dispatch など module 単位へ分かれる
+- canvas 実行や panel runtime 内部事情が `DesktopApp` 本体に残りすぎない
 
 ## フェーズ2: `canvas` 層の新設
 
@@ -107,9 +113,10 @@
 
 ### 完了条件
 
-- キャンバス処理の説明を `canvas` を中心に行える
-- `Document` は状態保持と command 適用へ寄る
-- `desktopApp` は canvas 実行器ではなくなる
+- `crates/canvas/Cargo.toml` と `crates/canvas/src/lib.rs` が存在する
+- `apps/desktop/src/app/drawing.rs` が削除済みまたは thin wrapper 化されている
+- `apps/desktop/src/canvas_bridge.rs` の主要ロジックが `crates/canvas` へ移る
+- `crates/app-core/src/document.rs` の paint runtime 文脈解決が `canvas` 側へ移る
 
 ## フェーズ3: panel runtime / presentation 分離
 
@@ -126,8 +133,10 @@
 
 ### 完了条件
 
-- runtime 修正が presentation 修正へ不要に波及しない
-- panel 描画改善を Wasm bridge 改修から独立して進められる
+- `crates/panel-runtime/Cargo.toml` と `crates/panel-runtime/src/lib.rs` が存在する
+- `crates/ui-shell/src/presentation/` 配下に layout / hit-test / focus / text input の module がある
+- `crates/ui-shell/src/dsl.rs` や registry/runtime sync の主要責務が `crates/panel-runtime` へ移る
+- `apps/desktop` が runtime 詳細ではなく facade 経由で panel system を使う
 
 ## フェーズ4: plugin-first 化の本格化
 
@@ -155,8 +164,9 @@
 
 ### 完了条件
 
-- 非性能領域の新機能を基本 plugin 側へ置ける
-- host は plugin のための runtime と service provider として振る舞う
+- `apps/desktop/src/app/services/project_io.rs`、`workspace_io.rs`、`tool_catalog.rs` などの service handler が存在する
+- `plugins/app-actions`、`plugins/workspace-presets`、`plugins/view-controls`、`plugins/panel-list` が host 固有分岐ではなく service request を使う
+- project / workspace / tool catalog の主要 I/O が command 列挙直書きから service 指向へ寄る
 
 ## フェーズ5: `render` 中心の画面生成整理
 
@@ -173,8 +183,9 @@
 
 ### 完了条件
 
-- 画面生成ロジックの中心が `render` にある
-- `desktopApp` は GPU 所有と最終提示に集中できる
+- `crates/render/src/frame_plan.rs`、`canvas_plan.rs`、`overlay_plan.rs`、`panel_plan.rs`、`dirty.rs` が存在する
+- `apps/desktop/src/app/present.rs` が frame compose 本体ではなく plan 組み立て / presenter 呼び出し中心になる
+- `apps/desktop/src/frame/` には desktop 固有の presenter 入力変換だけが残る
 
 ## フェーズ6: API 名称と物理配置の整理
 
@@ -191,8 +202,10 @@
 
 ### 完了条件
 
-- crate 名を見たときに責務を誤解しにくい
-- plugin 作者向け入口が一つに見える
+- `plugin-api` の rename または shim 方針がコードで表現されている
+- `panel-sdk` / `panel-macros` が `plugin-sdk` 系の re-export または rename へ移行している
+- `plugins/*` と `apps/desktop` の import が新名称へ追従している
+- `plugins/phase6-sample` や `docs/tmp/*` の恒久配置が整理されている
 
 ## フェーズ7: 再編後の機能拡張
 
@@ -211,8 +224,8 @@
 
 ### 完了条件
 
-- 新機能追加時に配置先で迷わない
-- plugin と host の境界を壊さず拡張できる
+- `crates/app-core/src/history.rs`、`crates/canvas` の undo 対応、export service、snapshot 拡張など主要機能の受け皿 module が実在する
+- 新機能が `apps/desktop` / `ui-shell` / `Document` へ逆流せず、決めた境界に沿って追加されている
 
 ---
 
@@ -235,7 +248,7 @@
 - 現況は `IMPLEMENTATION_STATUS.md`
 - 理想は `ARCHITECTURE.md`
 - 実コードの構造は `CURRENT_ARCHITECTURE.md`
-- 次の作業候補は `docs/tmp/tasks-2026.md`
+- 次の作業候補は `docs/tmp/tasks-2026-03-11.md`
 
 ## 当面の優先順位
 

@@ -183,6 +183,98 @@ plugin panel の SDK は `plugin-sdk` が担当し、macro はそのサブモジ
 
 - macro は物理的に別 crate でもよいが、論理的には `plugin-sdk` 配下の authoring surface として扱う。
 
+## 目標 crate 配置草案
+
+現時点でまだ存在しない crate を含め、今後の責務移動先は次で固定して読む。
+
+| 論理名          | 現在の主配置                               | 目標配置                     | 主責務                                                | 新規コードを置く判断基準                             |
+| --------------- | ------------------------------------------ | ---------------------------- | ----------------------------------------------------- | ---------------------------------------------------- |
+| `desktopApp`    | `apps/desktop`                             | `apps/desktop`               | event loop、OS I/O、GPU 所有、subsystem orchestration | OS/window/GPU/event loop に触るならここ              |
+| `app-core`      | `crates/app-core`                          | `crates/app-core`            | `Document`、`Command`、純粋状態、不変条件             | UI/GPU/Wasm を知らない純粋状態ならここ               |
+| `render`        | `crates/render`                            | `crates/render`              | frame plan、dirty rect、座標変換、compose 計画        | 画面生成のための計算ならここ                         |
+| `canvas`        | 未作成                                     | `crates/canvas`              | canvas 入力解釈、tool runtime、bitmap op              | canvas 差分生成や gesture state machine ならここ     |
+| `ui-shell`      | `crates/ui-shell`                          | `crates/ui-shell`            | panel presentation、host facade、panel UI 管理 API    | panel の見た目・hit-test・focus・text input ならここ |
+| `panel-runtime` | 未作成                                     | `crates/panel-runtime`       | panel discovery、DSL/Wasm bridge、host snapshot sync  | panel runtime と presentation を分けたい処理ならここ |
+| `plugin-host`   | `crates/plugin-host`                       | `crates/plugin-host`         | Wasm runtime、ABI、sandbox                            | Wasm 実行器そのものならここ                          |
+| `panel-dsl`     | `crates/panel-dsl`                         | `crates/panel-dsl`           | `.altp-panel` parser / validator / normalized IR      | DSL parse / validate ならここ                        |
+| `plugin-sdk`    | `crates/panel-sdk` + `crates/panel-macros` | `crates/plugin-sdk` 系へ再編 | plugin 作者向け安定 API と macro surface              | plugin 作者が直接触る API ならここ                   |
+
+### 将来の物理配置イメージ
+
+```text
+apps/desktop
+	-> app-core
+	-> render
+	-> canvas
+	-> ui-shell
+		 -> panel-runtime
+				-> panel-dsl
+				-> plugin-host
+
+plugins/*
+	-> plugin-sdk
+```
+
+補足:
+
+- `panel-runtime` はフェーズ3で導入候補とする。
+- `canvas` はフェーズ2で追加する前提とする。
+- `panel-sdk` / `panel-macros` は移行期間を挟んで `plugin-sdk` 系へ寄せる。
+
+### crate ごとの判断基準
+
+#### `desktopApp`
+
+- 入出力順序、再描画要求、OS イベント配線だけを持つ。
+- project / workspace の意味論は置かない。
+- canvas や panel の詳細アルゴリズムは持ち込まない。
+
+#### `app-core`
+
+- 保存可能な状態と不変条件だけを持つ。
+- runtime 文脈の組み立ては置かない。
+- file path、dialog、Wasm runtime、GPU 型を受け取らない。
+
+#### `render`
+
+- 描画結果を決める計算は置く。
+- project 読込/保存や plugin discovery は置かない。
+- UI の意味論ではなく表示計画だけを扱う。
+
+#### `canvas`
+
+- pointer/gesture から `BitmapEdit` 相当を作る責務を持つ。
+- panel runtime や workspace layout は持たない。
+- 最終提示や GPU upload は扱わない。
+
+#### `ui-shell`
+
+- panel presentation と host facade に寄せる。
+- runtime bridge は `panel-runtime` 導入後に薄くする。
+- panel 描画と focus/input 管理はここに寄せる。
+
+#### `panel-runtime`
+
+- DSL/Wasm/runtime sync を閉じ込める。
+- panel surface の描画は持たない。
+- `ui-shell` presentation 側へ Wasm 詳細を漏らさない。
+
+#### `plugin-host`
+
+- ABI と Wasm 実行だけを持つ。
+- panel layout、workspace、描画キャッシュは持たない。
+
+#### `panel-dsl`
+
+- parser / validator / normalized IR に閉じる。
+- host state や UI presentation を持たない。
+
+#### `plugin-sdk`
+
+- plugin 作者が依存する唯一の安定表面を目指す。
+- host 内部型への依存を隠蔽する。
+- runtime ABI の詳細を直接露出しない。
+
 ## plugin が担うべき領域
 
 以下の機能は、それぞれ plugin が担う。
@@ -278,11 +370,15 @@ color 選択 UI とその操作フローは plugin が担う。
 
 ### 禁止したい方向
 
-- `app-core` -> OS / GPU / Wasm runtime
+- `app-core` -> `apps/desktop` / OS / GPU / `wgpu`
+- `app-core` -> `plugin-host` / Wasm runtime
 - plugin -> host 内部型の直接参照
 - plugin -> GPU / event loop 直接制御
 - `desktop-support` -> canvas / panel runtime の本体
 - `render` -> file I/O や plugin discovery
+- `render` -> project / workspace I/O の意味論
+- `ui-shell` の presentation 側 -> Wasm runtime の詳細
+- `canvas` -> panel runtime
 
 ## 境界設計の原則
 
@@ -332,6 +428,40 @@ plugin は常に安定 API を通る。
 - 設定管理
 - view / panel / tool / color / workspace の操作意味論
 - 外部記述ファイルに基づく振る舞い
+
+## 新規ファイル配置規約
+
+今後 module を増やすときは、少なくとも次の意味で名前を使い分ける。
+
+### `runtime/`
+
+- 外部 runtime や stateful bridge を置く。
+- Wasm / event / host snapshot などの仲介を含める。
+
+### `presentation/`
+
+- layout、hit-test、focus、text input、surface 生成など見た目寄りを置く。
+- runtime の詳細を直接持ち込まない。
+
+### `services/`
+
+- project / workspace / export / catalog など I/O orchestration を置く。
+- serializer や dialog を束ねる上位フローを置く。
+
+### `ops/`
+
+- canvas や render の高頻度オペレーションを置く。
+- stateless か、少なくとも狭い演算責務へ切る。
+
+### `tests/`
+
+- crate 単位・module 単位で分離した境界テストを置く。
+- integration でしか検証できないもの以外は `apps/desktop` へ残さない。
+
+### `lib.rs`
+
+- module 宣言、公開 API、薄い re-export に寄せる。
+- 大きな実装や分岐を `lib.rs` に戻さない。
 
 ## この文書の結論
 

@@ -266,6 +266,22 @@ workspace member として存在するもの:
 - 各 plugin は基本的に `panel.altp-panel` と Rust/Wasm 実装を同居させている。
 - `plugins/phase6-sample` は残っているが、workspace member ではない。
 
+## 目標 crate 配置草案との差分
+
+現状コードを基準に見たとき、移動先として固定したい境界は次である。
+
+| 論理名          | 現在の主配置                                  | 目標配置               | 現状メモ                              |
+| --------------- | --------------------------------------------- | ---------------------- | ------------------------------------- |
+| `desktopApp`    | `apps/desktop`                                | `apps/desktop`         | 現在は orchestration 以外も広く抱える |
+| `app-core`      | `crates/app-core`                             | `crates/app-core`      | `Document` に runtime 寄り責務が残る  |
+| `render`        | `crates/render`                               | `crates/render`        | desktop 固有 compose がまだ外に残る   |
+| `canvas`        | `apps/desktop` + `app-core` + `render` に分散 | `crates/canvas`        | まだ crate が存在しない               |
+| `ui-shell`      | `crates/ui-shell`                             | `crates/ui-shell`      | runtime と presentation が同居中      |
+| `panel-runtime` | `crates/ui-shell` 内部に内包                  | `crates/panel-runtime` | フェーズ3で切り出し候補               |
+| `plugin-host`   | `crates/plugin-host`                          | `crates/plugin-host`   | panel Wasm runtime 専用               |
+| `panel-dsl`     | `crates/panel-dsl`                            | `crates/panel-dsl`     | 純粋 parse 層として維持しやすい       |
+| `plugin-sdk`    | `crates/panel-sdk` + `crates/panel-macros`    | `crates/plugin-sdk` 系 | 物理名と論理名がまだずれる            |
+
 ## 現在の runtime flow
 
 ### 1. 起動
@@ -315,6 +331,13 @@ workspace member として存在するもの:
 - dirty rect と present planning
 - panel drag と input state
 
+集中箇所（ファイル単位）:
+
+- `apps/desktop/src/app/mod.rs`: constructor、起動復元、preset/template 同期、helper 群が集中する
+- `apps/desktop/src/app/input.rs`: canvas/panel 振り分け、panel drag、gesture 状態が集中する
+- `apps/desktop/src/app/present.rs`: dirty rect、panel surface refresh、frame compose 指示が集中する
+- `apps/desktop/src/app/drawing.rs`: built-in paint runtime と bitmap op が集中する
+
 ### `Document`
 
 次が集中している。
@@ -323,6 +346,11 @@ workspace member として存在するもの:
 - `Command` 適用
 - tool / pen runtime 状態
 - paint plugin 文脈解決
+
+集中箇所（ファイル単位）:
+
+- `crates/app-core/src/document.rs`: document state、tool state、paint context 解決が集中する
+- `crates/app-core/src/painting.rs`: `PaintPluginContext`、`BitmapEdit`、compositor が集中する
 
 ### `UiShell`
 
@@ -334,6 +362,12 @@ workspace member として存在するもの:
 - workspace layout
 - focus / scroll / text input
 - panel surface 生成
+
+集中箇所（ファイル単位）:
+
+- `crates/ui-shell/src/lib.rs`: registry、update、persistent config、公開 facade が集中する
+- `crates/ui-shell/src/dsl.rs`: panel file 探索、DSL 評価、Wasm bridge、state patch 適用が集中する
+- `crates/ui-shell/src/workspace.rs`: workspace layout、panel move/visibility、manager tree が集中する
 
 ## 命名と実態のズレ
 
@@ -358,9 +392,40 @@ workspace member として存在するもの:
 次の責務は重要だが、まだ独立した crate / module として確立していない。
 
 - `canvas` と呼べる独立層
+- `panel-runtime` と呼べる独立層
 - project / workspace を plugin 主導で扱う一般 plugin runtime
 - panel runtime と panel presentation の明確な分離
 - tool 実行 plugin と host runtime の安定境界
+
+## 既存テストの責務境界棚卸し
+
+### `apps/desktop/src/app/tests/*`
+
+- `commands.rs`: command dispatch、shortcut、preset 同期、built-in panel 置換確認をまとめて抱えている
+- `interaction.rs`: canvas 入力、panel 入力、drag、color wheel、present 前提の振る舞いをまとめて抱えている
+- `persistence.rs`: project save/load、workspace layout 復元、plugin config 永続化、差分 present 検証をまとめて抱えている
+
+今後 crate / module 単位へ移したい代表例:
+
+- canvas 座標変換、eraser/stroke/fill の期待値テスト → 将来 `crates/canvas`
+- panel dispatch、host action 適用、focus/control activation → `apps/desktop` 内の `panel_dispatch` / `command_router`
+- dirty rect と panel 差分 compose の検証 → `crates/render`
+- workspace preset config 同期や bootstrap 復元 → `apps/desktop` 内の `bootstrap` / `services`
+
+### `crates/ui-shell/src/tests.rs`
+
+- 現在は runtime bridge と presentation の両方を 1 ファイルで検証している
+- DSL 読込、Wasm bridge、focus、dropdown、text input、surface render が同居している
+
+今後分離したい代表例:
+
+- DSL/Wasm/host snapshot sync → 将来 `crates/panel-runtime`
+- hit-test、focus、text input、surface render → `crates/ui-shell/src/presentation/*`
+
+### `crates/panel-sdk/src/tests.rs`
+
+- 現在は command builder、typed host accessor、runtime helper、macro export を 1 つの作者向け回帰集合で検証している
+- authoring surface の回帰テストとしては妥当だが、将来 `plugin-sdk` 再編時は command / services / runtime helper を分割しやすい構成へ寄せる
 
 ## この文書の結論
 
