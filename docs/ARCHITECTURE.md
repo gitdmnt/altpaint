@@ -1,464 +1,346 @@
-# altpaint アーキテクチャ設計
+# altpaint 目標アーキテクチャ
 
 ## この文書の目的
 
-この文書は、`altpaint` の**現在の実装と、そこから維持したい設計原則**を整理するための中核文書である。
+この文書は、`altpaint` が今後採るべき**目標構造と責務境界**を定義するための文書である。
 
-依存関係の事実関係は [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md) を正本とし、この文書では次を定義する。
+ここで書くのは現状の説明ではない。
+現状の構造は [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md) を参照すること。
+
+この文書では、次を固定する。
 
 - どの責務をどの層へ置くか
-- どこを安定境界として扱うか
-- desktop host / render / panel runtime / storage の分離原則
-- 新しいクレートや機能を追加する際の判断基準
+- host に残す高性能経路は何か
+- plugin へ委譲する非性能領域は何か
+- plugin panel / tool / workspace / project の境界をどう考えるか
 
-## 読む順番
+## 基本的理念
 
-1. 現在の到達点を知りたいときは [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)
-2. 実際の依存関係を知りたいときは [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md)
-3. 設計原則と責務境界を知りたいときはこの文書
-4. 実装順序を知りたいときは [docs/ROADMAP.md](docs/ROADMAP.md)
+`altpaint` は次の理念を採る。
 
-## 基本方針
+> GPU 処理などの性能が要求されるものは基本的にアプリに組み込む。
+> それ以外のものはすべて plugin として実装する。
 
-`altpaint` は次の方針を採る。
+この原則により、`altpaint` は
 
-1. **ホストが window / GPU / event loop を所有する**
-2. **ドメイン状態は `app-core` に閉じ込める**
-3. **パネル UI は host 主導の中間表現で扱う**
-4. **Wasm panel は host API を直接触らず、DTO と `HostAction` を経由する**
-5. **project 永続化と desktop session 永続化を分離する**
-6. **標準パネルも外部パネルに近い形へ寄せる**
+- host が性能要求の高い runtime を持ち
+- plugin が機能拡張と UI を担う
 
-## 現在のアーキテクチャを一言で言うと
+という構造を目指す。
 
-2026-03-10 時点の `altpaint` は、次の構成になっている。
+## 目標の層構造
 
-- `app-core` がドメイン中心
-- `apps/desktop` が実行ホスト
-- `ui-shell` が panel runtime 統合点
-- `plugin-host` が Wasm 実行器
-- `panel-dsl` / `panel-schema` / `panel-sdk` / `panel-macros` が panel 基盤
-- `storage` が project I/O
-- `desktop-support` が desktop 固有 I/O と profiler
-- `workspace-persistence` が project / session 共有の UI 永続化 DTO を持つ
-- `render` は `RenderFrame` と canvas scene 計画を持つ
+### 1. `desktopApp`
 
-つまり、理想図としての「render 中心の描画エンジン」はまだ途中だが、**canvas quad / dirty 写像 / view 座標変換の責務は `render` へ寄せ始めている**。
-
-## 層構造
-
-### 1. ドメイン層: `app-core`
+`desktopApp` は起動時およびランタイムの I/O と event loop を担当する。
 
 置くもの:
 
-- `Document`
-- `Work -> Page -> Panel -> Layer`
-- `Command`
-- 色、ペン、レイヤー、ビュー変換
-- workspace layout の保存対象モデル
+- アプリ起動
+- window 作成
+- OS 入力の受信
+- event loop
+- GPU device / surface / presenter の所有
+- 各 subsystem 呼び出し順の制御
 
 置かないもの:
 
-- `winit`
-- `wgpu`
-- `wasmtime`
-- panel DSL / ABI / file dialog
+- ドメイン編集ロジックの本体
+- project / workspace の意味論
+- ツール差分生成の本体
+- panel 定義の parse
+- plugin author 向け SDK
 
-### 2. データ永続化・desktop 補助層: `storage`, `desktop-support`
+### 2. `app-core`
 
-#### `storage`
-
-置くもの:
-
-- project save/load
-- format version 管理
-- workspace layout / plugin config 永続化
-- pen preset 読込
-
-#### `desktop-support`
+アプリの中核的な処理は `app-core` が担う。
 
 置くもの:
 
-- desktop config 定数
-- session save/load
+- document model
+- command model
+- layer / page / panel / work などの中核状態
+- tool や workspace に関する純粋状態
+- host から見た不変条件
+
+置かないもの:
+
+- OS / GPU / event loop
+- plugin file load
+- panel runtime
+- canvas 差分生成アルゴリズム
+
+### 3. `render`
+
+表示するための画面の生成はすべて `render` が担う。
+
+置くもの:
+
+- canvas の表示計画
+- overlay の表示計画
+- panel surface の表示計画
+- dirty rect 写像
+- 画面座標変換
+- 画面生成のための scene / pass / quad / compose 計画
+
+置かないもの:
+
+- OS イベント処理
+- file I/O
+- plugin 実行判断
+
+### 4. `desktop-support`
+
+実行時間の計測や desktop 固有補助は `desktop-support` が担う。
+
+置くもの:
+
+- profiler
 - native dialog 境界
-- runtime profiler
+- desktop 固有 config
+- desktop 起動補助
 
-ルール:
+置かないもの:
 
-- project file と session file は分ける
-- desktop 固有の path / dialog / profiler は `storage` に混ぜない
+- project 形式そのもの
+- canvas 演算
+- panel runtime
 
-### 3. パネル契約層: `plugin-api`
+### 5. `canvas`
 
-置くもの:
-
-- `PanelPlugin`
-- `PanelTree`
-- `PanelNode`
-- `PanelEvent`
-- `HostAction`
-
-意味:
-
-- host が panel を理解する最小中間表現
-- panel が host へ伝える操作要求の型
-
-### 4. パネル定義・ABI 層: `panel-dsl`, `panel-schema`, `panel-sdk`, `panel-macros`, `plugin-host`
-
-#### `panel-dsl`
-
-- `.altp-panel` parser / validator / normalized IR
-
-#### `panel-schema`
-
-- host-Wasm 間 DTO
-
-#### `panel-sdk`
-
-- plugin author 向け安定 API
-- plugin 作者が唯一直接依存する正面入口
-
-#### `panel-macros`
-
-- export 宣言を安全化する proc-macro
-
-#### `plugin-host`
-
-- `wasmtime` 上の panel runtime
-
-ルール:
-
-- ABI の生 details は `panel-schema` と `plugin-host` に閉じ込める
-- plugin crate から host 内部型を直接参照させない
-
-### 5. パネル実行・描画層: `ui-shell`
+キャンバスへの処理は `canvas` が担当する。
 
 置くもの:
 
-- panel registry
-- `.altp-panel` 再帰ロード
-- DSL panel の状態管理
-- Wasm handler 呼び出し
-- panel layout / hit test / focus / text input / scroll
-- software panel rendering
+- キャンバス入力解釈
+- ツール実行ランタイム
+- bitmap 差分生成
+- ブラシ / 消しゴム / 塗りつぶしなどの canvas オペレーション
+- canvas 固有の演算補助
 
-現在の実態:
+置かないもの:
 
-- 名前は `ui-shell` だが、実際には **panel runtime 統合層** である
-- `render` 依存は解消したが、runtime と presentation を同居させる facade である
-
-設計上の判断:
-
-- 今はこの集中を許容する
-- ただし将来的に DSL/Wasm runtime 部分と panel draw/hit-test 部分を分ける余地は残す
-
-### 6. 描画・提示層: `render` と `apps/desktop`
-
-#### `render`
-
-現状の責務:
-
-- `Document` から `RenderFrame` を作る最小入口
-- `CanvasViewTransform` から canvas scene / quad / dirty 写像 / view 座標変換を導く
-- floating panel layer のラスタライズと panel hit region 生成
-
-#### `apps/desktop`
-
-現状の責務:
-
-- `winit` event loop
-- `wgpu` presenter
-- desktop fixed layout と panel drag のような副作用 orchestration
-- CPU 側 background / UI layer 合成
-- canvas input routing
-- `DesktopApp` による副作用統合
-- `tools/` / `pens/` / `plugins/` の起動時ロード
+- event loop
+- 最終画面生成
+- plugin panel runtime
 
 補足:
 
-- ペン入力の種類、筆圧、ウィンドウ座標の取得は `apps/desktop` が担う
-- window 座標から canvas 座標への変換も `apps/desktop` が `render` の view 変換 API を使って解決する
+- `canvas` は性能要求の高い領域として host 側に置く。
 
-重要事項:
+### 6. `ui-shell`
 
-- 現時点では、レンダリングの実務の多くが `apps/desktop` にある
-- この状態は「バグ」ではなく、現段階の実装到達点として扱う
-- ただし将来は `render` へ寄せる判断余地がある
+plugin への API 提供を含めた処理は `ui-shell` が担当する。
 
-## compile-time 依存の原則
+置くもの:
 
-実装上の現在値は [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md) を参照する。
-ここでは守るべき方向だけを書く。
+- plugin panel と host の仲介
+- panel event 変換
+- host action の受理
+- workspace 上の panel 管理 API
+- plugin に対する host service 提供
+
+置かないもの:
+
+- Wasm runtime 実装そのもの
+- panel 定義ファイル parse 本体
+- canvas 差分生成
+
+### 7. `plugin-host`
+
+plugin panel の runtime は `plugin-host` が担う。
+
+置くもの:
+
+- Wasm runtime
+- ABI bridge
+- sandbox / isolation
+- plugin 呼び出しのエラー境界
+
+### 8. `panel-dsl`
+
+plugin panel のファイル parse は `panel-dsl` が担う。
+
+置くもの:
+
+- parser
+- validator
+- normalized IR
+- panel manifest の解釈
+
+### 9. `plugin-sdk`
+
+plugin panel の SDK は `plugin-sdk` が担当し、macro はそのサブモジュールが担当する。
+
+置くもの:
+
+- plugin 作者向け安定 API
+- typed command / state / host accessor
+- panel authoring surface
+- macro export surface
+
+補足:
+
+- macro は物理的に別 crate でもよいが、論理的には `plugin-sdk` 配下の authoring surface として扱う。
+
+## plugin が担うべき領域
+
+以下の機能は、それぞれ plugin が担う。
+
+### 1. project file の読み込み / 保存
+
+project の意味論と操作フローは plugin が持つ。
+
+host は次だけを提供する。
+
+- file I/O service
+- serializer 実行 service
+- 現在 document へのアクセス
+
+### 2. workspace の読み込み / 保存
+
+workspace の意味論、表示 panel の管理、配置管理は plugin が担う。
+
+host は panel 配置 API と永続化 service を提供する。
+
+### 3. ツール関連
+
+plugin が次を担う。
+
+- ツール一覧の読み込み / 一覧表示
+- ツールパラメータおよび処理の親の読み込み / 一覧表示 / 設定
+- キャンバスに書き込むための差分の生成
+
+補足:
+
+- 描画処理さえ plugin に記述され、アプリ本体はそれを実行する runtime である、という構造を目指す
+- ツール処理 plugin は、処理を共有する子ツールを外部から追加できるべきである
+- ツール処理 plugin は parameter file を読み取り、ツール処理を実行し、canvas 差分を生成する
+
+### 4. キャンバスビューの移動
+
+view 操作の UI と意味論は plugin が担う。
+
+host は view state 更新 API を提供する。
+
+### 5. panel を持つ plugin 一覧の表示、表示非表示切り替え
+
+workspace / panel 管理 plugin が担う。
+
+### 6. color palette
+
+color 選択 UI とその操作フローは plugin が担う。
+
+## runtime flow の目標形
+
+### 1. 起動
+
+1. `desktopApp` が window / GPU / event loop を初期化する
+2. `desktopApp` が `app-core`、`render`、`canvas`、`ui-shell` を起動する
+3. `ui-shell` が `panel-dsl` と `plugin-host` を使って plugin panel を準備する
+4. plugin が必要な project / workspace / tool catalog を読み込む
+5. `render` が最初の画面生成を行う
+
+### 2. canvas 入力
+
+1. `desktopApp` が入力を受ける
+2. `canvas` が入力を解釈する
+3. `app-core` の document state を参照する
+4. tool plugin が差分を生成する
+5. host runtime が差分を適用する
+6. `render` が画面を再生成する
+
+### 3. panel イベント
+
+1. `desktopApp` が panel 入力を受ける
+2. `ui-shell` が panel event に変換する
+3. `plugin-host` が panel plugin を呼び出す
+4. plugin は host API / command request を返す
+5. host が `app-core` / `canvas` / `render` へ反映する
+
+### 4. project / workspace I/O
+
+1. plugin が保存 / 読込操作を開始する
+2. `ui-shell` が host service を介して I/O を仲介する
+3. host が serializer や runtime state へアクセスする
+4. 結果を plugin と host state に反映する
+
+## 依存方向の原則
 
 ### 守る方向
 
-- `apps/desktop` -> `app-core`, `render`, `ui-shell`, `storage`, `desktop-support`, `plugin-api`
-- `ui-shell` -> `app-core`, `plugin-api`, `panel-dsl`, `panel-schema`, `plugin-host`
-- `storage` -> `app-core`
-- `desktop-support` -> `app-core`
-- `workspace-persistence` -> `app-core`
-- `plugin-api` -> `app-core`
+- `desktopApp` -> `app-core`, `render`, `desktop-support`, `canvas`, `ui-shell`
+- `ui-shell` -> `plugin-host`, `panel-dsl`, `plugin-sdk` が前提とする契約
+- `canvas` -> `app-core`
 - `render` -> `app-core`
-- `plugin-host` -> `panel-schema`
-- `plugins/*` -> `panel-sdk`
+- `plugin-host` -> panel/plugin schema
+- plugin -> `plugin-sdk`
 
 ### 禁止したい方向
 
-- `app-core` -> `winit` / `wgpu` / `wasmtime`
-- `plugins/*` -> `app-core` / `ui-shell` / `apps/desktop`
-- `storage` -> `winit` / `wgpu`
-- `desktop-support` -> `panel-dsl` / `plugin-host`
+- `app-core` -> OS / GPU / Wasm runtime
+- plugin -> host 内部型の直接参照
+- plugin -> GPU / event loop 直接制御
+- `desktop-support` -> canvas / panel runtime の本体
+- `render` -> file I/O や plugin discovery
 
-## runtime 境界
+## 境界設計の原則
 
-### 1. キャンバス編集境界
+### 1. host は高性能 runtime を持つ
 
-キャンバス編集は次の流れを通す。
+host は次を直接所有する。
 
-1. OS input
-2. `apps/desktop::runtime`
-3. `apps/desktop::app::input`
-4. `canvas_bridge` による window -> canvas 変換
-5. `app-core::Document` が active panel 内判定と layer/context 解決を行う
-6. `app-core` が active tool の provider plugin id / drawing plugin id / settings を引く
-7. desktop host が drawing plugin を呼び、bitmap edit を受け取る
-8. `Document::apply_bitmap_edits_to_active_layer(...)`
-9. `render` / presenter 更新
+- GPU
+- event loop
+- canvas 実行 runtime
+- 画面生成
 
-この経路の目的は、入力解釈とドメイン更新を分けることにある。
+### 2. plugin は意味論と UI を持つ
 
-### 1.1 ツールカタログ境界
+plugin は次を持つ。
 
-描画ツールは `tools/` 配下の定義ファイルからロードする。
+- UI
+- 操作フロー
+- project / workspace / tool / color / view の意味論
+- host へ要求する command / service request
 
-- 各ツール定義は `id`, `name`, `kind` に加えて、**管轄 plugin id** と **描画計算 plugin id** を持つ
-- 通常ツールは `plugins/default-pens-plugin`, `plugins/default-erasers-plugin` などを provider plugin として持つ
-- 特別な描画処理を持つツールは、`tools/` 側の定義に加えて `plugins/` 側へ専用 drawing plugin を置く
-- drawing plugin は、ホストへ公開する設定項目定義と、入力/レイヤー/合成済み bitmap を受けて更新用 bitmap を返す責務を持つ
+### 3. plugin は host を直接触らない
 
-現在の最小実装では、drawing plugin が公開する設定項目定義を `ToolDefinition.settings` として `Document` 内へキャッシュし、`tool-palette` と `pen-settings` が host snapshot 経由で参照する。
+plugin は常に安定 API を通る。
 
-### 2. パネルイベント境界
+直接参照を禁止するもの:
 
-パネルは host 内部状態を直接変更しない。
+- `Document` の内部構造
+- GPU resource
+- window handle
+- runtime 内部状態
 
-1. host が `PanelEvent` を作る
-2. `UiShell` が panel へ配送する
-3. DSL/Wasm panel は `StatePatch` と `CommandDescriptor` を返す
-4. host はそれを `HostAction` / `Command` に変換して適用する
+## 追加判断基準
 
-この構造により、panel は「UI を提案する側」であって「window や GPU を直接操作する側」ではない。
+新しい機能を追加するときは、まず次を確認する。
 
-### 3. 永続化境界
+### host に置くべきもの
 
-保存系は2種類ある。
+- GPU / 高速描画 / 低遅延入力処理
+- canvas 差分適用 runtime
+- 厳しい性能要件がある処理
 
-#### project 保存
+### plugin に置くべきもの
 
-- `storage` が扱う
-- `Document` + `WorkspaceUiState` を保存する
+- UI
+- I/O フロー
+- 設定管理
+- view / panel / tool / color / workspace の操作意味論
+- 外部記述ファイルに基づく振る舞い
 
-#### session 保存
+## この文書の結論
 
-- `desktop-support` が扱う
-- 最後に開いたファイルと `WorkspaceUiState` を扱う
+`altpaint` の目標構造は、
 
-この分離は今後も崩さない。
+- host が性能要求の高い runtime を持ち
+- plugin が機能と UI を持ち
+- `desktopApp`、`app-core`、`render`、`canvas`、`ui-shell`、`plugin-host` が明確に分担する
 
-## 表示アーキテクチャ
+という形である。
 
-現在の提示は 3 層で考える。
-
-1. **背景層**
-   - CPU で生成
-   - 背景、ステータス、キャンバス host 枠
-2. **キャンバス層**
-   - GPU texture として保持
-   - パン/ズームは quad と UV で適用
-3. **UI パネル層**
-   - `render` が floating panel を GUI ラスタライズする
-   - panel とブラシプレビューなど、キャンバス上に重なる UI を保持する
-
-この方針の目的は、パン/ズーム時に CPU 側でキャンバス全体を焼き直さないことにある。
-
-## 責務境界の補足
-
-### 1. `CanvasViewTransform` はどこに置くべきか
-
-結論:
-
-- **ユーザー操作としての view state は `app-core` に置く**
-- **その state から導く表示計算は `render` に寄せる**
-
-理由:
-
-- 現在の `zoom` / `pan_x` / `pan_y` は `Command` で変更されるアプリ状態である
-- panel host snapshot や保存対象と整合しやすい
-- 一方で、quad / UV、可視範囲、dirty の表示先写像、画面座標との相互変換は render の責務である
-
-つまり、`CanvasViewTransform` 全体を renderer 専用型へ移すより、**状態そのものは `app-core`、その利用ロジックは `render`** という分割を維持する。
-
-### 2. なぜ session 保存は `desktop-support` なのか
-
-結論:
-
-- **project 保存は `storage`**
-- **desktop 起動補助としての session 保存は `desktop-support`**
-
-現在の session は、作品ファイルそのものではなく、次を扱う。
-
-- 最後に開いた project path
-- desktop 起動時に復元する workspace 状態
-- desktop 実行の補助的な panel config
-
-そのため、`storage` に寄せると「作品形式」と「デスクトップ起動状態」が混ざりやすい。
-
-現在は `workspace-persistence::WorkspaceUiState` でシリアライズ形だけを共有した。ownership は引き続き `storage` と `desktop-support` に残す。
-
-### 3. `panel-macros` は `panel-sdk` の一部か
-
-結論:
-
-- **論理的には `panel-sdk` の authoring surface の一部**
-- **物理的には別 crate のまま維持する**
-
-理由:
-
-- Rust の proc-macro は通常 crate と分離が必要
-- そのため `panel-sdk` に完全統合はしない
-- 代わりに `panel-sdk` が `panel-macros` を再 export し、plugin 作者の入口を一つにする
-
-したがって設計上の扱いは「別実装 crate だが、外向き API としては `panel-sdk` 配下」である。
-
-### 4. `ui-shell` の責務が重いとは何か
-
-現在の `ui-shell` は少なくとも次の変更軸を同時に持っている。
-
-- panel 探索と registry
-- `.altp-panel` 読み込みと DSL 評価
-- Wasm runtime 実行と host snapshot 同期
-- `CommandDescriptor` から `Command` への変換
-- panel local state / persistent config 管理
-- layout / hit-test / focus / scroll / text input
-- panel rasterize は `render` へ委譲
-
-問題は、これらが1つのクレートに同居すると、次の変更が互いに巻き込まれることである。
-
-- Wasm ABI を直したいだけでも panel 描画と同じ場所を触る
-- テキスト入力やフォーカスを変えたいだけでも DSL/Wasm 側のテスト境界をまたぐ
-- panel performance 改善が runtime state 管理と分離されていない
-- host snapshot の shape 変更が UI tree 評価・描画・入力経路へ波及しやすい
-
-今後の理想は次の二分割である。
-
-- panel runtime 側
-   - panel discovery
-   - DSL evaluation
-   - Wasm bridge
-   - state / host snapshot / command mapping
-- panel presentation 側
-   - layout
-   - hit-test
-   - focus
-   - text input
-   - software rendering
-
-### 5. `apps/desktop` から `render` へ寄せたい責務
-
-現時点で `apps/desktop` にあるが、将来 `render` 側へ寄せたい候補は次である。
-
-- canvas 変換メトリクスの計算
-- 画面座標 <-> canvas 座標変換
-- dirty rect の表示先への写像
-- パン/ズーム時の露出背景計算
-- ブラシプレビュー矩形の計算
-- canvas quad / UV の計算
-- floating panel draw と panel layer 用 hit region 生成
-- 「何を base / canvas / overlay 更新にするか」の scene 判定
-
-逆に、次は `apps/desktop` に残す。
-
-- `winit` event loop
-- `wgpu` device / queue / surface / presenter
-- native window / IME / pointer / keyboard の収集
-- desktop 固定レイアウトや status bar などのホスト固有 chrome
-- OS pointer を panel move / canvas input / panel event へ振り分ける副作用
-
-つまり、`render` は「canvas 表示計算と panel layer rasterize を含む更新計画」、`apps/desktop` は「OS/GPU 所有と最終提示 orchestration」へ寄せる。
-
-補足:
-
-- panel の **hit-test 自体は `ui-shell` に残す**
-- 理由は、hit-test が GPU 資源制御ではなく panel event / focus / text input へ接続する UI 意味論だからである
-- `render` は hit region の生成までを担当し、`ui-shell` がそれを `PanelEvent` へ解釈する
-
-## 追加クレート判断基準
-
-新しい責務を増やすときは、まず次を確認する。
-
-### `app-core` に置くべきもの
-
-- ドメイン状態そのもの
-- `Command` の意味論
-- UI 非依存のデータ型
-
-### `storage` に置くべきもの
-
-- project file / asset file の読込保存
-- format version
-
-### `desktop-support` に置くべきもの
-
-- desktop 固有 path
-- dialog
-- session
-- profiler
-
-### `ui-shell` に置くべきもの
-
-- panel runtime / panel input / host action 解釈の責務
-
-### `apps/desktop` に置くべきもの
-
-- OS event loop
-- GPU presenter
-- desktop 固有の提示 orchestration
-
-### `panel-*` に置くべきもの
-
-- panel authoring 基盤
-- panel DSL / ABI / SDK
-
-## 現時点の設計メモ
-
-### 1. `plugin-api` が `Command` を知っている
-
-これは panel から host action を出す最短経路としては実用的である。
-一方で、将来より疎結合にしたい場合は再検討余地がある。
-
-### 2. `ui-shell` が `render` を知っている
-
-この問題は解消した。
-現在の論点は `ui-shell` 内の runtime / presentation 分離であり、方針は [docs/tmp/ui-shell-runtime-presentation-split-2026-03-10.md](docs/tmp/ui-shell-runtime-presentation-split-2026-03-10.md) を正とする。
-
-### 3. `render` の責務は将来拡大余地が大きい
-
-`RENDERING-ENGINE.md` に理想像はあるが、現実の正本はまだ desktop 側に広く分散している。
-
-## 今後も維持したい原則
-
-1. `app-core` を UI/GPU から切り離す
-2. panel を host 主導の中間表現で扱う
-3. `apps/desktop` だけが OS と GPU を所有する
-4. project 保存と session 保存を混ぜない
-5. built-in panel も external panel に近いモデルで保つ
-6. 実装の事実は文書よりコードを優先する
-
-## 関連文書
-
-- [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md)
-- [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)
-- [docs/RENDERING-ENGINE.md](docs/RENDERING-ENGINE.md)
-- [docs/ROADMAP.md](docs/ROADMAP.md)
-- [docs/SKETCH.md](docs/SKETCH.md)
+現状がこの形とずれていても、今後の変更は常にこの文書を基準に寄せていく。

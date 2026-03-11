@@ -2,10 +2,14 @@
 
 ## この文書の目的
 
-この文書は、2026-03-10 時点の `altpaint` が**実際にどこまで実装済みか**を短く把握するための現況メモである。
+この文書は、2026-03-11 時点の `altpaint` が**実際にどこまで実装されているか**を短く把握するための現況整理である。
 
-依存関係の詳細は [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md)、
-設計原則は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) を参照する。
+この文書は理想図ではなく現況の要約であり、次と役割を分ける。
+
+- 現在の構造: [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md)
+- 目標構造: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- 依存関係の事実: [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md)
+- 今後の順序: [docs/ROADMAP.md](docs/ROADMAP.md)
 
 ## 現在の要約
 
@@ -13,31 +17,26 @@
 
 - Cargo workspace による multi-crate 構成
 - `winit` + `wgpu` による単一ウィンドウ desktop host
-- 単一 `Document` を中心にした最小編集モデル
-- 複数ラスタレイヤー、blend mode、簡易マスク、パン/ズーム
-- マウス / touch / wheel によるキャンバス操作
+- `Document` / `Command` を中心にした編集モデル
+- 複数ラスタレイヤー、blend mode、簡易 mask、pan / zoom / rotation / flip
 - dirty rect を使う差分提示
-- 浮動 UI panel の位置保存とドラッグ移動
-- SQLite ベース project save/load
-- page / panel 単位の project index / 部分ロード
-- layer bitmap のチャンク保存と current snapshot 永続化
-- session save/load
-- workspace preset 読込・再読込・切り替え・保存・書き出し
-- `plugins/` 配下の `.altp-panel` + Wasm panel の再帰ロード
-- `tools/` 配下の描画ツール定義 (`*.altp-tool.json`) の再帰ロード
-- built-in panel 群の UI DSL + Rust SDK + Wasm 実装
+- マウス / touch / wheel / keyboard を含む入力処理
+- `.altp-panel` + Rust/Wasm による built-in panel 実装
+- `plugins/` 配下 panel の再帰ロード
+- `tools/` 配下 tool 定義の再帰ロード
+- `pens/` 配下の外部ペン preset 読込
 - panel local state / host snapshot / persistent config
 - 4隅アンカー基準の workspace panel 配置
-- 外部ペンプリセット読込と import report 表示
-- `AltPaintPen` 正規化 format と external brush parse/export module
-- tool catalog に基づく `tool-palette` / `pen-settings` 同期
-- pen input plugin がビットマップ差分を返す描画フロー
-- キャンバス無段階回転の render / software raster / GPU sampling
-- 実行時 profiler とタイトル表示
+- workspace preset の読込 / 切替 / 保存 / 書き出し
+- SQLite ベース project save/load
+- page / panel 単位の project index / 部分ロード
+- layer bitmap の chunk 保存と current panel snapshot 永続化
+- session save/load
+- profiler と実行時間計測
 
-## workspace 現況
+## 現在の workspace 構成
 
-### 中核クレート
+### 中核 crate
 
 - `app-core`
 - `render`
@@ -53,60 +52,86 @@
 - `panel-macros`
 - `apps/desktop`
 
-### 組み込みパネル crate
+### workspace member の built-in panel plugin
 
 - `plugins/app-actions`
 - `plugins/workspace-presets`
 - `plugins/tool-palette`
+- `plugins/view-controls`
+- `plugins/panel-list`
 - `plugins/layers-panel`
 - `plugins/color-palette`
 - `plugins/pen-settings`
 - `plugins/job-progress`
 - `plugins/snapshot-panel`
 
+補足:
+
+- `plugins/phase6-sample` は存在するが、workspace member ではない。
+
 ## 実装済みの主要領域
 
-### 1. ドメインモデル
-
-`app-core` には次がある。
-
-- `Document`
-- `Command`
-- `CanvasBitmap`
-- `RasterLayer`
-- `BlendMode`
-- `CanvasViewTransform`
-- `PenPreset`
-- `ToolDefinition`
-- `WorkspaceLayout`
-
-現状の中心は、`Document::apply_command(...)` を通じて編集状態を変える形である。
-
-### 2. デスクトップホスト
+### 1. desktop host
 
 `apps/desktop` には次がある。
 
 - `DesktopRuntime` による `winit` event loop
-- `DesktopApp` による状態遷移と副作用統合
-- `wgpu` presenter
-- background / canvas / UI panel layer の 3 層提示
+- `WgpuPresenter` による base / canvas / overlay の三層提示
+- `DesktopApp` による document / UI / I/O / present の統合
 - pointer / keyboard / IME の処理
 - panel と canvas の入力ルーティング
-- 起動時の `plugins/` / `tools/` / `pens/` カタログ読込
+- 起動時の `plugins/` / `tools/` / `pens/` の読込
 
-### 3. パネル基盤
+補足:
+
+- built-in paint plugin の実行は、現時点ではまだ `apps/desktop/src/app/drawing.rs` にある。
+
+### 2. ドメインと document モデル
+
+`app-core` には次がある。
+
+- `Document`
+- `Work`, `Page`, `Panel`, `LayerNode`, `RasterLayer`
+- `Command`
+- `CanvasBitmap`
+- `CanvasViewTransform`
+- `PenPreset`
+- `ToolDefinition`
+- `WorkspaceLayout`
+- paint plugin 文脈の一部
+
+現状の状態変更の中心は `Document::apply_command(...)` である。
+
+### 3. 描画と表示計画
+
+`render` には次がある。
+
+- `RenderFrame`
+- `CanvasScene`
+- canvas quad / UV / dirty rect 写像
+- 画面座標 <-> canvas 座標変換
+- ブラシプレビュー矩形計算
+- floating panel layer のラスタライズ
+- panel hit region 生成
+- panel 描画用 text 計測 / 描画
+
+補足:
+
+- 画面生成ロジックの一部は `render` に寄っているが、desktop 固有の frame 合成と最終提示 orchestration はまだ `apps/desktop` に厚く残る。
+
+### 4. panel 基盤
 
 現在の panel stack は次で構成される。
 
 - `plugin-api`: `PanelTree`, `PanelNode`, `PanelEvent`, `HostAction`
 - `panel-dsl`: `.altp-panel` parser / validator / normalized IR
-- `panel-schema`: Wasm runtime DTO
-- `panel-sdk`: plugin author API。plugin 作者の正面入口
-- `panel-macros`: `panel-sdk` から再 export される proc-macro 実装 crate
+- `panel-schema`: host-Wasm 間 DTO
+- `panel-sdk`: panel 作者向け SDK
+- `panel-macros`: panel export 用 proc-macro
 - `plugin-host`: `wasmtime` ベース runtime
-- `ui-shell`: panel runtime 統合と panel presentation を束ねる facade
+- `ui-shell`: panel runtime と presentation の統合点
 
-### 4. 永続化
+### 5. 永続化
 
 `storage` には次がある。
 
@@ -114,12 +139,11 @@
 - `format_version` 管理
 - page / panel 単位の部分ロード API
 - layer bitmap の chunk 保存
-- current panel snapshot の永続化
-- full / delta save mode を差し込める save option
-- `WorkspaceLayout` 永続化
-- `plugin_configs` 永続化
+- current panel snapshot 永続化
+- full / delta save mode の差し込み余地
 - pen preset 読込
-- `ABR` / `SUT` / `GBR` 向け pen exchange module
+- external brush parse / export module
+- `tools/` カタログ読込
 
 `desktop-support` には次がある。
 
@@ -127,97 +151,117 @@
 - native dialog
 - desktop config
 - profiler
+- canvas template 読込
+- workspace preset catalog の読込 / 保存
 
-### 5. built-in panels
+`workspace-persistence` には次がある。
 
-現在の標準 panel は次である。
+- project / session で共有する `WorkspaceUiState`
+- `plugin_configs`
+
+### 6. built-in panel 群
+
+現在の built-in panel は次である。
 
 - `builtin.app-actions`
 - `builtin.workspace-presets`
 - `builtin.tool-palette`
+- `builtin.view-controls`
+- `builtin.panel-list`
 - `builtin.layers-panel`
 - `builtin.color-palette`
 - `builtin.pen-settings`
 - `builtin.job-progress`
 - `builtin.snapshot-panel`
 
-これらは `plugins/` 配下に `.altp-panel` と Rust/Wasm 実装を同居させる構成で揃っている。
+補足:
+
+- これらは `plugins/` 配下に `.altp-panel` と Rust/Wasm 実装を同居させる構成で揃っている。
+
+### 7. ツールとペン
+
+現在のツール系は次の構成で動いている。
+
+- `storage::tool_catalog` が `tools/` から tool 定義を読む
+- `Document` が active tool と設定を保持する
+- `tool-palette` と `pen-settings` が host snapshot を読む
+- paint plugin 実行は host 側 built-in 実装が中心
+- `storage` が外部ペン preset を読み、`AltPaintPen` 正規化 format を扱う
 
 補足:
 
-- `builtin.layers-panel` は、レイヤー追加/削除、縦並び一覧からの選択、ドラッグ&ドロップ並べ替え、レイヤー名変更、合成モード選択 dropdown に対応した
+- ツール UI は plugin 化されているが、実際の差分生成ランタイムはまだ host 中心である。
 
 ## runtime と依存関係の現況
 
-### 依存関係の読み方
+### 現在の実行上の中心
 
-依存関係の正本は [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md) に移した。
+現在の実装は、主に次の 3 点へ責務が集中している。
 
-重要な点だけここに再掲する。
+1. `apps/desktop::DesktopApp`
+2. `app-core::Document`
+3. `ui-shell::UiShell`
 
-- `app-core` はローカル依存を持たない
-- `render`, `storage`, `desktop-support`, `plugin-api` は `app-core` に依存する
-- `workspace-persistence` は `storage` / `desktop-support` が共有する UI 永続化 DTO を持つ
-- `ui-shell` は `panel-*`, `plugin-host`, `plugin-api`, `app-core` に依存する
-- `apps/desktop` は desktop host 全体を束ねる
-- built-in panel crate は `panel-sdk` のみへ依存する
+### 現在の特徴
 
-### 現時点での実装上の特徴
+1. `ui-shell` は panel runtime と presentation の両方を持つ
+2. `render` は canvas 表示計算と panel rasterize を持つが、最終提示の中心ではまだない
+3. project 保存と session 保存は分離されている
+4. built-in panel は file-based plugin 構成へかなり寄っている
+5. tool UI は plugin 化されているが、tool 実行はまだ完全には plugin-first ではない
 
-1. `ui-shell` が panel runtime の中心であり、runtime / presentation 分離メモは [docs/tmp/ui-shell-runtime-presentation-split-2026-03-10.md](docs/tmp/ui-shell-runtime-presentation-split-2026-03-10.md) に置いた
-2. `render` は `RenderFrame` に加えて canvas scene / transform 計画 API と floating panel layer の rasterize API を持ち、desktop から canvas 幾何計算と panel draw を受け持つ
-3. `plugin-host` は `ui-shell` の内側で使われる
-4. project 保存と session 保存は既に分離され、共有 UI 永続化 DTO は `workspace-persistence` へ寄せた
-5. `tool-palette` は host snapshot から tool catalog を受け取り、`pen-settings` は active tool が公開する設定キーに応じて UI を出し分ける
+## 到達済みの状態
 
-## 到達済みフェーズの整理
+### 明確に到達済み
 
-### 完了済み
+- desktop host と GPU 提示の最小実用ループ
+- multi-crate 構成
+- panel DSL + Wasm panel の最小垂直スライス
+- built-in panel 群の plugin 化
+- dirty rect ベースの canvas / panel 更新
+- SQLite project 形式の導入
+- workspace preset と session 復元
 
-- フェーズ0: 最小契約
-- フェーズ1: 最小起動ループ
-- フェーズ2: 最小描画ループ
-- フェーズ3: 保存と再読込
-- フェーズ4: パネル中間表現
-- フェーズ5: 標準パネルの host 描画
-- フェーズ6: panel 基盤 crate と UI DSL parser
-- フェーズ7: built-in panel の UI DSL + Wasm 移植
+### 最小実用到達済み
 
-### 最小到達済み
-
-- フェーズ8: 外部 Wasm panel runtime の基盤
-- フェーズ9: 実用寄りキャンバス機能の最小形
-- フェーズ11: 保存形式の本格化
+- 実用寄りの canvas 編集機能の最小形
+- 外部ペン preset 読込
+- panel 配置保存と復元
+- project index / 部分ロード
 
 ## 既知の現在地
 
 ### 強い点
 
 - host 主導の desktop runtime が一周している
-- panel DSL + Wasm の最小垂直スライスが通っている
-- built-in panel を file-based plugin へ寄せられている
-- dirty rect と三層提示により、最低限の差分更新構造がある
+- `render`、panel runtime、storage が独立 crate として成立している
+- built-in panel の file-based plugin 化が進んでいる
+- project / session / workspace preset が一応つながっている
 
-### まだ薄い点
+### まだ途中の点
 
-- `render` は将来構想に比べると責務が少ない
-- panel permission は宣言に比べ検証がまだ薄い
-- jobs / snapshot / export はまだ最小プレースホルダ寄りである
-- Undo/Redo や高度なドキュメント操作は未実装である
+- `DesktopApp` に責務が集まりすぎている
+- `Document` が tool / paint runtime 寄りの責務まで抱えている
+- `ui-shell` が runtime と presentation を兼務している
+- `canvas` と呼べる独立層がまだ存在しない
+- project / workspace I/O は plugin 主導ではない
+- ツール差分生成は host 内蔵実装依存が残る
 
 ## いま読むべき関連文書
 
+- 現在の構造を把握したいとき
+  - [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md)
+- 目標構造を確認したいとき
+  - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 依存関係を追いたいとき
   - [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md)
-- 設計原則を確認したいとき
-  - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- 描画責務を確認したいとき
-  - [docs/RENDERING-ENGINE.md](docs/RENDERING-ENGINE.md)
-- 今後の順番を確認したいとき
+- 今後の順序を確認したいとき
   - [docs/ROADMAP.md](docs/ROADMAP.md)
+- リファクタリング候補を見たいとき
+  - [docs/tmp/tasks-2026-03-11.md](docs/tmp/tasks-2026-03-11.md)
 
 ## 実務メモ
 
-- 「今どう実装されているか」はコードが正本
-- 「依存関係はどう整理されているか」は `MODULE_DEPENDENCIES.md` を優先
-- 「どういう境界を守るべきか」は `ARCHITECTURE.md` を優先
+- 「今どう実装されているか」はコードと `CURRENT_ARCHITECTURE.md` を優先する
+- 「どうあるべきか」は `ARCHITECTURE.md` を優先する
+- 「次に何を崩さず進めるか」は `ROADMAP.md` を優先する

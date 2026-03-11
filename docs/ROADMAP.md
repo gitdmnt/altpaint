@@ -1,558 +1,262 @@
-# altpaint ロードマップ
+# altpaint 新ロードマップ
 
 ## この文書の役割
 
-この文書は、`docs/SKETCH.md` と `docs/ARCHITECTURE.md` を前提に、内製描画/UIランタイム路線で `altpaint` をどう段階的に組み上げるかを定める。
+この文書は、2026-03-11 時点の実装到達点と [docs/tmp/tasks-2026.md](docs/tmp/tasks-2026.md) の整理結果を前提に、`altpaint` を**plugin-first / host-owned-performance** 方針へ再編するための新しいロードマップである。
 
-実装ベースの現在の依存関係と module 構成は、まず [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md) を参照すること。
+旧ロードマップのように「最初から何もない前提」で積み上げるのではなく、**すでにある実装をどう整理し直すか**を中心に定める。
 
-今回のロードマップでは、単に「機能を足す順番」ではなく、次の二本柱を崩さずに進めることを重視する。
+## 固定する原則
 
-- キャンバスを `wgpu` ネイティブで直接描画すること
-- Wasm/DSL のランタイムロードでパネルを構成し、そこからホストAPIを叩けるようにすること
+今後の設計では次を固定する。
 
-## 開発方針の更新
+1. 性能が強く要求される処理はアプリ本体に組み込む
+2. それ以外の機能は原則 plugin として実装する
+3. `desktopApp` は起動、ランタイム I/O、event loop を担う
+4. `app-core` はアプリの中核ドメインを担う
+5. `render` は画面生成を担う
+6. `canvas` はキャンバス処理を担う
+7. `ui-shell` は plugin API 提供と panel 統合を担う
+8. `plugin-host` は plugin panel runtime を担う
+9. `panel-dsl` は panel 定義ファイルの parse を担う
+10. `plugin-sdk` は plugin 作者向け SDK を担い、macro はその authoring surface 配下に置く
 
-過去の文書では、既存GUIフレームワークをUIホストに据えた上でキャンバスだけを直描画へ寄せる案を強く扱っていた。
+## 現在すでにある基盤
 
-しかし現時点では、その方針は最終アーキテクチャではない。
+2026-03-11 時点で、次は既にある。
 
-今後のロードマップは、**ホスト主導のデスクトップランタイムを育てる順序**として読む。
+- `winit` + `wgpu` による desktop host
+- `Document` / `Command` 中心の編集モデル
+- 複数レイヤー、ビュー変換、回転、dirty rect
+- `render` の canvas scene 計画と panel rasterize
+- `.altp-panel` + Wasm panel runtime
+- `storage` の SQLite project save/load
+- session / workspace preset / panel config の永続化
+- built-in panel 群の plugin 化
+- `tools/` / `pens/` 読込
 
-特に 2026-03-10 時点では、`render` よりも `apps/desktop` と `ui-shell` に実装責務が厚く乗っている。したがって、この文書は「今そうなっている」説明ではなく、「今後どう整理しながら伸ばすか」の文書として扱う。
+問題は「基盤がないこと」ではなく、**責務の置き場所がまだ途中であること**にある。
 
-## まず固定すること
+## 再編の大目標
 
-最初に固定するべきものは多くないが、以下はもうぶらさない。
+このロードマップでは、次の 4 本柱で進める。
 
-### 固定する
+1. `desktopApp` を薄くする
+2. `canvas` 層を独立させる
+3. `ui-shell` を runtime / presentation に分離する
+4. 非性能領域を plugin 主導へ寄せる
 
-- ウィンドウとイベントループはホストが直接持つ
-- キャンバス描画は `wgpu` ネイティブで行う
-- パネルは Wasm/DSL をランタイムロードできる構造にする
-- パネルはホスト定義の中間表現を返し、ホストが描画する
-- アプリ状態変更はホストAPIまたは `Command` を経由する
-- 標準パネルも将来的には同じモデルへ寄せる
-- ドメインモデル骨格は `Work -> Page -> Panel -> LayerNode`
+---
 
-### まだ固定しすぎない
-
-- DSL の最終文法
-- Wasm ABI の最終形
-- 保存形式の最終最適化
-- テキスト描画基盤の最終選定
-- 高度なUIウィジェット群
-
-## 全体の進め方
-
-実装の順番は、次の三つの縦切りを意識して積む。
-
-1. **ホスト基盤を握る**
-   - `winit` + `wgpu` のフレームループを自前で成立させる
-2. **描画エンジンを育てる**
-   - キャンバス描画、合成、ズーム、パン、オーバーレイの品質を上げる
-3. **パネルランタイムを開く**
-   - 組み込み→DSL→Wasm の順に拡張を開く
-
-## フェーズ0: 最小契約の再定義
+## フェーズ0: 境界の固定と作業前提の統一
 
 ### 目的
 
-方針転換後の最小境界を決め直す。
-
-### 成果物
-
-- `app-core` と `render` の責務再確認
-- パネル中間表現の最小定義
-- `HostAction` / `PanelEvent` / `PanelStateSnapshot` の最小案
-- `apps/desktop` が持つべき責務一覧
-- レンダリングエンジン文書の初版
-
-### 完了条件
-
-- GUIフレームワーク抜きでも、何を作れば一周するか説明できる
-- パネルとキャンバスの責務境界が文書上で明確である
-
-## フェーズ1: ホストアプリの自立
-
-### 目的
-
-`winit` + `wgpu` を直接使う空のデスクトップランタイムを成立させる。
+今後の移動先を先に固定し、場当たり的な責務追加を止める。
 
 ### 実装するもの
 
-- ネイティブウィンドウ起動
-- `wgpu` デバイス/サーフェス初期化
-- フレームループ
-- clear だけ行う最小 render pass
-- 基本入力受信
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) の目標構造を正本化
+- [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md) の現況整理維持
+- [docs/tmp/tasks-2026.md](docs/tmp/tasks-2026.md) の追従更新
+- crate / module の命名方針整理
 
 ### 完了条件
 
-- 外部GUIフレームワークなしでウィンドウが安定表示される
-- リサイズ、再描画、終了処理が破綻しない
+- 「どこへ置くべきか」を文書で即答できる
+- 新規実装が `DesktopApp` / `UiShell` / `Document` へ無秩序に集中しない
 
-## フェーズ2: 最小キャンバス提示
+## フェーズ1: `desktopApp` の縮小
 
 ### 目的
 
-ホスト主導の `wgpu` 描画で「キャンバスが見える」を先に成立させる。
+`desktopApp` を host orchestration へ戻し、アプリ本体の肥大化を止める。
 
 ### 実装するもの
 
-- 固定画像または最小 `RenderFrame` の表示
-- ビューポート制御
-- キャンバスと背景の分離表示
-- CPU生成画像の GPU アップロード
+- `apps/desktop/src/app/mod.rs` の責務棚卸し
+- input / command / present / state / drawing の分割計画
+- project / session / workspace preset orchestration の service 化
+- render plan と canvas runtime 呼び出しの外出し
 
 ### 完了条件
 
-- キャンバス領域が正しく表示される
-- 表示サイズ変更に追従する
-- 今後のパン/ズームを入れられる土台になる
+- `desktopApp` が主に event loop / I/O / 呼び出し順制御を担う
+- canvas 実行や panel runtime 内部事情が `desktopApp` に残りすぎない
 
-## フェーズ3: 最小描画ループ
+## フェーズ2: `canvas` 層の新設
 
 ### 目的
 
-「描ける」を、完全にホスト主導の描画経路で成立させる。
+現在分散しているキャンバス処理を一つの責務へまとめる。
 
 ### 実装するもの
 
-- 単一ラスタレイヤー
-- 基本ブラシ
-- pointer 入力からのストローク生成
-- dirty 範囲更新
-- 再描画スケジューリング
+- `canvas` crate または同等の独立層
+- tool 実行ランタイム
+- canvas 入力解釈
+- bitmap 差分生成と適用補助
+- built-in paint 実装の desktop からの移動
+
+### 移行元の代表例
+
+- `apps/desktop/src/app/drawing.rs`
+- `apps/desktop/src/canvas_bridge.rs`
+- `crates/app-core/src/painting.rs`
+- `crates/app-core/src/document.rs` の一部
 
 ### 完了条件
 
-- 低遅延でストロークを描ける
-- CPU側の更新と GPU 側の提示が破綻しない
+- キャンバス処理の説明を `canvas` を中心に行える
+- `Document` は状態保持と command 適用へ寄る
+- `desktopApp` は canvas 実行器ではなくなる
 
-### 注記
-
-既存実装にはこの段階に相当する着手があるが、今後は GUI フレームワーク依存を外した経路で成立させ直す。
-
-## フェーズ4: パネル中間表現の確立
+## フェーズ3: panel runtime / presentation 分離
 
 ### 目的
 
-パネルを「描画済みUI」ではなく「ホストが描ける構造化データ」として扱う基盤を作る。
+`ui-shell` の集中責務を減らし、plugin runtime と UI 表示系を分離する。
 
 ### 実装するもの
 
-- `PanelTree`
-- `PanelNode`
-- `PanelEvent`
-- `HostAction`
-- 最小レイアウト
-- 最小ヒットテスト
-- ボタン、テキスト、セクション表示
+- panel runtime 側の独立境界
+- DSL / Wasm bridge の切り出し
+- panel config / state patch / host snapshot 同期の再配置
+- presentation 側の layout / hit-test / focus / text input の整理
 
 ### 完了条件
 
-- 組み込みパネルをホストの自前描画で表示できる
-- ボタン押下から `Command` を発行できる
+- runtime 修正が presentation 修正へ不要に波及しない
+- panel 描画改善を Wasm bridge 改修から独立して進められる
 
-## フェーズ5: 標準パネルの移植
-
-### 目的
-
-既存の標準UIを、新しいパネルランタイムへ移す。
-
-### 優先順
-
-1. `tool-palette`
-2. `layers-panel`
-3. `app-actions`
-4. `job-progress`
-5. `snapshot-panel`
-
-### 完了条件
-
-- 少なくとも 3 種類の標準パネルがホスト自前描画で動く
-- フォーカス、クリック、スクロールの基本が揃う
-
-## フェーズ6: パネル基盤 crate と UI DSL parser
+## フェーズ4: plugin-first 化の本格化
 
 ### 目的
 
-UI DSL + Wasm パネル基盤の最小土台を成立させる。
+性能非依存の機能を host 直書きから plugin 主導へ寄せる。
+
+### plugin 化を進める対象
+
+- project ファイルの読込/保存
+- workspace の読込/保存
+- workspace panel 配置管理
+- ツール一覧の読込と表示
+- ツールパラメータと親子ツール管理
+- view 移動
+- panel 一覧と表示切替
+- color palette
 
 ### 実装するもの
 
-- `crates/panel-dsl`
-   - lexer
-   - parser
-   - AST
-   - validator
-   - normalized IR
-- `crates/panel-schema`
-   - host / Wasm 間の共有 DTO
-- `crates/panel-sdk`
-   - Rust から Wasm handler を書くための最小 SDK
-- `.altp-panel` ローダ
-- validation
-- ロード/再ロード
-- パネル manifest
-- static panel 描画への接続
-- handler binding の解決
-
-### MVPで許可する内容
-
-- レイアウト構造
-- テキスト
-- ボタン
-- トグル
-- 最小 state schema
-- handler 名バインド
+- host service API
+- plugin からの I/O request 境界
+- tool plugin 実行 API
+- 安定した command / service descriptor
 
 ### 完了条件
 
-- `*.altp-panel` などのファイルをロードしてパネル表示できる
-- 再読み込みでUI変更が反映される
-- parser / validator / normalized IR の流れが成立している
-- 次段階で既存ビルトイン panel を載せ替えられる土台がある
+- 非性能領域の新機能を基本 plugin 側へ置ける
+- host は plugin のための runtime と service provider として振る舞う
 
-## フェーズ7: 既存ビルトイン panel の UI DSL + Wasm 移植
+## フェーズ5: `render` 中心の画面生成整理
 
 ### 目的
 
-既存のビルトイン panel を、新しい UI DSL + Wasm 基盤へ再構成する。
+画面生成責務を `render` へ寄せ、desktop 固有の最終提示との境界を明確にする。
 
 ### 実装するもの
 
-- `app-actions` の移植
-- `tool-palette` の移植
-- `color-palette` の移植
-- `layers-panel` の移植
-- `job-progress` の移植
-- `snapshot-panel` の移植
-- host snapshot 不足分の補完
-- command descriptor から `Command` への変換検証
-- built-in panel を同一 ABI / SDK へ寄せる整理
+- render plan の再配置
+- desktop frame 計算の再棚卸し
+- canvas / overlay / panel layer の責務整理
+- dirty rect / quad / overlay 更新判断の統合
 
 ### 完了条件
 
-- 少なくとも 3 種類の既存ビルトイン panel が UI DSL + Wasm で動く
-- UI 表示と `Command` 発行結果が従来実装と一致する
-- built-in 専用の別 ABI を増やさず移植できる
+- 画面生成ロジックの中心が `render` にある
+- `desktopApp` は GPU 所有と最終提示に集中できる
 
-## フェーズ8: 外部 Wasm パネルランタイム
+## フェーズ6: API 名称と物理配置の整理
 
 ### 目的
 
-ビルトイン移植で固めた基盤を、外部ロード可能な Wasm panel runtime へ一般化する。
+名前と実態のズレを減らし、今後の理解コストを下げる。
 
 ### 実装するもの
 
-- `crates/plugin-host`
-   - Wasm モジュールロード
-   - `wasmtime` 実行
-- 権限 manifest
-- `panel_init` / `panel_handle_event` / `panel_dispose` 相当
-- ホスト関数の最小セット
-- エラー隔離
+- `plugin-api` の再定義または改名
+- `panel-sdk` / `panel-macros` の `plugin-sdk` 系再編
+- sample / tmp / legacy 的資産の再配置
+- 文書名と実装名の同期
 
 ### 完了条件
 
-- 外部 Wasm panel を1つロードして表示できる
-- そこからホストAPIまたは `Command` 経路を叩ける
-- クラッシュや権限不足をホスト側で制御できる
+- crate 名を見たときに責務を誤解しにくい
+- plugin 作者向け入口が一つに見える
 
-## フェーズ8.5: `ui-shell` / ワークスペース抽象の再整理
+## フェーズ7: 再編後の機能拡張
 
 ### 目的
 
-パネルランタイムとパネル表示系の責務をさらに切り分け、
-workspace 配置・表示状態・差分更新・パネル性能改善を同じ抽象で扱えるようにする。
+責務整理後に、機能追加を迷いなく進められる状態へ入る。
 
-このフェーズは、次の tmp 文書にある未解決事項を回収するための差し込みフェーズでもある。
+### 優先候補
 
-- [docs/tmp/architecture-gap-2026-03-10.md](docs/tmp/architecture-gap-2026-03-10.md)
-- [docs/tmp/ui-shell-runtime-presentation-split-2026-03-10.md](docs/tmp/ui-shell-runtime-presentation-split-2026-03-10.md)
-- [docs/tmp/panel-performance.md](docs/tmp/panel-performance.md)
-- [docs/tmp/refactor_context.md](docs/tmp/refactor_context.md)
-
-### 実装するもの
-
-- `ui-shell` の runtime / presentation 分離の継続
-- panel layout / hit-test / focus / software rendering の内部境界整理
-- workspace panel の reorder / visibility / dirty rect を一貫した抽象へ寄せる
-- パネル dirty rect と panel bitmap cache の再整理
-- テキスト計測キャッシュ、ノードレイアウトキャッシュ、差分 blit の導入
-- `apps/desktop/src/frame.rs` / `runtime.rs` の継続分割
-- 低カバレッジ領域 (`wgpu_canvas`, `workspace`, 各 built-in plugin crate) の回帰テスト補強
+- Undo/Redo
+- 高度な document 操作
+- 非同期 job と export
+- snapshot / branch
+- テキスト流し込み
+- 高度な tool plugin / child tool 構成
 
 ### 完了条件
 
-- workspace の並び替え・表示/非表示・差分更新が同じ責務境界で説明できる
-- panel performance 改善を runtime 改修から独立して進められる
-- `ui-shell` の presentation 変更が Wasm runtime 側へ不要に波及しない
+- 新機能追加時に配置先で迷わない
+- plugin と host の境界を壊さず拡張できる
 
-補足: 2026-03-10 時点で、workspace panel 配置は `WorkspacePanelState` のアンカー基準へ寄せ始めた。
+---
 
-## フェーズ8.6: ワークスペース配布とレスポンシブ配置
+## 並行で継続する横断項目
 
-### 目的
+### 1. パフォーマンス計測
 
-ワークスペース UI を「ローカル状態」から「配布できるレイアウト資産」へ拡張し、
-解像度やウィンドウサイズが変わっても破綻しにくい配置モデルへ移行する。
+- profiler 維持
+- panel / canvas / input のボトルネック観測
+- 責務移動後の回帰確認
 
-### 実装するもの
+### 2. テストと回帰防止
 
-- パネル配置および ON/OFF 状態の配布形式
-- 既定ワークスペース preset の読込/保存/適用
-- パネル座標を 4 隅アンカー基準で保持する配置モデル
-- 画面拡縮・解像度変更時の再配置ルール
-- project / session / 配布 preset の ownership 整理
+- refactor 前に境界ごとのテストを増やす
+- `cargo test` と `cargo clippy --workspace --all-targets` を継続
+- panel runtime / canvas runtime / render plan の単体検証を厚くする
 
-### 完了条件
+### 3. 文書同期
 
-- 他環境へ持ち運べる workspace preset を保存・配布できる
-- ウィンドウサイズが変わってもパネル配置が極端に崩れない
-- ローカル session 復元と配布 preset の責務が衝突しない
+- 現況は `IMPLEMENTATION_STATUS.md`
+- 理想は `ARCHITECTURE.md`
+- 実コードの構造は `CURRENT_ARCHITECTURE.md`
+- 次の作業候補は `docs/tmp/tasks-2026.md`
 
-補足: 2026-03-10 時点で、既定 `workspace-presets.json` の読込、panel からの再読込/切り替え、session 優先の上書き規約を導入した。
+## 当面の優先順位
 
-## フェーズ9: キャンバス機能の実用化
+直近は次の順に進める。
 
-### 目的
-
-描画エンジンを「触れる試作」から「作業に耐えるMVP」へ押し上げる。
-
-### 実装するもの
-
-- ズーム/パン
-- ブラシプレビュー
-- 外部ペンプリセット読込の最小導線
-- 可変幅ペン
-- ペン幅調整パネル
-- 複数レイヤー
-- 合成モード最小対応
-- マスク最小対応
-- オーバーレイ描画
-
-### このフェーズで追加する差し込み項目
-
-- ペン機能の強化と `altpaint` 標準ペンフォーマットの策定
-- ペンパラメータの schema / versioning / import/export 仕様
-- 大きなキャンバスで高速描画したときの線切れ対策
-
-### 完了条件
-
-- 実作業で破綻しにくい描画体験がある
-- オーバーレイとキャンバスの責務が分離されている
-- 最低限のペン追加・再読込・幅変更がホスト主導で行える
-
-補足: 2026-03-10 時点で、ブラシプレビューはアクティブなペン幅に追従するよう改善した。
-
-## フェーズ9.5: ペン互換インポート
-
-### 目的
-
-外部ツールのペン資産を `altpaint` へ取り込み、標準ペンフォーマットへ正規化できるようにする。
-
-### 実装するもの
-
-- CSP ペンデータの parser
-- Photoshop ペンデータの parser
-- 外部形式 → `altpaint` ペン形式への正規化
-- 互換不能項目の degrade policy
-- 変換結果の preview / import report
-
-### 完了条件
-
-- CSP / Photoshop 由来の代表的なペン設定を `altpaint` で再利用できる
-- 互換差分がユーザーへ説明可能である
-- 標準ペンフォーマットが import 拡張の受け皿として機能する
-
-## フェーズ9.6: 無段階回転 renderer 完了
-
-### 目的
-
-plugin / command / host snapshot 側で先行した回転角表現を、renderer 側でも真に任意角対応へ揃える。
-
-このフェーズは主に [docs/tmp/rotation-renderer-followup-2026-03-10.md](docs/tmp/rotation-renderer-followup-2026-03-10.md) の未解決事項を回収する。
-
-### 実装するもの
-
-- キャンバス無段階回転
-- `render::CanvasScene` の quarter turn 依存除去
-- dirty rect / UV / hit test / brush preview / lasso overlay の任意角対応
-- WGPU 経路と software 合成経路の回転モデル統一
-
-### 完了条件
-
-- 非 90 度系回転でも画像が歪まない
-- 入力・表示・dirty rect が同じ回転モデルで整合する
-- view plugin からの回転操作が renderer まで破綻なく伝播する
-
-## フェーズ10: 複数コマとコマ中心UI
-
-補足: 2026-03-11 時点で、最小実装として複数コマ保持、コマ一覧パネル、アクティブコマ切替、コマ境界ナビゲータ、コマ中心ビュー導線を導入した。
-
-### 目的
-
-`altpaint` 独自のコマ中心ワークフローへ踏み込む。
-
-### 実装するもの
-
-- 複数コマ保持
-- コマ選択・切替
-- コマ境界表示
-- コマ一覧パネル
-- コマ中心ビュー導線
-
-### 完了条件
-
-- コマ単位で自然に編集対象を切り替えられる
-- ページとコマの両方を見失わない
-
-## フェーズ11: 保存形式の本格化
-
-### 目的
-
-内製描画エンジンの現実的なデータ管理基盤を固める。
-
-### 実装するもの
-
-- プロジェクトフォーマット再設計
-- 部分ロード
-- タイル/チャンク保存
-- スナップショット永続化
-- 差分保存とフル保存の切替余地
-
-### 完了条件
-
-- コマ/ページ単位のロード戦略が成立する
-- 大きな作品でメモリ全展開を避けられる
-
-補足: 2026-03-11 時点で、`storage` は SQLite 単一ファイル形式、layer chunk 保存、current panel snapshot 永続化、page / panel 単位の部分ロード API を持つ。
-
-## フェーズ12: テキスト流し込み最小版
-
-### 目的
-
-差別化要素である「テキストから絵作りへ」を実用最小で通す。
-
-### 実装するもの
-
-- Markdown ベース脚本入力
-- コマ割り当て
-- 吹き出し内流し込み
-- 縦書き/横書き切替
-
-### 完了条件
-
-- ネーム用途で試せる導線がある
-
-## フェーズ13: 非同期ジョブと書き出し
-
-### 目的
-
-重い処理でUIを止めない設計を実運用で確認する。
-
-### 実装するもの
-
-- ジョブキュー
-- 進捗通知
-- PNG/PDF 書き出し
-- サムネイル生成
-- ジョブパネル
-
-### 完了条件
-
-- 書き出し中でもキャンバス操作やパネル操作が継続できる
-
-## フェーズ13.5: Mod API / filter layer 拡張
-
-### 目的
-
-SDK が UI/command の範囲を超えて、renderer の本質的な処理系へ安全に介入できる拡張点を設ける。
-
-このフェーズは [docs/tmp/rotation-renderer-followup-2026-03-10.md](docs/tmp/rotation-renderer-followup-2026-03-10.md) に追記した render pass 割り込み / filter layer 課題の回収を含む。
-
-### 実装するもの
-
-- render pass への割り込みポイント設計
-- filter layer / post effect の document model
-- `plugin-host` / SDK / ABI の render hook 拡張
-- timeout / fault isolation / fallback policy
-- effect aware な dirty rect / cache / pass graph 再設計
-
-### 完了条件
-
-- SDK から filter layer や post effect を安全に追加できる
-- 拡張が renderer 全体の安定性を壊さない
-- 永続化と再現性を含めて effect chain を扱える
-
-## フェーズ14: スナップショットと分岐
-
-### 目的
-
-コマ単位スナップショットという独自性を実用化する。
-
-### 実装するもの
-
-- コマ単位スナップショット
-- 履歴ブラウズ
-- 過去時点からの枝分かれ
-- コマ単位復元
-
-### 完了条件
-
-- 作品全体を壊さず、特定コマだけ戻せる
-- 「作業分岐」として使える
-
-## 現在の実装との接続メモ
-
-2026-03-08 時点のコードベースには、次の資産がある。
-
-- `app-core` の最小ドメインモデル
-- `render` の最小 `RenderFrame` 生成
-- `storage` の最小保存/読込
-- `wgpu` テクスチャアップロード経路
-- 組み込みパネルの最小中間表現
-
-これらは捨てるのではなく、以下のように再利用する。
-
-- `RenderFrame` 経路は、初期の提示パスとして活かす
-- `PanelUi` の考え方は、将来の `PanelTree` に発展させる
-- 組み込みパネル群は、新ランタイムへの移植対象とする
-- 旧 `Slint` 固有モデルはすでに撤廃済みであり、今後は再導入しない
-
-## 各フェーズでのレビュー観点
-
-毎フェーズで最低限、以下を確認する。
-
-- GPU所有権はホスト側に残っているか
-- パネルは中間表現を返すだけに留まっているか
-- UI状態変更が `Command` / ホストAPI経由に揃っているか
-- 描画エンジンとUIランタイムが密結合していないか
-- 外部プラグイン導入時に ABI を壊しにくいか
-- パフォーマンス要件に近づいているか
-
-## 当面の優先アクション
-
-直近で優先するのは以下である。
-
-1. `RENDERING-ENGINE.md` に沿ってレンダリング責務を明文化する
-2. `apps/desktop` のホスト主導フレームループへの移行計画を切る
-3. `plugin-api` のパネル中間表現を DSL/Wasm ローダ接続に向けて拡張する
-4. 組み込みパネルを新しい `PanelTree` モデルへ寄せる
-5. DSL パネルの最小文法を試作する
+1. `desktopApp` の責務棚卸し
+2. `canvas` 境界の定義と built-in paint 実装の切り出し
+3. `ui-shell` の runtime / presentation 分離
+4. plugin-first 化のための host service API 設計
+5. `render` への画面生成責務の再配置
 
 ## この文書の結論
 
-ロードマップ上の最重要事項は、機能数を増やすことではない。
+今の `altpaint` に必要なのは、機能を無差別に足すことではない。
 
-最初にやるべきは、
+必要なのは、
 
-- `wgpu` ネイティブ描画キャンバス
-- ランタイムロード可能なパネルUI
-- パネルからホストAPIを叩ける仕組み
+- 高性能経路を host に残し
+- それ以外を plugin へ委譲し
+- 現在肥大化している責務を適切な層へ移すこと
 
-の三点を、同じホストアーキテクチャの中で矛盾なく成立させることである。
+である。
 
+この再編が終わると、以後の機能追加は今よりかなり自然になる。
