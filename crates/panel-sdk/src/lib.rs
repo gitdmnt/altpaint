@@ -8,9 +8,10 @@ mod builder;
 pub mod commands;
 pub mod host;
 pub mod runtime;
+pub mod services;
 pub mod state;
 
-pub use builder::{command, handler_result, CommandBuilder};
+pub use builder::{CommandBuilder, command, handler_result};
 pub use panel_macros::{panel_handler, panel_init, panel_sync_host};
 pub use panel_schema::{
     CommandDescriptor, Diagnostic, DiagnosticLevel, HandlerResult, PanelEventRequest,

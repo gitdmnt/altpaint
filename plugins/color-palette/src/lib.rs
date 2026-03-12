@@ -60,7 +60,8 @@ fn init() {}
 
 #[panel_sdk::panel_sync_host]
 fn sync_host() {
-    let (hue, saturation, value) = rgb_to_hsv(host::color::red(), host::color::green(), host::color::blue());
+    let color = host::color::active_rgb();
+    let (hue, saturation, value) = rgb_to_hsv(color.red, color.green, color.blue);
     sync_color_state(hue, saturation, value);
 }
 
@@ -83,7 +84,11 @@ fn parse_hsv_payload(value: &str) -> Option<(i32, i32, i32)> {
     let hue = parts.next()?.trim().parse::<i32>().ok()?;
     let saturation = parts.next()?.trim().parse::<i32>().ok()?;
     let value = parts.next()?.trim().parse::<i32>().ok()?;
-    Some((hue.rem_euclid(360), saturation.clamp(0, 100), value.clamp(0, 100)))
+    Some((
+        hue.rem_euclid(360),
+        saturation.clamp(0, 100),
+        value.clamp(0, 100),
+    ))
 }
 
 fn rgb_to_hsv(red: i32, green: i32, blue: i32) -> (i32, i32, i32) {
@@ -102,8 +107,16 @@ fn rgb_to_hsv(red: i32, green: i32, blue: i32) -> (i32, i32, i32) {
     } else {
         60.0 * (((r - g) / delta) + 4.0)
     };
-    let saturation = if max <= f32::EPSILON { 0.0 } else { delta / max };
-    (hue.round() as i32, (saturation * 100.0).round() as i32, (max * 100.0).round() as i32)
+    let saturation = if max <= f32::EPSILON {
+        0.0
+    } else {
+        delta / max
+    };
+    (
+        hue.round() as i32,
+        (saturation * 100.0).round() as i32,
+        (max * 100.0).round() as i32,
+    )
 }
 
 fn clamp_channel(value: i32) -> u8 {
@@ -132,7 +145,10 @@ mod tests {
 
         assert_eq!(command.name, "tool.set_color");
         assert_eq!(
-            command.payload.get("color").and_then(|value| value.as_str()),
+            command
+                .payload
+                .get("color")
+                .and_then(|value| value.as_str()),
             Some("#132538")
         );
     }

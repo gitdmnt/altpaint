@@ -1,7 +1,11 @@
 //! `plugin-api` は、標準パネルや将来の拡張機能が従う最小インターフェースを定義する。
 
+pub mod services;
+
 use app_core::{ColorRgba8, Command, Document};
 use serde_json::Value;
+
+pub use services::ServiceRequest;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PanelMoveDirection {
@@ -26,6 +30,7 @@ pub struct PanelTree {
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostAction {
     DispatchCommand(Command),
+    RequestService(ServiceRequest),
     InvokePanelHandler {
         panel_id: String,
         handler_name: String,
@@ -348,6 +353,50 @@ mod tests {
             vec![HostAction::DispatchCommand(Command::SetActiveTool {
                 tool: ToolKind::Pen,
             })]
+        );
+    }
+
+    #[test]
+    fn panel_tree_button_can_emit_service_request() {
+        struct ServicePanel;
+
+        impl PanelPlugin for ServicePanel {
+            fn id(&self) -> &'static str {
+                "test.service"
+            }
+
+            fn title(&self) -> &'static str {
+                "Service"
+            }
+
+            fn panel_tree(&self) -> PanelTree {
+                PanelTree {
+                    id: self.id(),
+                    title: self.title(),
+                    children: vec![PanelNode::Button {
+                        id: "project.save".to_string(),
+                        label: "Save".to_string(),
+                        action: HostAction::RequestService(ServiceRequest::new(
+                            services::names::PROJECT_SAVE_CURRENT,
+                        )),
+                        active: false,
+                        fill_color: None,
+                    }],
+                }
+            }
+        }
+
+        let mut panel = ServicePanel;
+        let actions = panel.handle_event(&PanelEvent::Activate {
+            panel_id: "test.service".to_string(),
+            node_id: "project.save".to_string(),
+        });
+
+        assert_eq!(
+            actions,
+            vec![HostAction::RequestService(ServiceRequest::new(
+                services::names::PROJECT_SAVE_CURRENT,
+            ))]
         );
     }
 

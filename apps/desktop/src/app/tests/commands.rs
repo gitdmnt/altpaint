@@ -105,14 +105,16 @@ fn keyboard_panel_focus_can_activate_app_action() {
     let mut profiler = DesktopProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
 
-    assert!(
-        app.panel_presentation
-            .focus_panel_node(&app.panel_runtime, "builtin.app-actions", "app.save")
-    );
+    assert!(app.panel_presentation.focus_panel_node(
+        &app.panel_runtime,
+        "builtin.app-actions",
+        "app.save"
+    ));
     assert_eq!(
         app.activate_focused_panel_control(),
         Some(Command::SaveProject)
     );
+    assert_eq!(app.io_state.pending_save_tasks.len(), 1);
 }
 
 /// 寸法文字列パーサが一般的なフォーマットを受け入れることを確認する。
@@ -254,11 +256,13 @@ fn startup_loads_tool_catalog_from_default_tool_directory() {
     let app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
 
     assert!(app.document.tool_catalog.len() >= 5);
-    assert!(app
-        .document
-        .tool_catalog
-        .iter()
-        .any(|tool| tool.id == "builtin.pen" && tool.provider_plugin_id == "plugins/default-pens-plugin"));
+    assert!(
+        app.document
+            .tool_catalog
+            .iter()
+            .any(|tool| tool.id == "builtin.pen"
+                && tool.provider_plugin_id == "plugins/default-pens-plugin")
+    );
 }
 
 #[test]

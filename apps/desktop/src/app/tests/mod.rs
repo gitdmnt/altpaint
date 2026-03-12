@@ -8,6 +8,7 @@ mod commands;
 mod interaction;
 mod panel_dispatch_tests;
 mod persistence;
+mod service_dispatch_tests;
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};

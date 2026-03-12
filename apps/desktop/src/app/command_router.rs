@@ -1,8 +1,7 @@
 //! `Command` の分類と `DesktopApp` への適用経路を整理する。
 
-use std::path::PathBuf;
-
 use app_core::Command;
+use plugin_api::{ServiceRequest, services::names};
 
 use super::DesktopApp;
 
@@ -14,29 +13,57 @@ impl DesktopApp {
         self.poll_background_tasks();
         match command {
             Command::NewDocument => self.activate_panel_control("builtin.app-actions", "app.new"),
-            Command::SaveProject => self.save_project_to_current_path(),
-            Command::SaveProjectAs => self.save_project_as(),
-            Command::SaveProjectToPath { path } => self.save_project_to_path(PathBuf::from(path)),
-            Command::LoadProject => self.open_project(),
-            Command::LoadProjectFromPath { path } => self.load_project(PathBuf::from(path)),
-            Command::ReloadWorkspacePresets => self.reload_workspace_presets(),
-            Command::ApplyWorkspacePreset { preset_id } => self.apply_workspace_preset(&preset_id),
-            Command::SaveWorkspacePreset { preset_id, label } => {
-                self.save_workspace_preset(&preset_id, &label)
+            Command::SaveProject => {
+                self.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_CURRENT))
             }
-            Command::ExportWorkspacePreset { preset_id, label } => {
-                self.export_workspace_preset(&preset_id, &label)
+            Command::SaveProjectAs => {
+                self.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_AS))
             }
+            Command::SaveProjectToPath { path } => self.execute_service_request(
+                ServiceRequest::new(names::PROJECT_SAVE_TO_PATH).with_value("path", path),
+            ),
+            Command::LoadProject => {
+                self.execute_service_request(ServiceRequest::new(names::PROJECT_LOAD_DIALOG))
+            }
+            Command::LoadProjectFromPath { path } => self.execute_service_request(
+                ServiceRequest::new(names::PROJECT_LOAD_FROM_PATH).with_value("path", path),
+            ),
+            Command::ReloadWorkspacePresets => {
+                self.execute_service_request(ServiceRequest::new(names::WORKSPACE_RELOAD_PRESETS))
+            }
+            Command::ApplyWorkspacePreset { preset_id } => self.execute_service_request(
+                ServiceRequest::new(names::WORKSPACE_APPLY_PRESET)
+                    .with_value("preset_id", preset_id),
+            ),
+            Command::SaveWorkspacePreset { preset_id, label } => self.execute_service_request(
+                ServiceRequest::new(names::WORKSPACE_SAVE_PRESET)
+                    .with_value("preset_id", preset_id)
+                    .with_value("label", label),
+            ),
+            Command::ExportWorkspacePreset { preset_id, label } => self.execute_service_request(
+                ServiceRequest::new(names::WORKSPACE_EXPORT_PRESET)
+                    .with_value("preset_id", preset_id)
+                    .with_value("label", label),
+            ),
             Command::ExportWorkspacePresetToPath {
                 preset_id,
                 label,
                 path,
-            } => self.export_workspace_preset_to_path(&preset_id, &label, PathBuf::from(path)),
-            Command::ReloadPenPresets => self.reload_pen_presets(),
-            Command::ImportPenPresets => self.import_pen_presets(),
-            Command::ImportPenPresetsFromPath { path } => {
-                self.import_pen_presets_from_path(PathBuf::from(path))
-            }
+            } => self.execute_service_request(
+                ServiceRequest::new(names::WORKSPACE_EXPORT_PRESET_TO_PATH)
+                    .with_value("preset_id", preset_id)
+                    .with_value("label", label)
+                    .with_value("path", path),
+            ),
+            Command::ReloadPenPresets => self.execute_service_request(ServiceRequest::new(
+                names::TOOL_CATALOG_RELOAD_PEN_PRESETS,
+            )),
+            Command::ImportPenPresets => self.execute_service_request(ServiceRequest::new(
+                names::TOOL_CATALOG_IMPORT_PEN_PRESETS,
+            )),
+            Command::ImportPenPresetsFromPath { path } => self.execute_service_request(
+                ServiceRequest::new(names::TOOL_CATALOG_IMPORT_PEN_PATH).with_value("path", path),
+            ),
             other => self.execute_document_command(other),
         }
     }

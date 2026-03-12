@@ -56,9 +56,11 @@ impl DesktopApp {
 
         match &event {
             PanelEvent::Activate { panel_id, node_id } => {
-                let changed = self
-                    .panel_presentation
-                    .focus_panel_node(&self.panel_runtime, panel_id, node_id);
+                let changed = self.panel_presentation.focus_panel_node(
+                    &self.panel_runtime,
+                    panel_id,
+                    node_id,
+                );
                 self.panel_interaction.pending_panel_press = Some(PanelPressState {
                     panel_id: panel_id.clone(),
                     node_id: node_id.clone(),
@@ -200,6 +202,7 @@ impl DesktopApp {
     pub(crate) fn execute_host_action(&mut self, action: HostAction) -> bool {
         match action {
             HostAction::DispatchCommand(command) => self.execute_command(command),
+            HostAction::RequestService(request) => self.execute_service_request(request),
             HostAction::InvokePanelHandler { .. } => false,
             HostAction::MovePanel {
                 panel_id,
@@ -249,7 +252,9 @@ impl DesktopApp {
 
         if presentation.forward_to_runtime {
             let runtime = self.panel_runtime.dispatch_event(&event);
-            if runtime.config_changed || self.panel_runtime.persistent_panel_configs() != previous_configs {
+            if runtime.config_changed
+                || self.panel_runtime.persistent_panel_configs() != previous_configs
+            {
                 self.persist_session_state();
             }
             if !runtime.changed_panel_ids.is_empty() {
@@ -260,36 +265,19 @@ impl DesktopApp {
             actions.extend(runtime.actions);
         }
 
-        if let PanelEvent::SetText {
-            panel_id,
-            node_id,
-            value,
-        } = &event
-            && panel_id == "builtin.workspace-presets"
-            && node_id == "workspace.preset.selector"
-        {
-            let trimmed = value.trim();
-            let already_dispatched = actions.iter().any(|action| {
-                matches!(
-                    action,
-                    HostAction::DispatchCommand(app_core::Command::ApplyWorkspacePreset { preset_id })
-                        if preset_id == trimmed
-                )
-            });
-            if !trimmed.is_empty() && !already_dispatched {
-                actions.push(HostAction::DispatchCommand(
-                    app_core::Command::ApplyWorkspacePreset {
-                        preset_id: trimmed.to_string(),
-                    },
-                ));
-            }
-        }
-
         for action in actions {
-            if first_command.is_none()
-                && let HostAction::DispatchCommand(command) = &action
-            {
-                first_command = Some(command.clone());
+            if first_command.is_none() {
+                match &action {
+                    HostAction::DispatchCommand(command) => {
+                        first_command = Some(command.clone());
+                    }
+                    HostAction::RequestService(_) => {
+                        first_command = Some(app_core::Command::Noop);
+                    }
+                    HostAction::InvokePanelHandler { .. }
+                    | HostAction::MovePanel { .. }
+                    | HostAction::SetPanelVisibility { .. } => {}
+                }
             }
             needs_redraw |= self.execute_host_action(action);
         }
@@ -428,7 +416,9 @@ impl DesktopApp {
             return false;
         }
 
-        let changed = self.panel_presentation.scroll_panels(delta_lines, viewport_height);
+        let changed = self
+            .panel_presentation
+            .scroll_panels(delta_lines, viewport_height);
         self.refresh_panel_surface_if_changed(changed)
     }
 

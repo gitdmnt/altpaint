@@ -50,7 +50,10 @@
 - `src/app/bootstrap.rs`
 - `src/app/command_router.rs`
 - `src/app/panel_dispatch.rs`
-- `src/app/services.rs`
+- `src/app/services/mod.rs`
+- `src/app/services/project_io.rs`
+- `src/app/services/workspace_io.rs`
+- `src/app/services/tool_catalog.rs`
 - `src/app/background_tasks.rs`
 - `src/app/input.rs`
 - `src/app/commands.rs`
@@ -197,6 +200,7 @@
 - `PanelNode`
 - `PanelEvent`
 - `HostAction`
+- `ServiceRequest`
 
 補足:
 
@@ -387,7 +391,10 @@ workspace member として存在するもの:
 - `apps/desktop/src/app/panel_dispatch.rs`: panel drag、host action、focus / text input dispatch が集約される
 - `apps/desktop/src/app/io_state.rs`: `project_path` / `session_path` / `workspace_preset_path` / dialogs / background save queue をまとめる
 - `apps/desktop/src/app/background_tasks.rs`: 非同期 save task の起動と回収を扱う
-- `apps/desktop/src/app/services.rs`: workspace preset 操作、tool / pen reload、pen import、status 生成を扱う
+- `apps/desktop/src/app/services/mod.rs`: service request ルータ、status 生成、tool catalog 読込 helper を持つ
+- `apps/desktop/src/app/services/project_io.rs`: project save/load と project service handler を持つ
+- `apps/desktop/src/app/services/workspace_io.rs`: workspace preset save/apply/export service handler を持つ
+- `apps/desktop/src/app/services/tool_catalog.rs`: tool / pen reload と pen import service handler を持つ
 - `apps/desktop/src/app/present_state.rs`: dirty rect、present flag、UI 再同期要求が集約される
 - `apps/desktop/src/app/input.rs`: window→canvas 変換と panel/canvas ルーティングが残る
 - `apps/desktop/src/app/present.rs`: dirty rect、panel surface refresh、frame compose 指示が集中する
@@ -458,8 +465,8 @@ Phase 3 後は次のように分担する。
 
 次の責務は重要だが、まだ独立した crate / module として確立していない。
 
-- project / workspace を plugin 主導で扱う一般 plugin runtime（フェーズ4で予定）
-- tool 実行 plugin と host runtime の安定境界（フェーズ4で予定）
+- service request の戻り値や双方向 service contract
+- tool 実行 plugin と host runtime の安定境界
 
 補足:
 

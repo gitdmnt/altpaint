@@ -224,6 +224,7 @@ graph TD
 - `PanelTree` / `PanelNode`
 - `PanelEvent`
 - `HostAction`
+- `ServiceRequest`
 
 意味:
 
@@ -275,6 +276,7 @@ graph TD
 
 - plugin author 向け安定表面 API
 - typed `commands::*`
+- typed `services::*`
 - typed `state::*`
 - runtime helper
 - `panel-macros` の再 export
@@ -494,12 +496,12 @@ project file と session file は役割が異なる。
 4. 対象 panel が runtime へ forward されると `DslPanelPlugin::handle_event(...)` が呼ばれる
 5. 必要なら `plugin-host` を通じて Wasm handler を実行する
 6. `StatePatch` を panel local state に適用する
-7. `CommandDescriptor` を `HostAction::DispatchCommand(...)` 等へ変換する
-8. `apps/desktop/src/app/panel_dispatch.rs` の `DesktopApp::execute_host_action(...)` が `Command` や workspace 操作を実行する
+7. `CommandDescriptor` を `HostAction::DispatchCommand(...)` または `HostAction::RequestService(...)` へ変換する
+8. `apps/desktop/src/app/panel_dispatch.rs` の `DesktopApp::execute_host_action(...)` が `Command` または host service handler を実行する
 
 ### 保存・読込フロー
 
-1. `apps/desktop/src/app/command_router.rs` が保存/読込 command を受ける
+1. `apps/desktop/src/app/command_router.rs` が保存/読込 command を service request へ正規化する
 2. `apps/desktop/src/app/background_tasks.rs` が project save task を起動または回収する
 3. project 保存は `storage` へ委譲する
 4. workspace layout は `PanelPresentation`、plugin config は `PanelRuntime` から取り出して一緒に保存する

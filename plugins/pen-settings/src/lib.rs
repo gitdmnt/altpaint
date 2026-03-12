@@ -1,6 +1,5 @@
 use panel_sdk::{
-    commands,
-    host,
+    commands, host,
     runtime::{emit_command, error, event_string, set_state_bool, set_state_i32, set_state_string},
     state,
 };
@@ -31,13 +30,15 @@ fn init() {}
 
 #[panel_sdk::panel_sync_host]
 fn sync_host() {
-    let active_tool = host::tool::active_name();
-    let size = host::tool::pen_size().max(1);
-    set_state_string(PEN_NAME, host::tool::pen_name());
-    set_state_string(ACTIVE_TOOL_ID, host::tool::active_id());
-    set_state_string(ACTIVE_TOOL_LABEL, host::tool::active_label());
-    set_state_string(PROVIDER_PLUGIN_ID, host::tool::active_provider_plugin_id());
-    set_state_string(DRAWING_PLUGIN_ID, host::tool::active_drawing_plugin_id());
+    let snapshot = host::tool::snapshot();
+    let capabilities = host::tool::capabilities();
+    let active_tool = snapshot.active_name.clone();
+    let size = snapshot.pen_size.max(1);
+    set_state_string(PEN_NAME, snapshot.pen_name);
+    set_state_string(ACTIVE_TOOL_ID, snapshot.active_id);
+    set_state_string(ACTIVE_TOOL_LABEL, snapshot.active_label);
+    set_state_string(PROVIDER_PLUGIN_ID, snapshot.provider_plugin_id);
+    set_state_string(DRAWING_PLUGIN_ID, snapshot.drawing_plugin_id);
     set_state_i32(PEN_SIZE, size);
     set_state_i32(PEN_SIZE_SLIDER, size_to_slider(size));
     set_state_string(PEN_SIZE_INPUT, size.to_string());
@@ -54,10 +55,10 @@ fn sync_host() {
     set_state_bool(PEN_PRESSURE, host::tool::pen_pressure_enabled());
     set_state_bool(PEN_ANTIALIAS, host::tool::pen_antialias());
     set_state_i32(PEN_STABILIZATION, host::tool::pen_stabilization());
-    let supports_size = host::tool::supports_size();
-    let supports_pressure = host::tool::supports_pressure_enabled();
-    let supports_antialias = host::tool::supports_antialias();
-    let supports_stabilization = host::tool::supports_stabilization();
+    let supports_size = capabilities.supports_size;
+    let supports_pressure = capabilities.supports_pressure_enabled;
+    let supports_antialias = capabilities.supports_antialias;
+    let supports_stabilization = capabilities.supports_stabilization;
     set_state_bool(SUPPORTS_SIZE, supports_size);
     set_state_bool(SUPPORTS_PRESSURE, supports_pressure);
     set_state_bool(SUPPORTS_ANTIALIAS, supports_antialias);
@@ -78,7 +79,10 @@ fn size_to_slider(size: i32) -> i32 {
 
 fn slider_to_size(value: i32) -> u32 {
     let normalized = value.clamp(0, LOG_SIZE_SLIDER_MAX) as f32 / LOG_SIZE_SLIDER_MAX as f32;
-    MAX_TOOL_SIZE.powf(normalized).round().clamp(1.0, MAX_TOOL_SIZE) as u32
+    MAX_TOOL_SIZE
+        .powf(normalized)
+        .round()
+        .clamp(1.0, MAX_TOOL_SIZE) as u32
 }
 
 fn parse_size_input(value: &str) -> Result<u32, &'static str> {
@@ -119,7 +123,9 @@ fn set_pen_size_text() {
 
 #[panel_sdk::panel_handler]
 fn toggle_pressure() {
-    emit_command(&commands::tool::set_pressure_enabled(!host::tool::pen_pressure_enabled()));
+    emit_command(&commands::tool::set_pressure_enabled(
+        !host::tool::pen_pressure_enabled(),
+    ));
 }
 
 #[panel_sdk::panel_handler]

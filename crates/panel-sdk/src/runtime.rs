@@ -294,9 +294,21 @@ fn emit_command_payload_json(descriptor: &CommandDescriptor, payload: &Value) {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn emit_command_descriptor(_descriptor: &CommandDescriptor) {}
 
+/// service descriptor を host へ送る。
+///
+/// 現段階では service request も `CommandDescriptor` 互換の搬送形式で ABI を通す。
+pub fn emit_service_descriptor(descriptor: &CommandDescriptor) {
+    emit_command_descriptor(descriptor);
+}
+
 /// 任意コマンドを host へ送る。
 pub fn emit_command(descriptor: &CommandDescriptor) {
     emit_command_descriptor(descriptor);
+}
+
+/// 任意 service request を host へ送る。
+pub fn emit_service(descriptor: &CommandDescriptor) {
+    emit_service_descriptor(descriptor);
 }
 
 /// 情報診断を発行する。

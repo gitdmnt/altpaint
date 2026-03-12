@@ -6,7 +6,7 @@ use panel_schema::{
 };
 use plugin_api::{
     DropdownOption, HostAction, LayerListItem, PanelEvent, PanelNode, PanelPlugin, PanelTree,
-    PanelView, TextInputMode,
+    PanelView, ServiceRequest, TextInputMode,
 };
 use plugin_host::{PluginHostError, WasmPanelRuntime};
 use serde_json::{Map, Value, json};
@@ -33,8 +33,8 @@ impl DslPanelPlugin {
             .parent()
             .map(|directory| directory.join(&definition.runtime.wasm))
             .unwrap_or_else(|| definition.source_path.clone());
-        let mut runtime =
-            WasmPanelRuntime::load(&runtime_path).map_err(|error: PluginHostError| error.to_string())?;
+        let mut runtime = WasmPanelRuntime::load(&runtime_path)
+            .map_err(|error: PluginHostError| error.to_string())?;
         let has_keyboard_handler = runtime.has_handler("keyboard");
         let supports_sync_host = runtime.supports_sync_host();
         let initial_state = state_defaults_to_json(&definition.state);
@@ -116,7 +116,10 @@ impl DslPanelPlugin {
         let Some((binding, _input_mode)) = find_text_input_binding(&tree.children, node_id) else {
             return false;
         };
-        apply_state_patch(&mut self.state, &StatePatch::set(binding, Value::String(value.to_string())));
+        apply_state_patch(
+            &mut self.state,
+            &StatePatch::set(binding, Value::String(value.to_string())),
+        );
         true
     }
 
@@ -187,7 +190,10 @@ impl PanelPlugin for DslPanelPlugin {
     }
 
     fn restore_persistent_config(&mut self, config: &Value) {
-        apply_state_patch(&mut self.state, &StatePatch::replace("config", config.clone()));
+        apply_state_patch(
+            &mut self.state,
+            &StatePatch::replace("config", config.clone()),
+        );
     }
 
     fn handle_event(&mut self, event: &PanelEvent) -> Vec<HostAction> {
@@ -254,7 +260,10 @@ struct DslEvaluationContext<'a> {
     generated_ids: usize,
 }
 
-fn convert_dsl_view_node(node: &ViewNode, context: &mut DslEvaluationContext<'_>) -> Vec<PanelNode> {
+fn convert_dsl_view_node(
+    node: &ViewNode,
+    context: &mut DslEvaluationContext<'_>,
+) -> Vec<PanelNode> {
     match node {
         ViewNode::Text(text) => {
             let text = evaluate_text_content(text, context);
@@ -298,24 +307,34 @@ fn convert_dsl_view_node(node: &ViewNode, context: &mut DslEvaluationContext<'_>
                 id: node_id_for(element, context, "color-wheel"),
                 label: attribute_string(&element.attributes, "label", context)
                     .unwrap_or_else(|| "Color".to_string()),
-                hue_degrees: attribute_usize(&element.attributes, "hue", context).unwrap_or(0) % 360,
+                hue_degrees: attribute_usize(&element.attributes, "hue", context).unwrap_or(0)
+                    % 360,
                 saturation: attribute_usize(&element.attributes, "saturation", context)
                     .unwrap_or(100)
                     .min(100),
                 value: attribute_usize(&element.attributes, "value", context)
                     .unwrap_or(100)
                     .min(100),
-                action: handler_action(&context.panel_id, element.attributes.get("on:change"), "change"),
+                action: handler_action(
+                    &context.panel_id,
+                    element.attributes.get("on:change"),
+                    "change",
+                ),
             }],
             "button" => vec![PanelNode::Button {
                 id: node_id_for(element, context, "button"),
                 label: collect_dsl_text(&element.children, context),
-                action: handler_action(&context.panel_id, element.attributes.get("on:click"), "click"),
+                action: handler_action(
+                    &context.panel_id,
+                    element.attributes.get("on:click"),
+                    "click",
+                ),
                 active: attribute_bool(&element.attributes, "active", context).unwrap_or(false),
                 fill_color: None,
             }],
             "toggle" => {
-                let checked = attribute_bool(&element.attributes, "checked", context).unwrap_or(false);
+                let checked =
+                    attribute_bool(&element.attributes, "checked", context).unwrap_or(false);
                 vec![PanelNode::Button {
                     id: node_id_for(element, context, "toggle"),
                     label: format!(
@@ -323,7 +342,11 @@ fn convert_dsl_view_node(node: &ViewNode, context: &mut DslEvaluationContext<'_>
                         if checked { "x" } else { " " },
                         collect_dsl_text(&element.children, context)
                     ),
-                    action: handler_action(&context.panel_id, element.attributes.get("on:change"), "change"),
+                    action: handler_action(
+                        &context.panel_id,
+                        element.attributes.get("on:change"),
+                        "change",
+                    ),
                     active: checked,
                     fill_color: None,
                 }]
@@ -332,7 +355,11 @@ fn convert_dsl_view_node(node: &ViewNode, context: &mut DslEvaluationContext<'_>
                 id: node_id_for(element, context, "slider"),
                 label: attribute_string(&element.attributes, "label", context)
                     .unwrap_or_else(|| "Value".to_string()),
-                action: handler_action(&context.panel_id, element.attributes.get("on:change"), "change"),
+                action: handler_action(
+                    &context.panel_id,
+                    element.attributes.get("on:change"),
+                    "change",
+                ),
                 min: attribute_usize(&element.attributes, "min", context).unwrap_or(0),
                 max: attribute_usize(&element.attributes, "max", context).unwrap_or(100),
                 value: attribute_usize(&element.attributes, "value", context).unwrap_or(0),
@@ -358,7 +385,9 @@ fn convert_dsl_view_node(node: &ViewNode, context: &mut DslEvaluationContext<'_>
                     }),
                 input_mode: attribute_string(&element.attributes, "mode", context)
                     .map(|mode| {
-                        if mode.eq_ignore_ascii_case("numeric") || mode.eq_ignore_ascii_case("number") {
+                        if mode.eq_ignore_ascii_case("numeric")
+                            || mode.eq_ignore_ascii_case("number")
+                        {
                             TextInputMode::Numeric
                         } else {
                             TextInputMode::Text
@@ -370,7 +399,11 @@ fn convert_dsl_view_node(node: &ViewNode, context: &mut DslEvaluationContext<'_>
                 id: node_id_for(element, context, "dropdown"),
                 label: attribute_string(&element.attributes, "label", context).unwrap_or_default(),
                 value: attribute_string(&element.attributes, "value", context).unwrap_or_default(),
-                action: handler_action(&context.panel_id, element.attributes.get("on:change"), "change"),
+                action: handler_action(
+                    &context.panel_id,
+                    element.attributes.get("on:change"),
+                    "change",
+                ),
                 options: attribute_dropdown_options(&element.attributes, "options", context),
             }],
             "layer-list" => vec![PanelNode::LayerList {
@@ -378,7 +411,11 @@ fn convert_dsl_view_node(node: &ViewNode, context: &mut DslEvaluationContext<'_>
                 label: attribute_string(&element.attributes, "label", context).unwrap_or_default(),
                 selected_index: attribute_usize(&element.attributes, "selected", context)
                     .unwrap_or_default(),
-                action: handler_action(&context.panel_id, element.attributes.get("on:change"), "change"),
+                action: handler_action(
+                    &context.panel_id,
+                    element.attributes.get("on:change"),
+                    "change",
+                ),
                 items: attribute_layer_list_items(&element.attributes, "items", context),
             }],
             "separator" => vec![PanelNode::Text {
@@ -416,7 +453,10 @@ fn handler_action(
         .unwrap_or(HostAction::DispatchCommand(Command::Noop))
 }
 
-fn convert_dsl_children(children: &[ViewNode], context: &mut DslEvaluationContext<'_>) -> Vec<PanelNode> {
+fn convert_dsl_children(
+    children: &[ViewNode],
+    context: &mut DslEvaluationContext<'_>,
+) -> Vec<PanelNode> {
     children
         .iter()
         .flat_map(|child| convert_dsl_view_node(child, context))
@@ -467,7 +507,9 @@ fn attribute_string(
     key: &str,
     context: &DslEvaluationContext<'_>,
 ) -> Option<String> {
-    attributes.get(key).map(|value| attr_value_to_string(value, context))
+    attributes
+        .get(key)
+        .map(|value| attr_value_to_string(value, context))
 }
 
 fn attribute_bool(
@@ -475,7 +517,9 @@ fn attribute_bool(
     key: &str,
     context: &DslEvaluationContext<'_>,
 ) -> Option<bool> {
-    attributes.get(key).map(|value| attr_value_to_bool(value, context))
+    attributes
+        .get(key)
+        .map(|value| attr_value_to_bool(value, context))
 }
 
 fn attr_value_to_string(value: &DslAttrValue, context: &DslEvaluationContext<'_>) -> String {
@@ -671,7 +715,9 @@ fn evaluate_expression(expression: &str, context: &DslEvaluationContext<'_>) -> 
         return Value::Number(number.into());
     }
     if let Some(path) = expression.strip_prefix("state.") {
-        return lookup_json_path(context.state, path).cloned().unwrap_or(Value::Null);
+        return lookup_json_path(context.state, path)
+            .cloned()
+            .unwrap_or(Value::Null);
     }
     Value::String(expression.to_string())
 }
@@ -684,7 +730,11 @@ fn lookup_json_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     Some(current)
 }
 
-fn node_id_for(element: &ViewElement, context: &mut DslEvaluationContext<'_>, prefix: &str) -> String {
+fn node_id_for(
+    element: &ViewElement,
+    context: &mut DslEvaluationContext<'_>,
+    prefix: &str,
+) -> String {
     element
         .attributes
         .get("id")
@@ -703,7 +753,10 @@ fn state_defaults_to_json(fields: &[StateField]) -> Value {
     for field in fields {
         apply_state_patch(
             &mut state,
-            &StatePatch::set(field.name.clone(), default_attr_value_to_json(&field.default)),
+            &StatePatch::set(
+                field.name.clone(),
+                default_attr_value_to_json(&field.default),
+            ),
         );
     }
     state
@@ -745,10 +798,16 @@ fn apply_state_patch(state: &mut Value, patch: &StatePatch) {
         if is_last {
             match patch.op {
                 StatePatchOp::Set | StatePatchOp::Replace => {
-                    object.insert(segment.to_string(), patch.value.clone().unwrap_or(Value::Null));
+                    object.insert(
+                        segment.to_string(),
+                        patch.value.clone().unwrap_or(Value::Null),
+                    );
                 }
                 StatePatchOp::Toggle => {
-                    let next = !object.get(segment).and_then(Value::as_bool).unwrap_or(false);
+                    let next = !object
+                        .get(segment)
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
                     object.insert(segment.to_string(), Value::Bool(next));
                 }
             }
@@ -766,14 +825,61 @@ fn command_descriptors_to_actions(
 ) -> Vec<HostAction> {
     commands
         .into_iter()
-        .filter_map(|descriptor| match command_from_descriptor(&descriptor) {
-            Ok(command) => Some(HostAction::DispatchCommand(command)),
-            Err(message) => {
-                diagnostics.push(Diagnostic::warning(message));
-                None
+        .filter_map(|descriptor| {
+            if let Some(request) = service_request_from_descriptor(&descriptor) {
+                return Some(HostAction::RequestService(request));
+            }
+
+            match command_from_descriptor(&descriptor) {
+                Ok(command) => Some(HostAction::DispatchCommand(command)),
+                Err(message) => {
+                    diagnostics.push(Diagnostic::warning(message));
+                    None
+                }
             }
         })
         .collect()
+}
+
+fn service_request_from_descriptor(descriptor: &CommandDescriptor) -> Option<ServiceRequest> {
+    use plugin_api::services::names;
+
+    let request = match descriptor.name.as_str() {
+        names::PROJECT_NEW_DOCUMENT
+        | names::PROJECT_NEW_DOCUMENT_SIZED
+        | names::PROJECT_SAVE_CURRENT
+        | names::PROJECT_SAVE_AS
+        | names::PROJECT_SAVE_TO_PATH
+        | names::PROJECT_LOAD_DIALOG
+        | names::PROJECT_LOAD_FROM_PATH
+        | names::WORKSPACE_RELOAD_PRESETS
+        | names::WORKSPACE_APPLY_PRESET
+        | names::WORKSPACE_SAVE_PRESET
+        | names::WORKSPACE_EXPORT_PRESET
+        | names::WORKSPACE_EXPORT_PRESET_TO_PATH
+        | names::TOOL_CATALOG_RELOAD_TOOLS
+        | names::TOOL_CATALOG_RELOAD_PEN_PRESETS
+        | names::TOOL_CATALOG_IMPORT_PEN_PRESETS
+        | names::TOOL_CATALOG_IMPORT_PEN_PATH
+        | names::VIEW_SET_ZOOM
+        | names::VIEW_SET_PAN
+        | names::VIEW_SET_ROTATION
+        | names::VIEW_FLIP_HORIZONTAL
+        | names::VIEW_FLIP_VERTICAL
+        | names::VIEW_RESET
+        | names::PANEL_NAV_ADD
+        | names::PANEL_NAV_REMOVE
+        | names::PANEL_NAV_SELECT
+        | names::PANEL_NAV_SELECT_NEXT
+        | names::PANEL_NAV_SELECT_PREVIOUS
+        | names::PANEL_NAV_FOCUS_ACTIVE => {
+            let mut request = ServiceRequest::new(descriptor.name.clone());
+            request.payload = descriptor.payload.clone();
+            request
+        }
+        _ => return None,
+    };
+    Some(request)
 }
 
 pub fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, String> {
@@ -844,7 +950,9 @@ pub fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command
                 .payload
                 .get("preset_id")
                 .and_then(Value::as_str)
-                .ok_or_else(|| "workspace.export_preset is missing payload.preset_id".to_string())?;
+                .ok_or_else(|| {
+                    "workspace.export_preset is missing payload.preset_id".to_string()
+                })?;
             let label = descriptor
                 .payload
                 .get("label")
@@ -894,7 +1002,9 @@ pub fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command
                 .payload
                 .get("enabled")
                 .and_then(Value::as_bool)
-                .ok_or_else(|| "tool.set_pressure_enabled is missing payload.enabled".to_string())?;
+                .ok_or_else(|| {
+                    "tool.set_pressure_enabled is missing payload.enabled".to_string()
+                })?;
             Ok(Command::SetActivePenPressureEnabled { enabled })
         }
         "tool.set_antialias" => {
@@ -1060,7 +1170,9 @@ pub fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command
                 .payload
                 .get("rotation_degrees")
                 .and_then(payload_f64)
-                .ok_or_else(|| "view.set_rotation is missing payload.rotation_degrees".to_string())?;
+                .ok_or_else(|| {
+                    "view.set_rotation is missing payload.rotation_degrees".to_string()
+                })?;
             Ok(Command::SetViewRotation {
                 rotation_degrees: rotation_degrees as f32,
             })
@@ -1102,7 +1214,9 @@ fn find_panel_action(nodes: &[PanelNode], target_id: &str) -> Option<HostAction>
                     return Some(action);
                 }
             }
-            PanelNode::ColorWheel { id, action, .. } if id == target_id => return Some(action.clone()),
+            PanelNode::ColorWheel { id, action, .. } if id == target_id => {
+                return Some(action.clone());
+            }
             PanelNode::Button { id, action, .. } if id == target_id => return Some(action.clone()),
             PanelNode::Slider { id, action, .. } if id == target_id => return Some(action.clone()),
             PanelNode::TextInput {
@@ -1110,15 +1224,22 @@ fn find_panel_action(nodes: &[PanelNode], target_id: &str) -> Option<HostAction>
                 action: Some(action),
                 ..
             } if id == target_id => return Some(action.clone()),
-            PanelNode::Dropdown { id, action, .. } if id == target_id => return Some(action.clone()),
-            PanelNode::LayerList { id, action, .. } if id == target_id => return Some(action.clone()),
+            PanelNode::Dropdown { id, action, .. } if id == target_id => {
+                return Some(action.clone());
+            }
+            PanelNode::LayerList { id, action, .. } if id == target_id => {
+                return Some(action.clone());
+            }
             _ => {}
         }
     }
     None
 }
 
-fn find_text_input_binding(nodes: &[PanelNode], target_id: &str) -> Option<(String, TextInputMode)> {
+fn find_text_input_binding(
+    nodes: &[PanelNode],
+    target_id: &str,
+) -> Option<(String, TextInputMode)> {
     for node in nodes {
         match node {
             PanelNode::Column { children, .. }
@@ -1149,6 +1270,7 @@ fn find_text_input_binding(nodes: &[PanelNode], target_id: &str) -> Option<(Stri
 mod tests {
     use super::*;
     use panel_schema::CommandDescriptor;
+    use plugin_api::services::names;
 
     #[test]
     fn command_from_descriptor_maps_workspace_commands() {
@@ -1168,6 +1290,22 @@ mod tests {
             Ok(Command::ApplyWorkspacePreset {
                 preset_id: "illustration".to_string(),
             })
+        );
+    }
+
+    #[test]
+    fn service_descriptor_maps_to_service_request() {
+        let mut descriptor = CommandDescriptor::new(names::WORKSPACE_APPLY_PRESET);
+        descriptor
+            .payload
+            .insert("preset_id".to_string(), Value::String("review".to_string()));
+
+        assert_eq!(
+            service_request_from_descriptor(&descriptor),
+            Some(
+                ServiceRequest::new(names::WORKSPACE_APPLY_PRESET)
+                    .with_value("preset_id", Value::String("review".to_string()),)
+            )
         );
     }
 }

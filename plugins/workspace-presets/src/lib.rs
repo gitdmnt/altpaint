@@ -1,7 +1,6 @@
 use panel_sdk::{
-    commands,
-    runtime::{emit_command, error, event_string, set_state_string, state_string},
-    state,
+    runtime::{emit_service, error, event_string, set_state_string, state_string},
+    services, state,
 };
 
 const SELECTED_WORKSPACE: state::StringKey = state::string("config.selected_workspace");
@@ -49,7 +48,7 @@ fn select_workspace() {
     if let Some(label) = option_label_for_id(&value) {
         set_state_string(SELECTED_WORKSPACE_LABEL, &label);
     }
-    emit_command(&commands::workspace::apply_preset(value.trim()));
+    emit_service(&services::workspace_io::apply_preset(value.trim()));
 }
 
 #[panel_sdk::panel_handler]
@@ -79,7 +78,7 @@ fn load_workspace() {
         return;
     };
 
-    emit_command(&commands::workspace::apply_preset(preset_id));
+    emit_service(&services::workspace_io::apply_preset(preset_id));
 }
 
 #[panel_sdk::panel_handler]
@@ -89,7 +88,7 @@ fn save_workspace() {
         return;
     };
 
-    emit_command(&commands::workspace::save_preset(preset_id, label));
+    emit_service(&services::workspace_io::save_preset(preset_id, label));
 }
 
 #[panel_sdk::panel_handler]
@@ -99,12 +98,12 @@ fn export_workspace() {
         return;
     };
 
-    emit_command(&commands::workspace::export_preset(preset_id, label));
+    emit_service(&services::workspace_io::export_preset(preset_id, label));
 }
 
 #[panel_sdk::panel_handler]
 fn reload_workspaces() {
-    emit_command(&commands::workspace::reload_presets());
+    emit_service(&services::workspace_io::reload_presets());
 }
 
 #[cfg(test)]
@@ -113,10 +112,10 @@ mod tests {
 
     #[test]
     fn workspace_commands_use_expected_names() {
-        let save = commands::workspace::save_preset("review", "Review");
-        let export = commands::workspace::export_preset("review", "Review");
+        let save = services::workspace_io::save_preset("review", "Review");
+        let export = services::workspace_io::export_preset("review", "Review");
 
-        assert_eq!(save.name, "workspace.save_preset");
+        assert_eq!(save.name, "workspace_io.save_preset");
         assert_eq!(
             save.payload
                 .get("preset_id")
@@ -127,7 +126,7 @@ mod tests {
             save.payload.get("label").and_then(|value| value.as_str()),
             Some("Review")
         );
-        assert_eq!(export.name, "workspace.export_preset");
+        assert_eq!(export.name, "workspace_io.export_preset");
     }
 
     #[test]

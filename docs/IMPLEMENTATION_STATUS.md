@@ -80,7 +80,7 @@
 - `DesktopRuntime` による `winit` event loop
 - `WgpuPresenter` による base / canvas / overlay の三層提示
 - `DesktopApp` による document / UI / I/O / present の統合
-- `apps/desktop/src/app/bootstrap.rs` / `command_router.rs` / `panel_dispatch.rs` / `present_state.rs` / `background_tasks.rs` / `io_state.rs` / `services.rs` への責務分割
+- `apps/desktop/src/app/bootstrap.rs` / `command_router.rs` / `panel_dispatch.rs` / `present_state.rs` / `background_tasks.rs` / `io_state.rs` / `services/` への責務分割
 - pointer / keyboard / IME の処理
 - panel と canvas の入力ルーティング
 - 起動時の `plugins/` / `tools/` / `pens/` の読込
@@ -144,10 +144,10 @@
 
 現在の panel stack は次で構成される。
 
-- `plugin-api`: `PanelTree`, `PanelNode`, `PanelEvent`, `HostAction`
+- `plugin-api`: `PanelTree`, `PanelNode`, `PanelEvent`, `HostAction`, `ServiceRequest`
 - `panel-dsl`: `.altp-panel` parser / validator / normalized IR
 - `panel-schema`: host-Wasm 間 DTO
-- `panel-sdk`: panel 作者向け SDK
+- `panel-sdk`: panel 作者向け SDK と typed service request builder
 - `panel-macros`: panel export 用 proc-macro
 - `plugin-host`: `wasmtime` ベース runtime
 - `panel-runtime`: panel discovery / DSL-Wasm bridge / host snapshot sync / persistent config
@@ -207,12 +207,13 @@
 - `storage::tool_catalog` が `tools/` から tool 定義を読む
 - `Document` が active tool と設定を保持する
 - `tool-palette` と `pen-settings` が host snapshot を読む
+- `app-actions` / `workspace-presets` / `view-controls` / `panel-list` が host service request を発行する
 - paint plugin 実行は `canvas::CanvasRuntime` が担当する
 - `storage` が外部ペン preset を読み、`AltPaintPen` 正規化 format を扱う
 
 補足:
 
-- ツール UI は plugin 化されているが、project / workspace I/O はまだ plugin-first 化の途中である。
+- project / workspace / tool catalog reload / view / panel navigation は service request 経由で host へ届く。
 
 ## runtime と依存関係の現況
 
@@ -231,7 +232,7 @@
 2. `render` は canvas 表示計算と panel rasterize を持つが、最終提示の中心ではまだない
 3. project 保存と session 保存は分離されている
 4. built-in panel は file-based plugin 構成へかなり寄っている
-5. tool UI は plugin 化されているが、tool 実行はまだ完全には plugin-first ではない
+5. project / workspace / tool catalog reload / view / panel navigation は plugin-first service API 経由になったが、tool 実行本体は依然として host 側 `canvas` runtime が担う
 
 ## 到達済みの状態
 
@@ -264,11 +265,11 @@
 
 ### まだ途中の点
 
-- `DesktopApp` は `bootstrap` / `command_router` / `panel_dispatch` / `io_state` / `services` / `present_state` / `background_tasks` に分割されたが、orchestration として依然として規模が大きい（フェーズ1完了、フェーズ4以降で継続改善）
+- `DesktopApp` は `bootstrap` / `command_router` / `panel_dispatch` / `io_state` / `services/` / `present_state` / `background_tasks` に分割されたが、orchestration として依然として規模が大きい（フェーズ1完了、フェーズ5以降で継続改善）
 - `Document` が tool / pen runtime state をまだ広く抱えている
 - `DesktopApp` が `PanelRuntime` と `PanelPresentation` の orchestration をまだ厚く抱えている
-- project / workspace I/O は plugin 主導ではない（フェーズ4で予定）
-- tool catalog / pen setting の plugin-first 化はまだ途中である
+- tool 実行本体は plugin 主導ではなく `canvas` runtime 主導である
+- tool catalog 一覧取得や tool 実行 API の一般化はまだ途中である
 
 ## いま読むべき関連文書
 

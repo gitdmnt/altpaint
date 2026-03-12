@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use crate::{command, commands, handler_result, host, runtime, state};
+use crate::{command, commands, handler_result, host, runtime, services, state};
 use crate::{panel_handler, panel_init, panel_sync_host};
 
 #[panel_init]
@@ -71,6 +71,19 @@ fn typed_project_commands_cover_path_variants() {
 }
 
 #[test]
+fn typed_service_requests_hide_service_names() {
+    let save = services::project_io::save_current();
+    let preset = services::workspace_io::save_preset("review", "Review");
+    let zoom = services::view::set_zoom(1.25);
+    let select_panel = services::panel_nav::select(2);
+
+    assert_eq!(save.name, "project_io.save_current");
+    assert_eq!(preset.payload.get("preset_id"), Some(&json!("review")));
+    assert_eq!(zoom.payload.get("zoom"), Some(&json!(1.25)));
+    assert_eq!(select_panel.payload.get("index"), Some(&json!(2)));
+}
+
+#[test]
 fn typed_tool_commands_hide_payload_keys() {
     let tool = commands::tool::set_active(commands::Tool::Eraser);
     let color = commands::tool::set_color_rgb(commands::RgbColor::new(0x0c, 0x22, 0x38));
@@ -120,7 +133,10 @@ fn typed_view_commands_hide_payload_keys() {
         set_rotation.payload.get("rotation_degrees"),
         Some(&json!(270.0))
     );
-    assert_eq!(commands::view::flip_horizontal().name, "view.flip_horizontal");
+    assert_eq!(
+        commands::view::flip_horizontal().name,
+        "view.flip_horizontal"
+    );
     assert_eq!(commands::view::flip_vertical().name, "view.flip_vertical");
     assert_eq!(commands::view::reset().name, "view.reset");
 }
@@ -192,10 +208,13 @@ fn typed_host_helpers_are_callable_on_native_targets() {
     assert_eq!(host::tool::pen_index(), 0);
     assert_eq!(host::tool::pen_count(), 0);
     assert_eq!(host::tool::pen_size(), 0);
+    assert_eq!(host::tool::snapshot().pen_size, 0);
+    assert!(!host::tool::capabilities().supports_size);
     assert_eq!(host::color::active_hex(), "");
     assert_eq!(host::color::red(), 0);
     assert_eq!(host::color::green(), 0);
     assert_eq!(host::color::blue(), 0);
+    assert_eq!(host::color::active_rgb().red, 0);
     assert_eq!(host::view::zoom_milli(), 0);
     assert_eq!(host::view::pan_x(), 0);
     assert_eq!(host::view::pan_y(), 0);
@@ -226,6 +245,7 @@ fn native_runtime_helpers_are_safe_noops() {
     runtime::replace_state_json("config", json!({"enabled": false}));
     runtime::emit_command(&command("project.save").build());
     runtime::emit_command_descriptor(&command("project.load").build());
+    runtime::emit_service(&services::project_io::save_current());
     runtime::info("info");
     runtime::warn("warn");
     runtime::error("error");

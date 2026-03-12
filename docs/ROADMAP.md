@@ -168,6 +168,11 @@
 - `plugins/app-actions`、`plugins/workspace-presets`、`plugins/view-controls`、`plugins/panel-list` が host 固有分岐ではなく service request を使う
 - project / workspace / tool catalog の主要 I/O が command 列挙直書きから service 指向へ寄る
 
+補足:
+
+- 2026-03-12 時点で上記は実装済みであり、`plugin-api::ServiceRequest` と `panel-sdk::services::*` を通る service 経路が導入された。
+- 次の主作業軸はフェーズ5の `render` 中心化である。
+
 ## フェーズ5: `render` 中心の画面生成整理
 
 ### 目的

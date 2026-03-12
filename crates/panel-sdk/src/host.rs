@@ -1,5 +1,32 @@
 //! host snapshot を型付き getter で読む補助 API を提供する。
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ColorSnapshot {
+    pub red: i32,
+    pub green: i32,
+    pub blue: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolSnapshot {
+    pub active_name: String,
+    pub active_id: String,
+    pub active_label: String,
+    pub provider_plugin_id: String,
+    pub drawing_plugin_id: String,
+    pub pen_name: String,
+    pub pen_id: String,
+    pub pen_size: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ToolCapabilities {
+    pub supports_size: bool,
+    pub supports_pressure_enabled: bool,
+    pub supports_antialias: bool,
+    pub supports_stabilization: bool,
+}
+
 /// ドキュメント関連 host 値を読む。
 pub mod document {
     use crate::runtime::{host_bool, host_i32, host_string};
@@ -96,6 +123,8 @@ pub mod tool {
         commands::Tool,
         runtime::{host_i32, host_string},
     };
+
+    use super::{ToolCapabilities, ToolSnapshot};
 
     /// アクティブツール名を返す。
     pub fn active_name() -> String {
@@ -201,11 +230,37 @@ pub mod tool {
     pub fn supports_stabilization() -> bool {
         crate::runtime::host_bool("tool.supports_stabilization")
     }
+
+    /// ツールの主要スナップショットをまとめて返す。
+    pub fn snapshot() -> ToolSnapshot {
+        ToolSnapshot {
+            active_name: active_name(),
+            active_id: active_id(),
+            active_label: active_label(),
+            provider_plugin_id: active_provider_plugin_id(),
+            drawing_plugin_id: active_drawing_plugin_id(),
+            pen_name: pen_name(),
+            pen_id: pen_id(),
+            pen_size: pen_size(),
+        }
+    }
+
+    /// 現在ツールの capability をまとめて返す。
+    pub fn capabilities() -> ToolCapabilities {
+        ToolCapabilities {
+            supports_size: supports_size(),
+            supports_pressure_enabled: supports_pressure_enabled(),
+            supports_antialias: supports_antialias(),
+            supports_stabilization: supports_stabilization(),
+        }
+    }
 }
 
 /// 色関連 host 値を読む。
 pub mod color {
     use crate::runtime::{host_i32, host_string};
+
+    use super::ColorSnapshot;
 
     /// 現在色の 16 進文字列を返す。
     pub fn active_hex() -> String {
@@ -225,6 +280,15 @@ pub mod color {
     /// 青成分を返す。
     pub fn blue() -> i32 {
         host_i32("color.blue")
+    }
+
+    /// 現在色の RGB 成分をまとめて返す。
+    pub fn active_rgb() -> ColorSnapshot {
+        ColorSnapshot {
+            red: red(),
+            green: green(),
+            blue: blue(),
+        }
     }
 }
 

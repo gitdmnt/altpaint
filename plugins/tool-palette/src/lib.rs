@@ -3,10 +3,10 @@ use panel_sdk::{
     commands::{self, Tool},
     host,
     runtime::{
-        emit_command, event_string, set_state_bool, set_state_i32, set_state_string,
+        emit_command, emit_service, event_string, set_state_bool, set_state_i32, set_state_string,
         state_string, toggle_state,
     },
-    state,
+    services, state,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -55,7 +55,10 @@ fn sync_host() {
     set_state_string(ACTIVE_TOOL, host::tool::active_name());
     set_state_string(ACTIVE_TOOL_ID, host::tool::active_id());
     set_state_string(ACTIVE_TOOL_LABEL, host::tool::active_label());
-    set_state_string(TOOL_OPTIONS, build_tool_options(&host::tool::catalog_json()));
+    set_state_string(
+        TOOL_OPTIONS,
+        build_tool_options(&host::tool::catalog_json()),
+    );
     set_state_string(PROVIDER_PLUGIN_ID, host::tool::active_provider_plugin_id());
     set_state_string(DRAWING_PLUGIN_ID, host::tool::active_drawing_plugin_id());
     set_state_string(PEN_NAME, host::tool::pen_name());
@@ -140,9 +143,9 @@ fn switch_pen_with_size_restore(delta: isize) {
     remember_current_size();
     let pen_ids = host_pen_ids();
     let current_index = host::tool::pen_index().max(0) as usize;
-    let Some(target_pen_id) = pen_ids.get(
-        (current_index as isize + delta).rem_euclid(pen_ids.len().max(1) as isize) as usize,
-    ) else {
+    let Some(target_pen_id) = pen_ids
+        .get((current_index as isize + delta).rem_euclid(pen_ids.len().max(1) as isize) as usize)
+    else {
         if delta < 0 {
             emit_command(&commands::tool::select_previous_pen());
         } else {
@@ -196,12 +199,12 @@ fn next_pen() {
 
 #[panel_sdk::panel_handler]
 fn reload_pens() {
-    emit_command(&commands::tool::reload_pen_presets());
+    emit_service(&services::tool_catalog::reload_pen_presets());
 }
 
 #[panel_sdk::panel_handler]
 fn import_pens() {
-    emit_command(&commands::tool::import_pen_presets());
+    emit_service(&services::tool_catalog::import_pen_presets());
 }
 
 #[panel_sdk::panel_handler]
@@ -338,9 +341,9 @@ mod tests {
 
     #[test]
     fn import_command_uses_expected_name() {
-        let command = commands::tool::import_pen_presets();
+        let command = services::tool_catalog::import_pen_presets();
 
-        assert_eq!(command.name, "tool.import_pen_presets");
+        assert_eq!(command.name, "tool_catalog.import_pen_presets");
         assert!(command.payload.is_empty());
     }
 
@@ -350,7 +353,10 @@ mod tests {
 
         assert_eq!(command.name, "tool.select");
         assert_eq!(
-            command.payload.get("tool_id").and_then(|value| value.as_str()),
+            command
+                .payload
+                .get("tool_id")
+                .and_then(|value| value.as_str()),
             Some("builtin.pen")
         );
     }

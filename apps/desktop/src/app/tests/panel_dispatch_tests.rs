@@ -14,11 +14,16 @@ fn panel_dispatch_keyboard_path_activates_save_action() {
     let mut profiler = DesktopProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
 
-    assert!(
-        app.panel_presentation
-            .focus_panel_node(&app.panel_runtime, "builtin.app-actions", "app.save")
+    assert!(app.panel_presentation.focus_panel_node(
+        &app.panel_runtime,
+        "builtin.app-actions",
+        "app.save"
+    ));
+    assert_eq!(
+        app.activate_focused_panel_control(),
+        Some(Command::SaveProject)
     );
-    assert_eq!(app.activate_focused_panel_control(), Some(Command::SaveProject));
+    assert_eq!(app.io_state.pending_save_tasks.len(), 1);
 }
 
 #[test]

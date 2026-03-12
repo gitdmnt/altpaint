@@ -1,8 +1,7 @@
 use panel_sdk::{
-    commands,
     host,
-    runtime::{emit_command, set_state_bool, set_state_i32, set_state_string},
-    state,
+    runtime::{emit_service, set_state_bool, set_state_i32, set_state_string},
+    services, state,
 };
 
 const ZOOM_LABEL: state::StringKey = state::string("zoom_label");
@@ -90,14 +89,14 @@ fn normalized_rotation_degrees(quarter_turns: i32) -> i32 {
 fn set_zoom(value: i32) {
     let zoom_percent = value.clamp(MIN_ZOOM_PERCENT, MAX_ZOOM_PERCENT);
     update_zoom_state(zoom_percent);
-    emit_command(&commands::view::zoom(zoom_percent as f32 / 100.0));
+    emit_service(&services::view::set_zoom(zoom_percent as f32 / 100.0));
 }
 
 #[panel_sdk::panel_handler]
 fn set_pan_x(value: i32) {
     let pan_x = value.clamp(PAN_SLIDER_MIN, PAN_SLIDER_MAX) - PAN_SLIDER_CENTER;
     update_pan_state(pan_x, host::view::pan_y());
-    emit_command(&commands::view::set_pan(
+    emit_service(&services::view::set_pan(
         pan_x as f32,
         host::view::pan_y() as f32,
     ));
@@ -107,7 +106,7 @@ fn set_pan_x(value: i32) {
 fn set_pan_y(value: i32) {
     let pan_y = value.clamp(PAN_SLIDER_MIN, PAN_SLIDER_MAX) - PAN_SLIDER_CENTER;
     update_pan_state(host::view::pan_x(), pan_y);
-    emit_command(&commands::view::set_pan(
+    emit_service(&services::view::set_pan(
         host::view::pan_x() as f32,
         pan_y as f32,
     ));
@@ -116,39 +115,37 @@ fn set_pan_y(value: i32) {
 #[panel_sdk::panel_handler]
 fn set_rotation(value: i32) {
     update_rotation_state(value);
-    emit_command(&commands::view::set_rotation_degrees(
-        value.rem_euclid(360) as f32,
-    ));
+    emit_service(&services::view::set_rotation(value.rem_euclid(360) as f32));
 }
 
 #[panel_sdk::panel_handler]
 fn reset_view() {
-    emit_command(&commands::view::reset());
+    emit_service(&services::view::reset());
 }
 
 #[panel_sdk::panel_handler]
 fn focus_active_panel() {
-    emit_command(&commands::panel::focus_active());
+    emit_service(&services::panel_nav::focus_active());
 }
 
 #[panel_sdk::panel_handler]
 fn previous_panel() {
-    emit_command(&commands::panel::select_previous());
+    emit_service(&services::panel_nav::select_previous());
 }
 
 #[panel_sdk::panel_handler]
 fn next_panel() {
-    emit_command(&commands::panel::select_next());
+    emit_service(&services::panel_nav::select_next());
 }
 
 #[panel_sdk::panel_handler]
 fn flip_horizontal() {
-    emit_command(&commands::view::flip_horizontal());
+    emit_service(&services::view::flip_horizontal());
 }
 
 #[panel_sdk::panel_handler]
 fn flip_vertical() {
-    emit_command(&commands::view::flip_vertical());
+    emit_service(&services::view::flip_vertical());
 }
 
 #[cfg(test)]

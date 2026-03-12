@@ -1,10 +1,10 @@
 use panel_sdk::{
-    CommandDescriptor, commands,
+    CommandDescriptor,
     runtime::{
-        StatePatchBuffer, emit_command, error, event_string, set_state_bool, set_state_string,
+        StatePatchBuffer, emit_service, error, event_string, set_state_bool, set_state_string,
         state_string, toggle_state,
     },
-    state,
+    services, state,
 };
 
 const SHOW_NEW: state::BoolKey = state::bool("show_new");
@@ -33,7 +33,7 @@ fn parse_dimension(value: &str) -> Result<usize, &'static str> {
 fn build_new_project_command(width: &str, height: &str) -> Result<CommandDescriptor, &'static str> {
     let width = parse_dimension(width)?;
     let height = parse_dimension(height)?;
-    Ok(commands::project::new_sized(width, height))
+    Ok(services::project_io::new_document_sized(width, height))
 }
 
 fn apply_template_size(size: &str) -> Result<(), &'static str> {
@@ -130,7 +130,7 @@ fn new_project() {
         return;
     };
 
-    emit_command(&command);
+    emit_service(&command);
     cancel_forms();
 }
 
@@ -148,17 +148,17 @@ fn select_template() {
 
 #[panel_sdk::panel_handler]
 fn save_project() {
-    emit_command(&commands::project::save());
+    emit_service(&services::project_io::save_current());
 }
 
 #[panel_sdk::panel_handler]
 fn save_project_as() {
-    emit_command(&commands::project::save_as());
+    emit_service(&services::project_io::save_as());
 }
 
 #[panel_sdk::panel_handler]
 fn load_project() {
-    emit_command(&commands::project::load());
+    emit_service(&services::project_io::load_dialog());
 }
 
 #[panel_sdk::panel_handler]
@@ -200,10 +200,20 @@ mod tests {
     fn new_project_command_trims_dimensions() {
         let command = build_new_project_command(" 320 ", " 240 ").expect("command should build");
 
-        assert_eq!(command.name, "project.new_sized");
+        assert_eq!(command.name, "project_io.new_document_sized");
         assert_eq!(
-            command.payload.get("size").and_then(|value| value.as_str()),
-            Some("320x240")
+            command
+                .payload
+                .get("width")
+                .and_then(|value| value.as_u64()),
+            Some(320)
+        );
+        assert_eq!(
+            command
+                .payload
+                .get("height")
+                .and_then(|value| value.as_u64()),
+            Some(240)
         );
     }
 
@@ -225,9 +235,9 @@ mod tests {
 
     #[test]
     fn typed_project_commands_use_expected_names() {
-        let command = commands::project::save_as();
+        let command = services::project_io::save_as();
 
-        assert_eq!(command.name, "project.save_as");
+        assert_eq!(command.name, "project_io.save_as");
         assert!(command.payload.is_empty());
     }
 
