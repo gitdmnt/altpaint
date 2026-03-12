@@ -208,13 +208,16 @@ graph TD
 
 - `Document` から `RenderFrame` を得る最小描画入口
 - `CanvasViewTransform` から canvas scene / quad / dirty 写像 / view 座標変換を得る
+- `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan` の構築
+- dirty rect の union、露出背景、ブラシ preview dirty の判断
+- base / overlay / panel / status の CPU compose
 - floating panel layer の GUI ラスタライズ
 - panel hit region の生成
 
 現状の実態:
 
-- canvas 幾何に加えて floating panel layer の rasterize を持つようになった
-- ただし最終 upload と GPU presenter orchestration は、まだ主に `apps/desktop` 側にある
+- canvas 幾何に加えて frame compose と dirty plan の中核を持つ
+- 最終 upload と GPU presenter orchestration は `apps/desktop` / `wgpu_canvas` 側に残る
 
 ### `plugin-api`
 
@@ -375,7 +378,7 @@ graph TD
 - desktop layout
 - canvas pointer input から `Command` への変換
 - `DesktopApp` による状態遷移と副作用統合
-- base frame / canvas texture / overlay frame の三層提示
+- `render::FramePlan` の組み立てと base frame / canvas texture / overlay frame の三層提示
 
 主要モジュール:
 
@@ -385,7 +388,7 @@ graph TD
 - `app/commands.rs`
 - `app/input.rs`
 - `app/present.rs`
-- `frame.rs`
+- `frame/mod.rs`
 - `wgpu_canvas.rs`
 - `../../crates/canvas/src/*`
 
@@ -429,7 +432,7 @@ crates/canvas/src/lib.rs
 - `runtime.rs`: OS イベントと再描画サイクル
 - `app/*`: 状態変化と副作用
 - `crates/canvas/src/*`: gesture / runtime / bitmap op / view mapping
-- `frame.rs`: CPU 側フレーム構築と desktop 固有の差分矩形計算
+- `frame/mod.rs`: desktop 固定レイアウトと presenter 入力変換
 - `wgpu_canvas.rs`: 実 GPU 提示
 
 ### 2. パネルランタイム側

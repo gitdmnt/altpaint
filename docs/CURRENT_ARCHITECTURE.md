@@ -127,9 +127,12 @@
 
 - `RenderFrame`
 - `CanvasScene`
+- `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan`
 - canvas quad / UV / dirty rect 写像
 - 画面座標 <-> canvas 座標変換
 - ブラシプレビュー矩形計算
+- dirty rect の union とブラシプレビュー dirty 計算
+- base frame / overlay frame / panel surface / status の CPU compose
 - floating panel layer のラスタライズ
 - panel hit region 生成
 - panel 描画用 text 計測・描画
@@ -137,13 +140,21 @@
 主なモジュール:
 
 - `src/lib.rs`
+- `src/frame_plan.rs`
+- `src/canvas_plan.rs`
+- `src/overlay_plan.rs`
+- `src/panel_plan.rs`
+- `src/dirty.rs`
+- `src/compose.rs`
+- `src/status.rs`
+- `src/brush_preview.rs`
 - `src/panel.rs`
 - `src/text.rs`
 
 補足:
 
-- `render` は育っているが、最終提示戦略や desktop 固有フレーム合成はまだ `apps/desktop` に強く残る。
-- 名前の期待ほど「描画のすべて」を持っているわけではない。
+- フェーズ5で desktop 側 `frame/` の compose 実装を吸収し、CPU 側の frame 計画と compose の中心になった。
+- `apps/desktop` 側には desktop layout と `wgpu` presenter 入力変換が主に残る。
 
 ### 4. `crates/panel-runtime`
 
@@ -324,7 +335,7 @@ workspace member として存在するもの:
 | --------------- | ------------------------------------------ | ---------------------- | ------------------------------------- |
 | `desktopApp`    | `apps/desktop`                             | `apps/desktop`         | 現在は orchestration 以外も広く抱える |
 | `app-core`      | `crates/app-core`                          | `crates/app-core`      | `Document` に tool / pen state が残る |
-| `render`        | `crates/render`                            | `crates/render`        | desktop 固有 compose がまだ外に残る   |
+| `render`        | `crates/render`                            | `crates/render`        | frame plan / dirty / compose を集約済み |
 | `canvas`        | `crates/canvas`                            | `crates/canvas`        | runtime / gesture / bitmap op を集約  |
 | `ui-shell`      | `crates/ui-shell`                          | `crates/ui-shell`      | presentation 中心へ整理済み           |
 | `panel-runtime` | `crates/panel-runtime`                     | `crates/panel-runtime` | Phase 3 で新設済み                    |
@@ -352,7 +363,8 @@ workspace member として存在するもの:
 5. `canvas::context_builder` が `Document` から paint context を解決する
 6. `canvas::runtime` が built-in plugin を呼んで bitmap 差分を作る
 7. 差分を `Document` に適用する
-8. `app/present.rs` と `wgpu_canvas.rs` が dirty rect ベースで再提示する
+8. `app/present.rs` が `render::FramePlan` を組み立て、`render` が dirty rect ベースで frame を再構成する
+9. `wgpu_canvas.rs` が `render` の計画結果を GPU へ提示する
 
 ### 3. パネル
 
@@ -380,7 +392,7 @@ workspace member として存在するもの:
 - project / session / workspace preset I/O
 - tool / pen / panel catalog 読込
 - canvas runtime と panel runtime の橋渡し
-- dirty rect と present planning
+- dirty rect 収集と render plan 組み立て
 - panel drag と input state
 
 集中箇所（ファイル単位）:
@@ -397,7 +409,7 @@ workspace member として存在するもの:
 - `apps/desktop/src/app/services/tool_catalog.rs`: tool / pen reload と pen import service handler を持つ
 - `apps/desktop/src/app/present_state.rs`: dirty rect、present flag、UI 再同期要求が集約される
 - `apps/desktop/src/app/input.rs`: window→canvas 変換と panel/canvas ルーティングが残る
-- `apps/desktop/src/app/present.rs`: dirty rect、panel surface refresh、frame compose 指示が集中する
+- `apps/desktop/src/app/present.rs`: panel surface refresh、`FramePlan` 組み立て、present 指示が集中する
 
 ### `CanvasRuntime`
 
@@ -451,7 +463,7 @@ Phase 3 後は次のように分担する。
 
 ### `render`
 
-名前ほど描画責務が集約されておらず、desktop 側に最終提示と host frame 生成が残る。
+フェーズ5で描画責務の集約はかなり進んだが、GPU presenter と desktop 固定レイアウトは `apps/desktop` に残る。
 
 ### `plugin-api`
 
@@ -488,7 +500,7 @@ Phase 3 後は次のように分担する。
 
 - canvas 座標変換、eraser/stroke/fill の期待値テスト → `crates/canvas` に移転済み（フェーズ2完了）
 - panel dispatch、host action 適用、focus/control activation → `panel_dispatch_tests.rs` / `command_router_tests.rs` として分割済み（フェーズ1完了）
-- dirty rect と panel 差分 compose の検証 → `crates/render`（フェーズ5で予定）
+- dirty rect と panel 差分 compose の検証 → `crates/render/src/tests/*` へ移転済み（フェーズ5完了）
 - workspace preset config 同期や bootstrap 復元 → `bootstrap_tests.rs` として分割済み（フェーズ1完了）
 
 ### `crates/ui-shell/src/tests.rs`

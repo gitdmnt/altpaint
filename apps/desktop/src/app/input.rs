@@ -10,7 +10,6 @@ use canvas::{
 };
 
 use super::DesktopApp;
-use crate::frame::brush_preview_rect;
 
 impl DesktopApp {
     /// 現在のポインタ位置からキャンバスホバー状態を更新する。
@@ -30,25 +29,25 @@ impl DesktopApp {
 
         let transform = self.document.view_transform;
         if let Some(previous) = previous.and_then(|position| {
-            brush_preview_rect(
+            render::brush_preview_rect_for_diameter(
                 layout,
                 bitmap_width,
                 bitmap_height,
                 transform,
                 position,
-                self.brush_preview_size().unwrap_or(1),
+                self.brush_preview_size().unwrap_or(1) as f32,
             )
         }) {
             self.append_canvas_host_dirty_rect(previous);
         }
         if let Some(next) = next.and_then(|position| {
-            brush_preview_rect(
+            render::brush_preview_rect_for_diameter(
                 layout,
                 bitmap_width,
                 bitmap_height,
                 transform,
                 position,
-                self.brush_preview_size().unwrap_or(1),
+                self.brush_preview_size().unwrap_or(1) as f32,
             )
         }) {
             self.append_canvas_host_dirty_rect(next);

@@ -192,6 +192,11 @@
 - `apps/desktop/src/app/present.rs` が frame compose 本体ではなく plan 組み立て / presenter 呼び出し中心になる
 - `apps/desktop/src/frame/` には desktop 固有の presenter 入力変換だけが残る
 
+補足:
+
+- 2026-03-12 時点で上記は実装済みであり、`render::FramePlan` / `DirtyFramePlan` / `compose::*` を中心に CPU 側画面生成が `render` へ移った。
+- 次の主作業軸はフェーズ6の API 名称と物理配置整理である。
+
 ## フェーズ6: API 名称と物理配置の整理
 
 ### 目的

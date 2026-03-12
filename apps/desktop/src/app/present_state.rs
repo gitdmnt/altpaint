@@ -165,37 +165,24 @@ impl DesktopApp {
                 canvas_height,
                 self.document.view_transform,
             );
-            if let Some(hover_position) = self.hover_canvas_position {
-                let brush_size = self.brush_preview_size().unwrap_or(1) as f32;
-                let previous_preview = previous_scene
-                    .and_then(|scene| scene.brush_preview_rect_for_diameter(hover_position, brush_size))
-                    .map(|rect| Rect {
-                        x: rect.x,
-                        y: rect.y,
-                        width: rect.width,
-                        height: rect.height,
-                    });
-                let current_preview = current_scene
-                    .and_then(|scene| scene.brush_preview_rect_for_diameter(hover_position, brush_size))
-                    .map(|rect| Rect {
-                        x: rect.x,
-                        y: rect.y,
-                        width: rect.width,
-                        height: rect.height,
-                    });
-
-                match (previous_preview, current_preview) {
-                    (Some(previous), Some(current)) => {
-                        self.append_canvas_host_dirty_rect(previous.union(current));
-                    }
-                    (Some(previous), None) => {
-                        self.append_canvas_host_dirty_rect(previous);
-                    }
-                    (None, Some(current)) => {
-                        self.append_canvas_host_dirty_rect(current);
-                    }
-                    (None, None) => {}
-                }
+            if let Some(exposed) = render::exposed_canvas_background_rect_from_scenes(
+                previous_scene,
+                current_scene,
+            ) {
+                self.pending_canvas_background_dirty_rect = Some(
+                    self.pending_canvas_background_dirty_rect
+                        .map_or(exposed, |existing| existing.union(exposed)),
+                );
+            }
+            if let Some(dirty) = self.hover_canvas_position.and_then(|hover_position| {
+                render::brush_preview_dirty_rect(
+                    previous_scene,
+                    current_scene,
+                    hover_position,
+                    self.brush_preview_size().unwrap_or(1) as f32,
+                )
+            }) {
+                self.append_canvas_host_dirty_rect(dirty);
             }
         } else {
             self.rebuild_present_frame();
@@ -214,21 +201,8 @@ impl DesktopApp {
     }
 
     /// 現在のキャンバスを描画する GPU 四角形を返す。
-    pub(crate) fn canvas_texture_quad(&self) -> Option<crate::frame::TextureQuad> {
-        self.canvas_scene().and_then(|scene| scene.texture_quad()).map(|quad| crate::frame::TextureQuad {
-            destination: Rect {
-                x: quad.destination.x,
-                y: quad.destination.y,
-                width: quad.destination.width,
-                height: quad.destination.height,
-            },
-            uv_min: quad.uv_min,
-            uv_max: quad.uv_max,
-            rotation_degrees: quad.rotation_degrees,
-            bbox_size: quad.bbox_size,
-            flip_x: quad.flip_x,
-            flip_y: quad.flip_y,
-        })
+    pub(crate) fn canvas_texture_quad(&self) -> Option<render::TextureQuad> {
+        self.canvas_scene().and_then(|scene| scene.texture_quad())
     }
 
     /// 現在のキャンバス表示計画を返す。

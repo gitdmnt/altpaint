@@ -3,7 +3,7 @@
 use app_core::{CanvasDirtyRect, ClampToCanvasBounds};
 
 use super::DesktopApp;
-use crate::frame::{PanelNavigatorEntry, PanelNavigatorOverlay};
+use render::{PanelNavigatorEntry, PanelNavigatorOverlay};
 
 impl DesktopApp {
     pub(super) fn brush_preview_size(&self) -> Option<u32> {

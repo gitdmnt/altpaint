@@ -129,16 +129,20 @@
 
 - `RenderFrame`
 - `CanvasScene`
+- `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan`
 - canvas quad / UV / dirty rect 写像
 - 画面座標 <-> canvas 座標変換
 - ブラシプレビュー矩形計算
+- dirty rect の union とブラシプレビュー dirty 計算
+- base / overlay / panel / status の CPU compose
 - floating panel layer のラスタライズ
 - panel hit region 生成
 - panel 描画用 text 計測 / 描画
 
 補足:
 
-- 画面生成ロジックの一部は `render` に寄っているが、desktop 固有の frame 合成と最終提示 orchestration はまだ `apps/desktop` に厚く残る。
+- フェーズ5完了により、frame compose と dirty rect 判断の中核は `render` に移った。
+- `apps/desktop/src/app/present.rs` は panel refresh と `FramePlan` 組み立て、`wgpu_canvas.rs` は最終 GPU 提示に寄った。
 
 ### 4. panel 基盤
 
@@ -259,13 +263,14 @@
 
 - host 主導の desktop runtime が一周している
 - `render`、`panel-runtime`、storage が独立 crate として成立している
+- `render` が frame plan / dirty plan / compose の中心として成立した
 - `canvas` が独立 crate として成立し、desktop から bitmap op と gesture state machine を切り離せた
 - built-in panel の file-based plugin 化が進んでいる
 - project / session / workspace preset が一応つながっている
 
 ### まだ途中の点
 
-- `DesktopApp` は `bootstrap` / `command_router` / `panel_dispatch` / `io_state` / `services/` / `present_state` / `background_tasks` に分割されたが、orchestration として依然として規模が大きい（フェーズ1完了、フェーズ5以降で継続改善）
+- `DesktopApp` は `bootstrap` / `command_router` / `panel_dispatch` / `io_state` / `services/` / `present_state` / `background_tasks` に分割され、フレーム compose も `render` へ移ったが、subsystem orchestration と panel/runtime 橋渡しは依然として大きい
 - `Document` が tool / pen runtime state をまだ広く抱えている
 - `DesktopApp` が `PanelRuntime` と `PanelPresentation` の orchestration をまだ厚く抱えている
 - tool 実行本体は plugin 主導ではなく `canvas` runtime 主導である

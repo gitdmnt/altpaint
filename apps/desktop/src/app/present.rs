@@ -7,11 +7,7 @@ use app_core::ClampToCanvasBounds;
 use desktop_support::DesktopProfiler;
 
 use super::{DesktopApp, PresentFrameUpdate};
-use crate::frame::{
-    CanvasCompositeSource, CanvasOverlayState, DesktopLayout, Rect, clear_canvas_host_region,
-    compose_base_frame, compose_overlay_frame, compose_overlay_region, compose_status_region,
-    status_text_bounds,
-};
+use crate::frame::DesktopLayout;
 
 impl DesktopApp {
     /// 現在状態から次に提示すべきフレームと差分更新情報を生成する。
@@ -116,39 +112,40 @@ impl DesktopApp {
             let panel_surface = self.panel_surface.as_ref().expect("panel surface exists");
             let status_text = self.status_text();
             let bitmap = self.canvas_frame.as_ref();
-            let canvas_source = CanvasCompositeSource {
+            let canvas_source = render::CanvasCompositeSource {
                 width: bitmap.map_or(1, |bitmap| bitmap.width),
                 height: bitmap.map_or(1, |bitmap| bitmap.height),
                 pixels: bitmap.map_or(&[][..], |bitmap| bitmap.pixels.as_slice()),
             };
+            let panel_surface_source = render::PanelSurfaceSource {
+                x: panel_surface.x,
+                y: panel_surface.y,
+                width: panel_surface.width,
+                height: panel_surface.height,
+                pixels: panel_surface.pixels.as_slice(),
+            };
+            let frame_plan = render::FramePlan::new(
+                window_width,
+                window_height,
+                layout.canvas_host_rect,
+                panel_surface_source,
+                canvas_source,
+                self.document.view_transform,
+                &status_text,
+            );
+            let overlay_state = render::CanvasOverlayState {
+                brush_preview: self.hover_canvas_position,
+                brush_size: self.brush_preview_size(),
+                lasso_points: self.canvas_input.lasso_points.clone(),
+                active_panel_bounds: self.active_panel_mask_overlay(),
+                panel_navigator: self.panel_navigator_overlay(),
+                panel_creation_preview: self.panel_creation_preview_bounds(),
+            };
             let base_frame = profiler.measure("compose_base_frame", || {
-                compose_base_frame(
-                    window_width,
-                    window_height,
-                    &layout,
-                    panel_surface,
-                    canvas_source,
-                    self.document.view_transform,
-                    &status_text,
-                )
+                render::compose_base_frame(&frame_plan)
             });
             let overlay_frame = profiler.measure("compose_overlay_frame", || {
-                compose_overlay_frame(
-                    window_width,
-                    window_height,
-                    &layout,
-                    panel_surface,
-                    canvas_source,
-                    self.document.view_transform,
-                    CanvasOverlayState {
-                        brush_preview: self.hover_canvas_position,
-                        brush_size: self.brush_preview_size(),
-                        lasso_points: self.canvas_input.lasso_points.clone(),
-                        active_panel_bounds: self.active_panel_mask_overlay(),
-                        panel_navigator: self.panel_navigator_overlay(),
-                        panel_creation_preview: self.panel_creation_preview_bounds(),
-                    },
-                )
+                render::compose_overlay_frame(&frame_plan, &overlay_state)
             });
             self.base_frame = Some(base_frame);
             self.overlay_frame = Some(overlay_frame);
@@ -158,12 +155,7 @@ impl DesktopApp {
             self.pending_canvas_transform_update = false;
             self.needs_status_refresh = false;
             self.needs_full_present_rebuild = false;
-            let window_rect = Rect {
-                x: 0,
-                y: 0,
-                width: window_width,
-                height: window_height,
-            };
+            let window_rect = frame_plan.window_rect();
             return PresentFrameUpdate {
                 base_dirty_rect: Some(window_rect),
                 overlay_dirty_rect: Some(window_rect),
@@ -195,62 +187,74 @@ impl DesktopApp {
             return PresentFrameUpdate::default();
         };
 
-        let mut base_dirty_rect = None;
-        let mut overlay_dirty_rect = None;
+        let mut dirty_plan = render::DirtyFramePlan::default();
+
+        let canvas_source = render::CanvasCompositeSource {
+            width: self.canvas_frame.as_ref().map_or(1, |bitmap| bitmap.width),
+            height: self.canvas_frame.as_ref().map_or(1, |bitmap| bitmap.height),
+            pixels: self
+                .canvas_frame
+                .as_ref()
+                .map_or(&[][..], |bitmap| bitmap.pixels.as_slice()),
+        };
+        let panel_surface = self.panel_surface.as_ref().expect("panel surface exists");
+        let panel_surface_source = render::PanelSurfaceSource {
+            x: panel_surface.x,
+            y: panel_surface.y,
+            width: panel_surface.width,
+            height: panel_surface.height,
+            pixels: panel_surface.pixels.as_slice(),
+        };
+        let frame_status_text = status_text.as_deref().unwrap_or("");
+        let frame_plan = render::FramePlan::new(
+            window_width,
+            window_height,
+            layout.canvas_host_rect,
+            panel_surface_source,
+            canvas_source,
+            self.document.view_transform,
+            frame_status_text,
+        );
+        let overlay_state = render::CanvasOverlayState {
+            brush_preview: hover_canvas_position,
+            brush_size: brush_preview_size,
+            lasso_points: lasso_points.clone(),
+            active_panel_bounds,
+            panel_navigator: panel_navigator.clone(),
+            panel_creation_preview,
+        };
 
         if panel_surface_refreshed && let Some(panel_surface) = self.panel_surface.as_ref() {
-            let panel_dirty_rect = self.panel_presentation.last_panel_surface_dirty_rect().map(|dirty| Rect {
-                x: dirty.x,
-                y: dirty.y,
-                width: dirty.width,
-                height: dirty.height,
-            });
-            let bitmap = self.canvas_frame.as_ref();
-            let canvas_source = CanvasCompositeSource {
-                width: bitmap.map_or(1, |bitmap| bitmap.width),
-                height: bitmap.map_or(1, |bitmap| bitmap.height),
-                pixels: bitmap.map_or(&[][..], |bitmap| bitmap.pixels.as_slice()),
-            };
+            let panel_dirty_rect = self.panel_presentation.last_panel_surface_dirty_rect();
             profiler.measure("compose_dirty_panel", || {
-                compose_overlay_region(
-                    overlay_frame,
-                    &layout,
-                    panel_surface,
-                    canvas_source,
-                    self.document.view_transform,
-                    CanvasOverlayState {
-                        brush_preview: hover_canvas_position,
-                        brush_size: brush_preview_size,
-                        lasso_points: lasso_points.clone(),
-                        active_panel_bounds,
-                        panel_navigator: panel_navigator.clone(),
-                        panel_creation_preview,
-                    },
-                    panel_dirty_rect,
-                );
+                let _ = panel_surface;
+                render::compose_overlay_region(overlay_frame, &frame_plan, &overlay_state, panel_dirty_rect);
             });
             if let Some(panel_dirty_rect) = panel_dirty_rect {
-                overlay_dirty_rect = Some(
-                    overlay_dirty_rect
-                        .map_or(panel_dirty_rect, |existing: Rect| existing.union(panel_dirty_rect)),
-                );
+                dirty_plan.mark_overlay(panel_dirty_rect);
             }
         }
 
         if let Some(status_text) = status_text.as_deref() {
-            let status_rect = status_text_bounds(window_width, window_height, &layout, status_text);
-            profiler.measure("compose_dirty_status", || {
-                compose_status_region(
-                    base_frame,
-                    window_width,
-                    window_height,
-                    &layout,
-                    status_text,
-                );
-            });
-            base_dirty_rect = Some(
-                base_dirty_rect.map_or(status_rect, |existing: Rect| existing.union(status_rect)),
+            let status_plan = render::FramePlan::new(
+                window_width,
+                window_height,
+                layout.canvas_host_rect,
+                panel_surface_source,
+                canvas_source,
+                self.document.view_transform,
+                status_text,
             );
+            let status_rect = render::status_text_bounds(
+                window_width,
+                window_height,
+                layout.canvas_host_rect,
+                status_text,
+            );
+            profiler.measure("compose_dirty_status", || {
+                render::compose_status_region(base_frame, &status_plan);
+            });
+            dirty_plan.mark_base(status_rect);
             self.needs_status_refresh = false;
         }
 
@@ -258,57 +262,25 @@ impl DesktopApp {
             && dirty_rect.width > 0
             && dirty_rect.height > 0
         {
-            let bitmap = self.canvas_frame.as_ref();
-            let canvas_source = CanvasCompositeSource {
-                width: bitmap.map_or(1, |bitmap| bitmap.width),
-                height: bitmap.map_or(1, |bitmap| bitmap.height),
-                pixels: bitmap.map_or(&[][..], |bitmap| bitmap.pixels.as_slice()),
-            };
             profiler.measure("compose_dirty_canvas_base", || {
-                clear_canvas_host_region(
-                    base_frame,
-                    &layout,
-                    canvas_source,
-                    self.document.view_transform,
-                    Some(dirty_rect),
-                );
+                render::clear_canvas_host_region(base_frame, &frame_plan, Some(dirty_rect));
             });
-            base_dirty_rect = Some(
-                base_dirty_rect.map_or(dirty_rect, |existing: Rect| existing.union(dirty_rect)),
-            );
+            dirty_plan.mark_base(dirty_rect);
         }
 
         if let Some(dirty_rect) = self.pending_canvas_host_dirty_rect.take()
             && dirty_rect.width > 0
             && dirty_rect.height > 0
         {
-            let bitmap = self.canvas_frame.as_ref();
-            let canvas_source = CanvasCompositeSource {
-                width: bitmap.map_or(1, |bitmap| bitmap.width),
-                height: bitmap.map_or(1, |bitmap| bitmap.height),
-                pixels: bitmap.map_or(&[][..], |bitmap| bitmap.pixels.as_slice()),
-            };
             profiler.measure("compose_dirty_overlay", || {
-                compose_overlay_region(
+                render::compose_overlay_region(
                     overlay_frame,
-                    &layout,
-                    self.panel_surface.as_ref().expect("panel surface exists"),
-                    canvas_source,
-                    self.document.view_transform,
-                    CanvasOverlayState {
-                        brush_preview: hover_canvas_position,
-                        brush_size: brush_preview_size,
-                        lasso_points: lasso_points.clone(),
-                        active_panel_bounds,
-                        panel_navigator: panel_navigator.clone(),
-                        panel_creation_preview,
-                    },
+                    &frame_plan,
+                    &overlay_state,
                     Some(dirty_rect),
                 );
             });
-            overlay_dirty_rect = Some(
-                overlay_dirty_rect.map_or(dirty_rect, |existing: Rect| existing.union(dirty_rect)),
-            );
+            dirty_plan.mark_overlay(dirty_rect);
         }
 
         let canvas_dirty_rect = self.pending_canvas_dirty_rect.take();
@@ -327,7 +299,7 @@ impl DesktopApp {
                 ((dirty.width * dirty.height) as f64 / canvas_area) * 100.0,
             );
         }
-        if let Some(base_dirty_rect) = base_dirty_rect {
+        if let Some(base_dirty_rect) = dirty_plan.base_dirty_rect {
             let window_area = (window_width.max(1) * window_height.max(1)) as f64;
             profiler.record_value(
                 "base_upload_area_px",
@@ -340,7 +312,7 @@ impl DesktopApp {
                 ((base_dirty_rect.width * base_dirty_rect.height) as f64 / window_area) * 100.0,
             );
         }
-        if let Some(overlay_dirty_rect) = overlay_dirty_rect {
+        if let Some(overlay_dirty_rect) = dirty_plan.overlay_dirty_rect {
             let window_area = (window_width.max(1) * window_height.max(1)) as f64;
             profiler.record_value(
                 "overlay_upload_area_px",
@@ -361,8 +333,8 @@ impl DesktopApp {
         }
 
         PresentFrameUpdate {
-            base_dirty_rect,
-            overlay_dirty_rect,
+            base_dirty_rect: dirty_plan.base_dirty_rect,
+            overlay_dirty_rect: dirty_plan.overlay_dirty_rect,
             canvas_dirty_rect,
             canvas_transform_changed,
             canvas_updated: canvas_dirty_rect.is_some() || canvas_transform_changed,

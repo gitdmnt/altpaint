@@ -19,7 +19,6 @@ use super::{
     TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_session_path, unique_test_path,
 };
 use crate::app::DesktopApp;
-use crate::frame::status_text_bounds;
 
 /// open ダイアログ経由の読込でワークスペース状態も復元されることを確認する。
 #[test]
@@ -207,7 +206,12 @@ fn move_panel_host_action_updates_status_without_full_recompose() {
     assert!(profiler.stats.contains_key("compose_dirty_status"));
     assert_eq!(
         update.base_dirty_rect,
-        Some(status_text_bounds(1280, 200, &layout, &app.status_text()))
+        Some(render::status_text_bounds(
+            1280,
+            200,
+            layout.canvas_host_rect,
+            &app.status_text(),
+        ))
     );
     assert_eq!(
         update.overlay_dirty_rect,
@@ -243,7 +247,12 @@ fn set_panel_visibility_updates_status_without_full_recompose() {
     assert!(profiler.stats.contains_key("compose_dirty_status"));
     assert_eq!(
         update.base_dirty_rect,
-        Some(status_text_bounds(1280, 200, &layout, &app.status_text()))
+        Some(render::status_text_bounds(
+            1280,
+            200,
+            layout.canvas_host_rect,
+            &app.status_text(),
+        ))
     );
     assert_eq!(
         update.overlay_dirty_rect,

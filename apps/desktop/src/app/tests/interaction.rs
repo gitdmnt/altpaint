@@ -907,11 +907,11 @@ fn tool_change_updates_status_without_full_recompose() {
     assert!(!update.canvas_updated);
     assert_eq!(
         update.base_dirty_rect,
-        Some(crate::frame::status_text_bounds(
+        Some(render::status_text_bounds(
             1280,
             200,
-            &layout,
-            &app.status_text()
+            layout.canvas_host_rect,
+            &app.status_text(),
         ))
     );
     let surface = app.panel_surface.clone().expect("panel surface exists");
@@ -1132,7 +1132,7 @@ fn control_points_from_surface(
     points.into_iter().step_by(stride).take(32).collect()
 }
 
-/// パン時は CPU 再合成なしで GPU キャンバス変換だけ更新できることを確認する。
+/// パン時は全面再構築せず、露出背景だけを部分再合成して GPU 変換更新できることを確認する。
 #[test]
 fn pan_view_updates_canvas_without_status_recompose() {
     let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
@@ -1151,12 +1151,12 @@ fn pan_view_updates_canvas_without_status_recompose() {
     assert!(profiler.stats.contains_key("prepare_canvas_scene"));
     assert!(!profiler.stats.contains_key("compose_dirty_panel"));
     assert!(!profiler.stats.contains_key("panel_surface"));
-    assert!(!profiler.stats.contains_key("compose_dirty_canvas_base"));
+    assert!(profiler.stats.contains_key("compose_dirty_canvas_base"));
     assert!(!profiler.stats.contains_key("compose_dirty_overlay"));
     assert!(update.canvas_updated);
     assert!(update.canvas_transform_changed);
     assert_eq!(update.canvas_dirty_rect, None);
-    assert_eq!(update.base_dirty_rect, None);
+    assert!(update.base_dirty_rect.is_some());
     assert_eq!(update.overlay_dirty_rect, None);
 }
 

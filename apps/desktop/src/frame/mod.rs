@@ -1,86 +1,15 @@
-//! デスクトップ UI の固定レイアウト計算とソフトウェア合成の公開入口をまとめる。
-//!
-//! `apps/desktop` 内の描画補助を、幾何変換・合成 orchestration・低レベル raster 処理へ
-//! 分割し、責務ごとの保守性を高める。
+//! デスクトップ固有の固定レイアウト計算と presenter 入力変換をまとめる。
 
-mod compositor;
 mod geometry;
-mod raster;
 use desktop_support::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
 
-use app_core::CanvasPoint;
-
-#[allow(unused_imports)]
-pub(crate) use compositor::{
-    clear_canvas_host_region, compose_base_frame, compose_canvas_host_region,
-    compose_desktop_frame, compose_overlay_frame, compose_overlay_region,
-    compose_panel_host_region, compose_status_region, status_text_bounds, status_text_rect,
-};
 #[allow(unused_imports)]
 pub(crate) use geometry::{
-    brush_preview_rect, canvas_drawn_rect, canvas_texture_quad, exposed_canvas_background_rect,
-    fit_rect, map_canvas_dirty_to_display, map_canvas_dirty_to_display_with_transform,
-    map_window_to_panel_surface, map_window_to_panel_surface_clamped,
+    fit_rect, map_window_to_panel_surface, map_window_to_panel_surface_clamped,
 };
-#[cfg(test)]
-pub(crate) use raster::blit_scaled_rgba_region;
-#[allow(unused_imports)]
-pub(crate) use raster::scroll_canvas_region;
-#[cfg(test)]
-use raster::{SourceAxisRun, build_source_axis_runs, fill_rgba_block};
 
-/// 合成対象の矩形を表す軽量な座標型。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Rect {
-    pub(crate) x: usize,
-    pub(crate) y: usize,
-    pub(crate) width: usize,
-    pub(crate) height: usize,
-}
-
-impl Rect {
-    /// 指定座標が矩形内に入っているかを判定する。
-    pub(crate) fn contains(&self, x: i32, y: i32) -> bool {
-        x >= self.x as i32
-            && y >= self.y as i32
-            && x < (self.x + self.width) as i32
-            && y < (self.y + self.height) as i32
-    }
-
-    /// 2 つの矩形を包む最小の矩形を返す。
-    pub(crate) fn union(&self, other: Rect) -> Rect {
-        let left = self.x.min(other.x);
-        let top = self.y.min(other.y);
-        let right = (self.x + self.width).max(other.x + other.width);
-        let bottom = (self.y + self.height).max(other.y + other.height);
-
-        Rect {
-            x: left,
-            y: top,
-            width: right.saturating_sub(left),
-            height: bottom.saturating_sub(top),
-        }
-    }
-
-    /// 2 つの矩形の共通部分を返す。
-    pub(crate) fn intersect(&self, other: Rect) -> Option<Rect> {
-        let left = self.x.max(other.x);
-        let top = self.y.max(other.y);
-        let right = (self.x + self.width).min(other.x + other.width);
-        let bottom = (self.y + self.height).min(other.y + other.height);
-
-        if left >= right || top >= bottom {
-            return None;
-        }
-
-        Some(Rect {
-            x: left,
-            y: top,
-            width: right - left,
-            height: bottom - top,
-        })
-    }
-}
+pub(crate) type Rect = render::PixelRect;
+pub(crate) type TextureQuad = render::TextureQuad;
 
 /// デスクトップ UI の固定レイアウト情報。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -130,53 +59,6 @@ impl DesktopLayout {
             canvas_display_rect,
         }
     }
-}
-
-/// キャンバス合成元を、`RenderFrame` に依存させずに渡すための軽量ビュー。
-#[derive(Clone, Copy)]
-pub(crate) struct CanvasCompositeSource<'a> {
-    pub(crate) width: usize,
-    pub(crate) height: usize,
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) pixels: &'a [u8],
-}
-
-/// キャンバス上の一時オーバーレイ状態を保持する。
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct CanvasOverlayState {
-    pub(crate) brush_preview: Option<CanvasPoint>,
-    pub(crate) brush_size: Option<u32>,
-    pub(crate) lasso_points: Vec<CanvasPoint>,
-    pub(crate) active_panel_bounds: Option<app_core::PanelBounds>,
-    pub(crate) panel_navigator: Option<PanelNavigatorOverlay>,
-    pub(crate) panel_creation_preview: Option<app_core::PanelBounds>,
-}
-
-/// コマ境界ナビゲータに表示する 1 件分の情報。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PanelNavigatorEntry {
-    pub(crate) bounds: app_core::PanelBounds,
-    pub(crate) active: bool,
-}
-
-/// ページ内コマを俯瞰表示する簡易ナビゲータ情報。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PanelNavigatorOverlay {
-    pub(crate) page_width: usize,
-    pub(crate) page_height: usize,
-    pub(crate) panels: Vec<PanelNavigatorEntry>,
-}
-
-/// GPU 上で提示するテクスチャ付き矩形を表す。
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct TextureQuad {
-    pub(crate) destination: Rect,
-    pub(crate) uv_min: [f32; 2],
-    pub(crate) uv_max: [f32; 2],
-    pub(crate) rotation_degrees: f32,
-    pub(crate) bbox_size: [f32; 2],
-    pub(crate) flip_x: bool,
-    pub(crate) flip_y: bool,
 }
 
 #[cfg(test)]
