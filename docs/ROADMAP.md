@@ -170,7 +170,7 @@
 
 補足:
 
-- 2026-03-12 時点で上記は実装済みであり、`plugin-api::ServiceRequest` と `panel-sdk::services::*` を通る service 経路が導入された。
+- 2026-03-12 時点で上記は実装済みであり、`panel-api::ServiceRequest` と `plugin-sdk::services::*` を通る service 経路が導入された。
 - 次の主作業軸はフェーズ5の `render` 中心化である。
 
 ## フェーズ5: `render` 中心の画面生成整理
@@ -205,17 +205,22 @@
 
 ### 実装するもの
 
-- `plugin-api` の再定義または改名
-- `panel-sdk` / `panel-macros` の `plugin-sdk` 系再編
+- `plugin-api` の完全撤去と `panel-api` への一本化
+- `panel-sdk` / `panel-macros` の完全撤去と `plugin-sdk` / `plugin-macros` への再編
 - sample / tmp / legacy 的資産の再配置
 - 文書名と実装名の同期
 
 ### 完了条件
 
-- `plugin-api` の rename または shim 方針がコードで表現されている
-- `panel-sdk` / `panel-macros` が `plugin-sdk` 系の re-export または rename へ移行している
+- `plugin-api` が workspace とコードから削除され、`panel-api` に一本化されている
+- `plugin-sdk` が実体 crate になり、macro 実装が `plugin-macros` へ移っている
 - `plugins/*` と `apps/desktop` の import が新名称へ追従している
 - `plugins/phase6-sample` や `docs/tmp/*` の恒久配置が整理されている
+
+補足:
+
+- 2026-03-12 時点で `crates/plugin-api` / `crates/panel-sdk` / `crates/panel-macros` を削除し、`crates/panel-api` / `crates/plugin-sdk` / `crates/plugin-macros` へ一本化した。
+- built-in panel 群は `plugin-sdk` 依存へ切り替え、DSL/WAT sample は `tools/experimental/phase6-sample` へ移した。
 
 ## フェーズ7: 再編後の機能拡張
 

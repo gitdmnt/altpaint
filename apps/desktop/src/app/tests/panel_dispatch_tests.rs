@@ -35,7 +35,7 @@ fn panel_drag_source_advances_for_layer_list_drag() {
         source_value: 2,
     });
 
-    app.advance_panel_drag_source(&plugin_api::PanelEvent::DragValue {
+    app.advance_panel_drag_source(&panel_api::PanelEvent::DragValue {
         panel_id: "builtin.layers-panel".to_string(),
         node_id: "layers.list".to_string(),
         from: 2,

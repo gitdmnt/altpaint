@@ -1,4 +1,4 @@
-use panel_sdk::{
+use plugin_sdk::{
     CommandDescriptor,
     runtime::{
         StatePatchBuffer, emit_service, error, event_string, set_state_bool, set_state_string,
@@ -52,7 +52,7 @@ fn apply_template_size(size: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
-#[panel_sdk::panel_init]
+#[plugin_sdk::panel_init]
 fn init() {}
 
 fn set_capture_target(target: &str) {
@@ -78,7 +78,7 @@ fn shortcut_matches(configured: &str, incoming: &str) -> bool {
     !configured.is_empty() && configured.eq_ignore_ascii_case(incoming)
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn show_new_form() {
     let selected = state_string(SELECTED_TEMPLATE);
     let fallback = state_string(DEFAULT_TEMPLATE_SIZE);
@@ -91,37 +91,37 @@ fn show_new_form() {
     set_state_bool(SHOW_NEW, true);
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn cancel_forms() {
     set_state_bool(SHOW_NEW, false);
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn toggle_shortcuts() {
     toggle_state(SHOW_SHORTCUTS);
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn capture_new_shortcut() {
     capture_shortcut("new");
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn capture_save_shortcut() {
     capture_shortcut("save");
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn capture_save_as_shortcut() {
     capture_shortcut("save_as");
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn capture_open_shortcut() {
     capture_shortcut("open");
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn new_project() {
     let width = state_string(NEW_WIDTH);
     let height = state_string(NEW_HEIGHT);
@@ -134,7 +134,7 @@ fn new_project() {
     cancel_forms();
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn select_template() {
     let value = event_string("value");
     if value.is_empty() {
@@ -146,22 +146,22 @@ fn select_template() {
     }
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn save_project() {
     emit_service(&services::project_io::save_current());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn save_project_as() {
     emit_service(&services::project_io::save_as());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn load_project() {
     emit_service(&services::project_io::load_dialog());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn keyboard() {
     let shortcut = event_string("shortcut");
     if shortcut.is_empty() {

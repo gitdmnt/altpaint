@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use app_core::ColorRgba8;
-use plugin_api::{LayerListItem, PanelNode, PanelTree};
+use panel_api::{LayerListItem, PanelNode, PanelTree};
 
 use crate::PixelRect;
 use crate::text::{
@@ -1425,7 +1425,7 @@ fn prefix_for_char_count(text: &str, char_count: usize) -> String {
 #[cfg(test)]
 mod tests {
     use app_core::Command;
-    use plugin_api::{HostAction, PanelNode, PanelTree};
+    use panel_api::{HostAction, PanelNode, PanelTree};
 
     use super::*;
 

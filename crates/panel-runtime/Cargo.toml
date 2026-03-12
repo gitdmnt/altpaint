@@ -8,7 +8,7 @@ authors.workspace = true
 [dependencies]
 app-core = { path = "../app-core" }
 panel-dsl = { path = "../panel-dsl" }
+panel-api = { path = "../panel-api" }
 panel-schema = { path = "../panel-schema" }
-plugin-api = { path = "../plugin-api" }
 plugin-host = { path = "../plugin-host" }
 serde_json.workspace = true

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use desktop_support::{WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog};
-use plugin_api::{ServiceRequest, services::names};
+use panel_api::{ServiceRequest, services::names};
 
 use super::DesktopApp;
 

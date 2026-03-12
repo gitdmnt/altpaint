@@ -53,11 +53,11 @@
 
 固定した判断は次である。
 
-- plugin 作者が触る正面 API は `crates/panel-sdk` に集約する
+- plugin 作者が触る正面 API は `crates/plugin-sdk` に集約する
 - `extern "C"` / `#[unsafe(no_mangle)]` / host import は SDK 内部へ閉じ込める
-- Rust 側の handler export は `#[panel_sdk::panel_init]` / `#[panel_sdk::panel_handler]` で宣言する
-- Rust 側の command 発行は `panel_sdk::commands::*` の型付き helper を優先し、生の `"tool.set_active"` 文字列は escape hatch 扱いにする
-- Rust 側の local state 参照は `panel_sdk::state::*Key` を通し、状態パス文字列の重複を減らす
+- Rust 側の handler export は `#[plugin_sdk::panel_init]` / `#[plugin_sdk::panel_handler]` で宣言する
+- Rust 側の command 発行は `plugin_sdk::commands::*` の型付き helper を優先し、生の `"tool.set_active"` 文字列は escape hatch 扱いにする
+- Rust 側の local state 参照は `plugin_sdk::state::*Key` を通し、状態パス文字列の重複を減らす
 - UI DSL 上の handler binding は依然として文字列だが、これは UI 定義の manifest 面に閉じ込め、Rust 実装側へは漏らさない
 
 つまり、**文字列ベースの境界は DTO / DSL 側へ寄せ、plugin 本体の Rust コードはなるべく型付き API で書けるようにする**。
@@ -96,7 +96,7 @@
 	- normalized IR
 - `crates/panel-schema`
 	- host / Wasm 間の共有 DTO
-- `crates/panel-sdk`
+- `crates/plugin-sdk`
 	- Rust から Wasm を書くための最小 SDK
 - `ui-shell` / `desktop`
 	- `.altp-panel` の探索

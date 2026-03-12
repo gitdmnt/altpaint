@@ -60,10 +60,6 @@ try {
         Write-Host "Copied $artifactName -> $($panel.Destination)"
     }
 
-    $phase6Wat = Join-Path $repoRoot 'plugins/phase6-sample/phase6-sample.wat'
-    $phase6Wasm = Join-Path $repoRoot 'plugins/phase6-sample/phase6-sample.wasm'
-    Copy-Item $phase6Wat $phase6Wasm -Force
-    Write-Host 'Copied phase6-sample.wat -> plugins/phase6-sample/phase6-sample.wasm'
     Write-Host 'UI Wasm artifacts are ready.'
 }
 finally {

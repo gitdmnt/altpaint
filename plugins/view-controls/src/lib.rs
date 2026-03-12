@@ -1,4 +1,4 @@
-use panel_sdk::{
+use plugin_sdk::{
     host,
     runtime::{emit_service, set_state_bool, set_state_i32, set_state_string},
     services, state,
@@ -44,10 +44,10 @@ fn update_rotation_state(rotation_degrees: i32) {
     set_state_string(ROTATION_LABEL, format!("{clamped}°"));
 }
 
-#[panel_sdk::panel_init]
+#[plugin_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_sync_host]
+#[plugin_sdk::panel_sync_host]
 fn sync_host() {
     let zoom_milli = host::view::zoom_milli().max(1);
     let zoom_percent = zoom_milli as f32 / 10.0;
@@ -85,14 +85,14 @@ fn normalized_rotation_degrees(quarter_turns: i32) -> i32 {
     quarter_turns.rem_euclid(4) * 90
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn set_zoom(value: i32) {
     let zoom_percent = value.clamp(MIN_ZOOM_PERCENT, MAX_ZOOM_PERCENT);
     update_zoom_state(zoom_percent);
     emit_service(&services::view::set_zoom(zoom_percent as f32 / 100.0));
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn set_pan_x(value: i32) {
     let pan_x = value.clamp(PAN_SLIDER_MIN, PAN_SLIDER_MAX) - PAN_SLIDER_CENTER;
     update_pan_state(pan_x, host::view::pan_y());
@@ -102,7 +102,7 @@ fn set_pan_x(value: i32) {
     ));
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn set_pan_y(value: i32) {
     let pan_y = value.clamp(PAN_SLIDER_MIN, PAN_SLIDER_MAX) - PAN_SLIDER_CENTER;
     update_pan_state(host::view::pan_x(), pan_y);
@@ -112,38 +112,38 @@ fn set_pan_y(value: i32) {
     ));
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn set_rotation(value: i32) {
     update_rotation_state(value);
     emit_service(&services::view::set_rotation(value.rem_euclid(360) as f32));
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn reset_view() {
     emit_service(&services::view::reset());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn focus_active_panel() {
     emit_service(&services::panel_nav::focus_active());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn previous_panel() {
     emit_service(&services::panel_nav::select_previous());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn next_panel() {
     emit_service(&services::panel_nav::select_next());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn flip_horizontal() {
     emit_service(&services::view::flip_horizontal());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn flip_vertical() {
     emit_service(&services::view::flip_vertical());
 }

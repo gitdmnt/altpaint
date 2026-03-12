@@ -4,7 +4,7 @@
 //! `PanelPresentation` 本体から木走査の詳細を分離する。
 
 use super::*;
-use plugin_api::{PanelNode, TextInputMode};
+use panel_api::{PanelNode, TextInputMode};
 
 /// dropdown node を再帰探索する。
 pub(super) fn find_dropdown_node<'a>(nodes: &'a [PanelNode], target_id: &str) -> Option<&'a PanelNode> {

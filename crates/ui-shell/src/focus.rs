@@ -6,7 +6,7 @@
 use super::tree_query::{collect_focus_targets, find_dropdown_node, find_text_input_value};
 use super::*;
 use panel_runtime::PanelRuntime;
-use plugin_api::{PanelEvent, TextInputMode};
+use panel_api::{PanelEvent, TextInputMode};
 
 impl PanelPresentation {
     /// 指定 panel node へ focus を移す。

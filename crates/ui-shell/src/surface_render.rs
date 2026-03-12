@@ -148,7 +148,7 @@ impl PanelPresentation {
 
     fn collect_floating_panels<'a>(
         &mut self,
-        trees: &'a [plugin_api::PanelTree],
+        trees: &'a [panel_api::PanelTree],
         width: usize,
         height: usize,
         render_state: RenderPanelState<'a>,
@@ -364,7 +364,7 @@ impl PanelPresentation {
 
     fn panel_rect_for_tree(
         &mut self,
-        tree: &plugin_api::PanelTree,
+        tree: &panel_api::PanelTree,
         index: usize,
         viewport_width: usize,
         viewport_height: usize,

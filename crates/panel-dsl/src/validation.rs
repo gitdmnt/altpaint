@@ -195,7 +195,7 @@ fn validate_attr_value(value: &AttrValue) -> Result<(), PanelDslError> {
 fn validate_handler_binding(handler: &str) -> Result<(), PanelDslError> {
     if handler == "sync_host" {
         return Err(PanelDslError::Validation(
-            "sync_host is a reserved lifecycle name; use #[panel_sdk::panel_sync_host] in Wasm and do not bind it from .altp-panel".to_string(),
+            "sync_host is a reserved lifecycle name; use #[plugin_sdk::panel_sync_host] in Wasm and do not bind it from .altp-panel".to_string(),
         ));
     }
     Ok(())
@@ -217,7 +217,7 @@ fn validate_text_expressions(text: &str) -> Result<(), PanelDslError> {
 fn validate_expression_usage(expression: &str) -> Result<(), PanelDslError> {
     if expression.contains("host.") {
         return Err(PanelDslError::Validation(
-            "direct host.* expressions are not allowed in .altp-panel; read host data via Wasm panel-sdk and mirror it into state.*".to_string(),
+            "direct host.* expressions are not allowed in .altp-panel; read host data via Wasm plugin-sdk and mirror it into state.*".to_string(),
         ));
     }
     Ok(())

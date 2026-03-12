@@ -6,7 +6,7 @@ mod workspace_io;
 
 use app_core::{Command, Document};
 use desktop_support::DEFAULT_PROJECT_PATH;
-use plugin_api::{ServiceRequest, services::names};
+use panel_api::{ServiceRequest, services::names};
 use workspace_persistence::WorkspaceUiState;
 
 use super::DesktopApp;

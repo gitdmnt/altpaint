@@ -143,36 +143,36 @@ pub(crate) fn unique_test_path(name: &str) -> PathBuf {
 }
 
 /// パネルツリー内に指定テキストが含まれるか再帰的に判定する。
-fn tree_contains_text(nodes: &[plugin_api::PanelNode], target: &str) -> bool {
+fn tree_contains_text(nodes: &[panel_api::PanelNode], target: &str) -> bool {
     nodes.iter().any(|node| match node {
-        plugin_api::PanelNode::Text { text, .. } => text == target,
-        plugin_api::PanelNode::Column { children, .. }
-        | plugin_api::PanelNode::Row { children, .. }
-        | plugin_api::PanelNode::Section { children, .. } => tree_contains_text(children, target),
-        plugin_api::PanelNode::ColorPreview { .. }
-        | plugin_api::PanelNode::ColorWheel { .. }
-        | plugin_api::PanelNode::Button { .. }
-        | plugin_api::PanelNode::Slider { .. }
-        | plugin_api::PanelNode::TextInput { .. }
-        | plugin_api::PanelNode::Dropdown { .. }
-        | plugin_api::PanelNode::LayerList { .. } => false,
+        panel_api::PanelNode::Text { text, .. } => text == target,
+        panel_api::PanelNode::Column { children, .. }
+        | panel_api::PanelNode::Row { children, .. }
+        | panel_api::PanelNode::Section { children, .. } => tree_contains_text(children, target),
+        panel_api::PanelNode::ColorPreview { .. }
+        | panel_api::PanelNode::ColorWheel { .. }
+        | panel_api::PanelNode::Button { .. }
+        | panel_api::PanelNode::Slider { .. }
+        | panel_api::PanelNode::TextInput { .. }
+        | panel_api::PanelNode::Dropdown { .. }
+        | panel_api::PanelNode::LayerList { .. } => false,
     })
 }
 
-fn tree_contains_button_id(nodes: &[plugin_api::PanelNode], target: &str) -> bool {
+fn tree_contains_button_id(nodes: &[panel_api::PanelNode], target: &str) -> bool {
     nodes.iter().any(|node| match node {
-        plugin_api::PanelNode::Button { id, .. } => id == target,
-        plugin_api::PanelNode::Column { children, .. }
-        | plugin_api::PanelNode::Row { children, .. }
-        | plugin_api::PanelNode::Section { children, .. } => {
+        panel_api::PanelNode::Button { id, .. } => id == target,
+        panel_api::PanelNode::Column { children, .. }
+        | panel_api::PanelNode::Row { children, .. }
+        | panel_api::PanelNode::Section { children, .. } => {
             tree_contains_button_id(children, target)
         }
-        plugin_api::PanelNode::Text { .. }
-        | plugin_api::PanelNode::Slider { .. }
-        | plugin_api::PanelNode::TextInput { .. }
-        | plugin_api::PanelNode::Dropdown { .. }
-        | plugin_api::PanelNode::LayerList { .. }
-        | plugin_api::PanelNode::ColorPreview { .. }
-        | plugin_api::PanelNode::ColorWheel { .. } => false,
+        panel_api::PanelNode::Text { .. }
+        | panel_api::PanelNode::Slider { .. }
+        | panel_api::PanelNode::TextInput { .. }
+        | panel_api::PanelNode::Dropdown { .. }
+        | panel_api::PanelNode::LayerList { .. }
+        | panel_api::PanelNode::ColorPreview { .. }
+        | panel_api::PanelNode::ColorWheel { .. } => false,
     })
 }

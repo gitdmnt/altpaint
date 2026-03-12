@@ -1,7 +1,7 @@
 //! service request から desktop host service handler へ届く経路を検証する。
 
 use desktop_support::{WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog};
-use plugin_api::{HostAction, ServiceRequest, services::names};
+use panel_api::{HostAction, ServiceRequest, services::names};
 use workspace_persistence::WorkspaceUiState;
 
 use super::{

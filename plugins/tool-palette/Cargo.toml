@@ -9,5 +9,5 @@ authors.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-panel-sdk = { path = "../../crates/panel-sdk" }
+plugin-sdk = { path = "../../crates/plugin-sdk" }
 serde_json.workspace = true

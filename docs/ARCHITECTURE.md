@@ -187,17 +187,17 @@ plugin panel の SDK は `plugin-sdk` が担当し、macro はそのサブモジ
 
 現時点でまだ存在しない crate を含め、今後の責務移動先は次で固定して読む。
 
-| 論理名          | 現在の主配置                               | 目標配置                     | 主責務                                                | 新規コードを置く判断基準                             |
-| --------------- | ------------------------------------------ | ---------------------------- | ----------------------------------------------------- | ---------------------------------------------------- |
-| `desktopApp`    | `apps/desktop`                             | `apps/desktop`               | event loop、OS I/O、GPU 所有、subsystem orchestration | OS/window/GPU/event loop に触るならここ              |
-| `app-core`      | `crates/app-core`                          | `crates/app-core`            | `Document`、`Command`、純粋状態、不変条件             | UI/GPU/Wasm を知らない純粋状態ならここ               |
-| `render`        | `crates/render`                            | `crates/render`              | frame plan、dirty rect、座標変換、compose 計画        | 画面生成のための計算ならここ                         |
-| `canvas`        | 未作成                                     | `crates/canvas`              | canvas 入力解釈、tool runtime、bitmap op              | canvas 差分生成や gesture state machine ならここ     |
-| `ui-shell`      | `crates/ui-shell`                          | `crates/ui-shell`            | panel presentation、host facade、panel UI 管理 API    | panel の見た目・hit-test・focus・text input ならここ |
-| `panel-runtime` | 未作成                                     | `crates/panel-runtime`       | panel discovery、DSL/Wasm bridge、host snapshot sync  | panel runtime と presentation を分けたい処理ならここ |
-| `plugin-host`   | `crates/plugin-host`                       | `crates/plugin-host`         | Wasm runtime、ABI、sandbox                            | Wasm 実行器そのものならここ                          |
-| `panel-dsl`     | `crates/panel-dsl`                         | `crates/panel-dsl`           | `.altp-panel` parser / validator / normalized IR      | DSL parse / validate ならここ                        |
-| `plugin-sdk`    | `crates/panel-sdk` + `crates/panel-macros` | `crates/plugin-sdk` 系へ再編 | plugin 作者向け安定 API と macro surface              | plugin 作者が直接触る API ならここ                   |
+| 論理名          | 現在の主配置                                 | 目標配置               | 主責務                                                | 新規コードを置く判断基準                             |
+| --------------- | -------------------------------------------- | ---------------------- | ----------------------------------------------------- | ---------------------------------------------------- |
+| `desktopApp`    | `apps/desktop`                               | `apps/desktop`         | event loop、OS I/O、GPU 所有、subsystem orchestration | OS/window/GPU/event loop に触るならここ              |
+| `app-core`      | `crates/app-core`                            | `crates/app-core`      | `Document`、`Command`、純粋状態、不変条件             | UI/GPU/Wasm を知らない純粋状態ならここ               |
+| `render`        | `crates/render`                              | `crates/render`        | frame plan、dirty rect、座標変換、compose 計画        | 画面生成のための計算ならここ                         |
+| `canvas`        | 未作成                                       | `crates/canvas`        | canvas 入力解釈、tool runtime、bitmap op              | canvas 差分生成や gesture state machine ならここ     |
+| `ui-shell`      | `crates/ui-shell`                            | `crates/ui-shell`      | panel presentation、host facade、panel UI 管理 API    | panel の見た目・hit-test・focus・text input ならここ |
+| `panel-runtime` | 未作成                                       | `crates/panel-runtime` | panel discovery、DSL/Wasm bridge、host snapshot sync  | panel runtime と presentation を分けたい処理ならここ |
+| `plugin-host`   | `crates/plugin-host`                         | `crates/plugin-host`   | Wasm runtime、ABI、sandbox                            | Wasm 実行器そのものならここ                          |
+| `panel-dsl`     | `crates/panel-dsl`                           | `crates/panel-dsl`     | `.altp-panel` parser / validator / normalized IR      | DSL parse / validate ならここ                        |
+| `plugin-sdk`    | `crates/plugin-sdk` + `crates/plugin-macros` | `crates/plugin-sdk` 系 | plugin 作者向け安定 API と macro surface              | plugin 作者が直接触る API ならここ                   |
 
 ### 将来の物理配置イメージ
 
@@ -219,7 +219,7 @@ plugins/*
 
 - `panel-runtime` はフェーズ3で導入候補とする。
 - `canvas` はフェーズ2で追加する前提とする。
-- `panel-sdk` / `panel-macros` は移行期間を挟んで `plugin-sdk` 系へ寄せる。
+- `plugin-sdk` は `plugin-macros` を再 export し、作者向け入口を 1 つに保つ。
 
 ### crate ごとの判断基準
 

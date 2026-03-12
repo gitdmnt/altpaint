@@ -10,8 +10,8 @@ anyhow.workspace = true
 app-core = { path = "../../crates/app-core" }
 canvas = { path = "../../crates/canvas" }
 desktop-support = { path = "../../crates/desktop-support" }
+panel-api = { path = "../../crates/panel-api" }
 panel-runtime = { path = "../../crates/panel-runtime" }
-plugin-api = { path = "../../crates/plugin-api" }
 pollster.workspace = true
 render = { path = "../../crates/render" }
 serde_json.workspace = true

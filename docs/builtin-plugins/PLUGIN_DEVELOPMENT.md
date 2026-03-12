@@ -31,7 +31,7 @@
 - `plugins/layers-panel/`
 - `plugins/job-progress/`
 - `plugins/snapshot-panel/`
-- `plugins/phase6-sample/`
+- `tools/experimental/phase6-sample/`
 
 ## なぜ `plugins/` に置くのか
 
@@ -62,26 +62,26 @@ plugins/my-panel/
 
 ## Rust SDK の使い方
 
-Wasm 側は `crates/panel-sdk` を使って実装します。
+Wasm 側は `crates/plugin-sdk` を使って実装します。
 
-plugin 作者向けの正面入口は `panel-sdk` のみで、`panel-macros` へ直接依存する必要はありません。
+plugin 作者向けの正面入口は `plugin-sdk` のみで、`plugin-macros` も `plugin-sdk` から再 export されます。
 
 依存は次です。
 
 ```toml
 [dependencies]
-panel-sdk = { path = "../../crates/panel-sdk" }
+plugin-sdk = { path = "../../crates/plugin-sdk" }
 ```
 
 最小例:
 
 ```rust
-use panel_sdk::{commands, runtime::emit_command};
+use plugin_sdk::{commands, runtime::emit_command};
 
-#[panel_sdk::panel_init]
+#[plugin_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn save_project() {
   emit_command(&commands::project::save());
 }
@@ -140,7 +140,7 @@ release 生成したい場合:
 1. `wasm32-unknown-unknown` ターゲットを確認
 2. `plugins/` 配下の組み込みパネル crate を Wasm ビルド
 3. 各プラグインフォルダへ `.wasm` を配置
-4. `plugins/phase6-sample/phase6-sample.wat` から `phase6-sample.wasm` を生成
+4. 実験用 DSL/WAT sample は `tools/experimental/phase6-sample/` に保持する
 
 ## デバッグ起動の流れ
 
@@ -169,7 +169,7 @@ release 生成したい場合:
 
 ## 現在使える主な runtime helper
 
-`panel-sdk::runtime` では少なくとも次を使えます。
+`plugin-sdk::runtime` では少なくとも次を使えます。
 
 - `emit_command_descriptor(...)`
 - `toggle_state(...)`
@@ -181,7 +181,7 @@ release 生成したい場合:
 
 host snapshot 同期専用 lifecycle として次も使えます。
 
-- `#[panel_sdk::panel_sync_host]`
+- `#[plugin_sdk::panel_sync_host]`
 
 ## 現在使える主な UI ノード
 
@@ -203,7 +203,7 @@ host snapshot 同期専用 lifecycle として次も使えます。
 
 - Wasm 側は `Command` enum を直接知らず、command descriptor を返します
 - ドキュメント本体は host が持ち、Wasm は local state と command 発行だけを行います
-- host の現在値は `.altp-panel` から直接読まず、`panel_sdk::host::*` で取得して `#[panel_sdk::panel_sync_host] fn sync_host()` から `state.*` へ反映します
+- host の現在値は `.altp-panel` から直接読まず、`plugin_sdk::host::*` で取得して `#[plugin_sdk::panel_sync_host] fn sync_host()` から `state.*` へ反映します
 - `sync_host` は予約済み lifecycle 名なので、`.altp-panel` の `on:click` / `on:change` には bind しません
 - `.wasm` を直接編集せず、必ず Rust ソースか `.wat` から再生成します
 
@@ -222,7 +222,7 @@ host snapshot 同期専用 lifecycle として次も使えます。
 
 - `plugins/`
 - `scripts/build-ui-wasm.ps1`
-- `crates/panel-sdk/src/lib.rs`
+- `crates/plugin-sdk/src/lib.rs`
 - `crates/plugin-host/src/lib.rs`
 - `crates/ui-shell/src/lib.rs`
 - `docs/panel-ui-definition/ui-dsl.md`

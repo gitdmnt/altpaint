@@ -22,7 +22,7 @@
 
 1. `app-core` がドメインの中心である
 2. `apps/desktop` がデスクトップ実行ホストである
-3. パネル系は `plugin-api` / `panel-*` / `plugin-host` / `ui-shell` に分散している
+3. パネル系は `panel-api` / `plugin-sdk` / `panel-*` / `plugin-host` / `ui-shell` に分散している
 
 ## workspace パッケージ一覧
 
@@ -35,14 +35,14 @@
 - `render`
 - `storage`
 - `desktop-support`
-- `plugin-api`
+- `panel-api`
 - `ui-shell`
 - `workspace-persistence`
 - `plugin-host`
 - `panel-dsl`
 - `panel-schema`
-- `panel-sdk`
-- `panel-macros`
+- `plugin-macros`
+- `plugin-sdk`
 - `panel-runtime`
 - `apps/desktop`
 
@@ -50,7 +50,7 @@
 
 - `crates/canvas` はフェーズ2で追加済みである。
 - `crates/panel-runtime` はフェーズ3で追加済みである。
-- `panel-sdk` / `panel-macros` は将来 `plugin-sdk` 系へ寄せる方針とする。
+- `panel-api` / `plugin-sdk` を正面名とし、proc-macro は `plugin-macros` として物理分離する。
 
 ### 組み込みパネル crate
 
@@ -76,7 +76,7 @@ graph TD
     desktop --> render[render]
     desktop --> panelruntime[panel-runtime]
     desktop --> uishell[ui-shell]
-    desktop --> pluginapi[plugin-api]
+    desktop --> panelapi[panel-api]
     desktop --> storage[storage]
     desktop --> dsupport[desktop-support]
     desktop --> wpersist[workspace-persistence]
@@ -84,16 +84,16 @@ graph TD
   canvas --> appcore
   canvas --> render
     render --> appcore
-    render --> pluginapi
+    render --> panelapi
     storage --> appcore
     dsupport --> appcore
-    pluginapi --> appcore
+    panelapi --> appcore
 
-    uishell --> pluginapi
+    uishell --> panelapi
     uishell --> panelruntime
 
     panelruntime --> appcore
-    panelruntime --> pluginapi
+    panelruntime --> panelapi
     panelruntime --> pds[panel-dsl]
     panelruntime --> pschema[panel-schema]
     panelruntime --> phost[plugin-host]
@@ -101,28 +101,28 @@ graph TD
     wpersist[workspace-persistence] --> appcore
 
     phost --> pschema
-    psdk[panel-sdk] --> pmacros[panel-macros]
-    psdk --> pschema
+    pluginsdk[plugin-sdk] --> pmacros[plugin-macros]
+    pluginsdk --> pschema
 
-    appactions[plugins/app-actions] --> psdk
-    toolpalette[plugins/tool-palette] --> psdk
-    layerspanel[plugins/layers-panel] --> psdk
-    colorpalette[plugins/color-palette] --> psdk
-    pensettings[plugins/pen-settings] --> psdk
-    jobprogress[plugins/job-progress] --> psdk
-    snapshotpanel[plugins/snapshot-panel] --> psdk
+    appactions[plugins/app-actions] --> pluginsdk
+    toolpalette[plugins/tool-palette] --> pluginsdk
+    layerspanel[plugins/layers-panel] --> pluginsdk
+    colorpalette[plugins/color-palette] --> pluginsdk
+    pensettings[plugins/pen-settings] --> pluginsdk
+    jobprogress[plugins/job-progress] --> pluginsdk
+    snapshotpanel[plugins/snapshot-panel] --> pluginsdk
 ```
 
 ### 依存関係の要点
 
 - `app-core` は workspace 内の土台であり、ローカル依存を持たない
-- `canvas` / `render` / `storage` / `desktop-support` / `plugin-api` / `workspace-persistence` は `app-core` に依存する周辺クレートである
+- `canvas` / `render` / `storage` / `desktop-support` / `panel-api` / `workspace-persistence` は `app-core` に依存する周辺クレートである
 - `canvas` は `render` の view mapping API を使うが、project I/O や panel runtime へは依存しない
-- `render` は floating panel rasterize のため `plugin-api` にも依存する
+- `render` は floating panel rasterize のため `panel-api` にも依存する
 - `panel-runtime` が現在の panel runtime 統合点であり、DSL 読み込み・Wasm 実行・host sync を持つ
 - `ui-shell` は `panel-runtime` に依存する presentation crate になった
 - `plugin-host` は `panel-runtime` の内側で使われ、`apps/desktop` は直接依存していない
-- `panel-sdk` は plugin author 向け表面 API であり、macro を含む唯一の作者向け入口である
+- `plugin-sdk` は plugin author 向け表面 API であり、macro を含む唯一の作者向け入口である
 
 ## 将来の配置判断用メモ
 
@@ -219,7 +219,7 @@ graph TD
 - canvas 幾何に加えて frame compose と dirty plan の中核を持つ
 - 最終 upload と GPU presenter orchestration は `apps/desktop` / `wgpu_canvas` 側に残る
 
-### `plugin-api`
+### `panel-api`
 
 担当:
 
@@ -260,7 +260,7 @@ graph TD
 - `CommandDescriptor`
 - `Diagnostic`
 
-### `panel-macros`
+### `plugin-macros`
 
 担当:
 
@@ -271,9 +271,9 @@ graph TD
 意味:
 
 - plugin author が `extern "C"` や export 名を直接書かなくても済むようにする proc-macro 層
-- plugin 作者は通常この crate を直接依存せず、`panel-sdk` から使う
+- plugin 作者は通常この crate を直接依存せず、`plugin-sdk` から使う
 
-### `panel-sdk`
+### `plugin-sdk`
 
 担当:
 
@@ -282,12 +282,12 @@ graph TD
 - typed `services::*`
 - typed `state::*`
 - runtime helper
-- `panel-macros` の再 export
+- `plugin-macros` の再 export
 
 意味:
 
 - plugin 側は `panel-schema` の DTO と ABI 事情を直接知らなくても実装できる
-- 物理的には別 crate だが、論理的には `panel-macros` を含む authoring surface である
+- 物理的には別 crate だが、論理的には `plugin-macros` を含む authoring surface である
 
 ### `plugin-host`
 
@@ -401,7 +401,7 @@ graph TD
 
 依存ルール:
 
-- compile-time では `panel-sdk` にのみ依存する
+- compile-time では `plugin-sdk` にのみ依存する
 - host の内部型へ直接依存しない
 
 ## モジュール単位の見取り図
@@ -443,7 +443,7 @@ panel.altp-panel
   -> ui-shell::DslPanelPlugin
   -> plugin-host::WasmPanelRuntime
   -> panel-schema DTO
-  -> plugin-api::PanelTree / HostAction
+  -> panel-api::PanelTree / HostAction
 ```
 
 役割分担:
@@ -560,7 +560,7 @@ project file と session file は役割が異なる。
 
 1. `render` と `apps/desktop::frame` の責務再分配
 2. `ui-shell` 内の DSL/Wasm runtime 部分の分離
-3. `plugin-api` が `app-core::Command` を直接知っている点の再評価
+3. `panel-api` が `app-core::Command` を直接知っている点の再評価
 4. panel permission の宣言値を runtime で実際に検証する仕組みの強化
 
 ただし、これらは**今そうなっている**という意味ではない。現時点の正本は、上記 compile-time 依存と runtime flow である。

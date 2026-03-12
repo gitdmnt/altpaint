@@ -1,12 +1,12 @@
 use crate::host_sync::{build_host_snapshot, parse_document_size, parse_hex_color};
 use app_core::{Command, Document, ToolKind};
+use panel_api::{
+    DropdownOption, HostAction, LayerListItem, PanelEvent, PanelNode, PanelPlugin, PanelTree,
+    PanelView, ServiceRequest, TextInputMode,
+};
 use panel_dsl::{AttrValue as DslAttrValue, PanelDefinition, StateField, ViewElement, ViewNode};
 use panel_schema::{
     CommandDescriptor, Diagnostic, PanelEventRequest, PanelInitRequest, StatePatch, StatePatchOp,
-};
-use plugin_api::{
-    DropdownOption, HostAction, LayerListItem, PanelEvent, PanelNode, PanelPlugin, PanelTree,
-    PanelView, ServiceRequest, TextInputMode,
 };
 use plugin_host::{PluginHostError, WasmPanelRuntime};
 use serde_json::{Map, Value, json};
@@ -842,7 +842,7 @@ fn command_descriptors_to_actions(
 }
 
 fn service_request_from_descriptor(descriptor: &CommandDescriptor) -> Option<ServiceRequest> {
-    use plugin_api::services::names;
+    use panel_api::services::names;
 
     let request = match descriptor.name.as_str() {
         names::PROJECT_NEW_DOCUMENT
@@ -1270,7 +1270,7 @@ fn find_text_input_binding(
 mod tests {
     use super::*;
     use panel_schema::CommandDescriptor;
-    use plugin_api::services::names;
+    use panel_api::services::names;
 
     #[test]
     fn command_from_descriptor_maps_workspace_commands() {

@@ -20,8 +20,8 @@
 - 実装本体は plugins/<panel-name>/ にあります
 - 各パネルフォルダには `.altp-panel` / Rust SDK ソース / 生成 Wasm が同居します
 - `.wasm` は生成物として git 管理せず、必要時は scripts/build-ui-wasm.ps1 で再生成します
-- ホストとの契約は crates/plugin-api/src/lib.rs にあります
-- Rust SDK helper は crates/panel-sdk/src/lib.rs にあります
+- ホストとの契約は crates/panel-api/src/lib.rs にあります
+- Rust SDK helper は crates/plugin-sdk/src/lib.rs にあります
 - 実際の描画、ヒットテスト、フォーカス、スクロールは crates/ui-shell/src/lib.rs 側で行います
 - パネル由来の状態変更は HostAction::DispatchCommand(Command) を通じて desktop 側へ渡されます
 - キーボード設定の永続化方針は [keyboard-shortcut-config.md](keyboard-shortcut-config.md) を参照してください

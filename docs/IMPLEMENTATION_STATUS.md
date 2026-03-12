@@ -43,15 +43,15 @@
 - `render`
 - `storage`
 - `desktop-support`
-- `plugin-api`
+- `panel-api`
 - `panel-runtime`
 - `ui-shell`
 - `workspace-persistence`
 - `plugin-host`
 - `panel-dsl`
 - `panel-schema`
-- `panel-sdk`
-- `panel-macros`
+- `plugin-macros`
+- `plugin-sdk`
 - `apps/desktop`
 
 ### workspace member の built-in panel plugin
@@ -69,7 +69,7 @@
 
 補足:
 
-- `plugins/phase6-sample` は存在するが、workspace member ではない。
+- `tools/experimental/phase6-sample` へ DSL/WAT sample を移し、既定 `plugins/` 探索対象から外した。
 
 ## 実装済みの主要領域
 
@@ -148,11 +148,11 @@
 
 現在の panel stack は次で構成される。
 
-- `plugin-api`: `PanelTree`, `PanelNode`, `PanelEvent`, `HostAction`, `ServiceRequest`
+- `panel-api`: `PanelTree`, `PanelNode`, `PanelEvent`, `HostAction`, `ServiceRequest`
 - `panel-dsl`: `.altp-panel` parser / validator / normalized IR
 - `panel-schema`: host-Wasm 間 DTO
-- `panel-sdk`: panel 作者向け SDK と typed service request builder
-- `panel-macros`: panel export 用 proc-macro
+- `plugin-sdk`: plugin 作者向け SDK、typed service request builder、macro 再 export
+- `plugin-macros`: `plugin-sdk` が再 export する proc-macro 実装
 - `plugin-host`: `wasmtime` ベース runtime
 - `panel-runtime`: panel discovery / DSL-Wasm bridge / host snapshot sync / persistent config
 - `ui-shell`: panel presentation / workspace layout / focus / hit-test / surface render

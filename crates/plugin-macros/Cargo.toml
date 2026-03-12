@@ -1,5 +1,5 @@
 [package]
-name = "panel-macros"
+name = "plugin-macros"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

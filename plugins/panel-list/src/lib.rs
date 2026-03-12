@@ -1,4 +1,4 @@
-use panel_sdk::{
+use plugin_sdk::{
     host,
     runtime::{emit_service, set_state_i32, set_state_string},
     services, state,
@@ -12,10 +12,10 @@ const ACTIVE_PAGE_PANEL_COUNT: state::IntKey = state::int("active_page_panel_cou
 const ACTIVE_PANEL_BOUNDS: state::StringKey = state::string("active_panel_bounds");
 const PANELS_JSON: state::StringKey = state::string("panels_json");
 
-#[panel_sdk::panel_init]
+#[plugin_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_sync_host]
+#[plugin_sdk::panel_sync_host]
 fn sync_host() {
     set_state_string(TITLE, host::document::title());
     set_state_i32(ACTIVE_PAGE_NUMBER, host::document::active_page_number());
@@ -29,32 +29,32 @@ fn sync_host() {
     set_state_string(PANELS_JSON, host::document::panels_json());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn add_panel() {
     emit_service(&services::panel_nav::add());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn remove_panel() {
     emit_service(&services::panel_nav::remove());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn select_previous_panel() {
     emit_service(&services::panel_nav::select_previous());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn select_next_panel() {
     emit_service(&services::panel_nav::select_next());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn focus_active_panel() {
     emit_service(&services::panel_nav::focus_active());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn handle_panel_list(value: i32) {
     emit_service(&services::panel_nav::select(value.max(0) as usize));
 }

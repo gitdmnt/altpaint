@@ -1,4 +1,4 @@
-use panel_sdk::{
+use plugin_sdk::{
     CommandDescriptor,
     commands::{self, Tool},
     host,
@@ -47,10 +47,10 @@ fn build_tool_options(catalog_json: &str) -> String {
         .join("|")
 }
 
-#[panel_sdk::panel_init]
+#[plugin_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_sync_host]
+#[plugin_sdk::panel_sync_host]
 fn sync_host() {
     set_state_string(ACTIVE_TOOL, host::tool::active_name());
     set_state_string(ACTIVE_TOOL_ID, host::tool::active_id());
@@ -66,7 +66,7 @@ fn sync_host() {
     set_state_i32(PEN_COUNT, host::tool::pen_count());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn select_tool() {
     let tool_id = event_string("value");
     if tool_id.trim().is_empty() {
@@ -162,67 +162,67 @@ fn switch_pen_with_size_restore(delta: isize) {
     restore_size(&host::tool::active_name(), target_pen_id);
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn activate_pen() {
     switch_tool_with_size_restore(Tool::Pen);
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn activate_eraser() {
     switch_tool_with_size_restore(Tool::Eraser);
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn activate_bucket() {
     emit_command(&build_tool_command(Tool::Bucket));
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn activate_lasso_bucket() {
     emit_command(&build_tool_command(Tool::LassoBucket));
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn activate_panel_rect() {
     emit_command(&build_tool_command(Tool::PanelRect));
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn previous_pen() {
     switch_pen_with_size_restore(-1);
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn next_pen() {
     switch_pen_with_size_restore(1);
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn reload_pens() {
     emit_service(&services::tool_catalog::reload_pen_presets());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn import_pens() {
     emit_service(&services::tool_catalog::import_pen_presets());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn toggle_shortcuts() {
     toggle_state(SHOW_SHORTCUTS);
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn capture_pen_shortcut() {
     capture_shortcut("pen");
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn capture_eraser_shortcut() {
     capture_shortcut("eraser");
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn keyboard() {
     let shortcut = event_string("shortcut");
     if shortcut.is_empty() {

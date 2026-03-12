@@ -19,12 +19,12 @@ UI 構文と `.altp-panel` の設計は [docs/panel-ui-definition/ui-dsl.md](doc
 
 フェーズ6後半の最小 runtime 接続は実装済みである。
 
-- `crates/panel-schema` / `crates/panel-sdk` / `crates/plugin-host` は追加済み
+- `crates/panel-schema` / `crates/plugin-sdk` / `crates/plugin-host` は追加済み
 - `plugin-host` は `wasmtime` で sample Wasm/WAT module をロードできる
 - `ui-shell` は handler 実行結果の state patch / command descriptor / diagnostics を反映できる
 - 標準パネル6種は Rust SDK + Wasm 版へ移行済みである
-- `crates/panel-macros` を追加し、plugin 作者は `#[panel_sdk::panel_init]` / `#[panel_sdk::panel_sync_host]` / `#[panel_sdk::panel_handler]` で安全に export を宣言できる
-- `crates/panel-sdk` は `commands::*` と `state::*Key` を公開し、生の command 名や state path 文字列を Rust 側から追い出し始めている
+- `plugin-sdk` は `plugin-macros` を再 export し、plugin 作者へ `#[plugin_sdk::panel_init]` / `#[plugin_sdk::panel_sync_host]` / `#[plugin_sdk::panel_handler]` を提供する
+- `crates/plugin-sdk` は `commands::*` と `state::*Key` を公開し、生の command 名や state path 文字列を Rust 側から追い出し始めている
 
 ただし、現時点の ABI は**フェーズ6向けの最小実装**であり、将来の外部 plugin 公開用にそのまま固定する段階ではない。
 
@@ -121,12 +121,12 @@ Wasm は Rust 等からコンパイルする処理モジュールである。
 - plugin 作者が直接触る層
 - 安全な Rust 関数、attribute macro、typed helper を置く
 - 今回の改訂ではここを優先的に安定化する
-- 実装上は `panel-sdk` と `panel-macros` に分かれるが、plugin 作者から見た入口は `panel-sdk` に集約する
+- 実装上は `plugin-sdk` と `plugin-macros` に分かれるが、plugin 作者から見た入口は `plugin-sdk` に集約する
 
 補足:
 
-- `panel-macros` は proc-macro crate 制約のため物理的に分離する
-- ただし `panel-sdk` が再 export するため、論理的には `panel-sdk` の一部として扱う
+- `plugin-macros` は proc-macro crate 制約のため物理的に分離する
+- ただし `plugin-sdk` が再 export するため、論理的には `plugin-sdk` の一部として扱う
 
 ### 3. DSL / manifest 層
 
@@ -149,7 +149,7 @@ Wasm は Rust 等からコンパイルする処理モジュールである。
   - state patch DTO
   - command descriptor DTO
   - diagnostics DTO
-- `crates/panel-sdk`
+- `crates/plugin-sdk`
   - Rust から Wasm handler を書くための helper
 - `crates/plugin-host`
   - `wasmtime` 実行
@@ -264,9 +264,9 @@ command("tool.set_active").string("tool", "pen")
 この API は escape hatch として残してよいが、第一選択肢は型付き helper とする。
 
 ```rust
-panel_sdk::commands::tool::set_active(panel_sdk::commands::Tool::Pen)
-panel_sdk::commands::project::save()
-panel_sdk::commands::project::new_sized(320, 240)
+plugin_sdk::commands::tool::set_active(plugin_sdk::commands::Tool::Pen)
+plugin_sdk::commands::project::save()
+plugin_sdk::commands::project::new_sized(320, 240)
 ```
 
 これにより、少なくとも Rust 側では command 名・payload key・代表的な enum 値の typo をコンパイル時に減らせる。
@@ -310,12 +310,12 @@ plugin 作者には host 内部 crate を直接依存させない。
 
 - workspace 上の想定 crate は次とする。
   - `crates/panel-schema`
-  - `crates/panel-sdk`
-  - `crates/panel-macros`
+  - `crates/plugin-sdk`
+  - `crates/plugin-macros`
 - 公開 package 名は必要なら次のように付けてもよい。
   - `altpaint-panel-schema`
-  - `altpaint-panel-sdk`
-  - `altpaint-panel-macros`
+  - `altpaint-plugin-sdk`
+  - `altpaint-plugin-macros`
 
 ### plugin 作者が使う型
 
@@ -327,12 +327,12 @@ plugin 作者には host 内部 crate を直接依存させない。
 
 加えて、現時点で plugin 作者が日常的に使う表面 API は次である。
 
-- `#[panel_sdk::panel_init]`
-- `#[panel_sdk::panel_handler]`
-- `panel_sdk::commands::*`
-- `panel_sdk::host::*`
-- `panel_sdk::state::*Key`
-- `panel_sdk::runtime::{emit_command, state_i32, state_string, set_state_bool, set_state_i32, ...}`
+- `#[plugin_sdk::panel_init]`
+- `#[plugin_sdk::panel_handler]`
+- `plugin_sdk::commands::*`
+- `plugin_sdk::host::*`
+- `plugin_sdk::state::*Key`
+- `plugin_sdk::runtime::{emit_command, state_i32, state_string, set_state_bool, set_state_i32, ...}`
 
 ### SDK が提供すべき helper
 
@@ -347,7 +347,7 @@ plugin 作者には host 内部 crate を直接依存させない。
 - `state::bool("show_new")`
 - `state::string("new_width")`
 
-重要なのは、plugin 作者が `.altp-panel` から `host.*` を直接読むのではなく、Wasm handler 内で `panel_sdk::host::*` を使って取得し、その値を local state へ mirror することだ。
+重要なのは、plugin 作者が `.altp-panel` から `host.*` を直接読むのではなく、Wasm handler 内で `plugin_sdk::host::*` を使って取得し、その値を local state へ mirror することだ。
 
 escape hatch としては、必要に応じて従来の `command("...")` builder も残してよい。
 
@@ -360,12 +360,12 @@ escape hatch としては、必要に応じて従来の `command("...")` builder
 ### SDK サンプル
 
 ```rust
-use panel_sdk::{
+use plugin_sdk::{
   commands::{self, Tool},
   runtime::emit_command,
 };
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn activate_pen() {
   emit_command(&commands::tool::set_active(Tool::Pen));
 }
@@ -380,7 +380,7 @@ fn activate_pen() {
 守るべき方針:
 
 - built-in も `.altp-panel` + Wasm module の組で持つ
-- built-in も `panel-schema` / `panel-sdk` を使う
+- built-in も `panel-schema` / `plugin-sdk` を使う
 - built-in も handler result DTO を返す
 - host だけが `Command` を適用する
 
@@ -448,7 +448,7 @@ Rust から Wasm を作る以上、plugin 作者が crates.io のライブラリ
 
 ### フェーズ6後半
 
-- `crates/panel-schema` / `crates/panel-sdk` / `crates/plugin-host` の最小追加
+- `crates/panel-schema` / `crates/plugin-sdk` / `crates/plugin-host` の最小追加
 - `runtime { wasm: ... }` の導入
 - handler binding
 - `wasmtime` 実行の最小接続

@@ -1,7 +1,7 @@
 //! パネル入力中継とホストアクション適用を集約する。
 
 use app_core::WindowPoint;
-use plugin_api::{HostAction, PanelEvent};
+use panel_api::{HostAction, PanelEvent};
 
 use super::DesktopApp;
 /// スライダードラッグ中のパネルノード情報を保持する。

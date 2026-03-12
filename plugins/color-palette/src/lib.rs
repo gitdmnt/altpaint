@@ -1,4 +1,4 @@
-use panel_sdk::{
+use plugin_sdk::{
     CommandDescriptor,
     commands::{self, RgbColor},
     host,
@@ -55,17 +55,17 @@ fn hsv_to_rgb(hue: i32, saturation: i32, value: i32) -> RgbColor {
     )
 }
 
-#[panel_sdk::panel_init]
+#[plugin_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_sync_host]
+#[plugin_sdk::panel_sync_host]
 fn sync_host() {
     let color = host::color::active_rgb();
     let (hue, saturation, value) = rgb_to_hsv(color.red, color.green, color.blue);
     sync_color_state(hue, saturation, value);
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn set_hsv() {
     let payload = event_string("value");
     let Some((hue, saturation, value)) = parse_hsv_payload(&payload) else {

@@ -1,11 +1,11 @@
 [package]
-name = "panel-sdk"
+name = "plugin-sdk"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
 [dependencies]
-panel-macros = { path = "../panel-macros" }
+plugin-macros = { path = "../plugin-macros" }
 panel-schema = { path = "../panel-schema" }
 serde_json.workspace = true

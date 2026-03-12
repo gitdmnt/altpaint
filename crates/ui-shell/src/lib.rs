@@ -18,7 +18,7 @@ use app_core::{
     WorkspaceLayout, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState,
 };
 use panel_runtime::PanelRuntime;
-use plugin_api::{HostAction, PanelEvent, PanelTree};
+use panel_api::{HostAction, PanelEvent, PanelTree};
 pub use presentation::PanelSurface;
 use presentation::{FocusTarget, TextInputEditorState};
 use std::collections::{BTreeMap, BTreeSet};

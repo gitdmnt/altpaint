@@ -1,6 +1,6 @@
 use super::*;
 use panel_runtime::PanelRuntime;
-use plugin_api::{HostAction, PanelNode, PanelPlugin, PanelTree};
+use panel_api::{HostAction, PanelNode, PanelPlugin, PanelTree};
 
 struct MockPanel {
     id: &'static str,

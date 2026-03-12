@@ -10,7 +10,7 @@ use desktop_support::{
     DEFAULT_PROJECT_PATH, DesktopProfiler, WorkspacePreset, WorkspacePresetCatalog,
     save_workspace_preset_catalog,
 };
-use plugin_api::HostAction;
+use panel_api::{HostAction, PanelMoveDirection};
 use serde_json::json;
 use std::collections::BTreeMap;
 use storage::{load_project_from_path, save_project_to_path};
@@ -150,7 +150,7 @@ fn load_project_restores_workspace_layout() {
     for _ in 0..3 {
         moved |= source_app.execute_host_action(HostAction::MovePanel {
             panel_id: "builtin.layers-panel".to_string(),
-            direction: plugin_api::PanelMoveDirection::Up,
+            direction: PanelMoveDirection::Up,
         });
     }
     assert!(moved);
@@ -196,7 +196,7 @@ fn move_panel_host_action_updates_status_without_full_recompose() {
 
     assert!(app.execute_host_action(HostAction::MovePanel {
         panel_id: "builtin.layers-panel".to_string(),
-        direction: plugin_api::PanelMoveDirection::Up,
+        direction: PanelMoveDirection::Up,
     }));
     let update = app.prepare_present_frame(1280, 200, &mut profiler);
 
@@ -474,7 +474,7 @@ fn panel_layout_persists_across_restart_via_session() {
 
     assert!(source_app.execute_host_action(HostAction::MovePanel {
         panel_id: "builtin.layers-panel".to_string(),
-        direction: plugin_api::PanelMoveDirection::Up,
+        direction: PanelMoveDirection::Up,
     }));
     assert!(
         source_app.execute_host_action(HostAction::SetPanelVisibility {

@@ -1,4 +1,4 @@
-use panel_sdk::{
+use plugin_sdk::{
     commands, host,
     runtime::{emit_command, error, event_string, set_state_bool, set_state_i32, set_state_string},
     state,
@@ -25,10 +25,10 @@ const HAS_SETTINGS: state::BoolKey = state::bool("has_settings");
 const LOG_SIZE_SLIDER_MAX: i32 = 1000;
 const MAX_TOOL_SIZE: f32 = 10000.0;
 
-#[panel_sdk::panel_init]
+#[plugin_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_sync_host]
+#[plugin_sdk::panel_sync_host]
 fn sync_host() {
     let snapshot = host::tool::snapshot();
     let capabilities = host::tool::capabilities();
@@ -103,14 +103,14 @@ fn sync_size_state(size: u32) {
     set_state_string(PEN_SIZE_INPUT, clamped.to_string());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn set_pen_size(value: i32) {
     let size = slider_to_size(value);
     sync_size_state(size);
     emit_command(&commands::tool::set_size(size));
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn set_pen_size_text() {
     let value = event_string("value");
     let Ok(size) = parse_size_input(&value) else {
@@ -121,19 +121,19 @@ fn set_pen_size_text() {
     emit_command(&commands::tool::set_size(size));
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn toggle_pressure() {
     emit_command(&commands::tool::set_pressure_enabled(
         !host::tool::pen_pressure_enabled(),
     ));
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn toggle_antialias() {
     emit_command(&commands::tool::set_antialias(!host::tool::pen_antialias()));
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn set_stabilization(value: i32) {
     emit_command(&commands::tool::set_stabilization(value.clamp(0, 100) as u8));
 }

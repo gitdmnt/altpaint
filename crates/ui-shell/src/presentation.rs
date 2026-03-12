@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use app_core::{PanelSurfacePoint, PanelSurfaceRect};
-use plugin_api::PanelEvent;
+use panel_api::PanelEvent;
 
 pub(crate) use render::{PanelHitKind, PanelHitRegion};
 

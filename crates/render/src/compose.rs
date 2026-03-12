@@ -1,7 +1,7 @@
 use app_core::{CanvasDisplayPoint, CanvasPoint};
 use desktop_support::{
-    APP_BACKGROUND, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND, CANVAS_FRAME_BORDER,
-    FOOTER_HEIGHT, TEXT_PRIMARY, TEXT_SECONDARY, WINDOW_PADDING,
+    APP_BACKGROUND, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND, CANVAS_FRAME_BORDER, FOOTER_HEIGHT,
+    TEXT_PRIMARY, TEXT_SECONDARY, WINDOW_PADDING,
 };
 
 use crate::status::status_text_bounds;
@@ -34,7 +34,13 @@ pub fn compose_base_frame(plan: &FramePlan<'_>) -> RenderFrame {
     stroke_rect(&mut frame, plan.canvas.host_rect, CANVAS_FRAME_BORDER);
 
     if std::env::var_os("ALTPAINT_DEBUG_LABELS").is_some() {
-        draw_text(&mut frame, WINDOW_PADDING, WINDOW_PADDING + 4, "Background layer", TEXT_PRIMARY);
+        draw_text(
+            &mut frame,
+            WINDOW_PADDING,
+            WINDOW_PADDING + 4,
+            "Background layer",
+            TEXT_PRIMARY,
+        );
         draw_text(
             &mut frame,
             plan.canvas.host_rect.x,
@@ -121,7 +127,12 @@ pub fn clear_canvas_host_region(
 ) {
     if let Some(dirty_rect) = dirty_rect {
         fill_canvas_host_background(frame, plan, dirty_rect);
-        stroke_rect_region(frame, plan.canvas.host_rect, dirty_rect, CANVAS_FRAME_BORDER);
+        stroke_rect_region(
+            frame,
+            plan.canvas.host_rect,
+            dirty_rect,
+            CANVAS_FRAME_BORDER,
+        );
     } else {
         fill_canvas_host_background(frame, plan, plan.canvas.host_rect);
         stroke_rect(frame, plan.canvas.host_rect, CANVAS_FRAME_BORDER);
@@ -134,7 +145,14 @@ pub fn compose_panel_host_region(
     panel_surface: PanelSurfaceSource<'_>,
     dirty_rect: Option<PixelRect>,
 ) {
-    blit_rgba_region_at(frame, panel_surface.rect(), panel_surface.width, panel_surface.height, panel_surface.pixels, dirty_rect);
+    blit_rgba_region_at(
+        frame,
+        panel_surface.rect(),
+        panel_surface.width,
+        panel_surface.height,
+        panel_surface.pixels,
+        dirty_rect,
+    );
 }
 
 /// ステータス行だけを差分再合成する。
@@ -155,7 +173,11 @@ pub fn compose_status_region(frame: &mut RenderFrame, plan: &FramePlan<'_>) {
     );
 }
 
-fn fill_canvas_host_background(frame: &mut RenderFrame, plan: &FramePlan<'_>, dirty_rect: PixelRect) {
+fn fill_canvas_host_background(
+    frame: &mut RenderFrame,
+    plan: &FramePlan<'_>,
+    dirty_rect: PixelRect,
+) {
     let display = plan.canvas.host_rect;
     if let Some(display_region) = display.intersect(dirty_rect) {
         fill_rect(frame, display_region, CANVAS_BACKGROUND);
@@ -200,7 +222,11 @@ fn fill_canvas_host_background(frame: &mut RenderFrame, plan: &FramePlan<'_>, di
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-fn blit_canvas_content(frame: &mut RenderFrame, plan: &FramePlan<'_>, dirty_rect: Option<PixelRect>) {
+fn blit_canvas_content(
+    frame: &mut RenderFrame,
+    plan: &FramePlan<'_>,
+    dirty_rect: Option<PixelRect>,
+) {
     blit_canvas_with_transform(
         frame,
         plan.canvas.host_rect,
@@ -270,7 +296,9 @@ fn draw_active_panel_mask(
             x: 0,
             y: bounds.y.saturating_add(bounds.height),
             width: source.width,
-            height: source.height.saturating_sub(bounds.y.saturating_add(bounds.height)),
+            height: source
+                .height
+                .saturating_sub(bounds.y.saturating_add(bounds.height)),
         },
         app_core::CanvasDirtyRect {
             x: 0,
@@ -281,7 +309,9 @@ fn draw_active_panel_mask(
         app_core::CanvasDirtyRect {
             x: bounds.x.saturating_add(bounds.width),
             y: bounds.y,
-            width: source.width.saturating_sub(bounds.x.saturating_add(bounds.width)),
+            width: source
+                .width
+                .saturating_sub(bounds.x.saturating_add(bounds.width)),
             height: bounds.height,
         },
     ];
@@ -422,7 +452,15 @@ fn draw_panel_navigator(
 }
 
 fn draw_text(frame: &mut RenderFrame, x: usize, y: usize, text: &str, color: [u8; 4]) {
-    draw_text_rgba(frame.pixels.as_mut_slice(), frame.width, frame.height, x, y, text, color);
+    draw_text_rgba(
+        frame.pixels.as_mut_slice(),
+        frame.width,
+        frame.height,
+        x,
+        y,
+        text,
+        color,
+    );
 }
 
 fn fill_rect(frame: &mut RenderFrame, rect: PixelRect, color: [u8; 4]) {
@@ -460,7 +498,16 @@ fn stroke_rect(frame: &mut RenderFrame, rect: PixelRect, color: [u8; 4]) {
         return;
     }
 
-    fill_rect(frame, PixelRect { x: rect.x, y: rect.y, width: rect.width, height: 1 }, color);
+    fill_rect(
+        frame,
+        PixelRect {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: 1,
+        },
+        color,
+    );
     fill_rect(
         frame,
         PixelRect {
@@ -471,7 +518,16 @@ fn stroke_rect(frame: &mut RenderFrame, rect: PixelRect, color: [u8; 4]) {
         },
         color,
     );
-    fill_rect(frame, PixelRect { x: rect.x, y: rect.y, width: 1, height: rect.height }, color);
+    fill_rect(
+        frame,
+        PixelRect {
+            x: rect.x,
+            y: rect.y,
+            width: 1,
+            height: rect.height,
+        },
+        color,
+    );
     fill_rect(
         frame,
         PixelRect {
@@ -484,20 +540,35 @@ fn stroke_rect(frame: &mut RenderFrame, rect: PixelRect, color: [u8; 4]) {
     );
 }
 
-fn stroke_rect_region(frame: &mut RenderFrame, rect: PixelRect, dirty_rect: PixelRect, color: [u8; 4]) {
+fn stroke_rect_region(
+    frame: &mut RenderFrame,
+    rect: PixelRect,
+    dirty_rect: PixelRect,
+    color: [u8; 4],
+) {
     if rect.width == 0 || rect.height == 0 {
         return;
     }
 
     let edges = [
-        PixelRect { x: rect.x, y: rect.y, width: rect.width, height: 1 },
+        PixelRect {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: 1,
+        },
         PixelRect {
             x: rect.x,
             y: rect.y + rect.height.saturating_sub(1),
             width: rect.width,
             height: 1,
         },
-        PixelRect { x: rect.x, y: rect.y, width: 1, height: rect.height },
+        PixelRect {
+            x: rect.x,
+            y: rect.y,
+            width: 1,
+            height: rect.height,
+        },
         PixelRect {
             x: rect.x + rect.width.saturating_sub(1),
             y: rect.y,
@@ -522,7 +593,8 @@ pub fn blit_scaled_rgba_region(
     source_pixels: &[u8],
     dirty_rect: Option<PixelRect>,
 ) {
-    if destination.width == 0 || destination.height == 0 || source_width == 0 || source_height == 0 {
+    if destination.width == 0 || destination.height == 0 || source_width == 0 || source_height == 0
+    {
         return;
     }
 
@@ -572,7 +644,8 @@ fn blit_rgba_region_at(
     source_pixels: &[u8],
     dirty_rect: Option<PixelRect>,
 ) {
-    if destination.width == 0 || destination.height == 0 || source_width == 0 || source_height == 0 {
+    if destination.width == 0 || destination.height == 0 || source_width == 0 || source_height == 0
+    {
         return;
     }
 
@@ -612,7 +685,9 @@ fn blit_canvas_with_transform(
         return;
     }
 
-    let Some(scene) = crate::prepare_canvas_scene(destination, source.width, source.height, transform) else {
+    let Some(scene) =
+        crate::prepare_canvas_scene(destination, source.width, source.height, transform)
+    else {
         return;
     };
     let Some(drawn_rect) = scene.drawn_rect() else {
@@ -622,7 +697,12 @@ fn blit_canvas_with_transform(
         .and_then(|dirty| destination.intersect(dirty))
         .unwrap_or(destination)
         .intersect(drawn_rect)
-        .unwrap_or(PixelRect { x: destination.x, y: destination.y, width: 0, height: 0 });
+        .unwrap_or(PixelRect {
+            x: destination.x,
+            y: destination.y,
+            width: 0,
+            height: 0,
+        });
 
     if target.width == 0 || target.height == 0 {
         return;
@@ -631,7 +711,9 @@ fn blit_canvas_with_transform(
     if transform.rotation_degrees.rem_euclid(360.0) != 0.0 || transform.flip_x || transform.flip_y {
         for dst_y in target.y..target.y + target.height {
             for dst_x in target.x..target.x + target.width {
-                let Some(source_point) = scene.map_view_to_canvas(app_core::CanvasViewportPoint::new(dst_x as i32, dst_y as i32)) else {
+                let Some(source_point) = scene.map_view_to_canvas(
+                    app_core::CanvasViewportPoint::new(dst_x as i32, dst_y as i32),
+                ) else {
                     continue;
                 };
                 let src_index = (source_point.y * source.width + source_point.x) * 4;
@@ -644,8 +726,20 @@ fn blit_canvas_with_transform(
     }
 
     let (offset_x, offset_y) = scene.offset();
-    let src_x_runs = build_source_axis_runs(target.x, target.width, offset_x, scene.scale(), source.width);
-    let src_y_runs = build_source_axis_runs(target.y, target.height, offset_y, scene.scale(), source.height);
+    let src_x_runs = build_source_axis_runs(
+        target.x,
+        target.width,
+        offset_x,
+        scene.scale(),
+        source.width,
+    );
+    let src_y_runs = build_source_axis_runs(
+        target.y,
+        target.height,
+        offset_y,
+        scene.scale(),
+        source.height,
+    );
 
     for y_run in &src_y_runs {
         let src_row_start = y_run.src_index * source.width * 4;
@@ -689,7 +783,9 @@ pub fn build_source_axis_runs(
         let src = {
             let dst = destination_start + index;
             let src = ((dst as f32 + 0.5 - offset) / scale).floor();
-            (0.0..source_len as f32).contains(&src).then_some(src as usize)
+            (0.0..source_len as f32)
+                .contains(&src)
+                .then_some(src as usize)
         };
 
         let Some(src_index) = src else {
@@ -704,7 +800,11 @@ pub fn build_source_axis_runs(
             continue;
         }
 
-        runs.push(SourceAxisRun { dst_offset: index, len: 1, src_index });
+        runs.push(SourceAxisRun {
+            dst_offset: index,
+            len: 1,
+            src_index,
+        });
     }
 
     runs
@@ -744,16 +844,34 @@ pub fn scroll_canvas_region(
     let shift_x = delta_x.clamp(-(region.width as i32), region.width as i32);
     let shift_y = delta_y.clamp(-(region.height as i32), region.height as i32);
     let overlap_width = region.width.saturating_sub(shift_x.unsigned_abs() as usize);
-    let overlap_height = region.height.saturating_sub(shift_y.unsigned_abs() as usize);
+    let overlap_height = region
+        .height
+        .saturating_sub(shift_y.unsigned_abs() as usize);
 
     if overlap_width == 0 || overlap_height == 0 {
         return region;
     }
 
-    let src_x = if shift_x >= 0 { region.x } else { region.x + shift_x.unsigned_abs() as usize };
-    let src_y = if shift_y >= 0 { region.y } else { region.y + shift_y.unsigned_abs() as usize };
-    let dst_x = if shift_x >= 0 { region.x + shift_x as usize } else { region.x };
-    let dst_y = if shift_y >= 0 { region.y + shift_y as usize } else { region.y };
+    let src_x = if shift_x >= 0 {
+        region.x
+    } else {
+        region.x + shift_x.unsigned_abs() as usize
+    };
+    let src_y = if shift_y >= 0 {
+        region.y
+    } else {
+        region.y + shift_y.unsigned_abs() as usize
+    };
+    let dst_x = if shift_x >= 0 {
+        region.x + shift_x as usize
+    } else {
+        region.x
+    };
+    let dst_y = if shift_y >= 0 {
+        region.y + shift_y as usize
+    } else {
+        region.y
+    };
 
     let mut copied = vec![0; overlap_width * overlap_height * 4];
     for row in 0..overlap_height {
@@ -775,13 +893,20 @@ pub fn scroll_canvas_region(
 }
 
 fn exposed_scroll_rect(region: PixelRect, shift_x: i32, shift_y: i32) -> PixelRect {
-    if shift_x.unsigned_abs() as usize >= region.width || shift_y.unsigned_abs() as usize >= region.height {
+    if shift_x.unsigned_abs() as usize >= region.width
+        || shift_y.unsigned_abs() as usize >= region.height
+    {
         return region;
     }
 
     let mut exposed = None;
     if shift_x > 0 {
-        exposed = Some(PixelRect { x: region.x, y: region.y, width: shift_x as usize, height: region.height });
+        exposed = Some(PixelRect {
+            x: region.x,
+            y: region.y,
+            width: shift_x as usize,
+            height: region.height,
+        });
     } else if shift_x < 0 {
         let width = shift_x.unsigned_abs() as usize;
         exposed = Some(PixelRect {
@@ -793,7 +918,12 @@ fn exposed_scroll_rect(region: PixelRect, shift_x: i32, shift_y: i32) -> PixelRe
     }
 
     if shift_y > 0 {
-        let rect = PixelRect { x: region.x, y: region.y, width: region.width, height: shift_y as usize };
+        let rect = PixelRect {
+            x: region.x,
+            y: region.y,
+            width: region.width,
+            height: shift_y as usize,
+        };
         exposed = Some(exposed.map_or(rect, |existing: PixelRect| existing.union(rect)));
     } else if shift_y < 0 {
         let height = shift_y.unsigned_abs() as usize;
@@ -821,7 +951,9 @@ fn draw_brush_preview(
     if source.width == 0 || source.height == 0 {
         return;
     }
-    let Some(scene) = crate::prepare_canvas_scene(destination, source.width, source.height, transform) else {
+    let Some(scene) =
+        crate::prepare_canvas_scene(destination, source.width, source.height, transform)
+    else {
         return;
     };
     let Some(center) = scene.map_canvas_point_to_display(canvas_position) else {
@@ -869,10 +1001,22 @@ fn draw_lasso_preview(
     }
 
     for window in points.windows(2) {
-        let Some(start) = map_canvas_point_to_display(destination, source.width, source.height, transform, window[0]) else {
+        let Some(start) = map_canvas_point_to_display(
+            destination,
+            source.width,
+            source.height,
+            transform,
+            window[0],
+        ) else {
             continue;
         };
-        let Some(end) = map_canvas_point_to_display(destination, source.width, source.height, transform, window[1]) else {
+        let Some(end) = map_canvas_point_to_display(
+            destination,
+            source.width,
+            source.height,
+            transform,
+            window[1],
+        ) else {
             continue;
         };
         draw_overlay_line(frame, start, end, dirty_rect, [0xff, 0xc1, 0x07, 0xff]);

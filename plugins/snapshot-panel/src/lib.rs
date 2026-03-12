@@ -1,4 +1,4 @@
-use panel_sdk::{
+use plugin_sdk::{
 	host,
 	runtime::{set_state_i32, set_state_string},
 	state,
@@ -10,10 +10,10 @@ const PANEL_COUNT: state::IntKey = state::int("panel_count");
 const ACTIVE_TOOL: state::StringKey = state::string("active_tool");
 const STORAGE_STATUS: state::StringKey = state::string("storage_status");
 
-#[panel_sdk::panel_init]
+#[plugin_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_sync_host]
+#[plugin_sdk::panel_sync_host]
 fn sync_host() {
 	set_state_string(TITLE, host::document::title());
 	set_state_i32(PAGE_COUNT, host::document::page_count());

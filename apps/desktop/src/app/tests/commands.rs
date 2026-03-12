@@ -13,7 +13,7 @@ use desktop_support::{
     DesktopProfiler, WorkspacePreset, WorkspacePresetCatalog, default_panel_dir,
     parse_document_size, save_workspace_preset_catalog,
 };
-use plugin_api::HostAction;
+use panel_api::{HostAction, PanelEvent};
 use serde_json::json;
 use workspace_persistence::WorkspaceUiState;
 
@@ -191,13 +191,25 @@ fn execute_command_new_document_sized_replaces_bitmap() {
     assert_eq!((bitmap.width, bitmap.height), (320, 240));
 }
 
-/// 既定 UI ディレクトリから DSL サンプルパネルが読み込まれることを確認する。
+/// DSL サンプル資産が既定 UI ディレクトリ外へ退避されていることを確認する。
 #[test]
-fn desktop_app_loads_phase6_sample_panel_from_default_ui_directory() {
+fn phase6_sample_assets_live_under_tools_experimental() {
     let app = test_app_with_dialogs(TestDialogs::default());
 
     assert!(
-        default_panel_dir()
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("apps dir")
+            .parent()
+            .expect("workspace root")
+            .join("tools")
+            .join("experimental")
+            .join("phase6-sample")
+            .join("panel.altp-panel")
+            .exists()
+    );
+    assert!(
+        !default_panel_dir()
             .join("phase6-sample")
             .join("panel.altp-panel")
             .exists()
@@ -206,7 +218,7 @@ fn desktop_app_loads_phase6_sample_panel_from_default_ui_directory() {
         app.panel_presentation
             .panel_trees(&app.panel_runtime)
             .iter()
-            .any(|panel| panel.id == "builtin.dsl-sample")
+            .all(|panel| panel.id != "builtin.dsl-sample")
     );
 }
 
@@ -405,7 +417,7 @@ fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
         preset_path.clone(),
     );
 
-    assert!(app.dispatch_panel_event(plugin_api::PanelEvent::SetText {
+    assert!(app.dispatch_panel_event(PanelEvent::SetText {
         panel_id: "builtin.workspace-presets".to_string(),
         node_id: "workspace.preset.selector".to_string(),
         value: "illustration".to_string(),

@@ -24,9 +24,9 @@
 - `runtime { wasm: ... }` と handler binding は実装済み
 - `ui-shell` は DSL panel をロードし、`PanelTree` へ正規化して表示できる
 - `input` ノードによるホスト描画テキスト入力は実装済み
-- `plugins/phase6-sample/panel.altp-panel` で sample panel の表示と操作を確認できる
+- `tools/experimental/phase6-sample/panel.altp-panel` に DSL/WAT sample を退避した
  - 標準パネル6種は `.altp-panel` + Rust SDK + Wasm 版へ移行済みである
- - Rust 側では `#[panel_sdk::panel_handler]` と `panel_sdk::commands::*` により、unsafe export と生の command 名を避けられる
+ - Rust 側では `#[plugin_sdk::panel_handler]` と `plugin_sdk::commands::*` により、unsafe export と生の command 名を避けられる
 
 一方で、より広い式評価、追加 widget、外部 plugin 向け権限本格化はフェーズ7以降の作業である。
 
@@ -301,7 +301,7 @@ handler 名は現状 `.altp-panel` 側で文字列として記述する。
 
 ただし、plugin 作者の Rust コード側では次を原則にする。
 
-- `#[panel_sdk::panel_handler] fn save_project() { ... }` のように通常の Rust 関数を書く
+- `#[plugin_sdk::panel_handler] fn save_project() { ... }` のように通常の Rust 関数を書く
 - `panel_handle_save_project` のような export 名を手書きしない
 - handler 実装中で command 名文字列を直書きしない
 
@@ -314,13 +314,13 @@ handler 名は現状 `.altp-panel` 側で文字列として記述する。
 
 ### Rust SDK 側の state path 取り扱い
 
-UI DSL 上では state 名は文字列で定義されるが、Rust 実装側では `panel_sdk::state::BoolKey` / `IntKey` / `StringKey` を使って、同じ path を何度も文字列で書かないようにする。
+UI DSL 上では state 名は文字列で定義されるが、Rust 実装側では `plugin_sdk::state::BoolKey` / `IntKey` / `StringKey` を使って、同じ path を何度も文字列で書かないようにする。
 
 例:
 
 ```rust
-const SHOW_NEW: panel_sdk::state::BoolKey = panel_sdk::state::bool("show_new");
-const NEW_WIDTH: panel_sdk::state::StringKey = panel_sdk::state::string("new_width");
+const SHOW_NEW: plugin_sdk::state::BoolKey = plugin_sdk::state::bool("show_new");
+const NEW_WIDTH: plugin_sdk::state::StringKey = plugin_sdk::state::string("new_width");
 ```
 
 この方針により、state path typo の発生箇所を局所化する。
@@ -335,7 +335,7 @@ UI DSL で参照できる動的値は `state.*` のみとし、host 由来の値
 想定フロー:
 
 1. host が読み取り専用 snapshot を Wasm runtime へ渡す
-2. Wasm handler が `panel_sdk::host::*` helper で必要値を取得する
+2. Wasm handler が `plugin_sdk::host::*` helper で必要値を取得する
 3. Wasm handler が `set_state_*` で local state を更新する
 4. `.altp-panel` は `state.*` を描画する
 

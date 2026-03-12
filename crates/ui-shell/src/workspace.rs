@@ -5,7 +5,7 @@
 
 use super::*;
 use panel_runtime::PanelRuntime;
-use plugin_api::{PanelMoveDirection, PanelNode, PanelTree};
+use panel_api::{PanelMoveDirection, PanelNode, PanelTree};
 
 pub(super) const WORKSPACE_PANEL_ID: &str = "builtin.workspace-layout";
 const HIDDEN_BY_DEFAULT_PANEL_IDS: &[&str] = &["builtin.panel-list"];

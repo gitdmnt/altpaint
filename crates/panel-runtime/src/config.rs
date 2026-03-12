@@ -1,4 +1,4 @@
-use plugin_api::PanelPlugin;
+use panel_api::PanelPlugin;
 use serde_json::Value;
 use std::collections::BTreeMap;
 

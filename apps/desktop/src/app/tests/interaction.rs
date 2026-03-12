@@ -176,7 +176,7 @@ fn panel_scroll_requests_surface_offset_change() {
 #[test]
 fn panel_color_wheel_updates_document_color() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    assert!(app.dispatch_panel_event(plugin_api::PanelEvent::SetText {
+    assert!(app.dispatch_panel_event(panel_api::PanelEvent::SetText {
         panel_id: "builtin.color-palette".to_string(),
         node_id: "color.wheel".to_string(),
         value: "120,100,100".to_string(),
@@ -199,7 +199,7 @@ fn panel_color_wheel_pointer_press_is_handled() {
     let mut first_hit = None;
     'outer: for y in 0..surface.height {
         for x in 0..surface.width {
-            if let Some(plugin_api::PanelEvent::SetText {
+            if let Some(panel_api::PanelEvent::SetText {
                 panel_id,
                 node_id,
                 value,
@@ -249,7 +249,7 @@ fn overlapping_panel_button_press_takes_priority_over_canvas_input() {
     let (button_x, button_y) = (0..surface.height)
         .find_map(|y| {
             (0..surface.width).find_map(|x| match surface.hit_test_at(PanelSurfacePoint::new(x, y)) {
-                Some(plugin_api::PanelEvent::Activate { panel_id, node_id })
+                Some(panel_api::PanelEvent::Activate { panel_id, node_id })
                     if panel_id == "builtin.tool-palette" && node_id == "tool.eraser" =>
                 {
                     Some((surface.x as i32 + x as i32, surface.y as i32 + y as i32))
@@ -334,7 +334,7 @@ fn layer_list_drag_keeps_dragged_layer_selected_while_reordering() {
         source_value: 2,
     });
 
-    app.advance_panel_drag_source(&plugin_api::PanelEvent::DragValue {
+    app.advance_panel_drag_source(&panel_api::PanelEvent::DragValue {
         panel_id: "builtin.layers-panel".to_string(),
         node_id: "layers.list".to_string(),
         from: 2,
@@ -348,7 +348,7 @@ fn layer_list_drag_keeps_dragged_layer_selected_while_reordering() {
         Some(1)
     );
 
-    app.advance_panel_drag_source(&plugin_api::PanelEvent::DragValue {
+    app.advance_panel_drag_source(&panel_api::PanelEvent::DragValue {
         panel_id: "builtin.layers-panel".to_string(),
         node_id: "layers.list".to_string(),
         from: 1,
@@ -549,7 +549,7 @@ fn profile_color_wheel_drag_for_ten_seconds() {
     let points = control_points_from_surface(&app, |event| {
         matches!(
             event,
-            plugin_api::PanelEvent::SetText {
+            panel_api::PanelEvent::SetText {
                 panel_id,
                 node_id,
                 ..
@@ -609,7 +609,7 @@ fn profile_color_wheel_events_for_ten_seconds() {
     while started.elapsed() < duration {
         let saturation = 40 + (hue % 61);
         let value = 40 + ((hue * 3) % 61);
-        assert!(app.dispatch_panel_event(plugin_api::PanelEvent::SetText {
+        assert!(app.dispatch_panel_event(panel_api::PanelEvent::SetText {
             panel_id: "builtin.color-palette".to_string(),
             node_id: "color.wheel".to_string(),
             value: format!("{hue},{saturation},{value}"),
@@ -643,7 +643,7 @@ fn profile_slider_drag_for_ten_seconds() {
     let points = control_points_from_surface(&app, |event| {
         matches!(
             event,
-            plugin_api::PanelEvent::SetValue {
+            panel_api::PanelEvent::SetValue {
                 panel_id,
                 node_id,
                 ..
@@ -929,7 +929,7 @@ fn panel_release_without_matching_press_does_not_activate_save() {
     let (save_x, save_y) = (0..surface.height)
         .find_map(|y| {
             (0..surface.width).find_map(|x| match surface.hit_test_at(PanelSurfacePoint::new(x, y)) {
-                Some(plugin_api::PanelEvent::Activate { panel_id, node_id })
+                Some(panel_api::PanelEvent::Activate { panel_id, node_id })
                     if panel_id == "builtin.app-actions" && node_id == "app.save" =>
                 {
                     Some((surface.x as i32 + x as i32, surface.y as i32 + y as i32))
@@ -1112,7 +1112,7 @@ fn profile_view_perf_case(
 
 fn control_points_from_surface(
     app: &DesktopApp,
-    predicate: impl Fn(&plugin_api::PanelEvent) -> bool,
+    predicate: impl Fn(&panel_api::PanelEvent) -> bool,
 ) -> Vec<(i32, i32)> {
     let surface = app.panel_surface.as_ref().expect("panel surface exists");
     let mut points = Vec::new();

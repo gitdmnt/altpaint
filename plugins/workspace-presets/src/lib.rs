@@ -1,4 +1,4 @@
-use panel_sdk::{
+use plugin_sdk::{
     runtime::{emit_service, error, event_string, set_state_string, state_string},
     services, state,
 };
@@ -34,10 +34,10 @@ fn validate_selection() -> Result<(String, String), &'static str> {
     Ok((preset_id, label))
 }
 
-#[panel_sdk::panel_init]
+#[plugin_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn select_workspace() {
     let value = event_string("value");
     if value.trim().is_empty() {
@@ -51,7 +51,7 @@ fn select_workspace() {
     emit_service(&services::workspace_io::apply_preset(value.trim()));
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn edit_workspace_id() {
     let value = event_string("value");
     if value.trim().is_empty() {
@@ -61,7 +61,7 @@ fn edit_workspace_id() {
     set_state_string(SELECTED_WORKSPACE, value.trim());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn edit_workspace_label() {
     let value = event_string("value");
     if value.trim().is_empty() {
@@ -71,7 +71,7 @@ fn edit_workspace_label() {
     set_state_string(SELECTED_WORKSPACE_LABEL, value.trim());
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn load_workspace() {
     let Ok((preset_id, _)) = validate_selection() else {
         error("workspace preset id is required");
@@ -81,7 +81,7 @@ fn load_workspace() {
     emit_service(&services::workspace_io::apply_preset(preset_id));
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn save_workspace() {
     let Ok((preset_id, label)) = validate_selection() else {
         error("workspace preset id and label are required");
@@ -91,7 +91,7 @@ fn save_workspace() {
     emit_service(&services::workspace_io::save_preset(preset_id, label));
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn export_workspace() {
     let Ok((preset_id, label)) = validate_selection() else {
         error("workspace preset id and label are required");
@@ -101,7 +101,7 @@ fn export_workspace() {
     emit_service(&services::workspace_io::export_preset(preset_id, label));
 }
 
-#[panel_sdk::panel_handler]
+#[plugin_sdk::panel_handler]
 fn reload_workspaces() {
     emit_service(&services::workspace_io::reload_presets());
 }

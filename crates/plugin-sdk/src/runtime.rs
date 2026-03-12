@@ -99,12 +99,10 @@ pub fn replace_state_json(path: impl Into<String>, value: impl Into<serde_json::
 #[cfg(target_arch = "wasm32")]
 pub fn apply_state_patches(patches: &[StatePatch]) {
     let Ok(serialized) = serde_json::to_string(patches) else {
-        error("failed to serialize state patch batch in panel-sdk runtime");
+        error("failed to serialize state patch batch in plugin-sdk runtime");
         return;
     };
-    with_bytes(&serialized, |ptr, len| unsafe {
-        state_apply_json(ptr, len)
-    });
+    with_bytes(&serialized, |ptr, len| unsafe { state_apply_json(ptr, len) });
 }
 
 /// 複数 state patch をまとめて適用する。
@@ -166,9 +164,7 @@ impl StatePatchBuffer {
 /// 真偽値 state を取得する。
 #[cfg(target_arch = "wasm32")]
 pub fn state_bool(path: impl AsRef<str>) -> bool {
-    with_bytes(path.as_ref(), |ptr, len| unsafe {
-        state_get_bool(ptr, len) != 0
-    })
+    with_bytes(path.as_ref(), |ptr, len| unsafe { state_get_bool(ptr, len) != 0 })
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -212,9 +208,7 @@ pub fn event_string(_path: impl AsRef<str>) -> String {
 /// host 真偽値を取得する。
 #[cfg(target_arch = "wasm32")]
 pub fn host_bool(path: impl AsRef<str>) -> bool {
-    with_bytes(path.as_ref(), |ptr, len| unsafe {
-        host_get_bool(ptr, len) != 0
-    })
+    with_bytes(path.as_ref(), |ptr, len| unsafe { host_get_bool(ptr, len) != 0 })
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -280,7 +274,7 @@ pub fn emit_command_descriptor(descriptor: &CommandDescriptor) {
 #[cfg(target_arch = "wasm32")]
 fn emit_command_payload_json(descriptor: &CommandDescriptor, payload: &Value) {
     let Ok(json) = serde_json::to_string(payload) else {
-        error("failed to serialize command payload in panel-sdk runtime");
+        error("failed to serialize command payload in plugin-sdk runtime");
         return;
     };
 

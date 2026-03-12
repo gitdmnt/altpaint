@@ -103,7 +103,7 @@
 - [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)
 - [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- `crates/plugin-api/`, `crates/ui-shell/`, `crates/panel-sdk/`, `crates/plugin-host/`, `apps/desktop/`, `plugins/` の関連コード
+- `crates/panel-api/`, `crates/plugin-sdk/`, `crates/ui-shell/`, `crates/plugin-host/`, `apps/desktop/`, `plugins/` の関連コード
 
 ### 5. 保存形式や永続化の変更
 
@@ -128,14 +128,14 @@
   - `.altp-panel` parser / validator / normalized IR
 - `crates/panel-schema/`
   - Wasm panel runtime 共有 DTO
-- `crates/panel-sdk/`
-  - panel 作者向け SDK
-- `crates/panel-macros/`
-  - panel export 用 proc-macro
+- `crates/plugin-sdk/`
+  - plugin 作者向け SDK の正面入口
+- `crates/plugin-macros/`
+  - `plugin-sdk` が再 export する proc-macro 実装
 - `crates/ui-shell/`
   - ホスト側パネルランタイム統合層
   - レイアウト、ヒットテスト、簡易描画
-- `crates/plugin-api/`
+- `crates/panel-api/`
   - パネル/ホスト間の契約
 - `crates/plugin-host/`
   - `wasmtime` ベースの Wasm panel runtime
@@ -156,7 +156,7 @@
 最小実装としては次が既にある。
 
 - Cargo workspace 構成
-- `app-core` / `render` / `ui-shell` / `plugin-api` / `storage` / `desktop-support` / `plugin-host` / `panel-dsl` / `panel-schema` / `panel-sdk` / `panel-macros` / `apps/desktop`
+- `app-core` / `render` / `ui-shell` / `panel-api` / `plugin-sdk` / `storage` / `desktop-support` / `plugin-host` / `panel-dsl` / `panel-schema` / `apps/desktop`
 - `winit` + `wgpu` の単一ウィンドウデスクトップ起動
 - 白キャンバス表示
 - マウス入力による最小ストローク描画

@@ -202,7 +202,7 @@
 - `ui-shell` は Phase 3 で panel runtime を手放し、presentation 中心の crate になった。
 - `apps/desktop` は `PanelRuntime` と `PanelPresentation` を明示的に所有する。
 
-### 5. `crates/plugin-api`
+### 5. `crates/panel-api`
 
 現在は汎用 plugin API というより、panel host 契約層である。
 
@@ -212,10 +212,6 @@
 - `PanelEvent`
 - `HostAction`
 - `ServiceRequest`
-
-補足:
-
-- 命名は広いが、実態は panel 向け契約が中心である。
 
 ### 6. `crates/plugin-host`
 
@@ -252,7 +248,7 @@ host と Wasm panel runtime の共有 DTO である。
 - `CommandDescriptor`
 - `Diagnostic`
 
-### 9. `crates/panel-sdk` / `crates/panel-macros`
+### 9. `crates/plugin-sdk` / `crates/plugin-macros`
 
 panel 作者向け authoring surface である。
 
@@ -260,10 +256,6 @@ panel 作者向け authoring surface である。
 - host snapshot accessor
 - runtime helper
 - panel export macro
-
-補足:
-
-- 論理的には一つの authoring surface だが、Rust の都合で proc-macro は別 crate である。
 
 ### 10. `crates/storage`
 
@@ -325,23 +317,23 @@ workspace member として存在するもの:
 補足:
 
 - 各 plugin は基本的に `panel.altp-panel` と Rust/Wasm 実装を同居させている。
-- `plugins/phase6-sample` は残っているが、workspace member ではない。
+- DSL/WAT sample は `tools/experimental/phase6-sample` へ移し、既定の plugin 探索対象から外した。
 
 ## 目標 crate 配置草案との差分
 
 現状コードを基準に見たとき、移動先として固定したい境界は次である。
 
-| 論理名          | 現在の主配置                               | 目標配置               | 現状メモ                              |
-| --------------- | ------------------------------------------ | ---------------------- | ------------------------------------- |
-| `desktopApp`    | `apps/desktop`                             | `apps/desktop`         | 現在は orchestration 以外も広く抱える |
-| `app-core`      | `crates/app-core`                          | `crates/app-core`      | `Document` に tool / pen state が残る |
-| `render`        | `crates/render`                            | `crates/render`        | frame plan / dirty / compose を集約済み |
-| `canvas`        | `crates/canvas`                            | `crates/canvas`        | runtime / gesture / bitmap op を集約  |
-| `ui-shell`      | `crates/ui-shell`                          | `crates/ui-shell`      | presentation 中心へ整理済み           |
-| `panel-runtime` | `crates/panel-runtime`                     | `crates/panel-runtime` | Phase 3 で新設済み                    |
-| `plugin-host`   | `crates/plugin-host`                       | `crates/plugin-host`   | panel Wasm runtime 専用               |
-| `panel-dsl`     | `crates/panel-dsl`                         | `crates/panel-dsl`     | 純粋 parse 層として維持しやすい       |
-| `plugin-sdk`    | `crates/panel-sdk` + `crates/panel-macros` | `crates/plugin-sdk` 系 | 物理名と論理名がまだずれる            |
+| 論理名          | 現在の主配置           | 目標配置               | 現状メモ                                    |
+| --------------- | ---------------------- | ---------------------- | ------------------------------------------- |
+| `desktopApp`    | `apps/desktop`         | `apps/desktop`         | 現在は orchestration 以外も広く抱える       |
+| `app-core`      | `crates/app-core`      | `crates/app-core`      | `Document` に tool / pen state が残る       |
+| `render`        | `crates/render`        | `crates/render`        | frame plan / dirty / compose を集約済み     |
+| `canvas`        | `crates/canvas`        | `crates/canvas`        | runtime / gesture / bitmap op を集約        |
+| `ui-shell`      | `crates/ui-shell`      | `crates/ui-shell`      | presentation 中心へ整理済み                 |
+| `panel-runtime` | `crates/panel-runtime` | `crates/panel-runtime` | Phase 3 で新設済み                          |
+| `plugin-host`   | `crates/plugin-host`   | `crates/plugin-host`   | panel Wasm runtime 専用                     |
+| `panel-dsl`     | `crates/panel-dsl`     | `crates/panel-dsl`     | 純粋 parse 層として維持しやすい             |
+| `plugin-sdk`    | `crates/plugin-sdk`    | `crates/plugin-sdk` 系 | proc-macro は `crates/plugin-macros` で分離 |
 
 ## 現在の runtime flow
 
@@ -465,9 +457,9 @@ Phase 3 後は次のように分担する。
 
 フェーズ5で描画責務の集約はかなり進んだが、GPU presenter と desktop 固定レイアウトは `apps/desktop` に残る。
 
-### `plugin-api`
+### `panel-api`
 
-汎用 plugin API というより panel host API である。
+panel host API として固定した。
 
 ### `DesktopApp`
 
@@ -513,10 +505,10 @@ Phase 3 後は次のように分担する。
 - DSL/Wasm/host snapshot sync → `crates/panel-runtime/src/tests.rs`
 - hit-test、focus、text input、surface render → `crates/ui-shell` 側で継続拡張
 
-### `crates/panel-sdk/src/tests.rs`
+### `crates/plugin-sdk/src/tests.rs`
 
 - 現在は command builder、typed host accessor、runtime helper、macro export を 1 つの作者向け回帰集合で検証している
-- authoring surface の回帰テストとしては妥当だが、将来 `plugin-sdk` 再編時は command / services / runtime helper を分割しやすい構成へ寄せる
+- authoring surface の回帰テストとして command / services / runtime helper / macro surface を固定する
 
 ## この文書の結論
 
@@ -531,7 +523,7 @@ Phase 3 後は次のように分担する。
 - `render`
 - `panel-dsl`
 - `plugin-host`
-- `panel-sdk`
+- `plugin-sdk`
 - `storage`
 
 へ責務を切り出す土台は既にできている状態である。

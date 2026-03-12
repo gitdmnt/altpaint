@@ -105,7 +105,7 @@ project.plugin_configs[panel_id] = { ...config subtree... }
 
 2026-03-09 時点では、次の最小実装を採用している。
 
-- `plugin-api::PanelEvent` に `Keyboard` を追加
+- `panel-api::PanelEvent` に `Keyboard` を追加
 - `apps/desktop` が `winit` のキー入力を `shortcut` / `key` / `repeat` へ正規化する
 - `UiShell` が keyboard 対応パネルへイベントを配送する
 - `DslPanelPlugin` は `keyboard` handler export がある Wasm パネルだけへ `PanelEventRequest` を投げる

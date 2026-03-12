@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use app_core::{Command, PaintInput};
 use desktop_support::normalize_project_path;
-use plugin_api::{ServiceRequest, services::names};
+use panel_api::{ServiceRequest, services::names};
 use storage::load_project_from_path;
 
 use super::DesktopApp;

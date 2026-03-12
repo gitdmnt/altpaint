@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use app_core::Document;
 use desktop_support::{default_panel_dir, default_pen_dir};
-use plugin_api::{ServiceRequest, services::names};
+use panel_api::{ServiceRequest, services::names};
 use serde_json::{Map, Value, json};
 use storage::{ImportedPenSet, load_pen_directory, parse_pen_file};
 

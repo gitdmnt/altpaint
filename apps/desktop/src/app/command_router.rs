@@ -1,7 +1,7 @@
 //! `Command` の分類と `DesktopApp` への適用経路を整理する。
 
 use app_core::Command;
-use plugin_api::{ServiceRequest, services::names};
+use panel_api::{ServiceRequest, services::names};
 
 use super::DesktopApp;
 

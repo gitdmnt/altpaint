@@ -2,7 +2,7 @@ use crate::config::{collect_persistent_panel_configs, restore_persistent_panel_c
 use crate::dsl_loader::collect_panel_files_recursive;
 use crate::dsl_panel::DslPanelPlugin;
 use app_core::Document;
-use plugin_api::{HostAction, PanelEvent, PanelPlugin, PanelTree, PanelView};
+use panel_api::{HostAction, PanelEvent, PanelPlugin, PanelTree, PanelView};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
