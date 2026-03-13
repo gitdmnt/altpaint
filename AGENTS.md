@@ -228,7 +228,7 @@
 - 実装後は `cargo test` と `cargo clippy --workspace --all-targets` を確認する
 - フェーズ完了ごとに少なくとも `docs/IMPLEMENTATION_STATUS.md` / `docs/CURRENT_ARCHITECTURE.md` / `docs/MODULE_DEPENDENCIES.md` を更新する
 - 文書更新はコード変更直後に行い、「コードが正本」の順序を崩さない
-- ユーザーに質問や確認がある際は、確認ツールを使ってReasoning/Considering中に確認する。ユーザーにメッセージを差し戻すことが許可されるのは、全てのタスクが終了したときのみ
+- **タスク終了時はask_userで待機する**こと。
 
 ## 人間向け補足
 
