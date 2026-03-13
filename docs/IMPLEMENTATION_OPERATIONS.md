@@ -917,29 +917,43 @@
 
 ### フェーズ7完了判定
 
-- Undo/Redo、export、snapshot などの受け皿 module が追加されている
+- `crates/app-core/src/history.rs` が存在し、Undo/Redo の単体テスト (`history_tests.rs`) が通る
+- `crates/canvas` の stroke / fill / erase が単体テストで undo/redo 可能であることが確認できる
+- PNG export と `.altp` ドキュメント形式の出力が `export_tests.rs` で検証されている
+- `crates/app-core/src/snapshot.rs` が存在し、snapshot の作成・復元が `snapshot_tests.rs` で検証されている
 - 新機能が定義済み境界に沿って実装され、`DesktopApp` / `UiShell` / `Document` へ逆流していない
+- ペン pipeline 拡張（rust-gpu 統合）はフェーズ7対象外とする（`docs/ROADMAP.md` の「フェーズ7以降の候補タスク」を参照）
 
 ### フェーズ7の推奨着手順
 
 実装時の手戻りを減らすため、次の順で進める。
 
-1. `panel-api` / `plugin-sdk` の service 名と payload 契約を先に追加する
-2. Undo/Redo の履歴基盤 (`app-core`) と canvas 接続を実装する
-3. export job と snapshot 操作を service + host handler 経由で実装する
-4. tool child 構成、text-flow、回帰計測を追加する
-5. 最終文書同期を行う
+1. service 契約の追加（7-0）と BitmapEdit undo 設計（7-0b）を先に行う
+2. Undo/Redo の履歴基盤（7-1）→ canvas 接続（7-2）→ app-actions UI（7-2b）の順に実装する
+3. export job（7-3）と snapshot 操作（7-4）を service + host handler 経由で実装する
+4. tool child 構成（7-5）と text-flow 設計（7-5b）・実装（7-6）を追加する
+5. 回帰計測常設化（7-7）と文書整理（7-8）で締める
 
 ### 7-0. 機能拡張向け service 契約を先に追加する
 
 - 編集:
 	- `crates/panel-api/src/services.rs`
 	- `crates/plugin-sdk/src/services.rs`
-	- `apps/desktop/src/app/services/mod.rs`
-	- `apps/desktop/src/app/command_router.rs`
 - 操作:
 	1. `history.undo` / `history.redo`、`snapshot.create` / `snapshot.restore`、`export.image` などの service 名を先に固定する。
-	2. 既存の `Command` 直結経路だけに依存せず、plugin から service request で到達できる入口を先に揃える。
+	2. payload の型（key 名・値型）を各 service ごとに定義する。handler 登録は各機能タスク（7-1, 7-3, 7-4）で行う。
+
+### 7-0b. BitmapEdit の undo 対応設計を行う
+
+- 編集:
+	- `crates/canvas/src/runtime.rs`
+	- `crates/app-core/src/painting.rs`
+- 新規作成:
+	- `crates/canvas/src/edit_record.rs`
+- 操作:
+	1. undo 方式を**操作列保持（replay 方式）**に決定する。適用前の bitmap を保持するのではなく、stamp / stroke / fill / erase の各操作パラメータを `BitmapEditRecord` 型として保持し、undo 時に replay で前状態を再構築する。
+	2. `BitmapEditRecord` を `crates/canvas/src/edit_record.rs` に定義する。操作種別（Stamp / Stroke / FloodFill / LassoFill / Erase）と座標・筆圧・ペンパラメータをフィールドとして持たせる。
+	3. `CanvasRuntime` が paint 操作を適用するたびに `BitmapEditRecord` を生成し、呼び出し元が受け取れるようにする（履歴スタックへの push は 7-1 / 7-2 で行う）。
 
 ### 7-1. Undo/Redo を command stack として追加する
 
@@ -947,13 +961,15 @@
 	- `crates/app-core/src/command.rs`
 	- `crates/app-core/src/document.rs`
 	- `apps/desktop/src/app/command_router.rs`
-	- `plugins/app-actions/src/lib.rs`
+	- `apps/desktop/src/app/services/mod.rs`
 - 新規作成:
 	- `crates/app-core/src/history.rs`
 	- `crates/app-core/src/tests/history_tests.rs`
 - 操作:
-	1. `Document` の変更適用結果から undo record を構築する。
+	1. `Document` の変更適用結果から undo record を構築する（Command ベース操作の逆適用）。
 	2. `history` service から到達する host 側処理で undo/redo を呼べるようにする。
+	3. undo/redo service handler を `services/mod.rs` へ登録する。
+	4. app-actions plugin の UI 更新（undo/redo ボタン）は canvas 接続（7-2）完了後に 7-2b で行う。
 
 ### 7-2. canvas runtime と Undo/Redo の接続を実装する
 
@@ -962,8 +978,17 @@
 	- `crates/canvas/src/context.rs`
 	- `crates/canvas/src/tests/*`
 - 操作:
-	1. `BitmapEdit` 適用時に逆差分または再適用情報を残す。
-	2. stroke / fill / erase のまとまり単位で undo できるようにする。
+	1. 7-0b で定義した `BitmapEditRecord` を `CanvasRuntime` が stroke / fill / erase のまとまり単位で `history` へ渡せるようにする。
+	2. undo 時は `BitmapEditRecord` の操作パラメータを再 replay して前状態を再構築する。
+
+### 7-2b. app-actions plugin に undo/redo UI を追加する
+
+- 編集:
+	- `plugins/app-actions/src/lib.rs`
+	- `plugins/app-actions/panel.altp-panel`
+- 操作:
+	1. 7-1 / 7-2 完了後に undo / redo ボタンを app-actions に追加する。
+	2. `history.undo` / `history.redo` service request を使い、history スタック状態に応じてボタンの有効/無効を切り替える。
 
 ### 7-3. 非同期 job と export 経路を追加する
 
@@ -975,9 +1000,11 @@
 - 新規作成:
 	- `crates/storage/src/export.rs`
 	- `apps/desktop/src/app/services/export.rs`
+	- `crates/storage/src/tests/export_tests.rs`
 - 操作:
 	1. save 専用だった background task を汎用 job 型へ拡張したうえで、PNG などの export job を追加する。
 	2. job-progress panel が task 状態を監視できるようにする。
+	3. PNG export と `.altp` ドキュメント形式の出力が正しく生成されることを `export_tests.rs` でテストする。
 
 ### 7-4. snapshot / branch の document 拡張を行う
 
@@ -1006,6 +1033,15 @@
 	1. tool catalog に child tool と parameter file の概念を追加する。
 	2. tool-palette と pen-settings から階層表示・選択ができるようにする。
 
+### 7-5b. テキスト流し込み機能の設計を行う
+
+- 新規作成:
+	- `.context/text-flow-design.md`（作業完了後に削除）
+- 操作:
+	1. **抽象化レイヤー**: `TextRenderer` trait を `crates/canvas/src/ops/text.rs` に定義する。インターフェースは「フォントデータ」「文字列」「描画領域」→「BitmapEdit」を返す形とし、将来的に別ライブラリへ差し替えられる境界を先に固定する。
+	2. **最初の実装**: 純 Rust で外部依存のない `fontdue` crate を用いた `FontdueTextRenderer` を `TextRenderer` の最小実装として選ぶ。複数行折り返し・IME は将来タスクとし、最初は単一行 ASCII/UTF-8 の基本描画のみを対象とする。
+	3. 設計内容を `.context/text-flow-design.md` に記録し、7-6 着手前にユーザー確認を取る。
+
 ### 7-6. テキスト流し込み機能を plugin + host service で追加する
 
 - 編集:
@@ -1016,8 +1052,9 @@
 	- `plugins/text-flow/`
 	- `crates/canvas/src/ops/text.rs`
 - 操作:
-	1. text input と canvas 配置の service API を追加する。
-	2. 文字列から bitmap 差分を生成する `canvas` op を追加する。
+	1. 7-5b の設計に基づき text input と canvas 配置の service API を追加する。
+	2. `FontdueTextRenderer` を実装し、文字列から bitmap 差分を生成する `canvas` op を追加する。
+	3. `TextRenderer` trait 経由で将来の実装差し替えが可能な構造を維持する。
 
 ### 7-7. render / canvas / panel runtime の回帰計測を常設化する
 

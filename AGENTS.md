@@ -37,20 +37,23 @@
   → [docs/RENDERING-ENGINE.md](docs/RENDERING-ENGINE.md)
 - プラグインの開発場所、Rust SDK、Wasm ビルド手順を確認したい  
   → [docs/builtin-plugins/PLUGIN_DEVELOPMENT.md](docs/builtin-plugins/PLUGIN_DEVELOPMENT.md)
-- プロダクト意図、MVP、非目標、要求背景を確認したい  
+- プロダクト意図、MVP、非目標、要求背景を確認したい
   → [docs/SKETCH.md](docs/SKETCH.md)
+- 現在の実装の事実（crate別責務、runtime flow、集中責務箇所）を確認したい
+  → [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md)
 
 ## 文書ごとの役割と優先順位
 
-| 優先   | 文書                                                           | 役割                                       | いつ読むか                       |
-| ------ | -------------------------------------------------------------- | ------------------------------------------ | -------------------------------- |
-| 最優先 | [AGENTS.md](AGENTS.md)                                         | LLM向け入口。読む順番と判断基準を示す      | 常に最初                         |
-| 最優先 | [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | 現在の実装状況、到達済み機能、直近の制約   | 常に最初期                       |
-| 高     | [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md)     | 実装ベースの依存関係、runtime flow の正本  | 多クレート修正、境界確認時       |
-| 高     | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                   | クレート責務、依存方向、設計原則、境界条件 | 設計変更、責務追加、境界横断修正 |
-| 高     | [docs/ROADMAP.md](docs/ROADMAP.md)                             | 実装順序、次フェーズ、優先実装候補         | 何を先に作るべきか判断するとき   |
-| 中     | [docs/RENDERING-ENGINE.md](docs/RENDERING-ENGINE.md)           | render 系の詳細設計                        | キャンバス・描画・dirty 更新関連 |
-| 中     | [docs/SKETCH.md](docs/SKETCH.md)                               | 要件、MVP、思想、背景                      | 要件確認、仕様意図の確認         |
+| 優先   | 文書                                                                   | 役割                                       | いつ読むか                       |
+| ------ | ---------------------------------------------------------------------- | ------------------------------------------ | -------------------------------- |
+| 最優先 | [AGENTS.md](AGENTS.md)                                                 | LLM向け入口。読む順番と判断基準を示す      | 常に最初                         |
+| 最優先 | [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)         | 現在の実装状況、到達済み機能、直近の制約   | 常に最初期                       |
+| 高     | [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md)             | 実装ベースの依存関係、runtime flow の正本  | 多クレート修正、境界確認時       |
+| 高     | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                           | クレート責務、依存方向、設計原則、境界条件 | 設計変更、責務追加、境界横断修正 |
+| 高     | [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md)           | 実装の事実、集中責務、runtime flow の現況  | 現状把握・実装詳細確認時         |
+| 高     | [docs/ROADMAP.md](docs/ROADMAP.md)                                     | 実装順序、次フェーズ、優先実装候補         | 何を先に作るべきか判断するとき   |
+| 中     | [docs/RENDERING-ENGINE.md](docs/RENDERING-ENGINE.md)                   | render 系の詳細設計                        | キャンバス・描画・dirty 更新関連 |
+| 中     | [docs/SKETCH.md](docs/SKETCH.md)                                       | 要件、MVP、思想、背景                      | 要件確認、仕様意図の確認         |
 
 ## 正本の優先順位
 
@@ -179,13 +182,7 @@
 
 ## 新規ファイル配置規約
 
-- `runtime/`: 外部 runtime や stateful bridge を置く
-- `presentation/`: layout、hit-test、focus、text input、surface 生成を置く
-- `services/`: project / workspace / export / catalog など I/O orchestration を置く
-- `ops/`: canvas や render の高頻度オペレーションを置く
-- `tests/`: crate / module 単位の境界テストを置く
-- `lib.rs`: module 宣言、re-export、薄い公開 API だけに寄せる
-- `lib.rs` に巨大実装を戻さない
+[docs/ARCHITECTURE.md の「新規ファイル配置規約」節](docs/ARCHITECTURE.md#新規ファイル配置規約) を参照すること。
 
 
 ## 開発ワークフロー

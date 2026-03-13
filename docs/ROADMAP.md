@@ -2,7 +2,7 @@
 
 ## この文書の役割
 
-この文書は、2026-03-11 時点の実装到達点と [docs/tmp/tasks-2026.md](docs/tmp/tasks-2026.md) の整理結果を前提に、`altpaint` を**plugin-first / host-owned-performance** 方針へ再編するための新しいロードマップである。
+この文書は、2026-03-11 時点の実装到達点と tasks-2026 の整理結果を前提に、`altpaint` を**plugin-first / host-owned-performance** 方針へ再編するための新しいロードマップである。
 
 旧ロードマップのように「最初から何もない前提」で積み上げるのではなく、**すでにある実装をどう整理し直すか**を中心に定める。
 
@@ -58,7 +58,7 @@
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) の目標構造を正本化
 - [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md) の現況整理維持
-- [docs/tmp/tasks-2026-03-11.md](docs/tmp/tasks-2026-03-11.md) の追従更新
+- [docs/IMPLEMENTATION_OPERATIONS.md](docs/IMPLEMENTATION_OPERATIONS.md) の追従更新
 - crate / module の命名方針整理
 - `crates/canvas` / `crates/panel-runtime` / `plugin-sdk` 系の命名を先に固定
 
@@ -277,7 +277,7 @@
 - 現況は `IMPLEMENTATION_STATUS.md`
 - 理想は `ARCHITECTURE.md`
 - 実コードの構造は `CURRENT_ARCHITECTURE.md`
-- 次の作業候補は `docs/tmp/tasks-2026-03-11.md`
+- 次の作業候補は [docs/IMPLEMENTATION_OPERATIONS.md](docs/IMPLEMENTATION_OPERATIONS.md)
 
 ## 当面の優先順位
 
@@ -302,3 +302,42 @@
 である。
 
 この再編が終わると、以後の機能追加は今よりかなり自然になる。
+
+---
+
+## フェーズ7以降の候補タスク
+
+### 描画エンジン: 回転の完全無段階化
+
+- **症状**: 非90度系の回転でキャンバス内容が歪んで見える
+- **原因候補**: `CanvasScene` / texture quad / software blit が任意角回転を前提にしていない
+- **必要作業**:
+  - `render::CanvasScene` の回転モデルを quarter turn 依存から外す
+  - dirty rect / UV / hit test / brush preview / lasso overlay の変換を任意角対応に揃える
+  - WGPU 表示経路と software 合成経路の両方で同じ回転モデルを使う
+- **主な変更箇所**: `crates/render/`, `apps/desktop/src/frame/geometry.rs`, `apps/desktop/src/wgpu_canvas.rs`
+
+### SDK からの render pass 割り込み（filter layer / post effect）
+
+- plugin SDK から render pass に割り込み、filter layer や post effect を差し込める拡張ポイント
+- renderer / host ABI / 実行モデルの見直しが必要（単純な SDK API 追加では完結しない）
+- **設計作業**:
+  - pre-composite / per-layer / post-composite の割り込みポイント定義
+  - Wasm effect の安全な呼び出し ABI（timeout / fault isolation / fallback）
+  - render pass graph の filter layer 対応と dirty rect キャッシュの effect-aware 再設計
+  - filter layer の永続化形式（`app-core` / `storage`）
+- **主な変更箇所**: `crates/panel-sdk/`, `crates/plugin-host/`, `crates/render/`, `crates/storage/`
+
+### パネル描画パフォーマンス改善
+
+- **観測している問題**: パネル再構築コストが高い、スクロール時に CPU コピーが発生、文字描画がボトルネック
+- **改善候補**:
+  - 可視領域単位のパネルタイル化
+  - テキスト計測結果・ノードレイアウト結果のキャッシュ
+  - スクロール時の差分 blit / オフセット再利用
+  - パネル dirty rect の導入
+  - 頻繁に変わらないパネルの静的サーフェス化
+
+### その他
+
+- 大きなキャンバスで速く線を引くと線が途切れ途切れになる問題の調査・修正

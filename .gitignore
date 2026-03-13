@@ -10,6 +10,9 @@ plugins/**/*.wasm
 *.DS_Store
 *.altp.json
 altpaint-session.json
+# Runtime user config (auto-generated on launch)
+canvas-templates.json
+workspace-presets.json
 logs/
 pens/abr/*.abr
 pens/sut/*.sut
