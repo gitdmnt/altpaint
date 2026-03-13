@@ -4,7 +4,8 @@ mod project_io;
 mod tool_catalog;
 mod workspace_io;
 
-use app_core::{Command, Document};
+use app_core::{CanvasDirtyRect, Command, Document, HistoryEntry};
+use canvas::CanvasRuntime;
 use desktop_support::DEFAULT_PROJECT_PATH;
 use panel_api::{ServiceRequest, services::names};
 use workspace_persistence::WorkspaceUiState;
@@ -37,7 +38,113 @@ impl DesktopApp {
         if let Some(changed) = self.handle_panel_navigation_service_request(&request) {
             return changed;
         }
+        if let Some(changed) = self.handle_history_service_request(&request) {
+            return changed;
+        }
         false
+    }
+
+    /// history service request を処理する。
+    fn handle_history_service_request(&mut self, request: &ServiceRequest) -> Option<bool> {
+        let changed = match request.name.as_str() {
+            names::HISTORY_UNDO => self.execute_undo(),
+            names::HISTORY_REDO => self.execute_redo(),
+            _ => return None,
+        };
+        Some(changed)
+    }
+
+    /// undo を実行する。
+    ///
+    /// 最後の描画操作を取り消し、それ以前の操作を replay してレイヤーを再構築する。
+    pub(crate) fn execute_undo(&mut self) -> bool {
+        let Some(HistoryEntry::BitmapOp(undone_record)) = self.history.undo() else {
+            return false;
+        };
+        let Some((page_idx, panel_idx)) = self
+            .document
+            .find_panel_location(undone_record.panel_id)
+        else {
+            return false;
+        };
+        // 対象レイヤーを透明にリセットする
+        self.document
+            .reset_panel_layer_to_transparent(undone_record.panel_id, undone_record.layer_index);
+
+        // past に残る全 BitmapOp を順番に replay する
+        let past_records: Vec<_> = self
+            .history
+            .past_entries()
+            .iter()
+            .filter_map(|entry| match entry {
+                HistoryEntry::BitmapOp(r)
+                    if r.panel_id == undone_record.panel_id
+                        && r.layer_index == undone_record.layer_index =>
+                {
+                    Some(r.clone())
+                }
+                _ => None,
+            })
+            .collect();
+
+        let runtime = CanvasRuntime::default();
+        for record in &past_records {
+            let edits =
+                runtime.replay_paint_record(&self.document, page_idx, panel_idx, record);
+            self.document.apply_bitmap_edits_to_panel_layer(
+                record.panel_id,
+                record.layer_index,
+                &edits,
+            );
+        }
+
+        // 全面を dirty にして再描画させる
+        let Some(panel) = self
+            .document
+            .work
+            .pages
+            .get(page_idx)
+            .and_then(|p| p.panels.get(panel_idx))
+        else {
+            return true;
+        };
+        let dirty = CanvasDirtyRect {
+            x: 0,
+            y: 0,
+            width: panel.bitmap.width,
+            height: panel.bitmap.height,
+        };
+        self.refresh_canvas_frame_region(dirty);
+        self.append_canvas_dirty_rect(dirty);
+        true
+    }
+
+    /// redo を実行する。
+    ///
+    /// undo で取り消した操作を再適用する。
+    pub(crate) fn execute_redo(&mut self) -> bool {
+        let Some(HistoryEntry::BitmapOp(redo_record)) = self.history.redo() else {
+            return false;
+        };
+        let Some((page_idx, panel_idx)) = self
+            .document
+            .find_panel_location(redo_record.panel_id)
+        else {
+            return false;
+        };
+
+        let runtime = CanvasRuntime::default();
+        let edits =
+            runtime.replay_paint_record(&self.document, page_idx, panel_idx, &redo_record);
+        if let Some(dirty) = self.document.apply_bitmap_edits_to_panel_layer(
+            redo_record.panel_id,
+            redo_record.layer_index,
+            &edits,
+        ) {
+            self.refresh_canvas_frame_region(dirty);
+            self.append_canvas_dirty_rect(dirty);
+        }
+        true
     }
 
     /// 入力や種別に応じて処理を振り分ける。

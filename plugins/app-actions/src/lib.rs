@@ -193,6 +193,22 @@ fn load_project() {
     emit_service(&services::project_io::load_dialog());
 }
 
+/// 直前の描画操作を元に戻す要求を発行する。
+///
+/// 内部でサービス要求を発行します。
+#[plugin_sdk::panel_handler]
+fn undo() {
+    emit_service(&services::history::undo());
+}
+
+/// 元に戻した操作をやり直す要求を発行する。
+///
+/// 内部でサービス要求を発行します。
+#[plugin_sdk::panel_handler]
+fn redo() {
+    emit_service(&services::history::redo());
+}
+
 /// キーボード入力やショートカットに応じて状態と処理を切り替える。
 #[plugin_sdk::panel_handler]
 fn keyboard() {
@@ -294,6 +310,15 @@ mod tests {
         save_project_as();
         load_project();
         keyboard();
+        undo();
+        redo();
+    }
+
+    /// undo/redo service descriptor names は期待どおりに動作することを検証する。
+    #[test]
+    fn undo_redo_service_names_are_correct() {
+        assert_eq!(services::history::undo().name, "history.undo");
+        assert_eq!(services::history::redo().name, "history.redo");
     }
 
     /// ショートカット match is case insensitive が期待どおりに動作することを検証する。

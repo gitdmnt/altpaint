@@ -1442,7 +1442,9 @@ impl Document {
             | Command::ExportWorkspacePreset { .. }
             | Command::ExportWorkspacePresetToPath { .. }
             | Command::ImportPenPresets
-            | Command::ImportPenPresetsFromPath { .. } => None,
+            | Command::ImportPenPresetsFromPath { .. }
+            | Command::Undo
+            | Command::Redo => None,
         }
     }
 }

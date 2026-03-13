@@ -162,8 +162,8 @@ impl PanelPlugin for DslPanelPlugin {
     }
 
     /// 更新 に必要な処理を行う。
-    fn update(&mut self, document: &Document) {
-        self.host_snapshot = build_host_snapshot(document);
+    fn update(&mut self, document: &Document, can_undo: bool, can_redo: bool) {
+        self.host_snapshot = build_host_snapshot(document, can_undo, can_redo);
         self.sync_host_state();
     }
 
@@ -930,7 +930,9 @@ fn service_request_from_descriptor(descriptor: &CommandDescriptor) -> Option<Ser
         | names::PANEL_NAV_SELECT
         | names::PANEL_NAV_SELECT_NEXT
         | names::PANEL_NAV_SELECT_PREVIOUS
-        | names::PANEL_NAV_FOCUS_ACTIVE => {
+        | names::PANEL_NAV_FOCUS_ACTIVE
+        | names::HISTORY_UNDO
+        | names::HISTORY_REDO => {
             let mut request = ServiceRequest::new(descriptor.name.clone());
             request.payload = descriptor.payload.clone();
             request

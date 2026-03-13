@@ -64,6 +64,8 @@ impl DesktopApp {
             Command::ImportPenPresetsFromPath { path } => self.execute_service_request(
                 ServiceRequest::new(names::TOOL_CATALOG_IMPORT_PEN_PATH).with_value("path", path),
             ),
+            Command::Undo => self.execute_undo(),
+            Command::Redo => self.execute_redo(),
             other => self.execute_document_command(other),
         }
     }
@@ -167,7 +169,9 @@ impl DesktopApp {
             | Command::ExportWorkspacePresetToPath { .. }
             | Command::ReloadPenPresets
             | Command::ImportPenPresets
-            | Command::ImportPenPresetsFromPath { .. } => false,
+            | Command::ImportPenPresetsFromPath { .. }
+            | Command::Undo
+            | Command::Redo => false,
         }
     }
 }

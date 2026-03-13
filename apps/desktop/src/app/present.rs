@@ -39,8 +39,12 @@ impl DesktopApp {
             };
             profiler.record_value("ui_update_panels", synced_panels as f64);
             profiler.measure("ui_update", || {
+                let can_undo = self.history.can_undo();
+                let can_redo = self.history.can_redo();
                 if self.ui_sync_panel_ids.is_empty() {
-                    let changed = self.panel_runtime.sync_document(&self.document);
+                    let changed =
+                        self.panel_runtime
+                            .sync_document(&self.document, can_undo, can_redo);
                     self.panel_presentation
                         .reconcile_runtime_panels(&self.panel_runtime);
                     if !changed.is_empty() {
@@ -48,9 +52,12 @@ impl DesktopApp {
                         self.mark_panel_surface_dirty();
                     }
                 } else {
-                    let changed = self
-                        .panel_runtime
-                        .sync_document_panels(&self.document, &self.ui_sync_panel_ids);
+                    let changed = self.panel_runtime.sync_document_panels(
+                        &self.document,
+                        &self.ui_sync_panel_ids,
+                        can_undo,
+                        can_redo,
+                    );
                     self.panel_presentation
                         .reconcile_runtime_panels(&self.panel_runtime);
                     if !changed.is_empty() {

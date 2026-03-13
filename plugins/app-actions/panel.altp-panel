@@ -30,6 +30,12 @@ state {
 
 view {
   <column gap=8 padding=8>
+    <section title="編集">
+      <row>
+        <button id="app.undo" on:click="undo">↩ 元に戻す</button>
+        <button id="app.redo" on:click="redo">↪ やり直し</button>
+      </row>
+    </section>
     <section title="プロジェクト">
       <button id="app.new" on:click="show_new_form">＋ 新規</button>
       <button id="app.save" on:click="save_project">💾 上書き保存</button>

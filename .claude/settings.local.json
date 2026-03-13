@@ -4,7 +4,12 @@
       "Bash(wc -l /d/naoto/programming/altpaint/crates/app-core/src/*.rs)",
       "Bash(wc -l /d/naoto/programming/altpaint/crates/canvas/src/*.rs)",
       "Bash(wc -l /d/naoto/programming/altpaint/crates/render/src/*.rs)",
-      "Bash(wc -l /d/naoto/programming/altpaint/crates/ui-shell/src/*.rs)"
+      "Bash(wc -l /d/naoto/programming/altpaint/crates/ui-shell/src/*.rs)",
+      "Bash(grep -r \"host_snapshot\\\\|HostSnapshot\" d:/naoto/programming/altpaint/crates --include=*.rs -l)",
+      "Bash(cargo build:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(echo \"EXIT: $?\")"
     ]
   }
 }

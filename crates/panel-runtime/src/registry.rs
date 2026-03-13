@@ -95,8 +95,13 @@ impl PanelRuntime {
     }
 
     /// ドキュメント を現在の状態へ同期する。
-    pub fn sync_document(&mut self, document: &Document) -> BTreeSet<String> {
-        self.sync_document_subset(document, None)
+    pub fn sync_document(
+        &mut self,
+        document: &Document,
+        can_undo: bool,
+        can_redo: bool,
+    ) -> BTreeSet<String> {
+        self.sync_document_subset(document, None, can_undo, can_redo)
     }
 
     /// ドキュメント panels を現在の状態へ同期する。
@@ -104,11 +109,13 @@ impl PanelRuntime {
         &mut self,
         document: &Document,
         panel_ids: &BTreeSet<String>,
+        can_undo: bool,
+        can_redo: bool,
     ) -> BTreeSet<String> {
         if panel_ids.is_empty() {
-            return self.sync_document(document);
+            return self.sync_document(document, can_undo, can_redo);
         }
-        self.sync_document_subset(document, Some(panel_ids))
+        self.sync_document_subset(document, Some(panel_ids), can_undo, can_redo)
     }
 
     /// 現在の パネル 件数 を返す。
@@ -239,6 +246,8 @@ impl PanelRuntime {
         &mut self,
         document: &Document,
         panel_ids: Option<&BTreeSet<String>>,
+        can_undo: bool,
+        can_redo: bool,
     ) -> BTreeSet<String> {
         let mut changed_panels = BTreeSet::new();
         for panel in &mut self.panels {
@@ -250,7 +259,7 @@ impl PanelRuntime {
                 .get(panel.id())
                 .cloned()
                 .unwrap_or_else(|| panel.panel_tree());
-            panel.update(document);
+            panel.update(document, can_undo, can_redo);
             let next_tree = panel.panel_tree();
             self.panel_tree_cache
                 .insert(panel.id().to_string(), next_tree.clone());

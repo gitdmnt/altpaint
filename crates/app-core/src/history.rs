@@ -102,12 +102,12 @@ mod tests {
     use super::*;
     use crate::{BitmapEditOperation, BitmapEditRecord, ColorRgba8, PanelId, PanelLocalPoint};
 
-    fn make_record(x: f32) -> BitmapEditRecord {
+    fn make_record(x: usize) -> BitmapEditRecord {
         BitmapEditRecord {
             panel_id: PanelId(1),
             layer_index: 0,
             operation: BitmapEditOperation::Stamp {
-                at: PanelLocalPoint { x, y: 0.0 },
+                at: PanelLocalPoint { x, y: 0 },
                 pressure: 1.0,
             },
             pen_snapshot: crate::PenPreset::default(),
@@ -125,7 +125,7 @@ mod tests {
     #[test]
     fn push_and_undo_round_trip() {
         let mut history = CommandHistory::new();
-        history.push(HistoryEntry::BitmapOp(make_record(1.0)));
+        history.push(HistoryEntry::BitmapOp(make_record(1)));
         assert!(history.can_undo());
         let entry = history.undo();
         assert!(entry.is_some());
@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn undo_then_redo() {
         let mut history = CommandHistory::new();
-        history.push(HistoryEntry::BitmapOp(make_record(1.0)));
+        history.push(HistoryEntry::BitmapOp(make_record(1)));
         history.undo();
         assert!(history.can_redo());
         history.redo();
@@ -148,10 +148,10 @@ mod tests {
     #[test]
     fn push_clears_future() {
         let mut history = CommandHistory::new();
-        history.push(HistoryEntry::BitmapOp(make_record(1.0)));
+        history.push(HistoryEntry::BitmapOp(make_record(1)));
         history.undo();
         assert!(history.can_redo());
-        history.push(HistoryEntry::BitmapOp(make_record(2.0)));
+        history.push(HistoryEntry::BitmapOp(make_record(2)));
         assert!(!history.can_redo());
     }
 
@@ -159,14 +159,14 @@ mod tests {
     #[test]
     fn capacity_evicts_oldest() {
         let mut history = CommandHistory::with_capacity(2);
-        history.push(HistoryEntry::BitmapOp(make_record(1.0)));
-        history.push(HistoryEntry::BitmapOp(make_record(2.0)));
-        history.push(HistoryEntry::BitmapOp(make_record(3.0)));
+        history.push(HistoryEntry::BitmapOp(make_record(1)));
+        history.push(HistoryEntry::BitmapOp(make_record(2)));
+        history.push(HistoryEntry::BitmapOp(make_record(3)));
         assert_eq!(history.past.len(), 2);
         // 最新の 2 つが残っていることを確認する
         if let HistoryEntry::BitmapOp(r) = &history.past[0] {
             if let BitmapEditOperation::Stamp { at, .. } = r.operation {
-                assert!((at.x - 2.0).abs() < f32::EPSILON);
+                assert_eq!(at.x, 2);
             }
         }
     }
@@ -175,7 +175,7 @@ mod tests {
     #[test]
     fn clear_empties_stacks() {
         let mut history = CommandHistory::new();
-        history.push(HistoryEntry::BitmapOp(make_record(1.0)));
+        history.push(HistoryEntry::BitmapOp(make_record(1)));
         history.clear();
         assert!(!history.can_undo());
         assert!(!history.can_redo());

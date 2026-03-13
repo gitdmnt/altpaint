@@ -33,6 +33,9 @@
 - layer bitmap の chunk 保存と current panel snapshot 永続化
 - session save/load
 - profiler と実行時間計測
+- **Undo/Redo 基盤 (フェーズ7-0〜7-2b)**: replay 方式 `CommandHistory`・`BitmapEditRecord`・
+  `CanvasRuntime::replay_paint_record`・`execute_undo()`/`execute_redo()` サービスハンドラ・
+  host snapshot への `can_undo`/`can_redo` 反映・app-actions パネルの undo/redo ボタン
 
 ## 現在の workspace 構成
 
