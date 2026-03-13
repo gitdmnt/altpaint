@@ -25,8 +25,8 @@ DOC_RE = re.compile(r"^[ \t]*///")
 TEST_ATTR_RE = re.compile(r"^[ \t]*#\[(?:\w+::)?test\b")
 HOST_CALL_RE = re.compile(r'host_(string|i32|bool|f32|json)\("([^"]+)"\)')
 STATE_CALL_RE = re.compile(r'(set_state_(?:string|bool|i32|f32)|toggle_state)\(')
-EMIT_SERVICE_RE = re.compile(r'emit_service\(&([^\)]+)\)')
-EMIT_COMMAND_RE = re.compile(r'emit_command\(&([^\)]+)\)')
+EMIT_SERVICE_RE = re.compile(r'emit_service\(&([^\)\n]+)\)')
+EMIT_COMMAND_RE = re.compile(r'emit_command\(&([^\)\n]+)\)')
 FIELD_RETURN_RE = re.compile(r'^\s*(?:self\.|Self::)?([A-Za-z_][A-Za-z0-9_\.]+)\s*$')
 CALL_RE = re.compile(r'([A-Za-z_][A-Za-z0-9_:]*)\(')
 
@@ -344,7 +344,7 @@ def humanize_name(name: str) -> str:
 
 
 def normalize_symbol(symbol: str) -> str:
-    symbol = symbol.strip().lstrip("&")
+    symbol = re.sub(r"\s+", " ", symbol).strip().lstrip("&")
     symbol = symbol.split("(", 1)[0]
     symbol = symbol.replace("services::", "").replace("commands::", "")
     symbol = symbol.replace("::", " ")

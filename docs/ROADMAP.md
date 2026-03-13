@@ -238,10 +238,23 @@
 - 高度な tool plugin / child tool 構成
 - ペン pipeline 拡張: 将来的には rust-gpu を使ってパイプラインを生成する脱出ハッチを設け、物理シミュレーションのような描画も可能とする
 
+### 推奨着手順
+
+1. `panel-api` / `plugin-sdk` の service 名と payload 契約を先に固定する
+2. `app-core` の履歴基盤と `canvas` の undo 接続を実装する
+3. export job と snapshot 操作を service + host handler 経由で実装する
+4. tool child 構成 / text-flow / 回帰計測を追加する
+5. 文書同期を行う
+
 ### 完了条件
 
 - `crates/app-core/src/history.rs`、`crates/canvas` の undo 対応、export service、snapshot 拡張など主要機能の受け皿 module が実在する
 - 新機能が `apps/desktop` / `ui-shell` / `Document` へ逆流せず、決めた境界に沿って追加されている
+
+補足:
+
+- フェーズ7の新規操作入口は `panel-api::ServiceRequest` と `plugin-sdk::services::*` を優先し、`Command` 直結のみへ戻さない。
+- 回帰計測ログ (`logs/`) は編集対象ではなく生成物として扱い、`scripts/profile-*.ps1` から再生成する。
 
 ---
 

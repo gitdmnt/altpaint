@@ -133,9 +133,7 @@ fn set_pen_size_text() {
     emit_command(&commands::tool::set_size(size));
 }
 
-/// Tool set_pressure_enabled(
-        !host tool pen_pressure_enabled( に対応するコマンドを発行する。
-/// ツール 設定 pressure enabled に対応するコマンドを発行する。
+/// Pressure の有効状態を切り替える。
 ///
 /// 内部でコマンドを発行します。
 #[plugin_sdk::panel_handler]

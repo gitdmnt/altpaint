@@ -101,10 +101,7 @@ fn set_zoom(value: i32) {
     emit_service(&services::view::set_zoom(zoom_percent as f32 / 100.0));
 }
 
-/// View set_pan(
-        pan_x as f32,
-        host view pan_y( に対応するサービス要求を発行する。
-/// ビュー 設定 pan に対応するサービス要求を発行する。
+/// Pan x を更新し、関連するコマンドやサービス要求も発行する。
 ///
 /// 内部でサービス要求を発行します。
 #[plugin_sdk::panel_handler]
@@ -117,9 +114,7 @@ fn set_pan_x(value: i32) {
     ));
 }
 
-/// View set_pan(
-        host view pan_x( に対応するサービス要求を発行する。
-/// ビュー 設定 pan に対応するサービス要求を発行する。
+/// Pan y を更新し、関連するコマンドやサービス要求も発行する。
 ///
 /// 内部でサービス要求を発行します。
 #[plugin_sdk::panel_handler]

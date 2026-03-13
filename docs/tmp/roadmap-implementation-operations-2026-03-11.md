@@ -920,6 +920,27 @@
 - Undo/Redo、export、snapshot などの受け皿 module が追加されている
 - 新機能が定義済み境界に沿って実装され、`DesktopApp` / `UiShell` / `Document` へ逆流していない
 
+### フェーズ7の推奨着手順
+
+実装時の手戻りを減らすため、次の順で進める。
+
+1. `panel-api` / `plugin-sdk` の service 名と payload 契約を先に追加する
+2. Undo/Redo の履歴基盤 (`app-core`) と canvas 接続を実装する
+3. export job と snapshot 操作を service + host handler 経由で実装する
+4. tool child 構成、text-flow、回帰計測を追加する
+5. 最終文書同期を行う
+
+### 7-0. 機能拡張向け service 契約を先に追加する
+
+- 編集:
+	- `crates/panel-api/src/services.rs`
+	- `crates/plugin-sdk/src/services.rs`
+	- `apps/desktop/src/app/services/mod.rs`
+	- `apps/desktop/src/app/command_router.rs`
+- 操作:
+	1. `history.undo` / `history.redo`、`snapshot.create` / `snapshot.restore`、`export.image` などの service 名を先に固定する。
+	2. 既存の `Command` 直結経路だけに依存せず、plugin から service request で到達できる入口を先に揃える。
+
 ### 7-1. Undo/Redo を command stack として追加する
 
 - 編集:
@@ -932,7 +953,7 @@
 	- `crates/app-core/src/tests/history_tests.rs`
 - 操作:
 	1. `Document` の変更適用結果から undo record を構築する。
-	2. UI は plugin から undo/redo を呼べるようにする。
+	2. `history` service から到達する host 側処理で undo/redo を呼べるようにする。
 
 ### 7-2. canvas runtime と Undo/Redo の接続を実装する
 
@@ -948,13 +969,14 @@
 
 - 編集:
 	- `apps/desktop/src/app/background_tasks.rs`
-	- `apps/desktop/src/app/services/project_io.rs`
+	- `apps/desktop/src/app/services/mod.rs`
+	- `plugins/app-actions/src/lib.rs`
 	- `plugins/job-progress/src/lib.rs`
 - 新規作成:
 	- `crates/storage/src/export.rs`
 	- `apps/desktop/src/app/services/export.rs`
 - 操作:
-	1. PNG などの export job を background task 化する。
+	1. save 専用だった background task を汎用 job 型へ拡張したうえで、PNG などの export job を追加する。
 	2. job-progress panel が task 状態を監視できるようにする。
 
 ### 7-4. snapshot / branch の document 拡張を行う
@@ -968,7 +990,7 @@
 	- `crates/app-core/src/tests/snapshot_tests.rs`
 - 操作:
 	1. snapshot メタデータと参照関係を `app-core` に追加する。
-	2. snapshot-panel plugin から作成・復元・一覧表示できるようにする。
+	2. `panel-api` / `plugin-sdk` の snapshot service を介して snapshot-panel plugin から作成・復元・一覧表示できるようにする。
 
 ### 7-5. 高度な tool plugin / child tool 構成を導入する
 
@@ -987,8 +1009,8 @@
 ### 7-6. テキスト流し込み機能を plugin + host service で追加する
 
 - 編集:
-	- `crates/plugin-api/src/services.rs`
-	- `crates/panel-sdk/src/services.rs`
+	- `crates/panel-api/src/services.rs`
+	- `crates/plugin-sdk/src/services.rs`
 	- `crates/canvas/src/runtime.rs`
 - 新規作成:
 	- `plugins/text-flow/`
@@ -1002,13 +1024,13 @@
 - 編集:
 	- `crates/desktop-support/src/profiler/*`
 	- `apps/desktop/src/runtime.rs`
-	- `logs/*` の生成フローを扱う scripts
+	- `scripts/*` のうち profiling 関連フロー
 - 新規作成:
 	- `scripts/profile-render.ps1`
 	- `scripts/profile-canvas.ps1`
 	- `scripts/profile-panels.ps1`
 - 操作:
-	1. 主要経路ごとの計測スクリプトを追加する。
+	1. 主要経路ごとの計測スクリプトを追加し、出力先 (`logs/`) は生成物として扱う。
 	2. フェーズ5以降の性能回帰を継続監視できるようにする。
 
 ### 7-8. 最終フェーズの文書整理
