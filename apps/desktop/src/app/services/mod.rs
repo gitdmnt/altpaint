@@ -12,6 +12,7 @@ use workspace_persistence::WorkspaceUiState;
 use super::DesktopApp;
 
 impl DesktopApp {
+    /// 取得 ワークスペース ui 状態 を計算して返す。
     pub(super) fn capture_workspace_ui_state(&self) -> WorkspaceUiState {
         WorkspaceUiState::new(
             self.panel_presentation.workspace_layout(),
@@ -19,6 +20,7 @@ impl DesktopApp {
         )
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
     pub(crate) fn execute_service_request(&mut self, request: ServiceRequest) -> bool {
         if let Some(changed) = self.handle_project_service_request(&request) {
             return changed;
@@ -38,6 +40,9 @@ impl DesktopApp {
         false
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn handle_view_service_request(&mut self, request: &ServiceRequest) -> Option<bool> {
         let changed = match request.name.as_str() {
             names::VIEW_SET_ZOOM => self.execute_document_command(Command::SetViewZoom {
@@ -60,6 +65,7 @@ impl DesktopApp {
         Some(changed)
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
     fn handle_panel_navigation_service_request(
         &mut self,
         request: &ServiceRequest,
@@ -82,7 +88,7 @@ impl DesktopApp {
         Some(changed)
     }
 
-    /// 既定ツールディレクトリからツールカタログを再読込する。
+    /// 再読込 ツール カタログ into ドキュメント を計算して返す。
     pub(crate) fn reload_tool_catalog_into_document(document: &mut Document) -> bool {
         let (tools, diagnostics) =
             storage::load_tool_directory(desktop_support::default_tool_dir());
@@ -96,7 +102,7 @@ impl DesktopApp {
         true
     }
 
-    /// フッターへ表示する現在状態の概要文字列を生成する。
+    /// ステータス テキスト 用の表示文字列を組み立てる。
     pub(crate) fn status_text(&self) -> String {
         let file_name = self
             .io_state

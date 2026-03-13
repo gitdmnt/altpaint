@@ -1,11 +1,10 @@
-use app_core::{
-    BitmapComposite, BitmapCompositor, CanvasBitmap, PaintPluginContext, ToolKind,
-};
+use app_core::{BitmapComposite, BitmapCompositor, CanvasBitmap, PaintPluginContext, ToolKind};
 
 #[derive(Clone, Copy)]
 pub(crate) struct EraseComposite;
 
 impl BitmapCompositor for EraseComposite {
+    /// ピクセル走査を行い、合成 用のビットマップ結果を生成する。
     fn compose(&self, bitmap_a: &CanvasBitmap, bitmap_b: &CanvasBitmap) -> CanvasBitmap {
         let width = bitmap_a.width.min(bitmap_b.width);
         let height = bitmap_a.height.min(bitmap_b.height);
@@ -39,10 +38,12 @@ impl BitmapCompositor for EraseComposite {
     }
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 pub(crate) fn fill_color(context: &PaintPluginContext<'_>) -> [u8; 4] {
     stamp_color(context)
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 pub(crate) fn stamp_color(context: &PaintPluginContext<'_>) -> [u8; 4] {
     match context.tool {
         ToolKind::Eraser if context.active_layer_is_background => [255, 255, 255, 255],
@@ -51,6 +52,7 @@ pub(crate) fn stamp_color(context: &PaintPluginContext<'_>) -> [u8; 4] {
     }
 }
 
+/// 編集 composite を計算して返す。
 pub(crate) fn edit_composite(context: &PaintPluginContext<'_>) -> BitmapComposite {
     match context.tool {
         ToolKind::Pen => BitmapComposite::source_over(),
@@ -62,6 +64,7 @@ pub(crate) fn edit_composite(context: &PaintPluginContext<'_>) -> BitmapComposit
     }
 }
 
+/// ピクセル走査を行い、ブレンド スタンプ 用のビットマップ結果を生成する。
 pub(crate) fn blend_stamp(
     target: &mut CanvasBitmap,
     stamp: &CanvasBitmap,
@@ -102,6 +105,7 @@ pub(crate) fn blend_stamp(
     }
 }
 
+/// ソース over ピクセル に対応するビットマップ処理を行う。
 pub(crate) fn source_over_pixel(previous: [u8; 4], incoming: [u8; 4]) -> [u8; 4] {
     let src_a = incoming[3] as f32 / 255.0;
     if src_a <= 0.0 {

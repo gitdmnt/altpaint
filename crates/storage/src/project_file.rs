@@ -17,6 +17,7 @@ use crate::project_sqlite::{
     load_project_index_from_sqlite_path, save_project_to_sqlite_path,
 };
 
+/// ワークスペース レイアウト is empty を計算して返す。
 fn workspace_layout_is_empty(layout: &WorkspaceLayout) -> bool {
     layout.panels.is_empty()
 }
@@ -34,10 +35,12 @@ pub struct LoadedProject {
 }
 
 impl LoadedProject {
+    /// ワークスペース レイアウト を計算して返す。
     pub fn workspace_layout(&self) -> &WorkspaceLayout {
         &self.ui_state.workspace_layout
     }
 
+    /// プラグイン configs を計算して返す。
     pub fn plugin_configs(&self) -> &PluginConfigs {
         &self.ui_state.plugin_configs
     }
@@ -56,6 +59,7 @@ pub struct AltpaintProjectFile {
 }
 
 impl AltpaintProjectFile {
+    /// 既定値を使って新しいインスタンスを生成する。
     pub fn new(
         document: &Document,
         workspace_layout: &WorkspaceLayout,
@@ -101,6 +105,9 @@ pub enum StorageError {
     Io(#[from] std::io::Error),
 }
 
+/// 現在の値を プロジェクト へ変換する。
+///
+/// 失敗時はエラーを返します。
 #[cfg(test)]
 fn serialize_project(project: &AltpaintProjectFile) -> Result<Vec<u8>, StorageError> {
     let encoded = rmp_serde::to_vec(project).map_err(StorageError::Encode)?;
@@ -112,6 +119,9 @@ fn serialize_project(project: &AltpaintProjectFile) -> Result<Vec<u8>, StorageEr
     Ok(bytes)
 }
 
+/// 入力を解析して プロジェクト に変換し、失敗時はエラーを返す。
+///
+/// 失敗時はエラーを返します。
 fn deserialize_project(bytes: &[u8]) -> Result<AltpaintProjectFile, StorageError> {
     if let Some(payload) = bytes.strip_prefix(BINARY_MAGIC) {
         let decoded_bytes = if payload.starts_with(&ZSTD_MAGIC) {
@@ -125,6 +135,7 @@ fn deserialize_project(bytes: &[u8]) -> Result<AltpaintProjectFile, StorageError
     }
 }
 
+/// ドキュメント to パス を保存先へ書き出す。
 pub fn save_document_to_path(
     path: impl AsRef<Path>,
     document: &Document,
@@ -137,6 +148,7 @@ pub fn save_document_to_path(
     )
 }
 
+/// プロジェクト to パス を保存先へ書き出す。
 pub fn save_project_to_path(
     path: impl AsRef<Path>,
     document: &Document,
@@ -152,6 +164,7 @@ pub fn save_project_to_path(
     )
 }
 
+/// プロジェクト to パス with オプション を保存先へ書き出す。
 pub fn save_project_to_path_with_options(
     path: impl AsRef<Path>,
     document: &Document,
@@ -163,10 +176,14 @@ pub fn save_project_to_path_with_options(
     save_project_to_sqlite_path(path, document, workspace_layout, plugin_configs, options)
 }
 
+/// ドキュメント from パス を読み込み、必要に応じて整形して返す。
 pub fn load_document_from_path(path: impl AsRef<Path>) -> Result<Document, StorageError> {
     load_project_from_path(path).map(|project| project.document)
 }
 
+/// プロジェクト from パス を読み込み、必要に応じて整形して返す。
+///
+/// 失敗時はエラーを返します。
 pub fn load_project_from_path(path: impl AsRef<Path>) -> Result<LoadedProject, StorageError> {
     let path = path.as_ref();
     if is_sqlite_project_path(path)? {
@@ -194,6 +211,9 @@ pub fn load_project_from_path(path: impl AsRef<Path>) -> Result<LoadedProject, S
     Ok(LoadedProject { document, ui_state })
 }
 
+/// プロジェクト インデックス from パス を読み込み、必要に応じて整形して返す。
+///
+/// 失敗時はエラーを返します。
 pub fn load_project_index_from_path(path: impl AsRef<Path>) -> Result<ProjectIndex, StorageError> {
     let path = path.as_ref();
     if is_sqlite_project_path(path)? {
@@ -218,6 +238,9 @@ pub fn load_project_index_from_path(path: impl AsRef<Path>) -> Result<ProjectInd
     ))
 }
 
+/// ページ from パス を読み込み、必要に応じて整形して返す。
+///
+/// 失敗時はエラーを返します。
 pub fn load_page_from_path(path: impl AsRef<Path>, page_id: PageId) -> Result<Page, StorageError> {
     let path = path.as_ref();
     if is_sqlite_project_path(path)? {
@@ -234,6 +257,7 @@ pub fn load_page_from_path(path: impl AsRef<Path>, page_id: PageId) -> Result<Pa
         .ok_or(StorageError::PageNotFound(page_id.0))
 }
 
+/// パネル from パス を読み込み、必要に応じて整形して返す。
 pub fn load_panel_from_path(
     path: impl AsRef<Path>,
     page_id: PageId,
@@ -254,6 +278,7 @@ pub fn load_panel_from_path(
         })
 }
 
+/// パネル スナップショット from パス を読み込み、必要に応じて整形して返す。
 pub fn load_panel_snapshot_from_path(
     path: impl AsRef<Path>,
     snapshot_id: &str,
@@ -265,6 +290,7 @@ pub fn load_panel_snapshot_from_path(
     Ok(None)
 }
 
+/// 現在の derive プロジェクト インデックス を返す。
 fn derive_project_index(
     format_version: u32,
     chunk_size: usize,
@@ -322,10 +348,12 @@ mod tests {
     use std::time::Instant;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    /// small ドキュメント を計算して返す。
     fn small_document() -> Document {
         Document::new(64, 64)
     }
 
+    /// 描画 test 点 に必要な描画内容を組み立てる。
     fn draw_test_point(document: &mut Document, x: usize, y: usize) {
         let color = document.active_color.to_rgba8();
         if let Some(panel) = document.active_panel_mut() {
@@ -336,6 +364,7 @@ mod tests {
         }
     }
 
+    /// Benchmark ドキュメント に必要な描画内容を組み立てる。
     fn benchmark_document(width: usize, height: usize) -> Document {
         let mut document = Document::new(width, height);
         document.set_active_color(ColorRgba8::new(0x11, 0x66, 0xcc, 0xff));
@@ -347,6 +376,7 @@ mod tests {
         document
     }
 
+    /// 現在の temp パス を返す。
     fn temp_path(name: &str) -> std::path::PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -355,6 +385,7 @@ mod tests {
         std::env::temp_dir().join(format!("altpaint-{name}-{unique}.altp"))
     }
 
+    /// 現在の値を ページ ドキュメント へ変換する。
     fn multi_page_document() -> Document {
         let mut document = Document::new(16, 16);
         document.work.title = "Phase 11 test".to_string();
@@ -401,6 +432,7 @@ mod tests {
         document
     }
 
+    /// 保存 and 読込 roundtrip preserves ドキュメント が期待どおりに動作することを検証する。
     #[test]
     fn save_and_load_roundtrip_preserves_document() {
         let path = temp_path("roundtrip");
@@ -421,6 +453,7 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    /// 保存 and 読込 roundtrip preserves ワークスペース レイアウト が期待どおりに動作することを検証する。
     #[test]
     fn save_and_load_roundtrip_preserves_workspace_layout() {
         let path = temp_path("workspace");
@@ -453,6 +486,7 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    /// 保存 and 読込 roundtrip preserves プラグイン configs が期待どおりに動作することを検証する。
     #[test]
     fn save_and_load_roundtrip_preserves_plugin_configs() {
         let path = temp_path("plugin-configs");
@@ -477,6 +511,7 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    /// 読込 version 1 file defaults ワークスペース レイアウト が期待どおりに動作することを検証する。
     #[test]
     fn load_version_1_file_defaults_workspace_layout() {
         let path = temp_path("version1");
@@ -497,6 +532,7 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    /// 保存 プロジェクト writes sqlite header and チャンク tables が期待どおりに動作することを検証する。
     #[test]
     fn save_project_writes_sqlite_header_and_chunk_tables() {
         let path = temp_path("sqlite-format");
@@ -531,6 +567,7 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    /// 読込 プロジェクト インデックス reports pages panels and snapshots が期待どおりに動作することを検証する。
     #[test]
     fn load_project_index_reports_pages_panels_and_snapshots() {
         let path = temp_path("project-index");
@@ -563,6 +600,7 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    /// 読込 ページ from sqlite returns requested ページ only が期待どおりに動作することを検証する。
     #[test]
     fn load_page_from_sqlite_returns_requested_page_only() {
         let path = temp_path("partial-page");
@@ -589,6 +627,7 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    /// 読込 パネル スナップショット restores 現在 composited ビットマップ が期待どおりに動作することを検証する。
     #[test]
     fn load_panel_snapshot_restores_current_composited_bitmap() {
         let path = temp_path("snapshot");
@@ -615,6 +654,7 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    /// 読込 プロジェクト supports 前 uncompressed binary 形式 が期待どおりに動作することを検証する。
     #[test]
     fn load_project_supports_previous_uncompressed_binary_format() {
         let path = temp_path("legacy-binary");
@@ -643,6 +683,7 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    /// 読込 プロジェクト supports legacy JSON 形式 が期待どおりに動作することを検証する。
     #[test]
     fn load_project_supports_legacy_json_format() {
         let path = temp_path("legacy-json");
@@ -661,6 +702,7 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    /// 読込 rejects unknown 形式 version が期待どおりに動作することを検証する。
     #[test]
     fn load_rejects_unknown_format_version() {
         let path = temp_path("version");
@@ -683,6 +725,7 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    /// サイズ difference benchmark for 1000 square ドキュメント が期待どおりに動作することを検証する。
     #[test]
     #[ignore = "manual benchmark: run with `cargo test -p storage size_difference_benchmark_for_1000_square_document -- --ignored --nocapture`"]
     fn size_difference_benchmark_for_1000_square_document() {

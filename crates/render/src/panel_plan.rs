@@ -11,7 +11,7 @@ pub struct PanelSurfaceSource<'a> {
 }
 
 impl<'a> PanelSurfaceSource<'a> {
-    /// パネル面のグローバル矩形を返す。
+    /// 矩形 を計算して返す。
     pub fn rect(&self) -> PixelRect {
         PixelRect {
             x: self.x,
@@ -21,7 +21,7 @@ impl<'a> PanelSurfaceSource<'a> {
         }
     }
 
-    /// パネル面の配置計画を返す。
+    /// plan を計算して返す。
     pub fn plan(&self) -> PanelPlan {
         PanelPlan {
             surface_rect: self.rect(),

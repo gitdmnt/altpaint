@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// 指定ディレクトリ以下から `.altp-panel` を再帰収集する。
+/// collect パネル files recursive に必要な処理を行う。
 pub(crate) fn collect_panel_files_recursive(
     directory: &Path,
     panel_files: &mut Vec<PathBuf>,

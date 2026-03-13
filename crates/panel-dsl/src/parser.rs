@@ -7,7 +7,9 @@ use crate::{
     ViewElementAst, ViewNodeAst,
 };
 
-/// `.altp-panel` のソース全体を AST に変換する。
+/// 入力を解析して パネル ソース に変換し、失敗時はエラーを返す。
+///
+/// 失敗時はエラーを返します。
 pub fn parse_panel_source(source: &str) -> Result<PanelAst, PanelDslError> {
     let blocks = extract_blocks(source)?;
     let panel_block = blocks
@@ -35,6 +37,9 @@ pub fn parse_panel_source(source: &str) -> Result<PanelAst, PanelDslError> {
     })
 }
 
+/// 入力を解析して パネル header に変換する。
+///
+/// 失敗時はエラーを返します。
 fn parse_panel_header(body: &str) -> Result<PanelHeaderAst, PanelDslError> {
     let fields = parse_key_value_lines(body)?;
     let id = required_string_field(&fields, "id")?;
@@ -43,6 +48,9 @@ fn parse_panel_header(body: &str) -> Result<PanelHeaderAst, PanelDslError> {
     Ok(PanelHeaderAst { id, title, version })
 }
 
+/// 入力を解析して runtime block に変換する。
+///
+/// 失敗時はエラーを返します。
 fn parse_runtime_block(body: &str) -> Result<RuntimeAst, PanelDslError> {
     let fields = parse_key_value_lines(body)?;
     Ok(RuntimeAst {
@@ -50,6 +58,7 @@ fn parse_runtime_block(body: &str) -> Result<RuntimeAst, PanelDslError> {
     })
 }
 
+/// 入力を解析して permissions block に変換する。
 fn parse_permissions_block(body: &str) -> Vec<String> {
     body.lines()
         .map(str::trim)
@@ -58,6 +67,9 @@ fn parse_permissions_block(body: &str) -> Vec<String> {
         .collect()
 }
 
+/// 入力を解析して 状態 block に変換し、失敗時はエラーを返す。
+///
+/// 失敗時はエラーを返します。
 fn parse_state_block(body: &str) -> Result<Vec<StateFieldAst>, PanelDslError> {
     let mut fields = Vec::new();
     for line in body.lines().map(str::trim).filter(|line| !line.is_empty()) {
@@ -77,6 +89,9 @@ fn parse_state_block(body: &str) -> Result<Vec<StateFieldAst>, PanelDslError> {
     Ok(fields)
 }
 
+/// 入力を解析して 状態 type に変換し、失敗時はエラーを返す。
+///
+/// 失敗時はエラーを返します。
 fn parse_state_type(input: &str) -> Result<StateType, PanelDslError> {
     match input {
         "bool" => Ok(StateType::Bool),
@@ -107,6 +122,9 @@ fn parse_state_type(input: &str) -> Result<StateType, PanelDslError> {
     }
 }
 
+/// 入力を解析して ビュー block に変換し、失敗時はエラーを返す。
+///
+/// 失敗時はエラーを返します。
 fn parse_view_block(body: &str) -> Result<Vec<ViewNodeAst>, PanelDslError> {
     let mut index = 0;
     let mut root_nodes: Vec<ViewNodeAst> = Vec::new();
@@ -171,6 +189,7 @@ fn parse_view_block(body: &str) -> Result<Vec<ViewNodeAst>, PanelDslError> {
     Ok(root_nodes)
 }
 
+/// 現在の append ビュー node を返す。
 fn append_view_node(
     root_nodes: &mut Vec<ViewNodeAst>,
     stack: &mut [ViewElementAst],
@@ -183,10 +202,14 @@ fn append_view_node(
     }
 }
 
+/// collapse テキスト を計算して返す。
 fn collapse_text(input: &str) -> String {
     input.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// 現在の値を tag end へ変換する。
+///
+/// 失敗時はエラーを返します。
 fn find_tag_end(source: &str, mut index: usize) -> Result<usize, PanelDslError> {
     let mut in_string = false;
     let mut brace_depth = 0usize;
@@ -216,6 +239,9 @@ struct ParsedTag {
     self_closing: bool,
 }
 
+/// 入力を解析して tag に変換し、失敗時はエラーを返す。
+///
+/// 失敗時はエラーを返します。
 fn parse_tag(raw_tag: &str) -> Result<ParsedTag, PanelDslError> {
     let trimmed = raw_tag.trim();
     if let Some(name) = trimmed.strip_prefix('/') {
@@ -253,10 +279,14 @@ struct AttributeParser<'a> {
 }
 
 impl<'a> AttributeParser<'a> {
+    /// 入力値を束ねた新しいインスタンスを生成する。
     fn new(input: &'a str) -> Self {
         Self { input, index: 0 }
     }
 
+    /// 入力を解析して attributes に変換する。
+    ///
+    /// 失敗時はエラーを返します。
     fn parse_attributes(&mut self) -> Result<BTreeMap<String, AttrValue>, PanelDslError> {
         let mut attributes = BTreeMap::new();
         while self.skip_whitespace() {
@@ -275,6 +305,9 @@ impl<'a> AttributeParser<'a> {
         Ok(attributes)
     }
 
+    /// 現在の値を identifier へ変換する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn read_identifier(&mut self) -> Option<String> {
         self.skip_whitespace();
         let start = self.index;
@@ -288,6 +321,9 @@ impl<'a> AttributeParser<'a> {
         (self.index > start).then(|| self.input[start..self.index].to_string())
     }
 
+    /// 現在の値を 値 へ変換する。
+    ///
+    /// 失敗時はエラーを返します。
     fn read_value(&mut self) -> Result<AttrValue, PanelDslError> {
         let Some(character) = self.peek() else {
             return Err(PanelDslError::Parse(
@@ -346,6 +382,7 @@ impl<'a> AttributeParser<'a> {
         }
     }
 
+    /// Whitespace を読み飛ばす。
     fn skip_whitespace(&mut self) -> bool {
         while let Some(character) = self.peek() {
             if !character.is_whitespace() {
@@ -356,6 +393,7 @@ impl<'a> AttributeParser<'a> {
         false
     }
 
+    /// consume を計算して返す。
     fn consume(&mut self, expected: char) -> bool {
         if self.peek() == Some(expected) {
             self.index += expected.len_utf8();
@@ -365,11 +403,17 @@ impl<'a> AttributeParser<'a> {
         }
     }
 
+    /// peek を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn peek(&self) -> Option<char> {
         self.input[self.index..].chars().next()
     }
 }
 
+/// 入力を解析して key 値 lines に変換し、失敗時はエラーを返す。
+///
+/// 失敗時はエラーを返します。
 fn parse_key_value_lines(body: &str) -> Result<BTreeMap<String, AttrValue>, PanelDslError> {
     let mut fields = BTreeMap::new();
     for line in body.lines().map(str::trim).filter(|line| !line.is_empty()) {
@@ -382,6 +426,7 @@ fn parse_key_value_lines(body: &str) -> Result<BTreeMap<String, AttrValue>, Pane
     Ok(fields)
 }
 
+/// 入力を解析して attr 値 に変換する。
 fn parse_attr_value(input: &str) -> Result<AttrValue, PanelDslError> {
     let input = input.trim();
     if input.starts_with('"') && input.ends_with('"') && input.len() >= 2 {
@@ -407,6 +452,7 @@ fn parse_attr_value(input: &str) -> Result<AttrValue, PanelDslError> {
     Ok(AttrValue::String(input.to_string()))
 }
 
+/// Required string field 用の表示文字列を組み立てる。
 fn required_string_field(
     fields: &BTreeMap<String, AttrValue>,
     key: &str,
@@ -418,6 +464,7 @@ fn required_string_field(
         .ok_or_else(|| PanelDslError::Parse(format!("missing string field: {key}")))
 }
 
+/// Required integer field 用の表示文字列を組み立てる。
 fn required_integer_field(
     fields: &BTreeMap<String, AttrValue>,
     key: &str,
@@ -430,6 +477,9 @@ fn required_integer_field(
     Ok(*value)
 }
 
+/// 現在の値を blocks へ変換する。
+///
+/// 失敗時はエラーを返します。
 fn extract_blocks(source: &str) -> Result<BTreeMap<String, String>, PanelDslError> {
     let chars: Vec<char> = source.chars().collect();
     let mut blocks = BTreeMap::new();
@@ -493,6 +543,7 @@ fn extract_blocks(source: &str) -> Result<BTreeMap<String, String>, PanelDslErro
     Ok(blocks)
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn split_top_level(input: &str, delimiter: char) -> Vec<&str> {
     let mut items = Vec::new();
     let mut start = 0usize;
@@ -515,10 +566,12 @@ fn split_top_level(input: &str, delimiter: char) -> Vec<&str> {
     items
 }
 
+/// Is identifier start かどうかを返す。
 fn is_identifier_start(character: char) -> bool {
     character.is_ascii_alphabetic() || character == '_'
 }
 
+/// Is identifier continue かどうかを返す。
 fn is_identifier_continue(character: char) -> bool {
     character.is_ascii_alphanumeric() || matches!(character, '_' | '-')
 }

@@ -8,9 +8,9 @@ mod parser;
 mod validation;
 
 pub use ast::{
-    AttrValue, PanelAst, PanelDefinition, PanelDslError, PanelHeaderAst, PanelManifest,
-    RuntimeAst, RuntimeDefinition, StateField, StateFieldAst, StateType, ViewElement,
-    ViewElementAst, ViewNode, ViewNodeAst,
+    AttrValue, PanelAst, PanelDefinition, PanelDslError, PanelHeaderAst, PanelManifest, RuntimeAst,
+    RuntimeDefinition, StateField, StateFieldAst, StateType, ViewElement, ViewElementAst, ViewNode,
+    ViewNodeAst,
 };
 pub use parser::parse_panel_source;
 pub use validation::{load_panel_file, validate_panel_ast};

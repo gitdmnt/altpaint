@@ -7,14 +7,19 @@ const SELECTED_WORKSPACE: state::StringKey = state::string("config.selected_work
 const SELECTED_WORKSPACE_LABEL: state::StringKey = state::string("config.selected_workspace_label");
 const WORKSPACE_OPTIONS: state::StringKey = state::string("config.workspace_options");
 
+/// 選択中の ワークスペース ID を返す。
 fn selected_workspace_id() -> String {
     state_string(SELECTED_WORKSPACE)
 }
 
+/// 選択中の ワークスペース ラベル を返す。
 fn selected_workspace_label() -> String {
     state_string(SELECTED_WORKSPACE_LABEL)
 }
 
+/// 入力を解析して ラベル for ID に変換する。
+///
+/// 値を生成できない場合は `None` を返します。
 fn option_label_for_id(id: &str) -> Option<String> {
     state_string(WORKSPACE_OPTIONS)
         .split('|')
@@ -22,6 +27,7 @@ fn option_label_for_id(id: &str) -> Option<String> {
         .find_map(|(candidate_id, label)| (candidate_id == id).then(|| label.to_string()))
 }
 
+/// 検証 selection を計算して返す。
 fn validate_selection() -> Result<(String, String), &'static str> {
     let preset_id = selected_workspace_id();
     let label = selected_workspace_label();
@@ -34,9 +40,13 @@ fn validate_selection() -> Result<(String, String), &'static str> {
     Ok((preset_id, label))
 }
 
+/// パネル初期化時に必要な状態を整える。
 #[plugin_sdk::panel_init]
 fn init() {}
 
+/// ワークスペース を選択状態へ更新する。
+///
+/// 内部でサービス要求を発行します。
 #[plugin_sdk::panel_handler]
 fn select_workspace() {
     let value = event_string("value");
@@ -51,6 +61,7 @@ fn select_workspace() {
     emit_service(&services::workspace_io::apply_preset(value.trim()));
 }
 
+/// 編集 ワークスペース ID に必要な処理を行う。
 #[plugin_sdk::panel_handler]
 fn edit_workspace_id() {
     let value = event_string("value");
@@ -61,6 +72,7 @@ fn edit_workspace_id() {
     set_state_string(SELECTED_WORKSPACE, value.trim());
 }
 
+/// 現在の 編集 ワークスペース ラベル を返す。
 #[plugin_sdk::panel_handler]
 fn edit_workspace_label() {
     let value = event_string("value");
@@ -71,6 +83,9 @@ fn edit_workspace_label() {
     set_state_string(SELECTED_WORKSPACE_LABEL, value.trim());
 }
 
+/// ワークスペース io 適用 preset に対応するサービス要求を発行する。
+///
+/// 内部でサービス要求を発行します。
 #[plugin_sdk::panel_handler]
 fn load_workspace() {
     let Ok((preset_id, _)) = validate_selection() else {
@@ -81,6 +96,9 @@ fn load_workspace() {
     emit_service(&services::workspace_io::apply_preset(preset_id));
 }
 
+/// ワークスペース io 保存 preset に対応するサービス要求を発行する。
+///
+/// 内部でサービス要求を発行します。
 #[plugin_sdk::panel_handler]
 fn save_workspace() {
     let Ok((preset_id, label)) = validate_selection() else {
@@ -91,6 +109,9 @@ fn save_workspace() {
     emit_service(&services::workspace_io::save_preset(preset_id, label));
 }
 
+/// ワークスペース io 書き出し preset に対応するサービス要求を発行する。
+///
+/// 内部でサービス要求を発行します。
 #[plugin_sdk::panel_handler]
 fn export_workspace() {
     let Ok((preset_id, label)) = validate_selection() else {
@@ -101,6 +122,9 @@ fn export_workspace() {
     emit_service(&services::workspace_io::export_preset(preset_id, label));
 }
 
+/// ワークスペース io 再読込 presets に対応するサービス要求を発行する。
+///
+/// 内部でサービス要求を発行します。
 #[plugin_sdk::panel_handler]
 fn reload_workspaces() {
     emit_service(&services::workspace_io::reload_presets());
@@ -110,6 +134,7 @@ fn reload_workspaces() {
 mod tests {
     use super::*;
 
+    /// ワークスペース commands use expected names が期待どおりに動作することを検証する。
     #[test]
     fn workspace_commands_use_expected_names() {
         let save = services::workspace_io::save_preset("review", "Review");
@@ -129,6 +154,7 @@ mod tests {
         assert_eq!(export.name, "workspace_io.export_preset");
     }
 
+    /// パネル entrypoints are callable on native targets が期待どおりに動作することを検証する。
     #[test]
     fn panel_entrypoints_are_callable_on_native_targets() {
         init();

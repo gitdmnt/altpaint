@@ -11,19 +11,23 @@ pub struct CanvasTemplate {
 }
 
 impl CanvasTemplate {
+    /// サイズ string 用の表示文字列を組み立てる。
     pub fn size_string(&self) -> String {
         format!("{}x{}", self.width, self.height)
     }
 
+    /// Dropdown オプション 用の表示文字列を組み立てる。
     pub fn dropdown_option(&self) -> String {
         format!("{}:{}", self.size_string(), self.label)
     }
 }
 
+/// 既定の キャンバス テンプレート パス を返す。
 pub fn default_canvas_template_path() -> PathBuf {
     PathBuf::from("canvas-templates.json")
 }
 
+/// 既定の キャンバス templates を返す。
 pub fn default_canvas_templates() -> Vec<CanvasTemplate> {
     vec![
         CanvasTemplate {
@@ -53,6 +57,7 @@ pub fn default_canvas_templates() -> Vec<CanvasTemplate> {
     ]
 }
 
+/// 入力を解析して キャンバス templates に変換し、失敗時はエラーを返す。
 pub fn load_canvas_templates(path: impl AsRef<Path>) -> Vec<CanvasTemplate> {
     let path = path.as_ref();
     let bytes = match std::fs::read(path) {
@@ -65,6 +70,7 @@ pub fn load_canvas_templates(path: impl AsRef<Path>) -> Vec<CanvasTemplate> {
         .unwrap_or_else(default_canvas_templates)
 }
 
+/// 現在の値を キャンバス templates へ変換する。
 pub fn save_canvas_templates(
     path: impl AsRef<Path>,
     templates: &[CanvasTemplate],
@@ -77,6 +83,7 @@ pub fn save_canvas_templates(
 mod tests {
     use super::*;
 
+    /// 既定 templates include a4 350dpi が期待どおりに動作することを検証する。
     #[test]
     fn default_templates_include_a4_350dpi() {
         let templates = default_canvas_templates();
@@ -85,6 +92,7 @@ mod tests {
         }));
     }
 
+    /// dropdown オプション embeds サイズ and ラベル が期待どおりに動作することを検証する。
     #[test]
     fn dropdown_option_embeds_size_and_label() {
         let template = CanvasTemplate {

@@ -31,87 +31,87 @@ pub struct ToolCapabilities {
 pub mod document {
     use crate::runtime::{host_bool, host_i32, host_string};
 
-    /// ドキュメントタイトルを返す。
+    /// Host snapshot の document / title を 文字列として返す。
     pub fn title() -> String {
         host_string("document.title")
     }
 
-    /// ページ数を返す。
+    /// Host snapshot の document / page_count を 整数値として返す。
     pub fn page_count() -> i32 {
         host_i32("document.page_count")
     }
 
-    /// パネル数を返す。
+    /// Host snapshot の document / panel_count を 整数値として返す。
     pub fn panel_count() -> i32 {
         host_i32("document.panel_count")
     }
 
-    /// 現在のページ番号を返す。
+    /// アクティブな ページ number を返す。
     pub fn active_page_number() -> i32 {
         host_i32("document.active_page_number")
     }
 
-    /// 現在ページ内のコマ数を返す。
+    /// アクティブな ページ パネル 件数 を返す。
     pub fn active_page_panel_count() -> i32 {
         host_i32("document.active_page_panel_count")
     }
 
-    /// 現在のコマ番号を返す。
+    /// アクティブな パネル number を返す。
     pub fn active_panel_number() -> i32 {
         host_i32("document.active_panel_number")
     }
 
-    /// 現在のコマ index を返す。
+    /// アクティブな パネル インデックス を返す。
     pub fn active_panel_index() -> i32 {
         host_i32("document.active_panel_index")
     }
 
-    /// 現在のコマラベルを返す。
+    /// アクティブな パネル ラベル を返す。
     pub fn active_panel_label() -> String {
         host_string("document.active_panel_label")
     }
 
-    /// 現在のコマ矩形を返す。
+    /// アクティブな パネル 範囲 を返す。
     pub fn active_panel_bounds() -> String {
         host_string("document.active_panel_bounds")
     }
 
-    /// レイヤー数を返す。
+    /// Host snapshot の document / layer_count を 整数値として返す。
     pub fn layer_count() -> i32 {
         host_i32("document.layer_count")
     }
 
-    /// アクティブレイヤー名を返す。
+    /// アクティブな レイヤー 名前 を返す。
     pub fn active_layer_name() -> String {
         host_string("document.active_layer_name")
     }
 
-    /// アクティブレイヤー index を返す。
+    /// アクティブな レイヤー インデックス を返す。
     pub fn active_layer_index() -> i32 {
         host_i32("document.active_layer_index")
     }
 
-    /// アクティブレイヤーのブレンドモード名を返す。
+    /// アクティブな レイヤー ブレンド モード を返す。
     pub fn active_layer_blend_mode() -> String {
         host_string("document.active_layer_blend_mode")
     }
 
-    /// アクティブレイヤーの可視性を返す。
+    /// アクティブな レイヤー 表示状態 を返す。
     pub fn active_layer_visible() -> bool {
         host_bool("document.active_layer_visible")
     }
 
-    /// アクティブレイヤーのマスク状態を返す。
+    /// アクティブな レイヤー masked を返す。
     pub fn active_layer_masked() -> bool {
         host_bool("document.active_layer_masked")
     }
 
-    /// レイヤー JSON を返す。
+    /// Host snapshot の document / layers_json を 文字列として返す。
     pub fn layers_json() -> String {
         host_string("document.layers_json")
     }
 
-    /// コマ一覧 JSON を返す。
+    /// Host snapshot の document / panels_json を 文字列として返す。
     pub fn panels_json() -> String {
         host_string("document.panels_json")
     }
@@ -126,112 +126,112 @@ pub mod tool {
 
     use super::{ToolCapabilities, ToolSnapshot};
 
-    /// アクティブツール名を返す。
+    /// アクティブな 名前 を返す。
     pub fn active_name() -> String {
         host_string("tool.active")
     }
 
-    /// アクティブツール ID を返す。
+    /// アクティブな ID を返す。
     pub fn active_id() -> String {
         host_string("tool.active_id")
     }
 
-    /// アクティブツールの表示名を返す。
+    /// アクティブな ラベル を返す。
     pub fn active_label() -> String {
         host_string("tool.active_label")
     }
 
-    /// 指定ツールがアクティブなら true を返す。
+    /// Is アクティブ かどうかを返す。
     pub fn is_active(tool: Tool) -> bool {
         active_name().eq_ignore_ascii_case(tool.as_str())
     }
 
-    /// ペン名を返す。
+    /// Host snapshot の tool / pen_name を 文字列として返す。
     pub fn pen_name() -> String {
         host_string("tool.pen_name")
     }
 
-    /// ツールカタログ JSON を返す。
+    /// Host snapshot の tool / catalog_json を 文字列として返す。
     pub fn catalog_json() -> String {
         host_string("tool.catalog_json")
     }
 
-    /// アクティブツールの設定定義 JSON を返す。
+    /// アクティブな 設定 JSON を返す。
     pub fn active_settings_json() -> String {
         host_string("tool.active_settings_json")
     }
 
-    /// アクティブツールを管轄するプラグイン ID を返す。
+    /// アクティブな provider プラグイン ID を返す。
     pub fn active_provider_plugin_id() -> String {
         host_string("tool.active_provider_plugin_id")
     }
 
-    /// アクティブツールの描画計算プラグイン ID を返す。
+    /// アクティブな 描画 プラグイン ID を返す。
     pub fn active_drawing_plugin_id() -> String {
         host_string("tool.active_drawing_plugin_id")
     }
 
-    /// ペン ID を返す。
+    /// Host snapshot の tool / pen_id を 文字列として返す。
     pub fn pen_id() -> String {
         host_string("tool.pen_id")
     }
 
-    /// ペンプリセット一覧 JSON を返す。
+    /// Host snapshot の tool / pen_presets_json を 文字列として返す。
     pub fn pen_presets_json() -> String {
         host_string("tool.pen_presets_json")
     }
 
-    /// ペン index を返す。
+    /// Host snapshot の tool / pen_index を 整数値として返す。
     pub fn pen_index() -> i32 {
         host_i32("tool.pen_index")
     }
 
-    /// ペン総数を返す。
+    /// Host snapshot の tool / pen_count を 整数値として返す。
     pub fn pen_count() -> i32 {
         host_i32("tool.pen_count")
     }
 
-    /// ペンサイズを返す。
+    /// Host snapshot の tool / pen_size を 整数値として返す。
     pub fn pen_size() -> i32 {
         host_i32("tool.pen_size")
     }
 
-    /// 筆圧有効状態を返す。
+    /// Host snapshot の tool / pen_pressure_enabled を 真偽値として返す。
     pub fn pen_pressure_enabled() -> bool {
         crate::runtime::host_bool("tool.pen_pressure_enabled")
     }
 
-    /// アンチエイリアス有効状態を返す。
+    /// Host snapshot の tool / pen_antialias を 真偽値として返す。
     pub fn pen_antialias() -> bool {
         crate::runtime::host_bool("tool.pen_antialias")
     }
 
-    /// 手ぶれ補正強さを返す。
+    /// Host snapshot の tool / pen_stabilization を 整数値として返す。
     pub fn pen_stabilization() -> i32 {
         host_i32("tool.pen_stabilization")
     }
 
-    /// 現在ツールが `size` 設定を公開するなら true を返す。
+    /// Host snapshot の tool / supports_size を 真偽値として返す。
     pub fn supports_size() -> bool {
         crate::runtime::host_bool("tool.supports_size")
     }
 
-    /// 現在ツールが `pressure_enabled` 設定を公開するなら true を返す。
+    /// Host snapshot の tool / supports_pressure_enabled を 真偽値として返す。
     pub fn supports_pressure_enabled() -> bool {
         crate::runtime::host_bool("tool.supports_pressure_enabled")
     }
 
-    /// 現在ツールが `antialias` 設定を公開するなら true を返す。
+    /// Host snapshot の tool / supports_antialias を 真偽値として返す。
     pub fn supports_antialias() -> bool {
         crate::runtime::host_bool("tool.supports_antialias")
     }
 
-    /// 現在ツールが `stabilization` 設定を公開するなら true を返す。
+    /// Host snapshot の tool / supports_stabilization を 真偽値として返す。
     pub fn supports_stabilization() -> bool {
         crate::runtime::host_bool("tool.supports_stabilization")
     }
 
-    /// ツールの主要スナップショットをまとめて返す。
+    /// スナップショット を計算して返す。
     pub fn snapshot() -> ToolSnapshot {
         ToolSnapshot {
             active_name: active_name(),
@@ -245,7 +245,7 @@ pub mod tool {
         }
     }
 
-    /// 現在ツールの capability をまとめて返す。
+    /// capabilities を計算して返す。
     pub fn capabilities() -> ToolCapabilities {
         ToolCapabilities {
             supports_size: supports_size(),
@@ -262,27 +262,27 @@ pub mod color {
 
     use super::ColorSnapshot;
 
-    /// 現在色の 16 進文字列を返す。
+    /// アクティブな 16進文字列 を返す。
     pub fn active_hex() -> String {
         host_string("color.active")
     }
 
-    /// 赤成分を返す。
+    /// Host snapshot の color / red を 整数値として返す。
     pub fn red() -> i32 {
         host_i32("color.red")
     }
 
-    /// 緑成分を返す。
+    /// Host snapshot の color / green を 整数値として返す。
     pub fn green() -> i32 {
         host_i32("color.green")
     }
 
-    /// 青成分を返す。
+    /// Host snapshot の color / blue を 整数値として返す。
     pub fn blue() -> i32 {
         host_i32("color.blue")
     }
 
-    /// 現在色の RGB 成分をまとめて返す。
+    /// アクティブな RGB を返す。
     pub fn active_rgb() -> ColorSnapshot {
         ColorSnapshot {
             red: red(),
@@ -296,37 +296,37 @@ pub mod color {
 pub mod view {
     use crate::runtime::{host_bool, host_i32};
 
-    /// 現在ズーム倍率を 1/1000 単位で返す。
+    /// Host snapshot の view / zoom_milli を 整数値として返す。
     pub fn zoom_milli() -> i32 {
         host_i32("view.zoom_milli")
     }
 
-    /// 現在パン X を返す。
+    /// Host snapshot の view / pan_x を 整数値として返す。
     pub fn pan_x() -> i32 {
         host_i32("view.pan_x")
     }
 
-    /// 現在パン Y を返す。
+    /// Host snapshot の view / pan_y を 整数値として返す。
     pub fn pan_y() -> i32 {
         host_i32("view.pan_y")
     }
 
-    /// 現在の 90 度回転数を返す。
+    /// Host snapshot の view / quarter_turns を 整数値として返す。
     pub fn quarter_turns() -> i32 {
         host_i32("view.quarter_turns")
     }
 
-    /// 現在の回転角を度単位で返す。
+    /// Host snapshot の view / rotation_degrees を 整数値として返す。
     pub fn rotation_degrees() -> i32 {
         host_i32("view.rotation_degrees")
     }
 
-    /// 左右反転中なら true を返す。
+    /// Host snapshot の view / flip_x を 真偽値として返す。
     pub fn flipped_x() -> bool {
         host_bool("view.flip_x")
     }
 
-    /// 上下反転中なら true を返す。
+    /// Host snapshot の view / flip_y を 真偽値として返す。
     pub fn flipped_y() -> bool {
         host_bool("view.flip_y")
     }
@@ -336,17 +336,17 @@ pub mod view {
 pub mod jobs {
     use crate::runtime::{host_i32, host_string};
 
-    /// 稼働中ジョブ数を返す。
+    /// Host snapshot の jobs / active を 整数値として返す。
     pub fn active() -> i32 {
         host_i32("jobs.active")
     }
 
-    /// キュー中ジョブ数を返す。
+    /// Host snapshot の jobs / queued を 整数値として返す。
     pub fn queued() -> i32 {
         host_i32("jobs.queued")
     }
 
-    /// ジョブ状態文字列を返す。
+    /// Host snapshot の jobs / status を 文字列として返す。
     pub fn status() -> String {
         host_string("jobs.status")
     }
@@ -356,7 +356,7 @@ pub mod jobs {
 pub mod snapshot {
     use crate::runtime::host_string;
 
-    /// 保存状態文字列を返す。
+    /// Host snapshot の snapshot / storage_status を 文字列として返す。
     pub fn storage_status() -> String {
         host_string("snapshot.storage_status")
     }

@@ -12,6 +12,7 @@ const SYSTEM_FONT_SIZE: f32 = 13.0;
 
 static TEXT_RENDERER: OnceLock<TextRenderer> = OnceLock::new();
 
+/// 描画 テキスト RGBA に必要な描画内容を組み立てる。
 #[allow(clippy::too_many_arguments)]
 pub fn draw_text_rgba(
     pixels: &mut [u8],
@@ -25,22 +26,27 @@ pub fn draw_text_rgba(
     shared_text_renderer().draw_text_rgba(pixels, surface_width, surface_height, x, y, text, color);
 }
 
+/// 現在の line 高さ を返す。
 pub fn line_height() -> usize {
     shared_text_renderer().line_height()
 }
 
+/// 現在の measure テキスト 幅 を返す。
 pub fn measure_text_width(text: &str) -> usize {
     shared_text_renderer().measure_text_width(text)
 }
 
+/// 現在の テキスト backend 名前 を返す。
 pub fn text_backend_name() -> &'static str {
     shared_text_renderer().backend_name()
 }
 
+/// 折り返し テキスト lines を計算して返す。
 pub fn wrap_text_lines(text: &str, available_width: usize) -> Vec<String> {
     shared_text_renderer().wrap_text_lines(text, available_width)
 }
 
+/// 入力値を束ねた新しいインスタンスを生成する。
 fn shared_text_renderer() -> &'static TextRenderer {
     TEXT_RENDERER.get_or_init(TextRenderer::new)
 }
@@ -70,6 +76,7 @@ struct LoadedFont {
 }
 
 impl TextRenderer {
+    /// 入力値を束ねた新しいインスタンスを生成する。
     fn new() -> Self {
         let backend = SystemFontRenderer::load()
             .map(TextBackend::System)
@@ -77,6 +84,7 @@ impl TextRenderer {
         Self { backend }
     }
 
+    /// 既定値を使って新しいインスタンスを生成する。
     fn backend_name(&self) -> &'static str {
         match self.backend {
             TextBackend::System(_) => "system",
@@ -84,6 +92,7 @@ impl TextRenderer {
         }
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
     fn line_height(&self) -> usize {
         match &self.backend {
             TextBackend::System(renderer) => renderer.line_height,
@@ -91,6 +100,7 @@ impl TextRenderer {
         }
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
     #[allow(clippy::too_many_arguments)]
     fn draw_text_rgba(
         &self,
@@ -112,6 +122,7 @@ impl TextRenderer {
         }
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
     fn measure_text_width(&self, text: &str) -> usize {
         match &self.backend {
             TextBackend::System(renderer) => renderer.measure_text_width(text),
@@ -119,6 +130,7 @@ impl TextRenderer {
         }
     }
 
+    /// 現在の値を テキスト lines へ変換する。
     fn wrap_text_lines(&self, text: &str, available_width: usize) -> Vec<String> {
         let max_width = available_width.max(1);
         let mut lines = Vec::new();
@@ -175,6 +187,7 @@ impl TextRenderer {
         lines
     }
 
+    /// 折り返し long word を計算して返す。
     fn wrap_long_word(&self, word: &str, max_width: usize) -> Vec<String> {
         let mut lines = Vec::new();
         let mut chunk = String::new();
@@ -197,6 +210,9 @@ impl TextRenderer {
 }
 
 impl SystemFontRenderer {
+    /// 入力値を束ねた新しいインスタンスを生成する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn load() -> Option<Self> {
         let fonts = load_fast_path_fonts().or_else(load_database_fonts)?;
         if fonts.is_empty() {
@@ -219,6 +235,7 @@ impl SystemFontRenderer {
         })
     }
 
+    /// 描画 テキスト RGBA に必要な描画内容を組み立てる。
     #[allow(clippy::too_many_arguments)]
     fn draw_text_rgba(
         &self,
@@ -269,6 +286,7 @@ impl SystemFontRenderer {
         }
     }
 
+    /// 既存データを走査して フォント インデックス for char を組み立てる。
     fn font_index_for_char(&self, ch: char) -> usize {
         self.fonts
             .iter()
@@ -276,6 +294,7 @@ impl SystemFontRenderer {
             .unwrap_or(0)
     }
 
+    /// 現在の measure テキスト 幅 を返す。
     fn measure_text_width(&self, text: &str) -> usize {
         let mut width = 0.0;
         let mut previous: Option<(usize, GlyphId)> = None;
@@ -300,6 +319,9 @@ impl SystemFontRenderer {
     }
 }
 
+/// Database fonts を読み込み、必要に応じて整形して返す。
+///
+/// 値を生成できない場合は `None` を返します。
 fn load_database_fonts() -> Option<Vec<LoadedFont>> {
     let mut database = Database::new();
     database.load_system_fonts();
@@ -314,6 +336,9 @@ fn load_database_fonts() -> Option<Vec<LoadedFont>> {
     if fonts.is_empty() { None } else { Some(fonts) }
 }
 
+/// Fast パス fonts を読み込み、必要に応じて整形して返す。
+///
+/// 値を生成できない場合は `None` を返します。
 fn load_fast_path_fonts() -> Option<Vec<LoadedFont>> {
     #[cfg(target_os = "windows")]
     {
@@ -339,6 +364,7 @@ fn load_fast_path_fonts() -> Option<Vec<LoadedFont>> {
     }
 }
 
+/// candidate フォント ids を計算して返す。
 fn candidate_font_ids(database: &Database) -> Vec<ID> {
     let mut ids = Vec::new();
 
@@ -383,6 +409,7 @@ fn candidate_font_ids(database: &Database) -> Vec<ID> {
     ids
 }
 
+/// push query に必要な処理を行う。
 fn push_query(database: &Database, ids: &mut Vec<ID>, families: &[Family<'_>]) {
     let query = Query {
         families,
@@ -395,6 +422,9 @@ fn push_query(database: &Database, ids: &mut Vec<ID>, families: &[Family<'_>]) {
     }
 }
 
+/// 現在の値を フォント へ変換する。
+///
+/// 値を生成できない場合は `None` を返します。
 fn load_font(database: &Database, id: ID) -> Option<LoadedFont> {
     database
         .with_face_data(id, |data, index| {
@@ -404,6 +434,9 @@ fn load_font(database: &Database, id: ID) -> Option<LoadedFont> {
         .map(|font| LoadedFont { font })
 }
 
+/// フォント from パス を読み込み、必要に応じて整形して返す。
+///
+/// 値を生成できない場合は `None` を返します。
 fn load_font_from_path(path: &Path, index: u32) -> Option<LoadedFont> {
     let data = fs::read(path).ok()?;
     FontVec::try_from_vec_and_index(data, index)
@@ -411,6 +444,7 @@ fn load_font_from_path(path: &Path, index: u32) -> Option<LoadedFont> {
         .map(|font| LoadedFont { font })
 }
 
+/// 描画 ビットマップ テキスト に必要な描画内容を組み立てる。
 fn draw_bitmap_text(
     pixels: &mut [u8],
     surface_width: usize,
@@ -433,6 +467,7 @@ fn draw_bitmap_text(
     }
 }
 
+/// 描画 ビットマップ glyph に必要な描画内容を組み立てる。
 fn draw_bitmap_glyph(
     pixels: &mut [u8],
     surface_width: usize,
@@ -463,6 +498,7 @@ fn draw_bitmap_glyph(
     }
 }
 
+/// ブレンド ピクセル に対応するビットマップ処理を行う。
 fn blend_pixel(
     pixels: &mut [u8],
     surface_width: usize,
@@ -491,6 +527,7 @@ fn blend_pixel(
     pixels[index + 3] = blended_alpha.round().clamp(0.0, 255.0) as u8;
 }
 
+/// ピクセル を保存先へ書き出す。
 fn write_pixel(
     pixels: &mut [u8],
     surface_width: usize,
@@ -511,6 +548,7 @@ fn write_pixel(
 mod tests {
     use super::*;
 
+    /// 描画 テキスト respects requested origin が期待どおりに動作することを検証する。
     #[test]
     fn draw_text_respects_requested_origin() {
         let width = 160;

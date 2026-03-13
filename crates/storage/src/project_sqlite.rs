@@ -5,9 +5,9 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use app_core::{
-    BlendMode, CanvasBitmap, CanvasDirtyRect, CanvasViewTransform, ClampToCanvasBounds,
-    ColorRgba8, Document, LayerMask, LayerNode, LayerNodeId, Page, PageId, Panel,
-    PanelBounds, PanelId, PenPreset, RasterLayer, ToolKind, Work, WorkId, WorkspaceLayout,
+    BlendMode, CanvasBitmap, CanvasDirtyRect, CanvasViewTransform, ClampToCanvasBounds, ColorRgba8,
+    Document, LayerMask, LayerNode, LayerNodeId, Page, PageId, Panel, PanelBounds, PanelId,
+    PenPreset, RasterLayer, ToolKind, Work, WorkId, WorkspaceLayout,
 };
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -37,6 +37,7 @@ pub enum ProjectSaveMode {
 }
 
 impl ProjectSaveMode {
+    /// 既定値を使って新しいインスタンスを生成する。
     fn as_str(self) -> &'static str {
         match self {
             Self::Full => "full",
@@ -44,6 +45,9 @@ impl ProjectSaveMode {
         }
     }
 
+    /// 保存済み文字列を列挙値へ復元する。
+    ///
+    /// 失敗時はエラーを返します。
     fn from_db(value: &str) -> Result<Self, StorageError> {
         match value {
             "full" => Ok(Self::Full),
@@ -63,6 +67,7 @@ pub struct ProjectSaveOptions {
 }
 
 impl Default for ProjectSaveOptions {
+    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self {
             chunk_size: DEFAULT_PROJECT_CHUNK_SIZE,
@@ -161,6 +166,9 @@ struct StoredChunk {
     data: Option<Vec<u8>>,
 }
 
+/// Is sqlite プロジェクト パス かどうかを返す。
+///
+/// 失敗時はエラーを返します。
 pub(crate) fn is_sqlite_project_path(path: impl AsRef<Path>) -> Result<bool, StorageError> {
     let path = path.as_ref();
     let mut file = File::open(path)?;
@@ -169,6 +177,7 @@ pub(crate) fn is_sqlite_project_path(path: impl AsRef<Path>) -> Result<bool, Sto
     Ok(read == SQLITE_HEADER.len() && header == *SQLITE_HEADER)
 }
 
+/// プロジェクト to sqlite パス を保存先へ書き出す。
 pub(crate) fn save_project_to_sqlite_path(
     path: impl AsRef<Path>,
     document: &Document,
@@ -309,6 +318,7 @@ pub(crate) fn save_project_to_sqlite_path(
     Ok(())
 }
 
+/// プロジェクト from sqlite パス を読み込み、必要に応じて整形して返す。
 pub(crate) fn load_project_from_sqlite_path(
     path: impl AsRef<Path>,
 ) -> Result<LoadedProject, StorageError> {
@@ -340,6 +350,7 @@ pub(crate) fn load_project_from_sqlite_path(
     Ok(LoadedProject { document, ui_state })
 }
 
+/// プロジェクト インデックス from sqlite パス を読み込み、必要に応じて整形して返す。
 pub(crate) fn load_project_index_from_sqlite_path(
     path: impl AsRef<Path>,
 ) -> Result<ProjectIndex, StorageError> {
@@ -418,6 +429,7 @@ pub(crate) fn load_project_index_from_sqlite_path(
     })
 }
 
+/// ページ from sqlite パス を読み込み、必要に応じて整形して返す。
 pub(crate) fn load_page_from_sqlite_path(
     path: impl AsRef<Path>,
     page_id: PageId,
@@ -427,6 +439,7 @@ pub(crate) fn load_page_from_sqlite_path(
     load_page(&connection, page_id)
 }
 
+/// パネル from sqlite パス を読み込み、必要に応じて整形して返す。
 pub(crate) fn load_panel_from_sqlite_path(
     path: impl AsRef<Path>,
     page_id: PageId,
@@ -437,6 +450,7 @@ pub(crate) fn load_panel_from_sqlite_path(
     load_panel(&connection, page_id, panel_id)
 }
 
+/// パネル スナップショット from sqlite パス を読み込み、必要に応じて整形して返す。
 pub(crate) fn load_panel_snapshot_from_sqlite_path(
     path: impl AsRef<Path>,
     snapshot_id: &str,
@@ -446,6 +460,7 @@ pub(crate) fn load_panel_snapshot_from_sqlite_path(
     load_panel_snapshot(&connection, snapshot_id)
 }
 
+/// normalize オプション を計算して返す。
 fn normalize_options(options: ProjectSaveOptions) -> ProjectSaveOptions {
     ProjectSaveOptions {
         chunk_size: options.chunk_size.max(1),
@@ -453,6 +468,9 @@ fn normalize_options(options: ProjectSaveOptions) -> ProjectSaveOptions {
     }
 }
 
+/// Read only を読み込み、必要に応じて整形して返す。
+///
+/// 失敗時はエラーを返します。
 fn open_read_only(path: &Path) -> Result<Connection, StorageError> {
     Ok(Connection::open_with_flags(
         path,
@@ -460,6 +478,7 @@ fn open_read_only(path: &Path) -> Result<Connection, StorageError> {
     )?)
 }
 
+/// Initialize schema に対応するビットマップ処理を行う。
 fn initialize_schema(connection: &Connection) -> Result<(), StorageError> {
     connection.execute_batch(
         "
@@ -536,6 +555,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), StorageError> {
     Ok(())
 }
 
+/// put metadata に必要な処理を行う。
 fn put_metadata<T: Serialize>(
     transaction: &Transaction<'_>,
     key: &str,
@@ -548,6 +568,7 @@ fn put_metadata<T: Serialize>(
     Ok(())
 }
 
+/// Get metadata 用の表示文字列を組み立てる。
 fn get_metadata<T: DeserializeOwned>(
     connection: &Connection,
     key: &str,
@@ -563,6 +584,9 @@ fn get_metadata<T: DeserializeOwned>(
     decode_json(&value)
 }
 
+/// 検証 形式 version を計算して返す。
+///
+/// 失敗時はエラーを返します。
 fn validate_format_version(connection: &Connection) -> Result<(), StorageError> {
     let format_version: u32 = get_metadata(connection, METADATA_FORMAT_VERSION)?;
     if !(1..=CURRENT_FORMAT_VERSION).contains(&format_version) {
@@ -571,14 +595,17 @@ fn validate_format_version(connection: &Connection) -> Result<(), StorageError> 
     Ok(())
 }
 
+/// 現在の値を JSON へ変換する。
 fn encode_json<T: Serialize>(value: &T) -> Result<String, StorageError> {
     serde_json::to_string(value).map_err(StorageError::SerializeMetadataJson)
 }
 
+/// 入力を解析して JSON に変換し、失敗時はエラーを返す。
 fn decode_json<T: DeserializeOwned>(value: &str) -> Result<T, StorageError> {
     serde_json::from_str(value).map_err(StorageError::DeserializeMetadataJson)
 }
 
+/// Insert レイヤー chunks に対応するビットマップ処理を行う。
 fn insert_layer_chunks(
     transaction: &Transaction<'_>,
     panel_id: PanelId,
@@ -615,6 +642,7 @@ fn insert_layer_chunks(
     Ok(())
 }
 
+/// Insert スナップショット chunks に対応するビットマップ処理を行う。
 fn insert_snapshot_chunks(
     transaction: &Transaction<'_>,
     snapshot_id: &str,
@@ -648,6 +676,7 @@ fn insert_snapshot_chunks(
     Ok(())
 }
 
+/// ピクセル走査を行い、チャンク ビットマップ 用のビットマップ結果を生成する。
 fn chunk_bitmap(
     bitmap: &CanvasBitmap,
     chunk_size: usize,
@@ -688,6 +717,7 @@ fn chunk_bitmap(
     Ok(chunks)
 }
 
+/// Extract チャンク pixels に対応するビットマップ処理を行う。
 fn extract_chunk_pixels(
     bitmap: &CanvasBitmap,
     chunk_x: usize,
@@ -704,6 +734,9 @@ fn extract_chunk_pixels(
     pixels
 }
 
+/// Solid RGBA に対応するビットマップ処理を行う。
+///
+/// 値を生成できない場合は `None` を返します。
 fn solid_rgba(pixels: &[u8]) -> Option<[u8; 4]> {
     let first = pixels.get(0..4)?;
     if pixels.chunks_exact(4).all(|chunk| chunk == first) {
@@ -713,6 +746,7 @@ fn solid_rgba(pixels: &[u8]) -> Option<[u8; 4]> {
     }
 }
 
+/// 現在の値を RGBA へ変換する。
 fn encode_rgba(rgba: [u8; 4]) -> i64 {
     (((rgba[0] as u32) << 24)
         | ((rgba[1] as u32) << 16)
@@ -720,6 +754,7 @@ fn encode_rgba(rgba: [u8; 4]) -> i64 {
         | (rgba[3] as u32)) as i64
 }
 
+/// Decode RGBA に対応するビットマップ処理を行う。
 fn decode_rgba(value: i64) -> [u8; 4] {
     let value = value as u32;
     [
@@ -730,6 +765,9 @@ fn decode_rgba(value: i64) -> [u8; 4] {
     ]
 }
 
+/// All pages を読み込み、必要に応じて整形して返す。
+///
+/// 失敗時はエラーを返します。
 fn load_all_pages(connection: &Connection) -> Result<Vec<Page>, StorageError> {
     let mut statement = connection.prepare("SELECT page_id FROM pages ORDER BY page_index ASC")?;
     let page_ids = statement
@@ -741,6 +779,9 @@ fn load_all_pages(connection: &Connection) -> Result<Vec<Page>, StorageError> {
         .collect()
 }
 
+/// ページ を読み込み、必要に応じて整形して返す。
+///
+/// 失敗時はエラーを返します。
 fn load_page(connection: &Connection, page_id: PageId) -> Result<Page, StorageError> {
     let page_dimensions = connection
         .query_row(
@@ -772,6 +813,7 @@ fn load_page(connection: &Connection, page_id: PageId) -> Result<Page, StorageEr
     })
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn load_panel(
     connection: &Connection,
     page_id: PageId,
@@ -841,6 +883,7 @@ fn load_panel(
     })
 }
 
+/// レイヤー ビットマップ を読み込み、必要に応じて整形して返す。
 fn load_layer_bitmap(
     connection: &Connection,
     panel_id: PanelId,
@@ -873,6 +916,7 @@ fn load_layer_bitmap(
     Ok(bitmap)
 }
 
+/// 現在の値を パネル スナップショット へ変換する。
 fn load_panel_snapshot(
     connection: &Connection,
     snapshot_id: &str,
@@ -934,6 +978,7 @@ fn load_panel_snapshot(
     }))
 }
 
+/// スナップショット summaries を読み込み、必要に応じて整形して返す。
 fn load_snapshot_summaries(
     connection: &Connection,
 ) -> Result<Vec<PersistedPanelSnapshotSummary>, StorageError> {
@@ -958,6 +1003,9 @@ fn load_snapshot_summaries(
         .map_err(StorageError::Sqlite)
 }
 
+/// 現在の値を chunks へ変換する。
+///
+/// 失敗時はエラーを返します。
 fn apply_chunks(bitmap: &mut CanvasBitmap, chunks: &[StoredChunk]) -> Result<(), StorageError> {
     for chunk in chunks {
         match chunk.encoding {
@@ -999,6 +1047,7 @@ fn apply_chunks(bitmap: &mut CanvasBitmap, chunks: &[StoredChunk]) -> Result<(),
     Ok(())
 }
 
+/// 塗りつぶし チャンク に必要な描画内容を組み立てる。
 fn fill_chunk(
     bitmap: &mut CanvasBitmap,
     chunk_x: usize,
@@ -1015,6 +1064,7 @@ fn fill_chunk(
     }
 }
 
+/// Blit チャンク に必要な描画内容を組み立てる。
 fn blit_chunk(
     bitmap: &mut CanvasBitmap,
     chunk_x: usize,
@@ -1040,6 +1090,9 @@ fn blit_chunk(
     Ok(())
 }
 
+/// 合成 パネル ビットマップ に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn compose_panel_bitmap(width: usize, height: usize, layers: &[RasterLayer]) -> CanvasBitmap {
     let mut bitmap = CanvasBitmap::transparent(width, height);
     for layer in layers.iter().filter(|layer| layer.visible) {
@@ -1057,6 +1110,9 @@ fn compose_panel_bitmap(width: usize, height: usize, layers: &[RasterLayer]) -> 
     bitmap
 }
 
+/// ピクセル走査を行い、composite レイヤー 領域 into 用のビットマップ結果を生成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn composite_layer_region_into(
     target: &mut CanvasBitmap,
     layer: &RasterLayer,
@@ -1092,6 +1148,7 @@ fn composite_layer_region_into(
     }
 }
 
+/// 指定位置の マスク アルファ を計算して返す。
 fn mask_alpha_at(mask: &LayerMask, x: usize, y: usize) -> u8 {
     if x >= mask.width || y >= mask.height {
         return 0;
@@ -1099,6 +1156,7 @@ fn mask_alpha_at(mask: &LayerMask, x: usize, y: usize) -> u8 {
     mask.alpha[y * mask.width + x]
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn blend_pixel(dst: [u8; 4], src: [u8; 4], mode: &BlendMode) -> [u8; 4] {
     let src_a = src[3] as f32 / 255.0;
     if src_a <= 0.0 {
@@ -1130,10 +1188,14 @@ fn blend_pixel(dst: [u8; 4], src: [u8; 4], mode: &BlendMode) -> [u8; 4] {
     out
 }
 
+/// 現在 スナップショット ID 用の表示文字列を組み立てる。
 fn current_snapshot_id(page_id: PageId, panel_id: PanelId) -> String {
     format!("page:{}:panel:{}:current", page_id.0, panel_id.0)
 }
 
+/// 現在 unix ms 用の表示文字列を組み立てる。
+///
+/// 失敗時はエラーを返します。
 fn current_unix_ms() -> Result<i64, StorageError> {
     Ok(SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1141,6 +1203,7 @@ fn current_unix_ms() -> Result<i64, StorageError> {
         .as_millis() as i64)
 }
 
+/// 現在の値を sqlite conversion エラー 形式へ変換する。
 fn to_sqlite_conversion_error(error: StorageError) -> rusqlite::Error {
     rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(error))
 }

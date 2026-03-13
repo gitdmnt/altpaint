@@ -7,6 +7,7 @@ use crate::{
     map_canvas_point_to_display, map_view_to_canvas_with_transform, prepare_canvas_scene,
 };
 
+/// 描画 フレーム places アクティブ パネル ビットマップ inside ページ が期待どおりに動作することを検証する。
 #[test]
 fn render_frame_places_active_panel_bitmap_inside_page() {
     let mut document = app_core::Document::new(320, 240);
@@ -36,6 +37,9 @@ fn render_frame_places_active_panel_bitmap_inside_page() {
     assert_eq!(&frame.pixels[0..4], &[255, 255, 255, 255]);
 }
 
+/// transformed キャンバス 差分 矩形 tracks ズーム and pan が期待どおりに動作することを検証する。
+///
+/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn transformed_canvas_dirty_rect_tracks_zoom_and_pan() {
     let mapped = map_canvas_dirty_to_display_with_transform(
@@ -69,6 +73,7 @@ fn transformed_canvas_dirty_rect_tracks_zoom_and_pan() {
     assert_eq!(mapped.y, 50);
 }
 
+/// キャンバス texture quad clips UV when panned outside 表示 が期待どおりに動作することを検証する。
 #[test]
 fn canvas_texture_quad_clips_uv_when_panned_outside_display() {
     let quad = canvas_texture_quad(
@@ -97,6 +102,7 @@ fn canvas_texture_quad_clips_uv_when_panned_outside_display() {
     assert!(quad.uv_min[1] >= 0.0);
 }
 
+/// map ビュー to キャンバス tracks shifted シーン が期待どおりに動作することを検証する。
 #[test]
 fn map_view_to_canvas_tracks_shifted_scene() {
     let mapped = map_view_to_canvas_with_transform(
@@ -122,6 +128,7 @@ fn map_view_to_canvas_tracks_shifted_scene() {
     assert_eq!(mapped, Some(CanvasPoint::new(32, 32)));
 }
 
+/// キャンバス texture quad carries 回転 and flip flags が期待どおりに動作することを検証する。
 #[test]
 fn canvas_texture_quad_carries_rotation_and_flip_flags() {
     let quad = canvas_texture_quad(
@@ -151,6 +158,7 @@ fn canvas_texture_quad_carries_rotation_and_flip_flags() {
     assert!(!quad.flip_y);
 }
 
+/// arbitrary 回転 roundtrips ビュー to キャンバス が期待どおりに動作することを検証する。
 #[test]
 fn arbitrary_rotation_roundtrips_view_to_canvas() {
     let viewport = PixelRect {
@@ -167,8 +175,9 @@ fn arbitrary_rotation_roundtrips_view_to_canvas() {
         flip_x: false,
         flip_y: false,
     };
-    let display = map_canvas_point_to_display(viewport, 64, 32, transform, CanvasPoint::new(24, 12))
-        .expect("display point exists");
+    let display =
+        map_canvas_point_to_display(viewport, 64, 32, transform, CanvasPoint::new(24, 12))
+            .expect("display point exists");
 
     let mapped = map_view_to_canvas_with_transform(
         viewport,
@@ -181,6 +190,7 @@ fn arbitrary_rotation_roundtrips_view_to_canvas() {
     assert_eq!(mapped, Some(CanvasPoint::new(24, 12)));
 }
 
+/// arbitrary 回転 keeps キャンバス 拡大率 stable が期待どおりに動作することを検証する。
 #[test]
 fn arbitrary_rotation_keeps_canvas_scale_stable() {
     let viewport = PixelRect {
@@ -195,13 +205,15 @@ fn arbitrary_rotation_keeps_canvas_scale_stable() {
         ..base_transform
     };
 
-    let base_scene = prepare_canvas_scene(viewport, 64, 32, base_transform).expect("base scene exists");
+    let base_scene =
+        prepare_canvas_scene(viewport, 64, 32, base_transform).expect("base scene exists");
     let rotated_scene =
         prepare_canvas_scene(viewport, 64, 32, rotated_transform).expect("rotated scene exists");
 
     assert!((base_scene.scale() - rotated_scene.scale()).abs() < 0.001);
 }
 
+/// map ビュー to キャンバス tracks rotated シーン が期待どおりに動作することを検証する。
 #[test]
 fn map_view_to_canvas_tracks_rotated_scene() {
     let mapped = map_view_to_canvas_with_transform(
@@ -227,6 +239,7 @@ fn map_view_to_canvas_tracks_rotated_scene() {
     assert!(mapped.is_some());
 }
 
+/// 合成 desktop フレーム writes パネル and キャンバス regions が期待どおりに動作することを検証する。
 #[test]
 fn compose_desktop_frame_writes_panel_and_canvas_regions() {
     let plan = FramePlan::new(
@@ -258,9 +271,15 @@ fn compose_desktop_frame_writes_panel_and_canvas_regions() {
 
     assert_eq!(frame.width, 640);
     assert_eq!(frame.height, 480);
-    assert!(frame.pixels.chunks_exact(4).any(|pixel| pixel == [16, 16, 16, 16]));
+    assert!(
+        frame
+            .pixels
+            .chunks_exact(4)
+            .any(|pixel| pixel == [16, 16, 16, 16])
+    );
 }
 
+/// オーバーレイ フレーム draws パネル navigator when multiple panels exist が期待どおりに動作することを検証する。
 #[test]
 fn overlay_frame_draws_panel_navigator_when_multiple_panels_exist() {
     let plan = FramePlan::new(

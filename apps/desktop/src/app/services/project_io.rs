@@ -8,6 +8,7 @@ use storage::load_project_from_path;
 use super::DesktopApp;
 
 impl DesktopApp {
+    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_project_service_request(
         &mut self,
         request: &ServiceRequest,
@@ -34,7 +35,7 @@ impl DesktopApp {
         Some(changed)
     }
 
-    /// キャンバス入力を描画プラグインへ渡してビットマップ差分として適用する。
+    /// 入力や種別に応じて処理を振り分ける。
     pub(crate) fn execute_paint_input(&mut self, input: PaintInput) -> bool {
         let edits = self
             .paint_runtime
@@ -42,12 +43,12 @@ impl DesktopApp {
         self.apply_bitmap_edits(edits)
     }
 
-    /// 現在のプロジェクトパスへ保存を行う。
+    /// プロジェクト to 現在 パス を保存先へ書き出す。
     pub(super) fn save_project_to_current_path(&mut self) -> bool {
         self.enqueue_save_project(self.io_state.project_path.clone())
     }
 
-    /// 保存先を選んでプロジェクトを保存する。
+    /// 保存先を選んでプロジェクトを書き出す要求を発行する。
     pub(super) fn save_project_as(&mut self) -> bool {
         let Some(path) = self
             .io_state
@@ -59,7 +60,9 @@ impl DesktopApp {
         self.save_project_to_path(path)
     }
 
-    /// 指定パスへプロジェクトを保存し、状態上の現在パスも更新する。
+    /// プロジェクト to パス を保存先へ書き出す。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn save_project_to_path(&mut self, path: PathBuf) -> bool {
         self.io_state.project_path = normalize_project_path(path);
         self.mark_status_dirty();
@@ -67,7 +70,7 @@ impl DesktopApp {
         self.save_project_to_current_path()
     }
 
-    /// 開く対象を選んでプロジェクトを読み込む。
+    /// プロジェクト を読み込み、必要に応じて整形して返す。
     pub(super) fn open_project(&mut self) -> bool {
         let Some(path) = self
             .io_state
@@ -79,7 +82,9 @@ impl DesktopApp {
         self.load_project(path)
     }
 
-    /// 指定パスのプロジェクトを読み込み、UI 状態も復元する。
+    /// 読み込み対象を選んでプロジェクトを開く要求を発行する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn load_project(&mut self, path: PathBuf) -> bool {
         let path = normalize_project_path(path);
         match load_project_from_path(&path) {

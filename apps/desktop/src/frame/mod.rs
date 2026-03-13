@@ -22,7 +22,7 @@ pub(crate) struct DesktopLayout {
 }
 
 impl DesktopLayout {
-    /// ウィンドウ寸法とキャンバス寸法から固定レイアウトを構築する。
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub(crate) fn new(
         window_width: usize,
         window_height: usize,

@@ -5,7 +5,7 @@ use crate::config::{INPUT_LATENCY_TARGET_MS, INPUT_SAMPLING_TARGET_HZ, WINDOW_TI
 use super::types::PerformanceSnapshot;
 
 impl PerformanceSnapshot {
-    /// ウィンドウタイトル向けの短い表示文字列を生成する。
+    /// Title テキスト 用の表示文字列を組み立てる。
     pub fn title_text(&self) -> String {
         let latency_marker =
             if self.canvas_latency_ms > 0.0 && self.canvas_latency_ms <= INPUT_LATENCY_TARGET_MS {

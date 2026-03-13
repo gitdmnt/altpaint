@@ -10,7 +10,7 @@ use winit::keyboard::{Key, NamedKey};
 use super::DesktopRuntime;
 
 impl DesktopRuntime {
-    /// IME preedit / commit を現在フォーカス中の入力へ反映する。
+    /// 現在の値を ime イベント へ変換する。
     pub(super) fn handle_ime_event(&mut self, ime: Ime) -> bool {
         match ime {
             Ime::Commit(text) => {
@@ -24,7 +24,7 @@ impl DesktopRuntime {
         }
     }
 
-    /// キーボード入力をテキスト編集・プラグイン shortcut・アプリコマンドへ振り分ける。
+    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_keyboard_input(&mut self, event: &KeyEvent) -> bool {
         let editing_repeat =
             self.app.has_focused_panel_input() && supports_editing_repeat(&event.logical_key);
@@ -47,7 +47,7 @@ impl DesktopRuntime {
         self.handle_builtin_shortcut(&event.logical_key)
     }
 
-    /// テキスト編集キーを現在フォーカス中の入力操作へ変換する。
+    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_text_edit_key(&mut self, key: &Key) -> bool {
         if self.modifiers.control_key() || self.modifiers.alt_key() {
             return false;
@@ -66,7 +66,7 @@ impl DesktopRuntime {
         }
     }
 
-    /// アプリ既定ショートカットを `DesktopApp` 操作へ変換する。
+    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_builtin_shortcut(&mut self, key: &Key) -> bool {
         match key {
             Key::Character(text)
@@ -113,7 +113,9 @@ impl DesktopRuntime {
         }
     }
 
-    /// 現在の modifier 状態と論理キーから正規化済み shortcut 文字列を作る。
+    /// 現在の値を ショートカット へ変換する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub(super) fn normalized_shortcut(&self, key: &Key) -> Option<(String, String)> {
         let key_name = normalized_key_name(key)?;
         let mut parts = Vec::new();
@@ -134,7 +136,9 @@ impl DesktopRuntime {
     }
 }
 
-/// 論理キーを panel runtime と共有する canonical 名へ変換する。
+/// 現在の値を key 名前 へ変換する。
+///
+/// 値を生成できない場合は `None` を返します。
 pub(super) fn normalized_key_name(key: &Key) -> Option<String> {
     match key {
         Key::Character(text) => {
@@ -179,7 +183,7 @@ pub(super) fn normalized_key_name(key: &Key) -> Option<String> {
     }
 }
 
-/// 編集用のキー repeat を許可してよい論理キーかどうかを返す。
+/// Supports editing repeat かどうかを返す。
 pub(super) fn supports_editing_repeat(key: &Key) -> bool {
     matches!(
         key,

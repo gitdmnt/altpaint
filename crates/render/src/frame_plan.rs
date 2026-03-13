@@ -17,7 +17,7 @@ pub struct FramePlan<'a> {
 }
 
 impl<'a> FramePlan<'a> {
-    /// フレーム計画を構築する。
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn new(
         window_width: usize,
         window_height: usize,
@@ -42,7 +42,7 @@ impl<'a> FramePlan<'a> {
         }
     }
 
-    /// ウィンドウ全体の矩形を返す。
+    /// ウィンドウ 矩形 を計算して返す。
     pub fn window_rect(&self) -> PixelRect {
         PixelRect {
             x: 0,
@@ -52,12 +52,12 @@ impl<'a> FramePlan<'a> {
         }
     }
 
-    /// パネル面の配置計画を返す。
+    /// パネル plan を計算して返す。
     pub fn panel_plan(&self) -> PanelPlan {
         self.panel_surface.plan()
     }
 
-    /// overlay 計画を構築する。
+    /// オーバーレイ plan を計算して返す。
     pub fn overlay_plan(&self, overlay: CanvasOverlayState) -> OverlayPlan<'a> {
         OverlayPlan {
             canvas: self.canvas,

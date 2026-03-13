@@ -17,7 +17,7 @@ pub(crate) struct DesktopIoState {
 }
 
 impl DesktopIoState {
-    /// 各種 I/O 依存をまとめた状態を生成する。
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub(crate) fn new(
         project_path: PathBuf,
         session_path: PathBuf,
@@ -35,7 +35,7 @@ impl DesktopIoState {
 }
 
 impl DesktopApp {
-    /// 現在のデスクトップセッションとして保存すべき状態を組み立てる。
+    /// セッション 状態 を計算して返す。
     pub(super) fn session_state(&self) -> DesktopSessionState {
         DesktopSessionState {
             last_project_path: Some(self.io_state.project_path.clone()),
@@ -46,7 +46,7 @@ impl DesktopApp {
         }
     }
 
-    /// セッションファイルへ現在状態を書き戻す。
+    /// セッション 状態 を永続化する。
     pub(super) fn persist_session_state(&self) {
         if let Err(error) = save_session_state(&self.io_state.session_path, &self.session_state()) {
             eprintln!("failed to persist desktop session: {error}");

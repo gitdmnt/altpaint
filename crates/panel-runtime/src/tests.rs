@@ -3,6 +3,7 @@ use app_core::Command;
 use panel_schema::CommandDescriptor;
 use serde_json::Value;
 
+/// コマンド mapping supports ビュー ズーム が期待どおりに動作することを検証する。
 #[test]
 fn command_mapping_supports_view_zoom() {
     let mut descriptor = CommandDescriptor::new("view.zoom");

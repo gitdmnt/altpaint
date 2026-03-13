@@ -14,7 +14,9 @@ pub(crate) struct PendingSaveTask {
 }
 
 impl DesktopApp {
-    /// 現在の document / workspace 状態を非同期保存タスクへ積む。
+    /// 現在の値を 保存 プロジェクト へ変換する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn enqueue_save_project(&mut self, path: PathBuf) -> bool {
         let document = self.document.clone();
         let workspace_layout = self.panel_presentation.workspace_layout();
@@ -30,7 +32,9 @@ impl DesktopApp {
         true
     }
 
-    /// 完了した非同期保存タスクを回収し、エラーを UI へ通知する。
+    /// 入力や種別に応じて処理を振り分ける。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn poll_background_tasks(&mut self) {
         let mut remaining = Vec::new();
         let mut completed_any = false;
@@ -61,7 +65,7 @@ impl DesktopApp {
         self.io_state.pending_save_tasks = remaining;
     }
 
-    /// テスト用に全保存タスクの完了を待機する。
+    /// 入力や種別に応じて処理を振り分ける。
     #[cfg(test)]
     pub(crate) fn wait_for_pending_save_tasks(&mut self) {
         let mut remaining = Vec::new();
@@ -75,7 +79,7 @@ impl DesktopApp {
         }
     }
 
-    /// 未完了の保存タスク数を返す。
+    /// 現在の pending 保存 task 件数 を返す。
     #[cfg(test)]
     pub(crate) fn pending_save_task_count(&self) -> usize {
         self.io_state.pending_save_tasks.len()

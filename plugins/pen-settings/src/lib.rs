@@ -25,9 +25,11 @@ const HAS_SETTINGS: state::BoolKey = state::bool("has_settings");
 const LOG_SIZE_SLIDER_MAX: i32 = 1000;
 const MAX_TOOL_SIZE: f32 = 10000.0;
 
+/// パネル初期化時に必要な状態を整える。
 #[plugin_sdk::panel_init]
 fn init() {}
 
+/// Host snapshot を読み取り、表示用の状態へ同期する。
 #[plugin_sdk::panel_sync_host]
 fn sync_host() {
     let snapshot = host::tool::snapshot();
@@ -69,6 +71,7 @@ fn sync_host() {
     );
 }
 
+/// サイズ to slider を計算して返す。
 fn size_to_slider(size: i32) -> i32 {
     if size <= 1 {
         return 0;
@@ -77,6 +80,7 @@ fn size_to_slider(size: i32) -> i32 {
     (normalized * LOG_SIZE_SLIDER_MAX as f32).round() as i32
 }
 
+/// 現在の slider to サイズ を返す。
 fn slider_to_size(value: i32) -> u32 {
     let normalized = value.clamp(0, LOG_SIZE_SLIDER_MAX) as f32 / LOG_SIZE_SLIDER_MAX as f32;
     MAX_TOOL_SIZE
@@ -85,6 +89,7 @@ fn slider_to_size(value: i32) -> u32 {
         .clamp(1.0, MAX_TOOL_SIZE) as u32
 }
 
+/// 入力を解析して サイズ 入力 に変換する。
 fn parse_size_input(value: &str) -> Result<u32, &'static str> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -96,6 +101,7 @@ fn parse_size_input(value: &str) -> Result<u32, &'static str> {
     Ok(parsed.clamp(1, MAX_TOOL_SIZE as u32))
 }
 
+/// 現在の値を サイズ 状態 へ変換する。
 fn sync_size_state(size: u32) {
     let clamped = size.clamp(1, MAX_TOOL_SIZE as u32);
     set_state_i32(PEN_SIZE, clamped as i32);
@@ -103,6 +109,9 @@ fn sync_size_state(size: u32) {
     set_state_string(PEN_SIZE_INPUT, clamped.to_string());
 }
 
+/// ツール 設定 サイズ に対応するコマンドを発行する。
+///
+/// 内部でコマンドを発行します。
 #[plugin_sdk::panel_handler]
 fn set_pen_size(value: i32) {
     let size = slider_to_size(value);
@@ -110,6 +119,9 @@ fn set_pen_size(value: i32) {
     emit_command(&commands::tool::set_size(size));
 }
 
+/// ツール 設定 サイズ に対応するコマンドを発行する。
+///
+/// 内部でコマンドを発行します。
 #[plugin_sdk::panel_handler]
 fn set_pen_size_text() {
     let value = event_string("value");
@@ -121,6 +133,11 @@ fn set_pen_size_text() {
     emit_command(&commands::tool::set_size(size));
 }
 
+/// Tool set_pressure_enabled(
+        !host tool pen_pressure_enabled( に対応するコマンドを発行する。
+/// ツール 設定 pressure enabled に対応するコマンドを発行する。
+///
+/// 内部でコマンドを発行します。
 #[plugin_sdk::panel_handler]
 fn toggle_pressure() {
     emit_command(&commands::tool::set_pressure_enabled(
@@ -128,11 +145,17 @@ fn toggle_pressure() {
     ));
 }
 
+/// ツール 設定 アンチエイリアス に対応するコマンドを発行する。
+///
+/// 内部でコマンドを発行します。
 #[plugin_sdk::panel_handler]
 fn toggle_antialias() {
     emit_command(&commands::tool::set_antialias(!host::tool::pen_antialias()));
 }
 
+/// ツール 設定 stabilization に対応するコマンドを発行する。
+///
+/// 内部でコマンドを発行します。
 #[plugin_sdk::panel_handler]
 fn set_stabilization(value: i32) {
     emit_command(&commands::tool::set_stabilization(value.clamp(0, 100) as u8));
@@ -142,6 +165,7 @@ fn set_stabilization(value: i32) {
 mod tests {
     use super::*;
 
+    /// パネル entrypoints are callable on native targets が期待どおりに動作することを検証する。
     #[test]
     fn panel_entrypoints_are_callable_on_native_targets() {
         init();
@@ -153,6 +177,7 @@ mod tests {
         set_stabilization(24);
     }
 
+    /// logarithmic slider roundtrips common sizes が期待どおりに動作することを検証する。
     #[test]
     fn logarithmic_slider_roundtrips_common_sizes() {
         for size in [1, 2, 4, 16, 128, 2048, 10000] {
@@ -162,6 +187,7 @@ mod tests {
         }
     }
 
+    /// サイズ 入力 parses and clamps が期待どおりに動作することを検証する。
     #[test]
     fn size_input_parses_and_clamps() {
         assert_eq!(parse_size_input("24"), Ok(24));

@@ -9,6 +9,7 @@ pub struct CanvasPointerEvent {
     pub height: i32,
 }
 
+/// ビュー to キャンバス with 変換 を別座標系へ変換する。
 pub fn map_view_to_canvas_with_transform(
     frame: &RenderFrame,
     event: CanvasPointerEvent,

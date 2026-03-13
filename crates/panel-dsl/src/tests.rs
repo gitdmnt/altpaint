@@ -4,7 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::{parse_panel_source, validate_panel_ast, PanelDslError, StateType};
+use crate::{PanelDslError, StateType, parse_panel_source, validate_panel_ast};
 
 const SAMPLE_PANEL: &str = r#"
 panel {
@@ -40,6 +40,7 @@ view {
 }
 "#;
 
+/// parser extracts manifest 状態 and handlers が期待どおりに動作することを検証する。
 #[test]
 fn parser_extracts_manifest_state_and_handlers() {
     let ast = parse_panel_source(SAMPLE_PANEL).expect("sample panel parses");
@@ -53,6 +54,7 @@ fn parser_extracts_manifest_state_and_handlers() {
     ));
 }
 
+/// validation collects ハンドラ bindings が期待どおりに動作することを検証する。
 #[test]
 fn validation_collects_handler_bindings() {
     let temp_dir = unique_test_dir();
@@ -72,6 +74,7 @@ fn validation_collects_handler_bindings() {
     assert!(definition.handler_bindings.contains("reorder_layers"));
 }
 
+/// validation rejects unknown ビュー tags が期待どおりに動作することを検証する。
 #[test]
 fn validation_rejects_unknown_view_tags() {
     let source = SAMPLE_PANEL.replace("<text tone=\"muted\">", "<card>");
@@ -85,6 +88,7 @@ fn validation_rejects_unknown_view_tags() {
     );
 }
 
+/// validation rejects direct ホスト スナップショット expressions が期待どおりに動作することを検証する。
 #[test]
 fn validation_rejects_direct_host_snapshot_expressions() {
     let temp_dir = unique_test_dir();
@@ -107,6 +111,7 @@ fn validation_rejects_direct_host_snapshot_expressions() {
     ));
 }
 
+/// validation rejects 同期 ホスト as ui ハンドラ binding が期待どおりに動作することを検証する。
 #[test]
 fn validation_rejects_sync_host_as_ui_handler_binding() {
     let temp_dir = unique_test_dir();
@@ -126,6 +131,7 @@ fn validation_rejects_sync_host_as_ui_handler_binding() {
     ));
 }
 
+/// Unique test dir 用の表示文字列を組み立てる。
 fn unique_test_dir() -> PathBuf {
     let suffix = SystemTime::now()
         .duration_since(UNIX_EPOCH)

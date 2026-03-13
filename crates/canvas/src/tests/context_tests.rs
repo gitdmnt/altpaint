@@ -2,6 +2,7 @@ use app_core::{Document, PaintInput, PanelLocalPoint};
 
 use crate::{build_paint_context, resolved_size_for_input};
 
+/// コンテキスト builder resolves アクティブ ツール and レイヤー metadata が期待どおりに動作することを検証する。
 #[test]
 fn context_builder_resolves_active_tool_and_layer_metadata() {
     let document = Document::default();
@@ -18,6 +19,7 @@ fn context_builder_resolves_active_tool_and_layer_metadata() {
     assert_eq!(resolved.context.layer_count, 1);
 }
 
+/// コンテキスト builder rejects points outside アクティブ パネル が期待どおりに動作することを検証する。
 #[test]
 fn context_builder_rejects_points_outside_active_panel() {
     let document = Document::default();
@@ -29,6 +31,7 @@ fn context_builder_rejects_points_outside_active_panel() {
     assert!(build_paint_context(&document, &input).is_none());
 }
 
+/// resolved サイズ uses pressure for スタンプ inputs が期待どおりに動作することを検証する。
 #[test]
 fn resolved_size_uses_pressure_for_stamp_inputs() {
     let document = Document::default();

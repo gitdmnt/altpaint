@@ -5,20 +5,25 @@ use serde_json::json;
 use crate::{command, commands, handler_result, host, runtime, services, state};
 use crate::{panel_handler, panel_init, panel_sync_host};
 
+/// 初期化 for macro test に必要な処理を行う。
 #[panel_init]
 fn init_for_macro_test() {}
 
+/// For macro test を保存先へ書き出す。
 #[panel_handler]
 fn save_for_macro_test() {}
 
+/// ホスト for macro test を現在の状態へ同期する。
 #[panel_sync_host]
 fn sync_host_for_macro_test() {}
 
+/// slider for macro test に必要な処理を行う。
 #[panel_handler]
 fn slider_for_macro_test(value: i32) {
     assert_eq!(value, 42);
 }
 
+/// コマンド builder collects payload fields が期待どおりに動作することを検証する。
 #[test]
 fn command_builder_collects_payload_fields() {
     let descriptor = command("tool.set_active")
@@ -33,6 +38,7 @@ fn command_builder_collects_payload_fields() {
     assert_eq!(descriptor.payload.get("weight"), Some(&json!(1)));
 }
 
+/// コマンド builder 色 aliases string payload and ハンドラ 結果 defaults が期待どおりに動作することを検証する。
 #[test]
 fn command_builder_color_aliases_string_payload_and_handler_result_defaults() {
     let descriptor = command("tool.set_color").color("color", "#112233").build();
@@ -42,6 +48,7 @@ fn command_builder_color_aliases_string_payload_and_handler_result_defaults() {
     assert_eq!(handler_result(), crate::HandlerResult::default());
 }
 
+/// typed プロジェクト commands hide コマンド strings が期待どおりに動作することを検証する。
 #[test]
 fn typed_project_commands_hide_command_strings() {
     let descriptor = commands::project::new_sized(320, 240);
@@ -52,6 +59,7 @@ fn typed_project_commands_hide_command_strings() {
     assert_eq!(commands::project::load().name, "project.load");
 }
 
+/// typed プロジェクト commands cover パス variants が期待どおりに動作することを検証する。
 #[test]
 fn typed_project_commands_cover_path_variants() {
     assert_eq!(commands::project::new_document().name, "project.new");
@@ -70,6 +78,7 @@ fn typed_project_commands_cover_path_variants() {
     );
 }
 
+/// typed サービス requests hide サービス names が期待どおりに動作することを検証する。
 #[test]
 fn typed_service_requests_hide_service_names() {
     let save = services::project_io::save_current();
@@ -83,6 +92,7 @@ fn typed_service_requests_hide_service_names() {
     assert_eq!(select_panel.payload.get("index"), Some(&json!(2)));
 }
 
+/// typed ツール commands hide payload keys が期待どおりに動作することを検証する。
 #[test]
 fn typed_tool_commands_hide_payload_keys() {
     let tool = commands::tool::set_active(commands::Tool::Eraser);
@@ -92,6 +102,7 @@ fn typed_tool_commands_hide_payload_keys() {
     assert_eq!(color.payload.get("color"), Some(&json!("#0C2238")));
 }
 
+/// typed ツール commands cover remaining variants が期待どおりに動作することを検証する。
 #[test]
 fn typed_tool_commands_cover_remaining_variants() {
     assert_eq!(commands::Tool::Pen.as_str(), "pen");
@@ -114,6 +125,7 @@ fn typed_tool_commands_cover_remaining_variants() {
     );
 }
 
+/// typed ビュー commands hide payload keys が期待どおりに動作することを検証する。
 #[test]
 fn typed_view_commands_hide_payload_keys() {
     let zoom = commands::view::zoom(1.5);
@@ -141,6 +153,7 @@ fn typed_view_commands_hide_payload_keys() {
     assert_eq!(commands::view::reset().name, "view.reset");
 }
 
+/// typed レイヤー commands hide payload keys が期待どおりに動作することを検証する。
 #[test]
 fn typed_layer_commands_hide_payload_keys() {
     let move_descriptor = commands::layer::move_to(2, 0);
@@ -155,6 +168,7 @@ fn typed_layer_commands_hide_payload_keys() {
     assert_eq!(rename_descriptor.payload.get("name"), Some(&json!("Ink")));
 }
 
+/// typed レイヤー commands cover remaining variants が期待どおりに動作することを検証する。
 #[test]
 fn typed_layer_commands_cover_remaining_variants() {
     assert_eq!(commands::layer::BlendMode::Normal.as_str(), "normal");
@@ -177,6 +191,7 @@ fn typed_layer_commands_cover_remaining_variants() {
     assert_eq!(commands::layer::toggle_mask().name, "layer.toggle_mask");
 }
 
+/// typed 状態 keys can be declared once が期待どおりに動作することを検証する。
 #[test]
 fn typed_state_keys_can_be_declared_once() {
     const SHOW_NEW: state::BoolKey = state::bool("show_new");
@@ -188,6 +203,7 @@ fn typed_state_keys_can_be_declared_once() {
     assert_eq!(NAME.as_ref(), "name");
 }
 
+/// typed ホスト helpers are callable on native targets が期待どおりに動作することを検証する。
 #[test]
 fn typed_host_helpers_are_callable_on_native_targets() {
     assert_eq!(host::document::title(), "");
@@ -227,6 +243,9 @@ fn typed_host_helpers_are_callable_on_native_targets() {
     assert_eq!(host::snapshot::storage_status(), "");
 }
 
+/// native runtime helpers are safe noops が期待どおりに動作することを検証する。
+///
+/// 内部でサービス要求を発行します。
 #[test]
 fn native_runtime_helpers_are_safe_noops() {
     let mut batch = runtime::StatePatchBuffer::new();
@@ -259,6 +278,7 @@ fn native_runtime_helpers_are_safe_noops() {
     assert_eq!(runtime::host_string("host.string"), "");
 }
 
+/// 状態 patch buffer collects expected patch sequence が期待どおりに動作することを検証する。
 #[test]
 fn state_patch_buffer_collects_expected_patch_sequence() {
     let mut batch = runtime::StatePatchBuffer::new();
@@ -280,6 +300,7 @@ fn state_patch_buffer_collects_expected_patch_sequence() {
     );
 }
 
+/// macro annotated functions remain directly callable が期待どおりに動作することを検証する。
 #[test]
 fn macro_annotated_functions_remain_directly_callable() {
     init_for_macro_test();

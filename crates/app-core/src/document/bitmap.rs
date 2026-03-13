@@ -8,7 +8,7 @@ use crate::{CanvasDirtyRect, ClampToCanvasBounds};
 use super::CanvasBitmap;
 
 impl CanvasBitmap {
-    /// 白背景で初期化された新しいビットマップを作る。
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn new(width: usize, height: usize) -> Self {
         let mut pixels = vec![0; width * height * 4];
         for chunk in pixels.chunks_exact_mut(4) {
@@ -24,7 +24,7 @@ impl CanvasBitmap {
         }
     }
 
-    /// 完全透明で初期化されたビットマップを作る。
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn transparent(width: usize, height: usize) -> Self {
         Self {
             width,
@@ -33,22 +33,30 @@ impl CanvasBitmap {
         }
     }
 
-    /// ビットマップ内の1点を黒で塗る。
+    /// 描画 点 に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn draw_point(&mut self, x: usize, y: usize) -> CanvasDirtyRect {
         self.draw_point_rgba(x, y, [0, 0, 0, 255])
     }
 
-    /// ビットマップ内の1点を任意色で塗る。
+    /// 描画 点 RGBA に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn draw_point_rgba(&mut self, x: usize, y: usize, rgba: [u8; 4]) -> CanvasDirtyRect {
         self.write_pixel(x, y, rgba)
     }
 
-    /// ビットマップ内の1点を白で塗る。
+    /// Erase 点 に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn erase_point(&mut self, x: usize, y: usize) -> CanvasDirtyRect {
         self.write_pixel(x, y, [255, 255, 255, 255])
     }
 
-    /// 指定サイズの円形ブラシで1点描画する。
+    /// 描画 点 sized RGBA に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn draw_point_sized_rgba(
         &mut self,
         x: usize,
@@ -63,7 +71,9 @@ impl CanvasBitmap {
         self.paint_disk(x as isize, y as isize, size, rgba, antialias)
     }
 
-    /// 指定サイズの円形ブラシで1点消去する。
+    /// Erase 点 sized に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn erase_point_sized(
         &mut self,
         x: usize,
@@ -83,7 +93,9 @@ impl CanvasBitmap {
         )
     }
 
-    /// 2点間を結ぶ最小ストロークを描く。
+    /// 描画 line に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn draw_line(
         &mut self,
         from_x: usize,
@@ -94,7 +106,9 @@ impl CanvasBitmap {
         self.draw_line_rgba(from_x, from_y, to_x, to_y, [0, 0, 0, 255])
     }
 
-    /// 2点間を任意色で線描画する。
+    /// 描画 line RGBA に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn draw_line_rgba(
         &mut self,
         from_x: usize,
@@ -137,7 +151,9 @@ impl CanvasBitmap {
         CanvasDirtyRect::from_inclusive_points(from_x, from_y, to_x, to_y)
     }
 
-    /// 2点間を白で線消去する。
+    /// Erase line に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn erase_line(
         &mut self,
         from_x: usize,
@@ -179,7 +195,9 @@ impl CanvasBitmap {
         CanvasDirtyRect::from_inclusive_points(from_x, from_y, to_x, to_y)
     }
 
-    /// 指定サイズの円形ブラシで線描画する。
+    /// 描画 line sized RGBA に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     #[allow(clippy::too_many_arguments)]
     pub fn draw_line_sized_rgba(
         &mut self,
@@ -197,7 +215,9 @@ impl CanvasBitmap {
         self.paint_line_disks(from_x, from_y, to_x, to_y, size, rgba, antialias)
     }
 
-    /// 指定サイズの円形ブラシで線消去する。
+    /// Erase line sized に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn erase_line_sized(
         &mut self,
         from_x: usize,
@@ -221,7 +241,9 @@ impl CanvasBitmap {
         )
     }
 
-    /// 指定座標のRGBA値を返す。
+    /// ピクセル RGBA に対応するビットマップ処理を行う。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn pixel_rgba(&self, x: usize, y: usize) -> Option<[u8; 4]> {
         if x >= self.width || y >= self.height {
             return None;
@@ -235,12 +257,16 @@ impl CanvasBitmap {
         ])
     }
 
-    /// 単一ピクセルを上書きし、その dirty rect を返す。
+    /// ピクセル RGBA を設定する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn set_pixel_rgba(&mut self, x: usize, y: usize, rgba: [u8; 4]) -> CanvasDirtyRect {
         self.write_pixel(x, y, rgba)
     }
 
-    /// 単一ピクセルを書き換え、その dirty rect を返す。
+    /// ピクセル を保存先へ書き出す。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     fn write_pixel(&mut self, x: usize, y: usize, rgba: [u8; 4]) -> CanvasDirtyRect {
         if x >= self.width || y >= self.height {
             return CanvasDirtyRect::from_inclusive_points(
@@ -260,7 +286,9 @@ impl CanvasBitmap {
         CanvasDirtyRect::from_inclusive_points(x, y, x, y)
     }
 
-    /// 円形ブラシを線分上に連続配置して太線を描く。
+    /// Paint line disks に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     #[allow(clippy::too_many_arguments)]
     fn paint_line_disks(
         &mut self,
@@ -283,7 +311,9 @@ impl CanvasBitmap {
         )
     }
 
-    /// 円形ブラシ 1 個ぶんを描画する。
+    /// Paint disk に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     fn paint_disk(
         &mut self,
         center_x: isize,
@@ -303,6 +333,9 @@ impl CanvasBitmap {
         )
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     #[allow(clippy::too_many_arguments)]
     fn paint_capsule(
         &mut self,
@@ -455,6 +488,7 @@ impl CanvasBitmap {
             })
     }
 
+    /// 塗りつぶし opaque span に必要な描画内容を組み立てる。
     fn fill_opaque_span(&mut self, y: usize, start_x: usize, end_x: usize, rgba: [u8; 4]) {
         if start_x > end_x || y >= self.height || start_x >= self.width {
             return;
@@ -472,6 +506,7 @@ impl CanvasBitmap {
         }
     }
 
+    /// ブレンド span with constant coverage に対応するビットマップ処理を行う。
     fn blend_span_with_constant_coverage(
         &mut self,
         y: usize,
@@ -488,6 +523,7 @@ impl CanvasBitmap {
         }
     }
 
+    /// ブレンド capsule edge span に対応するビットマップ処理を行う。
     #[allow(clippy::too_many_arguments)]
     fn blend_capsule_edge_span(
         &mut self,
@@ -538,6 +574,9 @@ impl CanvasBitmap {
         }
     }
 
+    /// ブレンド ピクセル に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     fn blend_pixel(&mut self, x: usize, y: usize, rgba: [u8; 4], coverage: f32) -> CanvasDirtyRect {
         if x >= self.width || y >= self.height {
             return CanvasDirtyRect::from_inclusive_points(
@@ -586,11 +625,13 @@ impl CanvasBitmap {
 }
 
 impl Default for CanvasBitmap {
+    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self::new(64, 64)
     }
 }
 
+/// Distance sq to segment を有効範囲へ補正して返す。
 #[allow(clippy::too_many_arguments)]
 fn distance_sq_to_segment(
     point_x: f32,
@@ -617,6 +658,7 @@ fn distance_sq_to_segment(
     dx * dx + dy * dy
 }
 
+/// Capsule row ピクセル span に対応するビットマップ処理を行う。
 fn capsule_row_pixel_span(
     start_x: f32,
     start_y: f32,

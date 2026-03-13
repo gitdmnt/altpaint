@@ -31,12 +31,14 @@ pub struct PanelRuntime {
 }
 
 impl Default for PanelRuntime {
+    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl PanelRuntime {
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn new() -> Self {
         Self {
             panels: Vec::new(),
@@ -46,6 +48,7 @@ impl PanelRuntime {
         }
     }
 
+    /// 現在の値を パネル へ変換する。
     pub fn register_panel(&mut self, mut panel: Box<dyn PanelPlugin>) {
         if let Some(config) = self.persistent_panel_configs.get(panel.id()) {
             panel.restore_persistent_config(config);
@@ -60,6 +63,7 @@ impl PanelRuntime {
         }
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
     pub fn load_panel_directory(&mut self, directory: impl AsRef<Path>) -> Vec<String> {
         let directory = directory.as_ref();
         self.remove_loaded_panels();
@@ -90,10 +94,12 @@ impl PanelRuntime {
         diagnostics
     }
 
+    /// ドキュメント を現在の状態へ同期する。
     pub fn sync_document(&mut self, document: &Document) -> BTreeSet<String> {
         self.sync_document_subset(document, None)
     }
 
+    /// ドキュメント panels を現在の状態へ同期する。
     pub fn sync_document_panels(
         &mut self,
         document: &Document,
@@ -105,10 +111,12 @@ impl PanelRuntime {
         self.sync_document_subset(document, Some(panel_ids))
     }
 
+    /// 現在の パネル 件数 を返す。
     pub fn panel_count(&self) -> usize {
         self.panels.len()
     }
 
+    /// 既存データを走査して パネル debug summaries を組み立てる。
     pub fn panel_debug_summaries(&self) -> Vec<(&'static str, &'static str, String)> {
         self.panels
             .iter()
@@ -116,10 +124,12 @@ impl PanelRuntime {
             .collect()
     }
 
+    /// 既存データを走査して パネル views を組み立てる。
     pub fn panel_views(&self) -> Vec<PanelView> {
         self.panels.iter().map(|panel| panel.view()).collect()
     }
 
+    /// 既存データを走査して パネル trees を組み立てる。
     pub fn panel_trees(&self) -> Vec<PanelTree> {
         self.panels
             .iter()
@@ -132,16 +142,19 @@ impl PanelRuntime {
             .collect()
     }
 
+    /// persistent パネル configs を計算して返す。
     pub fn persistent_panel_configs(&self) -> BTreeMap<String, Value> {
         collect_persistent_panel_configs(&self.panels)
     }
 
+    /// Persistent パネル configs を置き換える。
     pub fn replace_persistent_panel_configs(&mut self, configs: BTreeMap<String, Value>) {
         self.persistent_panel_configs = configs;
         restore_persistent_panel_configs(&mut self.panels, &self.persistent_panel_configs);
         self.rebuild_tree_cache();
     }
 
+    /// 現在の値を イベント へ変換する。
     pub fn dispatch_event(&mut self, event: &PanelEvent) -> RuntimeDispatchResult {
         let previous_configs = collect_persistent_panel_configs(&self.panels);
         let Some(panel) = self
@@ -173,6 +186,7 @@ impl PanelRuntime {
         }
     }
 
+    /// 現在の値を キーボード へ変換する。
     pub fn dispatch_keyboard(
         &mut self,
         shortcut: &str,
@@ -220,6 +234,7 @@ impl PanelRuntime {
         }
     }
 
+    /// 現在の値を ドキュメント subset へ変換する。
     fn sync_document_subset(
         &mut self,
         document: &Document,
@@ -246,6 +261,7 @@ impl PanelRuntime {
         changed_panels
     }
 
+    /// Loaded panels を削除する。
     fn remove_loaded_panels(&mut self) {
         if self.loaded_panel_ids.is_empty() {
             return;
@@ -260,6 +276,7 @@ impl PanelRuntime {
         self.rebuild_tree_cache();
     }
 
+    /// Tree cache を再構築する。
     fn rebuild_tree_cache(&mut self) {
         self.panel_tree_cache.clear();
         for panel in &self.panels {
@@ -269,6 +286,7 @@ impl PanelRuntime {
     }
 }
 
+/// イベント パネル ID を計算して返す。
 fn event_panel_id(event: &PanelEvent) -> &str {
     match event {
         PanelEvent::Activate { panel_id, .. }

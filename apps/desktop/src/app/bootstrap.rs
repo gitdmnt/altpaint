@@ -4,10 +4,10 @@ use std::path::{Path, PathBuf};
 
 use app_core::Document;
 use desktop_support::{
-    DEFAULT_PROJECT_PATH, DesktopSessionState, WorkspacePresetCatalog, default_canvas_template_path,
-    default_canvas_templates, default_panel_dir, default_workspace_preset_catalog,
-    load_session_state, load_workspace_preset_catalog, save_canvas_templates,
-    save_workspace_preset_catalog,
+    DEFAULT_PROJECT_PATH, DesktopSessionState, WorkspacePresetCatalog,
+    default_canvas_template_path, default_canvas_templates, default_panel_dir,
+    default_workspace_preset_catalog, load_session_state, load_workspace_preset_catalog,
+    save_canvas_templates, save_workspace_preset_catalog,
 };
 use panel_runtime::PanelRuntime;
 use ui_shell::PanelPresentation;
@@ -25,6 +25,7 @@ pub(super) struct BootstrapState {
 }
 
 impl DesktopApp {
+    /// 既存データを走査して bootstrap 状態 を組み立てる。
     pub(super) fn bootstrap_state(
         project_path: PathBuf,
         session_path: &Path,
@@ -44,15 +45,15 @@ impl DesktopApp {
             loaded_project.as_ref().map(|project| &project.ui_state),
             session.as_ref().map(|state| &state.ui_state),
         );
-        if let Some(selected_preset_id) = selected_workspace_preset_id_from_configs(
-            &panel_runtime.persistent_panel_configs(),
-        )
-        .filter(|preset_id| {
-            workspace_presets
-                .presets
-                .iter()
-                .any(|preset| preset.id == *preset_id)
-        }) {
+        if let Some(selected_preset_id) =
+            selected_workspace_preset_id_from_configs(&panel_runtime.persistent_panel_configs())
+                .filter(|preset_id| {
+                    workspace_presets
+                        .presets
+                        .iter()
+                        .any(|preset| preset.id == *preset_id)
+                })
+        {
             active_workspace_preset_id = selected_preset_id;
         }
 
@@ -72,6 +73,7 @@ impl DesktopApp {
         }
     }
 
+    /// パネル system を読み込み、必要に応じて整形して返す。
     fn load_panel_system(
         workspace_presets: &WorkspacePresetCatalog,
         project_ui_state: Option<&WorkspaceUiState>,
@@ -87,22 +89,40 @@ impl DesktopApp {
             .iter()
             .find(|preset| preset.id == workspace_presets.default_preset_id)
         {
-            apply_ui_state_to_panel_system(&mut panel_runtime, &mut panel_presentation, &default_preset.ui_state);
+            apply_ui_state_to_panel_system(
+                &mut panel_runtime,
+                &mut panel_presentation,
+                &default_preset.ui_state,
+            );
         }
         if let Some(project_ui_state) = project_ui_state {
-            apply_ui_state_to_panel_system(&mut panel_runtime, &mut panel_presentation, project_ui_state);
+            apply_ui_state_to_panel_system(
+                &mut panel_runtime,
+                &mut panel_presentation,
+                project_ui_state,
+            );
         }
         if let Some(session_ui_state) = session_ui_state {
-            apply_ui_state_to_panel_system(&mut panel_runtime, &mut panel_presentation, session_ui_state);
+            apply_ui_state_to_panel_system(
+                &mut panel_runtime,
+                &mut panel_presentation,
+                session_ui_state,
+            );
         }
         (panel_runtime, panel_presentation)
     }
 
+    /// ワークスペース ui 状態 を更新し、必要な dirty 状態も記録する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn apply_workspace_ui_state(&mut self, ui_state: WorkspaceUiState) {
         let (workspace_layout, plugin_configs) = ui_state.into_parts();
-        self.panel_presentation.replace_workspace_layout(workspace_layout);
-        self.panel_runtime.replace_persistent_panel_configs(plugin_configs);
-        self.panel_presentation.reconcile_runtime_panels(&self.panel_runtime);
+        self.panel_presentation
+            .replace_workspace_layout(workspace_layout);
+        self.panel_runtime
+            .replace_persistent_panel_configs(plugin_configs);
+        self.panel_presentation
+            .reconcile_runtime_panels(&self.panel_runtime);
         self.refresh_new_document_templates();
         self.refresh_workspace_presets();
         self.reset_active_interactions();
@@ -112,6 +132,7 @@ impl DesktopApp {
         self.persist_session_state();
     }
 
+    /// キャンバス templates file が満たされるよう整える。
     pub(super) fn ensure_canvas_templates_file(&self) {
         let path = default_canvas_template_path();
         if path.exists() {
@@ -123,20 +144,24 @@ impl DesktopApp {
         }
     }
 
+    /// ワークスペース presets file が満たされるよう整える。
     pub(super) fn ensure_workspace_presets_file(&self, path: &Path) {
         if path.exists() {
             return;
         }
 
-        if let Err(error) = save_workspace_preset_catalog(path, &default_workspace_preset_catalog()) {
+        if let Err(error) = save_workspace_preset_catalog(path, &default_workspace_preset_catalog())
+        {
             eprintln!("failed to create workspace presets file: {error}");
         }
     }
 
+    /// ワークスペース preset カタログ を永続化する。
     pub(super) fn persist_workspace_preset_catalog(&self) {
-        if let Err(error) =
-            save_workspace_preset_catalog(&self.io_state.workspace_preset_path, &self.workspace_presets)
-        {
+        if let Err(error) = save_workspace_preset_catalog(
+            &self.io_state.workspace_preset_path,
+            &self.workspace_presets,
+        ) {
             let message = format!("failed to persist workspace preset catalog: {error}");
             eprintln!("{message}");
             self.io_state
@@ -146,6 +171,7 @@ impl DesktopApp {
     }
 }
 
+/// 現在の resolve startup プロジェクト パス を返す。
 fn resolve_startup_project_path(
     project_path: PathBuf,
     session: Option<&DesktopSessionState>,
@@ -159,6 +185,7 @@ fn resolve_startup_project_path(
         .unwrap_or(project_path)
 }
 
+/// Ui 状態 to パネル system を現在の状態へ適用する。
 fn apply_ui_state_to_panel_system(
     panel_runtime: &mut PanelRuntime,
     panel_presentation: &mut PanelPresentation,

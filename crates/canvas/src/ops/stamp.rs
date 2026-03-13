@@ -2,6 +2,7 @@ use app_core::{BitmapEdit, CanvasBitmap, PaintPluginContext, PanelLocalPoint, Pe
 
 use super::{composite, stroke};
 
+/// スタンプ 編集 に対応するビットマップ処理を行う。
 pub(crate) fn stamp_edit(
     at: PanelLocalPoint,
     pressure: f32,
@@ -10,10 +11,10 @@ pub(crate) fn stamp_edit(
     stroke::stroke_like_edit(&[at], pressure, context)
 }
 
-pub(crate) fn build_stamp(
-    context: &PaintPluginContext<'_>,
-    pressure: f32,
-) -> Option<CanvasBitmap> {
+/// スタンプ を構築する。
+///
+/// 値を生成できない場合は `None` を返します。
+pub(crate) fn build_stamp(context: &PaintPluginContext<'_>, pressure: f32) -> Option<CanvasBitmap> {
     let size = effective_size(context, pressure).max(1) as usize;
     let opacity = (context.pen.opacity * context.pen.flow).clamp(0.0, 1.0);
     let color = composite::stamp_color(context);
@@ -42,14 +43,9 @@ pub(crate) fn build_stamp(
             color,
             opacity,
         )),
-        Some(PenTipBitmap::AlphaMask8 { .. }) | Some(PenTipBitmap::Rgba8 { .. }) => {
-            Some(generated_round_stamp(
-                size,
-                color,
-                opacity,
-                context.pen.antialias,
-            ))
-        }
+        Some(PenTipBitmap::AlphaMask8 { .. }) | Some(PenTipBitmap::Rgba8 { .. }) => Some(
+            generated_round_stamp(size, color, opacity, context.pen.antialias),
+        ),
         Some(PenTipBitmap::PngBlob { .. }) | None => Some(generated_round_stamp(
             size,
             color,
@@ -59,6 +55,7 @@ pub(crate) fn build_stamp(
     }
 }
 
+/// 実効的な サイズ を返す。
 pub(crate) fn effective_size(context: &PaintPluginContext<'_>, pressure: f32) -> u32 {
     match context.tool {
         app_core::ToolKind::Pen | app_core::ToolKind::Eraser => {
@@ -75,6 +72,7 @@ pub(crate) fn effective_size(context: &PaintPluginContext<'_>, pressure: f32) ->
     }
 }
 
+/// ピクセル走査を行い、generated round スタンプ 用のビットマップ結果を生成する。
 fn generated_round_stamp(
     size: usize,
     color: [u8; 4],
@@ -113,6 +111,7 @@ fn generated_round_stamp(
     bitmap
 }
 
+/// ピクセル走査を行い、resample アルファ 先端形状 用のビットマップ結果を生成する。
 fn resample_alpha_tip(
     source_width: usize,
     source_height: usize,
@@ -133,11 +132,15 @@ fn resample_alpha_tip(
         for x in 0..target_width {
             let src_x = x * source_width.max(1) / target_width.max(1);
             let src_y = y * source_height.max(1) / target_height.max(1);
-            let src_index = src_y.saturating_mul(source_width.max(1)).saturating_add(src_x);
+            let src_index = src_y
+                .saturating_mul(source_width.max(1))
+                .saturating_add(src_x);
             if src_index >= data.len() {
                 continue;
             }
-            let alpha = ((data[src_index] as f32) * opacity).round().clamp(0.0, 255.0) as u8;
+            let alpha = ((data[src_index] as f32) * opacity)
+                .round()
+                .clamp(0.0, 255.0) as u8;
             let index = (y * bitmap.width + x) * 4;
             bitmap.pixels[index] = color[0];
             bitmap.pixels[index + 1] = color[1];
@@ -148,6 +151,7 @@ fn resample_alpha_tip(
     bitmap
 }
 
+/// ピクセル走査を行い、resample RGBA 先端形状 用のビットマップ結果を生成する。
 fn resample_rgba_tip(
     source_width: usize,
     source_height: usize,
@@ -168,7 +172,10 @@ fn resample_rgba_tip(
         for x in 0..target_width {
             let src_x = x * source_width.max(1) / target_width.max(1);
             let src_y = y * source_height.max(1) / target_height.max(1);
-            let src_index = (src_y.saturating_mul(source_width.max(1)).saturating_add(src_x)) * 4;
+            let src_index = (src_y
+                .saturating_mul(source_width.max(1))
+                .saturating_add(src_x))
+                * 4;
             if src_index + 3 >= data.len() {
                 continue;
             }

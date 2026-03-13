@@ -22,10 +22,10 @@ pub use session::{
     startup_project_path,
 };
 pub use templates::{
-    CanvasTemplate, default_canvas_template_path, default_canvas_templates,
-    load_canvas_templates, save_canvas_templates,
+    CanvasTemplate, default_canvas_template_path, default_canvas_templates, load_canvas_templates,
+    save_canvas_templates,
 };
 pub use workspace_presets::{
-    WorkspacePreset, WorkspacePresetCatalog, default_workspace_preset_path,
-    default_workspace_preset_catalog, load_workspace_preset_catalog, save_workspace_preset_catalog,
+    WorkspacePreset, WorkspacePresetCatalog, default_workspace_preset_catalog,
+    default_workspace_preset_path, load_workspace_preset_catalog, save_workspace_preset_catalog,
 };

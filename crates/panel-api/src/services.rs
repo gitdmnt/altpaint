@@ -44,6 +44,7 @@ pub struct ServiceRequest {
 }
 
 impl ServiceRequest {
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -51,15 +52,22 @@ impl ServiceRequest {
         }
     }
 
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn with_value(mut self, key: impl Into<String>, value: impl Into<Value>) -> Self {
         self.payload.insert(key.into(), value.into());
         self
     }
 
+    /// string を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn string(&self, key: &str) -> Option<&str> {
         self.payload.get(key).and_then(Value::as_str)
     }
 
+    /// 入力を解析して 入力 に変換する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn u64(&self, key: &str) -> Option<u64> {
         self.payload.get(key).and_then(|value| {
             value
@@ -69,6 +77,9 @@ impl ServiceRequest {
         })
     }
 
+    /// 入力を解析して 入力 に変換する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn f64(&self, key: &str) -> Option<f64> {
         self.payload.get(key).and_then(|value| {
             value
@@ -83,6 +94,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// サービス 要求 collects payload values が期待どおりに動作することを検証する。
     #[test]
     fn service_request_collects_payload_values() {
         let request = ServiceRequest::new(names::PROJECT_SAVE_TO_PATH)

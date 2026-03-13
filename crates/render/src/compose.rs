@@ -20,7 +20,7 @@ const ACTIVE_PANEL_FILL: [u8; 4] = [0xff, 0xc1, 0x07, 0x18];
 const PANEL_PREVIEW_BORDER: [u8; 4] = [0x80, 0xde, 0xea, 0xff];
 const PANEL_PREVIEW_FILL: [u8; 4] = [0x80, 0xde, 0xea, 0x32];
 
-/// パネル面・キャンバス面・ステータス表示をまとめて最終フレームへ合成する。
+/// 合成 base フレーム に必要な差分領域だけを描画または合成する。
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn compose_base_frame(plan: &FramePlan<'_>) -> RenderFrame {
     let mut frame = RenderFrame {
@@ -67,7 +67,9 @@ pub fn compose_base_frame(plan: &FramePlan<'_>) -> RenderFrame {
     frame
 }
 
-/// オーバーレイ専用 frame を新規構築する。
+/// 合成 オーバーレイ フレーム に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 pub fn compose_overlay_frame(plan: &FramePlan<'_>, overlay: &CanvasOverlayState) -> RenderFrame {
     let mut frame = RenderFrame {
         width: plan.window_width,
@@ -78,7 +80,9 @@ pub fn compose_overlay_frame(plan: &FramePlan<'_>, overlay: &CanvasOverlayState)
     frame
 }
 
-/// 指定 dirty 領域だけをクリアして overlay を再描画する。
+/// 合成 オーバーレイ 領域 に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 pub fn compose_overlay_region(
     frame: &mut RenderFrame,
     plan: &FramePlan<'_>,
@@ -96,7 +100,9 @@ pub fn compose_overlay_region(
     compose_panel_host_region(frame, plan.panel_surface, dirty_rect);
 }
 
-/// デスクトップ UI のベースとキャンバス領域を一度に合成する。
+/// 合成 desktop フレーム に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 #[allow(clippy::too_many_arguments)]
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn compose_desktop_frame(plan: &FramePlan<'_>, overlay: &CanvasOverlayState) -> RenderFrame {
@@ -105,7 +111,9 @@ pub fn compose_desktop_frame(plan: &FramePlan<'_>, overlay: &CanvasOverlayState)
     frame
 }
 
-/// キャンバスホスト領域だけを差分再合成する。
+/// 合成 キャンバス ホスト 領域 に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn compose_canvas_host_region(
     frame: &mut RenderFrame,
@@ -118,7 +126,9 @@ pub fn compose_canvas_host_region(
     draw_canvas_overlay(frame, plan, overlay, dirty_rect);
 }
 
-/// キャンバスホスト背景と枠線だけを再描画する。
+/// Clear キャンバス ホスト 領域 に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn clear_canvas_host_region(
     frame: &mut RenderFrame,
@@ -139,7 +149,9 @@ pub fn clear_canvas_host_region(
     }
 }
 
-/// パネルホスト領域だけを overlay 層へ差分反映する。
+/// 合成 パネル ホスト 領域 に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 pub fn compose_panel_host_region(
     frame: &mut RenderFrame,
     panel_surface: PanelSurfaceSource<'_>,
@@ -155,7 +167,9 @@ pub fn compose_panel_host_region(
     );
 }
 
-/// ステータス行だけを差分再合成する。
+/// 合成 ステータス 領域 に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 pub fn compose_status_region(frame: &mut RenderFrame, plan: &FramePlan<'_>) {
     let status_rect = status_text_bounds(
         plan.window_width,
@@ -173,6 +187,9 @@ pub fn compose_status_region(frame: &mut RenderFrame, plan: &FramePlan<'_>) {
     );
 }
 
+/// 塗りつぶし キャンバス ホスト 背景 に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn fill_canvas_host_background(
     frame: &mut RenderFrame,
     plan: &FramePlan<'_>,
@@ -221,6 +238,9 @@ fn fill_canvas_host_background(
     }
 }
 
+/// Blit キャンバス content に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 #[cfg_attr(not(test), allow(dead_code))]
 fn blit_canvas_content(
     frame: &mut RenderFrame,
@@ -236,6 +256,9 @@ fn blit_canvas_content(
     );
 }
 
+/// 描画 キャンバス オーバーレイ に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn draw_canvas_overlay(
     frame: &mut RenderFrame,
     plan: &FramePlan<'_>,
@@ -274,6 +297,9 @@ fn draw_canvas_overlay(
     }
 }
 
+/// 描画 アクティブ パネル マスク に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn draw_active_panel_mask(
     frame: &mut RenderFrame,
     plan: &FramePlan<'_>,
@@ -343,6 +369,9 @@ fn draw_active_panel_mask(
     stroke_rect(frame, panel_rect, ACTIVE_PANEL_BORDER);
 }
 
+/// 描画 パネル 生成 プレビュー に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn draw_panel_creation_preview(
     frame: &mut RenderFrame,
     plan: &FramePlan<'_>,
@@ -369,6 +398,9 @@ fn draw_panel_creation_preview(
     stroke_rect(frame, rect, PANEL_PREVIEW_BORDER);
 }
 
+/// 描画 パネル navigator に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn draw_panel_navigator(
     frame: &mut RenderFrame,
     canvas_host_rect: PixelRect,
@@ -451,6 +483,7 @@ fn draw_panel_navigator(
     }
 }
 
+/// 描画 テキスト に必要な描画内容を組み立てる。
 fn draw_text(frame: &mut RenderFrame, x: usize, y: usize, text: &str, color: [u8; 4]) {
     draw_text_rgba(
         frame.pixels.as_mut_slice(),
@@ -463,6 +496,7 @@ fn draw_text(frame: &mut RenderFrame, x: usize, y: usize, text: &str, color: [u8
     );
 }
 
+/// 塗りつぶし 矩形 に必要な描画内容を組み立てる。
 fn fill_rect(frame: &mut RenderFrame, rect: PixelRect, color: [u8; 4]) {
     let max_x = (rect.x + rect.width).min(frame.width);
     let max_y = (rect.y + rect.height).min(frame.height);
@@ -478,6 +512,7 @@ fn fill_rect(frame: &mut RenderFrame, rect: PixelRect, color: [u8; 4]) {
     }
 }
 
+/// 塗りつぶし RGBA slice に必要な描画内容を組み立てる。
 fn fill_rgba_slice(target: &mut [u8], color: [u8; 4]) {
     if target.is_empty() {
         return;
@@ -493,6 +528,7 @@ fn fill_rgba_slice(target: &mut [u8], color: [u8; 4]) {
     }
 }
 
+/// ストローク 矩形 に必要な描画内容を組み立てる。
 fn stroke_rect(frame: &mut RenderFrame, rect: PixelRect, color: [u8; 4]) {
     if rect.width == 0 || rect.height == 0 {
         return;
@@ -540,6 +576,9 @@ fn stroke_rect(frame: &mut RenderFrame, rect: PixelRect, color: [u8; 4]) {
     );
 }
 
+/// ストローク 矩形 領域 に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn stroke_rect_region(
     frame: &mut RenderFrame,
     rect: PixelRect,
@@ -584,7 +623,9 @@ fn stroke_rect_region(
     }
 }
 
-/// RGBA ソースをスケーリングしつつ dirty rect 範囲だけ転送する。
+/// Blit scaled RGBA 領域 に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 pub fn blit_scaled_rgba_region(
     frame: &mut RenderFrame,
     destination: PixelRect,
@@ -636,6 +677,9 @@ pub fn blit_scaled_rgba_region(
     }
 }
 
+/// Blit RGBA 領域 at に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn blit_rgba_region_at(
     frame: &mut RenderFrame,
     destination: PixelRect,
@@ -669,6 +713,9 @@ fn blit_rgba_region_at(
     }
 }
 
+/// Blit キャンバス with 変換 に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn blit_canvas_with_transform(
     frame: &mut RenderFrame,
     destination: PixelRect,
@@ -770,6 +817,7 @@ pub struct SourceAxisRun {
     pub src_index: usize,
 }
 
+/// ソース axis runs を構築する。
 pub fn build_source_axis_runs(
     destination_start: usize,
     destination_len: usize,
@@ -810,6 +858,7 @@ pub fn build_source_axis_runs(
     runs
 }
 
+/// 塗りつぶし RGBA block に必要な描画内容を組み立てる。
 pub fn fill_rgba_block(
     frame: &mut RenderFrame,
     x: usize,
@@ -831,6 +880,7 @@ pub fn fill_rgba_block(
     }
 }
 
+/// スクロール キャンバス 領域 に必要な描画内容を組み立てる。
 pub fn scroll_canvas_region(
     frame: &mut RenderFrame,
     region: PixelRect,
@@ -892,6 +942,7 @@ pub fn scroll_canvas_region(
     exposed_scroll_rect(region, shift_x, shift_y)
 }
 
+/// exposed スクロール 矩形 を計算して返す。
 fn exposed_scroll_rect(region: PixelRect, shift_x: i32, shift_y: i32) -> PixelRect {
     if shift_x.unsigned_abs() as usize >= region.width
         || shift_y.unsigned_abs() as usize >= region.height
@@ -939,6 +990,9 @@ fn exposed_scroll_rect(region: PixelRect, shift_x: i32, shift_y: i32) -> PixelRe
     exposed.unwrap_or(region)
 }
 
+/// 入力や種別に応じて処理を振り分ける。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn draw_brush_preview(
     frame: &mut RenderFrame,
     destination: PixelRect,
@@ -988,6 +1042,9 @@ fn draw_brush_preview(
     }
 }
 
+/// 描画 投げ縄 プレビュー に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn draw_lasso_preview(
     frame: &mut RenderFrame,
     destination: PixelRect,
@@ -1023,6 +1080,9 @@ fn draw_lasso_preview(
     }
 }
 
+/// 入力や種別に応じて処理を振り分ける。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn draw_overlay_line(
     frame: &mut RenderFrame,
     start: CanvasDisplayPoint,

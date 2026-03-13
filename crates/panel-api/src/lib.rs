@@ -172,31 +172,26 @@ pub enum PanelNode {
 /// フェーズ0では、識別子・表示名・ドキュメント更新通知・
 /// コマンド返却の4点だけを共通契約として提供する。
 pub trait PanelPlugin {
-    /// プラグインを一意に識別する固定IDを返す。
+    /// ID を計算して返す。
     fn id(&self) -> &'static str;
 
-    /// UI上で表示するパネル名を返す。
+    /// title を計算して返す。
     fn title(&self) -> &'static str;
 
-    /// ドキュメント更新時に呼ばれるフック。
-    ///
-    /// 現段階では読み取り前提で、内部状態の更新に使うことを想定する。
+    /// 更新 に必要な処理を行う。
     fn update(&mut self, _document: &Document) {}
 
-    /// パネルが発行したいコマンド列を返す。
-    ///
-    /// フェーズ0では空配列を既定値とし、後続フェーズで入力や操作結果を
-    /// `Command` として返すルートを整備する。
+    /// commands を計算して返す。
     fn commands(&mut self) -> Vec<Command> {
         Vec::new()
     }
 
-    /// デバッグや最小UI表示に使う要約文字列を返す。
+    /// debug summary を計算して返す。
     fn debug_summary(&self) -> String {
         String::new()
     }
 
-    /// 最小可視UIに使う表示データを返す。
+    /// ビュー を計算して返す。
     fn view(&self) -> PanelView {
         PanelView {
             id: self.id(),
@@ -205,6 +200,7 @@ pub trait PanelPlugin {
         }
     }
 
+    /// パネル tree 用の表示文字列を組み立てる。
     fn panel_tree(&self) -> PanelTree {
         PanelTree {
             id: self.id(),
@@ -222,16 +218,22 @@ pub trait PanelPlugin {
         }
     }
 
+    /// handles キーボード イベント を計算して返す。
     fn handles_keyboard_event(&self) -> bool {
         false
     }
 
+    /// 現在の persistent 設定 を返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn persistent_config(&self) -> Option<Value> {
         None
     }
 
+    /// Persistent 設定 を更新する。
     fn restore_persistent_config(&mut self, _config: &Value) {}
 
+    /// 入力や種別に応じて処理を振り分ける。
     fn handle_event(&mut self, event: &PanelEvent) -> Vec<HostAction> {
         match event {
             PanelEvent::Activate { panel_id, node_id }
@@ -252,6 +254,7 @@ pub trait PanelPlugin {
     }
 }
 
+/// find actions in nodes を計算して返す。
 fn find_actions_in_nodes(nodes: &[PanelNode], target_id: &str) -> Vec<HostAction> {
     for node in nodes {
         if let Some(actions) = find_actions_in_node(node, target_id) {
@@ -261,6 +264,9 @@ fn find_actions_in_nodes(nodes: &[PanelNode], target_id: &str) -> Vec<HostAction
     Vec::new()
 }
 
+/// 入力や種別に応じて処理を振り分ける。
+///
+/// 値を生成できない場合は `None` を返します。
 fn find_actions_in_node(node: &PanelNode, target_id: &str) -> Option<Vec<HostAction>> {
     match node {
         PanelNode::Column { children, .. }
@@ -296,14 +302,19 @@ mod tests {
     struct TestPanel;
 
     impl PanelPlugin for TestPanel {
+        /// ID を計算して返す。
         fn id(&self) -> &'static str {
             "test.panel"
         }
 
+        /// 現在の値を output へ変換する。
+        ///
+        /// 内部でサービス要求を発行します。
         fn title(&self) -> &'static str {
             "Test"
         }
 
+        /// 現在の値を tree へ変換する。
         fn panel_tree(&self) -> PanelTree {
             PanelTree {
                 id: self.id(),
@@ -321,6 +332,7 @@ mod tests {
         }
     }
 
+    /// パネル プラグイン tree can expose button action が期待どおりに動作することを検証する。
     #[test]
     fn panel_plugin_tree_can_expose_button_action() {
         let panel = TestPanel;
@@ -339,6 +351,7 @@ mod tests {
         ));
     }
 
+    /// activate イベント resolves button action が期待どおりに動作することを検証する。
     #[test]
     fn activate_event_resolves_button_action() {
         let mut panel = TestPanel;
@@ -356,19 +369,25 @@ mod tests {
         );
     }
 
+    /// パネル tree button can emit サービス 要求 が期待どおりに動作することを検証する。
+    ///
+    /// 内部でサービス要求を発行します。
     #[test]
     fn panel_tree_button_can_emit_service_request() {
         struct ServicePanel;
 
         impl PanelPlugin for ServicePanel {
+            /// ID を計算して返す。
             fn id(&self) -> &'static str {
                 "test.service"
             }
 
+            /// 現在の値を output へ変換する。
             fn title(&self) -> &'static str {
                 "Service"
             }
 
+            /// 現在の値を tree へ変換する。
             fn panel_tree(&self) -> PanelTree {
                 PanelTree {
                     id: self.id(),
@@ -400,19 +419,23 @@ mod tests {
         );
     }
 
+    /// 設定 値 イベント resolves slider action が期待どおりに動作することを検証する。
     #[test]
     fn set_value_event_resolves_slider_action() {
         struct SliderPanel;
 
         impl PanelPlugin for SliderPanel {
+            /// ID を計算して返す。
             fn id(&self) -> &'static str {
                 "test.slider"
             }
 
+            /// title を計算して返す。
             fn title(&self) -> &'static str {
                 "Slider"
             }
 
+            /// 現在の値を tree へ変換する。
             fn panel_tree(&self) -> PanelTree {
                 PanelTree {
                     id: self.id(),

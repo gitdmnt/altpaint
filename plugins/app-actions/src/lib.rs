@@ -19,6 +19,9 @@ const SAVE_SHORTCUT: state::StringKey = state::string("config.save_shortcut");
 const SAVE_AS_SHORTCUT: state::StringKey = state::string("config.save_as_shortcut");
 const OPEN_SHORTCUT: state::StringKey = state::string("config.open_shortcut");
 
+/// 入力を解析して 寸法 に変換し、失敗時はエラーを返す。
+///
+/// 失敗時はエラーを返します。
 fn parse_dimension(value: &str) -> Result<usize, &'static str> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -30,12 +33,16 @@ fn parse_dimension(value: &str) -> Result<usize, &'static str> {
         .map_err(|_| "width and height must be positive integers")
 }
 
+/// 新規 プロジェクト コマンド を構築し、失敗時はエラーを返す。
+///
+/// 失敗時はエラーを返します。
 fn build_new_project_command(width: &str, height: &str) -> Result<CommandDescriptor, &'static str> {
     let width = parse_dimension(width)?;
     let height = parse_dimension(height)?;
     Ok(services::project_io::new_document_sized(width, height))
 }
 
+/// テンプレート サイズ を現在の状態へ適用する。
 fn apply_template_size(size: &str) -> Result<(), &'static str> {
     let normalized = size.trim();
     let (width, height) = normalized
@@ -52,18 +59,22 @@ fn apply_template_size(size: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
+/// パネル初期化時に必要な状態を整える。
 #[plugin_sdk::panel_init]
 fn init() {}
 
+/// 状態上の 取得 target を更新する。
 fn set_capture_target(target: &str) {
     set_state_string(CAPTURE_TARGET, target);
 }
 
+/// ショートカット 用のショートカット入力を受け付ける状態にする。
 fn capture_shortcut(target: &str) {
     set_capture_target(target);
     set_state_bool(SHOW_SHORTCUTS, true);
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn assign_captured_shortcut(target: &str, shortcut: &str) {
     match target {
         "new" => set_state_string(NEW_SHORTCUT, shortcut),
@@ -74,10 +85,12 @@ fn assign_captured_shortcut(target: &str, shortcut: &str) {
     }
 }
 
+/// ショートカット matches を計算して返す。
 fn shortcut_matches(configured: &str, incoming: &str) -> bool {
     !configured.is_empty() && configured.eq_ignore_ascii_case(incoming)
 }
 
+/// 新規 form を表示できるよう状態を更新する。
 #[plugin_sdk::panel_handler]
 fn show_new_form() {
     let selected = state_string(SELECTED_TEMPLATE);
@@ -91,36 +104,45 @@ fn show_new_form() {
     set_state_bool(SHOW_NEW, true);
 }
 
+/// Forms に関する表示や入力状態を閉じる。
 #[plugin_sdk::panel_handler]
 fn cancel_forms() {
     set_state_bool(SHOW_NEW, false);
 }
 
+/// 状態上の shortcuts を切り替える。
 #[plugin_sdk::panel_handler]
 fn toggle_shortcuts() {
     toggle_state(SHOW_SHORTCUTS);
 }
 
+/// 新規 ショートカット 用のショートカット入力を受け付ける状態にする。
 #[plugin_sdk::panel_handler]
 fn capture_new_shortcut() {
     capture_shortcut("new");
 }
 
+/// 保存 ショートカット 用のショートカット入力を受け付ける状態にする。
 #[plugin_sdk::panel_handler]
 fn capture_save_shortcut() {
     capture_shortcut("save");
 }
 
+/// 保存 as ショートカット 用のショートカット入力を受け付ける状態にする。
 #[plugin_sdk::panel_handler]
 fn capture_save_as_shortcut() {
     capture_shortcut("save_as");
 }
 
+/// 開く ショートカット 用のショートカット入力を受け付ける状態にする。
 #[plugin_sdk::panel_handler]
 fn capture_open_shortcut() {
     capture_shortcut("open");
 }
 
+/// 入力済みサイズから新規プロジェクト作成要求を発行する。
+///
+/// 内部でサービス要求を発行します。
 #[plugin_sdk::panel_handler]
 fn new_project() {
     let width = state_string(NEW_WIDTH);
@@ -134,6 +156,7 @@ fn new_project() {
     cancel_forms();
 }
 
+/// テンプレート を選択状態へ更新する。
 #[plugin_sdk::panel_handler]
 fn select_template() {
     let value = event_string("value");
@@ -146,21 +169,31 @@ fn select_template() {
     }
 }
 
+/// 現在のプロジェクトを既存パスへ保存する要求を発行する。
+///
+/// 内部でサービス要求を発行します。
 #[plugin_sdk::panel_handler]
 fn save_project() {
     emit_service(&services::project_io::save_current());
 }
 
+/// 保存先を選んでプロジェクトを書き出す要求を発行する。
+///
+/// 内部でサービス要求を発行します。
 #[plugin_sdk::panel_handler]
 fn save_project_as() {
     emit_service(&services::project_io::save_as());
 }
 
+/// 読み込み対象を選んでプロジェクトを開く要求を発行する。
+///
+/// 内部でサービス要求を発行します。
 #[plugin_sdk::panel_handler]
 fn load_project() {
     emit_service(&services::project_io::load_dialog());
 }
 
+/// キーボード入力やショートカットに応じて状態と処理を切り替える。
 #[plugin_sdk::panel_handler]
 fn keyboard() {
     let shortcut = event_string("shortcut");
@@ -196,6 +229,7 @@ fn keyboard() {
 mod tests {
     use super::*;
 
+    /// 新規 プロジェクト コマンド trims dimensions が期待どおりに動作することを検証する。
     #[test]
     fn new_project_command_trims_dimensions() {
         let command = build_new_project_command(" 320 ", " 240 ").expect("command should build");
@@ -217,6 +251,7 @@ mod tests {
         );
     }
 
+    /// 新規 プロジェクト コマンド rejects missing dimensions が期待どおりに動作することを検証する。
     #[test]
     fn new_project_command_rejects_missing_dimensions() {
         assert_eq!(
@@ -233,6 +268,7 @@ mod tests {
         );
     }
 
+    /// typed プロジェクト commands use expected names が期待どおりに動作することを検証する。
     #[test]
     fn typed_project_commands_use_expected_names() {
         let command = services::project_io::save_as();
@@ -241,6 +277,7 @@ mod tests {
         assert!(command.payload.is_empty());
     }
 
+    /// パネル entrypoints are callable on native targets が期待どおりに動作することを検証する。
     #[test]
     fn panel_entrypoints_are_callable_on_native_targets() {
         init();
@@ -259,12 +296,14 @@ mod tests {
         keyboard();
     }
 
+    /// ショートカット match is case insensitive が期待どおりに動作することを検証する。
     #[test]
     fn shortcut_match_is_case_insensitive() {
         assert!(shortcut_matches("Ctrl+S", "ctrl+s"));
         assert!(!shortcut_matches("", "Ctrl+S"));
     }
 
+    /// テンプレート サイズ updates 幅 and 高さ が期待どおりに動作することを検証する。
     #[test]
     fn template_size_updates_width_and_height() {
         apply_template_size("2894x4093").expect("template size should parse");

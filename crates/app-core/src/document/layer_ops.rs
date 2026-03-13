@@ -8,10 +8,11 @@ use std::str::Chars;
 
 use crate::{BitmapEdit, CanvasDirtyRect, ClampToCanvasBounds, MergeInSpace};
 
-use super::{
-    BlendMode, CanvasBitmap, Document, LayerMask, LayerNodeId, Panel, RasterLayer,
-};
+use super::{BlendMode, CanvasBitmap, Document, LayerMask, LayerNodeId, Panel, RasterLayer};
 
+/// Local 差分 to ページ 差分 に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn local_dirty_to_page_dirty(
     dirty: CanvasDirtyRect,
     panel_bounds: super::PanelBounds,
@@ -28,7 +29,9 @@ fn local_dirty_to_page_dirty(
 }
 
 impl Document {
-    /// 描画プラグインが生成したビットマップ差分をアクティブレイヤーへ反映する。
+    /// ビットマップ edits to アクティブ レイヤー を更新し、必要な dirty 状態も記録する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn apply_bitmap_edits_to_active_layer(
         &mut self,
         edits: &[BitmapEdit],
@@ -53,7 +56,7 @@ impl Document {
         None
     }
 
-    /// 透過レイヤーを末尾へ追加して選択する。
+    /// Raster レイヤー を追加する。
     pub fn add_raster_layer(&mut self) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -71,7 +74,7 @@ impl Document {
         }
     }
 
-    /// アクティブレイヤーを削除するが、最後の1枚は残す。
+    /// アクティブ レイヤー を削除する。
     pub fn remove_active_layer(&mut self) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -87,7 +90,7 @@ impl Document {
         }
     }
 
-    /// アクティブレイヤーを指定 index へ切り替える。
+    /// レイヤー を選択状態へ更新する。
     pub fn select_layer(&mut self, index: usize) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -96,7 +99,7 @@ impl Document {
         }
     }
 
-    /// アクティブレイヤー名を更新する。
+    /// 現在の値を アクティブ レイヤー へ変換する。
     pub fn rename_active_layer(&mut self, name: &str) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -107,7 +110,7 @@ impl Document {
         }
     }
 
-    /// レイヤー順序を入れ替え、選択 index も追従させる。
+    /// 入力や種別に応じて処理を振り分ける。
     pub fn move_layer(&mut self, from_index: usize, to_index: usize) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -137,7 +140,7 @@ impl Document {
         }
     }
 
-    /// 次のレイヤーへ循環選択する。
+    /// 次 レイヤー を選択状態へ更新する。
     pub fn select_next_layer(&mut self) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -146,7 +149,7 @@ impl Document {
         }
     }
 
-    /// アクティブレイヤーの blend mode を次へ循環する。
+    /// アクティブ レイヤー ブレンド モード を順送りで切り替える。
     pub fn cycle_active_layer_blend_mode(&mut self) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -157,7 +160,7 @@ impl Document {
         }
     }
 
-    /// アクティブレイヤーの blend mode を明示設定する。
+    /// アクティブ レイヤー ブレンド モード を設定する。
     pub fn set_active_layer_blend_mode(&mut self, mode: BlendMode) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -168,7 +171,7 @@ impl Document {
         }
     }
 
-    /// アクティブレイヤーの可視状態を反転する。
+    /// アクティブ レイヤー visibility の有効状態を切り替える。
     pub fn toggle_active_layer_visibility(&mut self) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -179,7 +182,7 @@ impl Document {
         }
     }
 
-    /// アクティブレイヤーにデモ用マスクを付与または解除する。
+    /// アクティブ レイヤー マスク の有効状態を切り替える。
     pub fn toggle_active_layer_mask(&mut self) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -195,7 +198,7 @@ impl Document {
     }
 }
 
-/// 最低1枚のレイヤーが存在するよう panel 状態を補正する。
+/// パネル layers が満たされるよう整える。
 pub(super) fn ensure_panel_layers(panel: &mut Panel) {
     let mut repaired = false;
     if panel.layers.is_empty() {
@@ -223,7 +226,7 @@ pub(super) fn ensure_panel_layers(panel: &mut Panel) {
     }
 }
 
-/// UI 用の root layer summary を現在の選択レイヤーへ同期する。
+/// Root レイヤー summary を現在の状態へ同期する。
 fn sync_root_layer_summary(panel: &mut Panel) {
     if let Some(layer) = panel.layers.get(panel.active_layer_index) {
         panel.root_layer.id = layer.id;
@@ -231,6 +234,9 @@ fn sync_root_layer_summary(panel: &mut Panel) {
     }
 }
 
+/// 入力や種別に応じて処理を振り分ける。
+///
+/// 値を生成できない場合は `None` を返します。
 fn apply_bitmap_edits(panel: &mut Panel, edits: &[BitmapEdit]) -> Option<CanvasDirtyRect> {
     let active_index = panel
         .active_layer_index
@@ -251,8 +257,10 @@ fn apply_bitmap_edits(panel: &mut Panel, edits: &[BitmapEdit]) -> Option<CanvasD
 
         let source_x = dirty.x.saturating_sub(edit.dirty_rect.x);
         let source_y = dirty.y.saturating_sub(edit.dirty_rect.y);
-        let incoming = extract_bitmap_region(&edit.bitmap, source_x, source_y, dirty.width, dirty.height)?;
-        let previous = extract_bitmap_region(&layer.bitmap, dirty.x, dirty.y, dirty.width, dirty.height)?;
+        let incoming =
+            extract_bitmap_region(&edit.bitmap, source_x, source_y, dirty.width, dirty.height)?;
+        let previous =
+            extract_bitmap_region(&layer.bitmap, dirty.x, dirty.y, dirty.width, dirty.height)?;
         let merged = edit.composite.compose(&incoming, &previous);
         write_bitmap_region(&mut layer.bitmap, dirty.x, dirty.y, &merged);
 
@@ -265,6 +273,7 @@ fn apply_bitmap_edits(panel: &mut Panel, edits: &[BitmapEdit]) -> Option<CanvasD
     dirty_union
 }
 
+/// Extract ビットマップ 領域 に対応するビットマップ処理を行う。
 fn extract_bitmap_region(
     bitmap: &CanvasBitmap,
     start_x: usize,
@@ -294,7 +303,13 @@ fn extract_bitmap_region(
     Some(region)
 }
 
-fn write_bitmap_region(target: &mut CanvasBitmap, start_x: usize, start_y: usize, region: &CanvasBitmap) {
+/// ビットマップ 領域 を保存先へ書き出す。
+fn write_bitmap_region(
+    target: &mut CanvasBitmap,
+    start_x: usize,
+    start_y: usize,
+    region: &CanvasBitmap,
+) {
     if region.width == 0 || region.height == 0 {
         return;
     }
@@ -308,7 +323,9 @@ fn write_bitmap_region(target: &mut CanvasBitmap, start_x: usize, start_y: usize
     }
 }
 
-/// 全レイヤーを合成して panel bitmap を再構築する。
+/// Composite パネル ビットマップ に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 pub(super) fn composite_panel_bitmap(panel: &Panel) -> CanvasBitmap {
     let width = panel
         .layers
@@ -339,7 +356,9 @@ pub(super) fn composite_panel_bitmap(panel: &Panel) -> CanvasBitmap {
     result
 }
 
-/// dirty rect に限定して panel bitmap を再合成する。
+/// Composite パネル ビットマップ 領域 に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn composite_panel_bitmap_region(panel: &mut Panel, dirty: CanvasDirtyRect) {
     let dirty = dirty.clamp_to_canvas_bounds(panel.bitmap.width.max(1), panel.bitmap.height.max(1));
     if let Some(layer_index) = single_passthrough_layer_index(panel) {
@@ -362,6 +381,9 @@ fn composite_panel_bitmap_region(panel: &mut Panel, dirty: CanvasDirtyRect) {
     }
 }
 
+/// 現在の single passthrough レイヤー インデックス を返す。
+///
+/// 値を生成できない場合は `None` を返します。
 fn single_passthrough_layer_index(panel: &Panel) -> Option<usize> {
     let mut visible_layers = panel
         .layers
@@ -381,6 +403,9 @@ fn single_passthrough_layer_index(panel: &Panel) -> Option<usize> {
     Some(index)
 }
 
+/// Copy ビットマップ 領域 に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn copy_bitmap_region(source: &CanvasBitmap, target: &mut CanvasBitmap, dirty: CanvasDirtyRect) {
     let dirty = dirty.clamp_to_canvas_bounds(
         target.width.min(source.width),
@@ -396,7 +421,9 @@ fn copy_bitmap_region(source: &CanvasBitmap, target: &mut CanvasBitmap, dirty: C
     }
 }
 
-/// 単一レイヤーの dirty rect だけを target bitmap へ合成する。
+/// 入力や種別に応じて処理を振り分ける。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn composite_layer_region_into(
     target: &mut CanvasBitmap,
     layer: &RasterLayer,
@@ -435,7 +462,7 @@ fn composite_layer_region_into(
     }
 }
 
-/// blend mode を考慮して 1 ピクセルを合成する。
+/// 入力や種別に応じて処理を振り分ける。
 fn blend_pixel(
     dst: [u8; 4],
     src: [u8; 4],
@@ -478,11 +505,15 @@ struct CustomBlendFormula {
 }
 
 impl CustomBlendFormula {
+    /// 入力値を束ねた新しいインスタンスを生成する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn parse(input: &str) -> Option<Self> {
         let expression = BlendExprParser::parse(input.trim())?;
         Some(Self { expression })
     }
 
+    /// Evaluate を有効範囲へ補正して返す。
     fn evaluate(&self, src: f32, dst: f32) -> f32 {
         self.expression.evaluate(src, dst).clamp(0.0, 1.0)
     }
@@ -505,6 +536,7 @@ enum BlendExpr {
 }
 
 impl BlendExpr {
+    /// 入力や種別に応じて処理を振り分ける。
     fn evaluate(&self, src: f32, dst: f32) -> f32 {
         match self {
             Self::Number(value) => *value,
@@ -568,6 +600,9 @@ struct BlendExprParser<'a> {
 }
 
 impl<'a> BlendExprParser<'a> {
+    /// 解析 を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn parse(input: &'a str) -> Option<BlendExpr> {
         let mut parser = Self {
             chars: input.chars().peekable(),
@@ -577,6 +612,9 @@ impl<'a> BlendExprParser<'a> {
         parser.chars.peek().is_none().then_some(expression)
     }
 
+    /// 入力を解析して expression に変換する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn parse_expression(&mut self) -> Option<BlendExpr> {
         let mut expr = self.parse_term()?;
         loop {
@@ -597,6 +635,9 @@ impl<'a> BlendExprParser<'a> {
         Some(expr)
     }
 
+    /// 入力を解析して term に変換する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn parse_term(&mut self) -> Option<BlendExpr> {
         let mut expr = self.parse_factor()?;
         loop {
@@ -617,6 +658,9 @@ impl<'a> BlendExprParser<'a> {
         Some(expr)
     }
 
+    /// 入力を解析して factor に変換する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn parse_factor(&mut self) -> Option<BlendExpr> {
         self.skip_whitespace();
         match self.chars.peek().copied()? {
@@ -637,6 +681,9 @@ impl<'a> BlendExprParser<'a> {
         }
     }
 
+    /// 入力を解析して identifier or function に変換する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn parse_identifier_or_function(&mut self) -> Option<BlendExpr> {
         let identifier = self.parse_identifier()?;
         self.skip_whitespace();
@@ -675,6 +722,9 @@ impl<'a> BlendExprParser<'a> {
         }
     }
 
+    /// 入力を解析して identifier に変換する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn parse_identifier(&mut self) -> Option<String> {
         let mut identifier = String::new();
         while let Some(ch) = self.chars.peek().copied() {
@@ -688,6 +738,9 @@ impl<'a> BlendExprParser<'a> {
         (!identifier.is_empty()).then_some(identifier)
     }
 
+    /// 入力を解析して number に変換する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn parse_number(&mut self) -> Option<f32> {
         let mut text = String::new();
         let mut has_digit = false;
@@ -703,6 +756,7 @@ impl<'a> BlendExprParser<'a> {
         has_digit.then(|| text.parse::<f32>().ok()).flatten()
     }
 
+    /// Whitespace を読み飛ばす。
     fn skip_whitespace(&mut self) {
         while self.chars.peek().copied().is_some_and(char::is_whitespace) {
             self.chars.next();

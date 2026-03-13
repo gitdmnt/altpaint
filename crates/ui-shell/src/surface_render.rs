@@ -5,7 +5,10 @@
 
 use app_core::{WorkspacePanelPosition, WorkspacePanelSize};
 use panel_runtime::PanelRuntime;
-use render::{FloatingPanel, PanelFocusTarget, PanelRenderState as RenderPanelState, PanelTextInputState, PixelRect};
+use render::{
+    FloatingPanel, PanelFocusTarget, PanelRenderState as RenderPanelState, PanelTextInputState,
+    PixelRect,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
@@ -29,7 +32,9 @@ struct OwnedPanelTextInputState {
 }
 
 impl PanelPresentation {
-    /// 現在の panel trees から viewport 向け panel layer を構築する。
+    /// 描画 パネル サーフェス に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn render_panel_surface(
         &mut self,
         runtime: &PanelRuntime,
@@ -49,8 +54,10 @@ impl PanelPresentation {
             self.panel_measured_size_cache.clear();
             self.panel_measure_viewport = Some((width, height));
         }
-        let needs_raster = self.panel_content_dirty || viewport_changed || self.panel_bitmap_cache.is_empty();
-        let needs_compose = needs_raster || self.panel_layout_dirty || self.panel_content_cache.is_none();
+        let needs_raster =
+            self.panel_content_dirty || viewport_changed || self.panel_bitmap_cache.is_empty();
+        let needs_compose =
+            needs_raster || self.panel_layout_dirty || self.panel_content_cache.is_none();
 
         self.last_panel_rasterized_panels = 0;
         self.last_panel_composited_panels = 0;
@@ -95,7 +102,11 @@ impl PanelPresentation {
         let incremental_dirty = if self.panel_layout_dirty {
             Some(panel_layout_dirty_rect(&previous_rects, &next_rects))
         } else if needs_raster && !self.full_panel_raster_dirty && !dirty_ids.is_empty() {
-            Some(panel_subset_dirty_rect(&previous_rects, &next_rects, &dirty_ids))
+            Some(panel_subset_dirty_rect(
+                &previous_rects,
+                &next_rects,
+                &dirty_ids,
+            ))
         } else {
             None
         }
@@ -110,7 +121,10 @@ impl PanelPresentation {
         if needs_compose {
             let started = Instant::now();
             let composed_surface = if use_incremental_compose {
-                self.compose_panel_surface_incremental(floating_panels.as_slice(), incremental_dirty)
+                self.compose_panel_surface_incremental(
+                    floating_panels.as_slice(),
+                    incremental_dirty,
+                )
             } else {
                 self.compose_panel_surface(floating_panels.as_slice(), incremental_dirty)
             };
@@ -129,13 +143,13 @@ impl PanelPresentation {
         result_surface.unwrap_or_else(|| {
             self.panel_content_cache
                 .clone()
-                    .unwrap_or_else(|| self.compose_panel_surface(floating_panels.as_slice(), None))
+                .unwrap_or_else(|| self.compose_panel_surface(floating_panels.as_slice(), None))
         })
     }
 
+    /// 既存データを走査して collect パネル テキスト 入力 states を組み立てる。
     fn collect_panel_text_input_states(&self) -> Vec<OwnedPanelTextInputState> {
-        self
-            .text_input_states
+        self.text_input_states
             .iter()
             .map(|((panel_id, node_id), state)| OwnedPanelTextInputState {
                 panel_id: panel_id.clone(),
@@ -146,6 +160,9 @@ impl PanelPresentation {
             .collect()
     }
 
+    /// 現在の値を floating panels へ変換する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     fn collect_floating_panels<'a>(
         &mut self,
         trees: &'a [panel_api::PanelTree],
@@ -165,6 +182,9 @@ impl PanelPresentation {
             .collect()
     }
 
+    /// パネル bitmaps を再構築する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     fn rebuild_panel_bitmaps(
         &mut self,
         floating_panels: &[FloatingPanel<'_>],
@@ -178,7 +198,8 @@ impl PanelPresentation {
             .iter()
             .map(|panel| (panel.panel_id.to_string(), panel.rect))
             .collect();
-        self.panel_bitmap_cache.retain(|panel_id, _| valid_ids.contains(panel_id));
+        self.panel_bitmap_cache
+            .retain(|panel_id, _| valid_ids.contains(panel_id));
 
         let reraster_all = self.full_panel_raster_dirty || self.panel_bitmap_cache.is_empty();
         let dirty_ids = self.dirty_panel_ids.clone();
@@ -188,42 +209,45 @@ impl PanelPresentation {
             if !reraster_all && !dirty_ids.contains(panel.panel_id) {
                 continue;
             }
-                let layer = render::rasterize_panel_layer(
-                    PixelRect {
+            let layer = render::rasterize_panel_layer(
+                PixelRect {
+                    x: 0,
+                    y: 0,
+                    width: panel.rect.width.max(1),
+                    height: panel.rect.height.max(1),
+                },
+                &[FloatingPanel {
+                    panel_id: panel.panel_id,
+                    title: panel.title,
+                    rect: PixelRect {
                         x: 0,
                         y: 0,
-                        width: panel.rect.width.max(1),
-                        height: panel.rect.height.max(1),
+                        width: panel.rect.width,
+                        height: panel.rect.height,
                     },
-                    &[FloatingPanel {
-                        panel_id: panel.panel_id,
-                        title: panel.title,
-                        rect: PixelRect {
-                            x: 0,
-                            y: 0,
-                            width: panel.rect.width,
-                            height: panel.rect.height,
-                        },
-                        tree: panel.tree,
-                    }],
-                    render_state,
-                );
-                self.panel_bitmap_cache.insert(
-                    panel.panel_id.to_string(),
-                    PanelSurface {
-                        x: 0,
-                        y: 0,
-                        width: layer.width,
-                        height: layer.height,
-                        pixels: layer.pixels,
-                        hit_regions: layer.hit_regions,
-                    },
-                );
-                rasterized += 1;
+                    tree: panel.tree,
+                }],
+                render_state,
+            );
+            self.panel_bitmap_cache.insert(
+                panel.panel_id.to_string(),
+                PanelSurface {
+                    x: 0,
+                    y: 0,
+                    width: layer.width,
+                    height: layer.height,
+                    pixels: layer.pixels,
+                    hit_regions: layer.hit_regions,
+                },
+            );
+            rasterized += 1;
         }
         self.last_panel_rasterized_panels = rasterized;
     }
 
+    /// 合成 パネル サーフェス に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     fn compose_panel_surface(
         &mut self,
         floating_panels: &[FloatingPanel<'_>],
@@ -234,7 +258,8 @@ impl PanelPresentation {
         let Some(bounds) = panel_bounds(floating_panels) else {
             self.last_panel_composited_panels = 0;
             self.rendered_panel_rects = next_rects;
-            self.last_panel_surface_dirty_rect = panel_layout_dirty_rect(&previous_rects, &self.rendered_panel_rects);
+            self.last_panel_surface_dirty_rect =
+                panel_layout_dirty_rect(&previous_rects, &self.rendered_panel_rects);
             return PanelSurface {
                 x: 0,
                 y: 0,
@@ -265,16 +290,21 @@ impl PanelPresentation {
             let offset_x = panel.rect.x.saturating_sub(bounds.x);
             let offset_y = panel.rect.y.saturating_sub(bounds.y);
             blend_panel_bitmap(&mut surface, bitmap, offset_x, offset_y);
-            surface.hit_regions.extend(bitmap.hit_regions.iter().cloned().map(|mut region| {
-                region.x += offset_x;
-                region.y += offset_y;
-                region
-            }));
+            surface
+                .hit_regions
+                .extend(bitmap.hit_regions.iter().cloned().map(|mut region| {
+                    region.x += offset_x;
+                    region.y += offset_y;
+                    region
+                }));
         }
 
         surface
     }
 
+    /// 合成 パネル サーフェス incremental に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     fn compose_panel_surface_incremental(
         &mut self,
         floating_panels: &[FloatingPanel<'_>],
@@ -297,7 +327,8 @@ impl PanelPresentation {
 
         let previous_surface = self.panel_content_cache.take();
         let previous_rects = self.rendered_panel_rects.clone();
-        let dirty_global = dirty_global.or_else(|| panel_layout_dirty_rect(&previous_rects, &next_rects));
+        let dirty_global =
+            dirty_global.or_else(|| panel_layout_dirty_rect(&previous_rects, &next_rects));
         self.last_panel_surface_dirty_rect = dirty_global;
 
         let mut surface = if let Some(mut previous_surface) = previous_surface {
@@ -345,13 +376,7 @@ impl PanelPresentation {
                 };
                 let offset_x = panel.rect.x.saturating_sub(bounds.x);
                 let offset_y = panel.rect.y.saturating_sub(bounds.y);
-                blend_panel_bitmap_clipped(
-                    &mut surface,
-                    bitmap,
-                    offset_x,
-                    offset_y,
-                    local_dirty,
-                );
+                blend_panel_bitmap_clipped(&mut surface, bitmap, offset_x, offset_y, local_dirty);
                 composited_panels += 1;
             }
         }
@@ -362,6 +387,7 @@ impl PanelPresentation {
         surface
     }
 
+    /// 現在の値を 矩形 for tree へ変換する。
     fn panel_rect_for_tree(
         &mut self,
         tree: &panel_api::PanelTree,
@@ -427,13 +453,19 @@ impl PanelPresentation {
         }
     }
 
-    /// 浮動パネルでは共通スクロールを持たないため常に 0 を返す。
+    /// max パネル スクロール オフセット を計算して返す。
     pub(super) fn max_panel_scroll_offset(&self, _viewport_height: usize) -> usize {
         0
     }
 }
 
-fn blend_panel_bitmap(surface: &mut PanelSurface, bitmap: &PanelSurface, offset_x: usize, offset_y: usize) {
+/// ブレンド パネル ビットマップ に必要な処理を行う。
+fn blend_panel_bitmap(
+    surface: &mut PanelSurface,
+    bitmap: &PanelSurface,
+    offset_x: usize,
+    offset_y: usize,
+) {
     blend_panel_bitmap_clipped(
         surface,
         bitmap,
@@ -448,6 +480,7 @@ fn blend_panel_bitmap(surface: &mut PanelSurface, bitmap: &PanelSurface, offset_
     );
 }
 
+/// ブレンド パネル ビットマップ clipped に対応するビットマップ処理を行う。
 fn blend_panel_bitmap_clipped(
     surface: &mut PanelSurface,
     bitmap: &PanelSurface,
@@ -478,6 +511,7 @@ fn blend_panel_bitmap_clipped(
     }
 }
 
+/// 現在の値を 矩形 map へ変換する。
 fn panel_rect_map(floating_panels: &[FloatingPanel<'_>]) -> BTreeMap<String, PixelRect> {
     floating_panels
         .iter()
@@ -485,6 +519,9 @@ fn panel_rect_map(floating_panels: &[FloatingPanel<'_>]) -> BTreeMap<String, Pix
         .collect()
 }
 
+/// 入力や種別に応じて処理を振り分ける。
+///
+/// 値を生成できない場合は `None` を返します。
 fn panel_bounds(floating_panels: &[FloatingPanel<'_>]) -> Option<PixelRect> {
     floating_panels
         .iter()
@@ -492,6 +529,9 @@ fn panel_bounds(floating_panels: &[FloatingPanel<'_>]) -> Option<PixelRect> {
         .reduce(|acc, rect| acc.union(rect))
 }
 
+/// 入力や種別に応じて処理を振り分ける。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn panel_layout_dirty_rect(
     previous_rects: &BTreeMap<String, PixelRect>,
     next_rects: &BTreeMap<String, PixelRect>,
@@ -509,12 +549,17 @@ fn panel_layout_dirty_rect(
     }
     for (panel_id, previous_rect) in previous_rects {
         if !next_rects.contains_key(panel_id) {
-            dirty = Some(dirty.map_or(*previous_rect, |existing: PixelRect| existing.union(*previous_rect)));
+            dirty = Some(dirty.map_or(*previous_rect, |existing: PixelRect| {
+                existing.union(*previous_rect)
+            }));
         }
     }
     dirty
 }
 
+/// 入力や種別に応じて処理を振り分ける。
+///
+/// 必要に応じて dirty 状態も更新します。
 fn panel_subset_dirty_rect(
     previous_rects: &BTreeMap<String, PixelRect>,
     next_rects: &BTreeMap<String, PixelRect>,
@@ -533,6 +578,9 @@ fn panel_subset_dirty_rect(
     dirty
 }
 
+/// 既存データを走査して global 矩形 to サーフェス 矩形 を組み立てる。
+///
+/// 値を生成できない場合は `None` を返します。
 fn global_rect_to_surface_rect(surface: &PanelSurface, rect: PixelRect) -> Option<PixelRect> {
     PixelRect {
         x: surface.x,
@@ -549,6 +597,7 @@ fn global_rect_to_surface_rect(surface: &PanelSurface, rect: PixelRect) -> Optio
     })
 }
 
+/// Copy サーフェス overlap に対応するビットマップ処理を行う。
 fn copy_surface_overlap(destination: &mut PanelSurface, source: &PanelSurface) {
     let Some(overlap) = PixelRect {
         x: destination.x,
@@ -578,6 +627,7 @@ fn copy_surface_overlap(destination: &mut PanelSurface, source: &PanelSurface) {
     }
 }
 
+/// Clear サーフェス 矩形 に対応するビットマップ処理を行う。
 fn clear_surface_rect(surface: &mut PanelSurface, rect: PixelRect) {
     for row in 0..rect.height {
         let row_start = ((rect.y + row) * surface.width + rect.x) * 4;
@@ -586,6 +636,7 @@ fn clear_surface_rect(surface: &mut PanelSurface, rect: PixelRect) {
     }
 }
 
+/// Hit regions を構築する。
 fn build_hit_regions(
     bitmap_cache: &BTreeMap<String, PanelSurface>,
     floating_panels: &[FloatingPanel<'_>],

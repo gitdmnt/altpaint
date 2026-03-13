@@ -34,7 +34,7 @@ pub(crate) struct PanelInteractionState {
 }
 
 impl DesktopApp {
-    /// パネル上の押下開始を解釈して、必要ならドラッグ状態を開始する。
+    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn begin_panel_interaction(&mut self, point: WindowPoint) -> bool {
         self.panel_interaction.pending_panel_press = None;
         if let Some(panel_id) = self.panel_move_hit_from_window(point) {
@@ -94,7 +94,7 @@ impl DesktopApp {
         }
     }
 
-    /// スライダードラッグ中の移動イベントを現在ノードへ配送する。
+    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn drag_panel_interaction(&mut self, point: WindowPoint) -> bool {
         let Some(state) = self.panel_interaction.active_panel_drag.clone() else {
             return false;
@@ -157,6 +157,7 @@ impl DesktopApp {
         }
     }
 
+    /// パネル drag ソース を進行させる。
     pub(crate) fn advance_panel_drag_source(&mut self, event: &PanelEvent) {
         if let PanelEvent::DragValue { to, .. } = event
             && let Some(PanelDragState::Control { source_value, .. }) =
@@ -166,7 +167,7 @@ impl DesktopApp {
         }
     }
 
-    /// 指定パネルノードを擬似的にアクティブ化する。
+    /// パネル control をアクティブ化する。
     pub(super) fn activate_panel_control(&mut self, panel_id: &str, node_id: &str) -> bool {
         self.dispatch_panel_event(PanelEvent::Activate {
             panel_id: panel_id.to_string(),
@@ -174,7 +175,9 @@ impl DesktopApp {
         })
     }
 
-    /// グローバルキーボードショートカットをパネルプラグインへ配送する。
+    /// 入力や種別に応じて処理を振り分ける。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn dispatch_keyboard_shortcut(
         &mut self,
         shortcut: &str,
@@ -198,7 +201,9 @@ impl DesktopApp {
         self.refresh_panel_surface_if_changed(changed)
     }
 
-    /// パネルランタイムから返されたホストアクションを実行する。
+    /// 入力や種別に応じて処理を振り分ける。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn execute_host_action(&mut self, action: HostAction) -> bool {
         match action {
             HostAction::DispatchCommand(command) => self.execute_command(command),
@@ -230,11 +235,14 @@ impl DesktopApp {
         }
     }
 
-    /// パネルイベントを `UiShell` とホストアクションへ流す。
+    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn dispatch_panel_event(&mut self, event: PanelEvent) -> bool {
         self.dispatch_panel_event_with_command(event).0
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     fn dispatch_panel_event_with_command(
         &mut self,
         event: PanelEvent,
@@ -293,7 +301,7 @@ impl DesktopApp {
         (changed, first_command)
     }
 
-    /// パネル上の単発ポインタイベントを処理する。
+    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_panel_pointer(&mut self, point: WindowPoint) -> bool {
         let Some(event) = self.panel_event_from_window(point) else {
             self.panel_interaction.pending_panel_press = None;
@@ -316,25 +324,27 @@ impl DesktopApp {
         self.dispatch_panel_event(event)
     }
 
-    /// フォーカスを次のパネル操作対象へ進める。
+    /// 次 パネル control へフォーカスを移す。
     pub(crate) fn focus_next_panel_control(&mut self) -> bool {
         let changed = self.panel_presentation.focus_next(&self.panel_runtime);
         self.refresh_panel_surface_if_changed(changed)
     }
 
-    /// フォーカスを前のパネル操作対象へ戻す。
+    /// 前 パネル control へフォーカスを移す。
     pub(crate) fn focus_previous_panel_control(&mut self) -> bool {
         let changed = self.panel_presentation.focus_previous(&self.panel_runtime);
         self.refresh_panel_surface_if_changed(changed)
     }
 
-    /// 現在フォーカス中のパネル操作対象をアクティブ化する。
+    /// Focused パネル control をアクティブ化する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub(crate) fn activate_focused_panel_control(&mut self) -> Option<app_core::Command> {
         let event = self.panel_presentation.activate_focused()?;
         self.dispatch_panel_event_with_command(event).1
     }
 
-    /// フォーカス中のテキスト入力へ文字列を挿入する。
+    /// insert テキスト into focused パネル 入力 を計算して返す。
     pub(crate) fn insert_text_into_focused_panel_input(&mut self, text: &str) -> bool {
         let Some(event) = self
             .panel_presentation
@@ -345,7 +355,7 @@ impl DesktopApp {
         self.dispatch_panel_event(event)
     }
 
-    /// フォーカス中のテキスト入力で後退削除を行う。
+    /// backspace focused パネル 入力 を計算して返す。
     pub(crate) fn backspace_focused_panel_input(&mut self) -> bool {
         let Some(event) = self
             .panel_presentation
@@ -356,7 +366,7 @@ impl DesktopApp {
         self.dispatch_panel_event(event)
     }
 
-    /// フォーカス中のテキスト入力で前方削除を行う。
+    /// delete focused パネル 入力 を計算して返す。
     pub(crate) fn delete_focused_panel_input(&mut self) -> bool {
         let Some(event) = self
             .panel_presentation
@@ -367,7 +377,7 @@ impl DesktopApp {
         self.dispatch_panel_event(event)
     }
 
-    /// フォーカス中のテキスト入力カーソルを相対移動する。
+    /// move focused パネル 入力 cursor を計算して返す。
     pub(crate) fn move_focused_panel_input_cursor(&mut self, delta_chars: isize) -> bool {
         let changed = self
             .panel_presentation
@@ -375,7 +385,7 @@ impl DesktopApp {
         self.refresh_panel_surface_if_changed(changed)
     }
 
-    /// フォーカス中のテキスト入力カーソルを先頭へ移動する。
+    /// move focused パネル 入力 cursor to start を計算して返す。
     pub(crate) fn move_focused_panel_input_cursor_to_start(&mut self) -> bool {
         let changed = self
             .panel_presentation
@@ -383,7 +393,7 @@ impl DesktopApp {
         self.refresh_panel_surface_if_changed(changed)
     }
 
-    /// フォーカス中のテキスト入力カーソルを末尾へ移動する。
+    /// move focused パネル 入力 cursor to end を計算して返す。
     pub(crate) fn move_focused_panel_input_cursor_to_end(&mut self) -> bool {
         let changed = self
             .panel_presentation
@@ -391,7 +401,9 @@ impl DesktopApp {
         self.refresh_panel_surface_if_changed(changed)
     }
 
-    /// IME の preedit 文字列をフォーカス中入力へ反映する。
+    /// Focused パネル 入力 preedit を設定する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub(crate) fn set_focused_panel_input_preedit(&mut self, preedit: Option<String>) -> bool {
         let changed = self
             .panel_presentation
@@ -399,13 +411,13 @@ impl DesktopApp {
         self.refresh_panel_surface_if_changed(changed)
     }
 
-    /// フォーカス中の入力がテキスト入力かどうかを返す。
+    /// Has focused パネル 入力 かどうかを返す。
     pub(crate) fn has_focused_panel_input(&self) -> bool {
         self.panel_presentation
             .has_focused_text_input(&self.panel_runtime)
     }
 
-    /// パネル面を垂直スクロールする。
+    /// スクロール パネル サーフェス に必要な描画内容を組み立てる。
     pub(crate) fn scroll_panel_surface(&mut self, delta_lines: i32) -> bool {
         let viewport_height = self
             .layout
@@ -422,25 +434,32 @@ impl DesktopApp {
         self.refresh_panel_surface_if_changed(changed)
     }
 
-    /// ウィンドウ座標からパネルイベントを逆引きする。
+    /// パネル イベント from ウィンドウ を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub(super) fn panel_event_from_window(&self, point: WindowPoint) -> Option<PanelEvent> {
         let panel_surface = self.panel_surface.as_ref()?;
         let surface_point = self.panel_surface_coordinates_from_window(point)?;
         panel_surface.hit_test_at(surface_point)
     }
 
+    /// パネル is hovered を計算して返す。
     pub(crate) fn panel_is_hovered(&self, x: i32, y: i32) -> bool {
         let point = WindowPoint::new(x, y);
         self.panel_move_hit_from_window(point).is_some()
             || self.panel_event_from_window(point).is_some()
     }
 
+    /// パネル move hit from ウィンドウ を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub(super) fn panel_move_hit_from_window(&self, point: WindowPoint) -> Option<String> {
         let panel_surface = self.panel_surface.as_ref()?;
         let surface_point = self.panel_surface_coordinates_from_window(point)?;
         panel_surface.move_panel_hit_test_at(surface_point)
     }
 
+    /// パネル サーフェス coordinates from ウィンドウ に必要な処理を行う。
     pub(super) fn panel_surface_coordinates_from_window(
         &self,
         point: app_core::WindowPoint,
@@ -449,7 +468,7 @@ impl DesktopApp {
         panel_surface.global_bounds().to_surface_point(point)
     }
 
-    /// ドラッグ継続中のパネルノードへ値変更イベントを生成する。
+    /// パネル drag イベント from ウィンドウ に必要な処理を行う。
     pub(super) fn panel_drag_event_from_window(
         &self,
         state: &PanelDragState,

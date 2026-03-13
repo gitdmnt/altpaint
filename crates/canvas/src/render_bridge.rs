@@ -2,7 +2,7 @@ use app_core::PanelBounds;
 
 use crate::CanvasInputState;
 
-/// canvas 入力状態から panel 作成プレビュー矩形を取り出す。
+/// 現在の パネル 生成 プレビュー 範囲 を返す。
 pub fn panel_creation_preview_bounds(
     state: &CanvasInputState,
     page_width: usize,

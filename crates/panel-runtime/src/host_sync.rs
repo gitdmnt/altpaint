@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 pub(crate) const MAX_DOCUMENT_DIMENSION: usize = 8192;
 pub(crate) const MAX_DOCUMENT_PIXELS: usize = 16_777_216;
 
+/// アクティブな ツール 名前 を返す。
 pub(crate) fn active_tool_name(tool: ToolKind) -> &'static str {
     match tool {
         ToolKind::Pen => "pen",
@@ -14,6 +15,7 @@ pub(crate) fn active_tool_name(tool: ToolKind) -> &'static str {
     }
 }
 
+/// ホスト スナップショット を構築する。
 pub(crate) fn build_host_snapshot(document: &Document) -> Value {
     let active_tool_definition = document.active_tool_definition().cloned();
     let active_page = document.active_page();
@@ -162,6 +164,9 @@ pub(crate) fn build_host_snapshot(document: &Document) -> Value {
     })
 }
 
+/// 入力を解析して 16進文字列 色 に変換する。
+///
+/// 値を生成できない場合は `None` を返します。
 pub(crate) fn parse_hex_color(input: &str) -> Option<ColorRgba8> {
     let hex = input.strip_prefix('#')?;
     if hex.len() != 6 {
@@ -173,6 +178,9 @@ pub(crate) fn parse_hex_color(input: &str) -> Option<ColorRgba8> {
     Some(ColorRgba8::new(r, g, b, 0xff))
 }
 
+/// 入力を解析して ドキュメント サイズ に変換する。
+///
+/// 値を生成できない場合は `None` を返します。
 pub(crate) fn parse_document_size(input: &str) -> Option<(usize, usize)> {
     let normalized = input.replace(['×', ',', ';'], "x");
     let parts = normalized

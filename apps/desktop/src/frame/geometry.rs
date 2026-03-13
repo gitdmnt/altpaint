@@ -4,7 +4,7 @@ use app_core::{PanelSurfacePoint, WindowPoint, WindowRect};
 
 use super::Rect;
 
-/// 元画像を target 内へアスペクト比維持で収めた矩形を返す。
+/// 矩形 が収まるように矩形を計算する。
 pub(crate) fn fit_rect(source_width: usize, source_height: usize, target: Rect) -> Rect {
     if source_width == 0 || source_height == 0 || target.width == 0 || target.height == 0 {
         return Rect {
@@ -29,7 +29,7 @@ pub(crate) fn fit_rect(source_width: usize, source_height: usize, target: Rect) 
     }
 }
 
-/// ビュー座標をパネルサーフェス座標へ変換する。
+/// ウィンドウ to パネル サーフェス を別座標系へ変換する。
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn map_window_to_panel_surface(
     surface_width: usize,
@@ -51,7 +51,7 @@ pub(crate) fn map_window_to_panel_surface(
     ))
 }
 
-/// ビュー外座標もクランプしたうえでサーフェス座標へ変換する。
+/// ウィンドウ to パネル サーフェス clamped を別座標系へ変換する。
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn map_window_to_panel_surface_clamped(
     surface_width: usize,

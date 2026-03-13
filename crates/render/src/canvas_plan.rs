@@ -24,7 +24,9 @@ pub struct CanvasPlan {
 }
 
 impl CanvasPlan {
-    /// ビュー変換込みのキャンバスシーンを返す。
+    /// シーン を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn scene(&self) -> Option<CanvasScene> {
         prepare_canvas_scene(
             self.host_rect,
@@ -34,12 +36,16 @@ impl CanvasPlan {
         )
     }
 
-    /// GPU 提示用のクアッドを返す。
+    /// texture quad を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn texture_quad(&self) -> Option<TextureQuad> {
         self.scene().and_then(|scene| scene.texture_quad())
     }
 
-    /// dirty rect を表示座標へ写像する。
+    /// 差分 矩形 を別座標系へ変換する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn map_dirty_rect(&self, dirty: CanvasDirtyRect) -> PixelRect {
         map_canvas_dirty_to_display_with_transform(
             dirty,
@@ -50,7 +56,7 @@ impl CanvasPlan {
         )
     }
 
-    /// ブラシプレビュー矩形を返す。
+    /// ブラシ プレビュー 矩形 に必要な処理を行う。
     pub fn brush_preview_rect(
         &self,
         canvas_position: CanvasPoint,
@@ -66,7 +72,7 @@ impl CanvasPlan {
         )
     }
 
-    /// 前回表示との差分で露出した背景領域を返す。
+    /// exposed 背景 矩形 に必要な処理を行う。
     pub fn exposed_background_rect(
         &self,
         previous_transform: CanvasViewTransform,

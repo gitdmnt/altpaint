@@ -5,6 +5,9 @@ use crate::{
     exposed_canvas_background_rect, fill_rgba_block, scroll_canvas_region,
 };
 
+/// ブラシ プレビュー 差分 矩形 unions 前 and 現在 プレビュー が期待どおりに動作することを検証する。
+///
+/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn brush_preview_dirty_rect_unions_previous_and_current_preview() {
     let viewport = PixelRect {
@@ -31,6 +34,9 @@ fn brush_preview_dirty_rect_unions_previous_and_current_preview() {
     assert!(dirty.height > 0);
 }
 
+/// exposed キャンバス 背景 矩形 reports pan exposure が期待どおりに動作することを検証する。
+///
+/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn exposed_canvas_background_rect_reports_pan_exposure() {
     let dirty = exposed_canvas_background_rect(
@@ -53,6 +59,7 @@ fn exposed_canvas_background_rect_reports_pan_exposure() {
     assert!(dirty.width > 0 || dirty.height > 0);
 }
 
+/// ソース axis runs merge adjacent pixels with same ソース x が期待どおりに動作することを検証する。
 #[test]
 fn source_axis_runs_merge_adjacent_pixels_with_same_source_x() {
     let runs = build_source_axis_runs(100, 8, 100.0, 2.0, 64);
@@ -84,6 +91,7 @@ fn source_axis_runs_merge_adjacent_pixels_with_same_source_x() {
     );
 }
 
+/// 塗りつぶし RGBA block writes rectangular 領域 が期待どおりに動作することを検証する。
 #[test]
 fn fill_rgba_block_writes_rectangular_region() {
     let mut frame = RenderFrame {
@@ -103,6 +111,7 @@ fn fill_rgba_block_writes_rectangular_region() {
     assert_eq!(&frame.pixels[0..4], &[0, 0, 0, 0]);
 }
 
+/// スクロール キャンバス 領域 moves existing pixels and reports exposed strip が期待どおりに動作することを検証する。
 #[test]
 fn scroll_canvas_region_moves_existing_pixels_and_reports_exposed_strip() {
     let mut frame = RenderFrame {

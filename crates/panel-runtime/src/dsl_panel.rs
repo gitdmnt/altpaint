@@ -25,6 +25,9 @@ pub(crate) struct DslPanelPlugin {
 }
 
 impl DslPanelPlugin {
+    /// 既定値を使って新しいインスタンスを生成する。
+    ///
+    /// 失敗時はエラーを返します。
     pub(crate) fn from_definition(definition: PanelDefinition) -> Result<Self, String> {
         let id = leak_string(definition.manifest.id.clone());
         let title = leak_string(definition.manifest.title.clone());
@@ -58,6 +61,7 @@ impl DslPanelPlugin {
         })
     }
 
+    /// 現在の値を tree へ変換する。
     fn evaluate_tree(&self) -> PanelTree {
         let mut context = DslEvaluationContext {
             panel_id: self.id.to_string(),
@@ -93,6 +97,9 @@ impl DslPanelPlugin {
         }
     }
 
+    /// 現在の値を ハンドラ action へ変換する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn resolve_handler_action(&self, event: &PanelEvent) -> Option<HostAction> {
         let tree = self.evaluate_tree();
         match event {
@@ -111,6 +118,7 @@ impl DslPanelPlugin {
         }
     }
 
+    /// 現在の値を テキスト 入力 イベント へ変換する。
     fn apply_text_input_event(&mut self, node_id: &str, value: &str) -> bool {
         let tree = self.evaluate_tree();
         let Some((binding, _input_mode)) = find_text_input_binding(&tree.children, node_id) else {
@@ -123,6 +131,7 @@ impl DslPanelPlugin {
         true
     }
 
+    /// 現在の値を ホスト 状態 へ変換する。
     fn sync_host_state(&mut self) {
         if !self.supports_sync_host {
             return;
@@ -142,19 +151,23 @@ impl DslPanelPlugin {
 }
 
 impl PanelPlugin for DslPanelPlugin {
+    /// ID を計算して返す。
     fn id(&self) -> &'static str {
         self.id
     }
 
+    /// 現在の値を output へ変換する。
     fn title(&self) -> &'static str {
         self.title
     }
 
+    /// 更新 に必要な処理を行う。
     fn update(&mut self, document: &Document) {
         self.host_snapshot = build_host_snapshot(document);
         self.sync_host_state();
     }
 
+    /// Debug summary 用の表示文字列を組み立てる。
     fn debug_summary(&self) -> String {
         format!(
             "dsl runtime={} handlers={} diagnostics={} state={}",
@@ -165,6 +178,7 @@ impl PanelPlugin for DslPanelPlugin {
         )
     }
 
+    /// ビュー 用の表示文字列を組み立てる。
     fn view(&self) -> PanelView {
         let mut lines = vec![format!("runtime: {}", self.definition.runtime.wasm)];
         if !self.diagnostics.is_empty() {
@@ -177,18 +191,24 @@ impl PanelPlugin for DslPanelPlugin {
         }
     }
 
+    /// パネル tree を計算して返す。
     fn panel_tree(&self) -> PanelTree {
         self.evaluate_tree()
     }
 
+    /// handles キーボード イベント を計算して返す。
     fn handles_keyboard_event(&self) -> bool {
         self.has_keyboard_handler
     }
 
+    /// persistent 設定 を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn persistent_config(&self) -> Option<Value> {
         lookup_json_path(&self.state, "config").cloned()
     }
 
+    /// Persistent 設定 を更新する。
     fn restore_persistent_config(&mut self, config: &Value) {
         apply_state_patch(
             &mut self.state,
@@ -196,6 +216,7 @@ impl PanelPlugin for DslPanelPlugin {
         );
     }
 
+    /// 現在の値を イベント へ変換する。
     fn handle_event(&mut self, event: &PanelEvent) -> Vec<HostAction> {
         let mut updated_text = false;
         if let PanelEvent::SetText { node_id, value, .. } = event {
@@ -250,6 +271,7 @@ impl PanelPlugin for DslPanelPlugin {
     }
 }
 
+/// leak string を計算して返す。
 fn leak_string(value: String) -> &'static str {
     Box::leak(value.into_boxed_str())
 }
@@ -260,6 +282,7 @@ struct DslEvaluationContext<'a> {
     generated_ids: usize,
 }
 
+/// 現在の値を dsl ビュー node へ変換する。
 fn convert_dsl_view_node(
     node: &ViewNode,
     context: &mut DslEvaluationContext<'_>,
@@ -438,6 +461,7 @@ fn convert_dsl_view_node(
     }
 }
 
+/// 現在の値を action へ変換する。
 fn handler_action(
     panel_id: &str,
     handler_name: Option<&DslAttrValue>,
@@ -453,6 +477,7 @@ fn handler_action(
         .unwrap_or(HostAction::DispatchCommand(Command::Noop))
 }
 
+/// 既存データを走査して convert dsl children を組み立てる。
 fn convert_dsl_children(
     children: &[ViewNode],
     context: &mut DslEvaluationContext<'_>,
@@ -463,6 +488,7 @@ fn convert_dsl_children(
         .collect()
 }
 
+/// 現在の値を dsl テキスト へ変換する。
 fn collect_dsl_text(children: &[ViewNode], context: &DslEvaluationContext<'_>) -> String {
     let text = children
         .iter()
@@ -480,6 +506,7 @@ fn collect_dsl_text(children: &[ViewNode], context: &DslEvaluationContext<'_>) -
     }
 }
 
+/// evaluate テキスト content を計算して返す。
 fn evaluate_text_content(text: &str, context: &DslEvaluationContext<'_>) -> String {
     let mut rendered = String::with_capacity(text.len());
     let mut rest = text;
@@ -502,6 +529,7 @@ fn evaluate_text_content(text: &str, context: &DslEvaluationContext<'_>) -> Stri
     }
 }
 
+/// 既存データを走査して attribute string を組み立てる。
 fn attribute_string(
     attributes: &BTreeMap<String, DslAttrValue>,
     key: &str,
@@ -512,6 +540,7 @@ fn attribute_string(
         .map(|value| attr_value_to_string(value, context))
 }
 
+/// 既存データを走査して attribute bool を組み立てる。
 fn attribute_bool(
     attributes: &BTreeMap<String, DslAttrValue>,
     key: &str,
@@ -522,6 +551,7 @@ fn attribute_bool(
         .map(|value| attr_value_to_bool(value, context))
 }
 
+/// 現在の値を 値 to string へ変換する。
 fn attr_value_to_string(value: &DslAttrValue, context: &DslEvaluationContext<'_>) -> String {
     match value {
         DslAttrValue::String(text) => text.clone(),
@@ -532,6 +562,7 @@ fn attr_value_to_string(value: &DslAttrValue, context: &DslEvaluationContext<'_>
     }
 }
 
+/// 入力を解析して 値 to bool に変換する。
 fn attr_value_to_bool(value: &DslAttrValue, context: &DslEvaluationContext<'_>) -> bool {
     match value {
         DslAttrValue::Bool(value) => *value,
@@ -542,6 +573,9 @@ fn attr_value_to_bool(value: &DslAttrValue, context: &DslEvaluationContext<'_>) 
     }
 }
 
+/// 入力を解析して 値 to usize に変換する。
+///
+/// 値を生成できない場合は `None` を返します。
 fn attr_value_to_usize(value: &DslAttrValue, context: &DslEvaluationContext<'_>) -> Option<usize> {
     match value {
         DslAttrValue::Integer(number) => usize::try_from(*number).ok(),
@@ -557,6 +591,7 @@ fn attr_value_to_usize(value: &DslAttrValue, context: &DslEvaluationContext<'_>)
     }
 }
 
+/// attribute usize に必要な処理を行う。
 fn attribute_usize(
     attributes: &BTreeMap<String, DslAttrValue>,
     key: &str,
@@ -567,6 +602,7 @@ fn attribute_usize(
         .and_then(|value| attr_value_to_usize(value, context))
 }
 
+/// 入力を解析して dropdown オプション に変換する。
 fn attribute_dropdown_options(
     attributes: &BTreeMap<String, DslAttrValue>,
     key: &str,
@@ -590,6 +626,7 @@ fn attribute_dropdown_options(
         .collect()
 }
 
+/// attribute レイヤー 一覧 items に必要な処理を行う。
 fn attribute_layer_list_items(
     attributes: &BTreeMap<String, DslAttrValue>,
     key: &str,
@@ -601,6 +638,7 @@ fn attribute_layer_list_items(
     layer_list_items_from_value(value, context)
 }
 
+/// 入力を解析して 一覧 items from 値 に変換する。
 fn layer_list_items_from_value(
     value: &DslAttrValue,
     context: &DslEvaluationContext<'_>,
@@ -622,6 +660,7 @@ fn layer_list_items_from_value(
     layer_list_items_from_json(&json_value)
 }
 
+/// 入力を解析して 一覧 items from JSON に変換する。
 fn layer_list_items_from_json(value: &Value) -> Vec<LayerListItem> {
     match value {
         Value::Array(items) => items.iter().filter_map(layer_list_item_from_json).collect(),
@@ -633,6 +672,9 @@ fn layer_list_items_from_json(value: &Value) -> Vec<LayerListItem> {
     }
 }
 
+/// 現在の値を 一覧 item from JSON へ変換する。
+///
+/// 値を生成できない場合は `None` を返します。
 fn layer_list_item_from_json(value: &Value) -> Option<LayerListItem> {
     let object = value.as_object()?;
     let label = object
@@ -666,6 +708,7 @@ fn layer_list_item_from_json(value: &Value) -> Option<LayerListItem> {
     Some(LayerListItem { label, detail })
 }
 
+/// 現在の値を to string へ変換する。
 fn expression_to_string(expression: &str, context: &DslEvaluationContext<'_>) -> String {
     match evaluate_expression(expression, context) {
         Value::String(text) => text,
@@ -676,6 +719,7 @@ fn expression_to_string(expression: &str, context: &DslEvaluationContext<'_>) ->
     }
 }
 
+/// 入力を解析して to bool に変換する。
 fn expression_to_bool(expression: &str, context: &DslEvaluationContext<'_>) -> bool {
     match evaluate_expression(expression, context) {
         Value::Bool(value) => value,
@@ -687,6 +731,7 @@ fn expression_to_bool(expression: &str, context: &DslEvaluationContext<'_>) -> b
     }
 }
 
+/// 入力を解析して expression に変換する。
 fn evaluate_expression(expression: &str, context: &DslEvaluationContext<'_>) -> Value {
     let expression = expression.trim();
     if let Some(inner) = expression.strip_prefix('!') {
@@ -722,6 +767,9 @@ fn evaluate_expression(expression: &str, context: &DslEvaluationContext<'_>) -> 
     Value::String(expression.to_string())
 }
 
+/// 現在の lookup JSON パス を返す。
+///
+/// 値を生成できない場合は `None` を返します。
 fn lookup_json_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     let mut current = value;
     for segment in path.split('.') {
@@ -730,6 +778,7 @@ fn lookup_json_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     Some(current)
 }
 
+/// 既存データを走査して node ID for を組み立てる。
 fn node_id_for(
     element: &ViewElement,
     context: &mut DslEvaluationContext<'_>,
@@ -743,11 +792,13 @@ fn node_id_for(
         .unwrap_or_else(|| next_generated_node_id(context, prefix))
 }
 
+/// Generated node ID をひとつ先へ切り替える。
 fn next_generated_node_id(context: &mut DslEvaluationContext<'_>, prefix: &str) -> String {
     context.generated_ids += 1;
     format!("dsl.{prefix}.{}", context.generated_ids)
 }
 
+/// 現在の 状態 defaults to JSON を返す。
 fn state_defaults_to_json(fields: &[StateField]) -> Value {
     let mut state = Value::Object(Map::new());
     for field in fields {
@@ -762,6 +813,7 @@ fn state_defaults_to_json(fields: &[StateField]) -> Value {
     state
 }
 
+/// 既定の attr 値 to JSON を返す。
 fn default_attr_value_to_json(value: &DslAttrValue) -> Value {
     match value {
         DslAttrValue::String(text) => Value::String(text.clone()),
@@ -777,6 +829,7 @@ fn default_attr_value_to_json(value: &DslAttrValue) -> Value {
     }
 }
 
+/// 状態 patches を現在の状態へ適用する。
 fn apply_state_patches(state: &mut Value, patches: &[StatePatch]) {
     if !state.is_object() {
         *state = Value::Object(Map::new());
@@ -786,6 +839,7 @@ fn apply_state_patches(state: &mut Value, patches: &[StatePatch]) {
     }
 }
 
+/// 現在の値を 状態 patch へ変換する。
 fn apply_state_patch(state: &mut Value, patch: &StatePatch) {
     let mut current = state;
     let mut segments = patch.path.split('.').peekable();
@@ -819,6 +873,7 @@ fn apply_state_patch(state: &mut Value, patch: &StatePatch) {
     }
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn command_descriptors_to_actions(
     commands: Vec<CommandDescriptor>,
     diagnostics: &mut Vec<Diagnostic>,
@@ -841,6 +896,9 @@ fn command_descriptors_to_actions(
         .collect()
 }
 
+/// 入力や種別に応じて処理を振り分ける。
+///
+/// 値を生成できない場合は `None` を返します。
 fn service_request_from_descriptor(descriptor: &CommandDescriptor) -> Option<ServiceRequest> {
     use panel_api::services::names;
 
@@ -882,6 +940,9 @@ fn service_request_from_descriptor(descriptor: &CommandDescriptor) -> Option<Ser
     Some(request)
 }
 
+/// 現在の値を from 記述子 へ変換する。
+///
+/// 失敗時はエラーを返します。
 pub fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, String> {
     match descriptor.name.as_str() {
         "project.new" => Ok(Command::NewDocument),
@@ -1183,6 +1244,9 @@ pub fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command
     }
 }
 
+/// 入力を解析して u64 に変換する。
+///
+/// 値を生成できない場合は `None` を返します。
 fn payload_u64(value: &Value) -> Option<u64> {
     value
         .as_u64()
@@ -1190,6 +1254,9 @@ fn payload_u64(value: &Value) -> Option<u64> {
         .or_else(|| value.as_str().and_then(|text| text.parse::<u64>().ok()))
 }
 
+/// 入力を解析して i32 に変換する。
+///
+/// 値を生成できない場合は `None` を返します。
 fn payload_i32(value: &Value) -> Option<i32> {
     value
         .as_i64()
@@ -1198,12 +1265,18 @@ fn payload_i32(value: &Value) -> Option<i32> {
         .or_else(|| value.as_str().and_then(|text| text.parse::<i32>().ok()))
 }
 
+/// 入力を解析して f64 に変換する。
+///
+/// 値を生成できない場合は `None` を返します。
 fn payload_f64(value: &Value) -> Option<f64> {
     value
         .as_f64()
         .or_else(|| value.as_str().and_then(|text| text.parse::<f64>().ok()))
 }
 
+/// 入力や種別に応じて処理を振り分ける。
+///
+/// 値を生成できない場合は `None` を返します。
 fn find_panel_action(nodes: &[PanelNode], target_id: &str) -> Option<HostAction> {
     for node in nodes {
         match node {
@@ -1236,6 +1309,7 @@ fn find_panel_action(nodes: &[PanelNode], target_id: &str) -> Option<HostAction>
     None
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn find_text_input_binding(
     nodes: &[PanelNode],
     target_id: &str,
@@ -1269,9 +1343,10 @@ fn find_text_input_binding(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use panel_schema::CommandDescriptor;
     use panel_api::services::names;
+    use panel_schema::CommandDescriptor;
 
+    /// コマンド from 記述子 maps ワークスペース commands が期待どおりに動作することを検証する。
     #[test]
     fn command_from_descriptor_maps_workspace_commands() {
         assert_eq!(
@@ -1293,6 +1368,7 @@ mod tests {
         );
     }
 
+    /// サービス 記述子 maps to サービス 要求 が期待どおりに動作することを検証する。
     #[test]
     fn service_descriptor_maps_to_service_request() {
         let mut descriptor = CommandDescriptor::new(names::WORKSPACE_APPLY_PRESET);

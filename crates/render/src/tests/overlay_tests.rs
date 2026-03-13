@@ -6,6 +6,7 @@ use crate::{
     status_text_bounds,
 };
 
+/// 合成 パネル ホスト 領域 respects global パネル サーフェス 範囲 が期待どおりに動作することを検証する。
 #[test]
 fn compose_panel_host_region_respects_global_panel_surface_bounds() {
     let mut frame = RenderFrame {
@@ -29,6 +30,9 @@ fn compose_panel_host_region_respects_global_panel_surface_bounds() {
     assert_eq!(&frame.pixels[outside..outside + 4], &[0, 0, 0, 0]);
 }
 
+/// blit scaled RGBA 領域 updates only 差分 area が期待どおりに動作することを検証する。
+///
+/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn blit_scaled_rgba_region_updates_only_dirty_area() {
     let mut frame = RenderFrame {
@@ -59,10 +63,17 @@ fn blit_scaled_rgba_region_updates_only_dirty_area() {
 
     let dirty_index = (3 * frame.width + 3) * 4;
     let untouched_index = (2 * frame.width + 2) * 4;
-    assert_eq!(&frame.pixels[dirty_index..dirty_index + 4], &[255, 255, 255, 255]);
-    assert_eq!(&frame.pixels[untouched_index..untouched_index + 4], &[0, 0, 0, 0]);
+    assert_eq!(
+        &frame.pixels[dirty_index..dirty_index + 4],
+        &[255, 255, 255, 255]
+    );
+    assert_eq!(
+        &frame.pixels[untouched_index..untouched_index + 4],
+        &[0, 0, 0, 0]
+    );
 }
 
+/// 合成 ステータス 領域 updates expected footer 範囲 が期待どおりに動作することを検証する。
 #[test]
 fn compose_status_region_updates_expected_footer_bounds() {
     let canvas_pixels = vec![0; 32 * 32 * 4];
@@ -95,11 +106,17 @@ fn compose_status_region_updates_expected_footer_bounds() {
 
     compose_status_region(&mut frame, &plan);
 
-    let expected = status_text_bounds(plan.window_width, plan.window_height, plan.canvas.host_rect, plan.status_text);
+    let expected = status_text_bounds(
+        plan.window_width,
+        plan.window_height,
+        plan.canvas.host_rect,
+        plan.status_text,
+    );
     let index = (expected.y * frame.width + expected.x) * 4;
     assert_ne!(&frame.pixels[index..index + 4], &[0, 0, 0, 0]);
 }
 
+/// オーバーレイ plan roundtrip keeps オーバーレイ payload が期待どおりに動作することを検証する。
 #[test]
 fn overlay_plan_roundtrip_keeps_overlay_payload() {
     let canvas_pixels = vec![0; 8 * 8 * 4];
@@ -138,5 +155,13 @@ fn overlay_plan_roundtrip_keeps_overlay_payload() {
 
     assert_eq!(overlay_plan.overlay, overlay);
     assert_eq!(overlay_plan.canvas.host_rect, plan.canvas.host_rect);
-    assert_eq!(overlay_plan.panel_surface.rect(), PixelRect { x: 0, y: 0, width: 64, height: 64 });
+    assert_eq!(
+        overlay_plan.panel_surface.rect(),
+        PixelRect {
+            x: 0,
+            y: 0,
+            width: 64,
+            height: 64
+        }
+    );
 }

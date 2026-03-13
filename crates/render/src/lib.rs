@@ -8,34 +8,34 @@ mod canvas_plan;
 mod compose;
 mod dirty;
 mod frame_plan;
+mod overlay_plan;
 mod panel;
 mod panel_plan;
-mod overlay_plan;
 mod status;
 mod text;
 
 use app_core::{
-    CanvasDirtyRect, CanvasDisplayPoint, CanvasPoint, CanvasViewTransform,
-    CanvasViewportPoint, ClampToCanvasBounds, Document,
+    CanvasDirtyRect, CanvasDisplayPoint, CanvasPoint, CanvasViewTransform, CanvasViewportPoint,
+    ClampToCanvasBounds, Document,
 };
 
-pub use panel::{
-    FloatingPanel, MeasuredPanelSize, PanelFocusTarget, PanelHitKind, PanelHitRegion,
-    PanelRenderState, PanelTextInputState, RasterizedPanelLayer, measure_panel_size,
-    rasterize_panel_layer,
-};
 pub use brush_preview::brush_preview_dirty_rect;
 pub use canvas_plan::{CanvasCompositeSource, CanvasPlan};
 pub use compose::{
     SourceAxisRun, blit_scaled_rgba_region, build_source_axis_runs, clear_canvas_host_region,
-    compose_base_frame, compose_canvas_host_region, compose_desktop_frame,
-    compose_overlay_frame, compose_overlay_region, compose_panel_host_region,
-    compose_status_region, fill_rgba_block, scroll_canvas_region,
+    compose_base_frame, compose_canvas_host_region, compose_desktop_frame, compose_overlay_frame,
+    compose_overlay_region, compose_panel_host_region, compose_status_region, fill_rgba_block,
+    scroll_canvas_region,
 };
 pub use dirty::{DirtyFramePlan, union_dirty_rect, union_optional_rect};
 pub use frame_plan::FramePlan;
 pub use overlay_plan::{
     CanvasOverlayState, OverlayPlan, PanelNavigatorEntry, PanelNavigatorOverlay,
+};
+pub use panel::{
+    FloatingPanel, MeasuredPanelSize, PanelFocusTarget, PanelHitKind, PanelHitRegion,
+    PanelRenderState, PanelTextInputState, RasterizedPanelLayer, measure_panel_size,
+    rasterize_panel_layer,
 };
 pub use panel_plan::{PanelPlan, PanelSurfaceSource};
 pub use status::{measured_status_width, status_text_bounds, status_text_rect};
@@ -54,7 +54,7 @@ pub struct PixelRect {
 }
 
 impl PixelRect {
-    /// 指定座標が矩形内に入っているかを判定する。
+    /// 対象 が範囲内に含まれるか判定する。
     pub fn contains(&self, x: i32, y: i32) -> bool {
         x >= self.x as i32
             && y >= self.y as i32
@@ -62,7 +62,7 @@ impl PixelRect {
             && y < (self.y + self.height) as i32
     }
 
-    /// 2 つの矩形を包む最小の矩形を返す。
+    /// union を計算して返す。
     pub fn union(&self, other: PixelRect) -> PixelRect {
         let left = self.x.min(other.x);
         let top = self.y.min(other.y);
@@ -77,7 +77,9 @@ impl PixelRect {
         }
     }
 
-    /// 2 つの矩形の共通部分を返す。
+    /// intersect を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn intersect(&self, other: PixelRect) -> Option<PixelRect> {
         let left = self.x.max(other.x);
         let top = self.y.max(other.y);
@@ -128,6 +130,7 @@ pub struct CanvasScene {
 }
 
 impl CanvasScene {
+    /// UV 変換 を計算して返す。
     fn uv_transform(&self) -> UvTransform {
         let radians = self.rotation_degrees.to_radians();
         UvTransform {
@@ -142,27 +145,33 @@ impl CanvasScene {
         }
     }
 
-    /// 実際に表示されるキャンバス矩形を返す。
+    /// drawn 矩形 を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn drawn_rect(&self) -> Option<PixelRect> {
         self.drawn_rect
     }
 
-    /// GPU 提示用のクアッドを返す。
+    /// texture quad を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn texture_quad(&self) -> Option<TextureQuad> {
         self.texture_quad
     }
 
-    /// 現在の表示スケールを返す。
+    /// 拡大率 を計算して返す。
     pub fn scale(&self) -> f32 {
         self.scale
     }
 
-    /// 現在の描画左上オフセットを返す。
+    /// オフセット を計算して返す。
     pub fn offset(&self) -> (f32, f32) {
         (self.offset_x, self.offset_y)
     }
 
-    /// ビットマップ dirty rect を表示先へ写像する。
+    /// キャンバス 差分 矩形 を別座標系へ変換する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn map_canvas_dirty_rect(&self, dirty: CanvasDirtyRect) -> PixelRect {
         self.map_source_rect_to_display(dirty)
             .and_then(|rect| rect.intersect(self.viewport))
@@ -174,12 +183,14 @@ impl CanvasScene {
             })
     }
 
-    /// キャンバス座標のブラシプレビュー領域を返す。
+    /// ブラシ プレビュー 矩形 を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn brush_preview_rect(&self, canvas_position: CanvasPoint) -> Option<PixelRect> {
         self.brush_preview_rect_for_diameter(canvas_position, 1.0)
     }
 
-    /// ソース座標上のブラシ径を考慮したプレビュー領域を返す。
+    /// ブラシ プレビュー 矩形 for diameter に必要な処理を行う。
     pub fn brush_preview_rect_for_diameter(
         &self,
         canvas_position: CanvasPoint,
@@ -212,7 +223,7 @@ impl CanvasScene {
         })
     }
 
-    /// キャンバス座標を表示座標へ変換する。
+    /// キャンバス 点 to 表示 を別座標系へ変換する。
     pub fn map_canvas_point_to_display(
         &self,
         canvas_position: CanvasPoint,
@@ -220,7 +231,9 @@ impl CanvasScene {
         self.map_source_point_to_display(canvas_position)
     }
 
-    /// ビュー座標をキャンバスビットマップ座標へ変換する。
+    /// ビュー to キャンバス を別座標系へ変換する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn map_view_to_canvas(&self, point: CanvasViewportPoint) -> Option<CanvasPoint> {
         let drawn_width = self.bbox_width * self.scale;
         let drawn_height = self.bbox_height * self.scale;
@@ -245,6 +258,9 @@ impl CanvasScene {
         ))
     }
 
+    /// ソース 矩形 to 表示 を別座標系へ変換する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn map_source_rect_to_display(&self, dirty: CanvasDirtyRect) -> Option<PixelRect> {
         let dirty = dirty.clamp_to_canvas_bounds(self.source_width, self.source_height);
         let corners = [
@@ -289,6 +305,7 @@ impl CanvasScene {
         })
     }
 
+    /// ソース 点 to 表示 を別座標系へ変換する。
     fn map_source_point_to_display(
         &self,
         canvas_position: CanvasPoint,
@@ -306,7 +323,7 @@ impl CanvasScene {
     }
 }
 
-/// `CanvasViewTransform` から表示幾何を構築する。
+/// prepare キャンバス シーン に必要な処理を行う。
 pub fn prepare_canvas_scene(
     viewport: PixelRect,
     source_width: usize,
@@ -385,10 +402,12 @@ pub fn prepare_canvas_scene(
     })
 }
 
+/// normalized 回転 degrees を計算して返す。
 fn normalized_rotation_degrees(rotation_degrees: f32) -> f32 {
     rotation_degrees.rem_euclid(360.0)
 }
 
+/// rotated bounding box を計算して返す。
 fn rotated_bounding_box(width: f32, height: f32, rotation_degrees: f32) -> (f32, f32) {
     let radians = rotation_degrees.to_radians();
     let cos = radians.cos().abs();
@@ -411,6 +430,7 @@ struct UvTransform {
     sin_theta: f32,
 }
 
+/// ソース to rotated UV を計算して返す。
 fn source_to_rotated_uv(source_u: f32, source_v: f32, uv_transform: UvTransform) -> (f32, f32) {
     let centered_x = source_u * uv_transform.source_width - uv_transform.source_width * 0.5;
     let centered_y = source_v * uv_transform.source_height - uv_transform.source_height * 0.5;
@@ -428,6 +448,7 @@ fn source_to_rotated_uv(source_u: f32, source_v: f32, uv_transform: UvTransform)
     )
 }
 
+/// rotated to ソース UV を計算して返す。
 fn rotated_to_source_uv(rotated_u: f32, rotated_v: f32, uv_transform: UvTransform) -> (f32, f32) {
     let mut rotated_x = rotated_u * uv_transform.bbox_width - uv_transform.bbox_width * 0.5;
     let mut rotated_y = rotated_v * uv_transform.bbox_height - uv_transform.bbox_height * 0.5;
@@ -445,7 +466,9 @@ fn rotated_to_source_uv(rotated_u: f32, rotated_v: f32, uv_transform: UvTransfor
     )
 }
 
-/// ビットマップ dirty rect を表示先へ写像する。
+/// キャンバス 差分 to 表示 with 変換 を別座標系へ変換する。
+///
+/// 必要に応じて dirty 状態も更新します。
 pub fn map_canvas_dirty_to_display_with_transform(
     dirty: CanvasDirtyRect,
     viewport: PixelRect,
@@ -463,7 +486,7 @@ pub fn map_canvas_dirty_to_display_with_transform(
         })
 }
 
-/// キャンバス上に描かれている領域を返す。
+/// キャンバス drawn 矩形 に必要な処理を行う。
 pub fn canvas_drawn_rect(
     viewport: PixelRect,
     source_width: usize,
@@ -474,7 +497,7 @@ pub fn canvas_drawn_rect(
         .and_then(|scene| scene.drawn_rect())
 }
 
-/// ブラシプレビュー矩形を返す。
+/// ブラシ プレビュー 矩形 に必要な処理を行う。
 pub fn brush_preview_rect(
     viewport: PixelRect,
     source_width: usize,
@@ -486,7 +509,7 @@ pub fn brush_preview_rect(
         .and_then(|scene| scene.brush_preview_rect(canvas_position))
 }
 
-/// ブラシ径を考慮したブラシプレビュー矩形を返す。
+/// ブラシ プレビュー 矩形 for diameter に必要な処理を行う。
 pub fn brush_preview_rect_for_diameter(
     viewport: PixelRect,
     source_width: usize,
@@ -499,7 +522,7 @@ pub fn brush_preview_rect_for_diameter(
         .and_then(|scene| scene.brush_preview_rect_for_diameter(canvas_position, brush_diameter))
 }
 
-/// キャンバス座標を表示座標へ変換する。
+/// キャンバス 点 to 表示 を別座標系へ変換する。
 pub fn map_canvas_point_to_display(
     viewport: PixelRect,
     source_width: usize,
@@ -511,7 +534,7 @@ pub fn map_canvas_point_to_display(
         .and_then(|scene| scene.map_canvas_point_to_display(canvas_position))
 }
 
-/// キャンバス quad を返す。
+/// キャンバス texture quad に必要な処理を行う。
 pub fn canvas_texture_quad(
     viewport: PixelRect,
     source_width: usize,
@@ -522,7 +545,7 @@ pub fn canvas_texture_quad(
         .and_then(|scene| scene.texture_quad())
 }
 
-/// ビュー座標をキャンバス座標へ変換する。
+/// ビュー to キャンバス with 変換 を別座標系へ変換する。
 pub fn map_view_to_canvas_with_transform(
     viewport: PixelRect,
     source_width: usize,
@@ -534,7 +557,7 @@ pub fn map_view_to_canvas_with_transform(
         .and_then(|scene| scene.map_view_to_canvas(point))
 }
 
-/// パン・ズーム変化で露出した背景領域を返す。
+/// exposed キャンバス 背景 矩形 に必要な処理を行う。
 pub fn exposed_canvas_background_rect(
     viewport: PixelRect,
     source_width: usize,
@@ -548,6 +571,7 @@ pub fn exposed_canvas_background_rect(
     exposed_canvas_background_rect_from_scenes(previous, current)
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 pub fn exposed_canvas_background_rect_from_scenes(
     previous: Option<CanvasScene>,
     current: Option<CanvasScene>,
@@ -625,19 +649,17 @@ pub struct RenderFrame {
 pub struct RenderContext;
 
 impl RenderContext {
-    /// 空のレンダリングコンテキストを作成する。
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn new() -> Self {
         Self
     }
 
-    /// 現段階では描画対象 `Document` をそのまま返す。
-    ///
-    /// 将来的にはここで可視範囲の解決やレンダリング前処理を行う。
+    /// ドキュメント を計算して返す。
     pub fn document<'a>(&self, document: &'a Document) -> &'a Document {
         document
     }
 
-    /// ドキュメントからアクティブコマをページ座標系へ配置したフレームを作る。
+    /// 描画 フレーム に必要な描画内容を組み立てる。
     pub fn render_frame(&self, document: &Document) -> RenderFrame {
         let page = document.active_page().unwrap_or(&document.work.pages[0]);
         let panel = document.active_panel().unwrap_or(&page.panels[0]);

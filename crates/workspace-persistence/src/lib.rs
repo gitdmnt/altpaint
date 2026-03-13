@@ -16,6 +16,7 @@ pub struct WorkspaceUiState {
 }
 
 impl WorkspaceUiState {
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn new(workspace_layout: WorkspaceLayout, plugin_configs: PluginConfigs) -> Self {
         Self {
             workspace_layout,
@@ -23,10 +24,12 @@ impl WorkspaceUiState {
         }
     }
 
+    /// 現在の値を parts 形式へ変換する。
     pub fn into_parts(self) -> (WorkspaceLayout, PluginConfigs) {
         (self.workspace_layout, self.plugin_configs)
     }
 
+    /// Is empty かどうかを返す。
     pub fn is_empty(&self) -> bool {
         self.workspace_layout.panels.is_empty() && self.plugin_configs.is_empty()
     }
@@ -36,6 +39,7 @@ impl WorkspaceUiState {
 mod tests {
     use super::*;
 
+    /// ワークスペース ui 状態 roundtrip preserves レイアウト and configs が期待どおりに動作することを検証する。
     #[test]
     fn workspace_ui_state_roundtrip_preserves_layout_and_configs() {
         let state = WorkspaceUiState {

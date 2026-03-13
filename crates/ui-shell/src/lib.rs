@@ -10,20 +10,17 @@ mod workspace;
 mod tests;
 
 pub use render::{
-    draw_text_rgba, measure_text_width, text_backend_name, text_line_height,
-    wrap_text_lines,
+    draw_text_rgba, measure_text_width, text_backend_name, text_line_height, wrap_text_lines,
 };
 
-use app_core::{
-    WorkspaceLayout, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState,
-};
-use panel_runtime::PanelRuntime;
+use app_core::{WorkspaceLayout, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState};
 use panel_api::{HostAction, PanelEvent, PanelTree};
+use panel_runtime::PanelRuntime;
 pub use presentation::PanelSurface;
 use presentation::{FocusTarget, TextInputEditorState};
 use std::collections::{BTreeMap, BTreeSet};
 use surface_render::PANEL_SCROLL_PIXELS_PER_LINE;
-use workspace::{event_panel_id, workspace_panel_actions, WORKSPACE_PANEL_ID};
+use workspace::{WORKSPACE_PANEL_ID, event_panel_id, workspace_panel_actions};
 
 /// パネルの presentation 状態を保持する。
 pub struct PanelPresentation {
@@ -72,7 +69,9 @@ pub struct PanelPresentation {
 }
 
 impl PanelPresentation {
-    /// 空の panel presentation を作成する。
+    /// 既定値を使って新しいインスタンスを生成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn new() -> Self {
         Self {
             workspace_layout: WorkspaceLayout::default(),
@@ -99,17 +98,21 @@ impl PanelPresentation {
         }
     }
 
-    /// workspace 管理 panel を含む `PanelTree` 一覧を返す。
+    /// パネル trees を計算して返す。
     pub fn panel_trees(&self, runtime: &PanelRuntime) -> Vec<PanelTree> {
         let mut trees = vec![self.workspace_manager_tree(runtime)];
         trees.extend(self.visible_panels_in_order(runtime));
         trees
     }
 
-    /// 現在の workspace layout を返す。
-    pub fn workspace_layout(&self) -> WorkspaceLayout { self.workspace_layout.clone() }
+    /// 現在の ワークスペース レイアウト を返す。
+    pub fn workspace_layout(&self) -> WorkspaceLayout {
+        self.workspace_layout.clone()
+    }
 
-    /// workspace layout を置き換える。
+    /// ワークスペース レイアウト を置き換える。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn replace_workspace_layout(&mut self, workspace_layout: WorkspaceLayout) {
         self.workspace_layout = workspace_layout;
         self.ensure_workspace_manager_entry();
@@ -117,7 +120,7 @@ impl PanelPresentation {
         self.panel_layout_dirty = true;
     }
 
-    /// runtime に存在する panel 群と workspace layout の整合を取る。
+    /// 既存データを走査して reconcile runtime panels を組み立てる。
     pub fn reconcile_runtime_panels(&mut self, runtime: &PanelRuntime) {
         let panel_ids = runtime
             .panel_trees()
@@ -127,7 +130,9 @@ impl PanelPresentation {
         self.reconcile_workspace_layout(panel_ids);
     }
 
-    /// runtime 側で内容が変わった panel 群を dirty として記録する。
+    /// Runtime panels 差分 を更新し、必要な dirty 状態も記録する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn mark_runtime_panels_dirty(
         &mut self,
         changed_panel_ids: &std::collections::BTreeSet<String>,
@@ -140,36 +145,53 @@ impl PanelPresentation {
         }
     }
 
-    /// 現在 focus 中の `(panel_id, node_id)` を返す。
+    /// 既存データを走査して focused target を組み立てる。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn focused_target(&self) -> Option<(&str, &str)> {
-        self.focused_target.as_ref().map(|target| (target.panel_id.as_str(), target.node_id.as_str()))
+        self.focused_target
+            .as_ref()
+            .map(|target| (target.panel_id.as_str(), target.node_id.as_str()))
     }
 
-    /// 直近の panel refresh で再ラスタライズしたパネル数を返す。
-    pub fn last_panel_rasterized_panels(&self) -> usize { self.last_panel_rasterized_panels }
+    /// last パネル rasterized panels を計算して返す。
+    pub fn last_panel_rasterized_panels(&self) -> usize {
+        self.last_panel_rasterized_panels
+    }
 
-    /// 直近の panel refresh で再合成したパネル数を返す。
-    pub fn last_panel_composited_panels(&self) -> usize { self.last_panel_composited_panels }
+    /// last パネル composited panels を計算して返す。
+    pub fn last_panel_composited_panels(&self) -> usize {
+        self.last_panel_composited_panels
+    }
 
-    /// 直近の panel rasterize に要した時間をミリ秒で返す。
-    pub fn last_panel_raster_duration_ms(&self) -> f64 { self.last_panel_raster_duration_ms }
+    /// last パネル raster duration ms を計算して返す。
+    pub fn last_panel_raster_duration_ms(&self) -> f64 {
+        self.last_panel_raster_duration_ms
+    }
 
-    /// 直近の panel compose に要した時間をミリ秒で返す。
-    pub fn last_panel_compose_duration_ms(&self) -> f64 { self.last_panel_compose_duration_ms }
+    /// last パネル 合成 duration ms を計算して返す。
+    pub fn last_panel_compose_duration_ms(&self) -> f64 {
+        self.last_panel_compose_duration_ms
+    }
 
-    /// 直近の panel surface 更新で変化したグローバル dirty rect を返す。
+    /// Last パネル サーフェス 差分 矩形 に必要な差分領域だけを描画または合成する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn last_panel_surface_dirty_rect(&self) -> Option<render::PixelRect> {
         self.last_panel_surface_dirty_rect
     }
 
-    /// 現在の panel スクロール量を返す。
-    pub fn panel_scroll_offset(&self) -> usize { self.panel_scroll_offset }
+    /// パネル スクロール オフセット を計算して返す。
+    pub fn panel_scroll_offset(&self) -> usize {
+        self.panel_scroll_offset
+    }
 
-    /// マウスホイール相当のスクロールを適用する。
+    /// スクロール panels に必要な描画内容を組み立てる。
     pub fn scroll_panels(&mut self, delta_lines: i32, viewport_height: usize) -> bool {
         let delta_pixels = delta_lines.saturating_mul(PANEL_SCROLL_PIXELS_PER_LINE);
         let max_offset = self.max_panel_scroll_offset(viewport_height) as i32;
-        let next_offset = (self.panel_scroll_offset as i32 + delta_pixels).clamp(0, max_offset) as usize;
+        let next_offset =
+            (self.panel_scroll_offset as i32 + delta_pixels).clamp(0, max_offset) as usize;
         if next_offset == self.panel_scroll_offset {
             return false;
         }
@@ -177,7 +199,9 @@ impl PanelPresentation {
         true
     }
 
-    /// presentation 側で処理すべき panel event を解釈する。
+    /// 入力や種別に応じて処理を振り分ける。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn handle_panel_event(
         &mut self,
         runtime: &PanelRuntime,
@@ -186,13 +210,26 @@ impl PanelPresentation {
         if let PanelEvent::Activate { panel_id, node_id } = event {
             self.focus_panel_node(runtime, panel_id, node_id);
             if self.is_dropdown_target(runtime, panel_id, node_id) {
-                let dropdown = FocusTarget { panel_id: panel_id.clone(), node_id: node_id.clone() };
-                self.expanded_dropdown = if self.expanded_dropdown.as_ref() == Some(&dropdown) { None } else { Some(dropdown) };
+                let dropdown = FocusTarget {
+                    panel_id: panel_id.clone(),
+                    node_id: node_id.clone(),
+                };
+                self.expanded_dropdown = if self.expanded_dropdown.as_ref() == Some(&dropdown) {
+                    None
+                } else {
+                    Some(dropdown)
+                };
                 self.mark_panel_content_dirty(panel_id);
-                return PresentationEventResult { forward_to_runtime: false, actions: Vec::new(), changed: true };
+                return PresentationEventResult {
+                    forward_to_runtime: false,
+                    actions: Vec::new(),
+                    changed: true,
+                };
             }
         }
-        if let PanelEvent::SetText { panel_id, node_id, .. } = event
+        if let PanelEvent::SetText {
+            panel_id, node_id, ..
+        } = event
             && self.is_dropdown_target(runtime, panel_id, node_id)
         {
             self.expanded_dropdown = None;
@@ -206,11 +243,22 @@ impl PanelPresentation {
                 .collect::<Vec<_>>();
             let actions = workspace_panel_actions(ordered_panels.as_slice(), event);
             self.mark_all_panel_content_dirty();
-            return PresentationEventResult { forward_to_runtime: false, actions, changed: true };
+            return PresentationEventResult {
+                forward_to_runtime: false,
+                actions,
+                changed: true,
+            };
         }
-        PresentationEventResult { forward_to_runtime: true, actions: Vec::new(), changed: false }
+        PresentationEventResult {
+            forward_to_runtime: true,
+            actions: Vec::new(),
+            changed: false,
+        }
     }
 
+    /// All パネル content 差分 を更新し、必要な dirty 状態も記録する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn mark_all_panel_content_dirty(&mut self) {
         self.panel_content_dirty = true;
         self.full_panel_raster_dirty = true;
@@ -219,6 +267,9 @@ impl PanelPresentation {
         self.panel_measure_viewport = None;
     }
 
+    /// 現在の値を パネル content 差分 へ変換する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn mark_panel_content_dirty(&mut self, panel_id: &str) {
         self.panel_content_dirty = true;
         if !self.full_panel_raster_dirty {
@@ -229,7 +280,10 @@ impl PanelPresentation {
 }
 
 impl Default for PanelPresentation {
-    fn default() -> Self { Self::new() }
+    /// 既定値を持つインスタンスを返す。
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]

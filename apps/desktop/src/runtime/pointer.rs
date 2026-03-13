@@ -9,7 +9,7 @@ use winit::event::{ElementState, Force, MouseScrollDelta, TouchPhase};
 use super::DesktopRuntime;
 
 impl DesktopRuntime {
-    /// `MouseScrollDelta` をテキスト行ベースのスクロール量へ正規化する。
+    /// 入力や種別に応じて処理を振り分ける。
     fn wheel_delta_lines(delta: MouseScrollDelta) -> (f32, f32) {
         match delta {
             MouseScrollDelta::LineDelta(x, y) => (x, y),
@@ -20,7 +20,7 @@ impl DesktopRuntime {
         }
     }
 
-    /// 現在のホバー位置を更新し、必要ならドラッグ継続も進める。
+    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_mouse_cursor_moved(&mut self, x: i32, y: i32) -> bool {
         if self.active_touch_id.is_some() {
             return false;
@@ -36,7 +36,7 @@ impl DesktopRuntime {
         self.record_canvas_input_if_needed(changed)
     }
 
-    /// raw mouse delta を使ってポインタ移動の中間サンプルを補間する。
+    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_raw_mouse_motion(&mut self, delta_x: f64, delta_y: f64) -> bool {
         if self.active_touch_id.is_some() || !self.app.is_canvas_interacting() {
             return false;
@@ -63,7 +63,7 @@ impl DesktopRuntime {
         self.record_canvas_input_if_needed(changed)
     }
 
-    /// 左ボタンの押下・解放をアプリ側ポインタ処理へ橋渡しする。
+    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_mouse_button(&mut self, state: ElementState) -> bool {
         if self.active_touch_id.is_some() {
             return false;
@@ -82,14 +82,14 @@ impl DesktopRuntime {
         }
     }
 
-    /// 未消化のホイールアニメーションが残っているかを返す。
+    /// Has pending ホイール animation かどうかを返す。
     pub(super) fn has_pending_wheel_animation(&self) -> bool {
         self.pending_wheel_pan.0.abs() > f32::EPSILON
             || self.pending_wheel_pan.1.abs() > f32::EPSILON
             || self.pending_wheel_zoom_lines.abs() > f32::EPSILON
     }
 
-    /// 残量から今回進めるアニメーション量を取り出す。
+    /// Animated step を取り出して返す。
     fn take_animated_step(pending: &mut f32, min_step: f32) -> f32 {
         if pending.abs() <= min_step {
             let step = *pending;
@@ -105,7 +105,7 @@ impl DesktopRuntime {
         step
     }
 
-    /// 残っているホイール入力を 1 ステップだけ適用する。
+    /// ホイール animation を進行させる。
     pub(super) fn advance_wheel_animation(&mut self) -> bool {
         let pan_x =
             Self::take_animated_step(&mut self.pending_wheel_pan.0, Self::WHEEL_PAN_MIN_STEP);
@@ -139,7 +139,7 @@ impl DesktopRuntime {
         changed
     }
 
-    /// マウスホイールをパネルスクロール・キャンバスパン・ズームへ振り分ける。
+    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_mouse_wheel(&mut self, delta: MouseScrollDelta) -> bool {
         let Some((x, y)) = self.last_cursor_position else {
             return false;
@@ -189,7 +189,7 @@ impl DesktopRuntime {
         self.advance_wheel_animation()
     }
 
-    /// タッチ入力を単一アクティブポインタとして扱う。
+    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_touch_phase(
         &mut self,
         touch_id: u64,
@@ -246,7 +246,7 @@ impl DesktopRuntime {
         }
     }
 
-    /// キャンバス入力中だけ profiler のサンプルを積む。
+    /// キャンバス 入力 if needed を記録する。
     pub(super) fn record_canvas_input_if_needed(&mut self, changed: bool) -> bool {
         if changed && self.app.is_canvas_interacting() {
             self.profiler
@@ -257,6 +257,9 @@ impl DesktopRuntime {
     }
 }
 
+/// 入力や種別に応じて処理を振り分ける。
+///
+/// 値を生成できない場合は `None` を返します。
 fn normalized_pressure(force: Option<Force>, fallback: f32) -> f32 {
     match force {
         Some(Force::Calibrated {

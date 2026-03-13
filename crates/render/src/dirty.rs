@@ -12,28 +12,38 @@ pub struct DirtyFramePlan {
 }
 
 impl DirtyFramePlan {
-    /// ベースレイヤーの dirty rect を追加する。
+    /// Base を更新し、必要な dirty 状態も記録する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn mark_base(&mut self, rect: PixelRect) {
         union_dirty_rect(&mut self.base_dirty_rect, rect);
     }
 
-    /// オーバーレイレイヤーの dirty rect を追加する。
+    /// オーバーレイ を更新し、必要な dirty 状態も記録する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn mark_overlay(&mut self, rect: PixelRect) {
         union_dirty_rect(&mut self.overlay_dirty_rect, rect);
     }
 
-    /// キャンバス dirty rect を設定する。
+    /// キャンバス 差分 を設定する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn set_canvas_dirty(&mut self, rect: Option<CanvasDirtyRect>) {
         self.canvas_dirty_rect = rect;
     }
 }
 
-/// dirty rect を既存値へ union して追加する。
+/// Union 差分 矩形 に必要な差分領域だけを描画または合成する。
+///
+/// 値を生成できない場合は `None` を返します。
 pub fn union_dirty_rect(target: &mut Option<PixelRect>, rect: PixelRect) {
     *target = Some(target.map_or(rect, |existing| existing.union(rect)));
 }
 
-/// 2 つの optional dirty rect を union する。
+/// 入力や種別に応じて処理を振り分ける。
+///
+/// 値を生成できない場合は `None` を返します。
 pub fn union_optional_rect(left: Option<PixelRect>, right: Option<PixelRect>) -> Option<PixelRect> {
     match (left, right) {
         (Some(left), Some(right)) => Some(left.union(right)),

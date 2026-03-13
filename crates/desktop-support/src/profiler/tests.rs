@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use super::{DesktopProfiler, PerformanceSnapshot};
 
-/// タイトル文字列へ主要指標が埋め込まれることを確認する。
+/// performance スナップショット formats ウィンドウ title が期待どおりに動作することを検証する。
 #[test]
 fn performance_snapshot_formats_window_title() {
     let title = PerformanceSnapshot {
@@ -28,7 +28,7 @@ fn performance_snapshot_formats_window_title() {
     assert!(title.contains("input  123.4Hz ok"));
 }
 
-/// スナップショット fps が直近窓のフレームから計算されることを確認する。
+/// profiler uses recent ウィンドウ for スナップショット fps が期待どおりに動作することを検証する。
 #[test]
 fn profiler_uses_recent_window_for_snapshot_fps() {
     let start = Instant::now();
@@ -57,7 +57,7 @@ fn profiler_uses_recent_window_for_snapshot_fps() {
     assert!(snapshot.fps < 65.0);
 }
 
-/// キャンバス入力レイテンシとサンプル周波数が計算されることを確認する。
+/// profiler tracks キャンバス latency and sampling rate が期待どおりに動作することを検証する。
 #[test]
 fn profiler_tracks_canvas_latency_and_sampling_rate() {
     let start = Instant::now();
@@ -85,7 +85,7 @@ fn profiler_tracks_canvas_latency_and_sampling_rate() {
     assert!(snapshot.canvas_sample_hz < 130.0);
 }
 
-/// アイドルギャップ後も fps が直近窓基準で維持されることを確認する。
+/// profiler does not drop to one fps after idle gap が期待どおりに動作することを検証する。
 #[test]
 fn profiler_does_not_drop_to_one_fps_after_idle_gap() {
     let start = Instant::now();

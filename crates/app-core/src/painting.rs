@@ -2,8 +2,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::{
-    CanvasBitmap, CanvasDirtyRect, ColorRgba8, PanelLocalPoint, PenPreset,
-    ToolSettingDefinition, ToolKind,
+    CanvasBitmap, CanvasDirtyRect, ColorRgba8, PanelLocalPoint, PenPreset, ToolKind,
+    ToolSettingDefinition,
 };
 
 /// 描画プラグインが受け取る最小入力イベント。
@@ -45,6 +45,7 @@ pub struct PaintPluginContext<'a> {
 
 /// `bitmap_a` と既存 `bitmap_b` から結果ビットマップを作る合成関数。
 pub trait BitmapCompositor: Send + Sync {
+    /// 合成 を計算して返す。
     fn compose(&self, bitmap_a: &CanvasBitmap, bitmap_b: &CanvasBitmap) -> CanvasBitmap;
 }
 
@@ -56,6 +57,7 @@ pub enum BitmapComposite {
 }
 
 impl fmt::Debug for BitmapComposite {
+    /// 入力値を束ねた新しいインスタンスを生成する。
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::SourceOver => f.write_str("SourceOver"),
@@ -66,18 +68,22 @@ impl fmt::Debug for BitmapComposite {
 }
 
 impl BitmapComposite {
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn source_over() -> Self {
         Self::SourceOver
     }
 
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn multiply() -> Self {
         Self::Multiply
     }
 
+    /// custom を計算して返す。
     pub fn custom(compositor: impl BitmapCompositor + 'static) -> Self {
         Self::Custom(Arc::new(compositor))
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
     pub fn compose(&self, bitmap_a: &CanvasBitmap, bitmap_b: &CanvasBitmap) -> CanvasBitmap {
         match self {
             Self::SourceOver => source_over_bitmap(bitmap_a, bitmap_b),
@@ -96,7 +102,14 @@ pub struct BitmapEdit {
 }
 
 impl BitmapEdit {
-    pub fn new(dirty_rect: CanvasDirtyRect, bitmap: CanvasBitmap, composite: BitmapComposite) -> Self {
+    /// 入力値を束ねた新しいインスタンスを生成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
+    pub fn new(
+        dirty_rect: CanvasDirtyRect,
+        bitmap: CanvasBitmap,
+        composite: BitmapComposite,
+    ) -> Self {
         Self {
             dirty_rect,
             bitmap,
@@ -107,11 +120,14 @@ impl BitmapEdit {
 
 /// ペン入力からビットマップ差分を生成する描画プラグイン契約。
 pub trait PaintPlugin {
+    /// ピクセル走査を行い、ID 用のビットマップ結果を生成する。
     fn id(&self) -> &'static str;
 
+    /// ピクセル走査を行い、process 用のビットマップ結果を生成する。
     fn process(&self, input: &PaintInput, context: &PaintPluginContext<'_>) -> Vec<BitmapEdit>;
 }
 
+/// ピクセル走査を行い、ソース over ビットマップ 用のビットマップ結果を生成する。
 fn source_over_bitmap(bitmap_a: &CanvasBitmap, bitmap_b: &CanvasBitmap) -> CanvasBitmap {
     let width = bitmap_a.width.min(bitmap_b.width);
     let height = bitmap_a.height.min(bitmap_b.height);
@@ -138,6 +154,7 @@ fn source_over_bitmap(bitmap_a: &CanvasBitmap, bitmap_b: &CanvasBitmap) -> Canva
     out
 }
 
+/// ピクセル走査を行い、multiply ビットマップ 用のビットマップ結果を生成する。
 fn multiply_bitmap(bitmap_a: &CanvasBitmap, bitmap_b: &CanvasBitmap) -> CanvasBitmap {
     let width = bitmap_a.width.min(bitmap_b.width);
     let height = bitmap_a.height.min(bitmap_b.height);
@@ -164,6 +181,7 @@ fn multiply_bitmap(bitmap_a: &CanvasBitmap, bitmap_b: &CanvasBitmap) -> CanvasBi
     out
 }
 
+/// ソース over ピクセル に対応するビットマップ処理を行う。
 fn source_over_pixel(previous: [u8; 4], incoming: [u8; 4]) -> [u8; 4] {
     let src_a = incoming[3] as f32 / 255.0;
     if src_a <= 0.0 {
@@ -182,6 +200,7 @@ fn source_over_pixel(previous: [u8; 4], incoming: [u8; 4]) -> [u8; 4] {
     out
 }
 
+/// Multiply ピクセル に対応するビットマップ処理を行う。
 fn multiply_pixel(previous: [u8; 4], incoming: [u8; 4]) -> [u8; 4] {
     let src_a = incoming[3] as f32 / 255.0;
     if src_a <= 0.0 {

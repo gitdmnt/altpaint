@@ -1,7 +1,7 @@
 use plugin_sdk::{
-	host,
-	runtime::{set_state_i32, set_state_string},
-	state,
+    host,
+    runtime::{set_state_i32, set_state_string},
+    state,
 };
 
 const TITLE: state::StringKey = state::string("title");
@@ -10,25 +10,28 @@ const PANEL_COUNT: state::IntKey = state::int("panel_count");
 const ACTIVE_TOOL: state::StringKey = state::string("active_tool");
 const STORAGE_STATUS: state::StringKey = state::string("storage_status");
 
+/// パネル初期化時に必要な状態を整える。
 #[plugin_sdk::panel_init]
 fn init() {}
 
+/// Host snapshot を読み取り、表示用の状態へ同期する。
 #[plugin_sdk::panel_sync_host]
 fn sync_host() {
-	set_state_string(TITLE, host::document::title());
-	set_state_i32(PAGE_COUNT, host::document::page_count());
-	set_state_i32(PANEL_COUNT, host::document::panel_count());
-	set_state_string(ACTIVE_TOOL, host::tool::active_name());
-	set_state_string(STORAGE_STATUS, host::snapshot::storage_status());
+    set_state_string(TITLE, host::document::title());
+    set_state_i32(PAGE_COUNT, host::document::page_count());
+    set_state_i32(PANEL_COUNT, host::document::panel_count());
+    set_state_string(ACTIVE_TOOL, host::tool::active_name());
+    set_state_string(STORAGE_STATUS, host::snapshot::storage_status());
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+    use super::*;
 
-	#[test]
-	fn panel_init_is_callable() {
-		init();
-		sync_host();
-	}
+    /// パネル 初期化 is callable が期待どおりに動作することを検証する。
+    #[test]
+    fn panel_init_is_callable() {
+        init();
+        sync_host();
+    }
 }

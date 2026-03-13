@@ -81,6 +81,7 @@ pub enum PenTip {
 }
 
 impl PenTip {
+    /// 現在の 幅 を返す。
     pub fn width(&self) -> u32 {
         match self {
             Self::AlphaMask8 { width, .. }
@@ -89,6 +90,7 @@ impl PenTip {
         }
     }
 
+    /// 現在の 高さ を返す。
     pub fn height(&self) -> u32 {
         match self {
             Self::AlphaMask8 { height, .. }
@@ -97,6 +99,9 @@ impl PenTip {
         }
     }
 
+    /// 現在の値を マスク bytes へ変換する。
+    ///
+    /// 失敗時はエラーを返します。
     pub fn alpha_mask_bytes(&self) -> Result<Vec<u8>, PenExchangeError> {
         match self {
             Self::AlphaMask8 { data_base64, .. } => BASE64
@@ -108,6 +113,9 @@ impl PenTip {
         }
     }
 
+    /// 現在の値を bytes へ変換する。
+    ///
+    /// 失敗時はエラーを返します。
     pub fn rgba_bytes(&self) -> Result<Vec<u8>, PenExchangeError> {
         match self {
             Self::Rgba8 { data_base64, .. } => BASE64
@@ -119,6 +127,7 @@ impl PenTip {
         }
     }
 
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn from_alpha_mask(width: u32, height: u32, bytes: &[u8]) -> Self {
         Self::AlphaMask8 {
             width,
@@ -127,6 +136,7 @@ impl PenTip {
         }
     }
 
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn from_rgba(width: u32, height: u32, bytes: &[u8]) -> Self {
         Self::Rgba8 {
             width,
@@ -135,6 +145,7 @@ impl PenTip {
         }
     }
 
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn from_png_blob(width: u32, height: u32, bytes: &[u8]) -> Self {
         Self::PngBlob {
             width,
@@ -185,6 +196,7 @@ pub struct AltPaintPen {
 }
 
 impl Default for AltPaintPen {
+    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self {
             format_version: current_pen_format_version(),
@@ -211,6 +223,9 @@ impl Default for AltPaintPen {
 }
 
 impl AltPaintPen {
+    /// 現在の値を output へ変換する。
+    ///
+    /// 失敗時はエラーを返します。
     pub fn validate(&self) -> Result<(), PenExchangeError> {
         if self.format_version != CURRENT_PEN_FORMAT_VERSION {
             return Err(PenExchangeError::UnsupportedFormat(format!(
@@ -256,6 +271,7 @@ impl AltPaintPen {
         Ok(())
     }
 
+    /// 現在の値を runtime preset 形式へ変換する。
     pub fn to_runtime_preset(&self) -> PenPreset {
         let min_size = self.min_size.max(1.0).round() as u32;
         let max_size = self.max_size.max(self.min_size).round() as u32;
@@ -283,6 +299,7 @@ impl AltPaintPen {
         }
     }
 
+    /// 既定値を使って新しいインスタンスを生成する。
     pub fn from_runtime_preset(preset: &PenPreset) -> Self {
         Self {
             id: preset.id.clone(),
@@ -331,6 +348,9 @@ struct LegacyAltPaintPen {
 impl TryFrom<LegacyAltPaintPen> for AltPaintPen {
     type Error = PenExchangeError;
 
+    /// Try from 用の表示文字列を組み立てる。
+    ///
+    /// 失敗時はエラーを返します。
     fn try_from(value: LegacyAltPaintPen) -> Result<Self, Self::Error> {
         if value.format_version != 1 {
             return Err(PenExchangeError::UnsupportedFormat(format!(
@@ -356,6 +376,9 @@ impl TryFrom<LegacyAltPaintPen> for AltPaintPen {
     }
 }
 
+/// 入力を解析して altpaint ペン JSON に変換し、失敗時はエラーを返す。
+///
+/// 失敗時はエラーを返します。
 pub fn parse_altpaint_pen_json(text: &str) -> Result<AltPaintPen, PenExchangeError> {
     let value: Value = serde_json::from_str(text)?;
     let format_version = value
@@ -379,18 +402,22 @@ pub fn parse_altpaint_pen_json(text: &str) -> Result<AltPaintPen, PenExchangeErr
     }
 }
 
+/// 現在 ペン 形式 version を計算して返す。
 fn current_pen_format_version() -> u32 {
     CURRENT_PEN_FORMAT_VERSION
 }
 
+/// 既定の プラグイン ID を返す。
 fn default_plugin_id() -> String {
     "builtin.bitmap".to_string()
 }
 
+/// legacy 形式 version を計算して返す。
 fn legacy_format_version() -> u32 {
     1
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn runtime_tip_from_storage(tip: &PenTip) -> PenTipBitmap {
     match tip {
         PenTip::AlphaMask8 {
@@ -423,6 +450,7 @@ fn runtime_tip_from_storage(tip: &PenTip) -> PenTipBitmap {
     }
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn storage_tip_from_runtime(tip: &PenTipBitmap) -> PenTip {
     match tip {
         PenTipBitmap::AlphaMask8 {
@@ -439,46 +467,57 @@ fn storage_tip_from_runtime(tip: &PenTipBitmap) -> PenTip {
     }
 }
 
+/// 既定の base サイズ を返す。
 fn default_base_size() -> f32 {
     4.0
 }
 
+/// 現在の legacy サイズ を返す。
 fn legacy_size() -> u32 {
     4
 }
 
+/// 既定の min サイズ を返す。
 fn default_min_size() -> f32 {
     1.0
 }
 
+/// 現在の legacy min サイズ を返す。
 fn legacy_min_size() -> u32 {
     1
 }
 
+/// 既定の max サイズ を返す。
 fn default_max_size() -> f32 {
     64.0
 }
 
+/// 現在の legacy max サイズ を返す。
 fn legacy_max_size() -> u32 {
     64
 }
 
+/// 既定の spacing percent を返す。
 fn default_spacing_percent() -> f32 {
     25.0
 }
 
+/// 既定の 不透明度 を返す。
 fn default_opacity() -> f32 {
     1.0
 }
 
+/// 既定の flow を返す。
 fn default_flow() -> f32 {
     1.0
 }
 
+/// 既定の ペン pressure enabled を返す。
 fn default_pen_pressure_enabled() -> bool {
     true
 }
 
+/// 既定の ペン アンチエイリアス を返す。
 fn default_pen_antialias() -> bool {
     true
 }
@@ -487,6 +526,7 @@ fn default_pen_antialias() -> bool {
 mod tests {
     use super::*;
 
+    /// parses legacy ペン JSON as v2 ペン が期待どおりに動作することを検証する。
     #[test]
     fn parses_legacy_pen_json_as_v2_pen() {
         let json = r#"{
@@ -508,6 +548,7 @@ mod tests {
         assert_eq!(pen.stabilization, 13);
     }
 
+    /// runtime conversion clamps サイズ が期待どおりに動作することを検証する。
     #[test]
     fn runtime_conversion_clamps_size() {
         let pen = AltPaintPen {

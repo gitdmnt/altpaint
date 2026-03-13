@@ -19,8 +19,8 @@ pub use coordinates::{
 pub use document::{
     BlendMode, CanvasBitmap, CanvasViewTransform, ColorRgba8, DEFAULT_DOCUMENT_HEIGHT,
     DEFAULT_DOCUMENT_WIDTH, Document, LayerMask, LayerNode, LayerNodeId, Page, PageId, Panel,
-    PanelBounds, PanelId, PenPreset, PenRuntimeEngine, PenTipBitmap, RasterLayer, ToolKind, Work,
-    ToolDefinition, ToolSettingControl, ToolSettingDefinition, WorkId,
+    PanelBounds, PanelId, PenPreset, PenRuntimeEngine, PenTipBitmap, RasterLayer, ToolDefinition,
+    ToolKind, ToolSettingControl, ToolSettingDefinition, Work, WorkId,
 };
 pub use error::CoreError;
 pub use painting::{

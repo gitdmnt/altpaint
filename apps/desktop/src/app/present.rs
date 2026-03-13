@@ -10,7 +10,9 @@ use super::{DesktopApp, PresentFrameUpdate};
 use crate::frame::DesktopLayout;
 
 impl DesktopApp {
-    /// 現在状態から次に提示すべきフレームと差分更新情報を生成する。
+    /// Prepare 提示 フレーム に必要な差分領域だけを描画または合成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn prepare_present_frame(
         &mut self,
         window_width: usize,
@@ -39,7 +41,8 @@ impl DesktopApp {
             profiler.measure("ui_update", || {
                 if self.ui_sync_panel_ids.is_empty() {
                     let changed = self.panel_runtime.sync_document(&self.document);
-                    self.panel_presentation.reconcile_runtime_panels(&self.panel_runtime);
+                    self.panel_presentation
+                        .reconcile_runtime_panels(&self.panel_runtime);
                     if !changed.is_empty() {
                         self.panel_presentation.mark_runtime_panels_dirty(&changed);
                         self.mark_panel_surface_dirty();
@@ -48,7 +51,8 @@ impl DesktopApp {
                     let changed = self
                         .panel_runtime
                         .sync_document_panels(&self.document, &self.ui_sync_panel_ids);
-                    self.panel_presentation.reconcile_runtime_panels(&self.panel_runtime);
+                    self.panel_presentation
+                        .reconcile_runtime_panels(&self.panel_runtime);
                     if !changed.is_empty() {
                         self.panel_presentation.mark_runtime_panels_dirty(&changed);
                         self.mark_panel_surface_dirty();
@@ -74,9 +78,15 @@ impl DesktopApp {
                 )
             });
             let window_area = (window_width.max(1) * window_height.max(1)) as f64;
-            profiler.record_value("panel_surface_buffer_area_px", (panel_surface.width * panel_surface.height) as f64);
+            profiler.record_value(
+                "panel_surface_buffer_area_px",
+                (panel_surface.width * panel_surface.height) as f64,
+            );
             profiler.record_value("panel_surface_buffer_width_px", panel_surface.width as f64);
-            profiler.record_value("panel_surface_buffer_height_px", panel_surface.height as f64);
+            profiler.record_value(
+                "panel_surface_buffer_height_px",
+                panel_surface.height as f64,
+            );
             profiler.record_value(
                 "panel_surface_window_coverage_pct",
                 ((panel_surface.width * panel_surface.height) as f64 / window_area) * 100.0,
@@ -106,7 +116,9 @@ impl DesktopApp {
             panel_surface_refreshed = true;
         }
 
-        if self.needs_full_present_rebuild || self.base_frame.is_none() || self.overlay_frame.is_none()
+        if self.needs_full_present_rebuild
+            || self.base_frame.is_none()
+            || self.overlay_frame.is_none()
         {
             let layout = self.layout.clone().expect("layout exists");
             let panel_surface = self.panel_surface.as_ref().expect("panel surface exists");
@@ -228,7 +240,12 @@ impl DesktopApp {
             let panel_dirty_rect = self.panel_presentation.last_panel_surface_dirty_rect();
             profiler.measure("compose_dirty_panel", || {
                 let _ = panel_surface;
-                render::compose_overlay_region(overlay_frame, &frame_plan, &overlay_state, panel_dirty_rect);
+                render::compose_overlay_region(
+                    overlay_frame,
+                    &frame_plan,
+                    &overlay_state,
+                    panel_dirty_rect,
+                );
             });
             if let Some(panel_dirty_rect) = panel_dirty_rect {
                 dirty_plan.mark_overlay(panel_dirty_rect);
@@ -288,10 +305,7 @@ impl DesktopApp {
         if let Some(canvas_dirty_rect) = canvas_dirty_rect {
             let dirty = canvas_dirty_rect.clamp_to_canvas_bounds(canvas_width, canvas_height);
             let canvas_area = (canvas_width.max(1) * canvas_height.max(1)) as f64;
-            profiler.record_value(
-                "canvas_upload_area_px",
-                (dirty.width * dirty.height) as f64,
-            );
+            profiler.record_value("canvas_upload_area_px", (dirty.width * dirty.height) as f64);
             profiler.record_value("canvas_upload_width_px", dirty.width as f64);
             profiler.record_value("canvas_upload_height_px", dirty.height as f64);
             profiler.record_value(

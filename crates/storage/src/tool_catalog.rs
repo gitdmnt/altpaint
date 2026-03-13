@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use app_core::ToolDefinition;
 
+/// 入力や種別に応じて処理を振り分ける。
 pub fn load_tool_directory(directory: impl AsRef<Path>) -> (Vec<ToolDefinition>, Vec<String>) {
     let mut files = Vec::new();
     let mut diagnostics = Vec::new();
@@ -22,6 +23,7 @@ pub fn load_tool_directory(directory: impl AsRef<Path>) -> (Vec<ToolDefinition>,
     (tools, diagnostics)
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn collect_tool_files(directory: &Path, files: &mut Vec<PathBuf>, diagnostics: &mut Vec<String>) {
     let Ok(entries) = fs::read_dir(directory) else {
         if directory.exists() {
@@ -48,15 +50,20 @@ fn collect_tool_files(directory: &Path, files: &mut Vec<PathBuf>, diagnostics: &
     }
 }
 
+/// Is supported ツール file かどうかを返す。
 fn is_supported_tool_file(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name.ends_with(".altp-tool.json"))
 }
 
+/// 入力を解析して ツール file に変換し、失敗時はエラーを返す。
+///
+/// 失敗時はエラーを返します。
 fn load_tool_file(path: &Path) -> Result<ToolDefinition, String> {
     let content = fs::read_to_string(path).map_err(|error| error.to_string())?;
-    let tool = serde_json::from_str::<ToolDefinition>(&content).map_err(|error| error.to_string())?;
+    let tool =
+        serde_json::from_str::<ToolDefinition>(&content).map_err(|error| error.to_string())?;
     if tool.id.trim().is_empty() {
         return Err("tool id must not be empty".to_string());
     }
@@ -76,6 +83,7 @@ fn load_tool_file(path: &Path) -> Result<ToolDefinition, String> {
 mod tests {
     use super::*;
 
+    /// Unique temp dir 用の表示文字列を組み立てる。
     fn unique_temp_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "altpaint-{name}-{}-{}",
@@ -89,6 +97,7 @@ mod tests {
         dir
     }
 
+    /// 読込 ツール directory reads nested ツール definitions が期待どおりに動作することを検証する。
     #[test]
     fn load_tool_directory_reads_nested_tool_definitions() {
         let dir = unique_temp_dir("tools");
@@ -118,6 +127,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// 読込 ツール directory reports invalid files が期待どおりに動作することを検証する。
     #[test]
     fn load_tool_directory_reports_invalid_files() {
         let dir = unique_temp_dir("invalid-tools");

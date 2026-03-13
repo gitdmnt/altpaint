@@ -11,7 +11,7 @@ pub enum Tool {
 }
 
 impl Tool {
-    /// SDK が使う文字列表現へ変換する。
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Pen => "pen",
@@ -32,12 +32,12 @@ pub struct RgbColor {
 }
 
 impl RgbColor {
-    /// RGB 色を構築する。
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub const fn new(red: u8, green: u8, blue: u8) -> Self {
         Self { red, green, blue }
     }
 
-    /// `#RRGGBB` 形式へ変換する。
+    /// 現在の値を 16進文字列 string 形式へ変換する。
     pub fn to_hex_string(self) -> String {
         format!("#{:02X}{:02X}{:02X}", self.red, self.green, self.blue)
     }
@@ -48,12 +48,12 @@ pub mod project {
     use panel_schema::CommandDescriptor;
     use serde_json::json;
 
-    /// 新規ドキュメント作成コマンドを返す。
+    /// 新規 ドキュメント を計算して返す。
     pub fn new_document() -> CommandDescriptor {
         CommandDescriptor::new("project.new")
     }
 
-    /// 指定サイズの新規ドキュメント作成コマンドを返す。
+    /// 現在の値を sized へ変換する。
     pub fn new_sized(width: usize, height: usize) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("project.new_sized");
         descriptor
@@ -62,17 +62,17 @@ pub mod project {
         descriptor
     }
 
-    /// 保存コマンドを返す。
+    /// 保存 を計算して返す。
     pub fn save() -> CommandDescriptor {
         CommandDescriptor::new("project.save")
     }
 
-    /// 名前を付けて保存コマンドを返す。
+    /// As を保存先へ書き出す。
     pub fn save_as() -> CommandDescriptor {
         CommandDescriptor::new("project.save_as")
     }
 
-    /// パス付き保存コマンドを返す。
+    /// 現在の値を as パス へ変換する。
     pub fn save_as_path(path: impl Into<String>) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("project.save_as_path");
         descriptor
@@ -81,12 +81,12 @@ pub mod project {
         descriptor
     }
 
-    /// 読み込みコマンドを返す。
+    /// 読込 を計算して返す。
     pub fn load() -> CommandDescriptor {
         CommandDescriptor::new("project.load")
     }
 
-    /// パス付き読み込みコマンドを返す。
+    /// 現在の値を パス へ変換する。
     pub fn load_path(path: impl Into<String>) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("project.load_path");
         descriptor
@@ -101,12 +101,12 @@ pub mod workspace {
     use panel_schema::CommandDescriptor;
     use serde_json::json;
 
-    /// workspace preset カタログ再読込コマンドを返す。
+    /// 再読込 presets を計算して返す。
     pub fn reload_presets() -> CommandDescriptor {
         CommandDescriptor::new("workspace.reload_presets")
     }
 
-    /// 指定 workspace preset 適用コマンドを返す。
+    /// 現在の値を preset へ変換する。
     pub fn apply_preset(preset_id: impl Into<String>) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("workspace.apply_preset");
         descriptor
@@ -115,7 +115,7 @@ pub mod workspace {
         descriptor
     }
 
-    /// 現在の workspace UI 状態を preset カタログへ保存するコマンドを返す。
+    /// 現在の値を preset へ変換する。
     pub fn save_preset(
         preset_id: impl Into<String>,
         label: impl Into<String>,
@@ -130,7 +130,7 @@ pub mod workspace {
         descriptor
     }
 
-    /// 現在の workspace UI 状態を書き出すコマンドを返す。
+    /// 現在の値を preset へ変換する。
     pub fn export_preset(
         preset_id: impl Into<String>,
         label: impl Into<String>,
@@ -152,7 +152,7 @@ pub mod tool {
     use panel_schema::CommandDescriptor;
     use serde_json::json;
 
-    /// アクティブツール変更コマンドを返す。
+    /// 現在の値を アクティブ へ変換する。
     pub fn set_active(tool: Tool) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("tool.set_active");
         descriptor
@@ -161,7 +161,7 @@ pub mod tool {
         descriptor
     }
 
-    /// 登録済みツール ID を指定してアクティブツールを変更する。
+    /// ツール を選択状態へ更新する。
     pub fn select_tool(tool_id: impl Into<String>) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("tool.select");
         descriptor
@@ -170,7 +170,7 @@ pub mod tool {
         descriptor
     }
 
-    /// 16 進カラー文字列の設定コマンドを返す。
+    /// 現在の値を 色 16進文字列 へ変換する。
     pub fn set_color_hex(color: impl Into<String>) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("tool.set_color");
         descriptor
@@ -179,19 +179,19 @@ pub mod tool {
         descriptor
     }
 
-    /// RGB カラーの設定コマンドを返す。
+    /// 色 RGB を設定する。
     pub fn set_color_rgb(color: RgbColor) -> CommandDescriptor {
         set_color_hex(color.to_hex_string())
     }
 
-    /// ブラシサイズ設定コマンドを返す。
+    /// 現在の値を サイズ へ変換する。
     pub fn set_size(size: u32) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("tool.set_size");
         descriptor.payload.insert("size".to_string(), json!(size));
         descriptor
     }
 
-    /// 筆圧有効状態設定コマンドを返す。
+    /// 現在の値を pressure enabled へ変換する。
     pub fn set_pressure_enabled(enabled: bool) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("tool.set_pressure_enabled");
         descriptor
@@ -200,7 +200,7 @@ pub mod tool {
         descriptor
     }
 
-    /// アンチエイリアス有効状態設定コマンドを返す。
+    /// 現在の値を アンチエイリアス へ変換する。
     pub fn set_antialias(enabled: bool) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("tool.set_antialias");
         descriptor
@@ -209,7 +209,7 @@ pub mod tool {
         descriptor
     }
 
-    /// 手ぶれ補正強さ設定コマンドを返す。
+    /// 現在の値を stabilization へ変換する。
     pub fn set_stabilization(amount: u8) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("tool.set_stabilization");
         descriptor
@@ -218,27 +218,27 @@ pub mod tool {
         descriptor
     }
 
-    /// 次のペンを選択するコマンドを返す。
+    /// 次 ペン を選択状態へ更新する。
     pub fn select_next_pen() -> CommandDescriptor {
         CommandDescriptor::new("tool.pen_next")
     }
 
-    /// 前のペンを選択するコマンドを返す。
+    /// 前 ペン を選択状態へ更新する。
     pub fn select_previous_pen() -> CommandDescriptor {
         CommandDescriptor::new("tool.pen_prev")
     }
 
-    /// ペンプリセット再読込コマンドを返す。
+    /// 再読込 ペン presets を計算して返す。
     pub fn reload_pen_presets() -> CommandDescriptor {
         CommandDescriptor::new("tool.reload_pen_presets")
     }
 
-    /// 外部ペンファイル選択付きインポートコマンドを返す。
+    /// ペン presets を読み込み、必要に応じて整形して返す。
     pub fn import_pen_presets() -> CommandDescriptor {
         CommandDescriptor::new("tool.import_pen_presets")
     }
 
-    /// 指定パスの外部ペンファイルをインポートするコマンドを返す。
+    /// 現在の値を ペン パス へ変換する。
     pub fn import_pen_path(path: impl Into<String>) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("tool.import_pen_path");
         descriptor
@@ -253,14 +253,14 @@ pub mod view {
     use panel_schema::CommandDescriptor;
     use serde_json::json;
 
-    /// ズーム変更コマンドを返す。
+    /// 現在の値を output へ変換する。
     pub fn zoom(zoom: f32) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("view.zoom");
         descriptor.payload.insert("zoom".to_string(), json!(zoom));
         descriptor
     }
 
-    /// パン移動コマンドを返す。
+    /// 現在の値を output へ変換する。
     pub fn pan(delta_x: f32, delta_y: f32) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("view.pan");
         descriptor
@@ -272,7 +272,7 @@ pub mod view {
         descriptor
     }
 
-    /// キャンバス表示パン位置を絶対値で設定する。
+    /// 現在の値を pan へ変換する。
     pub fn set_pan(pan_x: f32, pan_y: f32) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("view.set_pan");
         descriptor.payload.insert("pan_x".to_string(), json!(pan_x));
@@ -280,7 +280,7 @@ pub mod view {
         descriptor
     }
 
-    /// 90 度単位の回転コマンドを返す。
+    /// 現在の値を output へ変換する。
     pub fn rotate(quarter_turns: i32) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("view.rotate");
         descriptor
@@ -289,7 +289,7 @@ pub mod view {
         descriptor
     }
 
-    /// キャンバス表示回転角を度単位で設定する。
+    /// 現在の値を 回転 degrees へ変換する。
     pub fn set_rotation_degrees(rotation_degrees: f32) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("view.set_rotation");
         descriptor
@@ -298,17 +298,17 @@ pub mod view {
         descriptor
     }
 
-    /// 左右反転コマンドを返す。
+    /// flip horizontal を計算して返す。
     pub fn flip_horizontal() -> CommandDescriptor {
         CommandDescriptor::new("view.flip_horizontal")
     }
 
-    /// 上下反転コマンドを返す。
+    /// flip vertical を計算して返す。
     pub fn flip_vertical() -> CommandDescriptor {
         CommandDescriptor::new("view.flip_vertical")
     }
 
-    /// ビューリセットコマンドを返す。
+    /// 初期化 を計算して返す。
     pub fn reset() -> CommandDescriptor {
         CommandDescriptor::new("view.reset")
     }
@@ -319,34 +319,34 @@ pub mod panel {
     use panel_schema::CommandDescriptor;
     use serde_json::json;
 
-    /// 新しいコマを追加するコマンドを返す。
+    /// 追加 を計算して返す。
     pub fn add() -> CommandDescriptor {
         CommandDescriptor::new("panel.add")
     }
 
-    /// アクティブコマを削除するコマンドを返す。
+    /// 削除 を計算して返す。
     pub fn remove() -> CommandDescriptor {
         CommandDescriptor::new("panel.remove")
     }
 
-    /// 指定 index のコマを選択するコマンドを返す。
+    /// 現在の値を output へ変換する。
     pub fn select(index: usize) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("panel.select");
         descriptor.payload.insert("index".to_string(), json!(index));
         descriptor
     }
 
-    /// 次のコマを選択するコマンドを返す。
+    /// 次 を選択状態へ更新する。
     pub fn select_next() -> CommandDescriptor {
         CommandDescriptor::new("panel.select_next")
     }
 
-    /// 前のコマを選択するコマンドを返す。
+    /// 前 を選択状態へ更新する。
     pub fn select_previous() -> CommandDescriptor {
         CommandDescriptor::new("panel.select_previous")
     }
 
-    /// アクティブコマ中心の表示へ戻すコマンドを返す。
+    /// アクティブ へフォーカスを移す。
     pub fn focus_active() -> CommandDescriptor {
         CommandDescriptor::new("panel.focus_active")
     }
@@ -367,7 +367,7 @@ pub mod layer {
     }
 
     impl BlendMode {
-        /// SDK が使う文字列表現へ変換する。
+        /// 現在の値を str 形式へ変換する。
         pub fn as_str(self) -> &'static str {
             match self {
                 Self::Normal => "normal",
@@ -378,24 +378,24 @@ pub mod layer {
         }
     }
 
-    /// レイヤー追加コマンドを返す。
+    /// 追加 を計算して返す。
     pub fn add() -> CommandDescriptor {
         CommandDescriptor::new("layer.add")
     }
 
-    /// レイヤー削除コマンドを返す。
+    /// 削除 を計算して返す。
     pub fn remove() -> CommandDescriptor {
         CommandDescriptor::new("layer.remove")
     }
 
-    /// レイヤー選択コマンドを返す。
+    /// 現在の値を output へ変換する。
     pub fn select(index: usize) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("layer.select");
         descriptor.payload.insert("index".to_string(), json!(index));
         descriptor
     }
 
-    /// アクティブレイヤー名変更コマンドを返す。
+    /// 現在の値を アクティブ へ変換する。
     pub fn rename_active(name: impl Into<String>) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("layer.rename_active");
         descriptor
@@ -404,7 +404,7 @@ pub mod layer {
         descriptor
     }
 
-    /// レイヤー移動コマンドを返す。
+    /// 現在の値を to へ変換する。
     pub fn move_to(from_index: usize, to_index: usize) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("layer.move");
         descriptor
@@ -416,17 +416,17 @@ pub mod layer {
         descriptor
     }
 
-    /// 次レイヤー選択コマンドを返す。
+    /// 次 を選択状態へ更新する。
     pub fn select_next() -> CommandDescriptor {
         CommandDescriptor::new("layer.select_next")
     }
 
-    /// ブレンドモード循環コマンドを返す。
+    /// ブレンド モード を順送りで切り替える。
     pub fn cycle_blend_mode() -> CommandDescriptor {
         CommandDescriptor::new("layer.cycle_blend_mode")
     }
 
-    /// ブレンドモード文字列設定コマンドを返す。
+    /// 現在の値を ブレンド モード へ変換する。
     pub fn set_blend_mode(mode: impl Into<String>) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("layer.set_blend_mode");
         descriptor
@@ -435,17 +435,17 @@ pub mod layer {
         descriptor
     }
 
-    /// 型付きブレンドモード設定コマンドを返す。
+    /// ブレンド モード enum を設定する。
     pub fn set_blend_mode_enum(mode: BlendMode) -> CommandDescriptor {
         set_blend_mode(mode.as_str())
     }
 
-    /// 可視性トグルコマンドを返す。
+    /// Visibility の有効状態を切り替える。
     pub fn toggle_visibility() -> CommandDescriptor {
         CommandDescriptor::new("layer.toggle_visibility")
     }
 
-    /// マスクトグルコマンドを返す。
+    /// マスク の有効状態を切り替える。
     pub fn toggle_mask() -> CommandDescriptor {
         CommandDescriptor::new("layer.toggle_mask")
     }

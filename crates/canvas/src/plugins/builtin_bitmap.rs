@@ -5,10 +5,12 @@ use crate::{STANDARD_BITMAP_PLUGIN_ID, ops};
 pub struct BuiltinBitmapPaintPlugin;
 
 impl PaintPlugin for BuiltinBitmapPaintPlugin {
+    /// 入力や種別に応じて処理を振り分ける。
     fn id(&self) -> &'static str {
         STANDARD_BITMAP_PLUGIN_ID
     }
 
+    /// process を計算して返す。
     fn process(&self, input: &PaintInput, context: &PaintPluginContext<'_>) -> Vec<BitmapEdit> {
         match input {
             PaintInput::Stamp { at, pressure } => ops::stamp::stamp_edit(*at, *pressure, context)

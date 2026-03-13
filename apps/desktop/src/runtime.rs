@@ -46,7 +46,7 @@ impl DesktopRuntime {
     const WHEEL_PAN_MIN_STEP: f32 = 0.5;
     const WHEEL_ZOOM_MIN_STEP_LINES: f32 = 0.02;
 
-    /// 既定プロジェクトパスからランタイムを初期化する。
+    /// 既定値を使って新しいインスタンスを生成する。
     pub(crate) fn new(project_path: PathBuf) -> Self {
         Self {
             app: DesktopApp::new(project_path),
@@ -63,7 +63,9 @@ impl DesktopRuntime {
         }
     }
 
-    /// `EventLoop` を生成して `DesktopRuntime` を起動する。
+    /// イベントループを開始し、デスクトップ実行を継続する。
+    ///
+    /// 失敗時はエラーを返します。
     pub(crate) fn run(project_path: PathBuf) -> anyhow::Result<()> {
         let event_loop = EventLoop::new().context("failed to create event loop")?;
         let mut runtime = Self::new(project_path);
@@ -72,7 +74,7 @@ impl DesktopRuntime {
             .context("failed to run desktop runtime")
     }
 
-    /// 必要なら IME 設定を更新しつつ再描画を要求する。
+    /// 次のフレームで再描画が行われるよう要求する。
     fn request_redraw(&self) {
         if let Some(window) = &self.window {
             window.set_ime_allowed(self.app.has_focused_panel_input());
@@ -80,14 +82,16 @@ impl DesktopRuntime {
         }
     }
 
-    /// このランタイムが所有しているウィンドウ ID を返す。
+    /// アクティブな ウィンドウ ID を返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn active_window_id(&self) -> Option<WindowId> {
         self.window.as_ref().map(|window| window.id())
     }
 }
 
 impl ApplicationHandler for DesktopRuntime {
-    /// 初回 resume 時にウィンドウと `wgpu` presenter を初期化する。
+    /// 入力や種別に応じて処理を振り分ける。
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
@@ -126,7 +130,7 @@ impl ApplicationHandler for DesktopRuntime {
         self.request_redraw();
     }
 
-    /// raw mouse input を描画継続用イベントとして受け取る。
+    /// device イベント に必要な処理を行う。
     fn device_event(
         &mut self,
         _event_loop: &ActiveEventLoop,
@@ -140,7 +144,7 @@ impl ApplicationHandler for DesktopRuntime {
         }
     }
 
-    /// `winit` のウィンドウイベントをアプリ更新へ変換する。
+    /// 入力や種別に応じて処理を振り分ける。
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,

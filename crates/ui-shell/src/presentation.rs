@@ -36,6 +36,7 @@ pub struct PanelSurface {
 }
 
 impl PanelSurface {
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn from_pixels(x: usize, y: usize, width: usize, height: usize, pixels: Vec<u8>) -> Self {
         Self {
             x,
@@ -47,14 +48,19 @@ impl PanelSurface {
         }
     }
 
+    /// 現在の hit 領域 件数 を返す。
     pub fn hit_region_count(&self) -> usize {
         self.hit_regions.len()
     }
 
+    /// 現在の global 範囲 を返す。
     pub fn global_bounds(&self) -> PanelSurfaceRect {
         PanelSurfaceRect::new(self.x, self.y, self.width, self.height)
     }
 
+    /// 既存データを走査して hit test at を組み立てる。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn hit_test_at(&self, point: PanelSurfacePoint) -> Option<PanelEvent> {
         self.hit_regions
             .iter()
@@ -68,6 +74,9 @@ impl PanelSurface {
             .and_then(|region| panel_event_for_region(region, point))
     }
 
+    /// 既存データを走査して move パネル hit test at を組み立てる。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn move_panel_hit_test_at(&self, point: PanelSurfacePoint) -> Option<String> {
         self.hit_regions
             .iter()
@@ -82,6 +91,7 @@ impl PanelSurface {
             .map(|region| region.panel_id.clone())
     }
 
+    /// 現在の値を イベント at へ変換する。
     pub fn drag_event_at(
         &self,
         panel_id: &str,
@@ -89,20 +99,16 @@ impl PanelSurface {
         source_value: usize,
         point: PanelSurfacePoint,
     ) -> Option<PanelEvent> {
-        let source_region = self
-            .hit_regions
-            .iter()
-            .rev()
-            .find(|region| {
-                region.panel_id == panel_id
-                    && region.node_id == node_id
-                    && (matches!(&region.kind, PanelHitKind::Slider { .. })
-                        || matches!(&region.kind, PanelHitKind::ColorWheel { .. })
-                        || matches!(
-                            &region.kind,
-                            PanelHitKind::LayerListItem { value } if *value == source_value
-                        ))
-            })?;
+        let source_region = self.hit_regions.iter().rev().find(|region| {
+            region.panel_id == panel_id
+                && region.node_id == node_id
+                && (matches!(&region.kind, PanelHitKind::Slider { .. })
+                    || matches!(&region.kind, PanelHitKind::ColorWheel { .. })
+                    || matches!(
+                        &region.kind,
+                        PanelHitKind::LayerListItem { value } if *value == source_value
+                    ))
+        })?;
 
         match &source_region.kind {
             PanelHitKind::Slider { .. } => self
@@ -146,6 +152,9 @@ impl PanelSurface {
     }
 }
 
+/// 入力や種別に応じて処理を振り分ける。
+///
+/// 値を生成できない場合は `None` を返します。
 fn panel_event_for_region(region: &PanelHitRegion, point: PanelSurfacePoint) -> Option<PanelEvent> {
     Some(match &region.kind {
         PanelHitKind::MovePanel => return None,
@@ -165,13 +174,7 @@ fn panel_event_for_region(region: &PanelHitRegion, point: PanelSurfacePoint) -> 
         } => PanelEvent::SetText {
             panel_id: region.panel_id.clone(),
             node_id: region.node_id.clone(),
-            value: color_wheel_value_for_position(
-                region,
-                point,
-                *hue_degrees,
-                *saturation,
-                *value,
-            ),
+            value: color_wheel_value_for_position(region, point, *hue_degrees, *saturation, *value),
         },
         PanelHitKind::LayerListItem { value } => PanelEvent::SetValue {
             panel_id: region.panel_id.clone(),
@@ -186,6 +189,7 @@ fn panel_event_for_region(region: &PanelHitRegion, point: PanelSurfacePoint) -> 
     })
 }
 
+/// Slider 値 for position を有効範囲へ補正して返す。
 fn slider_value_for_position(
     region: &PanelHitRegion,
     min: usize,
@@ -200,6 +204,7 @@ fn slider_value_for_position(
     min + ((max - min) * local_x) / (region.width - 1)
 }
 
+/// 色 ホイール 値 for position を有効範囲へ補正して返す。
 fn color_wheel_value_for_position(
     region: &PanelHitRegion,
     point: PanelSurfacePoint,

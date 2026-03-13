@@ -5,11 +5,13 @@
 
 use super::tree_query::{collect_focus_targets, find_dropdown_node, find_text_input_value};
 use super::*;
-use panel_runtime::PanelRuntime;
 use panel_api::{PanelEvent, TextInputMode};
+use panel_runtime::PanelRuntime;
 
 impl PanelPresentation {
-    /// 指定 panel node へ focus を移す。
+    /// パネル node へフォーカスを移す。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn focus_panel_node(
         &mut self,
         runtime: &PanelRuntime,
@@ -46,17 +48,19 @@ impl PanelPresentation {
         true
     }
 
-    /// 次の focusable target へ移動する。
+    /// 次 へフォーカスを移す。
     pub fn focus_next(&mut self, runtime: &PanelRuntime) -> bool {
         self.move_focus(runtime, 1)
     }
 
-    /// 前の focusable target へ移動する。
+    /// 前 へフォーカスを移す。
     pub fn focus_previous(&mut self, runtime: &PanelRuntime) -> bool {
         self.move_focus(runtime, -1)
     }
 
-    /// 現在 focus 中の node を activate する。
+    /// Focused をアクティブ化する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn activate_focused(&mut self) -> Option<PanelEvent> {
         let Some(target) = self.focused_target.clone() else {
             return None;
@@ -68,7 +72,7 @@ impl PanelPresentation {
         })
     }
 
-    /// focus 中の node が text input かを返す。
+    /// Has focused テキスト 入力 かどうかを返す。
     pub fn has_focused_text_input(&self, runtime: &PanelRuntime) -> bool {
         self.focused_target
             .as_ref()
@@ -76,7 +80,7 @@ impl PanelPresentation {
             .is_some()
     }
 
-    /// focus 中の text input へ文字列を挿入する。
+    /// insert テキスト into focused 入力 に必要な処理を行う。
     pub fn insert_text_into_focused_input(
         &mut self,
         runtime: &PanelRuntime,
@@ -105,7 +109,9 @@ impl PanelPresentation {
         })
     }
 
-    /// focus 中の text input で backspace を実行する。
+    /// backspace focused 入力 を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn backspace_focused_input(&mut self, runtime: &PanelRuntime) -> Option<PanelEvent> {
         let Some(target) = self.focused_target.clone() else {
             return None;
@@ -137,7 +143,9 @@ impl PanelPresentation {
         })
     }
 
-    /// focus 中の text input で delete を実行する。
+    /// delete focused 入力 を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn delete_focused_input(&mut self, runtime: &PanelRuntime) -> Option<PanelEvent> {
         let Some(target) = self.focused_target.clone() else {
             return None;
@@ -168,8 +176,14 @@ impl PanelPresentation {
         })
     }
 
-    /// focus 中の text input の caret を相対移動する。
-    pub fn move_focused_input_cursor(&mut self, runtime: &PanelRuntime, delta_chars: isize) -> bool {
+    /// Move focused 入力 cursor を有効範囲へ補正して返す。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
+    pub fn move_focused_input_cursor(
+        &mut self,
+        runtime: &PanelRuntime,
+        delta_chars: isize,
+    ) -> bool {
         let Some(target) = self.focused_target.clone() else {
             return false;
         };
@@ -191,12 +205,12 @@ impl PanelPresentation {
         true
     }
 
-    /// caret を先頭へ移動する。
+    /// move focused 入力 cursor to start を計算して返す。
     pub fn move_focused_input_cursor_to_start(&mut self, runtime: &PanelRuntime) -> bool {
         self.set_focused_input_cursor(runtime, 0)
     }
 
-    /// caret を末尾へ移動する。
+    /// move focused 入力 cursor to end を計算して返す。
     pub fn move_focused_input_cursor_to_end(&mut self, runtime: &PanelRuntime) -> bool {
         let Some(target) = self.focused_target.clone() else {
             return false;
@@ -207,7 +221,9 @@ impl PanelPresentation {
         self.set_focused_input_cursor(runtime, text_char_len(&current))
     }
 
-    /// IME preedit を設定する。
+    /// Focused 入力 preedit を設定する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub fn set_focused_input_preedit(
         &mut self,
         runtime: &PanelRuntime,
@@ -230,7 +246,9 @@ impl PanelPresentation {
         true
     }
 
-    /// focusable targets を巡回して focus を移動する。
+    /// 入力や種別に応じて処理を振り分ける。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     fn move_focus(&mut self, runtime: &PanelRuntime, step: isize) -> bool {
         let targets = self.focusable_targets(runtime);
         if targets.is_empty() {
@@ -264,7 +282,7 @@ impl PanelPresentation {
         true
     }
 
-    /// 現在表示中の tree から focusable target 一覧を構築する。
+    /// focusable targets を計算して返す。
     fn focusable_targets(&self, runtime: &PanelRuntime) -> Vec<FocusTarget> {
         let mut targets = Vec::new();
         for tree in self.panel_trees(runtime) {
@@ -273,8 +291,13 @@ impl PanelPresentation {
         targets
     }
 
-    /// 指定 target が dropdown かを判定する。
-    pub(super) fn is_dropdown_target(&self, runtime: &PanelRuntime, panel_id: &str, node_id: &str) -> bool {
+    /// Is dropdown target かどうかを返す。
+    pub(super) fn is_dropdown_target(
+        &self,
+        runtime: &PanelRuntime,
+        panel_id: &str,
+        node_id: &str,
+    ) -> bool {
         self.panel_trees(runtime)
             .into_iter()
             .find(|tree| tree.id == panel_id)
@@ -282,7 +305,7 @@ impl PanelPresentation {
             .unwrap_or(false)
     }
 
-    /// target に対応する text input 現在値を取得する。
+    /// テキスト 入力 状態 for target に必要な処理を行う。
     pub(super) fn text_input_state_for_target(
         &self,
         runtime: &PanelRuntime,
@@ -294,7 +317,7 @@ impl PanelPresentation {
             .and_then(|tree| find_text_input_value(&tree.children, &target.node_id))
     }
 
-    /// editor state が未初期化なら作成し、既存なら cursor を補正する。
+    /// テキスト 入力 editor 状態 が満たされるよう整える。
     fn ensure_text_input_editor_state(&mut self, target: &FocusTarget, current_value: &str) {
         let max_chars = text_char_len(current_value);
         self.text_input_states
@@ -308,7 +331,7 @@ impl PanelPresentation {
             });
     }
 
-    /// target に対する editor state を取得し、現在値に合わせて補正する。
+    /// editor 状態 for target に必要な処理を行う。
     fn editor_state_for_target(
         &self,
         target: &FocusTarget,
@@ -326,7 +349,9 @@ impl PanelPresentation {
         state
     }
 
-    /// focus 中 input の caret を絶対位置へ移す。
+    /// Focused 入力 cursor を設定する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     fn set_focused_input_cursor(&mut self, runtime: &PanelRuntime, cursor_chars: usize) -> bool {
         let Some(target) = self.focused_target.clone() else {
             return false;
@@ -348,7 +373,7 @@ impl PanelPresentation {
     }
 }
 
-/// input mode に応じて挿入可能文字だけを残す。
+/// 入力や種別に応じて処理を振り分ける。
 fn filter_text_input(text: &str, input_mode: TextInputMode) -> String {
     match input_mode {
         TextInputMode::Text => text
@@ -362,17 +387,17 @@ fn filter_text_input(text: &str, input_mode: TextInputMode) -> String {
     }
 }
 
-/// editor state map 用のキーを作る。
+/// 現在の テキスト 入力 状態 key を返す。
 fn text_input_state_key(target: &FocusTarget) -> (String, String) {
     (target.panel_id.clone(), target.node_id.clone())
 }
 
-/// 文字数ベースで UTF-8 文字列長を返す。
+/// テキスト char len を計算して返す。
 pub(super) fn text_char_len(text: &str) -> usize {
     text.chars().count()
 }
 
-/// 文字 index を byte index へ変換する。
+/// 現在の byte インデックス for char インデックス を返す。
 fn byte_index_for_char_index(text: &str, char_index: usize) -> usize {
     text.char_indices()
         .nth(char_index)
@@ -380,7 +405,7 @@ fn byte_index_for_char_index(text: &str, char_index: usize) -> usize {
         .unwrap_or(text.len())
 }
 
-/// 文字 index 位置へ文字列を挿入する。
+/// 現在の insert テキスト at char インデックス を返す。
 pub(super) fn insert_text_at_char_index(text: &str, char_index: usize, inserted: &str) -> String {
     let split_at = byte_index_for_char_index(text, char_index);
     let mut next = String::with_capacity(text.len() + inserted.len());
@@ -390,7 +415,7 @@ pub(super) fn insert_text_at_char_index(text: &str, char_index: usize, inserted:
     next
 }
 
-/// caret 前方の 1 文字を削除する。
+/// Char before char インデックス を削除する。
 fn remove_char_before_char_index(text: &str, char_index: usize) -> String {
     if char_index == 0 {
         return text.to_string();
@@ -400,7 +425,7 @@ fn remove_char_before_char_index(text: &str, char_index: usize) -> String {
     remove_byte_range(text, start, end)
 }
 
-/// caret 位置の 1 文字を削除する。
+/// Char at char インデックス を削除する。
 fn remove_char_at_char_index(text: &str, char_index: usize) -> String {
     let start = byte_index_for_char_index(text, char_index);
     let end = byte_index_for_char_index(text, char_index + 1);
@@ -410,7 +435,7 @@ fn remove_char_at_char_index(text: &str, char_index: usize) -> String {
     remove_byte_range(text, start, end)
 }
 
-/// byte range を削除した新文字列を返す。
+/// Byte range を削除する。
 fn remove_byte_range(text: &str, start: usize, end: usize) -> String {
     let mut next = String::with_capacity(text.len().saturating_sub(end.saturating_sub(start)));
     next.push_str(&text[..start]);
@@ -418,7 +443,7 @@ fn remove_byte_range(text: &str, start: usize, end: usize) -> String {
     next
 }
 
-/// 先頭から char_count 文字だけを取り出す。
+/// 現在の prefix for char 件数 を返す。
 #[allow(dead_code)]
 pub(super) fn prefix_for_char_count(text: &str, char_count: usize) -> String {
     text.chars().take(char_count).collect()

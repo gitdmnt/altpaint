@@ -4,6 +4,9 @@ use crate::CanvasRuntime;
 
 use super::apply_input;
 
+/// flood 塗りつぶし recolors matching 領域 が期待どおりに動作することを検証する。
+///
+/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn flood_fill_recolors_matching_region() {
     let mut document = Document {
@@ -26,6 +29,9 @@ fn flood_fill_recolors_matching_region() {
     assert_eq!(bitmap.pixel_rgba(8, 8), Some([0xff, 0x00, 0x00, 0xff]));
 }
 
+/// 投げ縄 塗りつぶし colors polygon area が期待どおりに動作することを検証する。
+///
+/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn lasso_fill_colors_polygon_area() {
     let mut document = Document {

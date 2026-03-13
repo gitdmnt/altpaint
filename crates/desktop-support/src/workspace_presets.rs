@@ -27,14 +27,17 @@ pub struct WorkspacePresetCatalog {
     pub presets: Vec<WorkspacePreset>,
 }
 
+/// 既定の ワークスペース preset 形式 version を返す。
 fn default_workspace_preset_format_version() -> u32 {
     CURRENT_WORKSPACE_PRESET_FORMAT_VERSION
 }
 
+/// 既定の ワークスペース preset パス を返す。
 pub fn default_workspace_preset_path() -> PathBuf {
     PathBuf::from("workspace-presets.json")
 }
 
+/// 既定の ワークスペース preset カタログ を返す。
 pub fn default_workspace_preset_catalog() -> WorkspacePresetCatalog {
     WorkspacePresetCatalog {
         format_version: CURRENT_WORKSPACE_PRESET_FORMAT_VERSION,
@@ -143,6 +146,7 @@ pub fn default_workspace_preset_catalog() -> WorkspacePresetCatalog {
     }
 }
 
+/// 現在の値を 状態 へ変換する。
 fn panel_state(
     id: &str,
     visible: bool,
@@ -161,6 +165,7 @@ fn panel_state(
     }
 }
 
+/// 入力を解析して ワークスペース preset カタログ に変換し、失敗時はエラーを返す。
 pub fn load_workspace_preset_catalog(path: impl AsRef<Path>) -> WorkspacePresetCatalog {
     let path = path.as_ref();
     let bytes = match std::fs::read(path) {
@@ -176,6 +181,7 @@ pub fn load_workspace_preset_catalog(path: impl AsRef<Path>) -> WorkspacePresetC
         .unwrap_or_else(default_workspace_preset_catalog)
 }
 
+/// 現在の値を ワークスペース preset カタログ へ変換する。
 pub fn save_workspace_preset_catalog(
     path: impl AsRef<Path>,
     catalog: &WorkspacePresetCatalog,
@@ -188,6 +194,7 @@ pub fn save_workspace_preset_catalog(
 mod tests {
     use super::*;
 
+    /// 現在の unique test パス を返す。
     fn unique_test_path(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
             "altpaint-{name}-{}-{}.json",
@@ -199,6 +206,7 @@ mod tests {
         ))
     }
 
+    /// 既定 ワークスペース preset カタログ contains anchor based レイアウト が期待どおりに動作することを検証する。
     #[test]
     fn default_workspace_preset_catalog_contains_anchor_based_layout() {
         let catalog = default_workspace_preset_catalog();
@@ -216,9 +224,13 @@ mod tests {
             .expect("layers preset exists");
 
         assert_eq!(layers.anchor, WorkspacePanelAnchor::TopRight);
-        assert_eq!(layers.position, Some(WorkspacePanelPosition { x: 24, y: 72 }));
+        assert_eq!(
+            layers.position,
+            Some(WorkspacePanelPosition { x: 24, y: 72 })
+        );
     }
 
+    /// ワークスペース preset カタログ roundtrip preserves 既定 preset が期待どおりに動作することを検証する。
     #[test]
     fn workspace_preset_catalog_roundtrip_preserves_default_preset() {
         let path = unique_test_path("workspace-presets");

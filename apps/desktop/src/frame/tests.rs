@@ -4,7 +4,7 @@ use app_core::{PanelSurfacePoint, WindowPoint};
 
 use super::*;
 
-/// ビュー右下がサーフェス右下へ写像されることを確認する。
+/// map ビュー to サーフェス maps bottom right corner が期待どおりに動作することを検証する。
 #[test]
 fn map_view_to_surface_maps_bottom_right_corner() {
     let mapped = map_window_to_panel_surface(
@@ -22,7 +22,7 @@ fn map_view_to_surface_maps_bottom_right_corner() {
     assert_eq!(mapped, Some(PanelSurfacePoint::new(263, 799)));
 }
 
-/// サーフェス外座標が境界へクランプされることを確認する。
+/// map ビュー to サーフェス clamped limits outside coordinates が期待どおりに動作することを検証する。
 #[test]
 fn map_view_to_surface_clamped_limits_outside_coordinates() {
     let mapped = map_window_to_panel_surface_clamped(
@@ -40,7 +40,7 @@ fn map_view_to_surface_clamped_limits_outside_coordinates() {
     assert_eq!(mapped, Some(PanelSurfacePoint::new(263, 0)));
 }
 
-/// レイアウト計算がキャンバスをホスト矩形へ収めることを確認する。
+/// desktop レイアウト letterboxes キャンバス inside ホスト 矩形 が期待どおりに動作することを検証する。
 #[test]
 fn desktop_layout_letterboxes_canvas_inside_host_rect() {
     let layout = DesktopLayout::new(1280, 800, 64, 64);
@@ -53,11 +53,10 @@ fn desktop_layout_letterboxes_canvas_inside_host_rect() {
     ));
 }
 
-/// パネル表示面はホスト領域全体を占めることを確認する。
+/// パネル サーフェス fills パネル ホスト 矩形 が期待どおりに動作することを検証する。
 #[test]
 fn panel_surface_fills_panel_host_rect() {
     let layout = DesktopLayout::new(1280, 800, 64, 64);
 
     assert_eq!(layout.panel_surface_rect, layout.panel_host_rect);
 }
-

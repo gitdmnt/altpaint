@@ -3,10 +3,10 @@
 //! プリセット循環・サイズ補正・現在ツールに応じた描画サイズ決定を
 //! ドキュメント本体から切り離して保守しやすくする。
 
-use super::{default_pen_presets, default_pen_size, Document, ToolKind};
+use super::{Document, ToolKind, default_pen_presets, default_pen_size};
 
 impl Document {
-    /// 指定方向へペンプリセットを循環する。
+    /// ペン preset を順送りで切り替える。
     pub(super) fn cycle_pen_preset(&mut self, delta: isize) {
         self.ensure_pen_state();
         if self.pen_presets.is_empty() {
@@ -20,7 +20,7 @@ impl Document {
         self.active_pen_size = preset.clamp_size(preset.size);
     }
 
-    /// ペンプリセット列と選択状態の不整合を補正する。
+    /// ペン 状態 が満たされるよう整える。
     pub(super) fn ensure_pen_state(&mut self) {
         if self.pen_presets.is_empty() {
             self.pen_presets = default_pen_presets();
@@ -42,6 +42,7 @@ impl Document {
         }
     }
 
+    /// ツール 状態 が満たされるよう整える。
     pub(super) fn ensure_tool_state(&mut self) {
         if self.tool_catalog.is_empty() {
             self.tool_catalog = super::default_tool_catalog();
@@ -70,13 +71,13 @@ impl Document {
         }
     }
 
-    /// 現在ツールに応じた実効描画サイズを返す。
+    /// アクティブな 描画 サイズ を返す。
     #[allow(dead_code)]
     pub(super) fn active_draw_size(&self) -> u32 {
         self.active_draw_size_with_pressure(1.0)
     }
 
-    /// 筆圧と現在ツールに応じた実効描画サイズを返す。
+    /// アクティブな 描画 サイズ with pressure を返す。
     pub(super) fn active_draw_size_with_pressure(&self, pressure: f32) -> u32 {
         let clamped_pressure = pressure.clamp(0.0, 1.0);
         match self.active_tool {

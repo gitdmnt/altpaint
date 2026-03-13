@@ -11,6 +11,7 @@ pub struct CanvasInputState {
 }
 
 impl CanvasInputState {
+    /// 初期化 に必要な処理を行う。
     pub fn reset(&mut self) {
         *self = Self::default();
     }

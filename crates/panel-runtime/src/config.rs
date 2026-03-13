@@ -2,6 +2,7 @@ use panel_api::PanelPlugin;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+/// 現在の値を persistent パネル configs へ変換する。
 pub(crate) fn collect_persistent_panel_configs(
     panels: &[Box<dyn PanelPlugin>],
 ) -> BTreeMap<String, Value> {
@@ -15,6 +16,7 @@ pub(crate) fn collect_persistent_panel_configs(
         .collect()
 }
 
+/// Persistent パネル configs を更新する。
 pub(crate) fn restore_persistent_panel_configs(
     panels: &mut [Box<dyn PanelPlugin>],
     configs: &BTreeMap<String, Value>,

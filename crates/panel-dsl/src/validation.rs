@@ -5,11 +5,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::{
-    parse_panel_source, AttrValue, PanelAst, PanelDefinition, PanelDslError, PanelManifest,
-    RuntimeDefinition, StateField, ViewElement, ViewNode, ViewNodeAst,
+    AttrValue, PanelAst, PanelDefinition, PanelDslError, PanelManifest, RuntimeDefinition,
+    StateField, ViewElement, ViewNode, ViewNodeAst, parse_panel_source,
 };
 
-/// AST を検証し、実行時に使う正規化済み定義へ変換する。
+/// 現在の値を パネル ast へ変換する。
 pub fn validate_panel_ast(
     ast: PanelAst,
     source_path: impl Into<PathBuf>,
@@ -85,7 +85,9 @@ pub fn validate_panel_ast(
     })
 }
 
-/// パネル定義ファイルを読み込み、解析と検証を一括で実行する。
+/// パネル file を読み込み、必要に応じて整形して返す。
+///
+/// 失敗時はエラーを返します。
 pub fn load_panel_file(path: impl AsRef<Path>) -> Result<PanelDefinition, PanelDslError> {
     let path = path.as_ref();
     let source = fs::read_to_string(path)
@@ -94,6 +96,7 @@ pub fn load_panel_file(path: impl AsRef<Path>) -> Result<PanelDefinition, PanelD
     validate_panel_ast(ast, path.to_path_buf())
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn normalize_view_node(node: ViewNodeAst) -> ViewNode {
     match node {
         ViewNodeAst::Element(element) => ViewNode::Element(ViewElement {
@@ -109,6 +112,7 @@ fn normalize_view_node(node: ViewNodeAst) -> ViewNode {
     }
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn validate_view_node(
     node: &ViewNodeAst,
     handler_bindings: &mut BTreeSet<String>,
@@ -138,6 +142,9 @@ fn validate_view_node(
     }
 }
 
+/// 検証 ビュー tag 用の表示文字列を組み立てる。
+///
+/// 失敗時はエラーを返します。
 fn validate_view_tag(tag: &str) -> Result<(), PanelDslError> {
     let allowed = [
         "column",
@@ -165,6 +172,7 @@ fn validate_view_tag(tag: &str) -> Result<(), PanelDslError> {
     }
 }
 
+/// 現在の値を ハンドラ binding へ変換する。
 fn collect_handler_binding(
     tag: &str,
     handler: Option<&AttrValue>,
@@ -185,6 +193,9 @@ fn collect_handler_binding(
     Ok(())
 }
 
+/// 検証 attr 値 を計算して返す。
+///
+/// 失敗時はエラーを返します。
 fn validate_attr_value(value: &AttrValue) -> Result<(), PanelDslError> {
     if let AttrValue::Expression(expression) = value {
         validate_expression_usage(expression)?;
@@ -192,6 +203,9 @@ fn validate_attr_value(value: &AttrValue) -> Result<(), PanelDslError> {
     Ok(())
 }
 
+/// 現在の値を ハンドラ binding へ変換する。
+///
+/// 失敗時はエラーを返します。
 fn validate_handler_binding(handler: &str) -> Result<(), PanelDslError> {
     if handler == "sync_host" {
         return Err(PanelDslError::Validation(
@@ -201,6 +215,9 @@ fn validate_handler_binding(handler: &str) -> Result<(), PanelDslError> {
     Ok(())
 }
 
+/// 検証 テキスト expressions を計算して返す。
+///
+/// 失敗時はエラーを返します。
 fn validate_text_expressions(text: &str) -> Result<(), PanelDslError> {
     let mut rest = text;
     while let Some(start) = rest.find('{') {
@@ -214,6 +231,9 @@ fn validate_text_expressions(text: &str) -> Result<(), PanelDslError> {
     Ok(())
 }
 
+/// 現在の値を expression usage へ変換する。
+///
+/// 失敗時はエラーを返します。
 fn validate_expression_usage(expression: &str) -> Result<(), PanelDslError> {
     if expression.contains("host.") {
         return Err(PanelDslError::Validation(

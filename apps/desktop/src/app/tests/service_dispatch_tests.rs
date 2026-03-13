@@ -9,6 +9,7 @@ use super::{
     unique_test_path,
 };
 
+/// 要求 サービス 新規 ドキュメント sized updates ビットマップ が期待どおりに動作することを検証する。
 #[test]
 fn request_service_new_document_sized_updates_bitmap() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -25,6 +26,7 @@ fn request_service_new_document_sized_updates_bitmap() {
     assert_eq!((bitmap.width, bitmap.height), (128, 96));
 }
 
+/// 要求 サービス 保存 プロジェクト enqueues 背景 task が期待どおりに動作することを検証する。
 #[test]
 fn request_service_save_project_enqueues_background_task() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -38,6 +40,7 @@ fn request_service_save_project_enqueues_background_task() {
     assert_eq!(app.io_state.pending_save_tasks.len(), 1);
 }
 
+/// 要求 サービス 保存 ワークスペース preset persists カタログ が期待どおりに動作することを検証する。
 #[test]
 fn request_service_save_workspace_preset_persists_catalog() {
     let preset_path = unique_test_path("service-workspace-presets");
@@ -68,6 +71,7 @@ fn request_service_save_workspace_preset_persists_catalog() {
     assert!(reloaded.presets.iter().any(|preset| preset.id == "review"));
 }
 
+/// 要求 サービス 再読込 ペン presets refreshes ドキュメント 状態 が期待どおりに動作することを検証する。
 #[test]
 fn request_service_reload_pen_presets_refreshes_document_state() {
     let mut app = test_app_with_dialogs(TestDialogs::default());

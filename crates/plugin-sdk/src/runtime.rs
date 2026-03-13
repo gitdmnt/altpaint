@@ -8,22 +8,39 @@ use serde_json::Value;
 #[cfg(target_arch = "wasm32")]
 #[link(wasm_import_module = "host")]
 unsafe extern "C" {
+    /// 状態 切替 に必要な処理を行う。
     fn state_toggle(ptr: i32, len: i32);
+    /// 状態 設定 bool に必要な処理を行う。
     fn state_set_bool(ptr: i32, len: i32, value: i32);
+    /// 状態 設定 i32 に必要な処理を行う。
     fn state_set_i32(ptr: i32, len: i32, value: i32);
+    /// 状態 設定 string に必要な処理を行う。
     fn state_set_string(path_ptr: i32, path_len: i32, value_ptr: i32, value_len: i32);
+    /// 現在の 状態 適用 JSON を返す。
     fn state_apply_json(ptr: i32, len: i32);
+    /// 状態 get bool を計算して返す。
     fn state_get_bool(ptr: i32, len: i32) -> i32;
+    /// 状態 get i32 を計算して返す。
     fn state_get_i32(ptr: i32, len: i32) -> i32;
+    /// 状態 get string len を計算して返す。
     fn state_get_string_len(ptr: i32, len: i32) -> i32;
+    /// 状態 get string copy に必要な処理を行う。
     fn state_get_string_copy(path_ptr: i32, path_len: i32, buffer_ptr: i32, buffer_len: i32);
+    /// イベント get string len を計算して返す。
     fn event_get_string_len(ptr: i32, len: i32) -> i32;
+    /// イベント get string copy に必要な処理を行う。
     fn event_get_string_copy(path_ptr: i32, path_len: i32, buffer_ptr: i32, buffer_len: i32);
+    /// ホスト get bool を計算して返す。
     fn host_get_bool(ptr: i32, len: i32) -> i32;
+    /// ホスト get i32 を計算して返す。
     fn host_get_i32(ptr: i32, len: i32) -> i32;
+    /// ホスト get string len を計算して返す。
     fn host_get_string_len(ptr: i32, len: i32) -> i32;
+    /// ホスト get string copy に必要な処理を行う。
     fn host_get_string_copy(path_ptr: i32, path_len: i32, buffer_ptr: i32, buffer_len: i32);
+    /// コマンド に必要な処理を行う。
     fn command(ptr: i32, len: i32);
+    /// コマンド string に必要な処理を行う。
     fn command_string(
         name_ptr: i32,
         name_len: i32,
@@ -32,25 +49,29 @@ unsafe extern "C" {
         value_ptr: i32,
         value_len: i32,
     );
+    /// 現在の コマンド JSON を返す。
     fn command_json(name_ptr: i32, name_len: i32, json_ptr: i32, json_len: i32);
+    /// diagnostic に必要な処理を行う。
     fn diagnostic(level: i32, ptr: i32, len: i32);
 }
 
+/// with bytes を計算して返す。
 #[cfg(target_arch = "wasm32")]
 fn with_bytes<T>(value: &str, f: impl FnOnce(i32, i32) -> T) -> T {
     f(value.as_ptr() as i32, value.len() as i32)
 }
 
-/// 指定 state を反転する。
+/// 状態上の 状態 を切り替える。
 #[cfg(target_arch = "wasm32")]
 pub fn toggle_state(path: impl AsRef<str>) {
     with_bytes(path.as_ref(), |ptr, len| unsafe { state_toggle(ptr, len) });
 }
 
+/// 状態上の 状態 を切り替える。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn toggle_state(_path: impl AsRef<str>) {}
 
-/// 真偽値 state を設定する。
+/// 状態上の 状態 bool を更新する。
 #[cfg(target_arch = "wasm32")]
 pub fn set_state_bool(path: impl AsRef<str>, value: bool) {
     with_bytes(path.as_ref(), |ptr, len| unsafe {
@@ -58,10 +79,11 @@ pub fn set_state_bool(path: impl AsRef<str>, value: bool) {
     });
 }
 
+/// 状態上の 状態 bool を更新する。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn set_state_bool(_path: impl AsRef<str>, _value: bool) {}
 
-/// 整数 state を設定する。
+/// 状態上の 状態 i32 を更新する。
 #[cfg(target_arch = "wasm32")]
 pub fn set_state_i32(path: impl AsRef<str>, value: i32) {
     with_bytes(path.as_ref(), |ptr, len| unsafe {
@@ -69,10 +91,11 @@ pub fn set_state_i32(path: impl AsRef<str>, value: i32) {
     });
 }
 
+/// 状態上の 状態 i32 を更新する。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn set_state_i32(_path: impl AsRef<str>, _value: i32) {}
 
-/// 文字列 state を設定する。
+/// 状態上の 状態 string を更新する。
 #[cfg(target_arch = "wasm32")]
 pub fn set_state_string(path: impl AsRef<str>, value: impl AsRef<str>) {
     with_bytes(path.as_ref(), |path_ptr, path_len| {
@@ -82,30 +105,33 @@ pub fn set_state_string(path: impl AsRef<str>, value: impl AsRef<str>) {
     });
 }
 
+/// 状態上の 状態 string を更新する。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn set_state_string(_path: impl AsRef<str>, _value: impl AsRef<str>) {}
 
-/// JSON 値で state を設定する。
+/// 状態 JSON を設定する。
 pub fn set_state_json(path: impl Into<String>, value: impl Into<serde_json::Value>) {
     apply_state_patches(&[StatePatch::set(path.into(), value.into())]);
 }
 
-/// JSON 値で state を置換する。
+/// 状態 JSON を置き換える。
 pub fn replace_state_json(path: impl Into<String>, value: impl Into<serde_json::Value>) {
     apply_state_patches(&[StatePatch::replace(path.into(), value.into())]);
 }
 
-/// 複数 state patch をまとめて適用する。
+/// 現在の値を 状態 patches へ変換する。
 #[cfg(target_arch = "wasm32")]
 pub fn apply_state_patches(patches: &[StatePatch]) {
     let Ok(serialized) = serde_json::to_string(patches) else {
         error("failed to serialize state patch batch in plugin-sdk runtime");
         return;
     };
-    with_bytes(&serialized, |ptr, len| unsafe { state_apply_json(ptr, len) });
+    with_bytes(&serialized, |ptr, len| unsafe {
+        state_apply_json(ptr, len)
+    });
 }
 
-/// 複数 state patch をまとめて適用する。
+/// 状態 patches を現在の状態へ適用する。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn apply_state_patches(_patches: &[StatePatch]) {}
 
@@ -116,129 +142,153 @@ pub struct StatePatchBuffer {
 }
 
 impl StatePatchBuffer {
+    /// 既定値を使って新しいインスタンスを生成する。
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Is empty かどうかを返す。
     pub fn is_empty(&self) -> bool {
         self.patches.is_empty()
     }
 
+    /// push に必要な処理を行う。
     pub fn push(&mut self, patch: StatePatch) {
         self.patches.push(patch);
     }
 
+    /// Bool を設定する。
     pub fn set_bool(&mut self, path: impl Into<String>, value: bool) {
         self.push(StatePatch::set(path.into(), value));
     }
 
+    /// I32 を設定する。
     pub fn set_i32(&mut self, path: impl Into<String>, value: i32) {
         self.push(StatePatch::set(path.into(), value));
     }
 
+    /// String を設定する。
     pub fn set_string(&mut self, path: impl Into<String>, value: impl Into<String>) {
         self.push(StatePatch::set(path.into(), value.into()));
     }
 
+    /// JSON を設定する。
     pub fn set_json(&mut self, path: impl Into<String>, value: impl Into<serde_json::Value>) {
         self.push(StatePatch::set(path.into(), value.into()));
     }
 
+    /// JSON を置き換える。
     pub fn replace_json(&mut self, path: impl Into<String>, value: impl Into<serde_json::Value>) {
         self.push(StatePatch::replace(path.into(), value.into()));
     }
 
+    /// 切替 に必要な処理を行う。
     pub fn toggle(&mut self, path: impl Into<String>) {
         self.push(StatePatch::toggle(path.into()));
     }
 
+    /// 適用 に必要な処理を行う。
     pub fn apply(&self) {
         apply_state_patches(&self.patches);
     }
 
+    /// 現在の値を vec 形式へ変換する。
     pub fn into_vec(self) -> Vec<StatePatch> {
         self.patches
     }
 }
 
-/// 真偽値 state を取得する。
+/// 状態 bool を計算して返す。
 #[cfg(target_arch = "wasm32")]
 pub fn state_bool(path: impl AsRef<str>) -> bool {
-    with_bytes(path.as_ref(), |ptr, len| unsafe { state_get_bool(ptr, len) != 0 })
+    with_bytes(path.as_ref(), |ptr, len| unsafe {
+        state_get_bool(ptr, len) != 0
+    })
 }
 
+/// 状態 bool を計算して返す。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn state_bool(_path: impl AsRef<str>) -> bool {
     false
 }
 
-/// 整数 state を取得する。
+/// 状態 i32 を計算して返す。
 #[cfg(target_arch = "wasm32")]
 pub fn state_i32(path: impl AsRef<str>) -> i32 {
     with_bytes(path.as_ref(), |ptr, len| unsafe { state_get_i32(ptr, len) })
 }
 
+/// 状態 i32 を計算して返す。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn state_i32(_path: impl AsRef<str>) -> i32 {
     0
 }
 
-/// 文字列 state を取得する。
+/// 状態 string を計算して返す。
 #[cfg(target_arch = "wasm32")]
 pub fn state_string(path: impl AsRef<str>) -> String {
     read_string(path.as_ref(), state_get_string_len, state_get_string_copy)
 }
 
+/// 状態 string を計算して返す。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn state_string(_path: impl AsRef<str>) -> String {
     String::new()
 }
 
-/// イベント文字列 payload を取得する。
+/// イベント string を計算して返す。
 #[cfg(target_arch = "wasm32")]
 pub fn event_string(path: impl AsRef<str>) -> String {
     read_string(path.as_ref(), event_get_string_len, event_get_string_copy)
 }
 
+/// イベント string を計算して返す。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn event_string(_path: impl AsRef<str>) -> String {
     String::new()
 }
 
-/// host 真偽値を取得する。
+/// ホスト bool を計算して返す。
 #[cfg(target_arch = "wasm32")]
 pub fn host_bool(path: impl AsRef<str>) -> bool {
-    with_bytes(path.as_ref(), |ptr, len| unsafe { host_get_bool(ptr, len) != 0 })
+    with_bytes(path.as_ref(), |ptr, len| unsafe {
+        host_get_bool(ptr, len) != 0
+    })
 }
 
+/// ホスト bool を計算して返す。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn host_bool(_path: impl AsRef<str>) -> bool {
     false
 }
 
-/// host 整数を取得する。
+/// ホスト i32 を計算して返す。
 #[cfg(target_arch = "wasm32")]
 pub fn host_i32(path: impl AsRef<str>) -> i32 {
     with_bytes(path.as_ref(), |ptr, len| unsafe { host_get_i32(ptr, len) })
 }
 
+/// ホスト i32 を計算して返す。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn host_i32(_path: impl AsRef<str>) -> i32 {
     0
 }
 
-/// host 文字列を取得する。
+/// ホスト string を計算して返す。
 #[cfg(target_arch = "wasm32")]
 pub fn host_string(path: impl AsRef<str>) -> String {
     read_string(path.as_ref(), host_get_string_len, host_get_string_copy)
 }
 
+/// ホスト string を計算して返す。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn host_string(_path: impl AsRef<str>) -> String {
     String::new()
 }
 
-/// `CommandDescriptor` を ABI 互換の host 呼び出しへ変換する。
+/// 入力内容を判別し、必要な状態更新とサービス呼び出しへ振り分ける。
+///
+/// 内部でコマンドを発行します。
 #[cfg(target_arch = "wasm32")]
 pub fn emit_command_descriptor(descriptor: &CommandDescriptor) {
     match descriptor.payload.len() {
@@ -271,6 +321,9 @@ pub fn emit_command_descriptor(descriptor: &CommandDescriptor) {
     }
 }
 
+/// 現在の値を コマンド payload JSON へ変換する。
+///
+/// 内部でコマンドを発行します。
 #[cfg(target_arch = "wasm32")]
 fn emit_command_payload_json(descriptor: &CommandDescriptor, payload: &Value) {
     let Ok(json) = serde_json::to_string(payload) else {
@@ -285,53 +338,64 @@ fn emit_command_payload_json(descriptor: &CommandDescriptor, payload: &Value) {
     });
 }
 
+/// emit コマンド 記述子 に必要な処理を行う。
+///
+/// 内部でコマンドを発行します。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn emit_command_descriptor(_descriptor: &CommandDescriptor) {}
 
-/// service descriptor を host へ送る。
+/// emit サービス 記述子 に必要な処理を行う。
 ///
-/// 現段階では service request も `CommandDescriptor` 互換の搬送形式で ABI を通す。
+/// 内部でサービス要求を発行します。
 pub fn emit_service_descriptor(descriptor: &CommandDescriptor) {
     emit_command_descriptor(descriptor);
 }
 
-/// 任意コマンドを host へ送る。
+/// emit コマンド に必要な処理を行う。
+///
+/// 内部でコマンドを発行します。
 pub fn emit_command(descriptor: &CommandDescriptor) {
     emit_command_descriptor(descriptor);
 }
 
-/// 任意 service request を host へ送る。
+/// emit サービス に必要な処理を行う。
+///
+/// 内部でサービス要求を発行します。
 pub fn emit_service(descriptor: &CommandDescriptor) {
     emit_service_descriptor(descriptor);
 }
 
-/// 情報診断を発行する。
+/// info に必要な処理を行う。
 #[cfg(target_arch = "wasm32")]
 pub fn info(message: &str) {
     with_bytes(message, |ptr, len| unsafe { diagnostic(0, ptr, len) });
 }
 
+/// info に必要な処理を行う。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn info(_message: &str) {}
 
-/// 警告診断を発行する。
+/// warn に必要な処理を行う。
 #[cfg(target_arch = "wasm32")]
 pub fn warn(message: &str) {
     with_bytes(message, |ptr, len| unsafe { diagnostic(1, ptr, len) });
 }
 
+/// warn に必要な処理を行う。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn warn(_message: &str) {}
 
-/// エラー診断を発行する。
+/// エラー に必要な処理を行う。
 #[cfg(target_arch = "wasm32")]
 pub fn error(message: &str) {
     with_bytes(message, |ptr, len| unsafe { diagnostic(2, ptr, len) });
 }
 
+/// エラー に必要な処理を行う。
 #[cfg(not(target_arch = "wasm32"))]
 pub fn error(_message: &str) {}
 
+/// String を読み込み、必要に応じて整形して返す。
 #[cfg(target_arch = "wasm32")]
 fn read_string(
     path: &str,

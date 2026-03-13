@@ -4,6 +4,9 @@ use crate::CanvasRuntime;
 
 use super::apply_input;
 
+/// ストローク segment paints multiple pixels が期待どおりに動作することを検証する。
+///
+/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn stroke_segment_paints_multiple_pixels() {
     let mut document = Document::default();
@@ -22,12 +25,15 @@ fn stroke_segment_paints_multiple_pixels() {
 
     assert!(dirty.width >= 16);
     let bitmap = document.active_bitmap().expect("active bitmap");
-    assert!(bitmap
-        .pixels
-        .chunks_exact(4)
-        .any(|pixel| pixel == [0, 0, 0, 255]));
+    assert!(
+        bitmap
+            .pixels
+            .chunks_exact(4)
+            .any(|pixel| pixel == [0, 0, 0, 255])
+    );
 }
 
+/// 消しゴム uses runtime composite to clear pixels が期待どおりに動作することを検証する。
 #[test]
 fn eraser_uses_runtime_composite_to_clear_pixels() {
     let mut document = Document::default();

@@ -19,6 +19,7 @@ pub struct TextureSource<'a> {
 }
 
 impl<'a> From<&'a RenderFrame> for TextureSource<'a> {
+    /// 別形式の値から現在の型へ変換する。
     fn from(frame: &'a RenderFrame) -> Self {
         Self {
             width: frame.width as u32,
@@ -81,6 +82,7 @@ struct VertexOutput {
 }
 
 @vertex
+/// 頂点シェーダのエントリーポイントとして頂点出力を組み立てる。
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     var unit = array<vec2<f32>, 6>(
         vec2<f32>(0.0, 0.0),
@@ -103,6 +105,7 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     return output;
 }
 
+/// rotated to ソース UV を計算して返す。
 fn rotated_to_source_uv(rotated_uv: vec2<f32>, rotation_degrees: f32) -> vec2<f32> {
     let radians = -rotation_degrees * 0.017453292519943295;
     let cos_theta = cos(radians);
@@ -114,6 +117,7 @@ fn rotated_to_source_uv(rotated_uv: vec2<f32>, rotation_degrees: f32) -> vec2<f3
 }
 
 @fragment
+/// フラグメントシェーダのエントリーポイントとして最終色を返す。
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     var rotated_uv = vec2<f32>(
         mix(layer_uniform.uv_min.x, layer_uniform.uv_max.x, input.unit.x),
@@ -176,6 +180,7 @@ pub struct WgpuPresenter {
     upload_scratch: Vec<u8>,
 }
 
+/// 推奨される 提示 モード を返す。
 fn preferred_present_mode(modes: &[wgpu::PresentMode]) -> wgpu::PresentMode {
     [
         wgpu::PresentMode::Mailbox,
@@ -189,6 +194,9 @@ fn preferred_present_mode(modes: &[wgpu::PresentMode]) -> wgpu::PresentMode {
 }
 
 impl WgpuPresenter {
+    /// 既定値を使って新しいインスタンスを生成する。
+    ///
+    /// 失敗時はエラーを返します。
     pub async fn new(window: Arc<Window>) -> Result<Self> {
         let size = window.inner_size();
         let instance = wgpu::Instance::default();
@@ -325,6 +333,7 @@ impl WgpuPresenter {
         })
     }
 
+    /// 描画先のサイズ変更を反映する。
     pub fn resize(&mut self, size: PhysicalSize<u32>) {
         if size.width == 0 || size.height == 0 {
             return;
@@ -335,6 +344,7 @@ impl WgpuPresenter {
         self.surface.configure(&self.device, &self.config);
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
     pub fn render(&mut self, scene: PresentScene<'_>) -> Result<PresentTimings> {
         if self.config.width == 0 || self.config.height == 0 {
             return Ok(PresentTimings {
@@ -515,6 +525,7 @@ impl WgpuPresenter {
         })
     }
 
+    /// レイヤー texture が満たされるよう整える。
     fn ensure_layer_texture(
         device: &wgpu::Device,
         sampler: &wgpu::Sampler,
@@ -581,6 +592,7 @@ impl WgpuPresenter {
         });
     }
 
+    /// レイヤー を GPU へアップロードする。
     fn upload_layer(
         queue: &wgpu::Queue,
         scratch: &mut Vec<u8>,
@@ -614,6 +626,7 @@ impl WgpuPresenter {
         LayerUploadStats::default()
     }
 
+    /// Quad uniform を更新する。
     fn update_quad_uniform(
         queue: &wgpu::Queue,
         layer: Option<&UploadedLayerTexture>,
@@ -631,6 +644,9 @@ impl WgpuPresenter {
         );
     }
 
+    /// 描画 レイヤー に必要な描画内容を組み立てる。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn draw_layer<'a>(pass: &mut wgpu::RenderPass<'a>, layer: Option<&'a UploadedLayerTexture>) {
         let Some(layer) = layer else {
             return;
@@ -640,6 +656,7 @@ impl WgpuPresenter {
     }
 }
 
+/// Full texture を GPU へアップロードする。
 fn upload_full_texture(
     queue: &wgpu::Queue,
     layer: &UploadedLayerTexture,
@@ -672,6 +689,7 @@ fn upload_full_texture(
     (source.width as u64) * (source.height as u64) * 4
 }
 
+/// Texture 領域 を GPU へアップロードする。
 fn upload_texture_region(
     queue: &wgpu::Queue,
     scratch: &mut Vec<u8>,
@@ -735,6 +753,7 @@ fn upload_texture_region(
     (copy_width as u64) * (copy_height as u64) * 4
 }
 
+/// fullscreen quad を計算して返す。
 fn fullscreen_quad(width: u32, height: u32) -> TextureQuad {
     TextureQuad {
         destination: Rect {
@@ -752,6 +771,7 @@ fn fullscreen_quad(width: u32, height: u32) -> TextureQuad {
     }
 }
 
+/// quad uniform bytes を計算して返す。
 fn quad_uniform_bytes(quad: TextureQuad, surface_width: u32, surface_height: u32) -> [u8; 64] {
     let surface_width = surface_width.max(1) as f32;
     let surface_height = surface_height.max(1) as f32;
@@ -788,6 +808,7 @@ fn quad_uniform_bytes(quad: TextureQuad, surface_width: u32, surface_height: u32
 mod tests {
     use super::*;
 
+    /// 推奨 提示 モード prefers low latency modes が期待どおりに動作することを検証する。
     #[test]
     fn preferred_present_mode_prefers_low_latency_modes() {
         let mode = preferred_present_mode(&[wgpu::PresentMode::Fifo, wgpu::PresentMode::Immediate]);
@@ -795,6 +816,7 @@ mod tests {
         assert_eq!(mode, wgpu::PresentMode::Immediate);
     }
 
+    /// 推奨 提示 モード uses mailbox when available が期待どおりに動作することを検証する。
     #[test]
     fn preferred_present_mode_uses_mailbox_when_available() {
         let mode = preferred_present_mode(&[
@@ -806,6 +828,7 @@ mod tests {
         assert_eq!(mode, wgpu::PresentMode::Mailbox);
     }
 
+    /// presenter シェーダ mentions uniform quad mapping が期待どおりに動作することを検証する。
     #[test]
     fn presenter_shader_mentions_uniform_quad_mapping() {
         assert!(PRESENT_SHADER.contains("LayerUniform"));
@@ -813,12 +836,14 @@ mod tests {
         assert!(PRESENT_SHADER.contains("textureSample"));
     }
 
+    /// レイヤー uniform visibility covers vertex and fragment stages が期待どおりに動作することを検証する。
     #[test]
     fn layer_uniform_visibility_covers_vertex_and_fragment_stages() {
         assert!(LAYER_UNIFORM_VISIBILITY.contains(wgpu::ShaderStages::VERTEX));
         assert!(LAYER_UNIFORM_VISIBILITY.contains(wgpu::ShaderStages::FRAGMENT));
     }
 
+    /// quad uniform bytes maps fullscreen quad to ndc が期待どおりに動作することを検証する。
     #[test]
     fn quad_uniform_bytes_maps_fullscreen_quad_to_ndc() {
         let bytes = quad_uniform_bytes(fullscreen_quad(640, 480), 640, 480);
@@ -839,6 +864,7 @@ mod tests {
         assert_eq!(values[13], 480.0);
     }
 
+    /// quad uniform buffer サイズ matches written bytes が期待どおりに動作することを検証する。
     #[test]
     fn quad_uniform_buffer_size_matches_written_bytes() {
         assert_eq!(

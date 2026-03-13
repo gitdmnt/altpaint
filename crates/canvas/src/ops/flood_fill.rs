@@ -2,6 +2,7 @@ use app_core::{BitmapEdit, PaintPluginContext, PanelLocalPoint};
 
 use super::{bitmap_from_points, composite};
 
+/// Flood 塗りつぶし 編集 に対応するビットマップ処理を行う。
 pub(crate) fn flood_fill_edit(
     at: PanelLocalPoint,
     context: &PaintPluginContext<'_>,

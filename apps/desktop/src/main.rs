@@ -13,7 +13,7 @@ use desktop_support::{DEFAULT_PROJECT_PATH, startup_project_path};
 
 use crate::runtime::DesktopRuntime;
 
-/// デスクトップアプリケーションを既定プロジェクトパスで起動する。
+/// アプリケーションのエントリーポイントとしてランタイムを起動する。
 fn main() -> Result<()> {
     DesktopRuntime::run(startup_project_path(DEFAULT_PROJECT_PATH))
 }

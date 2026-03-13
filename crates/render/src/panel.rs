@@ -123,6 +123,7 @@ pub struct MeasuredPanelSize {
     pub height: usize,
 }
 
+/// 現在の値を パネル レイヤー へ変換する。
 pub fn rasterize_panel_layer(
     viewport: PixelRect,
     panels: &[FloatingPanel<'_>],
@@ -191,6 +192,7 @@ pub fn rasterize_panel_layer(
     layer
 }
 
+/// 現在の measure パネル サイズ を返す。
 pub fn measure_panel_size(
     title: &str,
     tree: &PanelTree,
@@ -206,16 +208,18 @@ pub fn measure_panel_size(
         .map(preferred_node_width)
         .max()
         .unwrap_or(0)
-    .max(measure_text_width(title) + PANEL_INNER_PADDING * 2)
-    .max(96);
+        .max(measure_text_width(title) + PANEL_INNER_PADDING * 2)
+        .max(96);
     let width = preferred_inner_width
         .saturating_add(PANEL_INNER_PADDING * 2)
         .clamp(PANEL_INNER_PADDING * 2 + 32, max_width);
     let inner_width = width.saturating_sub(PANEL_INNER_PADDING * 2);
     let height = TITLE_BAR_HEIGHT
         + PANEL_INNER_PADDING * 2
-        + measure_children_height(tree.children.as_slice(), inner_width, render_state)
-        .clamp(16, max_height.saturating_sub(TITLE_BAR_HEIGHT + PANEL_INNER_PADDING * 2));
+        + measure_children_height(tree.children.as_slice(), inner_width, render_state).clamp(
+            16,
+            max_height.saturating_sub(TITLE_BAR_HEIGHT + PANEL_INNER_PADDING * 2),
+        );
 
     MeasuredPanelSize { width, height }
 }
@@ -238,6 +242,9 @@ struct InternalPanelRenderState {
     text_input_states: BTreeMap<(String, String), TextInputEditorState>,
 }
 
+/// 現在の値を content 範囲 へ変換する。
+///
+/// 値を生成できない場合は `None` を返します。
 fn panel_content_bounds(viewport: PixelRect, panels: &[FloatingPanel<'_>]) -> Option<PixelRect> {
     panels
         .iter()
@@ -245,6 +252,7 @@ fn panel_content_bounds(viewport: PixelRect, panels: &[FloatingPanel<'_>]) -> Op
         .reduce(|acc, rect| acc.union(rect))
 }
 
+/// 現在の値を パネル ウィンドウ へ変換する。
 fn draw_panel_window(
     surface: &mut RasterizedPanelLayer,
     panel: FloatingPanel<'_>,
@@ -321,6 +329,7 @@ fn draw_panel_window(
     }
 }
 
+/// 現在の値を node へ変換する。
 #[allow(clippy::too_many_arguments)]
 fn draw_node(
     surface: &mut RasterizedPanelLayer,
@@ -705,7 +714,11 @@ fn draw_node(
                 x + available_width.saturating_sub(arrow_width + 6),
                 y + 7,
                 arrow,
-                if is_expanded { SECTION_TITLE } else { BUTTON_TEXT },
+                if is_expanded {
+                    SECTION_TITLE
+                } else {
+                    BUTTON_TEXT
+                },
             );
             push_hit_region_clipped(
                 surface,
@@ -988,6 +1001,7 @@ fn draw_node(
     }
 }
 
+/// push hit 領域 clipped に必要な処理を行う。
 fn push_hit_region_clipped(surface: &mut RasterizedPanelLayer, region: PanelHitRegion) {
     let viewport = PixelRect {
         x: 0,
@@ -1014,6 +1028,7 @@ fn push_hit_region_clipped(surface: &mut RasterizedPanelLayer, region: PanelHitR
     });
 }
 
+/// 描画 色 ホイール に必要な描画内容を組み立てる。
 fn draw_color_wheel(
     surface: &mut RasterizedPanelLayer,
     x: usize,
@@ -1090,6 +1105,7 @@ fn draw_color_wheel(
     );
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn hsv_to_rgba(hue_degrees: usize, saturation: usize, value: usize) -> [u8; 4] {
     let h = (hue_degrees % 360) as f32;
     let s = (saturation.min(100) as f32) / 100.0;
@@ -1121,6 +1137,9 @@ fn hsv_to_rgba(hue_degrees: usize, saturation: usize, value: usize) -> [u8; 4] {
     ]
 }
 
+/// button テキスト 色 を計算して返す。
+///
+/// 値を生成できない場合は `None` を返します。
 fn button_text_color(fill_color: Option<ColorRgba8>) -> [u8; 4] {
     let Some(fill_color) = fill_color else {
         return BUTTON_TEXT;
@@ -1135,26 +1154,20 @@ fn button_text_color(fill_color: Option<ColorRgba8>) -> [u8; 4] {
     }
 }
 
+/// 推奨される node 幅 を返す。
 fn preferred_node_width(node: &PanelNode) -> usize {
     match node {
-        PanelNode::Column { children, .. } => children
-            .iter()
-            .map(preferred_node_width)
-            .max()
-            .unwrap_or(0),
+        PanelNode::Column { children, .. } => {
+            children.iter().map(preferred_node_width).max().unwrap_or(0)
+        }
         PanelNode::Row { children, .. } => {
-            let child_sum = children
-                .iter()
-                .map(preferred_node_width)
-                .sum::<usize>();
+            let child_sum = children.iter().map(preferred_node_width).sum::<usize>();
             child_sum + NODE_GAP * children.len().saturating_sub(1)
         }
-        PanelNode::Section { title, children, .. } => {
-            let child_width = children
-                .iter()
-                .map(preferred_node_width)
-                .max()
-                .unwrap_or(0);
+        PanelNode::Section {
+            title, children, ..
+        } => {
+            let child_width = children.iter().map(preferred_node_width).max().unwrap_or(0);
             (child_width + SECTION_INDENT).max(measure_text_width(title))
         }
         PanelNode::Text { text, .. } => measure_text_width(text).max(96),
@@ -1208,14 +1221,17 @@ fn preferred_node_width(node: &PanelNode) -> usize {
             value,
             placeholder,
             ..
-        } => measure_text_width(label)
-            .max(measure_text_width(value))
-            .max(measure_text_width(placeholder))
-            .max(96)
-            + 12,
+        } => {
+            measure_text_width(label)
+                .max(measure_text_width(value))
+                .max(measure_text_width(placeholder))
+                .max(96)
+                + 12
+        }
     }
 }
 
+/// 現在の measure children 高さ を返す。
 fn measure_children_height(
     children: &[PanelNode],
     available_width: usize,
@@ -1239,6 +1255,7 @@ fn measure_children_height(
         .sum()
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn measure_node_height(
     node: &PanelNode,
     available_width: usize,
@@ -1261,7 +1278,9 @@ fn measure_node_height(
                 .max()
                 .unwrap_or(0)
         }
-        PanelNode::Section { title, children, .. } => {
+        PanelNode::Section {
+            title, children, ..
+        } => {
             let title_height = wrap_text(title, available_width).len().max(1) * text_line_height();
             let child_width = available_width.saturating_sub(SECTION_INDENT);
             title_height
@@ -1279,9 +1298,12 @@ fn measure_node_height(
                     })
                     .sum::<usize>()
         }
-        PanelNode::Text { text, .. } => wrap_text(text, available_width).len().max(1) * text_line_height(),
+        PanelNode::Text { text, .. } => {
+            wrap_text(text, available_width).len().max(1) * text_line_height()
+        }
         PanelNode::ColorPreview { label, .. } => {
-            wrap_text(label, available_width).len().max(1) * text_line_height() + 4
+            wrap_text(label, available_width).len().max(1) * text_line_height()
+                + 4
                 + COLOR_PREVIEW_HEIGHT.saturating_sub(text_line_height() + 4)
         }
         PanelNode::ColorWheel { label, .. } => {
@@ -1298,7 +1320,12 @@ fn measure_node_height(
             let expanded = render_state
                 .expanded_dropdown
                 .is_some_and(|target| target.node_id == id.as_str());
-            DROPDOWN_HEIGHT + if expanded { options.len() * DROPDOWN_HEIGHT } else { 0 }
+            DROPDOWN_HEIGHT
+                + if expanded {
+                    options.len() * DROPDOWN_HEIGHT
+                } else {
+                    0
+                }
         }
         PanelNode::LayerList { label, items, .. } => {
             let label_height = if label.is_empty() {
@@ -1319,6 +1346,7 @@ fn measure_node_height(
     }
 }
 
+/// 描画 wrapped テキスト に必要な描画内容を組み立てる。
 fn draw_wrapped_text(
     surface: &mut RasterizedPanelLayer,
     x: usize,
@@ -1334,10 +1362,12 @@ fn draw_wrapped_text(
     lines.len().max(1) * text_line_height()
 }
 
+/// 折り返し テキスト を計算して返す。
 fn wrap_text(text: &str, available_width: usize) -> Vec<String> {
     wrap_text_lines(text, available_width)
 }
 
+/// 描画 テキスト line に必要な描画内容を組み立てる。
 fn draw_text_line(
     surface: &mut RasterizedPanelLayer,
     x: usize,
@@ -1356,6 +1386,7 @@ fn draw_text_line(
     );
 }
 
+/// 塗りつぶし 矩形 に必要な描画内容を組み立てる。
 fn fill_rect(
     surface: &mut RasterizedPanelLayer,
     x: usize,
@@ -1373,6 +1404,7 @@ fn fill_rect(
     }
 }
 
+/// ストローク 矩形 に必要な描画内容を組み立てる。
 fn stroke_rect(
     surface: &mut RasterizedPanelLayer,
     x: usize,
@@ -1390,6 +1422,7 @@ fn stroke_rect(
     fill_rect(surface, x + width.saturating_sub(1), y, 1, height, color);
 }
 
+/// ピクセル を保存先へ書き出す。
 fn write_pixel(surface: &mut RasterizedPanelLayer, x: usize, y: usize, color: [u8; 4]) {
     if x >= surface.width || y >= surface.height {
         return;
@@ -1398,10 +1431,12 @@ fn write_pixel(surface: &mut RasterizedPanelLayer, x: usize, y: usize, color: [u
     surface.pixels[index..index + 4].copy_from_slice(&color);
 }
 
+/// テキスト char len を計算して返す。
 fn text_char_len(text: &str) -> usize {
     text.chars().count()
 }
 
+/// 現在の byte インデックス for char インデックス を返す。
 fn byte_index_for_char_index(text: &str, char_index: usize) -> usize {
     text.char_indices()
         .nth(char_index)
@@ -1409,6 +1444,7 @@ fn byte_index_for_char_index(text: &str, char_index: usize) -> usize {
         .unwrap_or(text.len())
 }
 
+/// 現在の insert テキスト at char インデックス を返す。
 fn insert_text_at_char_index(text: &str, char_index: usize, inserted: &str) -> String {
     let split_at = byte_index_for_char_index(text, char_index);
     let mut next = String::with_capacity(text.len() + inserted.len());
@@ -1418,6 +1454,7 @@ fn insert_text_at_char_index(text: &str, char_index: usize, inserted: &str) -> S
     next
 }
 
+/// 現在の prefix for char 件数 を返す。
 fn prefix_for_char_count(text: &str, char_count: usize) -> String {
     text.chars().take(char_count).collect()
 }
@@ -1429,6 +1466,7 @@ mod tests {
 
     use super::*;
 
+    /// rasterized パネル レイヤー contains move handle 領域 が期待どおりに動作することを検証する。
     #[test]
     fn rasterized_panel_layer_contains_move_handle_region() {
         let tree = PanelTree {

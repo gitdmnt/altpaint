@@ -6,8 +6,11 @@
 use super::*;
 use panel_api::{PanelNode, TextInputMode};
 
-/// dropdown node を再帰探索する。
-pub(super) fn find_dropdown_node<'a>(nodes: &'a [PanelNode], target_id: &str) -> Option<&'a PanelNode> {
+/// find dropdown node に必要な処理を行う。
+pub(super) fn find_dropdown_node<'a>(
+    nodes: &'a [PanelNode],
+    target_id: &str,
+) -> Option<&'a PanelNode> {
     for node in nodes {
         match node {
             PanelNode::Column { children, .. }
@@ -31,7 +34,7 @@ pub(super) fn find_dropdown_node<'a>(nodes: &'a [PanelNode], target_id: &str) ->
     None
 }
 
-/// text input の現在値を探索する。
+/// 入力や種別に応じて処理を振り分ける。
 pub(super) fn find_text_input_value(
     nodes: &[PanelNode],
     target_id: &str,
@@ -64,13 +67,19 @@ pub(super) fn find_text_input_value(
     None
 }
 
-/// focus 対象になり得る node を走査して収集する。
-pub(super) fn collect_focus_targets(panel_id: &str, nodes: &[PanelNode], targets: &mut Vec<FocusTarget>) {
+/// 現在の値を フォーカス targets へ変換する。
+pub(super) fn collect_focus_targets(
+    panel_id: &str,
+    nodes: &[PanelNode],
+    targets: &mut Vec<FocusTarget>,
+) {
     for node in nodes {
         match node {
             PanelNode::Column { children, .. }
             | PanelNode::Row { children, .. }
-            | PanelNode::Section { children, .. } => collect_focus_targets(panel_id, children, targets),
+            | PanelNode::Section { children, .. } => {
+                collect_focus_targets(panel_id, children, targets)
+            }
             PanelNode::Button { id, .. } => targets.push(FocusTarget {
                 panel_id: panel_id.to_string(),
                 node_id: id.clone(),
@@ -79,7 +88,9 @@ pub(super) fn collect_focus_targets(panel_id: &str, nodes: &[PanelNode], targets
                 panel_id: panel_id.to_string(),
                 node_id: id.clone(),
             }),
-            PanelNode::Dropdown { id, .. } | PanelNode::LayerList { id, .. } | PanelNode::ColorWheel { id, .. } => targets.push(FocusTarget {
+            PanelNode::Dropdown { id, .. }
+            | PanelNode::LayerList { id, .. }
+            | PanelNode::ColorWheel { id, .. } => targets.push(FocusTarget {
                 panel_id: panel_id.to_string(),
                 node_id: id.clone(),
             }),

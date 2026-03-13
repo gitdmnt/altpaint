@@ -6,6 +6,9 @@ pub(crate) mod stroke;
 
 use app_core::{BitmapEdit, CanvasBitmap, CanvasDirtyRect, PaintPluginContext, PanelLocalPoint};
 
+/// ビットマップ from points に必要な差分領域だけを描画または合成する。
+///
+/// 必要に応じて dirty 状態も更新します。
 pub(crate) fn bitmap_from_points(
     points: Vec<(usize, usize)>,
     min_x: usize,
@@ -38,6 +41,7 @@ pub(crate) fn bitmap_from_points(
     ))
 }
 
+/// 点 in polygon を計算して返す。
 pub(crate) fn point_in_polygon(x: f32, y: f32, points: &[PanelLocalPoint]) -> bool {
     let mut inside = false;
     let mut previous = *points.last().expect("polygon has points");

@@ -20,7 +20,7 @@ use super::{
 };
 use crate::app::DesktopApp;
 
-/// open ダイアログ経由の読込でワークスペース状態も復元されることを確認する。
+/// execute コマンド 読込 プロジェクト uses native ダイアログ パス が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_load_project_uses_native_dialog_path() {
     let path = std::env::temp_dir().join("altpaint-open-dialog-test.altp.json");
@@ -53,7 +53,7 @@ fn execute_command_load_project_uses_native_dialog_path() {
     let _ = std::fs::remove_file(app.io_state.project_path.clone());
 }
 
-/// 保存先選択付き保存で現在パスとワークスペース状態が永続化されることを確認する。
+/// 保存 プロジェクト as updates プロジェクト パス and persists ワークスペース レイアウト が期待どおりに動作することを検証する。
 #[test]
 fn save_project_as_updates_project_path_and_persists_workspace_layout() {
     let path = std::env::temp_dir().join("altpaint-save-as-test.altp.json");
@@ -81,6 +81,7 @@ fn save_project_as_updates_project_path_and_persists_workspace_layout() {
     let _ = std::fs::remove_file(app.io_state.project_path.clone());
 }
 
+/// 保存 and 読込 復元 プラグイン ショートカット configs が期待どおりに動作することを検証する。
 #[test]
 fn save_and_load_restore_plugin_shortcut_configs() {
     let path = std::env::temp_dir().join("altpaint-plugin-config-test.altp.json");
@@ -104,7 +105,10 @@ fn save_and_load_restore_plugin_shortcut_configs() {
         }))
     );
     assert_eq!(
-        loaded.ui_state.plugin_configs.get("builtin.workspace-presets"),
+        loaded
+            .ui_state
+            .plugin_configs
+            .get("builtin.workspace-presets"),
         Some(&json!({
             "workspace_options": "default-floating:Default floating workspace",
             "selected_workspace": "default-floating",
@@ -141,7 +145,7 @@ fn save_and_load_restore_plugin_shortcut_configs() {
     let _ = std::fs::remove_file(path);
 }
 
-/// 読込でパネル順序と表示状態がワークスペースへ復元されることを確認する。
+/// 読込 プロジェクト restores ワークスペース レイアウト が期待どおりに動作することを検証する。
 #[test]
 fn load_project_restores_workspace_layout() {
     let path = std::env::temp_dir().join("altpaint-load-test.altp.json");
@@ -185,7 +189,9 @@ fn load_project_restores_workspace_layout() {
     let _ = std::fs::remove_file(path);
 }
 
-/// パネル移動が全面再構成ではなく差分更新で反映されることを確認する。
+/// move パネル ホスト action updates ステータス without full recompose が期待どおりに動作することを検証する。
+///
+/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn move_panel_host_action_updates_status_without_full_recompose() {
     let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
@@ -226,7 +232,9 @@ fn move_panel_host_action_updates_status_without_full_recompose() {
     );
 }
 
-/// パネル表示切替が全面再構成ではなく差分更新で反映されることを確認する。
+/// 設定 パネル visibility updates ステータス without full recompose が期待どおりに動作することを検証する。
+///
+/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn set_panel_visibility_updates_status_without_full_recompose() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -267,6 +275,9 @@ fn set_panel_visibility_updates_status_without_full_recompose() {
     );
 }
 
+/// hiding パネル clears 前 オーバーレイ 範囲 when サーフェス shrinks が期待どおりに動作することを検証する。
+///
+/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn hiding_panel_clears_previous_overlay_bounds_when_surface_shrinks() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -307,6 +318,7 @@ fn hiding_panel_clears_previous_overlay_bounds_when_surface_shrinks() {
     );
 }
 
+/// startup uses 既定 ワークスペース preset when プロジェクト and セッション are empty が期待どおりに動作することを検証する。
 #[test]
 fn startup_uses_default_workspace_preset_when_project_and_session_are_empty() {
     let preset_path = unique_test_path("workspace-preset-catalog");
@@ -361,6 +373,7 @@ fn startup_uses_default_workspace_preset_when_project_and_session_are_empty() {
     let _ = std::fs::remove_file(&preset_path);
 }
 
+/// セッション レイアウト overrides 既定 ワークスペース preset が期待どおりに動作することを検証する。
 #[test]
 fn session_layout_overrides_default_workspace_preset() {
     let preset_path = unique_test_path("workspace-preset-catalog");
@@ -439,6 +452,7 @@ fn session_layout_overrides_default_workspace_preset() {
     let _ = std::fs::remove_file(preset_path);
 }
 
+/// startup restores last opened プロジェクト from セッション が期待どおりに動作することを検証する。
 #[test]
 fn startup_restores_last_opened_project_from_session() {
     let session_path = unique_test_path("desktop-session");
@@ -466,6 +480,7 @@ fn startup_restores_last_opened_project_from_session() {
     let _ = std::fs::remove_file(app.io_state.project_path.clone());
 }
 
+/// パネル レイアウト persists across restart via セッション が期待どおりに動作することを検証する。
 #[test]
 fn panel_layout_persists_across_restart_via_session() {
     let session_path = unique_test_path("layout-session");
@@ -496,6 +511,7 @@ fn panel_layout_persists_across_restart_via_session() {
     let _ = std::fs::remove_file(session_path);
 }
 
+/// startup preserves last 選択中 ワークスペース preset ID が期待どおりに動作することを検証する。
 #[test]
 fn startup_preserves_last_selected_workspace_preset_id() {
     let preset_path = unique_test_path("workspace-preset-selected");

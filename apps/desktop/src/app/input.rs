@@ -12,7 +12,9 @@ use canvas::{
 use super::DesktopApp;
 
 impl DesktopApp {
-    /// 現在のポインタ位置からキャンバスホバー状態を更新する。
+    /// キャンバス hover を更新し、必要な dirty 状態も記録する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn update_canvas_hover(&mut self, x: i32, y: i32) -> bool {
         let previous = self.hover_canvas_position;
         let next = self.hover_canvas_position_from_window(WindowPoint::new(x, y));
@@ -55,12 +57,13 @@ impl DesktopApp {
         true
     }
 
-    /// ポインタ押下をキャンバスまたはパネル操作へ振り分ける。
+    /// 入力や種別に応じて処理を振り分ける。
     #[allow(dead_code)]
     pub(crate) fn handle_pointer_pressed(&mut self, x: i32, y: i32) -> bool {
         self.handle_pointer_pressed_with_pressure(x, y, 1.0)
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
     pub(crate) fn handle_pointer_pressed_with_pressure(
         &mut self,
         x: i32,
@@ -83,12 +86,13 @@ impl DesktopApp {
         false
     }
 
-    /// ポインタ解放を現在の操作状態に応じて処理する。
+    /// 入力や種別に応じて処理を振り分ける。
     #[allow(dead_code)]
     pub(crate) fn handle_pointer_released(&mut self, x: i32, y: i32) -> bool {
         self.handle_pointer_released_with_pressure(x, y, 1.0)
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
     pub(crate) fn handle_pointer_released_with_pressure(
         &mut self,
         x: i32,
@@ -107,11 +111,12 @@ impl DesktopApp {
         self.handle_panel_pointer(point)
     }
 
-    /// ポインタ移動をドラッグ中の対象へ配送する。
+    /// 入力や種別に応じて処理を振り分ける。
     pub(crate) fn handle_pointer_dragged(&mut self, x: i32, y: i32) -> bool {
         self.handle_pointer_dragged_with_pressure(x, y, 1.0)
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
     pub(crate) fn handle_pointer_dragged_with_pressure(
         &mut self,
         x: i32,
@@ -130,7 +135,7 @@ impl DesktopApp {
         false
     }
 
-    /// キャンバス上のポインタ操作を描画コマンドへ変換して適用する。
+    /// 入力や種別に応じて処理を振り分ける。
     pub(crate) fn handle_canvas_pointer(
         &mut self,
         action: &str,
@@ -162,8 +167,8 @@ impl DesktopApp {
         } else {
             page_point
         };
-        let inside_active_panel = active_panel_bounds
-            .is_some_and(|bounds| bounds.contains_canvas_point(page_point));
+        let inside_active_panel =
+            active_panel_bounds.is_some_and(|bounds| bounds.contains_canvas_point(page_point));
         if active_tool != ToolKind::PanelRect && !inside_active_panel {
             if pointer_action == CanvasPointerAction::Up {
                 self.canvas_input.reset();
@@ -183,7 +188,9 @@ impl DesktopApp {
             active_tool,
             pressure,
             stabilization,
-            |canvas_point| active_panel_bounds.and_then(|bounds| bounds.canvas_to_panel_local(canvas_point)),
+            |canvas_point| {
+                active_panel_bounds.and_then(|bounds| bounds.canvas_to_panel_local(canvas_point))
+            },
         );
 
         match update {
@@ -219,20 +226,17 @@ impl DesktopApp {
                     lasso_points: Vec::new(),
                     panel_rect_anchor: Some(anchor),
                 };
-                let created = canvas::panel_creation_preview_bounds(
-                    &preview_state,
-                    page_width,
-                    page_height,
-                )
-                .filter(|bounds| bounds.width >= 8 && bounds.height >= 8)
-                .is_some_and(|bounds| {
-                    self.execute_command(Command::CreatePanel {
-                        x: bounds.x,
-                        y: bounds.y,
-                        width: bounds.width,
-                        height: bounds.height,
-                    })
-                });
+                let created =
+                    canvas::panel_creation_preview_bounds(&preview_state, page_width, page_height)
+                        .filter(|bounds| bounds.width >= 8 && bounds.height >= 8)
+                        .is_some_and(|bounds| {
+                            self.execute_command(Command::CreatePanel {
+                                x: bounds.x,
+                                y: bounds.y,
+                                width: bounds.width,
+                                height: bounds.height,
+                            })
+                        });
                 if let Some(layout) = self.layout.as_ref() {
                     self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
                     return true;
@@ -242,7 +246,9 @@ impl DesktopApp {
         }
     }
 
-    /// ウィンドウ座標をキャンバスビットマップ座標へ変換する。
+    /// キャンバス position from ウィンドウ を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn canvas_position_from_window(&self, point: WindowPoint) -> Option<CanvasPoint> {
         let layout = self.layout.as_ref()?;
         if !layout.canvas_host_rect.contains(point.x, point.y) {
@@ -252,12 +258,16 @@ impl DesktopApp {
         self.canvas_position_from_window_clamped(point)
     }
 
+    /// キャンバス 表示 contains ウィンドウ を計算して返す。
     fn canvas_display_contains_window(&self, point: WindowPoint) -> bool {
         self.layout
             .as_ref()
             .is_some_and(|layout| layout.canvas_display_rect.contains(point.x, point.y))
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn hover_canvas_position_from_window(&self, point: WindowPoint) -> Option<CanvasPoint> {
         let position = self.canvas_position_from_window(point)?;
         match self.document.active_tool {
@@ -268,7 +278,7 @@ impl DesktopApp {
         }
     }
 
-    /// ウィンドウ座標をキャンバスビットマップ座標へクランプ付きで変換する。
+    /// キャンバス position from ウィンドウ clamped に必要な描画内容を組み立てる。
     pub(crate) fn canvas_position_from_window_clamped(
         &self,
         point: WindowPoint,
@@ -296,12 +306,18 @@ impl DesktopApp {
         )
     }
 
+    /// ページ position in アクティブ パネル を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn page_position_in_active_panel(&self, point: CanvasPoint) -> Option<CanvasPoint> {
         let bounds = self.document.active_panel_bounds()?;
         bounds.contains_canvas_point(point).then_some(point)
     }
 }
 
+/// 入力や種別に応じて処理を振り分ける。
+///
+/// 値を生成できない場合は `None` を返します。
 fn pointer_action(action: &str) -> Option<CanvasPointerAction> {
     match action {
         "down" => Some(CanvasPointerAction::Down),

@@ -10,6 +10,7 @@ use app_core::PenPreset;
 
 use crate::parse_pen_file;
 
+/// 入力や種別に応じて処理を振り分ける。
 pub fn load_pen_directory(directory: impl AsRef<Path>) -> (Vec<PenPreset>, Vec<String>) {
     let mut files = Vec::new();
     let mut diagnostics = Vec::new();
@@ -27,6 +28,7 @@ pub fn load_pen_directory(directory: impl AsRef<Path>) -> (Vec<PenPreset>, Vec<S
     (presets, diagnostics)
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn collect_pen_files(directory: &Path, files: &mut Vec<PathBuf>, diagnostics: &mut Vec<String>) {
     let Ok(entries) = fs::read_dir(directory) else {
         if directory.exists() {
@@ -53,6 +55,7 @@ fn collect_pen_files(directory: &Path, files: &mut Vec<PathBuf>, diagnostics: &m
     }
 }
 
+/// Is supported ペン file かどうかを返す。
 fn is_supported_pen_file(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
@@ -70,6 +73,9 @@ fn is_supported_pen_file(path: &Path) -> bool {
     )
 }
 
+/// 現在の値を ペン file へ変換する。
+///
+/// 失敗時はエラーを返します。
 fn load_pen_file(path: &Path) -> Result<Vec<PenPreset>, String> {
     let imported = parse_pen_file(path).map_err(|error| error.to_string())?;
     let mut diagnostics = imported
@@ -102,10 +108,12 @@ fn load_pen_file(path: &Path) -> Result<Vec<PenPreset>, String> {
 }
 
 trait PenImportSeverityLabel {
+    /// 現在の severity ラベル を返す。
     fn severity_label(&self) -> &'static str;
 }
 
 impl PenImportSeverityLabel for crate::PenImportIssueSeverity {
+    /// 現在の severity ラベル を返す。
     fn severity_label(&self) -> &'static str {
         match self {
             crate::PenImportIssueSeverity::Info => "info",
@@ -118,6 +126,7 @@ impl PenImportSeverityLabel for crate::PenImportIssueSeverity {
 mod tests {
     use super::*;
 
+    /// 現在の ワークスペース ペン パス を返す。
     fn workspace_pen_path(relative: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
@@ -125,6 +134,7 @@ mod tests {
             .join(relative)
     }
 
+    /// Unique temp dir 用の表示文字列を組み立てる。
     fn unique_temp_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "altpaint-{}-{}-{}",
@@ -139,6 +149,7 @@ mod tests {
         dir
     }
 
+    /// 読込 ペン directory reads nested presets が期待どおりに動作することを検証する。
     #[test]
     fn load_pen_directory_reads_nested_presets() {
         let dir = unique_temp_dir("pens");
@@ -166,6 +177,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// 読込 ペン directory reports invalid files が期待どおりに動作することを検証する。
     #[test]
     fn load_pen_directory_reports_invalid_files() {
         let dir = unique_temp_dir("invalid-pens");
@@ -182,6 +194,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// 読込 ペン directory imports supported external ペン files が期待どおりに動作することを検証する。
     #[test]
     fn load_pen_directory_imports_supported_external_pen_files() {
         let source_abr = workspace_pen_path("pens/abr/manga.abr");

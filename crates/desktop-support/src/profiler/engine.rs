@@ -54,18 +54,19 @@ pub struct DesktopProfiler {
 }
 
 impl Default for DesktopProfiler {
+    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl DesktopProfiler {
-    /// 現在時刻基準でプロファイラを初期化する。
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn new() -> Self {
         Self::new_at(Instant::now())
     }
 
-    /// 指定時刻基準でプロファイラを初期化する。
+    /// 既定値を使って新しいインスタンスを生成する。
     pub fn new_at(now: Instant) -> Self {
         Self {
             logging_enabled: env::var_os("ALTPAINT_PROFILE").is_some(),
@@ -86,7 +87,7 @@ impl DesktopProfiler {
         }
     }
 
-    /// ラベル付き計測としてクロージャを実行する。
+    /// 入力や種別に応じて処理を振り分ける。
     pub fn measure<T>(&mut self, label: &'static str, f: impl FnOnce() -> T) -> T {
         let started = Instant::now();
         let value = f();
@@ -94,7 +95,7 @@ impl DesktopProfiler {
         value
     }
 
-    /// 既知ラベルへ経過時間を加算する。
+    /// 入力や種別に応じて処理を振り分ける。
     pub fn record(&mut self, label: &'static str, elapsed: Duration) {
         let stat = self.stats.entry(label).or_default();
         stat.calls += 1;
@@ -111,7 +112,7 @@ impl DesktopProfiler {
         }
     }
 
-    /// 数値メトリクスをサンプルとして記録する。
+    /// 値 を記録する。
     pub fn record_value(&mut self, label: &'static str, value: f64) {
         let stat = self.value_stats.entry(label).or_default();
         stat.samples += 1;
@@ -119,12 +120,12 @@ impl DesktopProfiler {
         stat.max = stat.max.max(value);
     }
 
-    /// 現在時刻でフレームを完了する。
+    /// finish フレーム に必要な処理を行う。
     pub fn finish_frame(&mut self, elapsed: Duration) {
         self.finish_frame_at(elapsed, Instant::now());
     }
 
-    /// 指定時刻でフレームを完了し、スナップショットを更新する。
+    /// finish フレーム at に必要な処理を行う。
     pub fn finish_frame_at(&mut self, elapsed: Duration, now: Instant) {
         self.record("frame_total", elapsed);
         self.frames += 1;
@@ -146,7 +147,7 @@ impl DesktopProfiler {
         }
     }
 
-    /// GPU 提示の内訳をラベル別に記録する。
+    /// 提示 を記録する。
     pub fn record_present(&mut self, timings: PresentTimings) {
         self.record("present_upload", timings.upload);
         self.record("present_encode", timings.encode_and_submit);
@@ -154,7 +155,10 @@ impl DesktopProfiler {
         self.record("present_upload_base", timings.base_upload);
         self.record("present_upload_overlay", timings.overlay_upload);
         self.record("present_upload_canvas", timings.canvas_upload);
-        self.record_value("present_upload_base_bytes", timings.base_upload_bytes as f64);
+        self.record_value(
+            "present_upload_base_bytes",
+            timings.base_upload_bytes as f64,
+        );
         self.record_value(
             "present_upload_overlay_bytes",
             timings.overlay_upload_bytes as f64,
@@ -165,24 +169,24 @@ impl DesktopProfiler {
         );
     }
 
-    /// 現在時刻でキャンバス入力サンプルを記録する。
+    /// キャンバス 入力 を記録する。
     pub fn record_canvas_input(&mut self) {
         self.record_canvas_input_at(Instant::now());
     }
 
-    /// 指定時刻でキャンバス入力サンプルを記録する。
+    /// キャンバス 入力 at を記録する。
     pub fn record_canvas_input_at(&mut self, now: Instant) {
         self.pending_canvas_input_at = Some(now);
         self.recent_canvas_inputs.push_back(now);
         self.prune_recent_inputs(now);
     }
 
-    /// 現在時刻でキャンバス提示完了を記録する。
+    /// キャンバス 提示 を記録する。
     pub fn record_canvas_present(&mut self) {
         self.record_canvas_present_at(Instant::now());
     }
 
-    /// 指定時刻でキャンバス提示完了を記録し、入力遅延を確定する。
+    /// キャンバス 提示 at を記録する。
     pub fn record_canvas_present_at(&mut self, now: Instant) {
         self.recent_canvas_presents.push_back(now);
         let Some(input_at) = self.pending_canvas_input_at.take() else {
@@ -197,18 +201,21 @@ impl DesktopProfiler {
         self.prune_recent_inputs(now);
     }
 
-    /// 最新スナップショットからウィンドウタイトル文字列を返す。
+    /// 現在の値を テキスト へ変換する。
     pub fn title_text(&self) -> String {
         self.latest_snapshot
             .map(|snapshot| snapshot.title_text())
             .unwrap_or_else(|| WINDOW_TITLE.to_string())
     }
 
-    /// テストや外部観測向けに最新スナップショットを返す。
+    /// latest スナップショット を計算して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn latest_snapshot(&self) -> Option<PerformanceSnapshot> {
         self.latest_snapshot
     }
 
+    /// prune recent frames に必要な処理を行う。
     fn prune_recent_frames(&mut self, now: Instant) {
         while let Some(sample) = self.recent_frames.front() {
             if now.duration_since(sample.finished_at) <= self.snapshot_window {
@@ -218,6 +225,7 @@ impl DesktopProfiler {
         }
     }
 
+    /// prune recent inputs に必要な処理を行う。
     fn prune_recent_inputs(&mut self, now: Instant) {
         while let Some(sample) = self.recent_canvas_inputs.front() {
             if now.duration_since(*sample) <= self.snapshot_window {
@@ -241,6 +249,9 @@ impl DesktopProfiler {
         }
     }
 
+    /// スナップショット を構築する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn build_snapshot(&self) -> Option<PerformanceSnapshot> {
         let frame_count = self.recent_frames.len();
         if frame_count == 0 {
@@ -280,6 +291,7 @@ impl DesktopProfiler {
         })
     }
 
+    /// aggregate recent stages を計算して返す。
     fn aggregate_recent_stages(&self) -> FrameStageTotals {
         let mut totals = FrameStageTotals::default();
         for sample in &self.recent_frames {
@@ -292,6 +304,7 @@ impl DesktopProfiler {
         totals
     }
 
+    /// ウィンドウ rate に必要な処理を行う。
     fn window_rate<T>(
         &self,
         samples: &VecDeque<T>,
@@ -311,6 +324,7 @@ impl DesktopProfiler {
         }
     }
 
+    /// 既存データを走査して average キャンバス latency ms を組み立てる。
     fn average_canvas_latency_ms(&self) -> f64 {
         if self.recent_canvas_latencies.is_empty() {
             self.latest_snapshot
@@ -324,6 +338,7 @@ impl DesktopProfiler {
         }
     }
 
+    /// average ms を計算して返す。
     fn average_ms(&self, label: &'static str) -> f64 {
         self.stats.get(label).map_or(0.0, |stat| {
             if stat.calls == 0 {
@@ -334,6 +349,7 @@ impl DesktopProfiler {
         })
     }
 
+    /// print report に必要な処理を行う。
     fn print_report(&self, now: Instant) {
         let interval_secs = now
             .duration_since(self.frame_interval_started)
@@ -401,6 +417,7 @@ impl DesktopProfiler {
         }
     }
 
+    /// 初期化 interval に必要な処理を行う。
     fn reset_interval(&mut self, now: Instant) {
         self.stats.clear();
         self.value_stats.clear();

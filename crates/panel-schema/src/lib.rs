@@ -56,6 +56,7 @@ pub struct StatePatch {
 }
 
 impl StatePatch {
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn set(path: impl Into<String>, value: impl Into<Value>) -> Self {
         Self {
             op: StatePatchOp::Set,
@@ -64,6 +65,7 @@ impl StatePatch {
         }
     }
 
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn toggle(path: impl Into<String>) -> Self {
         Self {
             op: StatePatchOp::Toggle,
@@ -72,6 +74,7 @@ impl StatePatch {
         }
     }
 
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn replace(path: impl Into<String>, value: impl Into<Value>) -> Self {
         Self {
             op: StatePatchOp::Replace,
@@ -89,6 +92,7 @@ pub struct CommandDescriptor {
 }
 
 impl CommandDescriptor {
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -112,6 +116,7 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn info(message: impl Into<String>) -> Self {
         Self {
             level: DiagnosticLevel::Info,
@@ -119,6 +124,7 @@ impl Diagnostic {
         }
     }
 
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn warning(message: impl Into<String>) -> Self {
         Self {
             level: DiagnosticLevel::Warning,
@@ -126,6 +132,7 @@ impl Diagnostic {
         }
     }
 
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn error(message: impl Into<String>) -> Self {
         Self {
             level: DiagnosticLevel::Error,
@@ -139,6 +146,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// 状態 patch helpers 構築 expected shape が期待どおりに動作することを検証する。
     #[test]
     fn state_patch_helpers_build_expected_shape() {
         assert_eq!(StatePatch::toggle("expanded").value, None);
@@ -152,6 +160,7 @@ mod tests {
         );
     }
 
+    /// コマンド 記述子 starts with empty payload が期待どおりに動作することを検証する。
     #[test]
     fn command_descriptor_starts_with_empty_payload() {
         let descriptor = CommandDescriptor::new("tool.set_active");

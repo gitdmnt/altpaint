@@ -10,21 +10,20 @@ pub struct CanvasRuntime {
 }
 
 impl Default for CanvasRuntime {
+    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self::new(default_paint_plugins())
     }
 }
 
 impl CanvasRuntime {
+    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn new(registry: PaintPluginRegistry) -> Self {
         Self { registry }
     }
 
-    pub fn execute_paint_input(
-        &self,
-        document: &Document,
-        input: &PaintInput,
-    ) -> Vec<BitmapEdit> {
+    /// 入力や種別に応じて処理を振り分ける。
+    pub fn execute_paint_input(&self, document: &Document, input: &PaintInput) -> Vec<BitmapEdit> {
         let Some(resolved) = build_paint_context(document, input) else {
             return Vec::new();
         };

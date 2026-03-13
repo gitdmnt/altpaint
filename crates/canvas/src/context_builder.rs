@@ -2,7 +2,7 @@ use app_core::{Document, PaintInput, PaintPluginContext};
 
 use crate::ResolvedPaintContext;
 
-/// 入力内容に応じて必要な筆圧反映済みサイズを求める。
+/// 解決済みの サイズ for 入力 を返す。
 pub fn resolved_size_for_input(document: &Document, input: &PaintInput) -> u32 {
     match input {
         PaintInput::Stamp { pressure, .. } | PaintInput::StrokeSegment { pressure, .. } => {
@@ -14,7 +14,7 @@ pub fn resolved_size_for_input(document: &Document, input: &PaintInput) -> u32 {
     }
 }
 
-/// `Document` の pure state から描画プラグイン向け文脈を構築する。
+/// Paint コンテキスト を構築する。
 pub fn build_paint_context<'a>(
     document: &'a Document,
     input: &PaintInput,
@@ -50,6 +50,7 @@ pub fn build_paint_context<'a>(
     })
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn points_inside_active_panel(document: &Document, input: &PaintInput) -> bool {
     match input {
         PaintInput::Stamp { at, .. } | PaintInput::FloodFill { at } => {

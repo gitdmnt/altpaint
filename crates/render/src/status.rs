@@ -2,12 +2,12 @@ use desktop_support::FOOTER_HEIGHT;
 
 use crate::{PixelRect, measure_text_width};
 
-/// ステータス文字列に必要な横幅を計測する。
+/// 現在の measured ステータス 幅 を返す。
 pub fn measured_status_width(status_text: &str) -> usize {
     measure_text_width(status_text).saturating_add(16).max(1)
 }
 
-/// フッター右側のステータス表示領域を返す。
+/// ステータス テキスト 矩形 に必要な処理を行う。
 pub fn status_text_rect(
     window_width: usize,
     window_height: usize,
@@ -16,7 +16,7 @@ pub fn status_text_rect(
     status_text_bounds(window_width, window_height, canvas_host_rect, "")
 }
 
-/// 現在のステータス文字列に必要な最小表示領域を返す。
+/// 現在の ステータス テキスト 範囲 を返す。
 pub fn status_text_bounds(
     window_width: usize,
     window_height: usize,

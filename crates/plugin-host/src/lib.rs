@@ -28,6 +28,7 @@ struct RuntimeCollector {
 }
 
 impl RuntimeCollector {
+    /// 現在の clear を返す。
     fn clear(&mut self) {
         self.result = HandlerResult::default();
         self.current_request = None;
@@ -41,6 +42,7 @@ pub struct WasmPanelRuntime {
 }
 
 impl WasmPanelRuntime {
+    /// 読込 を計算して返す。
     pub fn load(path: impl AsRef<Path>) -> Result<Self, PluginHostError> {
         let path = path.as_ref().to_path_buf();
         let engine = Engine::default();
@@ -680,6 +682,7 @@ impl WasmPanelRuntime {
         })
     }
 
+    /// initialize に必要な処理を行う。
     pub fn initialize(
         &mut self,
         request: &PanelInitRequest,
@@ -697,6 +700,7 @@ impl WasmPanelRuntime {
         })
     }
 
+    /// Host snapshot を読み取り、表示用の状態へ同期する。
     pub fn sync_host(
         &mut self,
         state_snapshot: &Value,
@@ -723,6 +727,7 @@ impl WasmPanelRuntime {
         Ok(self.store.data().result.clone())
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
     pub fn handle_event(
         &mut self,
         request: &PanelEventRequest,
@@ -749,16 +754,19 @@ impl WasmPanelRuntime {
         Ok(self.store.data().result.clone())
     }
 
+    /// パス を計算して返す。
     pub fn path(&self) -> &Path {
         &self.path
     }
 
+    /// Supports 同期 ホスト かどうかを返す。
     pub fn supports_sync_host(&mut self) -> bool {
         self.instance
             .get_func(&mut self.store, PANEL_SYNC_HOST_EXPORT)
             .is_some()
     }
 
+    /// Has ハンドラ かどうかを返す。
     pub fn has_handler(&mut self, handler_name: &str) -> bool {
         let export_name = format!("panel_handle_{}", sanitize_handler_name(handler_name));
         self.instance
@@ -767,6 +775,7 @@ impl WasmPanelRuntime {
     }
 }
 
+/// 現在の値を 書き出し へ変換する。
 fn call_export(
     store: &mut Store<RuntimeCollector>,
     func: Func,
@@ -783,6 +792,9 @@ fn call_export(
     }
 }
 
+/// 入力や種別に応じて処理を振り分ける。
+///
+/// 値を生成できない場合は `None` を返します。
 fn read_utf8(caller: &mut Caller<'_, RuntimeCollector>, ptr: i32, len: i32) -> Option<String> {
     if ptr < 0 || len < 0 {
         return None;
@@ -795,6 +807,9 @@ fn read_utf8(caller: &mut Caller<'_, RuntimeCollector>, ptr: i32, len: i32) -> O
     std::str::from_utf8(bytes).ok().map(ToString::to_string)
 }
 
+/// 現在の値を メモリ へ変換する。
+///
+/// 値を生成できない場合は `None` を返します。
 fn current_memory(caller: &mut Caller<'_, RuntimeCollector>) -> Option<Memory> {
     match caller.get_export("memory") {
         Some(Extern::Memory(memory)) => Some(memory),
@@ -802,6 +817,7 @@ fn current_memory(caller: &mut Caller<'_, RuntimeCollector>) -> Option<Memory> {
     }
 }
 
+/// 状態 patches を現在の状態へ適用する。
 fn apply_state_patches(state: &mut Value, patches: &[StatePatch]) {
     if !state.is_object() {
         *state = Value::Object(Map::new());
@@ -811,6 +827,7 @@ fn apply_state_patches(state: &mut Value, patches: &[StatePatch]) {
     }
 }
 
+/// 現在の値を 状態 patch へ変換する。
 fn apply_state_patch(state: &mut Value, patch: &StatePatch) {
     let mut current = state;
     let mut segments = patch.path.split('.').peekable();
@@ -844,6 +861,9 @@ fn apply_state_patch(state: &mut Value, patch: &StatePatch) {
     }
 }
 
+/// 現在の lookup JSON パス を返す。
+///
+/// 値を生成できない場合は `None` を返します。
 fn lookup_json_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     let mut current = value;
     for segment in path.split('.') {
@@ -852,6 +872,7 @@ fn lookup_json_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     Some(current)
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn sanitize_handler_name(handler_name: &str) -> String {
     handler_name
         .chars()
@@ -972,6 +993,7 @@ mod tests {
         call $host_get_i32
         call $state_set_i32))"#;
 
+    /// runtime initializes 状態 and emits commands が期待どおりに動作することを検証する。
     #[test]
     fn runtime_initializes_state_and_emits_commands() {
         let wasm_path = write_temp_wat(SAMPLE_WAT);
@@ -1069,6 +1091,7 @@ mod tests {
         );
     }
 
+    /// runtime reads ホスト スナップショット through ホスト imports が期待どおりに動作することを検証する。
     #[test]
     fn runtime_reads_host_snapshot_through_host_imports() {
         let wasm_path = write_temp_wat(HOST_SYNC_WAT);
@@ -1100,6 +1123,7 @@ mod tests {
         assert!(synced.diagnostics.is_empty());
     }
 
+    /// Temp wat を保存先へ書き出す。
     fn write_temp_wat(contents: &str) -> PathBuf {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)

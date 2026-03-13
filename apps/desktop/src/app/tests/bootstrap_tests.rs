@@ -11,6 +11,7 @@ use super::{
 };
 use crate::app::DesktopApp;
 
+/// startup restores last プロジェクト from セッション パス が期待どおりに動作することを検証する。
 #[test]
 fn startup_restores_last_project_from_session_path() {
     let session_path = unique_test_path("bootstrap-session");
@@ -36,6 +37,7 @@ fn startup_restores_last_project_from_session_path() {
     let _ = std::fs::remove_file(project_path);
 }
 
+/// bootstrap saved プロジェクト can be loaded again が期待どおりに動作することを検証する。
 #[test]
 fn bootstrap_saved_project_can_be_loaded_again() {
     let project_path = unique_test_path("bootstrap-roundtrip-project");

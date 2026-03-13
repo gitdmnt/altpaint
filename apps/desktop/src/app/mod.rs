@@ -38,8 +38,8 @@ use self::io_state::DesktopIoState;
 pub(crate) use self::panel_dispatch::PanelDragState;
 use self::panel_dispatch::PanelInteractionState;
 use self::present_state::PresentFrameUpdate;
-use canvas::CanvasInputState;
 use crate::frame::DesktopLayout;
+use canvas::CanvasInputState;
 
 #[cfg(test)]
 static TEST_SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -78,7 +78,7 @@ pub(crate) struct DesktopApp {
 }
 
 impl DesktopApp {
-    /// 既定ダイアログ実装付きのアプリ本体を生成する。
+    /// 既定値を使って新しいインスタンスを生成する。
     pub(crate) fn new(project_path: PathBuf) -> Self {
         Self::new_with_dialogs_session_path_and_workspace_preset_path(
             project_path,
@@ -88,7 +88,7 @@ impl DesktopApp {
         )
     }
 
-    /// ダイアログ実装を差し替えてアプリ本体を生成する。
+    /// 既定値を使って新しいインスタンスを生成する。
     #[allow(dead_code)]
     pub(crate) fn new_with_dialogs(
         project_path: PathBuf,
@@ -102,7 +102,9 @@ impl DesktopApp {
         )
     }
 
-    /// ダイアログ実装・セッション保存先・workspace preset を差し替えて生成する。
+    /// 既定値を使って新しいインスタンスを生成する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn new_with_dialogs_session_path_and_workspace_preset_path(
         project_path: PathBuf,
         dialogs: Box<dyn DesktopDialogs>,
@@ -153,7 +155,7 @@ impl DesktopApp {
     }
 }
 
-/// テスト時はセッションファイルを一意パスへ逃がし、本番時は既定位置を使う。
+/// 既定の desktop セッション パス を返す。
 fn default_desktop_session_path() -> PathBuf {
     #[cfg(test)]
     {

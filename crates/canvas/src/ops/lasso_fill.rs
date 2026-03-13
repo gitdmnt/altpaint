@@ -2,6 +2,7 @@ use app_core::{BitmapEdit, PaintPluginContext, PanelLocalPoint};
 
 use super::{bitmap_from_points, composite, point_in_polygon};
 
+/// ピクセル走査を行い、投げ縄 塗りつぶし 編集 用のビットマップ結果を生成する。
 pub(crate) fn lasso_fill_edit(
     points: &[PanelLocalPoint],
     context: &PaintPluginContext<'_>,

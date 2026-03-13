@@ -10,6 +10,7 @@ use super::DesktopApp;
 use crate::app::TOOL_PALETTE_PANEL_ID;
 
 impl DesktopApp {
+    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_tool_catalog_service_request(
         &mut self,
         request: &ServiceRequest,
@@ -26,6 +27,9 @@ impl DesktopApp {
         Some(changed)
     }
 
+    /// 再読込 ツール カタログ を計算して返す。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn reload_tool_catalog(&mut self) -> bool {
         let changed = Self::reload_tool_catalog_into_document(&mut self.document);
         if changed {
@@ -36,6 +40,7 @@ impl DesktopApp {
         changed
     }
 
+    /// ペン presets を読み込み、必要に応じて整形して返す。
     pub(crate) fn import_pen_presets(&mut self) -> bool {
         let suggested = default_panel_dir()
             .parent()
@@ -47,6 +52,9 @@ impl DesktopApp {
         self.import_pen_presets_from_path(path)
     }
 
+    /// 入力や種別に応じて処理を振り分ける。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn import_pen_presets_from_path(&mut self, path: PathBuf) -> bool {
         match parse_pen_file(&path) {
             Ok(imported) => {
@@ -84,6 +92,7 @@ impl DesktopApp {
         }
     }
 
+    /// 現在の値を ペン 読み込み report へ変換する。
     fn update_pen_import_report(
         &mut self,
         path: &std::path::Path,
@@ -138,7 +147,9 @@ impl DesktopApp {
             .reconcile_runtime_panels(&self.panel_runtime);
     }
 
-    /// 既定ペンディレクトリからプリセットを再読込する。
+    /// 再読込 ペン presets を計算して返す。
+    ///
+    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn reload_pen_presets(&mut self) -> bool {
         let changed = Self::reload_pen_presets_into_document(&mut self.document);
         if changed {
@@ -149,7 +160,7 @@ impl DesktopApp {
         changed
     }
 
-    /// ドキュメントへ読み込んだペンプリセット群を適用する。
+    /// 再読込 ペン presets into ドキュメント を計算して返す。
     pub(crate) fn reload_pen_presets_into_document(document: &mut Document) -> bool {
         let (presets, diagnostics) = load_pen_directory(default_pen_dir());
         for diagnostic in diagnostics {

@@ -59,7 +59,9 @@ pub enum AttrValue {
 }
 
 impl AttrValue {
-    /// 文字列リテラルなら参照を返す。
+    /// 現在の値を string 形式へ変換する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn as_string(&self) -> Option<&str> {
         match self {
             Self::String(value) => Some(value.as_str()),
@@ -67,7 +69,9 @@ impl AttrValue {
         }
     }
 
-    /// 真偽値リテラルなら値を返す。
+    /// 現在の値を bool literal 形式へ変換する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     pub fn as_bool_literal(&self) -> Option<bool> {
         match self {
             Self::Bool(value) => Some(*value),

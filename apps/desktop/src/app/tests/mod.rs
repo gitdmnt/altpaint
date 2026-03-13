@@ -31,7 +31,7 @@ pub(crate) struct TestDialogs {
 }
 
 impl TestDialogs {
-    /// 次回の open ダイアログが返す単一パスを持つ実装を生成する。
+    /// 入力値を束ねた新しいインスタンスを生成する。
     fn with_open_path(path: PathBuf) -> Self {
         Self {
             open_paths: RefCell::new(vec![path]),
@@ -42,7 +42,7 @@ impl TestDialogs {
         }
     }
 
-    /// 次回の save ダイアログが返す単一パスを持つ実装を生成する。
+    /// 入力値を束ねた新しいインスタンスを生成する。
     fn with_save_path(path: PathBuf) -> Self {
         Self {
             open_paths: RefCell::new(Vec::new()),
@@ -53,7 +53,7 @@ impl TestDialogs {
         }
     }
 
-    /// 次回の workspace preset 保存ダイアログが返す単一パスを持つ実装を生成する。
+    /// 入力値を束ねた新しいインスタンスを生成する。
     fn with_workspace_save_path(path: PathBuf) -> Self {
         Self {
             open_paths: RefCell::new(Vec::new()),
@@ -64,7 +64,7 @@ impl TestDialogs {
         }
     }
 
-    /// 次回のペン読込ダイアログが返す単一パスを持つ実装を生成する。
+    /// 入力値を束ねた新しいインスタンスを生成する。
     fn with_pen_open_path(path: PathBuf) -> Self {
         Self {
             open_paths: RefCell::new(Vec::new()),
@@ -77,25 +77,35 @@ impl TestDialogs {
 }
 
 impl DesktopDialogs for TestDialogs {
-    /// 仕込んだ open パスを一件返す。
+    /// 現在の pick 開く プロジェクト パス を返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn pick_open_project_path(&self, _current_path: &Path) -> Option<PathBuf> {
         self.open_paths.borrow_mut().pop()
     }
 
-    /// 仕込んだ save パスを一件返す。
+    /// 現在の pick 保存 プロジェクト パス を返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn pick_save_project_path(&self, _current_path: &Path) -> Option<PathBuf> {
         self.save_paths.borrow_mut().pop()
     }
 
+    /// 現在の pick 保存 ワークスペース preset パス を返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn pick_save_workspace_preset_path(&self, _current_path: &Path) -> Option<PathBuf> {
         self.workspace_save_paths.borrow_mut().pop()
     }
 
+    /// 現在の pick 開く ペン パス を返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
     fn pick_open_pen_path(&self, _current_path: &Path) -> Option<PathBuf> {
         self.pen_open_paths.borrow_mut().pop()
     }
 
-    /// 表示要求されたエラー内容を記録する。
+    /// エラー を表示できるよう状態を更新する。
     fn show_error(&self, title: &str, message: &str) {
         self.errors
             .borrow_mut()
@@ -103,7 +113,7 @@ impl DesktopDialogs for TestDialogs {
     }
 }
 
-/// 差し替えダイアログを使う `DesktopApp` を生成する。
+/// test アプリ with dialogs を計算して返す。
 fn test_app_with_dialogs(dialogs: TestDialogs) -> DesktopApp {
     DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
         PathBuf::from("/tmp/altpaint-test.altp.json"),
@@ -113,6 +123,7 @@ fn test_app_with_dialogs(dialogs: TestDialogs) -> DesktopApp {
     )
 }
 
+/// 現在の test アプリ with dialogs and セッション パス を返す。
 fn test_app_with_dialogs_and_session_path(
     dialogs: TestDialogs,
     session_path: PathBuf,
@@ -125,6 +136,7 @@ fn test_app_with_dialogs_and_session_path(
     )
 }
 
+/// 現在の test アプリ with dialogs and ワークスペース preset パス を返す。
 fn test_app_with_dialogs_and_workspace_preset_path(
     dialogs: TestDialogs,
     workspace_preset_path: PathBuf,
@@ -137,12 +149,13 @@ fn test_app_with_dialogs_and_workspace_preset_path(
     )
 }
 
+/// 現在の unique test パス を返す。
 pub(crate) fn unique_test_path(name: &str) -> PathBuf {
     let id = TEST_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!("altpaint-{name}-{}-{id}.json", std::process::id()))
 }
 
-/// パネルツリー内に指定テキストが含まれるか再帰的に判定する。
+/// 入力や種別に応じて処理を振り分ける。
 fn tree_contains_text(nodes: &[panel_api::PanelNode], target: &str) -> bool {
     nodes.iter().any(|node| match node {
         panel_api::PanelNode::Text { text, .. } => text == target,
@@ -159,6 +172,7 @@ fn tree_contains_text(nodes: &[panel_api::PanelNode], target: &str) -> bool {
     })
 }
 
+/// 入力や種別に応じて処理を振り分ける。
 fn tree_contains_button_id(nodes: &[panel_api::PanelNode], target: &str) -> bool {
     nodes.iter().any(|node| match node {
         panel_api::PanelNode::Button { id, .. } => id == target,
