@@ -16,7 +16,12 @@ pub(crate) fn active_tool_name(tool: ToolKind) -> &'static str {
 }
 
 /// ホスト スナップショット を構築する。
-pub(crate) fn build_host_snapshot(document: &Document, can_undo: bool, can_redo: bool) -> Value {
+pub(crate) fn build_host_snapshot(
+    document: &Document,
+    can_undo: bool,
+    can_redo: bool,
+    active_jobs: usize,
+) -> Value {
     let active_tool_definition = document.active_tool_definition().cloned();
     let active_page = document.active_page();
     let active_panel = document.active_panel();
@@ -150,7 +155,7 @@ pub(crate) fn build_host_snapshot(document: &Document, can_undo: bool, can_redo:
             "blue": document.active_color.b,
         },
         "history": { "can_undo": can_undo, "can_redo": can_redo },
-        "jobs": { "active": 0, "queued": 0, "status": format!("idle / work={}", document.work.title) },
+        "jobs": { "active": active_jobs, "queued": 0, "status": if active_jobs == 0 { format!("idle / work={}", document.work.title) } else { format!("{active_jobs} job(s) running") } },
         "snapshot": { "storage_status": "pending" },
         "view": {
             "zoom": document.view_transform.zoom,

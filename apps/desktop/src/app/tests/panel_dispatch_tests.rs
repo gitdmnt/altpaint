@@ -24,7 +24,7 @@ fn panel_dispatch_keyboard_path_activates_save_action() {
         app.activate_focused_panel_control(),
         Some(Command::SaveProject)
     );
-    assert_eq!(app.io_state.pending_save_tasks.len(), 1);
+    assert_eq!(app.io_state.pending_jobs.len(), 1);
 }
 
 /// パネル drag ソース advances for レイヤー 一覧 drag が期待どおりに動作することを検証する。

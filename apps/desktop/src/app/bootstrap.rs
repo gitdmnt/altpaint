@@ -60,7 +60,7 @@ impl DesktopApp {
         let mut document = document;
         Self::reload_tool_catalog_into_document(&mut document);
         Self::reload_pen_presets_into_document(&mut document);
-        let _changed_panels = panel_runtime.sync_document(&document, false, false);
+        let _changed_panels = panel_runtime.sync_document(&document, false, false, 0);
         panel_presentation.reconcile_runtime_panels(&panel_runtime);
 
         BootstrapState {

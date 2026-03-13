@@ -38,9 +38,10 @@ cargo clippy --workspace --all-targets
 1. Create an Issue defining purpose, scope, and completion criteria
 2. Branch off `main` — never commit directly to `main`
 3. TDD first: write a failing test, then implement the minimum to pass
-4. After changes: `cargo test` + `cargo clippy --workspace --all-targets` must pass
-5. Update docs immediately after code changes
-6. End tasks with `ask_user` to wait for confirmation
+4. After Changes: `cargo test -p <crate-name>` must pass
+5. Then, `cargo test` + `cargo clippy --workspace --all-targets`
+6. Update docs immediately after code changes
+7. End tasks with `ask_user` to wait for confirmation
 
 ## Architecture Overview
 
@@ -56,23 +57,23 @@ altpaint is a desktop digital painting application. The workspace is a Rust 2024
 
 ### Key Crates
 
-| Crate | Responsibility |
-|-------|----------------|
-| `apps/desktop` | winit + wgpu host, `DesktopApp` orchestration, input routing, present |
-| `crates/app-core` | `Document`, domain model (`Work→Page→Panel→LayerNode`), `Command`, paint primitives |
-| `crates/canvas` | `CanvasRuntime`, gesture state machine, bitmap ops (stroke/fill/erase/lasso) |
-| `crates/render` | `FramePlan`/`CanvasPlan`/`OverlayPlan`/`PanelPlan`, dirty rect, CPU frame compose |
-| `crates/panel-runtime` | Panel registry, DSL/Wasm bridge, host snapshot sync, persistent config |
-| `crates/ui-shell` | Panel workspace layout, focus, hit-test, surface render |
-| `crates/panel-api` | Panel/host contract (`PanelPlugin`, `PanelEvent`, `HostAction`, `ServiceRequest`) |
-| `crates/plugin-host` | wasmtime-based Wasm panel runtime |
-| `crates/panel-dsl` | `.altp-panel` parser/validator/IR |
-| `crates/panel-schema` | Host↔Wasm shared DTOs |
-| `crates/plugin-sdk` + `plugin-macros` | Plugin author SDK and proc-macros |
-| `crates/storage` | SQLite project persistence, pen/tool catalog |
-| `crates/desktop-support` | Session, dialogs, paths, profiler, canvas templates |
-| `crates/workspace-persistence` | `WorkspaceUiState`, `PluginConfigs` shared DTOs |
-| `plugins/*` | 10 built-in panels (each has `.altp-panel` + Rust/Wasm source + compiled `.wasm`) |
+| Crate                                 | Responsibility                                                                      |
+| ------------------------------------- | ----------------------------------------------------------------------------------- |
+| `apps/desktop`                        | winit + wgpu host, `DesktopApp` orchestration, input routing, present               |
+| `crates/app-core`                     | `Document`, domain model (`Work→Page→Panel→LayerNode`), `Command`, paint primitives |
+| `crates/canvas`                       | `CanvasRuntime`, gesture state machine, bitmap ops (stroke/fill/erase/lasso)        |
+| `crates/render`                       | `FramePlan`/`CanvasPlan`/`OverlayPlan`/`PanelPlan`, dirty rect, CPU frame compose   |
+| `crates/panel-runtime`                | Panel registry, DSL/Wasm bridge, host snapshot sync, persistent config              |
+| `crates/ui-shell`                     | Panel workspace layout, focus, hit-test, surface render                             |
+| `crates/panel-api`                    | Panel/host contract (`PanelPlugin`, `PanelEvent`, `HostAction`, `ServiceRequest`)   |
+| `crates/plugin-host`                  | wasmtime-based Wasm panel runtime                                                   |
+| `crates/panel-dsl`                    | `.altp-panel` parser/validator/IR                                                   |
+| `crates/panel-schema`                 | Host↔Wasm shared DTOs                                                               |
+| `crates/plugin-sdk` + `plugin-macros` | Plugin author SDK and proc-macros                                                   |
+| `crates/storage`                      | SQLite project persistence, pen/tool catalog                                        |
+| `crates/desktop-support`              | Session, dialogs, paths, profiler, canvas templates                                 |
+| `crates/workspace-persistence`        | `WorkspaceUiState`, `PluginConfigs` shared DTOs                                     |
+| `plugins/*`                           | 10 built-in panels (each has `.altp-panel` + Rust/Wasm source + compiled `.wasm`)   |
 
 ### Current Responsibility Concentrations
 
@@ -97,10 +98,10 @@ Built-in plugins live in `plugins/<name>/` with `panel.altp-panel`, `src/lib.rs`
 
 ## Key Documentation
 
-| Document | When to read |
-|----------|-------------|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design principles, crate responsibilities, dependency direction |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Implementation phases and next priorities |
-| [docs/RENDERING-ENGINE.md](docs/RENDERING-ENGINE.md) | Dirty rect algorithm, frame composition, canvas rendering |
-| [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md) | Compile-time and runtime dependency graph |
-| [docs/SKETCH.md](docs/SKETCH.md) | Product vision, MVP scope, requirements background |
+| Document                                                   | When to read                                                    |
+| ---------------------------------------------------------- | --------------------------------------------------------------- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)               | Design principles, crate responsibilities, dependency direction |
+| [docs/ROADMAP.md](docs/ROADMAP.md)                         | Implementation phases and next priorities                       |
+| [docs/RENDERING-ENGINE.md](docs/RENDERING-ENGINE.md)       | Dirty rect algorithm, frame composition, canvas rendering       |
+| [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md) | Compile-time and runtime dependency graph                       |
+| [docs/SKETCH.md](docs/SKETCH.md)                           | Product vision, MVP scope, requirements background              |

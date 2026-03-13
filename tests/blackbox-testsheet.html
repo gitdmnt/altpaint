@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>altpaint ブラックボックステストシート</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #1a1a1e;
+      --bg2: #25252b;
+      --bg3: #2e2e36;
+      --border: #3a3a45;
+      --text: #e0e0e8;
+      --muted: #888898;
+      --pass: #4caf50;
+      --fail: #f44336;
+      --skip: #607d8b;
+      --fps-a: #4caf50;  /* 240+ 達成 */
+      --fps-b: #2196f3;  /* 120-240 十分 */
+      --fps-c: #ff9800;  /* 60-120 不満 */
+      --fps-d: #f44336;  /* <60 負荷 */
+      --accent: #7c9fff;
+    }
+
+    body {
+      font-family: "Segoe UI", "Hiragino Sans", sans-serif;
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    /* ── Header ── */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    header h1 { font-size: 16px; font-weight: 600; color: var(--accent); }
+
+    .stats {
+      display: flex;
+      gap: 14px;
+      font-size: 12px;
+    }
+    .stats span { display: flex; align-items: center; gap: 4px; }
+    .stat-pass { color: var(--pass); }
+    .stat-fail { color: var(--fail); }
+    .stat-skip { color: var(--skip); }
+    .stat-total { color: var(--muted); }
+
+    .progress-bar {
+      flex: 1;
+      min-width: 120px;
+      max-width: 240px;
+      height: 6px;
+      background: var(--bg3);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--pass);
+      transition: width .2s;
+    }
+
+    .header-actions { display: flex; gap: 8px; margin-left: auto; }
+
+    /* ── Buttons ── */
+    button {
+      cursor: pointer;
+      font-size: 12px;
+      padding: 5px 12px;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: var(--bg3);
+      color: var(--text);
+      transition: background .15s, border-color .15s;
+    }
+    button:hover { background: #3a3a45; border-color: var(--accent); }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    button.primary:hover { background: #6b8fe0; }
+
+    /* ── Main ── */
+    main { max-width: 1100px; margin: 0 auto; padding: 20px; }
+
+    .meta-row {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+      padding: 12px 16px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .meta-row label { font-size: 12px; color: var(--muted); }
+    .meta-row input[type="text"], .meta-row input[type="date"] {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    /* ── Group ── */
+    .group {
+      margin-bottom: 24px;
+    }
+    .group-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 6px 6px 0 0;
+      border-bottom: none;
+    }
+    .group-header h2 { font-size: 13px; font-weight: 600; }
+    .group-badge {
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      background: var(--bg3);
+      color: var(--muted);
+      margin-left: auto;
+    }
+
+    /* ── Table ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--border);
+      border-radius: 0 0 6px 6px;
+      overflow: hidden;
+    }
+    thead tr { background: var(--bg3); }
+    th {
+      text-align: left;
+      padding: 6px 10px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    tbody tr {
+      border-top: 1px solid var(--border);
+      background: var(--bg2);
+    }
+    tbody tr:hover { background: var(--bg3); }
+    td { padding: 7px 10px; vertical-align: middle; }
+
+    .td-name { min-width: 160px; font-weight: 500; }
+    .td-desc { color: var(--muted); font-size: 12px; min-width: 200px; }
+    .td-controls { white-space: nowrap; }
+    .td-notes { min-width: 150px; }
+
+    /* ── Radio toggle group (pass/fail/skip) ── */
+    .radio-group { display: flex; gap: 4px; }
+    .radio-group input[type="radio"] { display: none; }
+    .radio-group label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 10px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--bg3);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 500;
+      transition: background .12s, color .12s, border-color .12s;
+      user-select: none;
+    }
+    .radio-group input[type="radio"]:checked + label.lbl-pass {
+      background: var(--pass); color: #fff; border-color: var(--pass);
+    }
+    .radio-group input[type="radio"]:checked + label.lbl-fail {
+      background: var(--fail); color: #fff; border-color: var(--fail);
+    }
+    .radio-group input[type="radio"]:checked + label.lbl-skip {
+      background: var(--skip); color: #fff; border-color: var(--skip);
+    }
+
+    /* ── FPS radio group ── */
+    .radio-group input[type="radio"]:checked + label.lbl-fps-a {
+      background: var(--fps-a); color: #fff; border-color: var(--fps-a);
+    }
+    .radio-group input[type="radio"]:checked + label.lbl-fps-b {
+      background: var(--fps-b); color: #fff; border-color: var(--fps-b);
+    }
+    .radio-group input[type="radio"]:checked + label.lbl-fps-c {
+      background: var(--fps-c); color: #000; border-color: var(--fps-c);
+    }
+    .radio-group input[type="radio"]:checked + label.lbl-fps-d {
+      background: var(--fps-d); color: #fff; border-color: var(--fps-d);
+    }
+
+    /* ── Startup time ── */
+    .time-input-wrap { display: flex; align-items: center; gap: 8px; }
+    .time-input-wrap input[type="number"] {
+      width: 70px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    .time-unit { color: var(--muted); font-size: 12px; }
+    .time-input-wrap input[type="number"]:focus { outline: 2px solid var(--accent); border-color: transparent; }
+
+    /* ── Notes ── */
+    .notes-toggle {
+      font-size: 11px;
+      padding: 3px 8px;
+      color: var(--muted);
+      border-color: transparent;
+      background: transparent;
+    }
+    .notes-toggle:hover { color: var(--text); background: var(--bg3); border-color: var(--border); }
+    .notes-field {
+      display: none;
+      margin-top: 4px;
+    }
+    .notes-field.open { display: block; }
+    .notes-field textarea {
+      width: 100%;
+      min-width: 180px;
+      min-height: 48px;
+      max-height: 120px;
+      resize: vertical;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 5px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: inherit;
+    }
+    .notes-field textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+
+    /* ── Row highlight by status ── */
+    tbody tr[data-status="pass"] { border-left: 3px solid var(--pass); }
+    tbody tr[data-status="fail"] { border-left: 3px solid var(--fail); background: rgba(244,67,54,.05); }
+    tbody tr[data-status="skip"] { opacity: .7; }
+
+    /* ── JSON output section ── */
+    .json-section {
+      margin-top: 24px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .json-section h3 { font-size: 13px; margin-bottom: 10px; color: var(--accent); }
+    .json-section textarea {
+      width: 100%;
+      height: 220px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: "Cascadia Code", "Consolas", monospace;
+      font-size: 11px;
+      padding: 10px;
+      border-radius: 6px;
+      resize: vertical;
+    }
+    .json-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+    .sep { border-top: 1px solid var(--border); margin: 12px 0; }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 8px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>altpaint ブラックボックステストシート</h1>
+  <div class="stats">
+    <span class="stat-pass">✓ <span id="count-pass">0</span> 成功</span>
+    <span class="stat-fail">✗ <span id="count-fail">0</span> 失敗</span>
+    <span class="stat-skip">– <span id="count-skip">0</span> 未実施</span>
+    <span class="stat-total">計 <span id="count-total">0</span></span>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+  <div class="header-actions">
+    <button onclick="clearAll()">🗑 リセット</button>
+    <button onclick="loadFromJSON()" class="primary">📂 JSONを読込</button>
+    <button onclick="exportJSON()" class="primary">💾 JSONを出力</button>
+  </div>
+</header>
+
+<main>
+  <!-- メタ情報 -->
+  <div class="meta-row">
+    <label>実施日</label>
+    <input type="date" id="meta-date" />
+    <label>バージョン / ビルド</label>
+    <input type="text" id="meta-version" placeholder="commit hash or version" style="width:200px" />
+    <label>実施者</label>
+    <input type="text" id="meta-tester" placeholder="名前" style="width:120px" />
+    <label>環境</label>
+    <input type="text" id="meta-env" placeholder="OS / GPU / RAM" style="width:220px" />
+  </div>
+
+  <div id="groups-container"></div>
+
+  <!-- JSON出力 -->
+  <div class="json-section">
+    <h3>JSON 出力（Claude Code へ渡す）</h3>
+    <textarea id="json-output" readonly placeholder="「JSONを出力」ボタンを押すと生成されます"></textarea>
+    <div class="json-actions">
+      <button onclick="exportJSON()" class="primary">📋 JSON生成 &amp; コピー</button>
+      <button onclick="downloadJSON()">⬇ JSONをダウンロード</button>
+      <button onclick="loadFromJSON()">📂 JSONを読込（過去結果の復元）</button>
+    </div>
+    <p class="hint">
+      生成されたJSONをClaudeチャットに貼り付けるか、プロジェクトの <code>tests/test-results.json</code> に保存してください。
+    </p>
+  </div>
+</main>
+
+<script>
+// ──────────────────────────────────────────────
+// Test definition
+// ──────────────────────────────────────────────
+const GROUPS = [
+  {
+    id: 'startup',
+    title: '起動',
+    items: [
+      {
+        id: 'startup.time',
+        name: '起動時間',
+        desc: 'アプリ起動〜UI完全表示まで。scripts/measure-startup.ps1 で計測可能',
+        type: 'time',
+      },
+    ],
+  },
+  {
+    id: 'drawing',
+    title: '基本描画操作',
+    items: [
+      { id: 'drawing.pen',          name: 'ペンで描画',           desc: 'ペンツールで任意の線を引く' },
+      { id: 'drawing.eraser',       name: '消しゴムで消去',       desc: '消しゴムツールで描画内容を消す' },
+      { id: 'drawing.bucket',       name: 'バケツ塗りつぶし',     desc: 'バケツツールで領域塗りつぶし' },
+      { id: 'drawing.lasso_bucket', name: '囲って塗る（ラッソ）', desc: 'ラッソバケツで囲んだ範囲を塗る' },
+      { id: 'drawing.panel_rect',   name: 'コマ矩形描画',         desc: 'コマ矩形ツールで新しいコマを引く' },
+      { id: 'drawing.undo',         name: 'Undo（元に戻す）',      desc: 'ファイルパネルまたはショートカットでUndo' },
+      { id: 'drawing.redo',         name: 'Redo（やり直し）',      desc: 'ファイルパネルまたはショートカットでRedo' },
+    ],
+  },
+  {
+    id: 'performance',
+    title: 'パフォーマンス（FPS）',
+    items: [
+      { id: 'perf.fps_draw',        name: '描画時 FPS',           desc: '通常ペン描画中のフレームレート',     type: 'fps' },
+      { id: 'perf.fps_panel_move',  name: 'パネル移動時 FPS',     desc: 'UIパネルをドラッグ中のフレームレート', type: 'fps' },
+    ],
+  },
+  {
+    id: 'panel-app-actions',
+    title: 'ファイルパネル (builtin.app-actions)',
+    items: [
+      { id: 'app.new',              name: '新規ドキュメント作成', desc: '「＋ 新規」→ テンプレ選択 → 作成' },
+      { id: 'app.save',             name: '上書き保存',           desc: '💾 上書き保存ボタン' },
+      { id: 'app.save_as',          name: '別名保存',             desc: '📁 別名で保存ボタン' },
+      { id: 'app.open',             name: 'ファイルを開く',       desc: '📂 開く... ボタン' },
+      { id: 'app.undo_button',      name: 'Undo ボタン',          desc: 'パネル内 ↩ ボタン' },
+      { id: 'app.redo_button',      name: 'Redo ボタン',          desc: 'パネル内 ↪ ボタン' },
+      { id: 'app.shortcut_view',    name: 'ショートカット一覧表示', desc: '⌨ ショートカットトグル' },
+      { id: 'app.shortcut_capture', name: 'ショートカット再設定', desc: '「新規を再設定」などのキャプチャ動作' },
+    ],
+  },
+  {
+    id: 'panel-tool-palette',
+    title: 'ツールパネル (builtin.tool-palette)',
+    items: [
+      { id: 'tool.dropdown',         name: 'ツール選択ドロップダウン', desc: '登録ツールのドロップダウンで切替' },
+      { id: 'tool.btn_pen',          name: 'ペンボタン',            desc: '✏ ペン ボタン' },
+      { id: 'tool.btn_eraser',       name: '消しゴムボタン',        desc: '⌫ 消しゴム ボタン' },
+      { id: 'tool.btn_bucket',       name: '塗りつぶしボタン',      desc: '🪣 塗りつぶし ボタン' },
+      { id: 'tool.btn_lasso',        name: '囲って塗るボタン',      desc: '⬠ 囲って塗る ボタン' },
+      { id: 'tool.btn_panel_rect',   name: 'コマ矩形ボタン',        desc: '▭ コマ矩形 ボタン' },
+      { id: 'tool.pen_prev',         name: 'ペン切替（前へ）',      desc: '◀ 前へ ボタン' },
+      { id: 'tool.pen_next',         name: 'ペン切替（次へ）',      desc: '次へ ▶ ボタン' },
+      { id: 'tool.pen_reload',       name: 'ペン再読込',            desc: '⟳ ペン再読込' },
+      { id: 'tool.pen_import',       name: '外部ペン読み込み',      desc: '＋ 外部ペンを読み込み...' },
+      { id: 'tool.shortcut_toggle',  name: 'ショートカット表示',    desc: '⌨ ショートカットトグル' },
+      { id: 'tool.shortcut_capture', name: 'ショートカット再設定',  desc: 'ペン・消しゴムのキーキャプチャ' },
+    ],
+  },
+  {
+    id: 'panel-pen-settings',
+    title: '筆設定パネル (builtin.pen-settings)',
+    items: [
+      { id: 'pen.size_slider',    name: 'サイズスライダー',    desc: 'スライダー操作でサイズ変更' },
+      { id: 'pen.size_input',     name: 'サイズ数値入力',      desc: 'テキストフィールドで数値入力' },
+      { id: 'pen.pressure',       name: '筆圧トグル',          desc: '筆圧ボタンON/OFF' },
+      { id: 'pen.antialias',      name: 'なめらかトグル',      desc: 'なめらかボタンON/OFF' },
+      { id: 'pen.stabilization',  name: '手ぶれ補正スライダー', desc: 'スライダーで補正量を変更' },
+    ],
+  },
+  {
+    id: 'panel-color-palette',
+    title: 'カラーパレットパネル (builtin.color-palette)',
+    items: [
+      { id: 'color.wheel',      name: 'カラーホイール操作',  desc: 'HSV操作で色が変わることを確認' },
+      { id: 'color.preview',    name: 'カラープレビュー',    desc: 'プレビュー表示の色が選択色と一致' },
+      { id: 'color.hex_sync',   name: 'HEXカラー表示同期',   desc: 'ホイール変更でHEX値が更新される' },
+      { id: 'color.apply',      name: '描画色への反映',       desc: '選んだ色でペン描画されること' },
+    ],
+  },
+  {
+    id: 'panel-layers',
+    title: 'レイヤーパネル (builtin.layers-panel)',
+    items: [
+      { id: 'layer.add',        name: 'レイヤー追加',          desc: '＋ 追加ボタン' },
+      { id: 'layer.remove',     name: 'レイヤー削除',          desc: '－ 削除ボタン' },
+      { id: 'layer.rename',     name: 'レイヤー名変更',        desc: '名前入力フィールド' },
+      { id: 'layer.blend_mode', name: '合成モード変更',        desc: 'ドロップダウンで乗算・スクリーン等に切替' },
+      { id: 'layer.visibility', name: '表示切替',              desc: '👁 表示切替ボタン' },
+      { id: 'layer.mask',       name: 'マスク切替',            desc: '◫ マスク切替ボタン' },
+      { id: 'layer.reorder',    name: 'レイヤー並び替え',      desc: 'ドラッグ&ドロップで順序変更' },
+    ],
+  },
+  {
+    id: 'panel-view-controls',
+    title: '表示パネル (builtin.view-controls)',
+    items: [
+      { id: 'view.zoom',         name: 'ズームスライダー',       desc: 'スライダーでキャンバス拡大率変更' },
+      { id: 'view.pan_x',        name: '左右移動スライダー',     desc: 'スライダーでキャンバス横移動' },
+      { id: 'view.pan_y',        name: '上下移動スライダー',     desc: 'スライダーでキャンバス縦移動' },
+      { id: 'view.rotation',     name: '回転スライダー',         desc: 'スライダーでキャンバス回転' },
+      { id: 'view.panel_prev',   name: '前のコマへ移動',         desc: '← 前のコマ ボタン' },
+      { id: 'view.panel_next',   name: '次のコマへ移動',         desc: '次のコマ → ボタン' },
+      { id: 'view.panel_focus',  name: '選択中コマ中央表示',     desc: '選択中コマを中央表示 ボタン' },
+      { id: 'view.flip_x',       name: '左右反転',               desc: '↔ 左右反転ボタン' },
+      { id: 'view.flip_y',       name: '上下反転',               desc: '↕ 上下反転ボタン' },
+      { id: 'view.reset',        name: 'ビューリセット',          desc: '⟳ リセット ボタン' },
+    ],
+  },
+  {
+    id: 'panel-panel-list',
+    title: 'コマ一覧パネル (builtin.panel-list)',
+    items: [
+      { id: 'panel_list.add',     name: 'コマ追加',       desc: '＋ 追加 ボタン' },
+      { id: 'panel_list.remove',  name: 'コマ削除',       desc: '－ 削除 ボタン' },
+      { id: 'panel_list.prev',    name: '前のコマ選択',   desc: '← 前 ボタン' },
+      { id: 'panel_list.next',    name: '次のコマ選択',   desc: '次 → ボタン' },
+      { id: 'panel_list.focus',   name: '中央表示',       desc: '中央表示 ボタン' },
+      { id: 'panel_list.select',  name: 'リストから選択', desc: 'layer-list のクリックで選択切替' },
+    ],
+  },
+  {
+    id: 'panel-workspace-presets',
+    title: 'ワークスペースパネル (builtin.workspace-presets)',
+    items: [
+      { id: 'ws.select',   name: 'プリセット選択', desc: 'ドロップダウンでプリセット選択' },
+      { id: 'ws.load',     name: '読込',           desc: '読込 ボタン' },
+      { id: 'ws.save',     name: '保存',           desc: '保存 ボタン' },
+      { id: 'ws.export',   name: '書き出し',       desc: '書き出し ボタン' },
+      { id: 'ws.reload',   name: '再読込',         desc: '再読込 ボタン' },
+      { id: 'ws.id_edit',  name: 'ID 編集',        desc: 'ID入力フィールド' },
+      { id: 'ws.lbl_edit', name: '表示名 編集',    desc: '表示名入力フィールド' },
+    ],
+  },
+];
+
+// ──────────────────────────────────────────────
+// State
+// ──────────────────────────────────────────────
+const STATE_KEY = 'altpaint_testsheet_v1';
+
+function defaultState() {
+  const s = { meta: { date: today(), version: '', tester: '', env: '' }, items: {} };
+  GROUPS.forEach(g => g.items.forEach(item => {
+    if (item.type === 'time')  s.items[item.id] = { value: '', notes: '' };
+    else if (item.type === 'fps') s.items[item.id] = { rating: '', notes: '' };
+    else                       s.items[item.id] = { status: 'skip', notes: '' };
+  }));
+  return s;
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+let state = (() => {
+  try {
+    const raw = localStorage.getItem(STATE_KEY);
+    return raw ? { ...defaultState(), ...JSON.parse(raw) } : defaultState();
+  } catch { return defaultState(); }
+})();
+
+function persist() {
+  state.meta.date    = document.getElementById('meta-date')?.value    ?? state.meta.date;
+  state.meta.version = document.getElementById('meta-version')?.value ?? state.meta.version;
+  state.meta.tester  = document.getElementById('meta-tester')?.value  ?? state.meta.tester;
+  state.meta.env     = document.getElementById('meta-env')?.value     ?? state.meta.env;
+  localStorage.setItem(STATE_KEY, JSON.stringify(state));
+  updateStats();
+}
+
+// ──────────────────────────────────────────────
+// Render
+// ──────────────────────────────────────────────
+function render() {
+  const container = document.getElementById('groups-container');
+  container.innerHTML = '';
+
+  GROUPS.forEach(group => {
+    const groupEl = document.createElement('div');
+    groupEl.className = 'group';
+
+    // count items in group for badge
+    const total = group.items.length;
+    groupEl.innerHTML = `
+      <div class="group-header">
+        <h2>${group.title}</h2>
+        <span class="group-badge" id="badge-${group.id}">${total} 項目</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:170px">項目</th>
+            <th>説明</th>
+            <th>結果</th>
+            <th style="width:180px">備考</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-${group.id}"></tbody>
+      </table>
+    `;
+    container.appendChild(groupEl);
+
+    const tbody = groupEl.querySelector(`#tbody-${group.id}`);
+    group.items.forEach(item => {
+      tbody.appendChild(buildRow(item));
+    });
+  });
+
+  // Restore meta fields
+  document.getElementById('meta-date').value    = state.meta.date    || today();
+  document.getElementById('meta-version').value = state.meta.version || '';
+  document.getElementById('meta-tester').value  = state.meta.tester  || '';
+  document.getElementById('meta-env').value     = state.meta.env     || '';
+
+  // Listen on meta fields
+  ['meta-date','meta-version','meta-tester','meta-env'].forEach(id => {
+    document.getElementById(id).addEventListener('input', persist);
+  });
+
+  updateStats();
+}
+
+function buildRow(item) {
+  const tr = document.createElement('tr');
+  const s  = state.items[item.id] || {};
+
+  // Status attribute for row highlight
+  if (item.type !== 'time' && item.type !== 'fps') {
+    tr.dataset.status = s.status || 'skip';
+  }
+
+  let controlsHtml = '';
+
+  if (item.type === 'time') {
+    const val = s.value || '';
+    controlsHtml = `
+      <div class="time-input-wrap">
+        <input type="number" id="ctrl-${item.id}" value="${val}" min="0" step="0.1"
+          placeholder="0.0" oninput="onTimeInput('${item.id}', this.value)" />
+        <span class="time-unit">秒</span>
+        <span style="font-size:11px;color:var(--muted)">scripts/measure-startup.ps1 で計測</span>
+      </div>
+    `;
+  } else if (item.type === 'fps') {
+    const r = s.rating || '';
+    controlsHtml = buildFpsRadio(item.id, r);
+  } else {
+    const st = s.status || 'skip';
+    controlsHtml = buildCheckRadio(item.id, st);
+  }
+
+  const notesOpen = s.notes ? ' open' : '';
+  const notesVal  = escHtml(s.notes || '');
+
+  tr.innerHTML = `
+    <td class="td-name">${item.name}</td>
+    <td class="td-desc">${item.desc}</td>
+    <td class="td-controls">${controlsHtml}</td>
+    <td class="td-notes">
+      <button class="notes-toggle" onclick="toggleNotes('notes-${item.id}')">📝 備考</button>
+      <div class="notes-field${notesOpen}" id="notes-${item.id}">
+        <textarea rows="2" placeholder="自由記述（エラー内容、再現手順など）"
+          oninput="onNotes('${item.id}', this.value)">${notesVal}</textarea>
+      </div>
+    </td>
+  `;
+  return tr;
+}
+
+function buildCheckRadio(id, current) {
+  const opts = [
+    { val: 'pass', cls: 'lbl-pass', label: '✓ 成功' },
+    { val: 'fail', cls: 'lbl-fail', label: '✗ 失敗' },
+    { val: 'skip', cls: 'lbl-skip', label: '– 未実施' },
+  ];
+  return `<div class="radio-group">${opts.map(o => `
+    <input type="radio" name="r-${id}" id="r-${id}-${o.val}" value="${o.val}"
+      ${current === o.val ? 'checked' : ''} onchange="onCheck('${id}', '${o.val}')">
+    <label for="r-${id}-${o.val}" class="${o.cls}">${o.label}</label>
+  `).join('')}</div>`;
+}
+
+function buildFpsRadio(id, current) {
+  const opts = [
+    { val: '240+',    cls: 'lbl-fps-a', label: '240+ 達成' },
+    { val: '120-240', cls: 'lbl-fps-b', label: '120-240 十分' },
+    { val: '60-120',  cls: 'lbl-fps-c', label: '60-120 不満' },
+    { val: '<60',     cls: 'lbl-fps-d', label: '<60 負荷' },
+    { val: 'skip',    cls: 'lbl-skip',  label: '– 未実施' },
+  ];
+  return `<div class="radio-group">${opts.map(o => `
+    <input type="radio" name="r-${id}" id="r-${id}-${o.val.replace(/[^a-z0-9]/g,'-')}" value="${o.val}"
+      ${current === o.val ? 'checked' : ''} onchange="onFps('${id}', '${o.val}')">
+    <label for="r-${id}-${o.val.replace(/[^a-z0-9]/g,'-')}" class="${o.cls}">${o.label}</label>
+  `).join('')}</div>`;
+}
+
+// ──────────────────────────────────────────────
+// Event handlers
+// ──────────────────────────────────────────────
+function onCheck(id, val) {
+  state.items[id] = { ...state.items[id], status: val };
+  const row = document.querySelector(`#r-${id}-pass`)?.closest('tr');
+  if (row) row.dataset.status = val;
+  persist();
+}
+
+function onFps(id, val) {
+  state.items[id] = { ...state.items[id], rating: val };
+  persist();
+}
+
+function onTimeInput(id, val) {
+  state.items[id] = { ...state.items[id], value: val };
+  persist();
+}
+
+function onNotes(id, val) {
+  state.items[id] = { ...state.items[id], notes: val };
+  persist();
+}
+
+function toggleNotes(noteId) {
+  document.getElementById(noteId)?.classList.toggle('open');
+}
+
+// ──────────────────────────────────────────────
+// Stats
+// ──────────────────────────────────────────────
+function updateStats() {
+  let pass = 0, fail = 0, skip = 0, total = 0;
+  GROUPS.forEach(g => g.items.forEach(item => {
+    total++;
+    const s = state.items[item.id] || {};
+    if (item.type === 'time') {
+      if (s.value) pass++; else skip++;
+    } else if (item.type === 'fps') {
+      if (!s.rating || s.rating === 'skip') skip++;
+      else if (s.rating === '<60') fail++;
+      else pass++;
+    } else {
+      if (s.status === 'pass') pass++;
+      else if (s.status === 'fail') fail++;
+      else skip++;
+    }
+  }));
+
+  document.getElementById('count-pass').textContent  = pass;
+  document.getElementById('count-fail').textContent  = fail;
+  document.getElementById('count-skip').textContent  = skip;
+  document.getElementById('count-total').textContent = total;
+
+  const tested = pass + fail;
+  const pct = total ? (tested / total * 100) : 0;
+  document.getElementById('progress-fill').style.width = pct + '%';
+}
+
+// ──────────────────────────────────────────────
+// JSON export / import
+// ──────────────────────────────────────────────
+function buildResultJSON() {
+  const results = [];
+  GROUPS.forEach(g => g.items.forEach(item => {
+    const s = state.items[item.id] || {};
+    const entry = { id: item.id, group: g.id, name: item.name, type: item.type || 'check' };
+    if (item.type === 'time')       entry.seconds = parseFloat(s.value) || null;
+    else if (item.type === 'fps')   entry.fps_rating = s.rating || 'skip';
+    else                            entry.status = s.status || 'skip';
+    if (s.notes) entry.notes = s.notes;
+    results.push(entry);
+  }));
+  return {
+    schema: 'altpaint-blackbox-testsheet/1',
+    meta: {
+      date:    state.meta.date    || '',
+      version: state.meta.version || '',
+      tester:  state.meta.tester  || '',
+      env:     state.meta.env     || '',
+    },
+    summary: {
+      total:  document.getElementById('count-total').textContent,
+      pass:   document.getElementById('count-pass').textContent,
+      fail:   document.getElementById('count-fail').textContent,
+      skip:   document.getElementById('count-skip').textContent,
+    },
+    results,
+  };
+}
+
+function exportJSON() {
+  persist();
+  const json = JSON.stringify(buildResultJSON(), null, 2);
+  document.getElementById('json-output').value = json;
+  navigator.clipboard?.writeText(json).then(() => {
+    alert('JSONをクリップボードにコピーしました。\nClaudeチャットに貼り付けるか tests/test-results.json に保存してください。');
+  }).catch(() => {
+    alert('JSON生成完了。テキストエリアから手動でコピーしてください。');
+  });
+}
+
+function downloadJSON() {
+  persist();
+  const json = JSON.stringify(buildResultJSON(), null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `test-results-${state.meta.date || today()}.json`;
+  a.click();
+}
+
+function loadFromJSON() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (data.meta)    Object.assign(state.meta, data.meta);
+        if (data.results) {
+          data.results.forEach(r => {
+            state.items[r.id] = state.items[r.id] || {};
+            if (r.type === 'time')     state.items[r.id].value   = r.seconds != null ? String(r.seconds) : '';
+            else if (r.type === 'fps') state.items[r.id].rating  = r.fps_rating || 'skip';
+            else                       state.items[r.id].status  = r.status     || 'skip';
+            if (r.notes)               state.items[r.id].notes   = r.notes;
+          });
+        }
+        localStorage.setItem(STATE_KEY, JSON.stringify(state));
+        render();
+        alert('JSONを読み込みました。');
+      } catch (err) {
+        alert('JSONの解析に失敗しました: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function clearAll() {
+  if (!confirm('すべての結果をリセットしますか？')) return;
+  state = defaultState();
+  localStorage.removeItem(STATE_KEY);
+  render();
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ──────────────────────────────────────────────
+// Boot
+// ──────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>

@@ -179,7 +179,7 @@ pub trait PanelPlugin {
     fn title(&self) -> &'static str;
 
     /// 更新 に必要な処理を行う。
-    fn update(&mut self, _document: &Document, _can_undo: bool, _can_redo: bool) {}
+    fn update(&mut self, _document: &Document, _can_undo: bool, _can_redo: bool, _active_jobs: usize) {}
 
     /// commands を計算して返す。
     fn commands(&mut self) -> Vec<Command> {

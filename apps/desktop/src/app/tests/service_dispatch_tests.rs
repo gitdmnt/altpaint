@@ -37,7 +37,7 @@ fn request_service_save_project_enqueues_background_task() {
         )))
     );
 
-    assert_eq!(app.io_state.pending_save_tasks.len(), 1);
+    assert_eq!(app.io_state.pending_jobs.len(), 1);
 }
 
 /// 要求 サービス 保存 ワークスペース preset persists カタログ が期待どおりに動作することを検証する。

@@ -116,7 +116,7 @@ fn keyboard_panel_focus_can_activate_app_action() {
         app.activate_focused_panel_control(),
         Some(Command::SaveProject)
     );
-    assert_eq!(app.io_state.pending_save_tasks.len(), 1);
+    assert_eq!(app.io_state.pending_jobs.len(), 1);
 }
 
 /// 解析 ドキュメント サイズ accepts common formats が期待どおりに動作することを検証する。

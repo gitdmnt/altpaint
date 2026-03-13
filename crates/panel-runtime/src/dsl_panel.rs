@@ -162,8 +162,8 @@ impl PanelPlugin for DslPanelPlugin {
     }
 
     /// 更新 に必要な処理を行う。
-    fn update(&mut self, document: &Document, can_undo: bool, can_redo: bool) {
-        self.host_snapshot = build_host_snapshot(document, can_undo, can_redo);
+    fn update(&mut self, document: &Document, can_undo: bool, can_redo: bool, active_jobs: usize) {
+        self.host_snapshot = build_host_snapshot(document, can_undo, can_redo, active_jobs);
         self.sync_host_state();
     }
 

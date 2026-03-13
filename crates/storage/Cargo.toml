@@ -17,3 +17,4 @@ sha2 = "0.10"
 thiserror.workspace = true
 workspace-persistence = { path = "../workspace-persistence" }
 zstd = "0.13"
+png = "0.17"

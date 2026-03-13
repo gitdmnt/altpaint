@@ -1,4 +1,4 @@
-//! OS ダイアログとパス正規化を担当する補助モジュール。
+﻿//! OS ダイアログとパス正規化を担当する補助モジュール。
 //!
 //! デスクトップ本体からネイティブダイアログ依存を切り離し、
 //! テストでは差し替え可能な境界として扱う。
@@ -23,6 +23,12 @@ pub trait DesktopDialogs {
     ///
     /// 値を生成できない場合は `None` を返します。
     fn pick_open_pen_path(&self, current_path: &Path) -> Option<PathBuf>;
+    /// 画像書き出し先パスを選択するダイアログを表示する。
+    ///
+    /// 値を生成できない場合は None を返します。
+    fn pick_save_image_path(&self, _current_path: &Path) -> Option<PathBuf> {
+        None
+    }
     /// エラー を表示できるよう状態を更新する。
     fn show_error(&self, title: &str, message: &str);
 }
@@ -81,6 +87,19 @@ impl DesktopDialogs for NativeDesktopDialogs {
                 &["*.altp-pen.json", "*.abr", "*.sut", "*.gbr", "*.json"],
                 "altpaint / Photoshop / Clip Studio / GIMP pen",
             )),
+        )
+        .map(PathBuf::from)
+    }
+
+    /// 画像書き出し先パスを選択するダイアログを表示する。
+    ///
+    /// 値を生成できない場合は `None` を返します。
+    fn pick_save_image_path(&self, current_path: &Path) -> Option<PathBuf> {
+        tinyfiledialogs::save_file_dialog_with_filter(
+            "Export Image",
+            &current_path.to_string_lossy(),
+            &["*.png"],
+            "PNG image",
         )
         .map(PathBuf::from)
     }

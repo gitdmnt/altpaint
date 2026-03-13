@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use desktop_support::{DesktopDialogs, DesktopSessionState, save_session_state};
 
 use super::DesktopApp;
-use super::background_tasks::PendingSaveTask;
+use super::background_tasks::BackgroundJob;
 
 /// プロジェクト I/O とセッション永続化に関わる状態を保持する。
 pub(crate) struct DesktopIoState {
@@ -13,7 +13,7 @@ pub(crate) struct DesktopIoState {
     pub(crate) session_path: PathBuf,
     pub(crate) workspace_preset_path: PathBuf,
     pub(crate) dialogs: Box<dyn DesktopDialogs>,
-    pub(crate) pending_save_tasks: Vec<PendingSaveTask>,
+    pub(crate) pending_jobs: Vec<BackgroundJob>,
 }
 
 impl DesktopIoState {
@@ -29,7 +29,7 @@ impl DesktopIoState {
             session_path,
             workspace_preset_path,
             dialogs,
-            pending_save_tasks: Vec::new(),
+            pending_jobs: Vec::new(),
         }
     }
 }

@@ -1,5 +1,6 @@
 //! host service request と補助的な状態同期処理を扱う。
 
+mod export;
 mod project_io;
 mod tool_catalog;
 mod workspace_io;
@@ -39,6 +40,9 @@ impl DesktopApp {
             return changed;
         }
         if let Some(changed) = self.handle_history_service_request(&request) {
+            return changed;
+        }
+        if let Some(changed) = self.handle_export_service_request(&request) {
             return changed;
         }
         false

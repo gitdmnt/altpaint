@@ -303,7 +303,9 @@
 | 4 | plugin-first 化の本格化 | 2026-03-12 |
 | 5 | `render` 中心の画面生成整理 | 2026-03-12 |
 | 6 | API 名称と物理配置の整理 | 2026-03-12 |
-| 7 | 再編後の機能拡張 | **進行中** (2026-03-13〜) |
+| 7-0〜7-2b | Undo/Redo 基盤 | 2026-03-13 |
+| 7-3 | PNG export・汎用ジョブ基盤 | 2026-03-13 |
+| 7 | 再編後の機能拡張（進行中） | **進行中** (2026-03-13〜) |
 
 ## フェーズ7 進行状況 (2026-03-13 時点)
 
@@ -330,11 +332,19 @@
   - `history::undo()` / `history::redo()` descriptor builder 追加
   - `snapshot::create()` / `snapshot::restore()` / `export_image::export()` descriptor builder 追加
 
+### 実装済み（フェーズ7-3: PNG export・汎用バックグラウンドジョブ基盤）
+
+- `crates/storage/src/export.rs` — `export_active_panel_as_png` PNG 書き出し関数（テスト 3 件）
+- `apps/desktop/src/app/background_tasks.rs` — `BackgroundJob`/`JobKind` 汎用ジョブ型
+- `apps/desktop/src/app/services/export.rs` — `export.image` service handler
+- `crates/panel-api/src/lib.rs` — `PanelPlugin::update` に `active_jobs: usize` 追加
+- `crates/panel-runtime/src/host_sync.rs` — host snapshot `jobs.active` を実値に更新
+- `crates/panel-runtime/src/registry.rs` — `sync_document` 系に `active_jobs` 追加
+- `crates/desktop-support/src/dialogs.rs` — `pick_save_image_path` default メソッド追加
+
 ### 未実装（フェーズ7残項目）
 
-- `canvas::CanvasRuntime` への undo 接続（`HISTORY_UNDO` → replay 経路）
-- `apps/desktop` 側の `HISTORY_UNDO` / `HISTORY_REDO` service handler
-- export job / snapshot handler（フェーズ7-3 / 7-4）
+- export job / snapshot handler（フェーズ7-4）
 - tool child 構成 / text-flow / 高度な tool plugin 構成
 
 ## 目標アーキテクチャとの残差

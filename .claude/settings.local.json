@@ -9,7 +9,11 @@
       "Bash(cargo build:*)",
       "Bash(cargo test:*)",
       "Bash(cargo clippy:*)",
-      "Bash(echo \"EXIT: $?\")"
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(for f:*)",
+      "Bash(do echo:*)",
+      "Read(//d/naoto/programming/altpaint/**)",
+      "Bash(done)"
     ]
   }
 }

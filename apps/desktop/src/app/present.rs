@@ -41,10 +41,14 @@ impl DesktopApp {
             profiler.measure("ui_update", || {
                 let can_undo = self.history.can_undo();
                 let can_redo = self.history.can_redo();
+                let active_jobs = self.io_state.pending_jobs.len();
                 if self.ui_sync_panel_ids.is_empty() {
-                    let changed =
-                        self.panel_runtime
-                            .sync_document(&self.document, can_undo, can_redo);
+                    let changed = self.panel_runtime.sync_document(
+                        &self.document,
+                        can_undo,
+                        can_redo,
+                        active_jobs,
+                    );
                     self.panel_presentation
                         .reconcile_runtime_panels(&self.panel_runtime);
                     if !changed.is_empty() {
@@ -57,6 +61,7 @@ impl DesktopApp {
                         &self.ui_sync_panel_ids,
                         can_undo,
                         can_redo,
+                        active_jobs,
                     );
                     self.panel_presentation
                         .reconcile_runtime_panels(&self.panel_runtime);
