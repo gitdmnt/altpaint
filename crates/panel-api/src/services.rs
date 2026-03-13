@@ -35,6 +35,14 @@ pub mod names {
     pub const PANEL_NAV_SELECT_NEXT: &str = "panel_nav.select_next";
     pub const PANEL_NAV_SELECT_PREVIOUS: &str = "panel_nav.select_previous";
     pub const PANEL_NAV_FOCUS_ACTIVE: &str = "panel_nav.focus_active";
+
+    pub const HISTORY_UNDO: &str = "history.undo";
+    pub const HISTORY_REDO: &str = "history.redo";
+
+    pub const SNAPSHOT_CREATE: &str = "snapshot.create";
+    pub const SNAPSHOT_RESTORE: &str = "snapshot.restore";
+
+    pub const EXPORT_IMAGE: &str = "export.image";
 }
 
 #[derive(Debug, Clone, PartialEq)]

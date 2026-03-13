@@ -25,7 +25,7 @@ use std::path::PathBuf;
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use app_core::{CanvasPoint, Document};
+use app_core::{CanvasPoint, CommandHistory, Document};
 use desktop_support::{
     DesktopDialogs, NativeDesktopDialogs, WorkspacePresetCatalog, default_workspace_preset_path,
 };
@@ -66,6 +66,7 @@ pub(crate) struct DesktopApp {
     pending_canvas_background_dirty_rect: Option<crate::frame::Rect>,
     pending_canvas_host_dirty_rect: Option<crate::frame::Rect>,
     pending_canvas_transform_update: bool,
+    pub(crate) history: CommandHistory,
     pub(crate) panel_interaction: PanelInteractionState,
     hover_canvas_position: Option<CanvasPoint>,
     needs_ui_sync: bool,
@@ -136,6 +137,7 @@ impl DesktopApp {
             pending_canvas_background_dirty_rect: None,
             pending_canvas_host_dirty_rect: None,
             pending_canvas_transform_update: false,
+            history: CommandHistory::new(),
             panel_interaction: PanelInteractionState::default(),
             hover_canvas_position: None,
             needs_ui_sync: true,

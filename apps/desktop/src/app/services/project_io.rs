@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use app_core::{Command, PaintInput};
+use app_core::{Command, HistoryEntry, PaintInput};
 use desktop_support::normalize_project_path;
 use panel_api::{ServiceRequest, services::names};
 use storage::load_project_from_path;
@@ -35,12 +35,17 @@ impl DesktopApp {
         Some(changed)
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
+    /// 描画入力を実行してドキュメントへ適用し、操作を履歴へ積む。
     pub(crate) fn execute_paint_input(&mut self, input: PaintInput) -> bool {
-        let edits = self
+        let Some(result) = self
             .paint_runtime
-            .execute_paint_input(&self.document, &input);
-        self.apply_bitmap_edits(edits)
+            .execute_paint_input(&self.document, &input)
+        else {
+            return false;
+        };
+        self.history
+            .push(HistoryEntry::BitmapOp(result.record));
+        self.apply_bitmap_edits(result.edits)
     }
 
     /// プロジェクト to 現在 パス を保存先へ書き出す。

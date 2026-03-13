@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、2026-03-12 時点の `altpaint` が**コード上で実際にどう分割され、どこに責務が集中しているか**を整理するための現況文書である。
+この文書は、2026-03-13 時点の `altpaint` が**コード上で実際にどう分割され、どこに責務が集中しているか**を整理するための現況文書である。
 
 この文書は理想図ではない。現状の事実をまとめる。
 
@@ -46,10 +46,14 @@
 - `src/runtime.rs`
 - `src/runtime/pointer.rs`
 - `src/runtime/keyboard.rs`
+- `src/runtime/tests.rs`
 - `src/app/mod.rs`
 - `src/app/bootstrap.rs`
 - `src/app/command_router.rs`
 - `src/app/panel_dispatch.rs`
+- `src/app/panel_config_sync.rs`
+- `src/app/io_state.rs`
+- `src/app/present_state.rs`
 - `src/app/services/mod.rs`
 - `src/app/services/project_io.rs`
 - `src/app/services/workspace_io.rs`
@@ -85,10 +89,13 @@
 主なモジュール:
 
 - `src/command.rs`
+- `src/coordinates.rs`
 - `src/document.rs`
 - `src/document/bitmap.rs`
 - `src/document/layer_ops.rs`
 - `src/document/pen_state.rs`
+- `src/document/tests.rs`
+- `src/error.rs`
 - `src/painting.rs`
 - `src/workspace.rs`
 
@@ -96,6 +103,8 @@
 
 - ドメイン純度は高いが、`Document` が tool catalog や pen runtime state を広く持っている。
 - paint context 構築そのものは `canvas::context_builder` へ移った。
+- `coordinates.rs` が `WindowPoint` などの座標型、`MergeInSpace` / `ClampToCanvasBounds` トレイトを持つ。
+- `error.rs` が `CoreError` を持つ（現状は `InvalidDocumentState` のみ）。
 
 ### 3. `crates/canvas`
 
@@ -113,13 +122,22 @@
 主なモジュール:
 
 - `src/runtime.rs`
+- `src/context.rs`
 - `src/context_builder.rs`
+- `src/registry.rs`
 - `src/input_state.rs`
 - `src/view_mapping.rs`
 - `src/gesture.rs`
 - `src/render_bridge.rs`
 - `src/plugins/builtin_bitmap.rs`
 - `src/ops/`
+- `src/tests/`
+
+補足:
+
+- `context.rs` が `ResolvedPaintContext` を持ち、`context_builder` の解決結果を型で表す。
+- `registry.rs` が `PaintPluginRegistry` 型エイリアスと `default_paint_plugins()` を持ち、plugin 登録を `runtime.rs` から分離した。
+- `src/tests/` 配下に context / fill / input / stamp / stroke の境界テストが揃っている。
 
 ### 4. `crates/render`
 
@@ -400,6 +418,7 @@ workspace member として存在するもの:
 - `apps/desktop/src/app/services/workspace_io.rs`: workspace preset save/apply/export service handler を持つ
 - `apps/desktop/src/app/services/tool_catalog.rs`: tool / pen reload と pen import service handler を持つ
 - `apps/desktop/src/app/present_state.rs`: dirty rect、present flag、UI 再同期要求が集約される
+- `apps/desktop/src/app/panel_config_sync.rs`: panel persistent config への同期と canvas template refresh が集約される
 - `apps/desktop/src/app/input.rs`: window→canvas 変換と panel/canvas ルーティングが残る
 - `apps/desktop/src/app/present.rs`: panel surface refresh、`FramePlan` 組み立て、present 指示が集中する
 
@@ -487,13 +506,19 @@ panel host API として固定した。
 - `interaction.rs`: canvas 入力、panel 入力、drag、color wheel、present 前提の振る舞いをまとめて抱えている
 - `panel_dispatch_tests.rs`: panel dispatch と drag source 更新の回帰を分離し始めた
 - `persistence.rs`: project save/load、workspace layout 復元、plugin config 永続化、差分 present 検証をまとめて抱えている
+- `service_dispatch_tests.rs`: service request 経由の new document / save project / workspace preset save / pen reload の回帰を分離した
+
+### `apps/desktop/src/runtime/tests.rs`
+
+- `DesktopRuntime` を通じた OS 入力ルーティングの回帰テストを持つ
 
 今後 crate / module 単位へ移したい代表例:
 
-- canvas 座標変換、eraser/stroke/fill の期待値テスト → `crates/canvas` に移転済み（フェーズ2完了）
+- canvas 座標変換、eraser/stroke/fill の期待値テスト → `crates/canvas/src/tests/` に移転済み（フェーズ2完了）
 - panel dispatch、host action 適用、focus/control activation → `panel_dispatch_tests.rs` / `command_router_tests.rs` として分割済み（フェーズ1完了）
 - dirty rect と panel 差分 compose の検証 → `crates/render/src/tests/*` へ移転済み（フェーズ5完了）
 - workspace preset config 同期や bootstrap 復元 → `bootstrap_tests.rs` として分割済み（フェーズ1完了）
+- service request 経由の I/O 操作 → `service_dispatch_tests.rs` として分割済み（フェーズ4補足)
 
 ### `crates/ui-shell/src/tests.rs`
 

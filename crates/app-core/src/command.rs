@@ -116,4 +116,8 @@ pub enum Command {
     ImportPenPresets,
     /// 指定パスの外部ペンファイルを読み込む。
     ImportPenPresetsFromPath { path: String },
+    /// 直前の操作を元に戻す。
+    Undo,
+    /// 元に戻した操作をやり直す。
+    Redo,
 }

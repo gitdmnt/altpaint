@@ -6,7 +6,7 @@
 use std::iter::Peekable;
 use std::str::Chars;
 
-use crate::{BitmapEdit, CanvasDirtyRect, ClampToCanvasBounds, MergeInSpace};
+use crate::{BitmapEdit, CanvasDirtyRect, ClampToCanvasBounds, MergeInSpace, PanelId};
 
 use super::{BlendMode, CanvasBitmap, Document, LayerMask, LayerNodeId, Panel, RasterLayer};
 
@@ -54,6 +54,63 @@ impl Document {
         }
 
         None
+    }
+
+    /// 指定 `PanelId` のページ・パネルインデックスを返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
+    pub fn find_panel_location(&self, panel_id: PanelId) -> Option<(usize, usize)> {
+        for (page_index, page) in self.work.pages.iter().enumerate() {
+            for (panel_index, panel) in page.panels.iter().enumerate() {
+                if panel.id == panel_id {
+                    return Some((page_index, panel_index));
+                }
+            }
+        }
+        None
+    }
+
+    /// 指定 panel の指定 layer をビットマップを透明にリセットし、パネル合成も更新する。
+    pub fn reset_panel_layer_to_transparent(&mut self, panel_id: PanelId, layer_index: usize) {
+        let Some((page_idx, panel_idx)) = self.find_panel_location(panel_id) else {
+            return;
+        };
+        let panel = &mut self.work.pages[page_idx].panels[panel_idx];
+        if let Some(layer) = panel.layers.get_mut(layer_index) {
+            let (w, h) = (layer.bitmap.width, layer.bitmap.height);
+            layer.bitmap = CanvasBitmap::transparent(w, h);
+        }
+        let new_bitmap = composite_panel_bitmap(&self.work.pages[page_idx].panels[panel_idx]);
+        self.work.pages[page_idx].panels[panel_idx].bitmap = new_bitmap;
+    }
+
+    /// 指定 panel の指定 layer に `BitmapEdit` を適用し、パネル合成も更新する。
+    pub fn apply_bitmap_edits_to_panel_layer(
+        &mut self,
+        panel_id: PanelId,
+        layer_index: usize,
+        edits: &[BitmapEdit],
+    ) -> Option<CanvasDirtyRect> {
+        if edits.is_empty() {
+            return None;
+        }
+        let (page_idx, panel_idx) = self.find_panel_location(panel_id)?;
+        let panel_bounds = self.work.pages[page_idx].panels[panel_idx].bounds;
+        let (page_width, page_height) = {
+            let page = &self.work.pages[page_idx];
+            (page.width, page.height)
+        };
+        let panel = &mut self.work.pages[page_idx].panels[panel_idx];
+        // layer_index override: set active_layer_index temporarily
+        let saved_index = panel.active_layer_index;
+        panel.active_layer_index = layer_index.min(panel.layers.len().saturating_sub(1));
+        let dirty = apply_bitmap_edits(panel, edits);
+        if let Some(dirty) = dirty {
+            composite_panel_bitmap_region(panel, dirty);
+        }
+        panel.active_layer_index = saved_index;
+        let dirty = dirty?;
+        Some(local_dirty_to_page_dirty(dirty, panel_bounds, page_width, page_height))
     }
 
     /// Raster レイヤー を追加する。

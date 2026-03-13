@@ -7,6 +7,7 @@ pub mod command;
 pub mod coordinates;
 pub mod document;
 pub mod error;
+pub mod history;
 pub mod painting;
 pub mod workspace;
 
@@ -23,8 +24,10 @@ pub use document::{
     ToolKind, ToolSettingControl, ToolSettingDefinition, Work, WorkId,
 };
 pub use error::CoreError;
+pub use history::{CommandHistory, DEFAULT_HISTORY_CAPACITY, HistoryEntry};
 pub use painting::{
-    BitmapComposite, BitmapCompositor, BitmapEdit, PaintInput, PaintPlugin, PaintPluginContext,
+    BitmapComposite, BitmapCompositor, BitmapEdit, BitmapEditOperation, BitmapEditRecord,
+    PaintInput, PaintPlugin, PaintPluginContext,
 };
 pub use workspace::{
     WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,

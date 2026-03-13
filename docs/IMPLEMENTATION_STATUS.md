@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、2026-03-12 時点の `altpaint` が**実際にどこまで実装されているか**を短く把握するための現況整理である。
+この文書は、2026-03-13 時点の `altpaint` が**実際にどこまで実装されているか**を短く把握するための現況整理である。
 
 この文書は理想図ではなく現況の要約であり、次と役割を分ける。
 
@@ -288,6 +288,60 @@
   - [docs/ROADMAP.md](docs/ROADMAP.md)
 - リファクタリング候補を見たいとき
   - [docs/tmp/tasks-2026-03-11.md](docs/tmp/tasks-2026-03-11.md)
+
+## フェーズ完了履歴
+
+| フェーズ | 内容 | 完了時点 |
+|----------|------|----------|
+| 0 | 境界の固定と作業前提の統一 | 2026-03-11 |
+| 1 | `desktopApp` の縮小 | 2026-03-11 |
+| 2 | `canvas` 層の新設 | 2026-03-12 |
+| 3 | panel runtime / presentation 分離 | 2026-03-12 |
+| 4 | plugin-first 化の本格化 | 2026-03-12 |
+| 5 | `render` 中心の画面生成整理 | 2026-03-12 |
+| 6 | API 名称と物理配置の整理 | 2026-03-12 |
+| 7 | 再編後の機能拡張 | **進行中** (2026-03-13〜) |
+
+## フェーズ7 進行状況 (2026-03-13 時点)
+
+### 実装済み（Undo/Redo 基盤）
+
+- `crates/app-core/src/history.rs` 新設
+  - `CommandHistory`（push / undo / redo / clear / past_entries）
+  - `HistoryEntry::BitmapOp(BitmapEditRecord)`
+  - `DEFAULT_HISTORY_CAPACITY = 50`
+  - 全操作の単体テスト完備
+
+- `crates/app-core/src/painting.rs` 追加型
+  - `BitmapEditOperation`（Stamp / StrokeSegment / FloodFill / LassoFill）
+  - `BitmapEditRecord`（panel_id / layer_index / operation / pen_snapshot / color_snapshot / tool_id）
+  - `BitmapEditOperation::from_paint_input` / `to_paint_input` 変換
+
+- `crates/canvas/src/edit_record.rs` 新設（`app_core` からの re-export）
+
+- `crates/panel-api/src/services.rs`
+  - `HISTORY_UNDO` / `HISTORY_REDO` service 名追加
+  - `SNAPSHOT_CREATE` / `SNAPSHOT_RESTORE` / `EXPORT_IMAGE` service 名追加
+
+- `crates/plugin-sdk/src/services.rs`
+  - `history::undo()` / `history::redo()` descriptor builder 追加
+  - `snapshot::create()` / `snapshot::restore()` / `export_image::export()` descriptor builder 追加
+
+### 未実装（フェーズ7残項目）
+
+- `canvas::CanvasRuntime` への undo 接続（`HISTORY_UNDO` → replay 経路）
+- `apps/desktop` 側の `HISTORY_UNDO` / `HISTORY_REDO` service handler
+- export job / snapshot handler（フェーズ7-3 / 7-4）
+- tool child 構成 / text-flow / 高度な tool plugin 構成
+
+## 目標アーキテクチャとの残差
+
+| 集中箇所 | 残課題 |
+|----------|--------|
+| `DesktopApp` | panel/runtime 橋渡しと orchestration がまだ大きい |
+| `Document` | tool / pen runtime state をまだ広く持っている |
+| `canvas::CanvasRuntime` | tool 実行が host 主導（plugin 主導への移行は未着手） |
+| Undo/Redo | `CommandHistory` 基盤はできたが canvas への接続が未実装 |
 
 ## 実務メモ
 

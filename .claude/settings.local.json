@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l /d/naoto/programming/altpaint/crates/app-core/src/*.rs)",
+      "Bash(wc -l /d/naoto/programming/altpaint/crates/canvas/src/*.rs)",
+      "Bash(wc -l /d/naoto/programming/altpaint/crates/render/src/*.rs)",
+      "Bash(wc -l /d/naoto/programming/altpaint/crates/ui-shell/src/*.rs)"
+    ]
+  }
+}

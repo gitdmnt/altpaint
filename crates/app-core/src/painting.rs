@@ -118,6 +118,82 @@ impl BitmapEdit {
     }
 }
 
+/// 単一描画操作の種別と座標パラメータ。
+///
+/// `PaintInput` と 1 対 1 で対応する。Undo/Redo の replay 方式で使用する。
+#[derive(Debug, Clone, PartialEq)]
+pub enum BitmapEditOperation {
+    Stamp {
+        at: PanelLocalPoint,
+        pressure: f32,
+    },
+    StrokeSegment {
+        from: PanelLocalPoint,
+        to: PanelLocalPoint,
+        pressure: f32,
+    },
+    FloodFill {
+        at: PanelLocalPoint,
+    },
+    LassoFill {
+        points: Vec<PanelLocalPoint>,
+    },
+}
+
+impl BitmapEditOperation {
+    /// `PaintInput` から操作記録を生成する。
+    pub fn from_paint_input(input: &PaintInput) -> Self {
+        match input {
+            PaintInput::Stamp { at, pressure } => Self::Stamp {
+                at: *at,
+                pressure: *pressure,
+            },
+            PaintInput::StrokeSegment { from, to, pressure } => Self::StrokeSegment {
+                from: *from,
+                to: *to,
+                pressure: *pressure,
+            },
+            PaintInput::FloodFill { at } => Self::FloodFill { at: *at },
+            PaintInput::LassoFill { points } => Self::LassoFill {
+                points: points.clone(),
+            },
+        }
+    }
+
+    /// 操作記録を `PaintInput` へ変換する。
+    pub fn to_paint_input(&self) -> PaintInput {
+        match self {
+            Self::Stamp { at, pressure } => PaintInput::Stamp {
+                at: *at,
+                pressure: *pressure,
+            },
+            Self::StrokeSegment { from, to, pressure } => PaintInput::StrokeSegment {
+                from: *from,
+                to: *to,
+                pressure: *pressure,
+            },
+            Self::FloodFill { at } => PaintInput::FloodFill { at: *at },
+            Self::LassoFill { points } => PaintInput::LassoFill {
+                points: points.clone(),
+            },
+        }
+    }
+}
+
+/// 描画操作の完全な記録。
+///
+/// panel・layer・操作パラメータ・ペン状態・色を保持し、
+/// 同じ状態で replay できるようにする。
+#[derive(Debug, Clone)]
+pub struct BitmapEditRecord {
+    pub panel_id: crate::PanelId,
+    pub layer_index: usize,
+    pub operation: BitmapEditOperation,
+    pub pen_snapshot: crate::PenPreset,
+    pub color_snapshot: ColorRgba8,
+    pub tool_id: String,
+}
+
 /// ペン入力からビットマップ差分を生成する描画プラグイン契約。
 pub trait PaintPlugin {
     /// ピクセル走査を行い、ID 用のビットマップ結果を生成する。

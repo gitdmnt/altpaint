@@ -233,3 +233,55 @@ pub mod panel_nav {
         descriptor("panel_nav.focus_active")
     }
 }
+
+pub mod history {
+    use super::descriptor;
+    use panel_schema::CommandDescriptor;
+
+    /// 直前の操作を元に戻す。
+    pub fn undo() -> CommandDescriptor {
+        descriptor("history.undo")
+    }
+
+    /// 元に戻した操作をやり直す。
+    pub fn redo() -> CommandDescriptor {
+        descriptor("history.redo")
+    }
+}
+
+pub mod snapshot {
+    use super::{descriptor, json};
+    use panel_schema::CommandDescriptor;
+
+    /// スナップショットを作成する。handler は 7-4 で登録する。
+    pub fn create(label: impl Into<String>) -> CommandDescriptor {
+        let mut descriptor = descriptor("snapshot.create");
+        descriptor
+            .payload
+            .insert("label".to_string(), json!(label.into()));
+        descriptor
+    }
+
+    /// スナップショットを復元する。handler は 7-4 で登録する。
+    pub fn restore(snapshot_id: impl Into<String>) -> CommandDescriptor {
+        let mut descriptor = descriptor("snapshot.restore");
+        descriptor
+            .payload
+            .insert("snapshot_id".to_string(), json!(snapshot_id.into()));
+        descriptor
+    }
+}
+
+pub mod export_image {
+    use super::{descriptor, json};
+    use panel_schema::CommandDescriptor;
+
+    /// 画像として書き出す。handler は 7-3 で登録する。
+    pub fn export(path: impl Into<String>) -> CommandDescriptor {
+        let mut descriptor = descriptor("export.image");
+        descriptor
+            .payload
+            .insert("path".to_string(), json!(path.into()));
+        descriptor
+    }
+}
