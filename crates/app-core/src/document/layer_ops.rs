@@ -70,6 +70,70 @@ impl Document {
         None
     }
 
+    /// 指定 panel/layer のビットマップ全体を複製して返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
+    pub fn clone_panel_layer_bitmap(
+        &self,
+        panel_id: PanelId,
+        layer_index: usize,
+    ) -> Option<CanvasBitmap> {
+        let (page_idx, panel_idx) = self.find_panel_location(panel_id)?;
+        let panel = &self.work.pages[page_idx].panels[panel_idx];
+        panel.layers.get(layer_index).map(|layer| layer.bitmap.clone())
+    }
+
+    /// 指定 panel/layer の指定領域を複製して返す（パネルローカル座標系）。
+    ///
+    /// 値を生成できない場合は `None` を返します。
+    pub fn capture_panel_layer_region(
+        &self,
+        panel_id: PanelId,
+        layer_index: usize,
+        dirty: CanvasDirtyRect,
+    ) -> Option<CanvasBitmap> {
+        let (page_idx, panel_idx) = self.find_panel_location(panel_id)?;
+        let panel = &self.work.pages[page_idx].panels[panel_idx];
+        let layer = panel.layers.get(layer_index)?;
+        extract_bitmap_region(&layer.bitmap, dirty.x, dirty.y, dirty.width, dirty.height)
+    }
+
+    /// 指定 panel/layer の指定位置にビットマップを復元し、パネル合成も更新する。
+    ///
+    /// 必要に応じて dirty 状態も更新します。返値はページ座標系の dirty rect。
+    pub fn restore_panel_layer_region(
+        &mut self,
+        panel_id: PanelId,
+        layer_index: usize,
+        x: usize,
+        y: usize,
+        bitmap: &CanvasBitmap,
+    ) -> Option<CanvasDirtyRect> {
+        let (page_idx, panel_idx) = self.find_panel_location(panel_id)?;
+        let panel_bounds = self.work.pages[page_idx].panels[panel_idx].bounds;
+        let (page_width, page_height) = {
+            let page = &self.work.pages[page_idx];
+            (page.width, page.height)
+        };
+        let panel = &mut self.work.pages[page_idx].panels[panel_idx];
+        if let Some(layer) = panel.layers.get_mut(layer_index) {
+            write_bitmap_region(&mut layer.bitmap, x, y, bitmap);
+        }
+        let dirty = CanvasDirtyRect {
+            x,
+            y,
+            width: bitmap.width,
+            height: bitmap.height,
+        };
+        composite_panel_bitmap_region(panel, dirty);
+        Some(local_dirty_to_page_dirty(
+            dirty,
+            panel_bounds,
+            page_width,
+            page_height,
+        ))
+    }
+
     /// 指定 panel の指定 layer をビットマップを透明にリセットし、パネル合成も更新する。
     pub fn reset_panel_layer_to_transparent(&mut self, panel_id: PanelId, layer_index: usize) {
         let Some((page_idx, panel_idx)) = self.find_panel_location(panel_id) else {

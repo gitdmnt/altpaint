@@ -197,6 +197,9 @@ impl DesktopApp {
             CanvasGestureUpdate::None => false,
             CanvasGestureUpdate::Paint(input) => {
                 let changed = self.execute_paint_input(input);
+                if pointer_action == CanvasPointerAction::Up {
+                    self.commit_stroke_to_history();
+                }
                 if active_tool == ToolKind::LassoBucket
                     && pointer_action == CanvasPointerAction::Up
                     && let Some(layout) = self.layout.as_ref()

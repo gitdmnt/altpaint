@@ -26,7 +26,7 @@ use std::path::PathBuf;
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use app_core::{CanvasPoint, CommandHistory, Document};
+use app_core::{CanvasBitmap, CanvasDirtyRect, CanvasPoint, CommandHistory, Document, PanelId};
 use desktop_support::{
     DesktopDialogs, NativeDesktopDialogs, WorkspacePresetCatalog, default_workspace_preset_path,
 };
@@ -45,6 +45,16 @@ use canvas::CanvasInputState;
 
 #[cfg(test)]
 static TEST_SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+/// ストローク中のビットマップ差分追跡状態。
+struct PendingStroke {
+    panel_id: PanelId,
+    layer_index: usize,
+    /// ストローク開始前のレイヤービットマップ全体。
+    before_layer: CanvasBitmap,
+    /// ストローク中に蓄積したパネルローカル dirty rect の合計。
+    dirty: Option<CanvasDirtyRect>,
+}
 
 pub(super) const WORKSPACE_PRESET_PANEL_ID: &str = "builtin.workspace-presets";
 pub(super) const TOOL_PALETTE_PANEL_ID: &str = "builtin.tool-palette";
@@ -72,6 +82,7 @@ pub(crate) struct DesktopApp {
     pub(crate) snapshots: SnapshotStore,
     pub(crate) panel_interaction: PanelInteractionState,
     hover_canvas_position: Option<CanvasPoint>,
+    pending_stroke: Option<PendingStroke>,
     needs_ui_sync: bool,
     ui_sync_panel_ids: BTreeSet<String>,
     deferred_view_panel_sync: bool,
@@ -144,6 +155,7 @@ impl DesktopApp {
             snapshots: SnapshotStore::default(),
             panel_interaction: PanelInteractionState::default(),
             hover_canvas_position: None,
+            pending_stroke: None,
             needs_ui_sync: true,
             ui_sync_panel_ids: BTreeSet::new(),
             deferred_view_panel_sync: false,

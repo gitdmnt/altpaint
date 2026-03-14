@@ -350,8 +350,10 @@ fn startup_uses_default_workspace_preset_when_project_and_session_are_empty() {
     )
     .expect("preset save should succeed");
 
+    // 他のテストが /tmp/altpaint-test.altp.json へ書き込む競合を避けるため
+    // 存在しない一意パスを使う（プロジェクトが読み込まれず preset が優先される）。
     let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from("/tmp/altpaint-test.altp.json"),
+        unique_test_path("preset-project"),
         Box::new(TestDialogs::default()),
         unique_test_path("preset-session"),
         preset_path.clone(),

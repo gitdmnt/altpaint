@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "default_preset_id": "default-floating",
+  "default_preset_id": "2",
   "presets": [
     {
       "id": "default-floating",

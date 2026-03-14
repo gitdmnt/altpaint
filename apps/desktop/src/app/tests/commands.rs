@@ -145,9 +145,11 @@ fn keyboard_panel_focus_can_activate_app_action() {
         "builtin.app-actions",
         "app.save"
     ));
+    // app.save は emit_service 経由で保存を実行するため Command::Noop が返る。
+    // pending_jobs でジョブがキューされていることを確認する。
     assert_eq!(
         app.activate_focused_panel_control(),
-        Some(Command::SaveProject)
+        Some(Command::Noop)
     );
     assert_eq!(app.io_state.pending_jobs.len(), 1);
 }

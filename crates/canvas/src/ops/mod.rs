@@ -50,7 +50,7 @@ pub(crate) fn point_in_polygon(x: f32, y: f32, points: &[PanelLocalPoint]) -> bo
         let (x1, y1) = (previous.x as f32, previous.y as f32);
         let (x2, y2) = (current.x as f32, current.y as f32);
         let intersects = ((y1 > y) != (y2 > y))
-            && (x < (x2 - x1) * (y - y1) / ((y2 - y1).abs().max(f32::EPSILON)) + x1);
+            && (x < (x2 - x1) * (y - y1) / (y2 - y1) + x1);
         if intersects {
             inside = !inside;
         }

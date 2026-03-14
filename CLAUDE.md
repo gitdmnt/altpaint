@@ -44,18 +44,20 @@ bash scripts/build-ui-wasm.sh          # Linux / WSL2
 
 ## 開発ワークフロー
 
-1. Issue を立て、目的・範囲・完了条件を明確にする
-2. `main` に直接コミットしない。Issue に対応したブランチを切る
+1. 計画を立て、目的・範囲・完了条件を明確にする
+2. 計画の自己レビューを行う
 3. **TDD first**: まず失敗するテストを書き、最小実装で通す
-4. 変更後: `cargo test -p <crate-name>` → `cargo test` → `cargo clippy --workspace --all-targets`
-5. コード変更直後にドキュメントを更新する（「コードが正本」の順序を崩さない）
-6. **タスク終了時は ask_user で待機する**
+4. 後方互換のコードは削除する
+5. 変更後: `cargo test -p <crate-name>` → `cargo test` → `cargo clippy --workspace --all-targets`
+6. コード変更直後にドキュメントを更新する（「コードが正本」の順序を崩さない）
+7. **タスク終了時は ask_user で待機する**
 
 ---
 
 ## コーディング方針
 
 - **OS 固有コード禁止**: `#[cfg(target_os = "...")]` や `cfg!(target_os = ...)` はアプリケーション層のロジックに書かない。OS 差異はクロスプラットフォームライブラリ（`fontdb`、`winit`、`dirs` 等）に吸収させる。どうしても必要な場合は PR レビューで明示的に承認を得ること。
+- **後方互換コードを残さない**: 現在alpha版として開発中なので後方互換コードは全て消し、コードベースの肥大化を常に軽減する。
 
 ---
 
@@ -166,16 +168,7 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 - `fps_rating: "<60"` → パフォーマンス問題として調査
 - `seconds: null` の起動時間 → 計測できていないだけなので修正不要
 
-### 2. プラグインが表示されない場合（最頻出パターン）
-
-`.wasm` が未ビルドまたはパッケージ名不一致の可能性が高い。
-
-1. `plugins/*/panel.altp-panel` の `runtime { wasm: "..." }` で期待ファイル名を確認
-2. `ls plugins/*/*.wasm` でファイル存在を確認
-3. なければビルドスクリプトを実行
-4. `plugins/<name>/Cargo.toml` の `name =` とビルドスクリプトのパッケージ名が一致しているか確認
-
-### 3. 調査後の流れ
+### 2. 調査後の流れ
 
 1. `cargo test --workspace` と `cargo clippy --workspace --all-targets` を通す
 2. `docs/IMPLEMENTATION_STATUS.md` を更新する

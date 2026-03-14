@@ -241,6 +241,37 @@ impl CanvasBitmap {
         )
     }
 
+    /// 指定領域を複製した新しい `CanvasBitmap` を返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
+    pub fn extract_region(
+        &self,
+        start_x: usize,
+        start_y: usize,
+        width: usize,
+        height: usize,
+    ) -> Option<Self> {
+        if width == 0
+            || height == 0
+            || start_x >= self.width
+            || start_y >= self.height
+            || start_x.saturating_add(width) > self.width
+            || start_y.saturating_add(height) > self.height
+        {
+            return None;
+        }
+        let mut region = Self::transparent(width, height);
+        for row in 0..height {
+            let src_start = ((start_y + row) * self.width + start_x) * 4;
+            let src_end = src_start + width * 4;
+            let dst_start = row * width * 4;
+            let dst_end = dst_start + width * 4;
+            region.pixels[dst_start..dst_end]
+                .copy_from_slice(&self.pixels[src_start..src_end]);
+        }
+        Some(region)
+    }
+
     /// ピクセル RGBA に対応するビットマップ処理を行う。
     ///
     /// 値を生成できない場合は `None` を返します。

@@ -662,6 +662,58 @@ pub fn blit_scaled_rgba_region(
         return;
     }
 
+    if destination.width < source_width || destination.height < source_height {
+        // 縮小時は bilinear 補間でアンチエイリアスを適用する
+        for dst_y in target.y..target.y + target.height {
+            let local_y = dst_y - destination.y;
+            let src_y_f =
+                (local_y as f32 + 0.5) * source_height as f32 / destination.height as f32 - 0.5;
+            let y0 = src_y_f.floor() as i64;
+            let y1 = y0 + 1;
+            let wy = src_y_f - y0 as f32;
+            let y0c = y0.clamp(0, source_height as i64 - 1) as usize;
+            let y1c = y1.clamp(0, source_height as i64 - 1) as usize;
+            let dst_row_start = dst_y * frame.width * 4;
+            for dst_x in target.x..target.x + target.width {
+                let local_x = dst_x - destination.x;
+                let src_x_f = (local_x as f32 + 0.5) * source_width as f32
+                    / destination.width as f32
+                    - 0.5;
+                let x0 = src_x_f.floor() as i64;
+                let x1 = x0 + 1;
+                let wx = src_x_f - x0 as f32;
+                let x0c = x0.clamp(0, source_width as i64 - 1) as usize;
+                let x1c = x1.clamp(0, source_width as i64 - 1) as usize;
+
+                let sample = |sx: usize, sy: usize| -> [f32; 4] {
+                    let i = (sy * source_width + sx) * 4;
+                    [
+                        source_pixels[i] as f32,
+                        source_pixels[i + 1] as f32,
+                        source_pixels[i + 2] as f32,
+                        source_pixels[i + 3] as f32,
+                    ]
+                };
+                let p00 = sample(x0c, y0c);
+                let p10 = sample(x1c, y0c);
+                let p01 = sample(x0c, y1c);
+                let p11 = sample(x1c, y1c);
+
+                let lerp = |a: f32, b: f32, t: f32| -> f32 { a + (b - a) * t };
+                let to_u8 = |v: f32| -> u8 { v.round().clamp(0.0, 255.0) as u8 };
+                let pixel = [
+                    to_u8(lerp(lerp(p00[0], p10[0], wx), lerp(p01[0], p11[0], wx), wy)),
+                    to_u8(lerp(lerp(p00[1], p10[1], wx), lerp(p01[1], p11[1], wx), wy)),
+                    to_u8(lerp(lerp(p00[2], p10[2], wx), lerp(p01[2], p11[2], wx), wy)),
+                    to_u8(lerp(lerp(p00[3], p10[3], wx), lerp(p01[3], p11[3], wx), wy)),
+                ];
+                let dst_index = dst_row_start + dst_x * 4;
+                frame.pixels[dst_index..dst_index + 4].copy_from_slice(&pixel);
+            }
+        }
+        return;
+    }
+
     for dst_y in target.y..target.y + target.height {
         let local_y = dst_y - destination.y;
         let src_y = ((local_y * source_height) / destination.height).min(source_height - 1);
@@ -773,20 +825,57 @@ fn blit_canvas_with_transform(
     }
 
     let (offset_x, offset_y) = scene.offset();
-    let src_x_runs = build_source_axis_runs(
-        target.x,
-        target.width,
-        offset_x,
-        scene.scale(),
-        source.width,
-    );
-    let src_y_runs = build_source_axis_runs(
-        target.y,
-        target.height,
-        offset_y,
-        scene.scale(),
-        source.height,
-    );
+    let scale = scene.scale();
+
+    if scale < 1.0 {
+        // ズームアウト時は bilinear 補間を使って縮小アンチエイリアスを適用する
+        for dst_y in target.y..target.y + target.height {
+            let src_y_f = (dst_y as f32 + 0.5 - offset_y) / scale;
+            let y0 = (src_y_f - 0.5).floor() as i64;
+            let y1 = y0 + 1;
+            let wy = src_y_f - 0.5 - y0 as f32;
+            let y0c = y0.clamp(0, source.height as i64 - 1) as usize;
+            let y1c = y1.clamp(0, source.height as i64 - 1) as usize;
+            for dst_x in target.x..target.x + target.width {
+                let src_x_f = (dst_x as f32 + 0.5 - offset_x) / scale;
+                let x0 = (src_x_f - 0.5).floor() as i64;
+                let x1 = x0 + 1;
+                let wx = src_x_f - 0.5 - x0 as f32;
+                let x0c = x0.clamp(0, source.width as i64 - 1) as usize;
+                let x1c = x1.clamp(0, source.width as i64 - 1) as usize;
+
+                let sample = |sx: usize, sy: usize| -> [f32; 4] {
+                    let i = (sy * source.width + sx) * 4;
+                    [
+                        source.pixels[i] as f32,
+                        source.pixels[i + 1] as f32,
+                        source.pixels[i + 2] as f32,
+                        source.pixels[i + 3] as f32,
+                    ]
+                };
+                let p00 = sample(x0c, y0c);
+                let p10 = sample(x1c, y0c);
+                let p01 = sample(x0c, y1c);
+                let p11 = sample(x1c, y1c);
+
+                let lerp = |a: f32, b: f32, t: f32| -> f32 { a + (b - a) * t };
+                let to_u8 = |v: f32| -> u8 { v.round().clamp(0.0, 255.0) as u8 };
+                let pixel = [
+                    to_u8(lerp(lerp(p00[0], p10[0], wx), lerp(p01[0], p11[0], wx), wy)),
+                    to_u8(lerp(lerp(p00[1], p10[1], wx), lerp(p01[1], p11[1], wx), wy)),
+                    to_u8(lerp(lerp(p00[2], p10[2], wx), lerp(p01[2], p11[2], wx), wy)),
+                    to_u8(lerp(lerp(p00[3], p10[3], wx), lerp(p01[3], p11[3], wx), wy)),
+                ];
+                let dst_index = (dst_y * frame.width + dst_x) * 4;
+                frame.pixels[dst_index..dst_index + 4].copy_from_slice(&pixel);
+            }
+        }
+        return;
+    }
+
+    let src_x_runs = build_source_axis_runs(target.x, target.width, offset_x, scale, source.width);
+    let src_y_runs =
+        build_source_axis_runs(target.y, target.height, offset_y, scale, source.height);
 
     for y_run in &src_y_runs {
         let src_row_start = y_run.src_index * source.width * 4;

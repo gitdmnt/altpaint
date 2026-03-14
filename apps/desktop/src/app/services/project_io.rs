@@ -1,10 +1,11 @@
 use std::path::PathBuf;
 
-use app_core::{Command, HistoryEntry, PaintInput};
+use app_core::{CanvasDirtyRect, Command, HistoryEntry, MergeInSpace, PaintInput};
 use desktop_support::normalize_project_path;
 use panel_api::{ServiceRequest, services::names};
 use storage::load_project_from_path;
 
+use super::super::PendingStroke;
 use super::DesktopApp;
 
 impl DesktopApp {
@@ -36,6 +37,9 @@ impl DesktopApp {
     }
 
     /// 描画入力を実行してドキュメントへ適用し、操作を履歴へ積む。
+    ///
+    /// Stamp/StrokeSegment はストローク単位でバッチし `commit_stroke_to_history` で確定する。
+    /// FloodFill/LassoFill は即座に `BitmapPatch` として確定する。
     pub(crate) fn execute_paint_input(&mut self, input: PaintInput) -> bool {
         let Some(result) = self
             .paint_runtime
@@ -43,9 +47,120 @@ impl DesktopApp {
         else {
             return false;
         };
-        self.history
-            .push(HistoryEntry::BitmapOp(result.record));
-        self.apply_bitmap_edits(result.edits)
+
+        let is_stroke_op = matches!(
+            input,
+            PaintInput::Stamp { .. } | PaintInput::StrokeSegment { .. }
+        );
+
+        if is_stroke_op {
+            // ストローク開始時にレイヤー状態を保存する
+            if self.pending_stroke.is_none() {
+                let panel_id = self.document.active_panel().map(|p| p.id);
+                let layer_index = self.document.active_panel().map(|p| p.active_layer_index);
+                if let (Some(panel_id), Some(layer_index)) = (panel_id, layer_index) {
+                    if let Some(before_layer) =
+                        self.document.clone_panel_layer_bitmap(panel_id, layer_index)
+                    {
+                        self.pending_stroke = Some(PendingStroke {
+                            panel_id,
+                            layer_index,
+                            before_layer,
+                            dirty: None,
+                        });
+                    }
+                }
+            }
+
+            // dirty rect を蓄積してからエディットを適用する
+            if let Some(stroke) = &mut self.pending_stroke {
+                let edit_dirty = result.edits.iter().fold(
+                    None::<CanvasDirtyRect>,
+                    |acc, edit| {
+                        Some(match acc {
+                            Some(existing) => existing.merge(edit.dirty_rect),
+                            None => edit.dirty_rect,
+                        })
+                    },
+                );
+                if let Some(edit_dirty) = edit_dirty {
+                    stroke.dirty = Some(match stroke.dirty {
+                        Some(existing) => existing.merge(edit_dirty),
+                        None => edit_dirty,
+                    });
+                }
+            }
+
+            self.apply_bitmap_edits(result.edits)
+        } else {
+            // 即時操作: 前後スナップショットを取ってすぐ BitmapPatch を積む
+            let panel_id = self.document.active_panel().map(|p| p.id);
+            let layer_index = self.document.active_panel().map(|p| p.active_layer_index);
+
+            if let (Some(panel_id), Some(layer_index)) = (panel_id, layer_index) {
+                let edit_dirty = result.edits.iter().fold(
+                    None::<CanvasDirtyRect>,
+                    |acc, edit| {
+                        Some(match acc {
+                            Some(existing) => existing.merge(edit.dirty_rect),
+                            None => edit.dirty_rect,
+                        })
+                    },
+                );
+                let before =
+                    edit_dirty.and_then(|dirty| {
+                        self.document.capture_panel_layer_region(panel_id, layer_index, dirty)
+                    });
+                let changed = self.apply_bitmap_edits(result.edits);
+                if let (Some(dirty), Some(before)) = (edit_dirty, before) {
+                    if let Some(after) =
+                        self.document.capture_panel_layer_region(panel_id, layer_index, dirty)
+                    {
+                        self.history.push(HistoryEntry::BitmapPatch {
+                            panel_id,
+                            layer_index,
+                            dirty,
+                            before,
+                            after,
+                        });
+                    }
+                }
+                changed
+            } else {
+                self.apply_bitmap_edits(result.edits)
+            }
+        }
+    }
+
+    /// ストロークを確定して履歴へ積む。ポインタ Up 後に呼び出す。
+    pub(crate) fn commit_stroke_to_history(&mut self) {
+        let Some(stroke) = self.pending_stroke.take() else {
+            return;
+        };
+        let Some(dirty) = stroke.dirty else {
+            return;
+        };
+        let Some(before) =
+            stroke
+                .before_layer
+                .extract_region(dirty.x, dirty.y, dirty.width, dirty.height)
+        else {
+            return;
+        };
+        let Some(after) = self
+            .document
+            .capture_panel_layer_region(stroke.panel_id, stroke.layer_index, dirty)
+        else {
+            return;
+        };
+        self.history.push(HistoryEntry::BitmapPatch {
+            panel_id: stroke.panel_id,
+            layer_index: stroke.layer_index,
+            dirty,
+            before,
+            after,
+        });
+        self.sync_ui_from_document();
     }
 
     /// プロジェクト to 現在 パス を保存先へ書き出す。

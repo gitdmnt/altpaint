@@ -737,6 +737,18 @@ fn evaluate_expression(expression: &str, context: &DslEvaluationContext<'_>) -> 
     if let Some(inner) = expression.strip_prefix('!') {
         return Value::Bool(!expression_to_bool(inner, context));
     }
+    // || と && は複合 bool 条件 (例: state.a || state.b) に対応するため、
+    // != / == よりも先にチェックして優先度を下げる
+    if let Some((left, right)) = expression.split_once("||") {
+        return Value::Bool(
+            expression_to_bool(left.trim(), context) || expression_to_bool(right.trim(), context),
+        );
+    }
+    if let Some((left, right)) = expression.split_once("&&") {
+        return Value::Bool(
+            expression_to_bool(left.trim(), context) && expression_to_bool(right.trim(), context),
+        );
+    }
     if let Some((left, right)) = expression.split_once("!=") {
         return Value::Bool(
             evaluate_expression(left.trim(), context) != evaluate_expression(right.trim(), context),
@@ -1357,6 +1369,72 @@ mod tests {
     use super::*;
     use panel_api::services::names;
     use panel_schema::CommandDescriptor;
+
+    /// expression_to_bool が || と && 演算子を正しく評価することを検証する。
+    #[test]
+    fn expression_evaluator_supports_or_and_and_operators() {
+        let state_pressure_only = serde_json::json!({
+            "supports_pressure": true,
+            "supports_antialias": false,
+            "supports_stabilization": false,
+        });
+        let ctx = DslEvaluationContext {
+            panel_id: "test".to_string(),
+            state: &state_pressure_only,
+            generated_ids: 0,
+        };
+
+        // true || false = true
+        assert!(
+            expression_to_bool("state.supports_pressure || state.supports_antialias", &ctx),
+            "true || false should be true"
+        );
+
+        // false || false = false
+        assert!(
+            !expression_to_bool(
+                "state.supports_antialias || state.supports_stabilization",
+                &ctx
+            ),
+            "false || false should be false"
+        );
+
+        // three-way OR: false || false || true via chaining
+        let state_abc = serde_json::json!({ "a": false, "b": false, "c": true });
+        let ctx2 = DslEvaluationContext {
+            panel_id: "test".to_string(),
+            state: &state_abc,
+            generated_ids: 0,
+        };
+        assert!(
+            expression_to_bool("state.a || state.b || state.c", &ctx2),
+            "false || false || true should be true"
+        );
+
+        // && operator: true && false = false
+        let state_xy_false = serde_json::json!({ "x": true, "y": false });
+        let ctx3 = DslEvaluationContext {
+            panel_id: "test".to_string(),
+            state: &state_xy_false,
+            generated_ids: 0,
+        };
+        assert!(
+            !expression_to_bool("state.x && state.y", &ctx3),
+            "true && false should be false"
+        );
+
+        // && operator: true && true = true
+        let state_xy_true = serde_json::json!({ "x": true, "y": true });
+        let ctx4 = DslEvaluationContext {
+            panel_id: "test".to_string(),
+            state: &state_xy_true,
+            generated_ids: 0,
+        };
+        assert!(
+            expression_to_bool("state.x && state.y", &ctx4),
+            "true && true should be true"
+        );
+    }
 
     /// コマンド from 記述子 maps ワークスペース commands が期待どおりに動作することを検証する。
     #[test]

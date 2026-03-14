@@ -1,14 +1,6 @@
-# altpaint 新ロードマップ
-
-## この文書の役割
-
-この文書は、2026-03-11 時点の実装到達点と tasks-2026 の整理結果を前提に、`altpaint` を**plugin-first / host-owned-performance** 方針へ再編するための新しいロードマップである。
-
-旧ロードマップのように「最初から何もない前提」で積み上げるのではなく、**すでにある実装をどう整理し直すか**を中心に定める。
+# altpaint ロードマップ
 
 ## 固定する原則
-
-今後の設計では次を固定する。
 
 1. 性能が強く要求される処理はアプリ本体に組み込む
 2. それ以外の機能は原則 plugin として実装する
@@ -21,297 +13,85 @@
 9. `panel-dsl` は panel 定義ファイルの parse を担う
 10. `plugin-sdk` は plugin 作者向け SDK を担い、macro はその authoring surface 配下に置く
 
-## 現在すでにある基盤
-
-2026-03-11 時点で、次は既にある。
-
-- `winit` + `wgpu` による desktop host
-- `Document` / `Command` 中心の編集モデル
-- 複数レイヤー、ビュー変換、回転、dirty rect
-- `render` の canvas scene 計画と panel rasterize
-- `.altp-panel` + Wasm panel runtime
-- `storage` の SQLite project save/load
-- session / workspace preset / panel config の永続化
-- built-in panel 群の plugin 化
-- `tools/` / `pens/` 読込
-
-問題は「基盤がないこと」ではなく、**責務の置き場所がまだ途中であること**にある。
-
-## 再編の大目標
-
-このロードマップでは、次の 4 本柱で進める。
-
-1. `desktopApp` を薄くする
-2. `canvas` 層を独立させる
-3. `ui-shell` を runtime / presentation に分離する
-4. 非性能領域を plugin 主導へ寄せる
-
 ---
 
-## フェーズ0: 境界の固定と作業前提の統一
-
-### 目的
-
-今後の移動先を先に固定し、場当たり的な責務追加を止める。
-
-### 実装するもの
-
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) の目標構造を正本化
-- [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md) の現況整理維持
-- [docs/IMPLEMENTATION_OPERATIONS.md](docs/IMPLEMENTATION_OPERATIONS.md) の追従更新
-- crate / module の命名方針整理
-- `crates/canvas` / `crates/panel-runtime` / `plugin-sdk` 系の命名を先に固定
-
-### 完了条件
-
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) に責務表、配置草案、配置規約がある
-- [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md) に集中箇所とテスト棚卸しがある
-- [docs/MODULE_DEPENDENCIES.md](docs/MODULE_DEPENDENCIES.md) に依存禁止事項と将来配置図がある
-- [Cargo.toml](../Cargo.toml) に `crates/canvas` / `crates/panel-runtime` の計画コメントがある
-- 新規実装が `DesktopApp` / `UiShell` / `Document` へ無秩序に集中しない判断基準が文書化されている
-
-## フェーズ1: `desktopApp` の縮小
-
-### 目的
-
-`desktopApp` を host orchestration へ戻し、アプリ本体の肥大化を止める。
-
-### 実装するもの
-
-- `apps/desktop/src/app/mod.rs` の責務棚卸し
-- input / command / present / state / drawing の分割計画
-- project / session / workspace preset orchestration の service 化
-- render plan と canvas runtime 呼び出しの外出し
-
-### 完了条件
-
-- `apps/desktop/src/app/services.rs`、`apps/desktop/src/app/io_state.rs`、`apps/desktop/src/app/bootstrap.rs`、`apps/desktop/src/app/command_router.rs`、`apps/desktop/src/app/panel_dispatch.rs`、`apps/desktop/src/app/present_state.rs`、`apps/desktop/src/app/background_tasks.rs` が存在する
-- `apps/desktop/src/app/mod.rs` は constructor / type 定義 / 薄い公開 API 中心になる
-- `apps/desktop/src/app/tests/` が bootstrap / command router / panel dispatch など module 単位へ分かれる
-- canvas 実行や panel runtime 内部事情が `DesktopApp` 本体に残りすぎない
-
-## フェーズ2: `canvas` 層の新設
-
-### 目的
-
-現在分散しているキャンバス処理を一つの責務へまとめる。
-
-### 実装するもの
-
-- `canvas` crate または同等の独立層
-- tool 実行ランタイム
-- canvas 入力解釈
-- bitmap 差分生成と適用補助
-- built-in paint 実装の desktop からの移動
-
-### 移行元の代表例
-
-- `apps/desktop/src/app/drawing.rs`
-- `apps/desktop/src/canvas_bridge.rs`
-- `crates/app-core/src/painting.rs`
-- `crates/app-core/src/document.rs` の一部
-
-### 完了条件
-
-- `crates/canvas/Cargo.toml` と `crates/canvas/src/lib.rs` が存在する
-- `apps/desktop/src/app/drawing.rs` が削除済みまたは thin wrapper 化されている
-- `apps/desktop/src/canvas_bridge.rs` の主要ロジックが `crates/canvas` へ移る
-- `crates/app-core/src/document.rs` の paint runtime 文脈解決が `canvas` 側へ移る
-
-## フェーズ3: panel runtime / presentation 分離
-
-### 目的
-
-`ui-shell` の集中責務を減らし、plugin runtime と UI 表示系を分離する。
-
-### 実装するもの
-
-- panel runtime 側の独立境界
-- DSL / Wasm bridge の切り出し
-- panel config / state patch / host snapshot 同期の再配置
-- presentation 側の layout / hit-test / focus / text input の整理
-
-### 完了条件
-
-- `crates/panel-runtime/Cargo.toml` と `crates/panel-runtime/src/lib.rs` が存在する
-- `crates/ui-shell/src/presentation/` 配下に layout / hit-test / focus / text input の module がある
-- `crates/ui-shell/src/dsl.rs` や registry/runtime sync の主要責務が `crates/panel-runtime` へ移る
-- `apps/desktop` が runtime 詳細ではなく facade 経由で panel system を使う
-
-## フェーズ4: plugin-first 化の本格化
-
-### 目的
-
-性能非依存の機能を host 直書きから plugin 主導へ寄せる。
-
-### plugin 化を進める対象
-
-- project ファイルの読込/保存
-- workspace の読込/保存
-- workspace panel 配置管理
-- ツール一覧の読込と表示
-- ツールパラメータと親子ツール管理
-- view 移動
-- panel 一覧と表示切替
-- color palette
-
-### 実装するもの
-
-- host service API
-- plugin からの I/O request 境界
-- tool plugin 実行 API
-- 安定した command / service descriptor
-
-### 完了条件
-
-- `apps/desktop/src/app/services/project_io.rs`、`workspace_io.rs`、`tool_catalog.rs` などの service handler が存在する
-- `plugins/app-actions`、`plugins/workspace-presets`、`plugins/view-controls`、`plugins/panel-list` が host 固有分岐ではなく service request を使う
-- project / workspace / tool catalog の主要 I/O が command 列挙直書きから service 指向へ寄る
-
-補足:
-
-- 2026-03-12 時点で上記は実装済みであり、`panel-api::ServiceRequest` と `plugin-sdk::services::*` を通る service 経路が導入された。
-- 次の主作業軸はフェーズ5の `render` 中心化である。
-
-## フェーズ5: `render` 中心の画面生成整理
-
-### 目的
-
-画面生成責務を `render` へ寄せ、desktop 固有の最終提示との境界を明確にする。
-
-### 実装するもの
-
-- render plan の再配置
-- desktop frame 計算の再棚卸し
-- canvas / overlay / panel layer の責務整理
-- dirty rect / quad / overlay 更新判断の統合
-
-### 完了条件
-
-- `crates/render/src/frame_plan.rs`、`canvas_plan.rs`、`overlay_plan.rs`、`panel_plan.rs`、`dirty.rs` が存在する
-- `apps/desktop/src/app/present.rs` が frame compose 本体ではなく plan 組み立て / presenter 呼び出し中心になる
-- `apps/desktop/src/frame/` には desktop 固有の presenter 入力変換だけが残る
-
-補足:
-
-- 2026-03-12 時点で上記は実装済みであり、`render::FramePlan` / `DirtyFramePlan` / `compose::*` を中心に CPU 側画面生成が `render` へ移った。
-- 次の主作業軸はフェーズ6の API 名称と物理配置整理である。
-
-## フェーズ6: API 名称と物理配置の整理
-
-### 目的
-
-名前と実態のズレを減らし、今後の理解コストを下げる。
-
-### 実装するもの
-
-- `plugin-api` の完全撤去と `panel-api` への一本化
-- `panel-sdk` / `panel-macros` の完全撤去と `plugin-sdk` / `plugin-macros` への再編
-- sample / tmp / legacy 的資産の再配置
-- 文書名と実装名の同期
-
-### 完了条件
-
-- `plugin-api` が workspace とコードから削除され、`panel-api` に一本化されている
-- `plugin-sdk` が実体 crate になり、macro 実装が `plugin-macros` へ移っている
-- `plugins/*` と `apps/desktop` の import が新名称へ追従している
-- `plugins/phase6-sample` や `docs/tmp/*` の恒久配置が整理されている
-
-補足:
-
-- 2026-03-12 時点で `crates/plugin-api` / `crates/panel-sdk` / `crates/panel-macros` を削除し、`crates/panel-api` / `crates/plugin-sdk` / `crates/plugin-macros` へ一本化した。
-- built-in panel 群は `plugin-sdk` 依存へ切り替え、DSL/WAT sample は `tools/experimental/phase6-sample` へ移した。
-
-## フェーズ7: 再編後の機能拡張
-
-### 目的
-
-責務整理後に、機能追加を迷いなく進められる状態へ入る。
-
-### 優先候補
-
-- Undo/Redo
-- 高度な document 操作
-- 非同期 job と export
-- snapshot / branch
-- テキスト流し込み
-- 高度な tool plugin / child tool 構成
-- ペン pipeline 拡張: 将来的には rust-gpu を使ってパイプラインを生成する脱出ハッチを設け、物理シミュレーションのような描画も可能とする
-
-### 推奨着手順
-
-1. `panel-api` / `plugin-sdk` の service 名と payload 契約を先に固定する
-2. `app-core` の履歴基盤と `canvas` の undo 接続を実装する
-3. export job と snapshot 操作を service + host handler 経由で実装する
-4. tool child 構成 / text-flow / 回帰計測を追加する
-5. 文書同期を行う
-
-### 完了条件
-
-- `crates/app-core/src/history.rs`、`crates/canvas` の undo 対応、export service、snapshot 拡張など主要機能の受け皿 module が実在する ✓
-- 新機能が `apps/desktop` / `ui-shell` / `Document` へ逆流せず、決めた境界に沿って追加されている ✓
-- `TextRenderer` trait / `Font8x8Renderer` / `plugins/text-flow` が実装されている ✓
-- 回帰計測スクリプト (`scripts/profile-*.ps1`) が実在する ✓
-
-**フェーズ7はサブフェーズ 7-0〜7-8 をすべて完了した（2026-03-14）。**
-
-補足:
-
-- フェーズ7の新規操作入口は `panel-api::ServiceRequest` と `plugin-sdk::services::*` を優先し、`Command` 直結のみへ戻さない。
-- 回帰計測ログ (`logs/`) は編集対象ではなく生成物として扱い、`scripts/profile-*.ps1` から再生成する。
+## 完了フェーズ
+
+| フェーズ | 内容 | 完了時点 |
+|----------|------|----------|
+| 0 | 境界の固定と作業前提の統一 | 2026-03-11 |
+| 1 | `desktopApp` の縮小 | 2026-03-11 |
+| 2 | `canvas` 層の新設 | 2026-03-12 |
+| 3 | panel runtime / presentation 分離 | 2026-03-12 |
+| 4 | plugin-first 化の本格化（`ServiceRequest` 導入） | 2026-03-12 |
+| 5 | `render` 中心の画面生成整理 | 2026-03-12 |
+| 6 | API 名称と物理配置の整理 | 2026-03-12 |
+| 7 | 再編後の機能拡張（Undo/Redo・export・snapshot・text-flow・tool child・profiler） | 2026-03-14 |
+
+詳細は [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) を参照。
 
 ---
 
 ## 並行で継続する横断項目
 
-### 1. パフォーマンス計測
+### パフォーマンス計測
 
 - profiler 維持
 - panel / canvas / input のボトルネック観測
 - 責務移動後の回帰確認
 
-### 2. テストと回帰防止
+### テストと回帰防止
 
-- refactor 前に境界ごとのテストを増やす
 - `cargo test` と `cargo clippy --workspace --all-targets` を継続
 - panel runtime / canvas runtime / render plan の単体検証を厚くする
 
-### 3. 文書同期
+### 文書同期
 
-- 現況は `IMPLEMENTATION_STATUS.md`
-- 理想は `ARCHITECTURE.md`
-- 実コードの構造は `CURRENT_ARCHITECTURE.md`
-- 次の作業候補は [docs/IMPLEMENTATION_OPERATIONS.md](docs/IMPLEMENTATION_OPERATIONS.md)
-
-## 当面の優先順位
-
-直近は次の順に進める。
-
-1. `desktopApp` の責務棚卸し
-2. `canvas` 境界の定義と built-in paint 実装の切り出し
-3. `ui-shell` の runtime / presentation 分離
-4. plugin-first 化のための host service API 設計
-5. `render` への画面生成責務の再配置
-
-## この文書の結論
-
-今の `altpaint` に必要なのは、機能を無差別に足すことではない。
-
-必要なのは、
-
-- 高性能経路を host に残し
-- それ以外を plugin へ委譲し
-- 現在肥大化している責務を適切な層へ移すこと
-
-である。
-
-この再編が終わると、以後の機能追加は今よりかなり自然になる。
+- 現況は [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)
+- 目標構造は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- 実コードの構造は [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md)
 
 ---
 
-## フェーズ7以降の候補タスク
+## 候補タスク
 
-### 描画エンジン: 回転の完全無段階化
+### [bug] パネル通過時の描画破壊
+
+- **症状**: UIパネルが上を通過するたびにコマの表示がおかしくなる
+- **調査起点**: `render::OverlayPlan` / `render::CanvasPlan` の dirty rect 計算、`ui-shell` のパネルサーフェス合成順
+- **主な変更箇所**: `crates/render/`, `crates/ui-shell/`
+
+### [bug/performance] 縮小時アンチエイリアス
+
+- **症状**: ズームアウト時にキャンバスのフチがジャギー・線がブツブツ途切れて見える
+- **原因候補**: blit / compose パスで縮小時の補間がニアレストネイバーになっている
+- **必要作業**:
+  - `crates/render/` のソフトウェア合成パスで bilinear / box filter 補間を導入する
+  - WGPU サンプラー設定の確認（`FilterMode::Linear` への切り替え）
+- **主な変更箇所**: `crates/render/`, `apps/desktop/src/wgpu_canvas.rs`
+
+
+### [improvement] パネル枠線・内外表示
+
+- **症状**: どのコマを表示しているのかわかりにくい
+- **必要作業**:
+  - 現在アクティブなパネルに枠線またはオーバーレイ色を描画する
+  - `render::OverlayPlan` にパネル境界 overlay の追加が自然な置き場所
+  - パネル外領域への暗幕表示もここで対応可
+- **主な変更箇所**: `crates/render/src/overlay_plan.rs`, `apps/desktop/src/app/present_state.rs`
+
+### [feature] temp オーバーレイレイヤー
+
+- **目的**: UIとも描画とも関係のない一時的な線・図形をUIレイヤーとキャンバスレイヤーの間に表示する
+- **用途**: lasso fill プレビュー・範囲選択ガイド・パネル作成プレビュー枠など
+- **現状**: `render::OverlayPlan` は既に存在するが、ツールからの一時描画コマンドを受け取る API がない
+- **必要作業**:
+  - `OverlayPlan` に一時ポリライン / 矩形のリストを追加する
+  - `canvas` / `gesture` からオーバーレイ描画コマンドを発行する API を設ける
+  - lasso fill・範囲選択・パネル作成でこの API を使うよう移行する
+- **主な変更箇所**: `crates/render/src/overlay_plan.rs`, `crates/canvas/src/gesture/`
+
+### [feature] 描画エンジン: 回転の完全無段階化
 
 - **症状**: 非90度系の回転でキャンバス内容が歪んで見える
 - **原因候補**: `CanvasScene` / texture quad / software blit が任意角回転を前提にしていない
@@ -321,7 +101,39 @@
   - WGPU 表示経路と software 合成経路の両方で同じ回転モデルを使う
 - **主な変更箇所**: `crates/render/`, `apps/desktop/src/frame/geometry.rs`, `apps/desktop/src/wgpu_canvas.rs`
 
-### SDK からの render pass 割り込み（filter layer / post effect）
+### [performance] パネル描画パフォーマンス改善
+
+- **観測している問題**: パネル再構築コストが高い、スクロール時に CPU コピーが発生、文字描画がボトルネック、スライダー fps が低い
+- **改善候補**:
+  - 可視領域単位のパネルタイル化
+  - テキスト計測結果・ノードレイアウト結果のキャッシュ
+  - スクロール時の差分 blit / オフセット再利用
+  - パネル dirty rect の導入
+  - 頻繁に変わらないパネルの静的サーフェス化
+
+### [feature] パネルリサイズ
+
+- **目的**: UIパネルをドラッグで大きくしたり小さくしたりできるようにする
+- **現状**: `ui-shell` は4隅アンカー基準で配置するが、実行時サイズ変更のインタラクションはない
+- **必要作業**:
+  - パネルエッジ / コーナーのヒットテスト追加（`ui-shell::presentation`）
+  - リサイズドラッグのジェスチャー状態管理
+  - `WorkspaceLayout` / `WorkspaceUiState` にパネルサイズのオーバーライドを追加
+  - `workspace-persistence` でサイズを永続化
+- **主な変更箇所**: `crates/ui-shell/`, `crates/workspace-persistence/`
+
+### [feature] ツールバープラグイン
+
+- **目的**: ファイル管理・パネル管理・ワークスペース管理などをパネルではなくツールバープラグインとして実装する
+- **背景**: 現状これらの機能は `app-actions` / `workspace-presets` / `panel-list` パネルに混在している
+- **必要作業**:
+  - ツールバー種別（`plugin_type: "toolbar"`）を `.altp-panel` DSL に追加
+  - `ui-shell` にツールバーサーフェスレンダリングとレイアウトを追加
+  - `panel-runtime` にツールバープラグインの探索・登録経路を追加
+  - `apps/desktop` の file / panel-management / workspace-management をツールバープラグインへ移行
+- **主な変更箇所**: `crates/panel-dsl/`, `crates/ui-shell/`, `crates/panel-runtime/`, `plugins/`
+
+### [feature] SDK からの render pass 割り込み（filter layer / post effect）
 
 - plugin SDK から render pass に割り込み、filter layer や post effect を差し込める拡張ポイント
 - renderer / host ABI / 実行モデルの見直しが必要（単純な SDK API 追加では完結しない）
@@ -330,18 +142,79 @@
   - Wasm effect の安全な呼び出し ABI（timeout / fault isolation / fallback）
   - render pass graph の filter layer 対応と dirty rect キャッシュの effect-aware 再設計
   - filter layer の永続化形式（`app-core` / `storage`）
-- **主な変更箇所**: `crates/panel-sdk/`, `crates/plugin-host/`, `crates/render/`, `crates/storage/`
+- **主な変更箇所**: `crates/plugin-host/`, `crates/render/`, `crates/storage/`
 
-### パネル描画パフォーマンス改善
+### [architecture] 描画レイヤーの物理的分離
 
-- **観測している問題**: パネル再構築コストが高い、スクロール時に CPU コピーが発生、文字描画がボトルネック
-- **改善候補**:
-  - 可視領域単位のパネルタイル化
-  - テキスト計測結果・ノードレイアウト結果のキャッシュ
-  - スクロール時の差分 blit / オフセット再利用
-  - パネル dirty rect の導入
-  - 頻繁に変わらないパネルの静的サーフェス化
+- **背景**: UIパネル表示変更のたびにコマ描画が乱れるなど、描画ロジックとUI変更が密結合している
+- **方針**: UIレイヤーグループ / 一時描画レイヤー / キャンバスレイヤー / 背景を物理的に分離し、片方の変更が他方へ波及しない構造にする
+- **現状**: `render::FramePlan` がすべての平面を一括管理しており、キャンバス・パネル・オーバーレイの再描画トリガーが混在している
+- **必要作業**:
+  - `render` クレートにレイヤーグループ（UI / temp-overlay / canvas / background）を明確に定義し、合成パスを分離する
+  - 各レイヤーグループの dirty rect を独立して管理する
+  - UIパネルの再描画がキャンバスレイヤーの再描画をトリガーしない構造にする
+- **主な変更箇所**: `crates/render/`, `apps/desktop/src/app/`
 
-### その他
+### [improvement] イベント駆動パネル再描画（ポーリング廃止）
 
-- 大きなキャンバスで速く線を引くと線が途切れ途切れになる問題の調査・修正
+- **背景**: 毎フレームパネルツリーをスキャンして変更判定している可能性があり、state変更によってレンダリングが発火するReact的設計に変えるべき
+- **注意**: レンダリング発火をdirtyにすることと、dirty rect で描画することは別レイヤーの話
+- **方針**: パネルのstate変更が直接 dirty flag を立て、フレームループはdirty flagを確認してのみパネルを再描画する
+- **現状**: `panel-runtime` の `host_sync.rs` がスナップショット同期を担うが、フレームごとのスキャンがボトルネックになっている可能性がある
+- **必要作業**:
+  - `PanelRuntime` にstate変更通知API（`mark_dirty(panel_id)` 相当）を追加する
+  - `host_sync.rs` でスナップショット差分をstate変更イベントに変換する
+  - `render` がdirtyパネルのみ再描画するよう変更する
+- **主な変更箇所**: `crates/panel-runtime/`, `crates/render/`, `apps/desktop/src/app/`
+
+### [feature] プラグインホットリロード（開発環境）
+
+- **目的**: 開発中にプラグインの変更を即座に反映できるようにする
+- **方針**: 開発環境ではファイル変更を監視し、`.altp-panel` の再パースとWasm再コンパイル → 再ロードを自動実行する（開発環境ではwasm再コンパイルを走らせる前提）
+- **現状**: 再読み込みはアプリ再起動が必要
+- **必要作業**:
+  - `notify` クレートでプラグインディレクトリを監視する（`desktop-support` または `panel-runtime`）
+  - ファイル変更イベントで `build-ui-wasm.sh` をバックグラウンド実行する
+  - `PanelRuntime` に単一プラグインの再ロード API を追加する（`reload_plugin(name)`）
+  - `panel-list` プラグインに手動リロードボタンを追加する（自動 + 手動の両対応）
+- **主な変更箇所**: `crates/panel-runtime/`, `crates/desktop-support/`, `plugins/panel-list/`
+
+### [improvement] プラグインUI改善（各パネル）
+
+#### 全体
+
+- 各ボタンを右クリックでコンテキストダイアログを開ける機能
+- `<section>` タグを全体的に削除する（DSL的に不要）
+- flaticon.com の SVG でアイコンを差し替える
+- テキストラベルをなるべく減らす
+- ショートカット設定ボタンをウィンドウヘッダー相当エリアに移して小さくする
+- 選択中パネルをUIレイヤー内で最前面に描画する
+
+#### カラーホイール（`plugins/color-palette`）
+
+- 「カラー」見出しを削除
+- プレビューの代わりに一時カラーパレット（10色）をクリック / ショートカットで切り替え
+- カラーホイール自体を大きくする
+- HSVとカラーコードを並列表示し、クリックでコピーできるようにする
+
+#### 筆設定（`plugins/pen-settings`）
+
+- 「現在のツール」項目にはペン名とストロークプレビューのみ表示し、それ以外は削除
+- スライダーと数値入力欄を横並びにする
+- 「サイズ」と「pen width」が別の値を表示している問題を修正する（バグ）
+
+#### ツール（`plugins/tool-palette`）
+
+- アイコン表示で小さくまとめる（現状はテキストリスト）
+- 子ツールこそリストで実装する
+
+#### 表示（`plugins/view-controls`）
+
+- キャンバスプレビューにPowerPoint風の変形ハンドルを付けて操作できるUIに刷新
+- 前コマ / 次コマ / 中央表示を別プラグインとして分離する
+
+#### レイヤー（`plugins/layers-panel`）
+
+- ページ / パネル番号はパネルタイトル部分に表示する
+- 追加/削除・マスク切り替え・合成モード切り替えを同じ行に並列する
+- レイヤー表示切り替えを各レイヤー行の左側に目アイコンとして実装する

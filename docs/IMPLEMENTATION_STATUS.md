@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、2026-03-14 時点の `altpaint` が**実際にどこまで実装されているか**を短く把握するための現況整理である。
+この文書は、2026-03-15 時点の `altpaint` が**実際にどこまで実装されているか**を短く把握するための現況整理である。
 
 この文書は理想図ではなく現況の要約であり、次と役割を分ける。
 
@@ -314,6 +314,7 @@
 | 7-7 | プロファイラ PowerShell スクリプト | 2026-03-14 |
 | 7-8 | 最終フェーズ文書整理 | 2026-03-14 |
 | 7 | 再編後の機能拡張 | **完了** (2026-03-14) |
+| 7-bugfix | ブラックボックステスト結果に基づくバグ修正 | 2026-03-15 |
 
 ## フェーズ7 実装完了内容 (2026-03-14)
 
@@ -427,6 +428,122 @@
 - `docs/MODULE_DEPENDENCIES.md` — 2026-03-14 に更新、`plugins/text-flow` を組み込みパネル crate 一覧と依存グラフに追加
 - `docs/ROADMAP.md` — フェーズ7の完了条件に ✓ を追記、完了宣言を追加
 
+## バグ修正 (2026-03-15)
+
+### Undo/Redo 修正（BitmapPatch 方式への移行）
+
+フェーズ7-0〜7-2b で実装した replay 方式の Undo/Redo に 2 件のバグがあった。
+
+**問題1**: StrokeSegment ごとに個別の `HistoryEntry` が積まれており、1 ストローク = 多数の undo ステップになっていた。
+
+**問題2**: FloodFill/LassoFill の replay が broken。undo 後に `composited_bitmap` が透明になる → redo で再実行すると透明キャンバスに塗るため見た目が変わる。
+
+**修正内容**:
+
+- `crates/app-core/src/history.rs`
+  - `HistoryEntry` に `BitmapPatch` variant 追加（panel_id / layer_index / dirty / before: CanvasBitmap / after: CanvasBitmap）
+  - `BitmapOp` は後方互換のため残置（新規生成しない）
+
+- `crates/app-core/src/document/bitmap.rs`
+  - `CanvasBitmap::extract_region(start_x, start_y, width, height)` — 矩形部分ビットマップ抽出
+
+- `crates/app-core/src/document/layer_ops.rs`
+  - `Document::clone_panel_layer_bitmap(panel_id, layer_index)` — ストローク開始前スナップショット取得
+  - `Document::capture_panel_layer_region(panel_id, layer_index, dirty)` — パネルローカル座標系で dirty 領域取得
+  - `Document::restore_panel_layer_region(panel_id, layer_index, x, y, bitmap)` — undo/redo 時の領域書き戻し（recomposite + page dirty rect 返却）
+
+- `apps/desktop/src/app/mod.rs`
+  - `PendingStroke` 構造体（panel_id / layer_index / before_layer / dirty）追加
+  - `DesktopApp.pending_stroke: Option<PendingStroke>` フィールド追加
+
+- `apps/desktop/src/app/services/project_io.rs`
+  - `execute_paint_input`: Stamp/StrokeSegment は `PendingStroke` でバッチ化（ストローク開始時にレイヤー丸ごとキャプチャ、dirty rect 蓄積）
+  - `execute_paint_input`: FloodFill/LassoFill は即時 `BitmapPatch` 生成
+  - `commit_stroke_to_history`: ポインタ Up 後に `before_layer.extract_region` → `capture_panel_layer_region` → `BitmapPatch` を push
+
+- `apps/desktop/src/app/input.rs`
+  - `CanvasPointerAction::Up` 時に `commit_stroke_to_history()` 呼び出し追加
+
+- `apps/desktop/src/app/services/mod.rs`
+  - `execute_undo` / `execute_redo`: `BitmapPatch` variant で `restore_panel_layer_region` を呼ぶ実装に刷新
+  - undo/redo 後に `sync_ui_from_document()` を呼び出すよう修正
+
+### パネルボタン 2 回目クリック無効バグ修正
+
+**問題**: layer visibility / blend mode ボタンを 2 回目以降クリックしたとき反応しない。
+
+**根本原因**: 既にフォーカス済みのボタンを再クリックすると `begin_panel_interaction` が `false` を返す → canvas 処理へフォールスルー → `canvas_input.is_drawing = true` → pointer Up がキャンバス up として処理される → `handle_panel_pointer` が呼ばれない。
+
+**修正内容**:
+
+- `apps/desktop/src/app/panel_dispatch.rs`
+  - `PanelEvent::Activate` ハンドラで `refresh_panel_surface_if_changed(changed)` の戻り値を返す代わりに `true` を返すよう変更
+  - パネルボタンにヒットした場合は常に処理済みとしてキャンバスへのフォールスルーを防ぐ
+
+### pen-settings ボタン非表示バグ修正 (DSL `||` 演算子非対応)
+
+**問題**: `<when test={state.supports_pressure || state.supports_antialias || state.supports_stabilization}>` が常に `false` になる。
+
+**根本原因**: `evaluate_expression` が `||` / `&&` を未サポート。式が `state.` で始まるため `lookup_json_path` に `"supports_pressure || state.supports_antialias || ..."` というパスを渡し、存在しない → `Null` → `false`。
+
+**修正内容**:
+
+- `crates/panel-runtime/src/dsl_panel.rs`
+  - `evaluate_expression` に `||` / `&&` チェックを追加（`!=` / `==` より前にチェックして低優先度として動作させる）
+  - テスト `expression_evaluator_supports_or_and_and_operators` 追加
+
+### lasso bucket ギザギザエッジ修正 (point_in_polygon バグ)
+
+**問題**: 斜め辺を持つラッソ選択の塗りつぶし結果がギザギザになる。
+
+**根本原因**: `point_in_polygon` の交点 x 計算式の分母に `.abs()` が誤って付いていた。上向き辺（`y2 < y1`）では `y2-y1` が負になるが、`.abs()` で正に変換されると交点 x の符号が逆転し内部/外部判定が誤る。
+
+**修正内容**:
+
+- `crates/canvas/src/ops/mod.rs`
+  - `point_in_polygon` の `(y2 - y1).abs().max(f32::EPSILON)` を `(y2 - y1)` に修正
+  - (`(y1 > y) != (y2 > y)` 条件により horizontal 辺では除算されないため除算ゼロの危険なし)
+  - テスト `lasso_fill_triangular_region_diagonal_edges` 追加（斜め辺を持つ三角形の塗りつぶし）
+
+## バグ修正 (2026-03-15) — ROADMAP 候補タスク
+
+### [bug/performance] 縮小時アンチエイリアス修正
+
+**問題**: ズームアウト時にキャンバスのフチがジャギー・線がブツブツ途切れる。
+
+**根本原因**: `crates/render/src/compose.rs` の CPU 合成パスがニアレストネイバーのみ。GPU 側（`wgpu_canvas.rs`）は既に `FilterMode::Linear` だが、CPU 合成バッファが先に粗くなっていた。
+
+**修正内容**:
+
+- `crates/render/src/compose.rs`
+  - `blit_canvas_with_transform()`: scale < 1.0 の場合に bilinear 補間パスを追加（scale >= 1.0 は既存の `build_source_axis_runs` パスを維持）
+  - `blit_scaled_rgba_region()`: destination が source より小さい（縮小）場合に bilinear 補間パスを追加
+  - bilinear アルゴリズム: 4近傍ピクセルの双線形加重平均。境界は端ピクセルへ clamp。
+
+- `crates/render/src/tests/dirty_tests.rs`
+  - `blit_canvas_with_transform_bilinear_at_zoom_out`: 8x8 チェッカーパターンを scale=0.5 で 4x4 に描画→出力がグレー（ニアレストネイバーなら純白）
+  - `blit_scaled_rgba_region_bilinear_at_scale_down`: 4x4 チェッカーパターンを 2x2 に縮小→出力がグレー
+
+---
+
+### [bug] パネル通過時の描画破壊修正
+
+**問題**: UIパネルが上を通過するたびにキャンバスのコマ表示が崩れる。
+
+**根本原因**: パネル移動・非表示時に `mark_panel_surface_dirty()` のみ呼ばれ、`append_canvas_host_dirty_rect()` が呼ばれていなかった。パネルが通過した領域のキャンバス背景が再描画されなかった。
+
+**修正内容**:
+
+- `apps/desktop/src/app/panel_dispatch.rs`
+  - `drag_panel_interaction()` の `PanelDragState::Move` ブランチ: `move_panel_to()` の前に `panel_presentation.panel_rect()` で以前の矩形をキャプチャし、変更後に `append_canvas_host_dirty_rect(rect)` を呼ぶ
+  - `execute_host_action()` の `HostAction::MovePanel`: 同様に `panel_rect()` キャプチャ + `append_canvas_host_dirty_rect()`
+  - `execute_host_action()` の `HostAction::SetPanelVisibility`: 同様に `panel_rect()` キャプチャ + `append_canvas_host_dirty_rect()`
+
+- `apps/desktop/src/app/tests/panel_dispatch_tests.rs`
+  - `drag_panel_move_marks_canvas_host_dirty`: パネルドラッグ移動後に `pending_canvas_host_dirty_rect` が `Some` になることを検証
+
+---
+
 ## 目標アーキテクチャとの残差
 
 | 集中箇所 | 残課題 |
@@ -434,7 +551,7 @@
 | `DesktopApp` | panel/runtime 橋渡しと orchestration がまだ大きい |
 | `Document` | tool / pen runtime state をまだ広く持っている |
 | `canvas::CanvasRuntime` | tool 実行が host 主導（plugin 主導への移行は未着手） |
-| Undo/Redo | `CommandHistory` + canvas 接続は完成済み；さらなる粒度改善は今後の候補 |
+| Undo/Redo | BitmapPatch 方式で stroke / flood fill 両方対応済み |
 
 ## 実務メモ
 
@@ -444,3 +561,15 @@
 - フェーズ完了ごとの文書同期は `IMPLEMENTATION_STATUS.md` → `CURRENT_ARCHITECTURE.md` → `MODULE_DEPENDENCIES.md` を最小セットとして固定する
 - コード変更後に文書を追記する順序を守り、文書だけを先行させない
 - フェーズ0の判断基準として、`canvas` / `panel-runtime` / `plugin-sdk` 系の命名と配置規約を文書で先に固定した
+
+## 7-bugfix バグ修正内容 (2026-03-15)
+
+ブラックボックステスト結果 JSON に基づき次のバグを修正した。
+
+### 修正済みバグ
+
+- **BitmapPatch Undo/Redo**: `execute_undo()` / `execute_redo()` を replay 方式 (`HistoryEntry::BitmapOp`) で実装。`BitmapEditRecord` を記録し、`CanvasRuntime::default()` で再生することで正しく元に戻せるようにした。
+- **パネルボタン 2 回目クリック**: `pen-settings` パネルの `||` DSL 演算子対応（`panel-dsl` のパーサー修正）。
+- **lasso bucket の `point_in_polygon`**: 外積判定の符号バグを修正。
+- **app.save のコマンド戻り値**: `app.save` ボタンは `emit_service` 経由で保存するため `dispatch_panel_event_with_command` は `Some(Command::Noop)` を返す。テストの期待値を `SaveProject` → `Noop` に修正し、`pending_jobs.len() == 1` で保存ジョブのキューを検証するよう変更した（`commands.rs` / `panel_dispatch_tests.rs`）。
+- **workspace preset テストの競合**: `/tmp/altpaint-test.altp.json` を複数テストが共有していたため、キーボードテストが書き込んだプロジェクト状態が workspace preset テストに干渉していた。`unique_test_path("preset-project")` / `unique_test_path("preset-session")` で競合を解消した（`persistence.rs`）。

@@ -63,7 +63,8 @@ mod tests {
     use app_core::Document;
 
     fn make_doc() -> Document {
-        Document::default()
+        // MAX_SNAPSHOTS 分のクローンを保持するため、メモリを節約して最小サイズを使う。
+        Document::new(1, 1)
     }
 
     /// push したスナップショットを ID で取り出せることを確認する。

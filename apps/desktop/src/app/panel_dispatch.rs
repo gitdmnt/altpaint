@@ -65,7 +65,9 @@ impl DesktopApp {
                     panel_id: panel_id.clone(),
                     node_id: node_id.clone(),
                 });
-                self.refresh_panel_surface_if_changed(changed)
+                self.refresh_panel_surface_if_changed(changed);
+                // パネルボタンにヒットした場合は常に処理済みとしてキャンバスへのフォールスルーを防ぐ
+                true
             }
             PanelEvent::SetValue {
                 panel_id,
@@ -140,17 +142,22 @@ impl DesktopApp {
                 let Some(layout) = self.layout.as_ref() else {
                     return false;
                 };
+                let (win_w, win_h) = (layout.window_rect.width, layout.window_rect.height);
                 let window_x = point.x.max(0) as usize;
                 let window_y = point.y.max(0) as usize;
+                let previous_rect = self.panel_presentation.panel_rect(&panel_id);
                 let changed = self.panel_presentation.move_panel_to(
                     &panel_id,
                     window_x.saturating_sub(grab_offset_x),
                     window_y.saturating_sub(grab_offset_y),
-                    layout.window_rect.width,
-                    layout.window_rect.height,
+                    win_w,
+                    win_h,
                 );
                 if changed {
                     self.mark_panel_surface_dirty();
+                    if let Some(rect) = previous_rect {
+                        self.append_canvas_host_dirty_rect(rect);
+                    }
                 }
                 changed
             }
@@ -213,15 +220,20 @@ impl DesktopApp {
                 panel_id,
                 direction,
             } => {
+                let previous_rect = self.panel_presentation.panel_rect(&panel_id);
                 let changed = self.panel_presentation.move_panel(&panel_id, direction);
                 if changed {
                     self.mark_panel_surface_dirty();
                     self.mark_status_dirty();
                     self.persist_session_state();
+                    if let Some(rect) = previous_rect {
+                        self.append_canvas_host_dirty_rect(rect);
+                    }
                 }
                 changed
             }
             HostAction::SetPanelVisibility { panel_id, visible } => {
+                let previous_rect = self.panel_presentation.panel_rect(&panel_id);
                 let changed = self
                     .panel_presentation
                     .set_panel_visibility(&panel_id, visible);
@@ -229,6 +241,9 @@ impl DesktopApp {
                     self.mark_panel_surface_dirty();
                     self.mark_status_dirty();
                     self.persist_session_state();
+                    if let Some(rect) = previous_rect {
+                        self.append_canvas_host_dirty_rect(rect);
+                    }
                 }
                 changed
             }

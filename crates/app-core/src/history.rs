@@ -1,21 +1,32 @@
 //! Undo/Redo の履歴基盤。
 //!
 //! `CommandHistory` は操作記録（`HistoryEntry`）のスタックを管理する。
-//! undo 方式は操作パラメータ保持の replay 方式であり、
-//! 前状態の再構築は呼び出し元（canvas runtime）が担う。
+//! undo 方式はビットマップ前後スナップショット（`BitmapPatch`）の保存・復元方式。
 
-use crate::BitmapEditRecord;
+use crate::{BitmapEditRecord, CanvasBitmap, CanvasDirtyRect, PanelId};
 
 /// 履歴スタックのデフォルト容量。
 pub const DEFAULT_HISTORY_CAPACITY: usize = 50;
 
-/// 履歴エントリ。現在は描画操作のみ。
+/// 履歴エントリ。
 ///
 /// 将来的にレイヤー追加・削除などのドキュメントコマンドを追加できるよう
 /// enum として定義する。
 #[derive(Debug, Clone)]
 pub enum HistoryEntry {
+    /// レガシー replay 方式（後方互換用）。
     BitmapOp(BitmapEditRecord),
+    /// ビットマップ前後スナップショット方式。
+    BitmapPatch {
+        panel_id: PanelId,
+        layer_index: usize,
+        /// パネルローカル座標系の変更領域。
+        dirty: CanvasDirtyRect,
+        /// 操作前のビットマップ領域。
+        before: CanvasBitmap,
+        /// 操作後のビットマップ領域。
+        after: CanvasBitmap,
+    },
 }
 
 /// Undo/Redo スタック。
