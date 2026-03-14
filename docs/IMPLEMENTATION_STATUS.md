@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、2026-03-13 時点の `altpaint` が**実際にどこまで実装されているか**を短く把握するための現況整理である。
+この文書は、2026-03-14 時点の `altpaint` が**実際にどこまで実装されているか**を短く把握するための現況整理である。
 
 この文書は理想図ではなく現況の要約であり、次と役割を分ける。
 
@@ -36,6 +36,7 @@
 - **Undo/Redo 基盤 (フェーズ7-0〜7-2b)**: replay 方式 `CommandHistory`・`BitmapEditRecord`・
   `CanvasRuntime::replay_paint_record`・`execute_undo()`/`execute_redo()` サービスハンドラ・
   host snapshot への `can_undo`/`can_redo` 反映・app-actions パネルの undo/redo ボタン
+- **テキスト描画基盤 (フェーズ7-5b〜7-6)**: `TextRenderer` trait・`Font8x8Renderer`・`render_text_to_bitmap_edit` canvas op・`text_render.render_to_layer` service・`plugins/text-flow` panel plugin・host handler
 
 ## 現在の workspace 構成
 
@@ -69,6 +70,7 @@
 - `plugins/pen-settings`
 - `plugins/job-progress`
 - `plugins/snapshot-panel`
+- `plugins/text-flow`
 
 補足:
 
@@ -305,9 +307,15 @@
 | 6 | API 名称と物理配置の整理 | 2026-03-12 |
 | 7-0〜7-2b | Undo/Redo 基盤 | 2026-03-13 |
 | 7-3 | PNG export・汎用ジョブ基盤 | 2026-03-13 |
-| 7 | 再編後の機能拡張（進行中） | **進行中** (2026-03-13〜) |
+| 7-4 | snapshot handler | 2026-03-14 |
+| 7-5 | tool child 構成 | 2026-03-14 |
+| 7-5b | TextRenderer trait + text-flow 設計 | 2026-03-14 |
+| 7-6 | text-flow plugin + host handler | 2026-03-14 |
+| 7-7 | プロファイラ PowerShell スクリプト | 2026-03-14 |
+| 7-8 | 最終フェーズ文書整理 | 2026-03-14 |
+| 7 | 再編後の機能拡張 | **完了** (2026-03-14) |
 
-## フェーズ7 進行状況 (2026-03-13 時点)
+## フェーズ7 実装完了内容 (2026-03-14)
 
 ### 実装済み（Undo/Redo 基盤）
 
@@ -342,10 +350,82 @@
 - `crates/panel-runtime/src/registry.rs` — `sync_document` 系に `active_jobs` 追加
 - `crates/desktop-support/src/dialogs.rs` — `pick_save_image_path` default メソッド追加
 
-### 未実装（フェーズ7残項目）
+### 実装済み（フェーズ7-4: snapshot handler）
 
-- export job / snapshot handler（フェーズ7-4）
-- tool child 構成 / text-flow / 高度な tool plugin 構成
+- `apps/desktop/src/app/snapshot_store.rs` — `SnapshotStore`/`SnapshotEntry`（push / get / len / entries / 容量制限 20）
+- `apps/desktop/src/app/services/snapshot.rs` — `SNAPSHOT_CREATE` / `SNAPSHOT_RESTORE` service handler
+- `apps/desktop/src/app/mod.rs` — `DesktopApp.snapshots: SnapshotStore` フィールド追加
+- `apps/desktop/src/app/services/mod.rs` — `handle_snapshot_service_request` をルーターに追加
+- `crates/panel-api/src/lib.rs` — `PanelPlugin::update` に `snapshot_count: usize` 追加
+- `crates/panel-runtime/src/registry.rs` — `sync_document` / `sync_document_panels` / `sync_document_subset` に `snapshot_count` 追加
+- `crates/panel-runtime/src/dsl_panel.rs` — `update` シグネチャ更新
+- `crates/panel-runtime/src/host_sync.rs` — `build_host_snapshot` に `snapshot_count` 追加、`snapshot.count` / `snapshot.storage_status` を実値に更新
+- `apps/desktop/src/app/present.rs` — `snapshot_count` を取得して渡す
+- `apps/desktop/src/app/bootstrap.rs` — 初回 `sync_document` に `snapshot_count=0` を渡す
+- `crates/plugin-sdk/src/host.rs` — `host::snapshot::count()` getter 追加
+- `plugins/snapshot-panel/panel.altp-panel` — `snapshot_count` state / Create Snapshot ボタン追加
+- `plugins/snapshot-panel/src/lib.rs` — `snapshot_count` 同期・`create_snapshot` handler 追加
+
+### 実装済み（フェーズ7-5b: TextRenderer trait + text-flow 設計）
+
+- `.context/text-flow-design.md` — 設計ドキュメント新設（TextRenderer trait 契約、Font8x8Renderer、canvas op API、out-of-scope）
+- `crates/canvas/src/ops/text.rs` — 新設
+  - `TextRenderer` trait（`render(&str, font_size, color) -> TextRenderOutput`）
+  - `TextRenderOutput`（pixels / width / height）
+  - `Font8x8Renderer` — `font8x8::BASIC_FONTS` を用いた 8×8 bitmap スケールレンダラ
+  - `render_text_to_bitmap_edit(text, font_size, color, x, y)` — デフォルト実装
+  - `render_text_to_bitmap_edit_with(text, font_size, color, x, y, renderer)` — 差し込み可能なオーバーロード
+  - 単体テスト 5 件（全パス）
+- `crates/canvas/src/ops/mod.rs` — `pub mod text;` 追加
+- `crates/canvas/Cargo.toml` — `font8x8 = { workspace = true }` 追加
+
+### 実装済み（フェーズ7-6: text-flow plugin + host handler）
+
+- `crates/panel-api/src/services.rs` — `TEXT_RENDER_TO_LAYER` service 名追加
+- `crates/plugin-sdk/src/services.rs` — `services::text_render::render_to_layer()` descriptor builder 追加
+- `plugins/text-flow/Cargo.toml` — workspace member として新設（`cdylib` + `rlib`、`plugin-sdk` 依存）
+- `plugins/text-flow/panel.altp-panel` — Panel DSL 新設（テキスト入力・フォントサイズ・カラー・座標・描画ボタン）
+- `plugins/text-flow/src/lib.rs` — plugin handler 新設
+  - `init()` / `sync_host()`
+  - `update_text()` / `update_font_size()` / `update_x()` / `update_y()`
+  - `render_text()` — `emit_service(&services::text_render::render_to_layer(...))` 発行
+- `apps/desktop/src/app/services/text_render.rs` — host handler 新設
+  - `handle_text_render_service_request` — service request ルーター
+  - `render_text_to_active_layer` — `render_text_to_bitmap_edit` → `apply_bitmap_edits_to_active_layer` → dirty rect 更新
+  - `parse_color_hex` 補助関数
+  - テスト 2 件（空テキスト / 有効テキスト）
+- `apps/desktop/src/app/services/mod.rs` — `mod text_render;` および `handle_text_render_service_request` 呼び出し追加
+- `Cargo.toml`（workspace） — `"plugins/text-flow"` を members に追加
+
+### 実装済み（フェーズ7-7: プロファイラスクリプト）
+
+- `scripts/profile-render.ps1` — `cargo test -p render` を N 回実行し、タイミング JSON を `logs/` へ出力
+- `scripts/profile-canvas.ps1` — `cargo test -p canvas` を N 回実行し、タイミング JSON を `logs/` へ出力
+- `scripts/profile-panels.ps1` — `cargo test -p panel-runtime` を N 回実行し、イテレーション別タイミング・avg/min/max JSON を `logs/` へ出力
+
+### 実装済み（フェーズ7-5: tool child 構成）
+
+- `crates/app-core/src/document.rs` — `ToolDefinition.children: Vec<ToolDefinition>` 追加（`#[serde(default)]`）、`Document.active_child_tool_id: String` フィールド追加、`active_child_tool_definition()` / `child_tool_definition()` メソッド追加
+- `crates/app-core/src/command.rs` — `Command::SelectChildTool { child_id: String }` 追加
+- `crates/app-core/src/document.rs` — `SelectChildTool` / `SelectTool` / `SetActiveTool` apply 実装（child reset）
+- `crates/panel-runtime/src/host_sync.rs` — `active_child_tool_id` / `active_child_tool_label` / `child_tools_json` を tool JSON へ追加
+- `crates/plugin-sdk/src/host.rs` — `host::tool::active_child_tool_id()` / `active_child_tool_label()` / `child_tools_json()` getter 追加
+- `crates/plugin-sdk/src/commands.rs` — `commands::tool::select_child_tool()` descriptor builder 追加
+- `crates/panel-runtime/src/dsl_panel.rs` — `"tool.select_child"` → `Command::SelectChildTool` DSL マッピング追加
+- `apps/desktop/src/app/command_router.rs` — `Command::SelectChildTool` を tool panel sync 経路に追加
+- `crates/storage/src/project_sqlite.rs` — `Document` 構造体初期化に `active_child_tool_id: String::new()` 追加
+- `tools/builtin/pen.altp-tool.json` — `children` 配列（通常・乗算）追加
+- `plugins/tool-palette/src/lib.rs` — `ACTIVE_CHILD_TOOL_ID` / `ACTIVE_CHILD_TOOL_LABEL` / `CHILD_TOOLS_JSON` 定数・sync 追加、`select_child_tool` handler 追加
+- `plugins/tool-palette/panel.altp-panel` — 子ツール表示セクション追加
+- `apps/desktop/src/app/tests/commands.rs` — `execute_command_select_child_tool_updates_active_child_tool_id` テスト追加
+- `apps/desktop/src/app/tests/service_dispatch_tests.rs` — `snapshot_create_service_increases_snapshot_count` / `snapshot_restore_service_restores_document` テスト追加
+
+### 実装済み（フェーズ7-8: 最終フェーズ文書整理）
+
+- `docs/IMPLEMENTATION_STATUS.md` — フェーズ7全サブフェーズの実装記録を追加、進行中→完了に更新
+- `docs/CURRENT_ARCHITECTURE.md` — 2026-03-14 に更新、`services/export.rs` / `services/snapshot.rs` / `services/text_render.rs`・`snapshot_store.rs`・`history.rs`・`canvas/ops/text`・`plugins/text-flow` を反映
+- `docs/MODULE_DEPENDENCIES.md` — 2026-03-14 に更新、`plugins/text-flow` を組み込みパネル crate 一覧と依存グラフに追加
+- `docs/ROADMAP.md` — フェーズ7の完了条件に ✓ を追記、完了宣言を追加
 
 ## 目標アーキテクチャとの残差
 
@@ -354,7 +434,7 @@
 | `DesktopApp` | panel/runtime 橋渡しと orchestration がまだ大きい |
 | `Document` | tool / pen runtime state をまだ広く持っている |
 | `canvas::CanvasRuntime` | tool 実行が host 主導（plugin 主導への移行は未着手） |
-| Undo/Redo | `CommandHistory` 基盤はできたが canvas への接続が未実装 |
+| Undo/Redo | `CommandHistory` + canvas 接続は完成済み；さらなる粒度改善は今後の候補 |
 
 ## 実務メモ
 

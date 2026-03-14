@@ -1,11 +1,12 @@
 [package]
-name = "canvas"
+name = "text-flow"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
-app-core = { path = "../app-core" }
-render = { path = "../render" }
-font8x8 = { workspace = true }
+plugin-sdk = { path = "../../crates/plugin-sdk" }

@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、**2026-03-12 時点の実装コードを正本として**、workspace 内のクレートと主要モジュールの依存関係を整理するための文書である。
+この文書は、**2026-03-14 時点の実装コードを正本として**、workspace 内のクレートと主要モジュールの依存関係を整理するための文書である。
 
 主に次を明確にする。
 
@@ -26,7 +26,7 @@
 
 ## workspace パッケージ一覧
 
-2026-03-11 時点の workspace package は次の通り。
+2026-03-14 時点の workspace package は次の通り。
 
 ### 中核クレート
 
@@ -64,6 +64,7 @@
 - `plugins/pen-settings`
 - `plugins/job-progress`
 - `plugins/snapshot-panel`
+- `plugins/text-flow`
 
 ## compile-time 依存関係
 
@@ -111,6 +112,7 @@ graph TD
     pensettings[plugins/pen-settings] --> pluginsdk
     jobprogress[plugins/job-progress] --> pluginsdk
     snapshotpanel[plugins/snapshot-panel] --> pluginsdk
+    textflow[plugins/text-flow] --> pluginsdk
 ```
 
 ### 依存関係の要点

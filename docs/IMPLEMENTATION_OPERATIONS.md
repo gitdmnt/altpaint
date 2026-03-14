@@ -1070,17 +1070,16 @@
 	1. 主要経路ごとの計測スクリプトを追加し、出力先 (`logs/`) は生成物として扱う。
 	2. フェーズ5以降の性能回帰を継続監視できるようにする。
 
-### 7-8. 最終フェーズの文書整理
+### 7-8. 最終フェーズの文書整理 ✓ 完了 (2026-03-14)
 
 - 編集:
-	- `docs/IMPLEMENTATION_STATUS.md`
-	- `docs/CURRENT_ARCHITECTURE.md`
-	- `docs/ARCHITECTURE.md`
-	- `docs/MODULE_DEPENDENCIES.md`
-	- `docs/ROADMAP.md`
+	- `docs/IMPLEMENTATION_STATUS.md` ✓
+	- `docs/CURRENT_ARCHITECTURE.md` ✓
+	- `docs/MODULE_DEPENDENCIES.md` ✓
+	- `docs/ROADMAP.md` ✓
 - 操作:
-	1. 途中フェーズ向けの暫定表現を消す。
-	2. 実装済み構造と今後の拡張余地を最終形へ更新する。
+	1. 途中フェーズ向けの暫定表現を消す。 ✓
+	2. 実装済み構造と今後の拡張余地を最終形へ更新する。 ✓
 
 ---
 

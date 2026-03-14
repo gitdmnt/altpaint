@@ -23,6 +23,9 @@ state {
   pen_name: string = ""
   pen_size: int = 1
   pen_count: int = 0
+  active_child_tool_id: string = ""
+  active_child_tool_label: string = ""
+  child_tools_json: string = "[]"
   show_shortcuts: bool = false
   session.capture_target: string = ""
   config.pen_shortcut: string = "P"
@@ -49,6 +52,11 @@ view {
       <button id="tool.bucket" on:click="activate_bucket" active={state.active_tool == "bucket"}>🪣 塗りつぶし</button>
       <button id="tool.lasso-bucket" on:click="activate_lasso_bucket" active={state.active_tool == "lasso_bucket"}>⬠ 囲って塗る</button>
       <button id="tool.panel-rect" on:click="activate_panel_rect" active={state.active_tool == "panel_rect"}>▭ コマ矩形</button>
+      <when test={state.child_tools_json != "[]"}>
+        <section title="子ツール">
+          <text tone="muted">選択中: {state.active_child_tool_label}</text>
+        </section>
+      </when>
       <separator></separator>
       <text>プリセット: {state.pen_name}</text>
       <text>サイズ: {state.pen_size}px / 登録数: {state.pen_count}</text>

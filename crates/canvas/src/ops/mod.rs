@@ -3,6 +3,7 @@ pub(crate) mod flood_fill;
 pub(crate) mod lasso_fill;
 pub(crate) mod stamp;
 pub(crate) mod stroke;
+pub mod text;
 
 use app_core::{BitmapEdit, CanvasBitmap, CanvasDirtyRect, PaintPluginContext, PanelLocalPoint};
 

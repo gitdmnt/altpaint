@@ -20,6 +20,9 @@ const DRAWING_PLUGIN_ID: state::StringKey = state::string("drawing_plugin_id");
 const PEN_NAME: state::StringKey = state::string("pen_name");
 const PEN_SIZE: state::IntKey = state::int("pen_size");
 const PEN_COUNT: state::IntKey = state::int("pen_count");
+const ACTIVE_CHILD_TOOL_ID: state::StringKey = state::string("active_child_tool_id");
+const ACTIVE_CHILD_TOOL_LABEL: state::StringKey = state::string("active_child_tool_label");
+const CHILD_TOOLS_JSON: state::StringKey = state::string("child_tools_json");
 const SHOW_SHORTCUTS: state::BoolKey = state::bool("show_shortcuts");
 const CAPTURE_TARGET: state::StringKey = state::string("session.capture_target");
 const PEN_SHORTCUT: state::StringKey = state::string("config.pen_shortcut");
@@ -68,6 +71,9 @@ fn sync_host() {
     set_state_string(PEN_NAME, host::tool::pen_name());
     set_state_i32(PEN_SIZE, host::tool::pen_size());
     set_state_i32(PEN_COUNT, host::tool::pen_count());
+    set_state_string(ACTIVE_CHILD_TOOL_ID, host::tool::active_child_tool_id());
+    set_state_string(ACTIVE_CHILD_TOOL_LABEL, host::tool::active_child_tool_label());
+    set_state_string(CHILD_TOOLS_JSON, host::tool::child_tools_json());
 }
 
 /// ツール を選択状態へ更新する。
@@ -221,6 +227,18 @@ fn activate_lasso_bucket() {
 #[plugin_sdk::panel_handler]
 fn activate_panel_rect() {
     emit_command(&build_tool_command(Tool::PanelRect));
+}
+
+/// 子ツール を選択する。
+///
+/// 内部でコマンドを発行します。
+#[plugin_sdk::panel_handler]
+fn select_child_tool() {
+    let child_id = event_string("value");
+    if child_id.trim().is_empty() {
+        return;
+    }
+    emit_command(&commands::tool::select_child_tool(child_id.trim()));
 }
 
 /// ペン をひとつ前へ切り替える。

@@ -107,6 +107,8 @@ pub struct ToolDefinition {
     pub drawing_plugin_id: String,
     #[serde(default)]
     pub settings: Vec<ToolSettingDefinition>,
+    #[serde(default)]
+    pub children: Vec<ToolDefinition>,
 }
 
 impl ToolDefinition {
@@ -296,6 +298,7 @@ fn default_tool_catalog() -> Vec<ToolDefinition> {
                 ToolSettingDefinition::checkbox("antialias", "なめらか"),
                 ToolSettingDefinition::slider("stabilization", "手ぶれ補正", 0, 100),
             ],
+            children: Vec::new(),
         },
         ToolDefinition {
             id: "builtin.eraser".to_string(),
@@ -308,6 +311,7 @@ fn default_tool_catalog() -> Vec<ToolDefinition> {
                 ToolSettingDefinition::checkbox("antialias", "なめらか"),
                 ToolSettingDefinition::slider("stabilization", "手ぶれ補正", 0, 100),
             ],
+            children: Vec::new(),
         },
         ToolDefinition {
             id: "builtin.bucket".to_string(),
@@ -316,6 +320,7 @@ fn default_tool_catalog() -> Vec<ToolDefinition> {
             provider_plugin_id: "plugins/default-fill-tools-plugin".to_string(),
             drawing_plugin_id: default_bitmap_plugin_id(),
             settings: Vec::new(),
+            children: Vec::new(),
         },
         ToolDefinition {
             id: "builtin.lasso-bucket".to_string(),
@@ -324,6 +329,7 @@ fn default_tool_catalog() -> Vec<ToolDefinition> {
             provider_plugin_id: "plugins/default-fill-tools-plugin".to_string(),
             drawing_plugin_id: default_bitmap_plugin_id(),
             settings: Vec::new(),
+            children: Vec::new(),
         },
         ToolDefinition {
             id: "builtin.panel-rect".to_string(),
@@ -332,6 +338,7 @@ fn default_tool_catalog() -> Vec<ToolDefinition> {
             provider_plugin_id: "plugins/default-panel-tools-plugin".to_string(),
             drawing_plugin_id: default_bitmap_plugin_id(),
             settings: Vec::new(),
+            children: Vec::new(),
         },
     ]
 }
@@ -387,6 +394,9 @@ pub struct Document {
     /// 現在アクティブな登録ツール ID。
     #[serde(default = "default_active_tool_id")]
     pub active_tool_id: String,
+    /// 現在アクティブな子ツール ID。空文字列は未選択を表す。
+    #[serde(default)]
+    pub active_child_tool_id: String,
     /// 現在のブラシ色。
     #[serde(default)]
     pub active_color: ColorRgba8,
@@ -812,6 +822,7 @@ impl Document {
             },
             active_tool: ToolKind::default(),
             active_tool_id,
+            active_child_tool_id: String::new(),
             active_color: ColorRgba8::default(),
             tool_catalog,
             pen_presets,
@@ -960,6 +971,25 @@ impl Document {
             .or_else(|| self.tool_catalog.first())
     }
 
+    /// アクティブな子ツール definition を返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
+    pub fn active_child_tool_definition(&self) -> Option<&ToolDefinition> {
+        let parent = self.active_tool_definition()?;
+        if self.active_child_tool_id.is_empty() {
+            return None;
+        }
+        parent.children.iter().find(|c| c.id == self.active_child_tool_id)
+    }
+
+    /// 指定された親・子 ID の子ツール definition を返す。
+    ///
+    /// 値を生成できない場合は `None` を返します。
+    pub fn child_tool_definition(&self, parent_id: &str, child_id: &str) -> Option<&ToolDefinition> {
+        let parent = self.tool_definition(parent_id)?;
+        parent.children.iter().find(|c| c.id == child_id)
+    }
+
     /// アクティブな ツール provider プラグイン ID を返す。
     ///
     /// 値を生成できない場合は `None` を返します。
@@ -1100,6 +1130,7 @@ impl Document {
         if let Some(tool_definition) = self.tool_catalog.iter().find(|entry| entry.kind == tool) {
             self.active_tool_id = tool_definition.id.clone();
         }
+        self.active_child_tool_id = String::new();
     }
 
     /// アクティブ ツール by ID を設定する。
@@ -1109,6 +1140,7 @@ impl Document {
         };
         self.active_tool = tool_definition.kind;
         self.active_tool_id = tool_definition.id;
+        self.active_child_tool_id = String::new();
         true
     }
 
@@ -1268,6 +1300,14 @@ impl Document {
             Command::Noop => None,
             Command::SelectTool { tool_id } => {
                 let _ = self.set_active_tool_by_id(tool_id);
+                None
+            }
+            Command::SelectChildTool { child_id } => {
+                if let Some(parent) = self.active_tool_definition() {
+                    if parent.children.iter().any(|c| c.id == *child_id) {
+                        self.active_child_tool_id = child_id.clone();
+                    }
+                }
                 None
             }
             Command::SetActiveTool { tool } => {

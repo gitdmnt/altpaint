@@ -344,6 +344,7 @@ pub(crate) fn load_project_from_sqlite_path(
         active_page_index: document_record.active_page_index,
         active_panel_index: document_record.active_panel_index,
         view_transform: document_record.view_transform,
+        active_child_tool_id: String::new(),
     };
     document.normalize_phase9_state();
 

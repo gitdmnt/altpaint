@@ -13,7 +13,13 @@
       "Bash(for f:*)",
       "Bash(do echo:*)",
       "Read(//d/naoto/programming/altpaint/**)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(~/.cargo/bin/cargo test:*)",
+      "Bash(~/.cargo/bin/cargo build:*)",
+      "Bash(git stash:*)",
+      "Bash(~/.cargo/bin/cargo clippy:*)",
+      "Bash(find /root/rust_programs/altpaint -name *.altp-tool.json)",
+      "Bash(grep -n \"pub struct BitmapEdit\\\\|BitmapEdit {\" /root/rust_programs/altpaint/crates/app-core/src/*.rs)"
     ]
   }
 }

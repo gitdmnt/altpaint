@@ -25,6 +25,7 @@ members = [
   "plugins/pen-settings",
   "plugins/job-progress",
   "plugins/snapshot-panel",
+  "plugins/text-flow",
 ]
 resolver = "2"
 

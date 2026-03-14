@@ -2,6 +2,8 @@
 
 mod export;
 mod project_io;
+mod snapshot;
+mod text_render;
 mod tool_catalog;
 mod workspace_io;
 
@@ -42,7 +44,13 @@ impl DesktopApp {
         if let Some(changed) = self.handle_history_service_request(&request) {
             return changed;
         }
+        if let Some(changed) = self.handle_snapshot_service_request(&request) {
+            return changed;
+        }
         if let Some(changed) = self.handle_export_service_request(&request) {
+            return changed;
+        }
+        if let Some(changed) = self.handle_text_render_service_request(&request) {
             return changed;
         }
         false

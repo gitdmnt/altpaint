@@ -1,0 +1,39 @@
+panel {
+  id: "builtin.text-flow"
+  title: "テキスト"
+  version: 1
+}
+
+permissions {
+  read.document
+  write.command
+  service.text_render
+}
+
+runtime {
+  wasm: "builtin_panel_text_flow.wasm"
+}
+
+state {
+  input_text: string = ""
+  font_size: int = 32
+  color_hex: string = "#000000"
+  x: int = 100
+  y: int = 100
+}
+
+view {
+  <column>
+    <section title="テキスト入力">
+      <input bind={state.input_text} placeholder="テキストを入力" on:change="update_text" />
+    </section>
+    <section title="サイズ・位置">
+      <slider id="font_size" label="サイズ" value={state.font_size} min=8 max=200 on:change="update_font_size" />
+      <slider id="x" label="X" value={state.x} min=0 max=8192 on:change="update_x" />
+      <slider id="y" label="Y" value={state.y} min=0 max=8192 on:change="update_y" />
+    </section>
+    <section title="描画">
+      <button id="render" on:click="render_text">テキストを描画</button>
+    </section>
+  </column>
+}

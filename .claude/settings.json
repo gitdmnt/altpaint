@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n \"pub struct CanvasBitmap\\\\|pub struct CanvasDirtyRect\\\\|transparent\\\\|pub pixels\\\\|pub width\\\\|pub height\" /root/rust_programs/altpaint/crates/app-core/src/*.rs)"
+    ]
+  }
+}

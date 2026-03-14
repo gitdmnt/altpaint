@@ -171,6 +171,21 @@ pub mod tool {
         host_string("tool.active_drawing_plugin_id")
     }
 
+    /// アクティブな 子ツール ID を返す。
+    pub fn active_child_tool_id() -> String {
+        host_string("tool.active_child_tool_id")
+    }
+
+    /// アクティブな 子ツール ラベル を返す。
+    pub fn active_child_tool_label() -> String {
+        host_string("tool.active_child_tool_label")
+    }
+
+    /// アクティブツールの 子ツール 一覧 JSON を返す。
+    pub fn child_tools_json() -> String {
+        host_string("tool.child_tools_json")
+    }
+
     /// Host snapshot の tool / pen_id を 文字列として返す。
     pub fn pen_id() -> String {
         host_string("tool.pen_id")
@@ -354,10 +369,15 @@ pub mod jobs {
 
 /// スナップショット関連 host 値を読む。
 pub mod snapshot {
-    use crate::runtime::host_string;
+    use crate::runtime::{host_i32, host_string};
 
     /// Host snapshot の snapshot / storage_status を 文字列として返す。
     pub fn storage_status() -> String {
         host_string("snapshot.storage_status")
+    }
+
+    /// Host snapshot の snapshot / count を 整数値として返す。
+    pub fn count() -> i32 {
+        host_i32("snapshot.count")
     }
 }

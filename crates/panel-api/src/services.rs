@@ -43,6 +43,8 @@ pub mod names {
     pub const SNAPSHOT_RESTORE: &str = "snapshot.restore";
 
     pub const EXPORT_IMAGE: &str = "export.image";
+
+    pub const TEXT_RENDER_TO_LAYER: &str = "text_render.render_to_layer";
 }
 
 #[derive(Debug, Clone, PartialEq)]

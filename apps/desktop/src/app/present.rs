@@ -42,12 +42,14 @@ impl DesktopApp {
                 let can_undo = self.history.can_undo();
                 let can_redo = self.history.can_redo();
                 let active_jobs = self.io_state.pending_jobs.len();
+                let snapshot_count = self.snapshots.len();
                 if self.ui_sync_panel_ids.is_empty() {
                     let changed = self.panel_runtime.sync_document(
                         &self.document,
                         can_undo,
                         can_redo,
                         active_jobs,
+                        snapshot_count,
                     );
                     self.panel_presentation
                         .reconcile_runtime_panels(&self.panel_runtime);
@@ -62,6 +64,7 @@ impl DesktopApp {
                         can_undo,
                         can_redo,
                         active_jobs,
+                        snapshot_count,
                     );
                     self.panel_presentation
                         .reconcile_runtime_panels(&self.panel_runtime);

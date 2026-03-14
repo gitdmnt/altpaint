@@ -101,8 +101,9 @@ impl PanelRuntime {
         can_undo: bool,
         can_redo: bool,
         active_jobs: usize,
+        snapshot_count: usize,
     ) -> BTreeSet<String> {
-        self.sync_document_subset(document, None, can_undo, can_redo, active_jobs)
+        self.sync_document_subset(document, None, can_undo, can_redo, active_jobs, snapshot_count)
     }
 
     /// ドキュメント panels を現在の状態へ同期する。
@@ -113,11 +114,12 @@ impl PanelRuntime {
         can_undo: bool,
         can_redo: bool,
         active_jobs: usize,
+        snapshot_count: usize,
     ) -> BTreeSet<String> {
         if panel_ids.is_empty() {
-            return self.sync_document(document, can_undo, can_redo, active_jobs);
+            return self.sync_document(document, can_undo, can_redo, active_jobs, snapshot_count);
         }
-        self.sync_document_subset(document, Some(panel_ids), can_undo, can_redo, active_jobs)
+        self.sync_document_subset(document, Some(panel_ids), can_undo, can_redo, active_jobs, snapshot_count)
     }
 
     /// 現在の パネル 件数 を返す。
@@ -251,6 +253,7 @@ impl PanelRuntime {
         can_undo: bool,
         can_redo: bool,
         active_jobs: usize,
+        snapshot_count: usize,
     ) -> BTreeSet<String> {
         let mut changed_panels = BTreeSet::new();
         for panel in &mut self.panels {
@@ -262,7 +265,7 @@ impl PanelRuntime {
                 .get(panel.id())
                 .cloned()
                 .unwrap_or_else(|| panel.panel_tree());
-            panel.update(document, can_undo, can_redo, active_jobs);
+            panel.update(document, can_undo, can_redo, active_jobs, snapshot_count);
             let next_tree = panel.panel_tree();
             self.panel_tree_cache
                 .insert(panel.id().to_string(), next_tree.clone());

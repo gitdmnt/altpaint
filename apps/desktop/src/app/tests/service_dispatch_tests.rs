@@ -71,6 +71,34 @@ fn request_service_save_workspace_preset_persists_catalog() {
     assert!(reloaded.presets.iter().any(|preset| preset.id == "review"));
 }
 
+/// スナップショット 作成 サービス request increases スナップショット 件数 が期待どおりに動作することを検証する。
+#[test]
+fn snapshot_create_service_increases_snapshot_count() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    assert_eq!(app.snapshots.len(), 0);
+
+    assert!(
+        app.execute_host_action(HostAction::RequestService(
+            ServiceRequest::new(names::SNAPSHOT_CREATE).with_value("label", "test-snap"),
+        ))
+    );
+
+    assert_eq!(app.snapshots.len(), 1);
+}
+
+/// スナップショット 復元 サービス request restores ドキュメント が期待どおりに動作することを検証する。
+#[test]
+fn snapshot_restore_service_restores_document() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let id = app.snapshots.push("baseline", app.document.clone());
+
+    assert!(
+        app.execute_host_action(HostAction::RequestService(
+            ServiceRequest::new(names::SNAPSHOT_RESTORE).with_value("snapshot_id", id),
+        ))
+    );
+}
+
 /// 要求 サービス 再読込 ペン presets refreshes ドキュメント 状態 が期待どおりに動作することを検証する。
 #[test]
 fn request_service_reload_pen_presets_refreshes_document_state() {

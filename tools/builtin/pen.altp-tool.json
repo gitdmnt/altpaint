@@ -29,5 +29,9 @@
       "min": 0,
       "max": 100
     }
+  ],
+  "children": [
+    { "id": "builtin.pen.normal", "name": "通常", "kind": "Pen", "provider_plugin_id": "plugins/default-pens-plugin" },
+    { "id": "builtin.pen.multiply", "name": "乗算", "kind": "Pen", "provider_plugin_id": "plugins/default-pens-plugin" }
   ]
 }

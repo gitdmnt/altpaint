@@ -238,6 +238,15 @@ pub mod tool {
         CommandDescriptor::new("tool.import_pen_presets")
     }
 
+    /// 子ツール を選択状態へ更新する。
+    pub fn select_child_tool(child_id: impl Into<String>) -> CommandDescriptor {
+        let mut descriptor = CommandDescriptor::new("tool.select_child");
+        descriptor
+            .payload
+            .insert("child_id".to_string(), json!(child_id.into()));
+        descriptor
+    }
+
     /// 現在の値を ペン パス へ変換する。
     pub fn import_pen_path(path: impl Into<String>) -> CommandDescriptor {
         let mut descriptor = CommandDescriptor::new("tool.import_pen_path");

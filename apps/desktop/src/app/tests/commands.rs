@@ -59,6 +59,39 @@ fn execute_command_select_tool_updates_document_tool_id() {
     assert_eq!(app.document.active_tool_id, "builtin.eraser");
 }
 
+/// execute コマンド SelectChildTool sets active_child_tool_id が期待どおりに動作することを検証する。
+#[test]
+fn execute_command_select_child_tool_updates_active_child_tool_id() {
+    let mut app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    // Pen tool must be loaded so we can select one of its children
+    let _ = app.execute_command(Command::SelectTool {
+        tool_id: "builtin.pen".to_string(),
+    });
+    // Inject a child tool definition into the tool catalog
+    if let Some(pen_def) = app
+        .document
+        .tool_catalog
+        .iter_mut()
+        .find(|t| t.id == "builtin.pen")
+    {
+        pen_def.children.push(app_core::ToolDefinition {
+            id: "builtin.pen.test".to_string(),
+            name: "Test".to_string(),
+            kind: app_core::ToolKind::Pen,
+            provider_plugin_id: String::new(),
+            drawing_plugin_id: String::new(),
+            settings: vec![],
+            children: vec![],
+        });
+    }
+
+    let _ = app.execute_command(Command::SelectChildTool {
+        child_id: "builtin.pen.test".to_string(),
+    });
+
+    assert_eq!(app.document.active_child_tool_id, "builtin.pen.test");
+}
+
 /// execute コマンド updates ドキュメント 色 が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_updates_document_color() {

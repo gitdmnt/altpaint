@@ -21,6 +21,7 @@ pub(crate) fn build_host_snapshot(
     can_undo: bool,
     can_redo: bool,
     active_jobs: usize,
+    snapshot_count: usize,
 ) -> Value {
     let active_tool_definition = document.active_tool_definition().cloned();
     let active_page = document.active_page();
@@ -100,6 +101,15 @@ pub(crate) fn build_host_snapshot(
         serde_json::to_string(&document.tool_catalog).unwrap_or_else(|_| "[]".to_string());
     let active_tool_settings_json =
         serde_json::to_string(document.active_tool_settings()).unwrap_or_else(|_| "[]".to_string());
+    let active_child_tool_id = &document.active_child_tool_id;
+    let active_child_tool = document.active_child_tool_definition();
+    let active_child_tool_label = active_child_tool
+        .map(|c| c.name.clone())
+        .unwrap_or_default();
+    let child_tools_json = active_tool_definition
+        .as_ref()
+        .map(|t| serde_json::to_string(&t.children).unwrap_or_else(|_| "[]".to_string()))
+        .unwrap_or_else(|| "[]".to_string());
 
     json!({
         "document": {
@@ -132,6 +142,9 @@ pub(crate) fn build_host_snapshot(
                 .unwrap_or_else(|| active_tool_name(document.active_tool).to_string()),
             "catalog_json": tool_catalog_json,
             "active_settings_json": active_tool_settings_json,
+            "active_child_tool_id": active_child_tool_id,
+            "active_child_tool_label": active_child_tool_label,
+            "child_tools_json": child_tools_json,
             "active_provider_plugin_id": document.active_tool_provider_plugin_id().unwrap_or_default(),
             "active_drawing_plugin_id": document.active_tool_drawing_plugin_id().unwrap_or_default(),
             "supports_size": document.active_tool_settings().iter().any(|setting| setting.key == "size"),
@@ -156,7 +169,10 @@ pub(crate) fn build_host_snapshot(
         },
         "history": { "can_undo": can_undo, "can_redo": can_redo },
         "jobs": { "active": active_jobs, "queued": 0, "status": if active_jobs == 0 { format!("idle / work={}", document.work.title) } else { format!("{active_jobs} job(s) running") } },
-        "snapshot": { "storage_status": "pending" },
+        "snapshot": {
+            "count": snapshot_count,
+            "storage_status": if snapshot_count == 0 { "empty" } else { "ok" },
+        },
         "view": {
             "zoom": document.view_transform.zoom,
             "zoom_milli": (document.view_transform.zoom * 1000.0).round() as i32,

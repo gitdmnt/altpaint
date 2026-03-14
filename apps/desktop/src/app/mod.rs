@@ -15,6 +15,7 @@ mod panel_dispatch;
 mod present;
 mod present_state;
 mod services;
+mod snapshot_store;
 mod state;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -34,6 +35,7 @@ use render::RenderFrame;
 use ui_shell::{PanelPresentation, PanelSurface};
 
 use self::io_state::DesktopIoState;
+use self::snapshot_store::SnapshotStore;
 #[cfg(test)]
 pub(crate) use self::panel_dispatch::PanelDragState;
 use self::panel_dispatch::PanelInteractionState;
@@ -67,6 +69,7 @@ pub(crate) struct DesktopApp {
     pending_canvas_host_dirty_rect: Option<crate::frame::Rect>,
     pending_canvas_transform_update: bool,
     pub(crate) history: CommandHistory,
+    pub(crate) snapshots: SnapshotStore,
     pub(crate) panel_interaction: PanelInteractionState,
     hover_canvas_position: Option<CanvasPoint>,
     needs_ui_sync: bool,
@@ -138,6 +141,7 @@ impl DesktopApp {
             pending_canvas_host_dirty_rect: None,
             pending_canvas_transform_update: false,
             history: CommandHistory::new(),
+            snapshots: SnapshotStore::default(),
             panel_interaction: PanelInteractionState::default(),
             hover_canvas_position: None,
             needs_ui_sync: true,

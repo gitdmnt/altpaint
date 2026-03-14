@@ -79,6 +79,7 @@ impl DesktopApp {
         match command {
             Command::SetActiveTool { .. }
             | Command::SelectTool { .. }
+            | Command::SelectChildTool { .. }
             | Command::SelectNextPenPreset
             | Command::SelectPreviousPenPreset => {
                 self.sync_ui_from_document_panels(TOOL_PANEL_IDS);

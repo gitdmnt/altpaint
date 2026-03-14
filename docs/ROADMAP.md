@@ -248,8 +248,12 @@
 
 ### 完了条件
 
-- `crates/app-core/src/history.rs`、`crates/canvas` の undo 対応、export service、snapshot 拡張など主要機能の受け皿 module が実在する
-- 新機能が `apps/desktop` / `ui-shell` / `Document` へ逆流せず、決めた境界に沿って追加されている
+- `crates/app-core/src/history.rs`、`crates/canvas` の undo 対応、export service、snapshot 拡張など主要機能の受け皿 module が実在する ✓
+- 新機能が `apps/desktop` / `ui-shell` / `Document` へ逆流せず、決めた境界に沿って追加されている ✓
+- `TextRenderer` trait / `Font8x8Renderer` / `plugins/text-flow` が実装されている ✓
+- 回帰計測スクリプト (`scripts/profile-*.ps1`) が実在する ✓
+
+**フェーズ7はサブフェーズ 7-0〜7-8 をすべて完了した（2026-03-14）。**
 
 補足:
 

@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、2026-03-13 時点の `altpaint` が**コード上で実際にどう分割され、どこに責務が集中しているか**を整理するための現況文書である。
+この文書は、2026-03-14 時点の `altpaint` が**コード上で実際にどう分割され、どこに責務が集中しているか**を整理するための現況文書である。
 
 この文書は理想図ではない。現状の事実をまとめる。
 
@@ -58,7 +58,11 @@
 - `src/app/services/project_io.rs`
 - `src/app/services/workspace_io.rs`
 - `src/app/services/tool_catalog.rs`
+- `src/app/services/export.rs`
+- `src/app/services/snapshot.rs`
+- `src/app/services/text_render.rs`
 - `src/app/background_tasks.rs`
+- `src/app/snapshot_store.rs`
 - `src/app/input.rs`
 - `src/app/commands.rs`
 - `src/app/state.rs`
@@ -96,6 +100,7 @@
 - `src/document/pen_state.rs`
 - `src/document/tests.rs`
 - `src/error.rs`
+- `src/history.rs`
 - `src/painting.rs`
 - `src/workspace.rs`
 
@@ -130,7 +135,8 @@
 - `src/gesture.rs`
 - `src/render_bridge.rs`
 - `src/plugins/builtin_bitmap.rs`
-- `src/ops/`
+- `src/edit_record.rs`
+- `src/ops/` (stamp / stroke / flood_fill / lasso_fill / composite / text)
 - `src/tests/`
 
 補足:
@@ -331,6 +337,7 @@ workspace member として存在するもの:
 - `plugins/pen-settings`
 - `plugins/job-progress`
 - `plugins/snapshot-panel`
+- `plugins/text-flow`
 
 補足:
 

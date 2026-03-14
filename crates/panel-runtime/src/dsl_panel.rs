@@ -162,8 +162,8 @@ impl PanelPlugin for DslPanelPlugin {
     }
 
     /// 更新 に必要な処理を行う。
-    fn update(&mut self, document: &Document, can_undo: bool, can_redo: bool, active_jobs: usize) {
-        self.host_snapshot = build_host_snapshot(document, can_undo, can_redo, active_jobs);
+    fn update(&mut self, document: &Document, can_undo: bool, can_redo: bool, active_jobs: usize, snapshot_count: usize) {
+        self.host_snapshot = build_host_snapshot(document, can_undo, can_redo, active_jobs, snapshot_count);
         self.sync_host_state();
     }
 
@@ -1050,6 +1050,16 @@ pub fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command
                 .ok_or_else(|| "tool.select is missing payload.tool_id".to_string())?;
             Ok(Command::SelectTool {
                 tool_id: tool_id.to_string(),
+            })
+        }
+        "tool.select_child" => {
+            let child_id = descriptor
+                .payload
+                .get("child_id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "tool.select_child is missing payload.child_id".to_string())?;
+            Ok(Command::SelectChildTool {
+                child_id: child_id.to_string(),
             })
         }
         "tool.set_size" => {

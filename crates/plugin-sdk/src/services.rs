@@ -285,3 +285,26 @@ pub mod export_image {
         descriptor
     }
 }
+
+/// テキスト描画サービス。
+pub mod text_render {
+    use panel_schema::CommandDescriptor;
+    use serde_json::json;
+
+    /// テキストをアクティブレイヤーへ描画するサービス要求を構築する。
+    pub fn render_to_layer(
+        text: impl Into<String>,
+        font_size: u32,
+        color_hex: impl Into<String>,
+        x: usize,
+        y: usize,
+    ) -> CommandDescriptor {
+        let mut descriptor = CommandDescriptor::new("text_render.render_to_layer");
+        descriptor.payload.insert("text".to_string(), json!(text.into()));
+        descriptor.payload.insert("font_size".to_string(), json!(font_size));
+        descriptor.payload.insert("color_hex".to_string(), json!(color_hex.into()));
+        descriptor.payload.insert("x".to_string(), json!(x));
+        descriptor.payload.insert("y".to_string(), json!(y));
+        descriptor
+    }
+}

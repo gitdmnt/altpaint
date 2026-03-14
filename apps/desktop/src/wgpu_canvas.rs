@@ -216,7 +216,7 @@ impl WgpuPresenter {
                 label: Some("altpaint-device"),
                 required_features: wgpu::Features::empty(),
                 experimental_features: Default::default(),
-                required_limits: wgpu::Limits::default(),
+                required_limits: adapter.limits(),
                 memory_hints: wgpu::MemoryHints::Performance,
                 trace: wgpu::Trace::default(),
             })
