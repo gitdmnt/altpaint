@@ -90,6 +90,10 @@ altpaint is a desktop digital painting application. The workspace is a Rust 2024
 - `tests/` — crate/module boundary tests
 - `lib.rs` — module declarations, re-exports, thin public API only (no large implementations)
 
+## Coding Policies
+
+- **OS 固有コード禁止**: `#[cfg(target_os = "...")]` や `cfg!(target_os = ...)` はアプリケーション層のロジックに書かない。OS 差異はクロスプラットフォームライブラリ（`fontdb`、`winit`、`dirs` 等）に吸収させる。どうしても必要な場合は PR レビューで明示的に承認を得ること。
+
 ## Panel Plugin Development
 
 See [docs/builtin-plugins/PLUGIN_DEVELOPMENT.md](docs/builtin-plugins/PLUGIN_DEVELOPMENT.md) for the Rust SDK, `.altp-panel` DSL, and Wasm build process.

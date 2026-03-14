@@ -227,6 +227,37 @@
 - 文書更新はコード変更直後に行い、「コードが正本」の順序を崩さない
 - **タスク終了時はask_userで待機する**こと。
 
+## ブラックボックステスト結果 JSON への対応
+
+`tests/blackbox-testsheet.html` から出力されるテスト結果 JSON（`schema: "altpaint-blackbox-testsheet/1"`）が渡された場合、次の手順を自動で実行する。
+
+### 1. 結果を解釈する
+
+- `status: "fail"` の項目 → 直接バグとして調査・修正する
+- `status: "skip"` + `notes` がある項目 → notes の内容が根本原因の手がかりになる
+  - 例: `"プラグインが表示されていないので切り替え不可"` → プラグインロード失敗を調査する
+- `fps_rating: "<60"` → パフォーマンス問題として調査する
+- `seconds: null` の起動時間 → 計測できていないだけなので修正不要
+
+### 2. プラグインが表示されない場合（最頻出パターン）
+
+原因は `.wasm` ファイルが未ビルドまたは不正なパッケージ名である可能性が高い。次を確認する。
+
+1. `plugins/*/panel.altp-panel` の `runtime { wasm: "..." }` で期待するファイル名を確認する
+2. 期待するファイル名が存在するか確認する（`ls plugins/*/*.wasm`）
+3. ファイルがなければビルドする
+   - Linux/WSL2: `bash scripts/build-ui-wasm.sh`
+   - Windows (PowerShell): `.\scripts\build-ui-wasm.ps1`
+4. ビルドスクリプトで指定しているパッケージ名と `plugins/<name>/Cargo.toml` の `name =` が一致しているか確認する
+   - 命名規則: `builtin-panel-<plugin-name>` → アーティファクト `builtin_panel_<plugin_name>.wasm`
+   - 新しいプラグインを追加した際は、両方のビルドスクリプト（`.ps1` と `.sh`）を更新すること
+
+### 3. 調査後の流れ
+
+- コードを修正したら `cargo test --workspace` と `cargo clippy --workspace --all-targets` を通す
+- `docs/IMPLEMENTATION_STATUS.md` を更新する
+- ユーザーに ask_user で結果を報告して待機する
+
 ## 人間向け補足
 
 LLM に最初に読ませる文書としては、一般的な `README.md` よりも、エージェント向け意図が明確な **`AGENTS.md`** の方が適している。  

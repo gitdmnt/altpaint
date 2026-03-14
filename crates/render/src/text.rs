@@ -1,8 +1,6 @@
 use ab_glyph::{Font, FontVec, GlyphId, PxScale, ScaleFont, point};
 use font8x8::{BASIC_FONTS, UnicodeFonts};
 use fontdb::{Database, Family, ID, Query};
-use std::fs;
-use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 const BITMAP_FONT_WIDTH: usize = 8;
@@ -214,7 +212,7 @@ impl SystemFontRenderer {
     ///
     /// 値を生成できない場合は `None` を返します。
     fn load() -> Option<Self> {
-        let fonts = load_fast_path_fonts().or_else(load_database_fonts)?;
+        let fonts = load_database_fonts()?;
         if fonts.is_empty() {
             return None;
         }
@@ -336,68 +334,33 @@ fn load_database_fonts() -> Option<Vec<LoadedFont>> {
     if fonts.is_empty() { None } else { Some(fonts) }
 }
 
-/// Fast パス fonts を読み込み、必要に応じて整形して返す。
-///
-/// 値を生成できない場合は `None` を返します。
-fn load_fast_path_fonts() -> Option<Vec<LoadedFont>> {
-    #[cfg(target_os = "windows")]
-    {
-        let fonts_dir = std::env::var_os("WINDIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
-            .join("Fonts");
-        let mut fonts = Vec::new();
-        for (path, index) in [
-            (fonts_dir.join("segoeui.ttf"), 0),
-            (fonts_dir.join("meiryo.ttc"), 0),
-            (fonts_dir.join("msgothic.ttc"), 0),
-        ] {
-            if let Some(font) = load_font_from_path(path.as_path(), index) {
-                fonts.push(font);
-            }
-        }
-        if fonts.is_empty() { None } else { Some(fonts) }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        None
-    }
-}
-
 /// candidate フォント ids を計算して返す。
+///
+/// Latin 優先フォントを先頭に、CJK フォールバックを後方に並べる。
+/// fontdb の load_system_fonts() がOS判別を担うため、ここは名前のみで指定する。
 fn candidate_font_ids(database: &Database) -> Vec<ID> {
     let mut ids = Vec::new();
 
-    push_query(
-        database,
-        &mut ids,
-        &[Family::Name("Segoe UI"), Family::SansSerif],
-    );
-    push_query(
-        database,
-        &mut ids,
-        &[Family::Name("Yu Gothic UI"), Family::SansSerif],
-    );
-    push_query(
-        database,
-        &mut ids,
-        &[Family::Name("Meiryo UI"), Family::SansSerif],
-    );
-    push_query(
-        database,
-        &mut ids,
-        &[Family::Name("Noto Sans"), Family::SansSerif],
-    );
-    push_query(
-        database,
-        &mut ids,
-        &[Family::Name("DejaVu Sans"), Family::SansSerif],
-    );
-    push_query(
-        database,
-        &mut ids,
-        &[Family::Name("Arial"), Family::SansSerif],
-    );
+    // Latin / UI フォント（優先）
+    for name in &["Segoe UI", "SF Pro Text", "Noto Sans", "DejaVu Sans", "Arial", "Ubuntu"] {
+        push_query(database, &mut ids, &[Family::Name(name), Family::SansSerif]);
+    }
+
+    // CJK フォールバック（日中韓グリフのために必須）
+    for name in &[
+        "Noto Sans CJK JP",
+        "Noto Sans CJK SC",
+        "Noto Sans CJK TC",
+        "Noto Sans CJK KR",
+        "Yu Gothic UI",
+        "Meiryo UI",
+        "Meiryo",
+        "MS Gothic",
+        "源ノ角ゴシック",
+    ] {
+        push_query(database, &mut ids, &[Family::Name(name), Family::SansSerif]);
+    }
+
     push_query(database, &mut ids, &[Family::SansSerif]);
 
     if ids.is_empty()
@@ -431,16 +394,6 @@ fn load_font(database: &Database, id: ID) -> Option<LoadedFont> {
             FontVec::try_from_vec_and_index(data.to_vec(), index).ok()
         })
         .flatten()
-        .map(|font| LoadedFont { font })
-}
-
-/// フォント from パス を読み込み、必要に応じて整形して返す。
-///
-/// 値を生成できない場合は `None` を返します。
-fn load_font_from_path(path: &Path, index: u32) -> Option<LoadedFont> {
-    let data = fs::read(path).ok()?;
-    FontVec::try_from_vec_and_index(data, index)
-        .ok()
         .map(|font| LoadedFont { font })
 }
 
