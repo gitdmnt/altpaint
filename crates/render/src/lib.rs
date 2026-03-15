@@ -8,6 +8,7 @@ mod canvas_plan;
 mod compose;
 mod dirty;
 mod frame_plan;
+pub mod layer_group;
 mod overlay_plan;
 mod panel;
 mod panel_plan;
@@ -23,11 +24,13 @@ pub use brush_preview::brush_preview_dirty_rect;
 pub use canvas_plan::{CanvasCompositeSource, CanvasPlan};
 pub use compose::{
     SourceAxisRun, blit_scaled_rgba_region, build_source_axis_runs, clear_canvas_host_region,
-    compose_base_frame, compose_canvas_host_region, compose_desktop_frame, compose_overlay_frame,
-    compose_overlay_region, compose_panel_host_region, compose_status_region, fill_rgba_block,
+    compose_background_frame, compose_canvas_host_region, compose_desktop_frame,
+    compose_panel_host_region, compose_status_region, compose_temp_overlay_frame,
+    compose_temp_overlay_region, compose_ui_panel_frame, compose_ui_panel_region, fill_rgba_block,
     scroll_canvas_region,
 };
-pub use dirty::{DirtyFramePlan, union_dirty_rect, union_optional_rect};
+pub use dirty::{union_dirty_rect, union_optional_rect};
+pub use layer_group::LayerGroupDirtyPlan;
 pub use frame_plan::FramePlan;
 pub use overlay_plan::{
     CanvasOverlayState, OverlayPlan, PanelNavigatorEntry, PanelNavigatorOverlay,

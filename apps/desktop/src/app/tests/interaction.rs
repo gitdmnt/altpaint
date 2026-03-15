@@ -398,8 +398,8 @@ fn scroll_refresh_does_not_trigger_ui_update() {
 
     assert!(!profiler.stats.contains_key("ui_update"));
     assert!(!profiler.stats.contains_key("compose_full_frame"));
-    assert_eq!(update.base_dirty_rect, None);
-    assert_eq!(update.overlay_dirty_rect, None);
+    assert_eq!(update.background_dirty_rect, None);
+    assert_eq!(update.temp_overlay_dirty_rect, None);
     assert!(!update.canvas_updated);
     assert_eq!(
         profiler.stats.get("panel_surface").map(|stat| stat.calls),
@@ -509,7 +509,7 @@ fn panel_move_dirty_rect_covers_previous_and_current_overlay_bounds() {
         })
         .expect("panel dirty rect exists");
 
-    assert_eq!(update.overlay_dirty_rect, Some(expected));
+    assert_eq!(update.ui_panel_dirty_rect, Some(expected));
 }
 
 /// overlapping パネル and キャンバス オーバーレイ updates union 差分 rects が期待どおりに動作することを検証する。
@@ -526,7 +526,7 @@ fn overlapping_panel_and_canvas_overlay_updates_union_dirty_rects() {
 
     assert!(app.update_canvas_hover(center_x, center_y));
     let hover_dirty = app
-        .pending_canvas_host_dirty_rect
+        .pending_temp_overlay_dirty_rect
         .expect("hover dirty rect exists");
 
     let panel_rect = app
@@ -564,10 +564,8 @@ fn overlapping_panel_and_canvas_overlay_updates_union_dirty_rects() {
         })
         .expect("panel dirty rect exists");
 
-    assert_eq!(
-        update.overlay_dirty_rect,
-        Some(expected_panel_dirty.union(hover_dirty))
-    );
+    assert_eq!(update.ui_panel_dirty_rect, Some(expected_panel_dirty));
+    assert_eq!(update.temp_overlay_dirty_rect, Some(hover_dirty));
     assert!(profiler.stats.contains_key("compose_dirty_panel"));
     assert!(profiler.stats.contains_key("compose_dirty_overlay"));
 }
@@ -605,14 +603,14 @@ fn profile_color_wheel_drag_for_ten_seconds() {
     let start = points[0];
     assert!(app.handle_pointer_pressed(start.0, start.1));
     let initial_update = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
-    if initial_update.overlay_dirty_rect.is_some() {
+    if initial_update.temp_overlay_dirty_rect.is_some() {
         iterations += 1;
     }
     while started.elapsed() < duration {
         let point = points[index % points.len()];
         if app.handle_pointer_dragged(point.0, point.1) {
             let update = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
-            if update.overlay_dirty_rect.is_some() {
+            if update.temp_overlay_dirty_rect.is_some() {
                 iterations += 1;
             }
         }
@@ -657,7 +655,7 @@ fn profile_color_wheel_events_for_ten_seconds() {
             value: format!("{hue},{saturation},{value}"),
         }));
         let update = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
-        if update.overlay_dirty_rect.is_some() {
+        if update.temp_overlay_dirty_rect.is_some() {
             iterations += 1;
         }
         hue = (hue + 17) % 360;
@@ -705,14 +703,14 @@ fn profile_slider_drag_for_ten_seconds() {
     let start = points[0];
     assert!(app.handle_pointer_pressed(start.0, start.1));
     let initial_update = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
-    if initial_update.overlay_dirty_rect.is_some() {
+    if initial_update.temp_overlay_dirty_rect.is_some() {
         iterations += 1;
     }
     while started.elapsed() < duration {
         let point = points[index % points.len()];
         if app.handle_pointer_dragged(point.0, point.1) {
             let update = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
-            if update.overlay_dirty_rect.is_some() {
+            if update.temp_overlay_dirty_rect.is_some() {
                 iterations += 1;
             }
         }
@@ -775,7 +773,7 @@ fn profile_panel_drag_for_ten_seconds() {
         }
 
         let update = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
-        assert!(update.overlay_dirty_rect.is_some());
+        assert!(update.temp_overlay_dirty_rect.is_some());
         iterations += 1;
         position_index += 1;
     }
@@ -929,9 +927,9 @@ fn focus_refresh_does_not_trigger_ui_update() {
 
     assert!(!profiler.stats.contains_key("ui_update"));
     assert!(!profiler.stats.contains_key("compose_full_frame"));
-    assert_eq!(update.base_dirty_rect, None);
-    let overlay_dirty = update.overlay_dirty_rect.expect("overlay dirty rect");
-    assert!(rect_within_panel_surface(overlay_dirty, &surface));
+    assert_eq!(update.background_dirty_rect, None);
+    let panel_dirty = update.ui_panel_dirty_rect.expect("overlay dirty rect");
+    assert!(rect_within_panel_surface(panel_dirty, &surface));
     assert!(!update.canvas_updated);
     assert_eq!(
         profiler.stats.get("panel_surface").map(|stat| stat.calls),
@@ -960,7 +958,7 @@ fn tool_change_updates_status_without_full_recompose() {
     assert!(profiler.stats.contains_key("compose_dirty_status"));
     assert!(!update.canvas_updated);
     assert_eq!(
-        update.base_dirty_rect,
+        update.background_dirty_rect,
         Some(render::status_text_bounds(
             1280,
             200,
@@ -969,8 +967,8 @@ fn tool_change_updates_status_without_full_recompose() {
         ))
     );
     let surface = app.panel_surface.clone().expect("panel surface exists");
-    let overlay_dirty = update.overlay_dirty_rect.expect("overlay dirty rect");
-    assert!(rect_within_panel_surface(overlay_dirty, &surface));
+    let panel_dirty = update.ui_panel_dirty_rect.expect("overlay dirty rect");
+    assert!(rect_within_panel_surface(panel_dirty, &surface));
 }
 
 /// パネル release without matching press does not activate 保存 が期待どおりに動作することを検証する。
@@ -1172,8 +1170,8 @@ fn profile_view_perf_case(
         if step(app, iterations) {
             let update = app.prepare_present_frame(viewport.0, viewport.1, profiler);
             if update.canvas_updated
-                || update.base_dirty_rect.is_some()
-                || update.overlay_dirty_rect.is_some()
+                || update.background_dirty_rect.is_some()
+                || update.temp_overlay_dirty_rect.is_some()
             {
                 iterations += 1;
             }
@@ -1233,8 +1231,8 @@ fn pan_view_updates_canvas_without_status_recompose() {
     assert!(update.canvas_updated);
     assert!(update.canvas_transform_changed);
     assert_eq!(update.canvas_dirty_rect, None);
-    assert!(update.base_dirty_rect.is_some());
-    assert_eq!(update.overlay_dirty_rect, None);
+    assert!(update.background_dirty_rect.is_some());
+    assert_eq!(update.temp_overlay_dirty_rect, None);
 }
 
 /// pan ビュー updates キャンバス quad without ビットマップ reupload が期待どおりに動作することを検証する。
@@ -1328,15 +1326,15 @@ fn brush_preview_dirty_rect_grows_with_pen_size() {
     let _ = app.execute_command(Command::SetActivePenSize { size: 4 });
     assert!(app.update_canvas_hover(center_x, center_y));
     let small_dirty = app
-        .pending_canvas_host_dirty_rect
+        .pending_temp_overlay_dirty_rect
         .expect("small preview dirty exists");
 
-    app.pending_canvas_host_dirty_rect = None;
+    app.pending_temp_overlay_dirty_rect = None;
     app.hover_canvas_position = None;
     let _ = app.execute_command(Command::SetActivePenSize { size: 96 });
     assert!(app.update_canvas_hover(center_x, center_y));
     let large_dirty = app
-        .pending_canvas_host_dirty_rect
+        .pending_temp_overlay_dirty_rect
         .expect("large preview dirty exists");
 
     assert!(large_dirty.width > small_dirty.width);

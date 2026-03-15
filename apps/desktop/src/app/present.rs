@@ -11,8 +11,6 @@ use crate::frame::DesktopLayout;
 
 impl DesktopApp {
     /// Prepare 提示 フレーム に必要な差分領域だけを描画または合成する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn prepare_present_frame(
         &mut self,
         window_width: usize,
@@ -132,8 +130,9 @@ impl DesktopApp {
         }
 
         if self.needs_full_present_rebuild
-            || self.base_frame.is_none()
-            || self.overlay_frame.is_none()
+            || self.background_frame.is_none()
+            || self.temp_overlay_frame.is_none()
+            || self.ui_panel_frame.is_none()
         {
             let layout = self.layout.clone().expect("layout exists");
             let panel_surface = self.panel_surface.as_ref().expect("panel surface exists");
@@ -168,24 +167,30 @@ impl DesktopApp {
                 panel_navigator: self.panel_navigator_overlay(),
                 panel_creation_preview: self.panel_creation_preview_bounds(),
             };
-            let base_frame = profiler.measure("compose_base_frame", || {
-                render::compose_base_frame(&frame_plan)
+            let background_frame = profiler.measure("compose_background_frame", || {
+                render::compose_background_frame(&frame_plan)
             });
-            let overlay_frame = profiler.measure("compose_overlay_frame", || {
-                render::compose_overlay_frame(&frame_plan, &overlay_state)
+            let temp_overlay_frame = profiler.measure("compose_temp_overlay_frame", || {
+                render::compose_temp_overlay_frame(&frame_plan, &overlay_state)
             });
-            self.base_frame = Some(base_frame);
-            self.overlay_frame = Some(overlay_frame);
+            let ui_panel_frame = profiler.measure("compose_ui_panel_frame", || {
+                render::compose_ui_panel_frame(&frame_plan)
+            });
+            self.background_frame = Some(background_frame);
+            self.temp_overlay_frame = Some(temp_overlay_frame);
+            self.ui_panel_frame = Some(ui_panel_frame);
             self.pending_canvas_dirty_rect = None;
-            self.pending_canvas_background_dirty_rect = None;
-            self.pending_canvas_host_dirty_rect = None;
+            self.pending_background_dirty_rect = None;
+            self.pending_temp_overlay_dirty_rect = None;
+            self.pending_ui_panel_dirty_rect = None;
             self.pending_canvas_transform_update = false;
             self.needs_status_refresh = false;
             self.needs_full_present_rebuild = false;
             let window_rect = frame_plan.window_rect();
             return PresentFrameUpdate {
-                base_dirty_rect: Some(window_rect),
-                overlay_dirty_rect: Some(window_rect),
+                background_dirty_rect: Some(window_rect),
+                temp_overlay_dirty_rect: Some(window_rect),
+                ui_panel_dirty_rect: Some(window_rect),
                 canvas_dirty_rect: bitmap.map(|bitmap| app_core::CanvasDirtyRect {
                     x: 0,
                     y: 0,
@@ -205,16 +210,20 @@ impl DesktopApp {
         let active_panel_bounds = self.active_panel_mask_overlay();
         let panel_navigator = self.panel_navigator_overlay();
         let panel_creation_preview = self.panel_creation_preview_bounds();
-        let Some(base_frame) = self.base_frame.as_mut() else {
+        let Some(background_frame) = self.background_frame.as_mut() else {
             self.rebuild_present_frame();
             return PresentFrameUpdate::default();
         };
-        let Some(overlay_frame) = self.overlay_frame.as_mut() else {
+        let Some(temp_overlay_frame) = self.temp_overlay_frame.as_mut() else {
+            self.rebuild_present_frame();
+            return PresentFrameUpdate::default();
+        };
+        let Some(ui_panel_frame) = self.ui_panel_frame.as_mut() else {
             self.rebuild_present_frame();
             return PresentFrameUpdate::default();
         };
 
-        let mut dirty_plan = render::DirtyFramePlan::default();
+        let mut layer_dirty = render::LayerGroupDirtyPlan::default();
 
         let canvas_source = render::CanvasCompositeSource {
             width: self.canvas_frame.as_ref().map_or(1, |bitmap| bitmap.width),
@@ -251,22 +260,19 @@ impl DesktopApp {
             panel_creation_preview,
         };
 
+        // L4: パネルサーフェス更新
         if panel_surface_refreshed && let Some(panel_surface) = self.panel_surface.as_ref() {
             let panel_dirty_rect = self.panel_presentation.last_panel_surface_dirty_rect();
             profiler.measure("compose_dirty_panel", || {
                 let _ = panel_surface;
-                render::compose_overlay_region(
-                    overlay_frame,
-                    &frame_plan,
-                    &overlay_state,
-                    panel_dirty_rect,
-                );
+                render::compose_ui_panel_region(ui_panel_frame, &frame_plan, panel_dirty_rect);
             });
             if let Some(panel_dirty_rect) = panel_dirty_rect {
-                dirty_plan.mark_overlay(panel_dirty_rect);
+                layer_dirty.mark_ui_panel(panel_dirty_rect);
             }
         }
 
+        // L1: ステータス更新
         if let Some(status_text) = status_text.as_deref() {
             let status_plan = render::FramePlan::new(
                 window_width,
@@ -284,35 +290,48 @@ impl DesktopApp {
                 status_text,
             );
             profiler.measure("compose_dirty_status", || {
-                render::compose_status_region(base_frame, &status_plan);
+                render::compose_status_region(background_frame, &status_plan);
             });
-            dirty_plan.mark_base(status_rect);
+            layer_dirty.mark_background(status_rect);
             self.needs_status_refresh = false;
         }
 
-        if let Some(dirty_rect) = self.pending_canvas_background_dirty_rect.take()
+        // L1: キャンバス背景 dirty
+        if let Some(dirty_rect) = self.pending_background_dirty_rect.take()
             && dirty_rect.width > 0
             && dirty_rect.height > 0
         {
             profiler.measure("compose_dirty_canvas_base", || {
-                render::clear_canvas_host_region(base_frame, &frame_plan, Some(dirty_rect));
+                render::clear_canvas_host_region(background_frame, &frame_plan, Some(dirty_rect));
             });
-            dirty_plan.mark_base(dirty_rect);
+            layer_dirty.mark_background(dirty_rect);
         }
 
-        if let Some(dirty_rect) = self.pending_canvas_host_dirty_rect.take()
+        // L3: キャンバス一時オーバーレイ dirty
+        if let Some(dirty_rect) = self.pending_temp_overlay_dirty_rect.take()
             && dirty_rect.width > 0
             && dirty_rect.height > 0
         {
             profiler.measure("compose_dirty_overlay", || {
-                render::compose_overlay_region(
-                    overlay_frame,
+                render::compose_temp_overlay_region(
+                    temp_overlay_frame,
                     &frame_plan,
                     &overlay_state,
                     Some(dirty_rect),
                 );
             });
-            dirty_plan.mark_overlay(dirty_rect);
+            layer_dirty.mark_temp_overlay(dirty_rect);
+        }
+
+        // L4: UIパネル dirty
+        if let Some(dirty_rect) = self.pending_ui_panel_dirty_rect.take()
+            && dirty_rect.width > 0
+            && dirty_rect.height > 0
+        {
+            profiler.measure("compose_dirty_ui_panel_rect", || {
+                render::compose_ui_panel_region(ui_panel_frame, &frame_plan, Some(dirty_rect));
+            });
+            layer_dirty.mark_ui_panel(dirty_rect);
         }
 
         let canvas_dirty_rect = self.pending_canvas_dirty_rect.take();
@@ -328,30 +347,45 @@ impl DesktopApp {
                 ((dirty.width * dirty.height) as f64 / canvas_area) * 100.0,
             );
         }
-        if let Some(base_dirty_rect) = dirty_plan.base_dirty_rect {
+        if let Some(background_dirty_rect) = layer_dirty.background {
             let window_area = (window_width.max(1) * window_height.max(1)) as f64;
             profiler.record_value(
                 "base_upload_area_px",
-                (base_dirty_rect.width * base_dirty_rect.height) as f64,
+                (background_dirty_rect.width * background_dirty_rect.height) as f64,
             );
-            profiler.record_value("base_upload_width_px", base_dirty_rect.width as f64);
-            profiler.record_value("base_upload_height_px", base_dirty_rect.height as f64);
+            profiler.record_value(
+                "base_upload_width_px",
+                background_dirty_rect.width as f64,
+            );
+            profiler.record_value(
+                "base_upload_height_px",
+                background_dirty_rect.height as f64,
+            );
             profiler.record_value(
                 "base_upload_coverage_pct",
-                ((base_dirty_rect.width * base_dirty_rect.height) as f64 / window_area) * 100.0,
+                ((background_dirty_rect.width * background_dirty_rect.height) as f64
+                    / window_area)
+                    * 100.0,
             );
         }
-        if let Some(overlay_dirty_rect) = dirty_plan.overlay_dirty_rect {
+        if let Some(temp_overlay_dirty_rect) = layer_dirty.temp_overlay {
             let window_area = (window_width.max(1) * window_height.max(1)) as f64;
             profiler.record_value(
                 "overlay_upload_area_px",
-                (overlay_dirty_rect.width * overlay_dirty_rect.height) as f64,
+                (temp_overlay_dirty_rect.width * temp_overlay_dirty_rect.height) as f64,
             );
-            profiler.record_value("overlay_upload_width_px", overlay_dirty_rect.width as f64);
-            profiler.record_value("overlay_upload_height_px", overlay_dirty_rect.height as f64);
+            profiler.record_value(
+                "overlay_upload_width_px",
+                temp_overlay_dirty_rect.width as f64,
+            );
+            profiler.record_value(
+                "overlay_upload_height_px",
+                temp_overlay_dirty_rect.height as f64,
+            );
             profiler.record_value(
                 "overlay_upload_coverage_pct",
-                ((overlay_dirty_rect.width * overlay_dirty_rect.height) as f64 / window_area)
+                ((temp_overlay_dirty_rect.width * temp_overlay_dirty_rect.height) as f64
+                    / window_area)
                     * 100.0,
             );
         }
@@ -362,8 +396,9 @@ impl DesktopApp {
         }
 
         PresentFrameUpdate {
-            base_dirty_rect: dirty_plan.base_dirty_rect,
-            overlay_dirty_rect: dirty_plan.overlay_dirty_rect,
+            background_dirty_rect: layer_dirty.background,
+            temp_overlay_dirty_rect: layer_dirty.temp_overlay,
+            ui_panel_dirty_rect: layer_dirty.ui_panel,
             canvas_dirty_rect,
             canvas_transform_changed,
             canvas_updated: canvas_dirty_rect.is_some() || canvas_transform_changed,

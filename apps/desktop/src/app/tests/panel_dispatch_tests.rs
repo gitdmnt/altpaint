@@ -83,8 +83,8 @@ fn drag_panel_move_marks_canvas_host_dirty() {
         grab_offset_x: 10,
         grab_offset_y: 10,
     });
-    // pending_canvas_host_dirty_rect をリセット
-    app.pending_canvas_host_dirty_rect = None;
+    // pending_ui_panel_dirty_rect をリセット
+    app.pending_ui_panel_dirty_rect = None;
 
     // パネルを別の場所へドラッグ
     let target_x = (rect.x + 200).min(1000) as i32;
@@ -92,7 +92,7 @@ fn drag_panel_move_marks_canvas_host_dirty() {
     let _ = app.drag_panel_interaction(WindowPoint::new(target_x, target_y));
 
     assert!(
-        app.pending_canvas_host_dirty_rect.is_some(),
+        app.pending_ui_panel_dirty_rect.is_some(),
         "パネル移動後に canvas ホスト dirty rect が設定されるべき"
     );
 }

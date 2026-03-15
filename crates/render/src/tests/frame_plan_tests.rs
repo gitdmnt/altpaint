@@ -3,7 +3,7 @@ use app_core::{CanvasDirtyRect, CanvasPoint, CanvasViewTransform, CanvasViewport
 use crate::{
     CanvasCompositeSource, CanvasOverlayState, FramePlan, PanelNavigatorEntry,
     PanelNavigatorOverlay, PanelSurfaceSource, PixelRect, RenderContext, canvas_texture_quad,
-    compose_desktop_frame, compose_overlay_frame, map_canvas_dirty_to_display_with_transform,
+    compose_desktop_frame, compose_temp_overlay_frame, map_canvas_dirty_to_display_with_transform,
     map_canvas_point_to_display, map_view_to_canvas_with_transform, prepare_canvas_scene,
 };
 
@@ -307,7 +307,7 @@ fn overlay_frame_draws_panel_navigator_when_multiple_panels_exist() {
         "status",
     );
 
-    let overlay = compose_overlay_frame(
+    let overlay = compose_temp_overlay_frame(
         &plan,
         &CanvasOverlayState {
             brush_preview: None,

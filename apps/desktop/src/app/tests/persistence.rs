@@ -211,7 +211,7 @@ fn move_panel_host_action_updates_status_without_full_recompose() {
     assert!(profiler.stats.contains_key("compose_dirty_panel"));
     assert!(profiler.stats.contains_key("compose_dirty_status"));
     assert_eq!(
-        update.base_dirty_rect,
+        update.background_dirty_rect,
         Some(render::status_text_bounds(
             1280,
             200,
@@ -220,7 +220,7 @@ fn move_panel_host_action_updates_status_without_full_recompose() {
         ))
     );
     assert_eq!(
-        update.overlay_dirty_rect,
+        update.ui_panel_dirty_rect,
         app.panel_presentation
             .last_panel_surface_dirty_rect()
             .map(|dirty| crate::frame::Rect {
@@ -254,7 +254,7 @@ fn set_panel_visibility_updates_status_without_full_recompose() {
     assert!(profiler.stats.contains_key("compose_dirty_panel"));
     assert!(profiler.stats.contains_key("compose_dirty_status"));
     assert_eq!(
-        update.base_dirty_rect,
+        update.background_dirty_rect,
         Some(render::status_text_bounds(
             1280,
             200,
@@ -263,7 +263,7 @@ fn set_panel_visibility_updates_status_without_full_recompose() {
         ))
     );
     assert_eq!(
-        update.overlay_dirty_rect,
+        update.ui_panel_dirty_rect,
         app.panel_presentation
             .last_panel_surface_dirty_rect()
             .map(|dirty| crate::frame::Rect {
@@ -308,7 +308,7 @@ fn hiding_panel_clears_previous_overlay_bounds_when_surface_shrinks() {
 
     assert!(profiler.stats.contains_key("compose_dirty_panel"));
     assert_eq!(
-        update.overlay_dirty_rect,
+        update.ui_panel_dirty_rect,
         Some(crate::frame::Rect {
             x: hidden_panel_rect.x,
             y: hidden_panel_rect.y,

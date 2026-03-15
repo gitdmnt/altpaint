@@ -10,8 +10,9 @@ use crate::frame::Rect;
 /// 差分提示のために更新領域を集約した結果を表す。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PresentFrameUpdate {
-    pub(crate) base_dirty_rect: Option<Rect>,
-    pub(crate) overlay_dirty_rect: Option<Rect>,
+    pub(crate) background_dirty_rect: Option<Rect>,
+    pub(crate) temp_overlay_dirty_rect: Option<Rect>,
+    pub(crate) ui_panel_dirty_rect: Option<Rect>,
     pub(crate) canvas_dirty_rect: Option<CanvasDirtyRect>,
     pub(crate) canvas_transform_changed: bool,
     pub(crate) canvas_updated: bool,
@@ -19,15 +20,11 @@ pub(crate) struct PresentFrameUpdate {
 
 impl DesktopApp {
     /// パネル サーフェス 差分 を更新し、必要な dirty 状態も記録する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn mark_panel_surface_dirty(&mut self) {
         self.needs_panel_surface_refresh = true;
     }
 
     /// ステータス 差分 を更新し、必要な dirty 状態も記録する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn mark_status_dirty(&mut self) {
         self.needs_status_refresh = true;
     }
@@ -38,8 +35,6 @@ impl DesktopApp {
     }
 
     /// Ui from ドキュメント を更新し、必要な dirty 状態も記録する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn sync_ui_from_document(&mut self) {
         self.needs_ui_sync = true;
         self.ui_sync_panel_ids = BTreeSet::new();
@@ -47,8 +42,6 @@ impl DesktopApp {
     }
 
     /// 現在の値を ui from ドキュメント panels へ変換する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn sync_ui_from_document_panels(&mut self, panel_ids: &[&str]) {
         if panel_ids.is_empty() {
             return;
@@ -81,8 +74,6 @@ impl DesktopApp {
     }
 
     /// 保留中の deferred ステータス refresh を反映する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn flush_deferred_status_refresh(&mut self) -> bool {
         if !self.deferred_status_refresh {
             return false;
@@ -98,13 +89,12 @@ impl DesktopApp {
     }
 
     /// 初期化 アクティブ interactions に必要な差分領域だけを描画または合成する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn reset_active_interactions(&mut self) {
         self.canvas_input.reset();
         self.pending_canvas_dirty_rect = None;
-        self.pending_canvas_background_dirty_rect = None;
-        self.pending_canvas_host_dirty_rect = None;
+        self.pending_background_dirty_rect = None;
+        self.pending_temp_overlay_dirty_rect = None;
+        self.pending_ui_panel_dirty_rect = None;
         self.pending_canvas_transform_update = false;
         self.deferred_view_panel_sync = false;
         self.deferred_status_refresh = false;
@@ -114,8 +104,6 @@ impl DesktopApp {
     }
 
     /// パネル サーフェス if changed を更新し、必要な dirty 状態も記録する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn refresh_panel_surface_if_changed(&mut self, changed: bool) -> bool {
         if changed {
             self.mark_panel_surface_dirty();
@@ -124,8 +112,6 @@ impl DesktopApp {
     }
 
     /// Append キャンバス 差分 矩形 に必要な差分領域だけを描画または合成する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn append_canvas_dirty_rect(&mut self, dirty: CanvasDirtyRect) -> bool {
         self.pending_canvas_dirty_rect = Some(
             self.pending_canvas_dirty_rect
@@ -135,8 +121,6 @@ impl DesktopApp {
     }
 
     /// ビットマップ edits を更新し、必要な dirty 状態も記録する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn apply_bitmap_edits(&mut self, edits: Vec<BitmapEdit>) -> bool {
         self.document
             .apply_bitmap_edits_to_active_layer(&edits)
@@ -146,20 +130,25 @@ impl DesktopApp {
             })
     }
 
-    /// Append キャンバス ホスト 差分 矩形 に必要な差分領域だけを描画または合成する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
-    pub(super) fn append_canvas_host_dirty_rect(&mut self, dirty: Rect) -> bool {
-        self.pending_canvas_host_dirty_rect = Some(
-            self.pending_canvas_host_dirty_rect
+    /// Append temp オーバーレイ 差分 矩形（L3）に必要な差分領域だけを描画または合成する。
+    pub(super) fn append_temp_overlay_dirty_rect(&mut self, dirty: Rect) -> bool {
+        self.pending_temp_overlay_dirty_rect = Some(
+            self.pending_temp_overlay_dirty_rect
+                .map_or(dirty, |existing| existing.union(dirty)),
+        );
+        true
+    }
+
+    /// Append UI パネル 差分 矩形（L4）に必要な差分領域だけを描画または合成する。
+    pub(super) fn append_ui_panel_dirty_rect(&mut self, dirty: Rect) -> bool {
+        self.pending_ui_panel_dirty_rect = Some(
+            self.pending_ui_panel_dirty_rect
                 .map_or(dirty, |existing| existing.union(dirty)),
         );
         true
     }
 
     /// キャンバス 変換 差分 を更新し、必要な dirty 状態も記録する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn mark_canvas_transform_dirty(
         &mut self,
         previous_transform: app_core::CanvasViewTransform,
@@ -190,8 +179,8 @@ impl DesktopApp {
             if let Some(exposed) =
                 render::exposed_canvas_background_rect_from_scenes(previous_scene, current_scene)
             {
-                self.pending_canvas_background_dirty_rect = Some(
-                    self.pending_canvas_background_dirty_rect
+                self.pending_background_dirty_rect = Some(
+                    self.pending_background_dirty_rect
                         .map_or(exposed, |existing| existing.union(exposed)),
                 );
             }
@@ -203,7 +192,7 @@ impl DesktopApp {
                     self.brush_preview_size().unwrap_or(1) as f32,
                 )
             }) {
-                self.append_canvas_host_dirty_rect(dirty);
+                self.append_temp_overlay_dirty_rect(dirty);
             }
         } else {
             self.rebuild_present_frame();
@@ -211,30 +200,27 @@ impl DesktopApp {
         true
     }
 
-    /// Base フレーム に必要な描画内容を組み立てる。
-    ///
-    /// 値を生成できない場合は `None` を返します。
-    pub(crate) fn base_frame(&self) -> Option<&render::RenderFrame> {
-        self.base_frame.as_ref()
+    /// Background フレーム を返す。
+    pub(crate) fn background_frame(&self) -> Option<&render::RenderFrame> {
+        self.background_frame.as_ref()
     }
 
-    /// オーバーレイ フレーム に必要な描画内容を組み立てる。
-    ///
-    /// 値を生成できない場合は `None` を返します。
-    pub(crate) fn overlay_frame(&self) -> Option<&render::RenderFrame> {
-        self.overlay_frame.as_ref()
+    /// TempOverlay フレーム を返す。
+    pub(crate) fn temp_overlay_frame(&self) -> Option<&render::RenderFrame> {
+        self.temp_overlay_frame.as_ref()
+    }
+
+    /// UiPanel フレーム を返す。
+    pub(crate) fn ui_panel_frame(&self) -> Option<&render::RenderFrame> {
+        self.ui_panel_frame.as_ref()
     }
 
     /// キャンバス texture quad を計算して返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub(crate) fn canvas_texture_quad(&self) -> Option<render::TextureQuad> {
         self.canvas_scene().and_then(|scene| scene.texture_quad())
     }
 
     /// キャンバス シーン を計算して返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub(crate) fn canvas_scene(&self) -> Option<render::CanvasScene> {
         let layout = self.layout.as_ref()?;
         let bitmap = self.canvas_frame()?;
@@ -251,9 +237,7 @@ impl DesktopApp {
         )
     }
 
-    /// キャンバス フレーム に必要な描画内容を組み立てる。
-    ///
-    /// 値を生成できない場合は `None` を返します。
+    /// キャンバス フレーム を返す。
     pub(crate) fn canvas_frame(&self) -> Option<&render::RenderFrame> {
         self.canvas_frame.as_ref()
     }

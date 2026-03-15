@@ -37,6 +37,7 @@
   `CanvasRuntime::replay_paint_record`・`execute_undo()`/`execute_redo()` サービスハンドラ・
   host snapshot への `can_undo`/`can_redo` 反映・app-actions パネルの undo/redo ボタン
 - **テキスト描画基盤 (フェーズ7-5b〜7-6)**: `TextRenderer` trait・`Font8x8Renderer`・`render_text_to_bitmap_edit` canvas op・`text_render.render_to_layer` service・`plugins/text-flow` panel plugin・host handler
+- **レンダー層分離 (2026-03-15)**: overlay 単層を L3 TempOverlay（canvas ブラシ/lasso）と L4 UiPanel（フローティング UI）に分割。`compose_temp_overlay_frame` / `compose_ui_panel_frame` / `LayerGroupDirtyPlan` 導入。各層が独立した dirty rect で更新され、不要な CPU 合成を削減。
 
 ## 現在の workspace 構成
 
@@ -83,7 +84,7 @@
 `apps/desktop` には次がある。
 
 - `DesktopRuntime` による `winit` event loop
-- `WgpuPresenter` による base / canvas / overlay の三層提示
+- `WgpuPresenter` による base / canvas / temp_overlay / ui_panel の四層提示
 - `DesktopApp` による document / UI / I/O / present の統合
 - `apps/desktop/src/app/bootstrap.rs` / `command_router.rs` / `panel_dispatch.rs` / `present_state.rs` / `background_tasks.rs` / `io_state.rs` / `services/` への責務分割
 - pointer / keyboard / IME の処理
@@ -135,6 +136,7 @@
 - `RenderFrame`
 - `CanvasScene`
 - `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan`
+- `LayerGroupDirtyPlan` による L1/L3/L4 レイヤー独立 dirty rect 管理
 - canvas quad / UV / dirty rect 写像
 - 画面座標 <-> canvas 座標変換
 - ブラシプレビュー矩形計算
@@ -315,6 +317,7 @@
 | 7-8 | 最終フェーズ文書整理 | 2026-03-14 |
 | 7 | 再編後の機能拡張 | **完了** (2026-03-14) |
 | 7-bugfix | ブラックボックステスト結果に基づくバグ修正 | 2026-03-15 |
+| 7-testfix | テスト安定化（テスト競合・OOM・期待値修正） | 2026-03-15 |
 
 ## フェーズ7 実装完了内容 (2026-03-14)
 
@@ -573,3 +576,10 @@
 - **lasso bucket の `point_in_polygon`**: 外積判定の符号バグを修正。
 - **app.save のコマンド戻り値**: `app.save` ボタンは `emit_service` 経由で保存するため `dispatch_panel_event_with_command` は `Some(Command::Noop)` を返す。テストの期待値を `SaveProject` → `Noop` に修正し、`pending_jobs.len() == 1` で保存ジョブのキューを検証するよう変更した（`commands.rs` / `panel_dispatch_tests.rs`）。
 - **workspace preset テストの競合**: `/tmp/altpaint-test.altp.json` を複数テストが共有していたため、キーボードテストが書き込んだプロジェクト状態が workspace preset テストに干渉していた。`unique_test_path("preset-project")` / `unique_test_path("preset-session")` で競合を解消した（`persistence.rs`）。
+- **layers-panel DSL 回帰**: `plugins/layers-panel/panel.altp-panel` から `<text>{state.title}</text>` が誤って削除されており、`desktop_app_replaces_builtin_panels_with_phase7_dsl_variants` が失敗していた。行を復元した。
+
+## 7-testfix テスト安定化 (2026-03-15)
+
+### 修正内容
+
+- **`evicts_oldest_when_full` OOM**: `SnapshotStore` のテストが `Document::default()` (2894×4093 = ~47MB) を `MAX_SNAPSHOTS+1 = 21` 個生成し、合計 ~1GB でOOMkillされていた。テスト内の `make_doc()` を `Document::new(1, 1)` に変更して解消した（`snapshot_store.rs`）。

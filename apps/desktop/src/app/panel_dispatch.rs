@@ -156,7 +156,7 @@ impl DesktopApp {
                 if changed {
                     self.mark_panel_surface_dirty();
                     if let Some(rect) = previous_rect {
-                        self.append_canvas_host_dirty_rect(rect);
+                        self.append_ui_panel_dirty_rect(rect);
                     }
                 }
                 changed
@@ -227,7 +227,7 @@ impl DesktopApp {
                     self.mark_status_dirty();
                     self.persist_session_state();
                     if let Some(rect) = previous_rect {
-                        self.append_canvas_host_dirty_rect(rect);
+                        self.append_ui_panel_dirty_rect(rect);
                     }
                 }
                 changed
@@ -242,7 +242,7 @@ impl DesktopApp {
                     self.mark_status_dirty();
                     self.persist_session_state();
                     if let Some(rect) = previous_rect {
-                        self.append_canvas_host_dirty_rect(rect);
+                        self.append_ui_panel_dirty_rect(rect);
                     }
                 }
                 changed

@@ -102,7 +102,7 @@ fn compose_status_region_updates_expected_footer_bounds() {
         CanvasViewTransform::default(),
         "status text",
     );
-    let mut frame = crate::compose_base_frame(&plan);
+    let mut frame = crate::compose_background_frame(&plan);
 
     compose_status_region(&mut frame, &plan);
 

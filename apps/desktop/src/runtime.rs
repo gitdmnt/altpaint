@@ -232,24 +232,35 @@ impl ApplicationHandler for DesktopRuntime {
                 );
                 self.profiler
                     .record("prepare_frame", prepare_started.elapsed());
-                let Some(base_frame) = self.app.base_frame() else {
+                let Some(background_frame) = self.app.background_frame() else {
                     return;
                 };
-                let Some(overlay_frame) = self.app.overlay_frame() else {
+                let Some(temp_overlay_frame) = self.app.temp_overlay_frame() else {
                     return;
                 };
-                let base_upload_region = update.base_dirty_rect.map(|rect| UploadRegion {
+                let Some(ui_panel_frame) = self.app.ui_panel_frame() else {
+                    return;
+                };
+                let base_upload_region = update.background_dirty_rect.map(|rect| UploadRegion {
                     x: rect.x as u32,
                     y: rect.y as u32,
                     width: rect.width as u32,
                     height: rect.height as u32,
                 });
-                let overlay_upload_region = update.overlay_dirty_rect.map(|rect| UploadRegion {
-                    x: rect.x as u32,
-                    y: rect.y as u32,
-                    width: rect.width as u32,
-                    height: rect.height as u32,
-                });
+                let temp_overlay_upload_region =
+                    update.temp_overlay_dirty_rect.map(|rect| UploadRegion {
+                        x: rect.x as u32,
+                        y: rect.y as u32,
+                        width: rect.width as u32,
+                        height: rect.height as u32,
+                    });
+                let ui_panel_upload_region =
+                    update.ui_panel_dirty_rect.map(|rect| UploadRegion {
+                        x: rect.x as u32,
+                        y: rect.y as u32,
+                        width: rect.width as u32,
+                        height: rect.height as u32,
+                    });
                 let canvas_layer = self.app.canvas_frame().and_then(|bitmap| {
                     self.app.canvas_texture_quad().map(|quad| CanvasLayer {
                         source: TextureSource {
@@ -269,14 +280,18 @@ impl ApplicationHandler for DesktopRuntime {
                 let present_started = Instant::now();
                 let timings = match presenter.render(PresentScene {
                     base_layer: FrameLayer {
-                        source: TextureSource::from(base_frame),
+                        source: TextureSource::from(background_frame),
                         upload_region: base_upload_region,
                     },
-                    overlay_layer: FrameLayer {
-                        source: TextureSource::from(overlay_frame),
-                        upload_region: overlay_upload_region,
-                    },
                     canvas_layer,
+                    temp_overlay_layer: FrameLayer {
+                        source: TextureSource::from(temp_overlay_frame),
+                        upload_region: temp_overlay_upload_region,
+                    },
+                    ui_panel_layer: FrameLayer {
+                        source: TextureSource::from(ui_panel_frame),
+                        upload_region: ui_panel_upload_region,
+                    },
                 }) {
                     Ok(timings) => timings,
                     Err(error) => {

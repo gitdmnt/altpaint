@@ -20,9 +20,8 @@ const ACTIVE_PANEL_FILL: [u8; 4] = [0xff, 0xc1, 0x07, 0x18];
 const PANEL_PREVIEW_BORDER: [u8; 4] = [0x80, 0xde, 0xea, 0xff];
 const PANEL_PREVIEW_FILL: [u8; 4] = [0x80, 0xde, 0xea, 0x32];
 
-/// 合成 base フレーム に必要な差分領域だけを描画または合成する。
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn compose_base_frame(plan: &FramePlan<'_>) -> RenderFrame {
+/// 合成 background フレーム に必要な差分領域だけを描画または合成する。
+pub fn compose_background_frame(plan: &FramePlan<'_>) -> RenderFrame {
     let mut frame = RenderFrame {
         width: plan.window_width,
         height: plan.window_height,
@@ -67,23 +66,22 @@ pub fn compose_base_frame(plan: &FramePlan<'_>) -> RenderFrame {
     frame
 }
 
-/// 合成 オーバーレイ フレーム に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
-pub fn compose_overlay_frame(plan: &FramePlan<'_>, overlay: &CanvasOverlayState) -> RenderFrame {
+/// 合成 temp オーバーレイ フレーム に必要な差分領域だけを描画または合成する。
+pub fn compose_temp_overlay_frame(
+    plan: &FramePlan<'_>,
+    overlay: &CanvasOverlayState,
+) -> RenderFrame {
     let mut frame = RenderFrame {
         width: plan.window_width,
         height: plan.window_height,
         pixels: vec![0; plan.window_width * plan.window_height * 4],
     };
-    compose_overlay_region(&mut frame, plan, overlay, None);
+    compose_temp_overlay_region(&mut frame, plan, overlay, None);
     frame
 }
 
-/// 合成 オーバーレイ 領域 に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
-pub fn compose_overlay_region(
+/// 合成 temp オーバーレイ 領域 に必要な差分領域だけを描画または合成する。
+pub fn compose_temp_overlay_region(
     frame: &mut RenderFrame,
     plan: &FramePlan<'_>,
     overlay: &CanvasOverlayState,
@@ -97,6 +95,32 @@ pub fn compose_overlay_region(
     });
     fill_rect(frame, clear_rect, [0, 0, 0, 0]);
     draw_canvas_overlay(frame, plan, overlay, dirty_rect);
+}
+
+/// 合成 UI パネル フレーム に必要な差分領域だけを描画または合成する。
+pub fn compose_ui_panel_frame(plan: &FramePlan<'_>) -> RenderFrame {
+    let mut frame = RenderFrame {
+        width: plan.window_width,
+        height: plan.window_height,
+        pixels: vec![0; plan.window_width * plan.window_height * 4],
+    };
+    compose_ui_panel_region(&mut frame, plan, None);
+    frame
+}
+
+/// 合成 UI パネル 領域 に必要な差分領域だけを描画または合成する。
+pub fn compose_ui_panel_region(
+    frame: &mut RenderFrame,
+    plan: &FramePlan<'_>,
+    dirty_rect: Option<PixelRect>,
+) {
+    let clear_rect = dirty_rect.unwrap_or(PixelRect {
+        x: 0,
+        y: 0,
+        width: frame.width,
+        height: frame.height,
+    });
+    fill_rect(frame, clear_rect, [0, 0, 0, 0]);
     compose_panel_host_region(frame, plan.panel_surface, dirty_rect);
 }
 
@@ -106,7 +130,7 @@ pub fn compose_overlay_region(
 #[allow(clippy::too_many_arguments)]
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn compose_desktop_frame(plan: &FramePlan<'_>, overlay: &CanvasOverlayState) -> RenderFrame {
-    let mut frame = compose_base_frame(plan);
+    let mut frame = compose_background_frame(plan);
     compose_canvas_host_region(&mut frame, plan, overlay, None);
     frame
 }

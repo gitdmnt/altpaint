@@ -40,7 +40,7 @@ impl DesktopApp {
                 self.brush_preview_size().unwrap_or(1) as f32,
             )
         }) {
-            self.append_canvas_host_dirty_rect(previous);
+            self.append_temp_overlay_dirty_rect(previous);
         }
         if let Some(next) = next.and_then(|position| {
             render::brush_preview_rect_for_diameter(
@@ -52,7 +52,7 @@ impl DesktopApp {
                 self.brush_preview_size().unwrap_or(1) as f32,
             )
         }) {
-            self.append_canvas_host_dirty_rect(next);
+            self.append_temp_overlay_dirty_rect(next);
         }
         true
     }
@@ -204,19 +204,19 @@ impl DesktopApp {
                     && pointer_action == CanvasPointerAction::Up
                     && let Some(layout) = self.layout.as_ref()
                 {
-                    self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
+                    self.append_temp_overlay_dirty_rect(layout.canvas_host_rect);
                 }
                 changed
             }
             CanvasGestureUpdate::LassoPreviewChanged => {
                 if let Some(layout) = self.layout.as_ref() {
-                    self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
+                    self.append_temp_overlay_dirty_rect(layout.canvas_host_rect);
                 }
                 false
             }
             CanvasGestureUpdate::PanelRectPreviewChanged => {
                 if let Some(layout) = self.layout.as_ref() {
-                    self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
+                    self.append_temp_overlay_dirty_rect(layout.canvas_host_rect);
                 }
                 true
             }
@@ -241,7 +241,7 @@ impl DesktopApp {
                             })
                         });
                 if let Some(layout) = self.layout.as_ref() {
-                    self.append_canvas_host_dirty_rect(layout.canvas_host_rect);
+                    self.append_temp_overlay_dirty_rect(layout.canvas_host_rect);
                     return true;
                 }
                 created
