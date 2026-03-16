@@ -19,6 +19,8 @@ const ACTIVE_PANEL_BORDER: [u8; 4] = [0xff, 0xc1, 0x07, 0xff];
 const ACTIVE_PANEL_FILL: [u8; 4] = [0xff, 0xc1, 0x07, 0x18];
 const PANEL_PREVIEW_BORDER: [u8; 4] = [0x80, 0xde, 0xea, 0xff];
 const PANEL_PREVIEW_FILL: [u8; 4] = [0x80, 0xde, 0xea, 0x32];
+/// アクティブ UI パネル枠線の色（水色）。
+const ACTIVE_UI_PANEL_BORDER: [u8; 4] = [0x42, 0xa5, 0xf5, 0xff];
 
 /// 合成 background フレーム に必要な差分領域だけを描画または合成する。
 pub fn compose_background_frame(plan: &FramePlan<'_>) -> RenderFrame {
@@ -189,6 +191,28 @@ pub fn compose_panel_host_region(
         panel_surface.pixels,
         dirty_rect,
     );
+}
+
+/// アクティブ UI パネル枠線を L4 フレームへ描画する。
+///
+/// `overlay.active_ui_panel_rect` が `Some` のときのみ描画する。
+/// `dirty_rect` が指定された場合はクリップして差分描画する。
+pub fn compose_active_panel_border(
+    frame: &mut RenderFrame,
+    overlay: &CanvasOverlayState,
+    dirty_rect: Option<PixelRect>,
+) {
+    let Some(rect) = overlay.active_ui_panel_rect else {
+        return;
+    };
+    if rect.width == 0 || rect.height == 0 {
+        return;
+    }
+    if let Some(dirty) = dirty_rect {
+        stroke_rect_region(frame, rect, dirty, ACTIVE_UI_PANEL_BORDER);
+    } else {
+        stroke_rect(frame, rect, ACTIVE_UI_PANEL_BORDER);
+    }
 }
 
 /// 合成 ステータス 領域 に必要な差分領域だけを描画または合成する。

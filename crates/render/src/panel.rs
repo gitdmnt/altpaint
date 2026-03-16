@@ -561,10 +561,12 @@ fn draw_node(
             min,
             max,
             value,
+            display_value,
             fill_color,
             ..
         } => {
             let clamped_value = (*value).clamp(*min, *max);
+            let shown_value = display_value.unwrap_or(clamped_value);
             let accent = fill_color.unwrap_or(ColorRgba8::new(0x9f, 0xb7, 0xff, 0xff));
             let track_y = y + SLIDER_TRACK_TOP;
             let track_width = available_width.max(1);
@@ -588,7 +590,7 @@ fn draw_node(
                 surface,
                 x,
                 y,
-                &format!("{label}: {clamped_value}"),
+                &format!("{label}: {shown_value}"),
                 BODY_TEXT,
                 available_width,
             );

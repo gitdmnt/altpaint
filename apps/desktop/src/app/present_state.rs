@@ -1,7 +1,5 @@
 //! present 向け dirty 状態と更新指示を扱う。
 
-use std::collections::BTreeSet;
-
 use app_core::{BitmapEdit, CanvasDirtyRect, MergeInSpace};
 
 use super::DesktopApp;
@@ -34,27 +32,20 @@ impl DesktopApp {
         self.deferred_status_refresh = true;
     }
 
-    /// Ui from ドキュメント を更新し、必要な dirty 状態も記録する。
+    /// 全パネルを dirty としてマークし、ドキュメント同期をスケジュールする。
     pub(super) fn sync_ui_from_document(&mut self) {
-        self.needs_ui_sync = true;
-        self.ui_sync_panel_ids = BTreeSet::new();
+        self.panel_runtime.mark_all_dirty();
         self.mark_panel_surface_dirty();
     }
 
-    /// 現在の値を ui from ドキュメント panels へ変換する。
+    /// 指定パネルを dirty としてマークし、ドキュメント同期をスケジュールする。
     pub(super) fn sync_ui_from_document_panels(&mut self, panel_ids: &[&str]) {
         if panel_ids.is_empty() {
             return;
         }
-        if !self.needs_ui_sync {
-            self.ui_sync_panel_ids.clear();
-            self.ui_sync_panel_ids
-                .extend(panel_ids.iter().map(|panel_id| (*panel_id).to_string()));
-        } else if !self.ui_sync_panel_ids.is_empty() {
-            self.ui_sync_panel_ids
-                .extend(panel_ids.iter().map(|panel_id| (*panel_id).to_string()));
+        for &id in panel_ids {
+            self.panel_runtime.mark_dirty(id);
         }
-        self.needs_ui_sync = true;
         self.mark_panel_surface_dirty();
     }
 

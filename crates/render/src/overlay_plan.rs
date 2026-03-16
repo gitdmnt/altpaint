@@ -1,6 +1,6 @@
 use app_core::{CanvasPoint, PanelBounds};
 
-use crate::{CanvasPlan, PanelSurfaceSource};
+use crate::{CanvasPlan, PanelSurfaceSource, PixelRect};
 
 /// キャンバス上の一時オーバーレイ状態を保持する。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -11,6 +11,8 @@ pub struct CanvasOverlayState {
     pub active_panel_bounds: Option<PanelBounds>,
     pub panel_navigator: Option<PanelNavigatorOverlay>,
     pub panel_creation_preview: Option<PanelBounds>,
+    /// アクティブ UI パネルの画面座標矩形。Some のとき枠線を描画する。
+    pub active_ui_panel_rect: Option<PixelRect>,
 }
 
 /// コマ境界ナビゲータに表示する 1 件分の情報。

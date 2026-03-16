@@ -20,7 +20,6 @@ mod state;
 #[cfg(test)]
 pub(crate) mod tests;
 
-use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 #[cfg(test)]
@@ -85,8 +84,6 @@ pub(crate) struct DesktopApp {
     pub(crate) panel_interaction: PanelInteractionState,
     hover_canvas_position: Option<CanvasPoint>,
     pending_stroke: Option<PendingStroke>,
-    needs_ui_sync: bool,
-    ui_sync_panel_ids: BTreeSet<String>,
     deferred_view_panel_sync: bool,
     deferred_status_refresh: bool,
     needs_panel_surface_refresh: bool,
@@ -160,8 +157,6 @@ impl DesktopApp {
             panel_interaction: PanelInteractionState::default(),
             hover_canvas_position: None,
             pending_stroke: None,
-            needs_ui_sync: true,
-            ui_sync_panel_ids: BTreeSet::new(),
             deferred_view_panel_sync: false,
             deferred_status_refresh: false,
             needs_panel_surface_refresh: true,

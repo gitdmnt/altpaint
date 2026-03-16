@@ -29,51 +29,27 @@ impl DesktopApp {
             self.rebuild_present_frame();
         }
 
-        if self.needs_ui_sync {
-            let synced_panels = if self.ui_sync_panel_ids.is_empty() {
-                self.panel_runtime.panel_count()
-            } else {
-                self.ui_sync_panel_ids.len()
-            };
-            profiler.record_value("ui_update_panels", synced_panels as f64);
+        if self.panel_runtime.has_dirty_panels() {
+            profiler.record_value("ui_update_panels", self.panel_runtime.dirty_panel_count() as f64);
             profiler.measure("ui_update", || {
                 let can_undo = self.history.can_undo();
                 let can_redo = self.history.can_redo();
                 let active_jobs = self.io_state.pending_jobs.len();
                 let snapshot_count = self.snapshots.len();
-                if self.ui_sync_panel_ids.is_empty() {
-                    let changed = self.panel_runtime.sync_document(
-                        &self.document,
-                        can_undo,
-                        can_redo,
-                        active_jobs,
-                        snapshot_count,
-                    );
-                    self.panel_presentation
-                        .reconcile_runtime_panels(&self.panel_runtime);
-                    if !changed.is_empty() {
-                        self.panel_presentation.mark_runtime_panels_dirty(&changed);
-                        self.mark_panel_surface_dirty();
-                    }
-                } else {
-                    let changed = self.panel_runtime.sync_document_panels(
-                        &self.document,
-                        &self.ui_sync_panel_ids,
-                        can_undo,
-                        can_redo,
-                        active_jobs,
-                        snapshot_count,
-                    );
-                    self.panel_presentation
-                        .reconcile_runtime_panels(&self.panel_runtime);
-                    if !changed.is_empty() {
-                        self.panel_presentation.mark_runtime_panels_dirty(&changed);
-                        self.mark_panel_surface_dirty();
-                    }
+                let changed = self.panel_runtime.sync_dirty_panels(
+                    &self.document,
+                    can_undo,
+                    can_redo,
+                    active_jobs,
+                    snapshot_count,
+                );
+                self.panel_presentation
+                    .reconcile_runtime_panels(&self.panel_runtime);
+                if !changed.is_empty() {
+                    self.panel_presentation.mark_runtime_panels_dirty(&changed);
+                    self.mark_panel_surface_dirty();
                 }
             });
-            self.needs_ui_sync = false;
-            self.ui_sync_panel_ids.clear();
         }
 
         let mut panel_surface_refreshed = false;
@@ -166,6 +142,10 @@ impl DesktopApp {
                 active_panel_bounds: self.active_panel_mask_overlay(),
                 panel_navigator: self.panel_navigator_overlay(),
                 panel_creation_preview: self.panel_creation_preview_bounds(),
+                active_ui_panel_rect: self
+                    .panel_presentation
+                    .focused_target()
+                    .and_then(|(panel_id, _)| self.panel_presentation.panel_rect(panel_id)),
             };
             let background_frame = profiler.measure("compose_background_frame", || {
                 render::compose_background_frame(&frame_plan)
@@ -173,9 +153,10 @@ impl DesktopApp {
             let temp_overlay_frame = profiler.measure("compose_temp_overlay_frame", || {
                 render::compose_temp_overlay_frame(&frame_plan, &overlay_state)
             });
-            let ui_panel_frame = profiler.measure("compose_ui_panel_frame", || {
+            let mut ui_panel_frame = profiler.measure("compose_ui_panel_frame", || {
                 render::compose_ui_panel_frame(&frame_plan)
             });
+            render::compose_active_panel_border(&mut ui_panel_frame, &overlay_state, None);
             self.background_frame = Some(background_frame);
             self.temp_overlay_frame = Some(temp_overlay_frame);
             self.ui_panel_frame = Some(ui_panel_frame);
@@ -258,6 +239,10 @@ impl DesktopApp {
             active_panel_bounds,
             panel_navigator: panel_navigator.clone(),
             panel_creation_preview,
+            active_ui_panel_rect: self
+                .panel_presentation
+                .focused_target()
+                .and_then(|(panel_id, _)| self.panel_presentation.panel_rect(panel_id)),
         };
 
         // L4: パネルサーフェス更新
@@ -266,6 +251,7 @@ impl DesktopApp {
             profiler.measure("compose_dirty_panel", || {
                 let _ = panel_surface;
                 render::compose_ui_panel_region(ui_panel_frame, &frame_plan, panel_dirty_rect);
+                render::compose_active_panel_border(ui_panel_frame, &overlay_state, panel_dirty_rect);
             });
             if let Some(panel_dirty_rect) = panel_dirty_rect {
                 layer_dirty.mark_ui_panel(panel_dirty_rect);
@@ -330,6 +316,11 @@ impl DesktopApp {
         {
             profiler.measure("compose_dirty_ui_panel_rect", || {
                 render::compose_ui_panel_region(ui_panel_frame, &frame_plan, Some(dirty_rect));
+                render::compose_active_panel_border(
+                    ui_panel_frame,
+                    &overlay_state,
+                    Some(dirty_rect),
+                );
             });
             layer_dirty.mark_ui_panel(dirty_rect);
         }

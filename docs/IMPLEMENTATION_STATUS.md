@@ -547,6 +547,111 @@
 
 ---
 
+## イベント駆動パネル再描画 (2026-03-15)
+
+### 実装済み
+
+- `crates/panel-runtime/src/registry.rs`
+  - `dirty_panels: BTreeSet<String>` フィールド追加
+  - `mark_dirty(panel_id: &str)` — 指定パネルを dirty としてマーク（未登録 ID は無視）
+  - `mark_all_dirty()` — 全登録パネルを dirty としてマーク
+  - `has_dirty_panels() -> bool` — dirty パネルが存在するか確認
+  - `dirty_panel_count() -> usize` — dirty パネル件数
+  - `sync_dirty_panels(document, ...) -> BTreeSet<String>` — dirty パネルのみ `update()` を呼び、変更セットを返す。呼び出し後 dirty 集合はクリアされる
+  - `register_panel` で登録時に自動 dirty マーク
+  - `sync_document` / `sync_document_panels` を削除（全呼び出し元を新 API へ移行）
+
+- `apps/desktop/src/app/mod.rs`
+  - `needs_ui_sync: bool` / `ui_sync_panel_ids: BTreeSet<String>` フィールド削除
+
+- `apps/desktop/src/app/present_state.rs`
+  - `sync_ui_from_document()` → `panel_runtime.mark_all_dirty()` + `mark_panel_surface_dirty()`
+  - `sync_ui_from_document_panels(ids)` → 各 id に `panel_runtime.mark_dirty(id)` + `mark_panel_surface_dirty()`
+
+- `apps/desktop/src/app/present.rs`
+  - `if self.needs_ui_sync { ... }` ブロックを `if self.panel_runtime.has_dirty_panels() { ... }` に置き換え
+  - `sync_document` / `sync_document_panels` の条件分岐を `sync_dirty_panels` の単一呼び出しに簡略化
+  - フレームループに全パネルスキャンのコードが存在しない状態を実現
+
+- `apps/desktop/src/app/bootstrap.rs`
+  - `panel_runtime.sync_document(...)` を `mark_all_dirty() + sync_dirty_panels(...)` に変更
+
+- `crates/panel-runtime/src/tests.rs`
+  - `sync_dirty_panels_skips_panels_not_marked_dirty` — dirty でないパネルは再描画されないことを検証
+  - `mark_dirty_causes_only_that_panel_to_be_synced` — mark_dirty した Panel だけが sync されることを検証
+  - `mark_all_dirty_marks_every_registered_panel` — mark_all_dirty が全パネルを対象にすることを検証
+  - `mark_dirty_unknown_panel_id_is_ignored` — 未登録 ID を mark_dirty しても dirty 集合に追加されないことを検証
+
+---
+
+## アクティブパネル枠線表示 (2026-03-15)
+
+### 実装済み
+
+- `crates/render/src/overlay_plan.rs`
+  - `CanvasOverlayState` に `active_ui_panel_rect: Option<PixelRect>` フィールド追加
+    （フォーカス中の UI パネルの画面座標矩形。`Some` のとき枠線を描画する）
+
+- `crates/render/src/compose.rs`
+  - `ACTIVE_UI_PANEL_BORDER: [u8; 4] = [0x42, 0xa5, 0xf5, 0xff]` 定数追加（水色）
+  - `compose_active_panel_border(frame, overlay, dirty_rect)` — L4 フレームへパネル枠線を描画するパブリック関数追加
+    - `overlay.active_ui_panel_rect` が `None` のときは何もしない
+    - `dirty_rect` によるクリップ差分描画に対応
+
+- `crates/render/src/lib.rs`
+  - `compose_active_panel_border` を公開 API としてエクスポート
+
+- `apps/desktop/src/app/present.rs`
+  - 全体再構築パス・差分更新パス両方の `overlay_state` に `active_ui_panel_rect` を設定
+    （`panel_presentation.focused_target()` → `panel_presentation.panel_rect(panel_id)` で取得）
+  - `compose_ui_panel_frame` / `compose_ui_panel_region` 呼び出し後に `compose_active_panel_border` を呼ぶよう変更
+
+- `crates/render/src/tests/overlay_tests.rs`
+  - `compose_active_panel_border_draws_border_when_rect_is_some` — 枠線色が描画されることを検証
+  - `compose_active_panel_border_no_op_when_rect_is_none` — rect が None のとき何も描画されないことを検証
+
+---
+
+## pen-settings UI 改善 (2026-03-15)
+
+### 実装済み
+
+- `plugins/pen-settings/panel.altp-panel`
+  - 「現在のツール」セクション: `active_tool_label` / `pen_name` のみ表示し、ID・管轄 plugin・描画 plugin のデバッグ情報を削除
+  - 「太さ」セクション: `<row>` タグでスライダーと数値入力欄を横並びに変更。冗長な `pen_name` / `tool_label: size px` テキストを削除
+  - 「描画特性」セクション: 手ぶれ補正の冗長テキスト (`手ぶれ補正: {state.stabilization}%`) を削除（スライダーラベルに表示済みのため）
+
+- `crates/panel-runtime/src/dsl_panel.rs`
+  - テスト `row_layout_produces_slider_and_input_as_children` 追加: `<row>` タグが `PanelNode::Slider` と `PanelNode::TextInput` の 2 子を正しく生成することを検証
+
+---
+
+## pen-settings サイズ表示バグ修正 (2026-03-15)
+
+### 問題
+
+`pen-settings` パネルのサイズスライダーが内部の対数スケール位置（0〜1000）をラベルに表示していたため、
+「サイズ: 250」と「Pen Width: 10px」のように 2 つの数値が食い違って表示されていた。
+
+### 修正内容
+
+- `crates/panel-api/src/lib.rs`
+  - `PanelNode::Slider` に `display_value: Option<usize>` フィールド追加
+    （`Some` のとき内部スライダー位置の代わりにこの値をラベルに表示する）
+
+- `crates/panel-runtime/src/dsl_panel.rs`
+  - `"slider"` DSL 要素のパース時に `display_value` 属性を読み取るよう追加
+
+- `crates/render/src/panel.rs`
+  - `PanelNode::Slider` レンダリング時に `display_value` が `Some` のときはその値を使用
+    （`"{label}: {shown_value}"` 形式で表示）
+
+- `plugins/pen-settings/panel.altp-panel`
+  - サイズスライダーに `display_value={state.size}` を追加
+    → スライダーラベルが「サイズ: 10」と表示され、テキストの「Pen Width: 10px」と一致する
+
+---
+
 ## 目標アーキテクチャとの残差
 
 | 集中箇所 | 残課題 |

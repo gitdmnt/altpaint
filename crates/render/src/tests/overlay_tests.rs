@@ -2,8 +2,8 @@ use app_core::CanvasViewTransform;
 
 use crate::{
     CanvasCompositeSource, CanvasOverlayState, FramePlan, PanelSurfaceSource, PixelRect,
-    RenderFrame, blit_scaled_rgba_region, compose_panel_host_region, compose_status_region,
-    status_text_bounds,
+    RenderFrame, blit_scaled_rgba_region, compose_active_panel_border, compose_panel_host_region,
+    compose_status_region, status_text_bounds,
 };
 
 /// 合成 パネル ホスト 領域 respects global パネル サーフェス 範囲 が期待どおりに動作することを検証する。
@@ -114,6 +114,55 @@ fn compose_status_region_updates_expected_footer_bounds() {
     );
     let index = (expected.y * frame.width + expected.x) * 4;
     assert_ne!(&frame.pixels[index..index + 4], &[0, 0, 0, 0]);
+}
+
+/// compose_active_panel_border は active_ui_panel_rect が Some のとき枠線を描画することを検証する。
+#[test]
+fn compose_active_panel_border_draws_border_when_rect_is_some() {
+    let mut frame = RenderFrame {
+        width: 64,
+        height: 64,
+        pixels: vec![0; 64 * 64 * 4],
+    };
+    let overlay = CanvasOverlayState {
+        active_ui_panel_rect: Some(PixelRect {
+            x: 4,
+            y: 4,
+            width: 20,
+            height: 16,
+        }),
+        ..CanvasOverlayState::default()
+    };
+
+    compose_active_panel_border(&mut frame, &overlay, None);
+
+    // 枠線色 ACTIVE_UI_PANEL_BORDER = [0x42, 0xa5, 0xf5, 0xff]
+    let top_left = (4 * frame.width + 4) * 4;
+    assert_eq!(
+        &frame.pixels[top_left..top_left + 4],
+        &[0x42, 0xa5, 0xf5, 0xff],
+        "top-left corner should have border color"
+    );
+    // 内側のピクセルは未変更
+    let inside = (6 * frame.width + 6) * 4;
+    assert_eq!(&frame.pixels[inside..inside + 4], &[0, 0, 0, 0], "inside should be untouched");
+}
+
+/// compose_active_panel_border は active_ui_panel_rect が None のとき何も描画しないことを検証する。
+#[test]
+fn compose_active_panel_border_no_op_when_rect_is_none() {
+    let mut frame = RenderFrame {
+        width: 32,
+        height: 32,
+        pixels: vec![0; 32 * 32 * 4],
+    };
+    let overlay = CanvasOverlayState::default();
+    compose_active_panel_border(&mut frame, &overlay, None);
+
+    assert!(
+        frame.pixels.iter().all(|&b| b == 0),
+        "frame should remain empty when no active panel rect"
+    );
 }
 
 /// オーバーレイ plan roundtrip keeps オーバーレイ payload が期待どおりに動作することを検証する。

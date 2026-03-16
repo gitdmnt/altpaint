@@ -339,6 +339,7 @@ fn overlay_frame_draws_panel_navigator_when_multiple_panels_exist() {
                 ],
             }),
             panel_creation_preview: None,
+            active_ui_panel_rect: None,
         },
     );
 

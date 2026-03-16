@@ -28,6 +28,8 @@ pub struct PanelRuntime {
     loaded_panel_ids: Vec<String>,
     panel_tree_cache: BTreeMap<String, PanelTree>,
     persistent_panel_configs: BTreeMap<String, Value>,
+    /// イベント駆動再描画のための dirty パネル集合。
+    dirty_panels: BTreeSet<String>,
 }
 
 impl Default for PanelRuntime {
@@ -45,6 +47,7 @@ impl PanelRuntime {
             loaded_panel_ids: Vec::new(),
             panel_tree_cache: BTreeMap::new(),
             persistent_panel_configs: BTreeMap::new(),
+            dirty_panels: BTreeSet::new(),
         }
     }
 
@@ -56,11 +59,56 @@ impl PanelRuntime {
         self.panels
             .retain(|registered| registered.id() != panel.id());
         self.panel_tree_cache.remove(panel.id());
+        self.dirty_panels.insert(panel.id().to_string());
         self.panels.push(panel);
         if let Some(panel) = self.panels.last() {
             self.panel_tree_cache
                 .insert(panel.id().to_string(), panel.panel_tree());
         }
+    }
+
+    /// 指定パネルを dirty としてマークする。
+    ///
+    /// `sync_dirty_panels` が呼ばれるまで再描画をスキップする。
+    pub fn mark_dirty(&mut self, panel_id: &str) {
+        if self.panels.iter().any(|p| p.id() == panel_id) {
+            self.dirty_panels.insert(panel_id.to_string());
+        }
+    }
+
+    /// 全パネルを dirty としてマークする。
+    pub fn mark_all_dirty(&mut self) {
+        for panel in &self.panels {
+            self.dirty_panels.insert(panel.id().to_string());
+        }
+    }
+
+    /// dirty なパネルが1つ以上あるかどうかを返す。
+    pub fn has_dirty_panels(&self) -> bool {
+        !self.dirty_panels.is_empty()
+    }
+
+    /// dirty パネルの件数を返す。
+    pub fn dirty_panel_count(&self) -> usize {
+        self.dirty_panels.len()
+    }
+
+    /// dirty パネルのみ `update` を呼び、変更したパネル ID の集合を返す。
+    ///
+    /// 呼び出し後、dirty 集合はクリアされる。
+    pub fn sync_dirty_panels(
+        &mut self,
+        document: &Document,
+        can_undo: bool,
+        can_redo: bool,
+        active_jobs: usize,
+        snapshot_count: usize,
+    ) -> BTreeSet<String> {
+        if self.dirty_panels.is_empty() {
+            return BTreeSet::new();
+        }
+        let dirty = std::mem::take(&mut self.dirty_panels);
+        self.sync_document_subset(document, Some(&dirty), can_undo, can_redo, active_jobs, snapshot_count)
     }
 
     /// 入力や種別に応じて処理を振り分ける。
@@ -94,33 +142,6 @@ impl PanelRuntime {
         diagnostics
     }
 
-    /// ドキュメント を現在の状態へ同期する。
-    pub fn sync_document(
-        &mut self,
-        document: &Document,
-        can_undo: bool,
-        can_redo: bool,
-        active_jobs: usize,
-        snapshot_count: usize,
-    ) -> BTreeSet<String> {
-        self.sync_document_subset(document, None, can_undo, can_redo, active_jobs, snapshot_count)
-    }
-
-    /// ドキュメント panels を現在の状態へ同期する。
-    pub fn sync_document_panels(
-        &mut self,
-        document: &Document,
-        panel_ids: &BTreeSet<String>,
-        can_undo: bool,
-        can_redo: bool,
-        active_jobs: usize,
-        snapshot_count: usize,
-    ) -> BTreeSet<String> {
-        if panel_ids.is_empty() {
-            return self.sync_document(document, can_undo, can_redo, active_jobs, snapshot_count);
-        }
-        self.sync_document_subset(document, Some(panel_ids), can_undo, can_redo, active_jobs, snapshot_count)
-    }
 
     /// 現在の パネル 件数 を返す。
     pub fn panel_count(&self) -> usize {

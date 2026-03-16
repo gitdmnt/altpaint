@@ -386,6 +386,7 @@ fn convert_dsl_view_node(
                 min: attribute_usize(&element.attributes, "min", context).unwrap_or(0),
                 max: attribute_usize(&element.attributes, "max", context).unwrap_or(100),
                 value: attribute_usize(&element.attributes, "value", context).unwrap_or(0),
+                display_value: attribute_usize(&element.attributes, "display_value", context),
                 fill_color: attribute_string(&element.attributes, "fill", context)
                     .and_then(|value| parse_hex_color(&value)),
             }],
@@ -1456,6 +1457,95 @@ mod tests {
                 preset_id: "illustration".to_string(),
             })
         );
+    }
+
+    /// `<row>` タグが Slider と TextInput の 2 子を横並びに生成することを検証する。
+    #[test]
+    fn row_layout_produces_slider_and_input_as_children() {
+        use panel_dsl::{AttrValue as DslAttr, ViewElement, ViewNode};
+        use std::collections::BTreeMap;
+
+        let mut slider_attrs = BTreeMap::new();
+        slider_attrs.insert("id".to_string(), DslAttr::String("pen.size".to_string()));
+        slider_attrs.insert("label".to_string(), DslAttr::String("サイズ".to_string()));
+        slider_attrs.insert("min".to_string(), DslAttr::Integer(0));
+        slider_attrs.insert("max".to_string(), DslAttr::Integer(1000));
+        slider_attrs.insert(
+            "value".to_string(),
+            DslAttr::Expression("state.size_slider".to_string()),
+        );
+        slider_attrs.insert(
+            "display_value".to_string(),
+            DslAttr::Expression("state.size".to_string()),
+        );
+        slider_attrs.insert(
+            "on:change".to_string(),
+            DslAttr::String("set_pen_size".to_string()),
+        );
+        let slider_node = ViewNode::Element(ViewElement {
+            tag: "slider".to_string(),
+            attributes: slider_attrs,
+            children: vec![],
+        });
+
+        let mut input_attrs = BTreeMap::new();
+        input_attrs.insert(
+            "id".to_string(),
+            DslAttr::String("pen.size.input".to_string()),
+        );
+        input_attrs.insert("label".to_string(), DslAttr::String("px".to_string()));
+        input_attrs.insert(
+            "value".to_string(),
+            DslAttr::Expression("state.size_input".to_string()),
+        );
+        input_attrs.insert(
+            "bind".to_string(),
+            DslAttr::String("size_input".to_string()),
+        );
+        input_attrs.insert("mode".to_string(), DslAttr::String("numeric".to_string()));
+        input_attrs.insert("placeholder".to_string(), DslAttr::String("1".to_string()));
+        input_attrs.insert(
+            "on:change".to_string(),
+            DslAttr::String("set_pen_size_text".to_string()),
+        );
+        let input_node = ViewNode::Element(ViewElement {
+            tag: "input".to_string(),
+            attributes: input_attrs,
+            children: vec![],
+        });
+
+        let row_node = ViewNode::Element(ViewElement {
+            tag: "row".to_string(),
+            attributes: BTreeMap::new(),
+            children: vec![slider_node, input_node],
+        });
+
+        let state = serde_json::json!({ "size": 10, "size_slider": 100, "size_input": "10" });
+        let mut context = DslEvaluationContext {
+            panel_id: "test.row".to_string(),
+            state: &state,
+            generated_ids: 0,
+        };
+
+        let nodes = convert_dsl_view_node(&row_node, &mut context);
+
+        assert_eq!(nodes.len(), 1, "トップレベルは row 1 つのみ");
+        match &nodes[0] {
+            PanelNode::Row { children, .. } => {
+                assert_eq!(children.len(), 2, "row の子は slider と input の 2 つ");
+                assert!(
+                    matches!(children[0], PanelNode::Slider { .. }),
+                    "1 つ目の子は Slider であること: {:?}",
+                    children[0]
+                );
+                assert!(
+                    matches!(children[1], PanelNode::TextInput { .. }),
+                    "2 つ目の子は TextInput であること: {:?}",
+                    children[1]
+                );
+            }
+            other => panic!("Row を期待していたが {:?} が返された", other),
+        }
     }
 
     /// サービス 記述子 maps to サービス 要求 が期待どおりに動作することを検証する。

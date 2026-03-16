@@ -140,6 +140,9 @@ pub enum PanelNode {
         min: usize,
         max: usize,
         value: usize,
+        /// ラベルに表示する値。`Some` のとき `value`（内部スライダー位置）の代わりに表示する。
+        /// 対数スケールスライダーで実際の値を見せたい場合に使う。
+        display_value: Option<usize>,
         fill_color: Option<ColorRgba8>,
     },
     TextInput {
@@ -447,6 +450,7 @@ mod tests {
                         min: 0,
                         max: 255,
                         value: 0,
+                        display_value: None,
                         fill_color: None,
                     }],
                 }

@@ -37,16 +37,14 @@ view {
   <column gap=8 padding=8>
     <section title="現在のツール">
       <text>{state.active_tool_label}</text>
-      <text tone="muted">ID: {state.active_tool_id}</text>
-      <text tone="muted">管轄 plugin: {state.provider_plugin_id}</text>
-      <text tone="muted">描画 plugin: {state.drawing_plugin_id}</text>
+      <text tone="muted">{state.pen_name}</text>
     </section>
     <when test={state.supports_size}>
       <section title="太さ">
-      <text>{state.pen_name}</text>
-      <text>{state.tool_label}: {state.size}px</text>
-      <slider id="pen.size" label="サイズ" min={0} max={1000} value={state.size_slider} fill="#90CAF9" on:change="set_pen_size"></slider>
-      <input id="pen.size.input" label="数値入力" value={state.size_input} bind="size_input" mode="numeric" placeholder="1" on:change="set_pen_size_text" />
+        <row>
+          <slider id="pen.size" label="サイズ" min={0} max={1000} value={state.size_slider} display_value={state.size} fill="#90CAF9" on:change="set_pen_size"></slider>
+          <input id="pen.size.input" label="px" value={state.size_input} bind="size_input" mode="numeric" placeholder="1" on:change="set_pen_size_text" />
+        </row>
       </section>
     </when>
     <when test={state.supports_pressure || state.supports_antialias || state.supports_stabilization}>
@@ -58,7 +56,6 @@ view {
           <button id="pen.antialias" on:click="toggle_antialias" active={state.antialias}>なめらか</button>
         </when>
         <when test={state.supports_stabilization}>
-          <text>手ぶれ補正: {state.stabilization}%</text>
           <slider id="pen.stabilization" label="手ぶれ補正" min={0} max={100} value={state.stabilization} fill="#A5D6A7" on:change="set_stabilization"></slider>
         </when>
       </section>
