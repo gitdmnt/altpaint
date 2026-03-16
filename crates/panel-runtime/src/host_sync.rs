@@ -94,9 +94,11 @@ pub(crate) fn build_host_snapshot_cached(
     if force_rebuild || cache.layer_count != layer_count || cache.active_layer_index != active_layer_index {
         let layers = active_panel
             .map(|panel| {
+                // index 0 が最下層のため逆順で返す（UI の先頭 = 前面レイヤー）
                 panel
                     .layers
                     .iter()
+                    .rev()
                     .map(|layer| {
                         json!({
                             "name": layer.name,
@@ -185,6 +187,13 @@ pub(crate) fn build_host_snapshot_cached(
         .map(|c| c.name.clone())
         .unwrap_or_default();
 
+    // UI インデックス: UI の先頭が前面なので実モデル index を逆変換する
+    let active_layer_ui_index = if layer_count > 0 {
+        layer_count.saturating_sub(1).saturating_sub(active_layer_index)
+    } else {
+        0
+    };
+
     // layers / panels を JSON Value として埋め込む（キャッシュ文字列から再パース不要）
     let layers_value: Value =
         serde_json::from_str(&cache.layers_json).unwrap_or(Value::Array(vec![]));
@@ -204,7 +213,7 @@ pub(crate) fn build_host_snapshot_cached(
             "active_panel_bounds": active_panel_bounds,
             "active_layer_name": active_layer_name,
             "layer_count": layer_count,
-            "active_layer_index": active_layer_index,
+            "active_layer_index": active_layer_ui_index,
             "active_layer_blend_mode": active_layer.map(|layer| layer.blend_mode.as_str()).unwrap_or("normal"),
             "active_layer_visible": active_layer.map(|layer| layer.visible).unwrap_or(true),
             "active_layer_masked": active_layer.and_then(|layer| layer.mask.as_ref()).is_some(),

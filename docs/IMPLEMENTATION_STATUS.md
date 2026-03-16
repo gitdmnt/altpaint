@@ -40,6 +40,13 @@
 - **レンダー層分離 (2026-03-15)**: overlay 単層を L3 TempOverlay（canvas ブラシ/lasso）と L4 UiPanel（フローティング UI）に分割。`compose_temp_overlay_frame` / `compose_ui_panel_frame` / `LayerGroupDirtyPlan` 導入。各層が独立した dirty rect で更新され、不要な CPU 合成を削減。
 - **起動時間改善 (2026-03-16)**: `plugin-host` の `WasmPanelRuntime::load` が Panel 毎に `Engine::default()` を生成し wasmtime JIT が 11 回フルコンパイルして起動に 4+ 秒かかっていた問題を修正。wasmtime `cache` feature を有効化し `Config::cache_config_load_default()` を使うことでコンパイル済みモジュールをディスクキャッシュし、2 回目以降の起動を大幅短縮。
 - **ズーム/パン後のフレームスパイク修正 (2026-03-16)**: ズーム/パン操作完了時に `ui_sync_panels` が ~129ms かかりフレームが固まる問題を修正。原因は `build_host_snapshot()` が毎回 `serde_json::to_string(&pen_presets)` / `serde_json::to_string(&tool_catalog)` 等を再シリアライズしていたこと（debug ビルドで特に顕著）。`HostSnapshotCache` を `DslPanelPlugin` に持たせ、pen 数・active_tool_id・layer 数などの変化キーが変わった時だけ再シリアライズするよう改善。ズーム/パン操作後は view のみが変化するため高価なシリアライズをスキップ。`ui_sync_panels` avg: 129ms → **2.3ms**（98% 削減）。
+- **2026-03-16 ブラックボックステスト バグ修正**:
+  - **プランB（ストローク性能）**: `crates/canvas/src/ops/stroke.rs` に `MAX_STAMP_STEPS = 64` を追加。大きなブラシで spacing が小さい場合に 1 セグメントあたりのスタンプ数を上限に制限し CPU 過負荷を防止。
+  - **プランC（lasso プレビュー）**: `apps/desktop/src/app/input.rs` の `LassoPreviewChanged` ハンドラが `false` を返していたバグを修正（`true` へ変更）。ラッソドラッグ中に L3 temp overlay dirty rect が設定されず `request_redraw` が呼ばれなかった問題を解消。
+  - **プランD（レイヤー表示順序）**: `crates/panel-runtime/src/host_sync.rs` の `layers_json` 生成を `.iter().rev()` に変更（UI の先頭 = 前面レイヤー）。`active_layer_ui_index` 変換を追加。`plugins/layers-panel/src/lib.rs` の `handle_layer_list` に UI index → model index 変換を追加。
+  - **プランE（レイヤー名変更 UI）**: `plugins/layers-panel/panel.altp-panel` に確定ボタン追加・`rename_text` state 追加。`src/lib.rs` に `RENAME_BUF`（`thread_local! RefCell<String>`）、`update_rename_text` / `confirm_rename` ハンドラを追加。
+  - **プランF（visibility/blend_mode パフォーマンス）**: `apps/desktop/src/app/command_router.rs` で `SetActiveLayerBlendMode` / `ToggleActiveLayerVisibility` を独立した match arm に分離し、`refresh_canvas_frame_region(panel_bounds)` + `append_canvas_dirty_rect(panel_bounds)` による差分更新に変更。全体 recomposite を回避。
+  - **プランA（Wasm 再ビルド）**: `.\scripts\build-ui-wasm.ps1` で全 11 プラグインの `.wasm` を再ビルド。app-actions・undo/redo・panel_rect 等の export エラーを解消。
 
 ## 現在の workspace 構成
 
@@ -297,6 +304,30 @@
   - [docs/ROADMAP.md](docs/ROADMAP.md)
 - リファクタリング候補を見たいとき
   - [docs/tmp/tasks-2026-03-11.md](docs/tmp/tasks-2026-03-11.md)
+
+## Phase 8A 完了 (2026-03-16)
+
+### GPU キャンバスクレートの新設
+
+- **`crates/gpu-canvas/`** 新設
+  - `GpuCanvasContext { device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue> }`
+  - `GpuLayerTexture`: 1 レイヤー 1 `wgpu::Texture` (Format: `Rgba8Unorm`, Usage: `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`)
+  - `GpuCanvasPool`: `(panel_id, layer_index)` → `GpuLayerTexture` マップ。`create_layer_texture()` / `upload_cpu_bitmap()` / `get()`
+  - `GpuPenTipCache`: ペン先テクスチャキャッシュ。`upload_from_preset()` でビットマップペン先を GPU テクスチャとしてアップロード
+  - `supports_rgba8unorm_storage()`: アダプターが `Rgba8Unorm` の `STORAGE_READ_WRITE` をサポートするか確認（Phase 8A では `Rgba8Unorm` 固定を採用）
+  - テスト: CPU 単体テスト 1 件 + GPU スモークテスト 3 件
+
+- **`apps/desktop/src/wgpu_canvas.rs`**: `device`/`queue` を `Arc<wgpu::Device>`/`Arc<wgpu::Queue>` に変更。`device()` / `queue()` getter を追加
+
+- **`apps/desktop/Cargo.toml`**: `gpu-canvas = { optional = true }` と `[features] gpu = ["dep:gpu-canvas"]` を追加
+
+- **`apps/desktop/src/app/mod.rs`**: `#[cfg(feature = "gpu")] gpu_canvas_pool: Option<GpuCanvasPool>` / `gpu_pen_tip_cache: Option<GpuPenTipCache>` を `DesktopApp` に追加（初期値 None）
+
+- **`apps/desktop/src/app/command_router.rs`**: ペン切り替え時に `#[cfg(feature = "gpu")] upload_active_pen_tip_to_gpu_cache()` を呼ぶ
+
+- **`docs/adr/003-gpu-canvas-migration.md`**: ADR 作成 (2026-03-16, claude-sonnet-4-6)
+
+---
 
 ## フェーズ完了履歴
 

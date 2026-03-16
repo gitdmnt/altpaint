@@ -53,25 +53,74 @@
 
 ---
 
+## bugfix（2026-03-16 ブラックボックステスト）
+
+> 詳細プランは `.context/repair-plan-2026-03-16.md` を参照。
+> 修正済みになった項目は `~~取り消し線~~` で更新すること。
+
+### ~~[bug] handle export error（Undo/Redo・panel_rect 描画）— プランA~~ — 完了 (2026-03-16)
+
+- **対象テスト**: drawing.undo / drawing.redo / drawing.panel_rect / app.undo_button / app.redo_button
+- **修正**: `.\scripts\build-ui-wasm.ps1` で全 `.wasm` 再ビルド。全 11 プラグインを更新
+
+### ~~[bug] ストローク縁のジャギー（pen / eraser）— プランB~~ — 完了 (2026-03-16)
+
+- **対象テスト**: drawing.pen / drawing.eraser
+- **修正**: `crates/canvas/src/ops/stroke.rs` に `MAX_STAMP_STEPS = 64` を追加。1 セグメントあたりのスタンプ数を上限に制限
+
+### ~~[bug] L3 lasso プレビューライン非表示 — プランC~~ — 完了 (2026-03-16)
+
+- **対象テスト**: drawing.lasso_bucket
+- **修正**: `apps/desktop/src/app/input.rs` の `LassoPreviewChanged` ハンドラの戻り値を `false` → `true` に修正
+
+### ~~[bug] レイヤー並び替え不動作・表示順序逆 — プランD~~ — 完了 (2026-03-16)
+
+- **対象テスト**: layer.reorder
+- **修正**: `host_sync.rs` の `layers_json` を `.iter().rev()` に変更。UI index ↔ model index 変換を追加
+
+### ~~[bug] レイヤー名変更の確定 UI 不足 — プランE~~ — 完了 (2026-03-16)
+
+- **対象テスト**: layer.rename
+- **修正**: DSL に確定ボタン追加。`update_rename_text` / `confirm_rename` ハンドラを `thread_local! RefCell` バッファで実装
+
+### [bug] 外部ペン読み込み不動作 — プランG
+
+- **対象テスト**: tool.pen_import
+- **原因**: プランA の `.wasm` 再ビルドで解消するか、`pen_import` サービスハンドラが未実装か調査が必要
+- **修正**: 再ビルド後も失敗する場合は `apps/desktop/src/app/services/pen_import.rs` を追加してファイルピッカー → `storage::external_brush` parse → Document 追加のフローを実装
+- **完了条件**: 外部ペンファイルを選択するダイアログが開き、選択したペンがパレットに追加される
+
+### ~~[bug/performance] レイヤー visibility / blend_mode 操作が低速 — プランF~~ — 完了 (2026-03-16)
+
+- **対象テスト**: layer.blend_mode / layer.visibility
+- **修正**: `command_router.rs` で `SetActiveLayerBlendMode` / `ToggleActiveLayerVisibility` を独立 arm に分離し `refresh_canvas_frame_region(panel_bounds)` による差分更新に変更
+
+---
+
 ## 候補タスク
 
-> 以下の2件は 2026-03-15 に対応完了。詳細は `docs/IMPLEMENTATION_STATUS.md` を参照。
+> 以下の項目は 2026-03-15 に対応完了。詳細は `docs/IMPLEMENTATION_STATUS.md` を参照。
 > - ~~[bug] パネル通過時の描画破壊~~ → 修正済み
 > - ~~[bug/performance] 縮小時アンチエイリアス~~ → 修正済み
+> - ~~[architecture] 描画レイヤーの物理的分離~~ → L3/L4 分離・LayerGroupDirtyPlan 完了
+> - ~~[improvement] イベント駆動パネル再描画~~ → mark_dirty API 完了
+> - ~~[improvement] パネル枠線・内外表示~~ → compose_active_panel_border 完了
+> - ~~[improvement] pen-settings スライダー横並び・サイズ表示バグ~~ → 完了
 
 ### 実装推奨順序
 
 アーキテクチャ依存の観点から次の順序を推奨する。
 
-1. `[architecture] 描画レイヤーの物理的分離` — 後続の多くのタスクが依存する基盤
-2. `[improvement] イベント駆動パネル再描画` — レイヤー分離後に正しく機能する
-3. `[performance] パネル描画パフォーマンス改善` — dirty rect 独立管理が整った後に計測・改善
+1. ~~`[architecture] 描画レイヤーの物理的分離`~~ — **完了 (2026-03-15)**
+2. ~~`[improvement] イベント駆動パネル再描画`~~ — **完了 (2026-03-15)**
+3. `[performance] パネル描画パフォーマンス改善` — dirty rect 独立管理が整ったので着手可能
 4. 残りのタスクは上記と独立して着手可能
 
 ---
 
-### [architecture] 描画レイヤーの物理的分離
+### ~~[architecture] 描画レイヤーの物理的分離~~ — 完了 (2026-03-15)
 
+- **状態**: **完了** — overlay 単層を L3 TempOverlay / L4 UiPanel に分割。`LayerGroupDirtyPlan` 導入で各層が独立した dirty rect を持つ
 - **優先度**: 高（`[improvement] イベント駆動パネル再描画` / `[performance] パネル描画パフォーマンス改善` / `[feature] temp オーバーレイレイヤー` の前提）
 - **依存**: なし
 - **背景**: UIパネル表示変更のたびにコマ描画が乱れるなど、描画ロジックとUI変更が密結合している
@@ -84,8 +133,9 @@
 - **完了条件**: `crates/render/` にレイヤーグループ別の dirty 判定ユニットテストが通る。UIパネル移動後にキャンバスレイヤーが再描画されないことをテストで確認できる
 - **主な変更箇所**: `crates/render/`, `apps/desktop/src/app/`
 
-### [improvement] イベント駆動パネル再描画（ポーリング廃止）
+### ~~[improvement] イベント駆動パネル再描画（ポーリング廃止）~~ — 完了 (2026-03-15)
 
+- **状態**: **完了** — `PanelRuntime.mark_dirty()` / `mark_all_dirty()` / `sync_dirty_panels()` 実装済み。フレームループに全パネルスキャンなし
 - **優先度**: 高
 - **依存**: `[architecture] 描画レイヤーの物理的分離`（先行することが望ましい）
 - **背景**: 毎フレームパネルツリーをスキャンして変更判定している可能性があり、state変更によってレンダリングが発火するReact的設計に変えるべき
@@ -112,8 +162,9 @@
   5. 可視領域単位のパネルタイル化（大きなパネルが実装されてから）
 - **完了条件**: スライダー操作時に 60fps を維持することを profiler で確認できる
 
-### [improvement] パネル枠線・内外表示
+### ~~[improvement] パネル枠線・内外表示~~ — 完了 (2026-03-15)
 
+- **状態**: **完了** — `CanvasOverlayState.active_ui_panel_rect` + `compose_active_panel_border()` 実装済み。アクティブパネルに水色枠線表示
 - **優先度**: 中
 - **依存**: なし（`render::OverlayPlan` は既に存在する）
 - **症状**: どのコマを表示しているのかわかりにくい
@@ -239,9 +290,10 @@
 
 #### 筆設定（`plugins/pen-settings`）
 
-- 「現在のツール」項目にはペン名とストロークプレビューのみ表示し、それ以外は削除
-- スライダーと数値入力欄を横並びにする
-- **[bug]** 「サイズ」と「pen width」が別の値を表示している問題を修正する（他の改善より先に対応）
+- ~~「現在のツール」項目にはペン名とストロークプレビューのみ表示し、それ以外は削除~~ — **完了 (2026-03-15)**
+- ~~スライダーと数値入力欄を横並びにする~~ — **完了 (2026-03-15)**
+- ~~**[bug]** 「サイズ」と「pen width」が別の値を表示している問題を修正する~~ — **完了 (2026-03-15)**（`display_value` フィールド追加で対応）
+- ストロークプレビュー表示（未実装）
 
 #### ツール（`plugins/tool-palette`）
 

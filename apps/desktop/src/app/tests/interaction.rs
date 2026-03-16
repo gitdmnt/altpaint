@@ -1372,3 +1372,54 @@ fn brush_preview_dirty_rect_grows_with_pen_size() {
     assert!(large_dirty.width > small_dirty.width);
     assert!(large_dirty.height > small_dirty.height);
 }
+
+/// lasso プレビュー drag が temp_overlay dirty rect を設定することを検証する。
+#[test]
+fn lasso_preview_drag_marks_temp_overlay_dirty() {
+    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut profiler = DesktopProfiler::new();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+    let layout = app.layout.clone().expect("layout exists");
+    let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
+    let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
+
+    let _ = app.execute_command(Command::SetActiveTool {
+        tool: app_core::ToolKind::LassoBucket,
+    });
+
+    // handle_canvas_pointer を直接呼んでパネルインタラクションをバイパス
+    // down でラッソ開始 → LassoPreviewChanged
+    app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
+    app.pending_temp_overlay_dirty_rect = None;
+
+    // drag でラッソ点を追加 → LassoPreviewChanged → temp overlay dirty になる
+    let dragged = app.handle_canvas_pointer("drag", WindowPoint::new(center_x + 20, center_y + 10), 1.0);
+    assert!(dragged, "lasso drag should request redraw");
+    assert!(
+        app.pending_temp_overlay_dirty_rect.is_some(),
+        "lasso drag should set temp overlay dirty rect"
+    );
+}
+
+/// ToggleActiveLayerVisibility が全体再構築ではなく差分 dirty rect 更新を行うことを検証する。
+#[test]
+fn toggle_layer_visibility_sets_canvas_dirty_rect_not_full_rebuild() {
+    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut profiler = DesktopProfiler::new();
+    // canvas_frame を初期化しておく（refresh_canvas_frame_region の fallback 回避）
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+    // 初期化後のフラグをリセット
+    app.needs_full_present_rebuild = false;
+    app.pending_canvas_dirty_rect = None;
+
+    let _ = app.execute_command(Command::ToggleActiveLayerVisibility);
+
+    assert!(
+        app.pending_canvas_dirty_rect.is_some(),
+        "ToggleActiveLayerVisibility should set canvas dirty rect"
+    );
+    assert!(
+        !app.needs_full_present_rebuild,
+        "ToggleActiveLayerVisibility should not trigger full present rebuild"
+    );
+}

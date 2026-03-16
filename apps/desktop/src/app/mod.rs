@@ -99,6 +99,12 @@ pub(crate) struct DesktopApp {
     needs_panel_surface_refresh: bool,
     needs_status_refresh: bool,
     needs_full_present_rebuild: bool,
+    /// GPU レイヤーテクスチャプール。`gpu` feature が有効な場合のみ使用する。
+    #[cfg(feature = "gpu")]
+    pub(crate) gpu_canvas_pool: Option<gpu_canvas::GpuCanvasPool>,
+    /// GPU ペン先テクスチャキャッシュ。`gpu` feature が有効な場合のみ使用する。
+    #[cfg(feature = "gpu")]
+    pub(crate) gpu_pen_tip_cache: Option<gpu_canvas::GpuPenTipCache>,
 }
 
 impl DesktopApp {
@@ -173,6 +179,10 @@ impl DesktopApp {
             needs_panel_surface_refresh: true,
             needs_status_refresh: false,
             needs_full_present_rebuild: true,
+            #[cfg(feature = "gpu")]
+            gpu_canvas_pool: None,
+            #[cfg(feature = "gpu")]
+            gpu_pen_tip_cache: None,
         };
         app.refresh_canvas_frame();
         app.ensure_workspace_presets_file(&app.io_state.workspace_preset_path);

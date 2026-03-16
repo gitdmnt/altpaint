@@ -280,9 +280,11 @@ pub struct WgpuPresenter {
     /// ウィンドウへの描画先サーフェス。OS のスワップチェーンに対応する。
     surface: wgpu::Surface<'static>,
     /// 論理 GPU デバイス。テクスチャやバッファの生成・パイプラインの構築に使う。
-    device: wgpu::Device,
+    /// Arc でラップして gpu-canvas クレートと共有できるようにする。
+    device: Arc<wgpu::Device>,
     /// コマンドキュー。エンコードしたコマンドを GPU へ提出する。
-    queue: wgpu::Queue,
+    /// Arc でラップして gpu-canvas クレートと共有できるようにする。
+    queue: Arc<wgpu::Queue>,
     /// サーフェス設定（解像度・フォーマット・プレゼントモードなど）。
     config: wgpu::SurfaceConfiguration,
     /// レンダーパイプライン。頂点/フラグメントシェーダとブレンド設定をまとめたもの。
@@ -363,6 +365,9 @@ impl WgpuPresenter {
             })
             .await
             .context("failed to create device")?;
+        // gpu-canvas クレートと共有できるよう Arc でラップする。
+        let device = Arc::new(device);
+        let queue = Arc::new(queue);
 
         // サーフェスがサポートするピクセルフォーマットの一覧を取得する。
         let surface_capabilities = surface.get_capabilities(&adapter);
@@ -507,6 +512,20 @@ impl WgpuPresenter {
     }
 
     /// ウィンドウサイズ変更時にサーフェスを再設定する。
+    /// Arc でラップされたデバイスへの参照を返す。
+    ///
+    /// gpu-canvas クレートの `GpuCanvasPool` / `GpuPenTipCache` と共有するために使う。
+    pub fn device(&self) -> Arc<wgpu::Device> {
+        Arc::clone(&self.device)
+    }
+
+    /// Arc でラップされたキューへの参照を返す。
+    ///
+    /// gpu-canvas クレートの `GpuCanvasPool` / `GpuPenTipCache` と共有するために使う。
+    pub fn queue(&self) -> Arc<wgpu::Queue> {
+        Arc::clone(&self.queue)
+    }
+
     ///
     /// サーフェスの幅・高さを更新して `configure` を再呼び出しする。
     /// 0×0 は無効サイズなので何もしない（最小化時など）。

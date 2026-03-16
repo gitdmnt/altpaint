@@ -1,9 +1,25 @@
 //! `Command` の分類と `DesktopApp` への適用経路を整理する。
 
-use app_core::Command;
+use app_core::{CanvasDirtyRect, Command};
 use panel_api::{ServiceRequest, services::names};
 
 use super::DesktopApp;
+
+#[cfg(feature = "gpu")]
+impl DesktopApp {
+    /// アクティブペンのペン先テクスチャを GPU キャッシュへアップロードする。
+    ///
+    /// `gpu_pen_tip_cache` が None の場合（GPU 未初期化時）は何もしない。
+    pub(super) fn upload_active_pen_tip_to_gpu_cache(&mut self) {
+        let Some(cache) = &mut self.gpu_pen_tip_cache else {
+            return;
+        };
+        if let Some(pen) = self.document.active_pen_preset() {
+            let preset_id = pen.id.clone();
+            cache.upload_from_preset(&preset_id, pen);
+        }
+    }
+}
 
 const TOOL_PANEL_IDS: &[&str] = &["builtin.pen-settings", "builtin.tool-palette"];
 const COLOR_PANEL_IDS: &[&str] = &["builtin.color-palette"];
@@ -84,6 +100,8 @@ impl DesktopApp {
             | Command::SelectPreviousPenPreset => {
                 self.sync_ui_from_document_panels(TOOL_PANEL_IDS);
                 self.mark_status_dirty();
+                #[cfg(feature = "gpu")]
+                self.upload_active_pen_tip_to_gpu_cache();
                 true
             }
             Command::SetActivePenSize { .. }
@@ -117,6 +135,23 @@ impl DesktopApp {
                 self.defer_view_panel_sync();
                 self.mark_canvas_transform_dirty(previous_transform)
             }
+            Command::SetActiveLayerBlendMode { .. }
+            | Command::ToggleActiveLayerVisibility => {
+                let dirty = self
+                    .document
+                    .active_panel()
+                    .map(|p| CanvasDirtyRect::new(p.bounds.x, p.bounds.y, p.bounds.width, p.bounds.height));
+                if let Some(dirty) = dirty {
+                    self.refresh_canvas_frame_region(dirty);
+                    self.append_canvas_dirty_rect(dirty);
+                } else {
+                    self.refresh_canvas_frame();
+                    self.rebuild_present_frame();
+                }
+                self.sync_ui_from_document();
+                self.mark_status_dirty();
+                true
+            }
             Command::AddRasterLayer
             | Command::RemoveActiveLayer
             | Command::SelectLayer { .. }
@@ -124,8 +159,6 @@ impl DesktopApp {
             | Command::MoveLayer { .. }
             | Command::SelectNextLayer
             | Command::CycleActiveLayerBlendMode
-            | Command::SetActiveLayerBlendMode { .. }
-            | Command::ToggleActiveLayerVisibility
             | Command::ToggleActiveLayerMask => {
                 self.refresh_canvas_frame();
                 self.sync_ui_from_document();

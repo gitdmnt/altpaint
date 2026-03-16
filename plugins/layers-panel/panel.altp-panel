@@ -24,6 +24,7 @@ state {
   active_layer_blend_mode: string = "normal"
   active_layer_visible: bool = true
   active_layer_masked: bool = false
+  rename_text: string = ""
 }
 
 view {
@@ -46,7 +47,10 @@ view {
       />
     </section>
     <section title="選択中のレイヤー">
-      <input id="layers.name" label="名前" value={state.active_layer_name} bind="active_layer_name" placeholder="レイヤー名" on:change="rename_active_layer" />
+      <row>
+        <input id="layers.name" label="名前" value={state.rename_text} bind="rename_text" placeholder="レイヤー名" on:change="update_rename_text" />
+        <button id="layers.rename_confirm" label="確定" on:click="confirm_rename" />
+      </row>
       <text>番号: {state.active_layer_index}</text>
       <dropdown
         id="layers.blend_mode"

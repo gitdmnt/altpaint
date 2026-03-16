@@ -212,7 +212,7 @@ impl DesktopApp {
                 if let Some(layout) = self.layout.as_ref() {
                     self.append_temp_overlay_dirty_rect(layout.canvas_host_rect);
                 }
-                false
+                true
             }
             CanvasGestureUpdate::PanelRectPreviewChanged => {
                 if let Some(layout) = self.layout.as_ref() {
