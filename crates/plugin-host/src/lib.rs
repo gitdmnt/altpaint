@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use panel_schema::{
     CommandDescriptor, Diagnostic, DiagnosticLevel, HandlerResult, PanelEventRequest,
@@ -7,6 +8,16 @@ use panel_schema::{
 use serde_json::{Map, Value};
 use thiserror::Error;
 use wasmtime::{Caller, Engine, Extern, Func, Instance, Linker, Memory, Module, Store};
+
+static SHARED_ENGINE: OnceLock<Engine> = OnceLock::new();
+
+fn shared_engine() -> &'static Engine {
+    SHARED_ENGINE.get_or_init(|| {
+        let mut config = wasmtime::Config::new();
+        let _ = config.cache_config_load_default();
+        Engine::new(&config).expect("failed to create wasmtime engine")
+    })
+}
 
 const PANEL_INIT_EXPORT: &str = "panel_init";
 const PANEL_SYNC_HOST_EXPORT: &str = "panel_sync_host";
@@ -45,8 +56,8 @@ impl WasmPanelRuntime {
     /// 読込 を計算して返す。
     pub fn load(path: impl AsRef<Path>) -> Result<Self, PluginHostError> {
         let path = path.as_ref().to_path_buf();
-        let engine = Engine::default();
-        let module = Module::from_file(&engine, &path).map_err(|error| PluginHostError::Load {
+        let engine = shared_engine();
+        let module = Module::from_file(engine, &path).map_err(|error| PluginHostError::Load {
             path: path.clone(),
             message: error.to_string(),
         })?;

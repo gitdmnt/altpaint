@@ -9,4 +9,4 @@ authors.workspace = true
 panel-schema = { path = "../panel-schema" }
 serde_json.workspace = true
 thiserror.workspace = true
-wasmtime = "30.0"
+wasmtime = { version = "30.0", features = ["cache"] }

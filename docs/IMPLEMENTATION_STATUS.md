@@ -38,6 +38,7 @@
   host snapshot への `can_undo`/`can_redo` 反映・app-actions パネルの undo/redo ボタン
 - **テキスト描画基盤 (フェーズ7-5b〜7-6)**: `TextRenderer` trait・`Font8x8Renderer`・`render_text_to_bitmap_edit` canvas op・`text_render.render_to_layer` service・`plugins/text-flow` panel plugin・host handler
 - **レンダー層分離 (2026-03-15)**: overlay 単層を L3 TempOverlay（canvas ブラシ/lasso）と L4 UiPanel（フローティング UI）に分割。`compose_temp_overlay_frame` / `compose_ui_panel_frame` / `LayerGroupDirtyPlan` 導入。各層が独立した dirty rect で更新され、不要な CPU 合成を削減。
+- **起動時間改善 (2026-03-16)**: `plugin-host` の `WasmPanelRuntime::load` が Panel 毎に `Engine::default()` を生成し wasmtime JIT が 11 回フルコンパイルして起動に 4+ 秒かかっていた問題を修正。wasmtime `cache` feature を有効化し `Config::cache_config_load_default()` を使うことでコンパイル済みモジュールをディスクキャッシュし、2 回目以降の起動を大幅短縮。
 
 ## 現在の workspace 構成
 
