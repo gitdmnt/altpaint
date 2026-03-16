@@ -126,6 +126,8 @@ pub struct CanvasScene {
     offset_x: f32,
     offset_y: f32,
     rotation_degrees: f32,
+    cos_theta: f32,
+    sin_theta: f32,
     flip_x: bool,
     flip_y: bool,
     drawn_rect: Option<PixelRect>,
@@ -135,7 +137,6 @@ pub struct CanvasScene {
 impl CanvasScene {
     /// UV 変換 を計算して返す。
     fn uv_transform(&self) -> UvTransform {
-        let radians = self.rotation_degrees.to_radians();
         UvTransform {
             source_width: self.source_width as f32,
             source_height: self.source_height as f32,
@@ -143,8 +144,8 @@ impl CanvasScene {
             flip_y: self.flip_y,
             bbox_width: self.bbox_width,
             bbox_height: self.bbox_height,
-            cos_theta: radians.cos(),
-            sin_theta: radians.sin(),
+            cos_theta: self.cos_theta,
+            sin_theta: self.sin_theta,
         }
     }
 
@@ -338,8 +339,11 @@ pub fn prepare_canvas_scene(
     }
 
     let rotation_degrees = normalized_rotation_degrees(transform.rotation_degrees);
+    let radians = rotation_degrees.to_radians();
+    let cos_theta = radians.cos();
+    let sin_theta = radians.sin();
     let (bbox_width, bbox_height) =
-        rotated_bounding_box(source_width as f32, source_height as f32, rotation_degrees);
+        rotated_bounding_box(source_width as f32, source_height as f32, cos_theta, sin_theta);
 
     let fit_scale_x = viewport.width as f32 / (source_width as f32).max(f32::EPSILON);
     let fit_scale_y = viewport.height as f32 / (source_height as f32).max(f32::EPSILON);
@@ -398,6 +402,8 @@ pub fn prepare_canvas_scene(
         offset_x,
         offset_y,
         rotation_degrees,
+        cos_theta,
+        sin_theta,
         flip_x: transform.flip_x,
         flip_y: transform.flip_y,
         drawn_rect,
@@ -411,10 +417,9 @@ fn normalized_rotation_degrees(rotation_degrees: f32) -> f32 {
 }
 
 /// rotated bounding box を計算して返す。
-fn rotated_bounding_box(width: f32, height: f32, rotation_degrees: f32) -> (f32, f32) {
-    let radians = rotation_degrees.to_radians();
-    let cos = radians.cos().abs();
-    let sin = radians.sin().abs();
+fn rotated_bounding_box(width: f32, height: f32, cos_theta: f32, sin_theta: f32) -> (f32, f32) {
+    let cos = cos_theta.abs();
+    let sin = sin_theta.abs();
     (
         (width * cos + height * sin).max(f32::EPSILON),
         (width * sin + height * cos).max(f32::EPSILON),

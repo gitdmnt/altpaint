@@ -838,6 +838,38 @@ fn profile_view_transform_for_ten_seconds() {
     );
 }
 
+/// ズーム操作の prepare_present_frame が 240fps の CPU 予算内に収まることを検証する。
+#[test]
+fn zoom_perf_meets_240fps_target() {
+    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut profiler = DesktopProfiler::new();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+
+    let iterations = 1000u32;
+    let mut times_us: Vec<u128> = Vec::with_capacity(iterations as usize);
+
+    for i in 0..iterations {
+        let zoom = if i % 2 == 0 { 1.08_f32 } else { 0.92_f32 };
+        let next = (app.document.view_transform.zoom * zoom).clamp(0.25, 16.0);
+        app.execute_command(Command::SetViewZoom { zoom: next });
+        let start = std::time::Instant::now();
+        let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+        times_us.push(start.elapsed().as_micros());
+    }
+
+    times_us.sort_unstable();
+    let median_us = times_us[iterations as usize / 2];
+    let p99_us = times_us[(iterations as usize * 99) / 100];
+    // 240fps = 4.17ms/フレーム のうち CPU 予算 2ms 以下を目標とする
+    let target_us = 2000u128;
+
+    eprintln!("[zoom-perf] median={median_us}µs p99={p99_us}µs target<={target_us}µs");
+    assert!(
+        median_us <= target_us,
+        "ズーム median {median_us}µs > 目標 {target_us}µs (prepare_present_frame)"
+    );
+}
+
 /// profile キャンバス ブラシ sizes for ten seconds が期待どおりに動作することを検証する。
 #[test]
 #[ignore = "manual performance profiling"]

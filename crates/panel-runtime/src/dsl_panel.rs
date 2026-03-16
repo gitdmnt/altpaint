@@ -1,4 +1,4 @@
-use crate::host_sync::{build_host_snapshot, parse_document_size, parse_hex_color};
+use crate::host_sync::{build_host_snapshot_cached, parse_document_size, parse_hex_color, HostSnapshotCache};
 use app_core::{Command, Document, ToolKind};
 use panel_api::{
     DropdownOption, HostAction, LayerListItem, PanelEvent, PanelNode, PanelPlugin, PanelTree,
@@ -19,6 +19,7 @@ pub(crate) struct DslPanelPlugin {
     runtime: WasmPanelRuntime,
     state: Value,
     host_snapshot: Value,
+    snapshot_cache: HostSnapshotCache,
     diagnostics: Vec<Diagnostic>,
     has_keyboard_handler: bool,
     supports_sync_host: bool,
@@ -55,6 +56,7 @@ impl DslPanelPlugin {
             runtime,
             state: init.state,
             host_snapshot: json!({}),
+            snapshot_cache: HostSnapshotCache::default(),
             diagnostics: init.diagnostics,
             has_keyboard_handler,
             supports_sync_host,
@@ -163,7 +165,14 @@ impl PanelPlugin for DslPanelPlugin {
 
     /// 更新 に必要な処理を行う。
     fn update(&mut self, document: &Document, can_undo: bool, can_redo: bool, active_jobs: usize, snapshot_count: usize) {
-        self.host_snapshot = build_host_snapshot(document, can_undo, can_redo, active_jobs, snapshot_count);
+        self.host_snapshot = build_host_snapshot_cached(
+            document,
+            can_undo,
+            can_redo,
+            active_jobs,
+            snapshot_count,
+            &mut self.snapshot_cache,
+        );
         self.sync_host_state();
     }
 

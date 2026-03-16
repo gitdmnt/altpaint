@@ -155,18 +155,16 @@ impl DesktopApp {
                 width: canvas_viewport_rect.width,
                 height: canvas_viewport_rect.height,
             };
+            // previous_scene は変更前の transform で計算するためキャッシュは使えない
             let previous_scene = render::prepare_canvas_scene(
                 viewport,
                 canvas_width,
                 canvas_height,
                 previous_transform,
             );
-            let current_scene = render::prepare_canvas_scene(
-                viewport,
-                canvas_width,
-                canvas_height,
-                self.document.view_transform,
-            );
+            // current_scene はキャッシュを使う（キャッシュが古ければ再計算して更新）
+            self.cached_canvas_scene = None;
+            let current_scene = self.canvas_scene();
             if let Some(exposed) =
                 render::exposed_canvas_background_rect_from_scenes(previous_scene, current_scene)
             {
@@ -207,25 +205,41 @@ impl DesktopApp {
     }
 
     /// キャンバス texture quad を計算して返す。
-    pub(crate) fn canvas_texture_quad(&self) -> Option<render::TextureQuad> {
+    pub(crate) fn canvas_texture_quad(&mut self) -> Option<render::TextureQuad> {
         self.canvas_scene().and_then(|scene| scene.texture_quad())
     }
 
-    /// キャンバス シーン を計算して返す。
-    pub(crate) fn canvas_scene(&self) -> Option<render::CanvasScene> {
+    /// キャンバス シーン を計算して返す。入力が変わらない限りキャッシュした結果を再利用する。
+    pub(crate) fn canvas_scene(&mut self) -> Option<render::CanvasScene> {
         let layout = self.layout.as_ref()?;
         let bitmap = self.canvas_frame()?;
-        render::prepare_canvas_scene(
-            render::PixelRect {
-                x: layout.canvas_host_rect.x,
-                y: layout.canvas_host_rect.y,
-                width: layout.canvas_host_rect.width,
-                height: layout.canvas_host_rect.height,
-            },
-            bitmap.width,
-            bitmap.height,
-            self.document.view_transform,
-        )
+        let viewport = render::PixelRect {
+            x: layout.canvas_host_rect.x,
+            y: layout.canvas_host_rect.y,
+            width: layout.canvas_host_rect.width,
+            height: layout.canvas_host_rect.height,
+        };
+        let canvas_width = bitmap.width;
+        let canvas_height = bitmap.height;
+        let transform = self.document.view_transform;
+
+        if let Some(ref cache) = self.cached_canvas_scene
+            && cache.viewport == viewport
+            && cache.canvas_width == canvas_width
+            && cache.canvas_height == canvas_height
+            && cache.transform == transform
+        {
+            return cache.scene;
+        }
+        let scene = render::prepare_canvas_scene(viewport, canvas_width, canvas_height, transform);
+        self.cached_canvas_scene = Some(super::CachedCanvasScene {
+            viewport,
+            canvas_width,
+            canvas_height,
+            transform,
+            scene,
+        });
+        scene
     }
 
     /// キャンバス フレーム を返す。

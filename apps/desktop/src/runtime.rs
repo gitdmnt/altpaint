@@ -213,10 +213,14 @@ impl ApplicationHandler for DesktopRuntime {
                 let Some(window) = self.window.clone() else {
                     return;
                 };
+                let wheel_t = Instant::now();
                 let _ = self.advance_wheel_animation();
+                self.profiler.record("wheel_animation", wheel_t.elapsed());
                 if !self.app.is_canvas_interacting() && !self.has_pending_wheel_animation() {
+                    let sync_t = Instant::now();
                     let _ = self.app.flush_deferred_view_panel_sync();
                     let _ = self.app.flush_deferred_status_refresh();
+                    self.profiler.record("deferred_view_sync", sync_t.elapsed());
                 }
                 let Some(presenter) = &mut self.presenter else {
                     return;
@@ -232,6 +236,10 @@ impl ApplicationHandler for DesktopRuntime {
                 );
                 self.profiler
                     .record("prepare_frame", prepare_started.elapsed());
+                // canvas_texture_quad は &mut self を必要とするため frame 参照の取得より先に呼ぶ
+                let quad_t = Instant::now();
+                let canvas_quad = self.app.canvas_texture_quad();
+                self.profiler.record("canvas_texture_quad", quad_t.elapsed());
                 let Some(background_frame) = self.app.background_frame() else {
                     return;
                 };
@@ -262,7 +270,7 @@ impl ApplicationHandler for DesktopRuntime {
                         height: rect.height as u32,
                     });
                 let canvas_layer = self.app.canvas_frame().and_then(|bitmap| {
-                    self.app.canvas_texture_quad().map(|quad| CanvasLayer {
+                    canvas_quad.map(|quad| CanvasLayer {
                         source: TextureSource {
                             width: bitmap.width as u32,
                             height: bitmap.height as u32,

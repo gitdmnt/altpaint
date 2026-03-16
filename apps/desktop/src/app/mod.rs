@@ -45,6 +45,15 @@ use canvas::CanvasInputState;
 #[cfg(test)]
 static TEST_SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+/// canvas_scene のキャッシュエントリ。入力が同じなら再計算を省略するために使う。
+struct CachedCanvasScene {
+    viewport: render::PixelRect,
+    canvas_width: usize,
+    canvas_height: usize,
+    transform: app_core::CanvasViewTransform,
+    scene: Option<render::CanvasScene>,
+}
+
 /// ストローク中のビットマップ差分追跡状態。
 struct PendingStroke {
     panel_id: PanelId,
@@ -79,6 +88,7 @@ pub(crate) struct DesktopApp {
     pending_temp_overlay_dirty_rect: Option<crate::frame::Rect>,
     pending_ui_panel_dirty_rect: Option<crate::frame::Rect>,
     pending_canvas_transform_update: bool,
+    cached_canvas_scene: Option<CachedCanvasScene>,
     pub(crate) history: CommandHistory,
     pub(crate) snapshots: SnapshotStore,
     pub(crate) panel_interaction: PanelInteractionState,
@@ -152,6 +162,7 @@ impl DesktopApp {
             pending_temp_overlay_dirty_rect: None,
             pending_ui_panel_dirty_rect: None,
             pending_canvas_transform_update: false,
+            cached_canvas_scene: None,
             history: CommandHistory::new(),
             snapshots: SnapshotStore::default(),
             panel_interaction: PanelInteractionState::default(),

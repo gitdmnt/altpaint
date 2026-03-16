@@ -3,6 +3,8 @@
 //! CPU 側ではパネル UI・背景・ステータス・オーバーレイを保持し、
 //! キャンバス本体は GPU テクスチャとして別経路で提示する。
 
+use std::time::Instant;
+
 use app_core::ClampToCanvasBounds;
 use desktop_support::DesktopProfiler;
 
@@ -31,25 +33,27 @@ impl DesktopApp {
 
         if self.panel_runtime.has_dirty_panels() {
             profiler.record_value("ui_update_panels", self.panel_runtime.dirty_panel_count() as f64);
-            profiler.measure("ui_update", || {
-                let can_undo = self.history.can_undo();
-                let can_redo = self.history.can_redo();
-                let active_jobs = self.io_state.pending_jobs.len();
-                let snapshot_count = self.snapshots.len();
-                let changed = self.panel_runtime.sync_dirty_panels(
-                    &self.document,
-                    can_undo,
-                    can_redo,
-                    active_jobs,
-                    snapshot_count,
-                );
-                self.panel_presentation
-                    .reconcile_runtime_panels(&self.panel_runtime);
-                if !changed.is_empty() {
-                    self.panel_presentation.mark_runtime_panels_dirty(&changed);
-                    self.mark_panel_surface_dirty();
-                }
-            });
+            let can_undo = self.history.can_undo();
+            let can_redo = self.history.can_redo();
+            let active_jobs = self.io_state.pending_jobs.len();
+            let snapshot_count = self.snapshots.len();
+            let sync_t = Instant::now();
+            let changed = self.panel_runtime.sync_dirty_panels(
+                &self.document,
+                can_undo,
+                can_redo,
+                active_jobs,
+                snapshot_count,
+            );
+            profiler.record("ui_sync_panels", sync_t.elapsed());
+            let reconcile_t = Instant::now();
+            self.panel_presentation
+                .reconcile_runtime_panels(&self.panel_runtime);
+            profiler.record("ui_reconcile", reconcile_t.elapsed());
+            if !changed.is_empty() {
+                self.panel_presentation.mark_runtime_panels_dirty(&changed);
+                self.mark_panel_surface_dirty();
+            }
         }
 
         let mut panel_surface_refreshed = false;

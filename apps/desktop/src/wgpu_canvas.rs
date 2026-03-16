@@ -296,9 +296,6 @@ pub struct WgpuPresenter {
     canvas_layer: Option<UploadedLayerTexture>,
     temp_overlay_layer: Option<UploadedLayerTexture>,
     ui_panel_layer: Option<UploadedLayerTexture>,
-    /// 部分アップロード時に行を詰め直すための一時バッファ。
-    /// 毎フレーム再確保しないよう Vec を使い回す。
-    upload_scratch: Vec<u8>,
 }
 
 /// サポートされているプレゼントモードの中から最も低レイテンシなものを選ぶ。
@@ -390,7 +387,7 @@ impl WgpuPresenter {
             present_mode,
             alpha_mode: surface_capabilities.alpha_modes[0], // アダプター推奨のアルファモード
             view_formats: Vec::new(),                        // デフォルトのビューフォーマットのみ
-            desired_maximum_frame_latency: 1, // 入力遅延を下げるためフレームレイテンシを 1 に
+            desired_maximum_frame_latency: 2, // 2 にして CPU-GPU パイプラインを重複させ高フレームレートを実現
         };
         // 設定をサーフェスへ適用してスワップチェーンを初期化する。
         surface.configure(&device, &config);
@@ -506,7 +503,6 @@ impl WgpuPresenter {
             canvas_layer: None,
             temp_overlay_layer: None,
             ui_panel_layer: None,
-            upload_scratch: Vec::new(),
         })
     }
 
@@ -589,21 +585,18 @@ impl WgpuPresenter {
         let upload_started = Instant::now();
         let base_upload = Self::upload_layer(
             &self.queue,
-            &mut self.upload_scratch,
             self.base_layer.as_mut(),
             scene.base_layer.source,
             scene.base_layer.upload_region,
         );
         let temp_overlay_upload = Self::upload_layer(
             &self.queue,
-            &mut self.upload_scratch,
             self.temp_overlay_layer.as_mut(),
             scene.temp_overlay_layer.source,
             scene.temp_overlay_layer.upload_region,
         );
         let ui_panel_upload = Self::upload_layer(
             &self.queue,
-            &mut self.upload_scratch,
             self.ui_panel_layer.as_mut(),
             scene.ui_panel_layer.source,
             scene.ui_panel_layer.upload_region,
@@ -611,7 +604,6 @@ impl WgpuPresenter {
         let canvas_upload = if let Some(canvas_layer) = scene.canvas_layer {
             Self::upload_layer(
                 &self.queue,
-                &mut self.upload_scratch,
                 self.canvas_layer.as_mut(),
                 canvas_layer.source,
                 canvas_layer.upload_region,
@@ -866,7 +858,6 @@ impl WgpuPresenter {
     /// どちらも指定なければスキップしてゼロ統計を返す。
     fn upload_layer(
         queue: &wgpu::Queue,
-        scratch: &mut Vec<u8>,
         layer: Option<&mut UploadedLayerTexture>,
         source: TextureSource<'_>,
         upload_region: Option<UploadRegion>,
@@ -889,7 +880,7 @@ impl WgpuPresenter {
 
         if let Some(region) = upload_region {
             // dirty rect 最適化: 変化した矩形だけを転送する。
-            let bytes = upload_texture_region(queue, scratch, layer, source, region);
+            let bytes = upload_texture_region(queue, layer, source, region);
             return LayerUploadStats {
                 duration: started.elapsed(),
                 bytes,
@@ -979,12 +970,11 @@ fn upload_full_texture(
 
 /// テクスチャの部分領域だけを GPU へアップロードする（dirty rect 最適化）。
 ///
-/// GPU の `write_texture` は行が連続したバイト列を要求するが、
-/// ソースピクセルは幅全体の行バイト列に含まれているため、
-/// scratch バッファへ一度行を詰め直してから転送する。
+/// `write_texture` の `bytes_per_row` にソース行の全幅ストライドを渡すことで、
+/// scratch バッファへの行詰め直しを省略し CPU メモリコピーをゼロにする。
+/// wgpu 内部のステージングバッファへの転送は `bytes_per_row` ストライドで行われる。
 fn upload_texture_region(
     queue: &wgpu::Queue,
-    scratch: &mut Vec<u8>, // 行詰め用の一時バッファ（フレーム間で使い回す）
     layer: &UploadedLayerTexture,
     source: TextureSource<'_>,
     region: UploadRegion,
@@ -1002,29 +992,11 @@ fn upload_texture_region(
         return 0;
     }
 
-    // scratch バッファを必要なサイズに拡張する（縮小はしない: capacity を無駄に解放しない）。
-    let packed_len = (copy_width * copy_height * 4) as usize;
-    if scratch.len() < packed_len {
-        scratch.resize(packed_len, 0);
-    }
-    let packed = &mut scratch[..packed_len];
+    // ソースバッファの (region.y, region.x) からの先頭オフセット。
+    // bytes_per_row に source.width * 4 を渡すことで、
+    // wgpu 内部が各行の読み取りオフセットを自動計算して region だけを転送する。
+    let start_offset = (region.y as usize * source.width as usize + region.x as usize) * 4;
 
-    // ソースの各行から region 分の列を切り出して packed バッファに詰め直す。
-    // src_start: ソース行の region.x 列目の先頭バイト位置。
-    // dst_start: packed バッファでの対応行先頭バイト位置。
-    let row_pixels = source.width as usize; // ソース 1 行のピクセル数
-    let copy_width_usize = copy_width as usize;
-    let region_x = region.x as usize;
-    let region_y = region.y as usize;
-    for row in 0..copy_height as usize {
-        let src_start = ((region_y + row) * row_pixels + region_x) * 4;
-        let src_end = src_start + copy_width_usize * 4;
-        let dst_start = row * copy_width_usize * 4;
-        packed[dst_start..dst_start + copy_width_usize * 4]
-            .copy_from_slice(&source.pixels[src_start..src_end]);
-    }
-
-    // 詰め直したデータをテクスチャの指定位置へ書き込む。
     queue.write_texture(
         wgpu::TexelCopyTextureInfo {
             texture: &layer.texture,
@@ -1036,10 +1008,10 @@ fn upload_texture_region(
             },
             aspect: wgpu::TextureAspect::All,
         },
-        packed, // 詰め直した連続バイト列
+        &source.pixels[start_offset..], // scratch コピー不要: ソースを直接渡す
         wgpu::TexelCopyBufferLayout {
             offset: 0,
-            bytes_per_row: Some(copy_width * 4), // region の幅 × 4
+            bytes_per_row: Some(source.width * 4), // ソース行の全幅ストライド
             rows_per_image: Some(copy_height),
         },
         wgpu::Extent3d {
