@@ -16,3 +16,4 @@ workspace-presets.json
 logs/
 pens/abr/*.abr
 pens/sut/*.sut
+.context/
