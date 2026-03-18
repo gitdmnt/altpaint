@@ -94,6 +94,7 @@ impl BitmapComposite {
 }
 
 /// 描画プラグインが返すビットマップ更新要求。
+/// 更新が必要な矩形領域と、更新内容を表すビットマップ、合成方法を指定する。
 #[derive(Debug, Clone)]
 pub struct BitmapEdit {
     pub dirty_rect: CanvasDirtyRect,

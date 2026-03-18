@@ -41,13 +41,15 @@ impl DesktopApp {
     /// Stamp/StrokeSegment はストローク単位でバッチし `commit_stroke_to_history` で確定する。
     /// FloodFill/LassoFill は即座に `BitmapPatch` として確定する。
     pub(crate) fn execute_paint_input(&mut self, input: PaintInput) -> bool {
-        let Some(result) = self
+        // ビットマップ差分を取得
+        let Some((edits, _)) = self
             .paint_runtime
             .execute_paint_input(&self.document, &input)
         else {
             return false;
         };
 
+        // 連続入力か点入力のツールかを判定
         let is_stroke_op = matches!(
             input,
             PaintInput::Stamp { .. } | PaintInput::StrokeSegment { .. }
@@ -58,31 +60,28 @@ impl DesktopApp {
             if self.pending_stroke.is_none() {
                 let panel_id = self.document.active_panel().map(|p| p.id);
                 let layer_index = self.document.active_panel().map(|p| p.active_layer_index);
-                if let (Some(panel_id), Some(layer_index)) = (panel_id, layer_index) {
-                    if let Some(before_layer) =
-                        self.document.clone_panel_layer_bitmap(panel_id, layer_index)
-                    {
-                        self.pending_stroke = Some(PendingStroke {
-                            panel_id,
-                            layer_index,
-                            before_layer,
-                            dirty: None,
-                        });
-                    }
+                if let (Some(panel_id), Some(layer_index)) = (panel_id, layer_index)
+                    && let Some(before_layer) = self
+                        .document
+                        .clone_panel_layer_bitmap(panel_id, layer_index)
+                {
+                    self.pending_stroke = Some(PendingStroke {
+                        panel_id,
+                        layer_index,
+                        before_layer,
+                        dirty: None,
+                    });
                 }
             }
 
             // dirty rect を蓄積してからエディットを適用する
             if let Some(stroke) = &mut self.pending_stroke {
-                let edit_dirty = result.edits.iter().fold(
-                    None::<CanvasDirtyRect>,
-                    |acc, edit| {
-                        Some(match acc {
-                            Some(existing) => existing.merge(edit.dirty_rect),
-                            None => edit.dirty_rect,
-                        })
-                    },
-                );
+                let edit_dirty = edits.iter().fold(None::<CanvasDirtyRect>, |acc, edit| {
+                    Some(match acc {
+                        Some(existing) => existing.merge(edit.dirty_rect),
+                        None => edit.dirty_rect,
+                    })
+                });
                 if let Some(edit_dirty) = edit_dirty {
                     stroke.dirty = Some(match stroke.dirty {
                         Some(existing) => existing.merge(edit_dirty),
@@ -91,43 +90,40 @@ impl DesktopApp {
                 }
             }
 
-            self.apply_bitmap_edits(result.edits)
+            self.apply_bitmap_edits(edits)
         } else {
             // 即時操作: 前後スナップショットを取ってすぐ BitmapPatch を積む
             let panel_id = self.document.active_panel().map(|p| p.id);
             let layer_index = self.document.active_panel().map(|p| p.active_layer_index);
 
             if let (Some(panel_id), Some(layer_index)) = (panel_id, layer_index) {
-                let edit_dirty = result.edits.iter().fold(
-                    None::<CanvasDirtyRect>,
-                    |acc, edit| {
-                        Some(match acc {
-                            Some(existing) => existing.merge(edit.dirty_rect),
-                            None => edit.dirty_rect,
-                        })
-                    },
-                );
-                let before =
-                    edit_dirty.and_then(|dirty| {
-                        self.document.capture_panel_layer_region(panel_id, layer_index, dirty)
+                let edit_dirty = edits.iter().fold(None::<CanvasDirtyRect>, |acc, edit| {
+                    Some(match acc {
+                        Some(existing) => existing.merge(edit.dirty_rect),
+                        None => edit.dirty_rect,
+                    })
+                });
+                let before = edit_dirty.and_then(|dirty| {
+                    self.document
+                        .capture_panel_layer_region(panel_id, layer_index, dirty)
+                });
+                let changed = self.apply_bitmap_edits(edits);
+                if let (Some(dirty), Some(before)) = (edit_dirty, before)
+                    && let Some(after) =
+                        self.document
+                            .capture_panel_layer_region(panel_id, layer_index, dirty)
+                {
+                    self.history.push(HistoryEntry::BitmapPatch {
+                        panel_id,
+                        layer_index,
+                        dirty,
+                        before,
+                        after,
                     });
-                let changed = self.apply_bitmap_edits(result.edits);
-                if let (Some(dirty), Some(before)) = (edit_dirty, before) {
-                    if let Some(after) =
-                        self.document.capture_panel_layer_region(panel_id, layer_index, dirty)
-                    {
-                        self.history.push(HistoryEntry::BitmapPatch {
-                            panel_id,
-                            layer_index,
-                            dirty,
-                            before,
-                            after,
-                        });
-                    }
                 }
                 changed
             } else {
-                self.apply_bitmap_edits(result.edits)
+                self.apply_bitmap_edits(edits)
             }
         }
     }
@@ -147,9 +143,9 @@ impl DesktopApp {
         else {
             return;
         };
-        let Some(after) = self
-            .document
-            .capture_panel_layer_region(stroke.panel_id, stroke.layer_index, dirty)
+        let Some(after) =
+            self.document
+                .capture_panel_layer_region(stroke.panel_id, stroke.layer_index, dirty)
         else {
             return;
         };

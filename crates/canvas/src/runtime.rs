@@ -33,16 +33,18 @@ impl CanvasRuntime {
         Self { registry }
     }
 
-    /// 描画入力を実行し、ビットマップ差分と操作記録を返す。
+    /// 描画入力を実行し、レイヤーに適用するビットマップ差分とundo/redo用の操作記録を返す。
     ///
     /// コンテキスト解決に失敗した場合は `None` を返す。
     pub fn execute_paint_input(
         &self,
         document: &Document,
         input: &PaintInput,
-    ) -> Option<PaintResult> {
+    ) -> Option<(Vec<BitmapEdit>, BitmapEditRecord)> {
+        // コンテキストを取得
         let resolved = build_paint_context(document, input)?;
 
+        // レジストリから描画プラグインを取得する。プラグインを用いて入力操作からビットマップ差分のベクトルを生成する。
         let edits = self
             .registry
             .get(resolved.plugin_id)
@@ -50,18 +52,19 @@ impl CanvasRuntime {
             .map(|plugin| plugin.process(input, &resolved.context))
             .unwrap_or_default();
 
+        // 書き込むためのレイヤーを取得。
         let panel_id = document
             .active_panel()
             .map(|panel| panel.id)
             .unwrap_or(PanelId(0));
         let layer_index = resolved.context.active_layer_index;
-        let pen_snapshot = document
-            .active_pen_preset()
-            .cloned()
-            .unwrap_or_default();
+
+        // ペンの状態と色を取得。
+        let pen_snapshot = document.active_pen_preset().cloned().unwrap_or_default();
         let color_snapshot = document.active_color;
         let tool_id = document.active_tool_id.clone();
 
+        // 操作記録を生成。操作記録は履歴スタックに積まれ、undo/redo 時に再適用される。
         let record = BitmapEditRecord {
             panel_id,
             layer_index,
@@ -71,7 +74,7 @@ impl CanvasRuntime {
             tool_id,
         };
 
-        Some(PaintResult { edits, record })
+        Some((edits, record))
     }
 
     /// 操作記録を replay してビットマップ差分を生成する。
@@ -91,9 +94,7 @@ impl CanvasRuntime {
         let Some(panel) = page.panels.get(panel_index) else {
             return Vec::new();
         };
-        let layer_index = record
-            .layer_index
-            .min(panel.layers.len().saturating_sub(1));
+        let layer_index = record.layer_index.min(panel.layers.len().saturating_sub(1));
         let Some(layer) = panel.layers.get(layer_index) else {
             return Vec::new();
         };
@@ -115,9 +116,7 @@ impl CanvasRuntime {
         let context = PaintPluginContext {
             tool: tool.map(|t| t.kind).unwrap_or(ToolKind::Pen),
             tool_id: record.tool_id.as_str(),
-            provider_plugin_id: tool
-                .map(|t| t.provider_plugin_id.as_str())
-                .unwrap_or(""),
+            provider_plugin_id: tool.map(|t| t.provider_plugin_id.as_str()).unwrap_or(""),
             drawing_plugin_id,
             tool_settings: tool.map(|t| t.settings.as_slice()).unwrap_or(&[]),
             color: record.color_snapshot,
