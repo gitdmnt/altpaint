@@ -160,14 +160,22 @@ impl GpuPenTipCache {
         };
 
         match tip {
-            PenTipBitmap::AlphaMask8 { width, height, data } => {
+            PenTipBitmap::AlphaMask8 {
+                width,
+                height,
+                data,
+            } => {
                 // AlphaMask8 はグレースケール 1 バイト/ピクセルなので RGBA に変換する。
                 let rgba = alpha_mask_to_rgba(data);
                 let texture = GpuLayerTexture::create(&self.ctx, *width, *height);
                 texture.upload_pixels(&self.ctx, &rgba);
                 self.textures.insert(preset_id.to_string(), texture);
             }
-            PenTipBitmap::Rgba8 { width, height, data } => {
+            PenTipBitmap::Rgba8 {
+                width,
+                height,
+                data,
+            } => {
                 let texture = GpuLayerTexture::create(&self.ctx, *width, *height);
                 texture.upload_pixels(&self.ctx, data);
                 self.textures.insert(preset_id.to_string(), texture);

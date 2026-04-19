@@ -7,7 +7,13 @@
 pub mod format_check;
 
 #[cfg(feature = "gpu")]
+pub mod brush;
+
+#[cfg(feature = "gpu")]
 mod gpu;
+
+#[cfg(feature = "gpu")]
+pub use brush::GpuBrushDispatch;
 
 #[cfg(feature = "gpu")]
 pub use gpu::{GpuCanvasContext, GpuCanvasPool, GpuLayerTexture, GpuPenTipCache};

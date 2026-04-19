@@ -16,6 +16,7 @@ mod view_mapping;
 
 pub use context::ResolvedPaintContext;
 pub use context_builder::{build_paint_context, resolved_size_for_input};
+pub use ops::compute_stamp_positions;
 pub use edit_record::{BitmapEditOperation, BitmapEditRecord};
 pub use gesture::{CanvasGestureUpdate, CanvasPointerAction, advance_pointer_gesture};
 pub use input_state::CanvasInputState;

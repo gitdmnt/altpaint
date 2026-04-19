@@ -8,6 +8,7 @@ pub mod coordinates;
 pub mod document;
 pub mod error;
 pub mod history;
+pub mod paint_params;
 pub mod painting;
 pub mod workspace;
 

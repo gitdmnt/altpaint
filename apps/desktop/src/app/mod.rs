@@ -34,11 +34,11 @@ use render::RenderFrame;
 use ui_shell::{PanelPresentation, PanelSurface};
 
 use self::io_state::DesktopIoState;
-use self::snapshot_store::SnapshotStore;
 #[cfg(test)]
 pub(crate) use self::panel_dispatch::PanelDragState;
 use self::panel_dispatch::PanelInteractionState;
 use self::present_state::PresentFrameUpdate;
+use self::snapshot_store::SnapshotStore;
 use crate::frame::DesktopLayout;
 use canvas::CanvasInputState;
 
@@ -105,6 +105,9 @@ pub(crate) struct DesktopApp {
     /// GPU ペン先テクスチャキャッシュ。`gpu` feature が有効な場合のみ使用する。
     #[cfg(feature = "gpu")]
     pub(crate) gpu_pen_tip_cache: Option<gpu_canvas::GpuPenTipCache>,
+    /// GPU ブラシ計算シェーダーディスパッチャ。`gpu` feature が有効な場合のみ使用する。
+    #[cfg(feature = "gpu")]
+    pub(crate) gpu_brush: Option<gpu_canvas::GpuBrushDispatch>,
 }
 
 impl DesktopApp {
@@ -183,6 +186,8 @@ impl DesktopApp {
             gpu_canvas_pool: None,
             #[cfg(feature = "gpu")]
             gpu_pen_tip_cache: None,
+            #[cfg(feature = "gpu")]
+            gpu_brush: None,
         };
         app.refresh_canvas_frame();
         app.ensure_workspace_presets_file(&app.io_state.workspace_preset_path);

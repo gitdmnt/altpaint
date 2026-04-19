@@ -5,6 +5,8 @@ pub(crate) mod stamp;
 pub(crate) mod stroke;
 pub mod text;
 
+pub use stroke::compute_stamp_positions;
+
 use app_core::{BitmapEdit, CanvasBitmap, CanvasDirtyRect, PaintPluginContext, PanelLocalPoint};
 
 /// ビットマップ from points に必要な差分領域だけを描画または合成する。

@@ -17,5 +17,5 @@ pub(crate) fn apply_input(
     input: PaintInput,
 ) -> Option<CanvasDirtyRect> {
     let result = runtime.execute_paint_input(document, &input)?;
-    document.apply_bitmap_edits_to_active_layer(&result.edits)
+    document.apply_bitmap_edits_to_active_layer(&result.0)
 }

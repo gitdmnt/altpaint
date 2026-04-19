@@ -74,7 +74,7 @@ impl DesktopApp {
                 }
             }
 
-            // dirty rect を蓄積してからエディットを適用する
+            // 前回のストローク状態があれば、今回の編集のdirty rectをマージして更新する
             if let Some(stroke) = &mut self.pending_stroke {
                 let edit_dirty = edits.iter().fold(None::<CanvasDirtyRect>, |acc, edit| {
                     Some(match acc {
@@ -87,6 +87,57 @@ impl DesktopApp {
                         Some(existing) => existing.merge(edit_dirty),
                         None => edit_dirty,
                     });
+                }
+            }
+
+            // GPU dispatch (Phase 8B): CPU と並行して GPU レイヤーテクスチャへ描画する
+            #[cfg(feature = "gpu")]
+            {
+                use canvas::{build_paint_context, compute_stamp_positions};
+                if let Some(resolved) = build_paint_context(&self.document, &input) {
+                    let color = resolved.context.color;
+                    let color_rgba = [
+                        color.r as f32 / 255.0,
+                        color.g as f32 / 255.0,
+                        color.b as f32 / 255.0,
+                        color.a as f32 / 255.0,
+                    ];
+                    let radius = resolved.context.resolved_size as f32 * 0.5;
+                    let opacity = resolved.context.pen.opacity;
+                    let antialias = resolved.context.pen.antialias;
+                    let tool_kind = resolved.context.tool;
+                    let positions: Vec<(f32, f32)> = match &input {
+                        PaintInput::Stamp { at, .. } => vec![(at.x as f32, at.y as f32)],
+                        PaintInput::StrokeSegment { from, to, pressure } => {
+                            compute_stamp_positions(*from, *to, *pressure, &resolved.context)
+                                .into_iter()
+                                .map(|p| (p.x as f32, p.y as f32))
+                                .collect()
+                        }
+                        _ => vec![],
+                    };
+                    let panel_id = self.document.active_panel().map(|p| p.id);
+                    let layer_index = self.document.active_panel().map(|p| p.active_layer_index);
+                    drop(resolved);
+                    if let (Some(panel_id), Some(layer_index)) = (panel_id, layer_index) {
+                        let panel_id_str = panel_id.0.to_string();
+                        if let (Some(pool), Some(brush)) = (
+                            self.gpu_canvas_pool.as_ref(),
+                            self.gpu_brush.as_ref(),
+                        ) {
+                            if let Some(texture) = pool.get(&panel_id_str, layer_index) {
+                                brush.dispatch_stroke(
+                                    texture,
+                                    &positions,
+                                    color_rgba,
+                                    radius,
+                                    opacity,
+                                    antialias,
+                                    tool_kind,
+                                );
+                            }
+                        }
+                    }
                 }
             }
 
