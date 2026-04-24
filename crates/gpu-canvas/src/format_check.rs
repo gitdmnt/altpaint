@@ -2,13 +2,11 @@
 
 /// アダプターが Rgba8Unorm の STORAGE_READ_WRITE をサポートするか確認する。
 ///
-/// `true` なら Rgba8Unorm を compute 用フォーマットとして採用できる。
-/// `false` なら Rgba32Float + blit パスが必要（Phase 8A では採用フォーマットを選択するのみ）。
+/// `true` なら Rgba8Unorm を compute shader の read_write storage texture として使用できる。
+/// `false` なら GPU ブラシ dispatch は使用不可（CPU パスへフォールバック）。
 pub fn supports_rgba8unorm_storage(adapter: &wgpu::Adapter) -> bool {
-    let features = adapter.features();
-    features.contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
-        || adapter
-            .get_texture_format_features(wgpu::TextureFormat::Rgba8Unorm)
-            .allowed_usages
-            .contains(wgpu::TextureUsages::STORAGE_BINDING)
+    adapter
+        .get_texture_format_features(wgpu::TextureFormat::Rgba8Unorm)
+        .flags
+        .contains(wgpu::TextureFormatFeatureFlags::STORAGE_READ_WRITE)
 }

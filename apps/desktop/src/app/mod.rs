@@ -108,6 +108,9 @@ pub(crate) struct DesktopApp {
     /// GPU ブラシ計算シェーダーディスパッチャ。`gpu` feature が有効な場合のみ使用する。
     #[cfg(feature = "gpu")]
     pub(crate) gpu_brush: Option<gpu_canvas::GpuBrushDispatch>,
+    /// Rgba8Unorm テクスチャを sRGB view で Present できるかどうか。起動時に 1 回判定する。
+    #[cfg(feature = "gpu")]
+    pub(crate) srgb_view_supported: bool,
 }
 
 impl DesktopApp {
@@ -188,6 +191,8 @@ impl DesktopApp {
             gpu_pen_tip_cache: None,
             #[cfg(feature = "gpu")]
             gpu_brush: None,
+            #[cfg(feature = "gpu")]
+            srgb_view_supported: false,
         };
         app.refresh_canvas_frame();
         app.ensure_workspace_presets_file(&app.io_state.workspace_preset_path);
@@ -195,6 +200,89 @@ impl DesktopApp {
         app.refresh_new_document_templates();
         app.refresh_workspace_presets();
         app
+    }
+}
+
+#[cfg(feature = "gpu")]
+impl DesktopApp {
+    /// GPU リソースを初期化してフィールドへ代入し、全レイヤーを同期する。
+    pub(crate) fn install_gpu_resources(
+        &mut self,
+        device: std::sync::Arc<wgpu::Device>,
+        queue: std::sync::Arc<wgpu::Queue>,
+        srgb_view_supported: bool,
+    ) {
+        self.gpu_canvas_pool = Some(gpu_canvas::GpuCanvasPool::new(
+            device.clone(),
+            queue.clone(),
+        ));
+        self.gpu_pen_tip_cache = Some(gpu_canvas::GpuPenTipCache::new(
+            device.clone(),
+            queue.clone(),
+        ));
+        self.gpu_brush = Some(gpu_canvas::GpuBrushDispatch::new(device, queue));
+        self.srgb_view_supported = srgb_view_supported;
+        self.sync_all_layers_to_gpu();
+        self.upload_active_pen_tip_to_gpu_cache();
+    }
+
+    /// 全ページ・全パネル・全レイヤーの CPU ビットマップを GPU テクスチャへ同期する。
+    pub(crate) fn sync_all_layers_to_gpu(&mut self) {
+        if self.gpu_canvas_pool.is_none() {
+            return;
+        }
+        let layer_data: Vec<(String, usize, u32, u32, Vec<u8>)> = self
+            .document
+            .work
+            .pages
+            .iter()
+            .flat_map(|page| &page.panels)
+            .flat_map(|panel| {
+                let panel_id = panel.id.0.to_string();
+                panel
+                    .layers
+                    .iter()
+                    .enumerate()
+                    .map(move |(idx, layer)| {
+                        (
+                            panel_id.clone(),
+                            idx,
+                            layer.bitmap.width as u32,
+                            layer.bitmap.height as u32,
+                            layer.bitmap.pixels.clone(),
+                        )
+                    })
+            })
+            .collect();
+        let pool = self.gpu_canvas_pool.as_mut().unwrap();
+        for (panel_id, layer_index, w, h, pixels) in layer_data {
+            pool.create_layer_texture(&panel_id, layer_index, w, h);
+            pool.upload_cpu_bitmap(&panel_id, layer_index, &pixels);
+        }
+    }
+
+    /// GPU テクスチャをキャンバスの表示正本として使えるかどうかを返す。
+    ///
+    /// `true` のとき: アクティブパネルが単一レイヤー・GPU テクスチャ存在・sRGB view 対応。
+    pub(crate) fn should_use_gpu_canvas_source(&self) -> bool {
+        let Some(pool) = &self.gpu_canvas_pool else {
+            return false;
+        };
+        if !self.srgb_view_supported {
+            return false;
+        }
+        let Some(panel) = self.document.active_panel() else {
+            return false;
+        };
+        if panel.layers.len() != 1 {
+            return false;
+        }
+        pool.get(&panel.id.0.to_string(), 0).is_some()
+    }
+
+    /// GPU レイヤーテクスチャプールへの参照を返す。
+    pub(crate) fn gpu_canvas_pool(&self) -> Option<&gpu_canvas::GpuCanvasPool> {
+        self.gpu_canvas_pool.as_ref()
     }
 }
 

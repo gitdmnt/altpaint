@@ -88,11 +88,15 @@ impl DesktopApp {
                     self.append_canvas_dirty_rect(page_dirty);
                 }
                 self.sync_ui_from_document();
+                #[cfg(feature = "gpu")]
+                self.sync_all_layers_to_gpu();
                 true
             }
             Some(HistoryEntry::BitmapOp(_)) => {
                 // レガシーエントリは何もしない
                 self.sync_ui_from_document();
+                #[cfg(feature = "gpu")]
+                self.sync_all_layers_to_gpu();
                 true
             }
             None => false,
@@ -122,11 +126,15 @@ impl DesktopApp {
                     self.append_canvas_dirty_rect(page_dirty);
                 }
                 self.sync_ui_from_document();
+                #[cfg(feature = "gpu")]
+                self.sync_all_layers_to_gpu();
                 true
             }
             Some(HistoryEntry::BitmapOp(_)) => {
                 // レガシーエントリは何もしない
                 self.sync_ui_from_document();
+                #[cfg(feature = "gpu")]
+                self.sync_all_layers_to_gpu();
                 true
             }
             None => false,

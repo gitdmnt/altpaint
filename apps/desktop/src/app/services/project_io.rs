@@ -273,6 +273,8 @@ impl DesktopApp {
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
                 self.persist_session_state();
+                #[cfg(feature = "gpu")]
+                self.sync_all_layers_to_gpu();
                 true
             }
             Err(error) => {

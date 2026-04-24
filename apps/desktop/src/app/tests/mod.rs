@@ -5,6 +5,8 @@
 mod bootstrap_tests;
 mod command_router_tests;
 mod commands;
+#[cfg(feature = "gpu")]
+mod gpu_tests;
 mod interaction;
 mod panel_dispatch_tests;
 mod persistence;

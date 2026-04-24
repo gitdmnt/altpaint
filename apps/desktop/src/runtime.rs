@@ -23,7 +23,8 @@ use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::app::DesktopApp;
 use crate::wgpu_canvas::{
-    CanvasLayer, FrameLayer, PresentScene, TextureSource, UploadRegion, WgpuPresenter,
+    CanvasLayer, CanvasLayerSource, FrameLayer, PresentScene, TextureSource, UploadRegion,
+    WgpuPresenter,
 };
 
 /// `winit` アプリケーションとして振る舞う実行時コンテナを表す。
@@ -119,6 +120,13 @@ impl ApplicationHandler for DesktopRuntime {
                 return;
             }
         };
+
+        #[cfg(feature = "gpu")]
+        self.app.install_gpu_resources(
+            presenter.device(),
+            presenter.queue(),
+            presenter.srgb_canvas_view_supported(),
+        );
 
         let _ = self.app.prepare_present_frame(
             size.width as usize,
@@ -269,38 +277,87 @@ impl ApplicationHandler for DesktopRuntime {
                         width: rect.width as u32,
                         height: rect.height as u32,
                     });
-                let canvas_layer = self.app.canvas_frame().and_then(|bitmap| {
-                    canvas_quad.map(|quad| CanvasLayer {
-                        source: TextureSource {
-                            width: bitmap.width as u32,
-                            height: bitmap.height as u32,
-                            pixels: bitmap.pixels.as_slice(),
-                        },
-                        upload_region: update.canvas_dirty_rect.map(|rect| UploadRegion {
-                            x: rect.x as u32,
-                            y: rect.y as u32,
-                            width: rect.width as u32,
-                            height: rect.height as u32,
-                        }),
-                        quad,
+                #[cfg(feature = "gpu")]
+                let active_panel_gpu_id: Option<String> = if self.app.should_use_gpu_canvas_source() {
+                    self.app.document.active_panel().map(|p| p.id.0.to_string())
+                } else {
+                    None
+                };
+
+                let canvas_layer = {
+                    #[cfg(feature = "gpu")]
+                    if let Some(ref panel_id) = active_panel_gpu_id {
+                        let layer_size = self.app.document.active_panel().and_then(|p| {
+                            p.layers.first().map(|l| (l.bitmap.width as u32, l.bitmap.height as u32))
+                        });
+                        layer_size.and_then(|(w, h)| {
+                            canvas_quad.map(|quad| CanvasLayer {
+                                source: CanvasLayerSource::Gpu {
+                                    panel_id: panel_id.as_str(),
+                                    layer_index: 0,
+                                    width: w,
+                                    height: h,
+                                },
+                                upload_region: None,
+                                quad,
+                            })
+                        })
+                    } else {
+                        self.app.canvas_frame().and_then(|bitmap| {
+                            canvas_quad.map(|quad| CanvasLayer {
+                                source: CanvasLayerSource::Cpu(TextureSource {
+                                    width: bitmap.width as u32,
+                                    height: bitmap.height as u32,
+                                    pixels: bitmap.pixels.as_slice(),
+                                }),
+                                upload_region: update.canvas_dirty_rect.map(|rect| UploadRegion {
+                                    x: rect.x as u32,
+                                    y: rect.y as u32,
+                                    width: rect.width as u32,
+                                    height: rect.height as u32,
+                                }),
+                                quad,
+                            })
+                        })
+                    }
+                    #[cfg(not(feature = "gpu"))]
+                    self.app.canvas_frame().and_then(|bitmap| {
+                        canvas_quad.map(|quad| CanvasLayer {
+                            source: CanvasLayerSource::Cpu(TextureSource {
+                                width: bitmap.width as u32,
+                                height: bitmap.height as u32,
+                                pixels: bitmap.pixels.as_slice(),
+                            }),
+                            upload_region: update.canvas_dirty_rect.map(|rect| UploadRegion {
+                                x: rect.x as u32,
+                                y: rect.y as u32,
+                                width: rect.width as u32,
+                                height: rect.height as u32,
+                            }),
+                            quad,
+                        })
                     })
-                });
+                };
                 let present_started = Instant::now();
-                let timings = match presenter.render(PresentScene {
-                    base_layer: FrameLayer {
-                        source: TextureSource::from(background_frame),
-                        upload_region: base_upload_region,
+                let timings = match presenter.render(
+                    PresentScene {
+                        base_layer: FrameLayer {
+                            source: TextureSource::from(background_frame),
+                            upload_region: base_upload_region,
+                        },
+                        canvas_layer,
+                        temp_overlay_layer: FrameLayer {
+                            source: TextureSource::from(temp_overlay_frame),
+                            upload_region: temp_overlay_upload_region,
+                        },
+                        ui_panel_layer: FrameLayer {
+                            source: TextureSource::from(ui_panel_frame),
+                            upload_region: ui_panel_upload_region,
+                        },
                     },
-                    canvas_layer,
-                    temp_overlay_layer: FrameLayer {
-                        source: TextureSource::from(temp_overlay_frame),
-                        upload_region: temp_overlay_upload_region,
-                    },
-                    ui_panel_layer: FrameLayer {
-                        source: TextureSource::from(ui_panel_frame),
-                        upload_region: ui_panel_upload_region,
-                    },
-                }) {
+                    #[cfg(feature = "gpu")]
+                    self.app.gpu_canvas_pool(),
+                ) {
                     Ok(timings) => timings,
                     Err(error) => {
                         eprintln!("render failed: {error}");

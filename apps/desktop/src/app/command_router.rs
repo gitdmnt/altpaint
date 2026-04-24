@@ -164,6 +164,8 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
+                #[cfg(feature = "gpu")]
+                self.sync_all_layers_to_gpu();
                 true
             }
             Command::AddPanel
@@ -177,6 +179,8 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
+                #[cfg(feature = "gpu")]
+                self.sync_all_layers_to_gpu();
                 true
             }
             Command::NewDocumentSized { .. } => {
@@ -187,6 +191,8 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
+                #[cfg(feature = "gpu")]
+                self.sync_all_layers_to_gpu();
                 true
             }
             Command::Noop

@@ -721,3 +721,79 @@
 ### 修正内容
 
 - **`evicts_oldest_when_full` OOM**: `SnapshotStore` のテストが `Document::default()` (2894×4093 = ~47MB) を `MAX_SNAPSHOTS+1 = 21` 個生成し、合計 ~1GB でOOMkillされていた。テスト内の `make_doc()` を `Document::new(1, 1)` に変更して解消した（`snapshot_store.rs`）。
+
+---
+
+## Phase 8B 完了 (2026-04-25) — GPU リソース初期化・ブラシ dispatch 実接続
+
+作業モデル: claude-sonnet-4-6
+
+### 実装内容
+
+- **`apps/desktop/src/app/mod.rs`**
+  - `#[cfg(feature = "gpu")] srgb_view_supported: bool` フィールド追加（初期値 `false`）
+  - `install_gpu_resources(device, queue, srgb_view_supported)`: `GpuCanvasPool` / `GpuPenTipCache` / `GpuBrushDispatch` を初期化し、`sync_all_layers_to_gpu()` および `upload_active_pen_tip_to_gpu_cache()` を実行
+  - `sync_all_layers_to_gpu()`: 全 Page × Panel × RasterLayer の CPU ビットマップを GPU テクスチャへアップロード。中間 Vec で borrow 競合を回避
+
+- **`apps/desktop/src/app/command_router.rs`**
+  - `AddRasterLayer | RemoveActiveLayer | SelectLayer | MoveLayer` / `AddPanel | SelectPanel | NewDocumentSized` の各 arm に `#[cfg(feature = "gpu")] self.sync_all_layers_to_gpu()` を追加
+
+- **`apps/desktop/src/app/services/mod.rs`**
+  - `execute_undo` / `execute_redo` の全 `true` 返却 arm に `#[cfg(feature = "gpu")] self.sync_all_layers_to_gpu()` を追加
+
+- **`apps/desktop/src/app/services/project_io.rs`**
+  - `load_project` 成功パスの末尾に `#[cfg(feature = "gpu")] self.sync_all_layers_to_gpu()` を追加
+
+- **`apps/desktop/src/runtime.rs`**
+  - `WgpuPresenter::new` 完了直後に `#[cfg(feature = "gpu")] self.app.install_gpu_resources(...)` を呼び出す
+
+- **テスト (`apps/desktop/src/app/tests/gpu_tests.rs`)**
+  - `install_gpu_resources_sets_all_gpu_fields_to_some`
+  - `sync_all_layers_to_gpu_creates_textures_for_all_layers`
+
+---
+
+## Phase 8C 完了 (2026-04-25) — GPU テクスチャを表示の正本へ切り替え（単一レイヤー）
+
+作業モデル: claude-sonnet-4-6
+
+### 実装内容
+
+- **`crates/gpu-canvas/src/gpu.rs`**
+  - `GpuLayerTexture::create` の `TextureDescriptor` に `view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb]` を追加
+  - `GpuLayerTexture::create_srgb_view()` 追加: `Rgba8UnormSrgb` フォーマットの `TextureView` を返す
+  - `GpuCanvasPool::get_view(panel_id, layer_index)` 追加: `get()` → `create_srgb_view()` のショートカット
+
+- **`apps/desktop/src/wgpu_canvas.rs`**
+  - `CanvasLayerSource<'a>` enum 追加 (`Cpu(TextureSource<'a>)` / `#[cfg(feature = "gpu")] Gpu { panel_id, layer_index, width, height }`)。`&'a str` により `Copy` を維持
+  - `CanvasLayer<'a>.source` を `CanvasLayerSource<'a>` に変更
+  - `GpuBindGroupCache` 構造体追加 (bind_group / uniform_buffer / panel_id / layer_index / width / height)
+  - `WgpuPresenter` に `canvas_gpu_bind_group_cache: Option<GpuBindGroupCache>` と `srgb_canvas_view_supported: bool` フィールド追加
+  - `WgpuPresenter::new()` で `supports_rgba8unorm_storage(&adapter)` を評価して `srgb_canvas_view_supported` を設定
+  - `WgpuPresenter::render()` に `#[cfg(feature = "gpu")] gpu_canvas_pool: Option<&GpuCanvasPool>` 引数を追加
+  - `render()` 内で `CanvasLayerSource::Gpu` 時は `update_gpu_canvas_bind_group()` → キャッシュ bind group で描画
+  - `update_gpu_canvas_bind_group()` を追加: `(panel_id, layer_index, width, height)` 変化時のみ bind group を再生成し uniform buffer を更新
+
+- **`apps/desktop/src/app/mod.rs`**
+  - `should_use_gpu_canvas_source()`: pool 有効 + `srgb_view_supported` + アクティブパネルが単一レイヤー + テクスチャ存在 → `true`
+  - `gpu_canvas_pool()`: `Option<&GpuCanvasPool>` getter
+
+- **`apps/desktop/src/app/present_state.rs`**
+  - `apply_bitmap_edits`: `#[cfg(feature = "gpu")]` で GPU 経路有効時は `refresh_canvas_frame_region` をスキップし `append_canvas_dirty_rect` のみを実行（CPU ビットマップ更新は Phase 8D まで維持）
+
+- **`apps/desktop/src/runtime.rs`**
+  - `canvas_layer` 構築を `should_use_gpu_canvas_source()` で分岐: `true` → `CanvasLayerSource::Gpu { ... }`、`false` → `CanvasLayerSource::Cpu { ... }`
+  - `presenter.render(scene, #[cfg(feature = "gpu")] self.app.gpu_canvas_pool())` へ変更
+
+- **テスト (`apps/desktop/src/app/tests/gpu_tests.rs`)**
+  - `should_use_gpu_canvas_source_false_without_resources`
+  - `should_use_gpu_canvas_source_false_if_srgb_not_supported`
+  - `should_use_gpu_canvas_source_true_for_single_layer_with_resources`
+  - `should_use_gpu_canvas_source_false_for_multi_layer`
+  - `layer_count_change_updates_gpu_source_decision`
+
+### 設計制約
+
+- 複数レイヤー時は CPU 経路を継続（Phase 8E で GPU 合成予定）
+- `srgb_view_supported = false` の場合は CPU フォールバック（ハードウェア互換性の保障）
+- CPU ペイントパス (`apply_bitmap_edits`) は Phase 8D まで維持

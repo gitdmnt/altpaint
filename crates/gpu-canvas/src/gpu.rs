@@ -50,13 +50,21 @@ impl GpuLayerTexture {
                 | wgpu::TextureUsages::TEXTURE_BINDING
                 | wgpu::TextureUsages::COPY_SRC
                 | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
+            view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
         });
         Self {
             texture,
             width,
             height,
         }
+    }
+
+    /// Rgba8UnormSrgb view を生成して返す。Present 時にガンマ補正を自動適用するために使う。
+    pub fn create_srgb_view(&self) -> wgpu::TextureView {
+        self.texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(wgpu::TextureFormat::Rgba8UnormSrgb),
+            ..Default::default()
+        })
     }
 
     /// CPU ピクセルデータをテクスチャへフルアップロードする。
@@ -129,6 +137,12 @@ impl GpuCanvasPool {
     /// 指定パネル・レイヤーのテクスチャを取得する。
     pub fn get(&self, panel_id: &str, layer_index: usize) -> Option<&GpuLayerTexture> {
         self.textures.get(&(panel_id.to_string(), layer_index))
+    }
+
+    /// 指定パネル・レイヤーの sRGB TextureView を生成して返す。
+    pub fn get_view(&self, panel_id: &str, layer_index: usize) -> Option<wgpu::TextureView> {
+        self.get(panel_id, layer_index)
+            .map(|t| t.create_srgb_view())
     }
 }
 

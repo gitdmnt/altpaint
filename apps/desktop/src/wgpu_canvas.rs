@@ -57,11 +57,54 @@ pub struct FrameLayer<'a> {
     pub upload_region: Option<UploadRegion>,
 }
 
+/// キャンバスレイヤーのデータソース。CPU ビットマップか GPU テクスチャかを表す。
+#[derive(Debug, Clone, Copy)]
+pub enum CanvasLayerSource<'a> {
+    /// CPU ビットマップから転送する通常パス。
+    Cpu(TextureSource<'a>),
+    /// GPU テクスチャを直接 Present する高速パス（`gpu` feature 有効時のみ）。
+    #[cfg(feature = "gpu")]
+    Gpu {
+        panel_id: &'a str,
+        layer_index: usize,
+        width: u32,
+        height: u32,
+    },
+}
+
+impl<'a> CanvasLayerSource<'a> {
+    fn width(self) -> u32 {
+        match self {
+            Self::Cpu(src) => src.width,
+            #[cfg(feature = "gpu")]
+            Self::Gpu { width, .. } => width,
+        }
+    }
+    fn height(self) -> u32 {
+        match self {
+            Self::Cpu(src) => src.height,
+            #[cfg(feature = "gpu")]
+            Self::Gpu { height, .. } => height,
+        }
+    }
+    fn cpu_source(self) -> Option<TextureSource<'a>> {
+        match self {
+            Self::Cpu(src) => Some(src),
+            #[cfg(feature = "gpu")]
+            Self::Gpu { .. } => None,
+        }
+    }
+    #[cfg(feature = "gpu")]
+    fn is_gpu(self) -> bool {
+        matches!(self, Self::Gpu { .. })
+    }
+}
+
 /// キャンバスレイヤーの転送仕様。
 /// `quad` でスクリーン上の描画位置・UV・回転を指定できる点が FrameLayer と異なる。
 #[derive(Debug, Clone, Copy)]
 pub struct CanvasLayer<'a> {
-    pub source: TextureSource<'a>,
+    pub source: CanvasLayerSource<'a>,
     pub upload_region: Option<UploadRegion>,
     /// 描画先矩形・UV 範囲・回転・反転などのジオメトリ情報。
     pub quad: TextureQuad,
@@ -273,6 +316,19 @@ struct LayerUploadStats {
     bytes: u64,
 }
 
+/// GPU キャンバステクスチャ用のバインドグループキャッシュ。
+///
+/// `(panel_id, layer_index, width, height)` が変化したときのみ再生成する。
+#[cfg(feature = "gpu")]
+struct GpuBindGroupCache {
+    bind_group: wgpu::BindGroup,
+    uniform_buffer: wgpu::Buffer,
+    panel_id: String,
+    layer_index: usize,
+    width: u32,
+    height: u32,
+}
+
 /// wgpu を使って複数レイヤーをウィンドウへ合成・表示するプレゼンター。
 ///
 /// wgpu の主要オブジェクトと各レイヤーのテクスチャを保持する。
@@ -298,6 +354,13 @@ pub struct WgpuPresenter {
     canvas_layer: Option<UploadedLayerTexture>,
     temp_overlay_layer: Option<UploadedLayerTexture>,
     ui_panel_layer: Option<UploadedLayerTexture>,
+    /// GPU キャンバステクスチャのバインドグループキャッシュ。
+    #[cfg(feature = "gpu")]
+    canvas_gpu_bind_group_cache: Option<GpuBindGroupCache>,
+    /// Rgba8Unorm テクスチャを sRGB view で Present できるかどうか。
+    /// `false` の場合は GPU キャンバスソースを使わず CPU パスへフォールバックする。
+    #[cfg(feature = "gpu")]
+    srgb_canvas_view_supported: bool,
 }
 
 /// サポートされているプレゼントモードの中から最も低レイテンシなものを選ぶ。
@@ -368,6 +431,10 @@ impl WgpuPresenter {
         // gpu-canvas クレートと共有できるよう Arc でラップする。
         let device = Arc::new(device);
         let queue = Arc::new(queue);
+
+        #[cfg(feature = "gpu")]
+        let srgb_canvas_view_supported =
+            gpu_canvas::format_check::supports_rgba8unorm_storage(&adapter);
 
         // サーフェスがサポートするピクセルフォーマットの一覧を取得する。
         let surface_capabilities = surface.get_capabilities(&adapter);
@@ -508,6 +575,10 @@ impl WgpuPresenter {
             canvas_layer: None,
             temp_overlay_layer: None,
             ui_panel_layer: None,
+            #[cfg(feature = "gpu")]
+            canvas_gpu_bind_group_cache: None,
+            #[cfg(feature = "gpu")]
+            srgb_canvas_view_supported,
         })
     }
 
@@ -524,6 +595,12 @@ impl WgpuPresenter {
     /// gpu-canvas クレートの `GpuCanvasPool` / `GpuPenTipCache` と共有するために使う。
     pub fn queue(&self) -> Arc<wgpu::Queue> {
         Arc::clone(&self.queue)
+    }
+
+    /// Rgba8Unorm テクスチャを sRGB view で Present できるかどうかを返す。
+    #[cfg(feature = "gpu")]
+    pub fn srgb_canvas_view_supported(&self) -> bool {
+        self.srgb_canvas_view_supported
     }
 
     ///
@@ -549,7 +626,11 @@ impl WgpuPresenter {
     /// 4. スワップチェーンから次フレーム用テクスチャを取得
     /// 5. レンダーパスを開始して全レイヤーを順番に描画
     /// 6. コマンドを submit して GPU へ投入、present で画面表示
-    pub fn render(&mut self, scene: PresentScene<'_>) -> Result<PresentTimings> {
+    pub fn render(
+        &mut self,
+        scene: PresentScene<'_>,
+        #[cfg(feature = "gpu")] gpu_canvas_pool: Option<&gpu_canvas::GpuCanvasPool>,
+    ) -> Result<PresentTimings> {
         // サーフェスが 0 サイズなら描画をスキップ（最小化時など）。
         if self.config.width == 0 || self.config.height == 0 {
             return Ok(PresentTimings::default());
@@ -585,15 +666,15 @@ impl WgpuPresenter {
             scene.ui_panel_layer.source.height,
             "ui-panel",
         );
-        // canvas_layer は省略可能（キャンバスが表示されていない場合は None）。
-        if let Some(canvas_layer) = scene.canvas_layer {
+        // canvas_layer は省略可能。GPU ソース時は ensure をスキップ（gpu-canvas プール管理）。
+        if let Some(canvas_layer) = scene.canvas_layer.filter(|c| c.source.cpu_source().is_some()) {
             Self::ensure_layer_texture(
                 &self.device,
                 &self.sampler,
                 &self.bind_group_layout,
                 &mut self.canvas_layer,
-                canvas_layer.source.width,
-                canvas_layer.source.height,
+                canvas_layer.source.width(),
+                canvas_layer.source.height(),
                 "canvas",
             );
         }
@@ -621,12 +702,16 @@ impl WgpuPresenter {
             scene.ui_panel_layer.upload_region,
         );
         let canvas_upload = if let Some(canvas_layer) = scene.canvas_layer {
-            Self::upload_layer(
-                &self.queue,
-                self.canvas_layer.as_mut(),
-                canvas_layer.source,
-                canvas_layer.upload_region,
-            )
+            if let Some(cpu_src) = canvas_layer.source.cpu_source() {
+                Self::upload_layer(
+                    &self.queue,
+                    self.canvas_layer.as_mut(),
+                    cpu_src,
+                    canvas_layer.upload_region,
+                )
+            } else {
+                LayerUploadStats::default()
+            }
         } else {
             LayerUploadStats::default()
         };
@@ -657,6 +742,25 @@ impl WgpuPresenter {
         );
         // canvas_layer は quad で位置・回転・スケールが指定される。
         if let Some(canvas_layer) = scene.canvas_layer {
+            #[cfg(feature = "gpu")]
+            if canvas_layer.source.is_gpu() {
+                self.update_gpu_canvas_bind_group(
+                    canvas_layer.source,
+                    canvas_layer.quad,
+                    gpu_canvas_pool,
+                    self.config.width,
+                    self.config.height,
+                );
+            } else {
+                Self::update_quad_uniform(
+                    &self.queue,
+                    self.canvas_layer.as_ref(),
+                    canvas_layer.quad,
+                    self.config.width,
+                    self.config.height,
+                );
+            }
+            #[cfg(not(feature = "gpu"))]
             Self::update_quad_uniform(
                 &self.queue,
                 self.canvas_layer.as_ref(),
@@ -748,8 +852,21 @@ impl WgpuPresenter {
 
             // レイヤーを下から順番に描画（後に描くほど手前に表示される）。
             Self::draw_layer(&mut pass, self.base_layer.as_ref()); // L1 背景
-            if scene.canvas_layer.is_some() {
-                Self::draw_layer(&mut pass, self.canvas_layer.as_ref()); // L2 キャンバス
+            if let Some(canvas_layer) = scene.canvas_layer {
+                #[cfg(feature = "gpu")]
+                if canvas_layer.source.is_gpu() {
+                    if let Some(cache) = &self.canvas_gpu_bind_group_cache {
+                        pass.set_bind_group(0, &cache.bind_group, &[]);
+                        pass.draw(0..6, 0..1);
+                    }
+                } else {
+                    Self::draw_layer(&mut pass, self.canvas_layer.as_ref());
+                }
+                #[cfg(not(feature = "gpu"))]
+                {
+                    let _ = canvas_layer;
+                    Self::draw_layer(&mut pass, self.canvas_layer.as_ref());
+                }
             }
             Self::draw_layer(&mut pass, self.temp_overlay_layer.as_ref()); // L3 ストロークオーバーレイ
             Self::draw_layer(&mut pass, self.ui_panel_layer.as_ref()); // L4 UI パネル
@@ -944,6 +1061,76 @@ impl WgpuPresenter {
         pass.set_bind_group(0, &layer.bind_group, &[]);
         // 頂点バッファなしで 6 頂点を描画（vs_main が vertex_index だけで座標を計算する）。
         pass.draw(0..6, 0..1);
+    }
+
+    /// GPU キャンバステクスチャのバインドグループを作成/更新してキャッシュに保存する。
+    ///
+    /// `(panel_id, layer_index, width, height)` が前回と変わった場合のみ再生成する。
+    #[cfg(feature = "gpu")]
+    fn update_gpu_canvas_bind_group(
+        &mut self,
+        source: CanvasLayerSource<'_>,
+        quad: TextureQuad,
+        pool: Option<&gpu_canvas::GpuCanvasPool>,
+        surface_width: u32,
+        surface_height: u32,
+    ) {
+        let CanvasLayerSource::Gpu { panel_id, layer_index, width, height } = source else {
+            return;
+        };
+        let Some(pool) = pool else {
+            return;
+        };
+        let needs_rebuild = self.canvas_gpu_bind_group_cache.as_ref().is_none_or(|c| {
+            c.panel_id != panel_id
+                || c.layer_index != layer_index
+                || c.width != width
+                || c.height != height
+        });
+        if needs_rebuild {
+            let Some(view) = pool.get_view(panel_id, layer_index) else {
+                return;
+            };
+            let uniform_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("altpaint-canvas-gpu-uniform"),
+                size: LAYER_UNIFORM_SIZE,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("altpaint-canvas-gpu-bind-group"),
+                layout: &self.bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: uniform_buffer.as_entire_binding(),
+                    },
+                ],
+            });
+            self.canvas_gpu_bind_group_cache = Some(GpuBindGroupCache {
+                bind_group,
+                uniform_buffer,
+                panel_id: panel_id.to_string(),
+                layer_index,
+                width,
+                height,
+            });
+        }
+        if let Some(cache) = &self.canvas_gpu_bind_group_cache {
+            self.queue.write_buffer(
+                &cache.uniform_buffer,
+                0,
+                &quad_uniform_bytes(quad, surface_width, surface_height),
+            );
+        }
     }
 }
 
