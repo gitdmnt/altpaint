@@ -98,6 +98,8 @@ impl GpuLayerTexture {
 pub struct GpuCanvasPool {
     ctx: GpuCanvasContext,
     textures: HashMap<(String, usize), GpuLayerTexture>,
+    composite_textures: HashMap<String, GpuLayerTexture>,
+    mask_textures: HashMap<(String, usize), wgpu::Texture>,
 }
 
 impl GpuCanvasPool {
@@ -106,6 +108,8 @@ impl GpuCanvasPool {
         Self {
             ctx: GpuCanvasContext::new(device, queue),
             textures: HashMap::new(),
+            composite_textures: HashMap::new(),
+            mask_textures: HashMap::new(),
         }
     }
 
@@ -292,66 +296,114 @@ impl GpuCanvasPool {
         layer_index: usize,
     ) -> Option<(u32, u32, Vec<u8>)> {
         let tex = self.get(panel_id, layer_index)?;
-        let w = tex.width;
-        let h = tex.height;
-        let unpadded_bpr = w * 4;
-        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-        let padded_bpr = unpadded_bpr.div_ceil(align) * align;
-        let buf_size = (padded_bpr * h) as wgpu::BufferAddress;
-        let readback = self.ctx.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("gpu-canvas-readback"),
-            size: buf_size,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
+        read_back_texture(&self.ctx, &tex.texture, tex.width, tex.height)
+    }
+
+    /// Panel ID に紐づく合成テクスチャを遅延作成する。
+    ///
+    /// 既存テクスチャが同サイズなら no-op。サイズが異なる場合は旧テクスチャを
+    /// drop して新規作成する。
+    pub fn ensure_composite_texture(&mut self, panel_id: &str, width: u32, height: u32) {
+        let key = panel_id.to_string();
+        if let Some(existing) = self.composite_textures.get(&key)
+            && existing.width == width
+            && existing.height == height
+        {
+            return;
+        }
+        let tex = GpuLayerTexture::create(&self.ctx, width, height);
+        self.composite_textures.insert(key, tex);
+    }
+
+    /// Panel ID に紐づく合成テクスチャを取得する。
+    pub fn get_composite(&self, panel_id: &str) -> Option<&GpuLayerTexture> {
+        self.composite_textures.get(panel_id)
+    }
+
+    /// Panel ID に紐づく合成テクスチャの sRGB TextureView を生成する。
+    pub fn get_composite_view(&self, panel_id: &str) -> Option<wgpu::TextureView> {
+        self.get_composite(panel_id).map(|t| t.create_srgb_view())
+    }
+
+    /// レイヤーマスク（1 ch alpha）を RGBA8（R=G=B=255, A=mask）に展開して
+    /// アップロードする。既存マスクは上書きする。
+    pub fn upload_mask(
+        &mut self,
+        panel_id: &str,
+        layer_index: usize,
+        width: u32,
+        height: u32,
+        alpha: &[u8],
+    ) {
+        let rgba: Vec<u8> = alpha
+            .iter()
+            .flat_map(|&a| [255u8, 255, 255, a])
+            .collect();
+        let texture = self.ctx.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("gpu-canvas-mask"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
         });
-        let mut encoder = self
-            .ctx
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("gpu-canvas-readback-encoder"),
-            });
-        encoder.copy_texture_to_buffer(
+        self.ctx.queue.write_texture(
             wgpu::TexelCopyTextureInfo {
-                texture: &tex.texture,
+                texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            wgpu::TexelCopyBufferInfo {
-                buffer: &readback,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(padded_bpr),
-                    rows_per_image: Some(h),
-                },
+            &rgba,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
             },
             wgpu::Extent3d {
-                width: w,
-                height: h,
+                width,
+                height,
                 depth_or_array_layers: 1,
             },
         );
-        self.ctx.queue.submit(std::iter::once(encoder.finish()));
-        let slice = readback.slice(..);
-        let (tx, rx) = std::sync::mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |r| {
-            let _ = tx.send(r);
-        });
-        let _ = self.ctx.device.poll(wgpu::PollType::Wait {
-            submission_index: None,
-            timeout: None,
-        });
-        rx.recv().ok()?.ok()?;
-        let data = slice.get_mapped_range();
-        let mut pixels = Vec::with_capacity((unpadded_bpr * h) as usize);
-        for row in 0..h {
-            let start = (row * padded_bpr) as usize;
-            let end = start + unpadded_bpr as usize;
-            pixels.extend_from_slice(&data[start..end]);
-        }
-        drop(data);
-        readback.unmap();
-        Some((w, h, pixels))
+        self.mask_textures
+            .insert((panel_id.to_string(), layer_index), texture);
+    }
+
+    /// 登録済みマスクテクスチャを取得する。
+    pub fn get_mask(&self, panel_id: &str, layer_index: usize) -> Option<&wgpu::Texture> {
+        self.mask_textures
+            .get(&(panel_id.to_string(), layer_index))
+    }
+
+    /// 登録済みマスクテクスチャを削除する。
+    pub fn remove_mask(&mut self, panel_id: &str, layer_index: usize) {
+        self.mask_textures
+            .remove(&(panel_id.to_string(), layer_index));
+    }
+
+    /// 指定パネルの全レイヤーテクスチャ・マスクテクスチャエントリを削除する。
+    ///
+    /// レイヤー追加/削除/並べ替えで古いインデックスが残存するのを防ぐため、
+    /// `sync_all_layers_to_gpu` の再構築前に呼び出す。
+    pub fn clear_layers_for_panel(&mut self, panel_id: &str) {
+        let pid = panel_id.to_string();
+        self.textures.retain(|(p, _), _| p != &pid);
+        self.mask_textures.retain(|(p, _), _| p != &pid);
+    }
+
+    /// 合成テクスチャを CPU へ読み戻す（保存経路の `panel.bitmap` 更新用）。
+    pub fn read_back_composite(&self, panel_id: &str) -> Option<(u32, u32, Vec<u8>)> {
+        let tex = self.get_composite(panel_id)?;
+        let w = tex.width;
+        let h = tex.height;
+        read_back_texture(&self.ctx, &tex.texture, w, h)
     }
 
     /// 指定ピクセル（RGBA8）を保持する新規 GPU テクスチャを作成して返す。
@@ -464,4 +516,72 @@ fn alpha_mask_to_rgba(data: &[u8]) -> Vec<u8> {
     data.iter()
         .flat_map(|&alpha| [255u8, 255, 255, alpha])
         .collect()
+}
+
+/// 任意の `wgpu::Texture`（Rgba8Unorm, COPY_SRC）全体を CPU RGBA8 Vec へ読み戻す。
+///
+/// 行パディング（`COPY_BYTES_PER_ROW_ALIGNMENT`）を解除してパックされた RGBA8 列を返す。
+fn read_back_texture(
+    ctx: &GpuCanvasContext,
+    tex: &wgpu::Texture,
+    w: u32,
+    h: u32,
+) -> Option<(u32, u32, Vec<u8>)> {
+    let unpadded_bpr = w * 4;
+    let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let padded_bpr = unpadded_bpr.div_ceil(align) * align;
+    let buf_size = (padded_bpr * h) as wgpu::BufferAddress;
+    let readback = ctx.device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("gpu-canvas-readback"),
+        size: buf_size,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let mut encoder = ctx
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("gpu-canvas-readback-encoder"),
+        });
+    encoder.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture: tex,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &readback,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(padded_bpr),
+                rows_per_image: Some(h),
+            },
+        },
+        wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        },
+    );
+    ctx.queue.submit(std::iter::once(encoder.finish()));
+    let slice = readback.slice(..);
+    let (tx, rx) = std::sync::mpsc::channel();
+    slice.map_async(wgpu::MapMode::Read, move |r| {
+        let _ = tx.send(r);
+    });
+    let _ = ctx.device.poll(wgpu::PollType::Wait {
+        submission_index: None,
+        timeout: None,
+    });
+    rx.recv().ok()?.ok()?;
+    let data = slice.get_mapped_range();
+    let mut pixels = Vec::with_capacity((unpadded_bpr * h) as usize);
+    for row in 0..h {
+        let start = (row * padded_bpr) as usize;
+        let end = start + unpadded_bpr as usize;
+        pixels.extend_from_slice(&data[start..end]);
+    }
+    drop(data);
+    readback.unmap();
+    Some((w, h, pixels))
 }

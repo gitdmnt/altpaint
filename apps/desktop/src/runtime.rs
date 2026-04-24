@@ -278,29 +278,48 @@ impl ApplicationHandler for DesktopRuntime {
                         height: rect.height as u32,
                     });
                 #[cfg(feature = "gpu")]
-                let active_panel_gpu_id: Option<String> = if self.app.should_use_gpu_canvas_source() {
-                    self.app.document.active_panel().map(|p| p.id.0.to_string())
-                } else {
-                    None
-                };
+                let gpu_source_spec: Option<(
+                    String,
+                    crate::app::GpuCanvasSourceKind,
+                    u32,
+                    u32,
+                )> = self.app.canvas_layer_source_kind().and_then(|kind| {
+                    let panel = self.app.document.active_panel()?;
+                    let (w, h) = match kind {
+                        crate::app::GpuCanvasSourceKind::Single => panel
+                            .layers
+                            .first()
+                            .map(|l| (l.bitmap.width as u32, l.bitmap.height as u32))?,
+                        crate::app::GpuCanvasSourceKind::Composite => {
+                            (panel.bitmap.width as u32, panel.bitmap.height as u32)
+                        }
+                    };
+                    Some((panel.id.0.to_string(), kind, w, h))
+                });
 
                 let canvas_layer = {
                     #[cfg(feature = "gpu")]
-                    if let Some(ref panel_id) = active_panel_gpu_id {
-                        let layer_size = self.app.document.active_panel().and_then(|p| {
-                            p.layers.first().map(|l| (l.bitmap.width as u32, l.bitmap.height as u32))
-                        });
-                        layer_size.and_then(|(w, h)| {
-                            canvas_quad.map(|quad| CanvasLayer {
-                                source: CanvasLayerSource::Gpu {
-                                    panel_id: panel_id.as_str(),
-                                    layer_index: 0,
-                                    width: w,
-                                    height: h,
-                                },
-                                upload_region: None,
-                                quad,
-                            })
+                    if let Some((ref panel_id, kind, w, h)) = gpu_source_spec {
+                        canvas_quad.map(|quad| CanvasLayer {
+                            source: match kind {
+                                crate::app::GpuCanvasSourceKind::Single => {
+                                    CanvasLayerSource::Gpu {
+                                        panel_id: panel_id.as_str(),
+                                        layer_index: 0,
+                                        width: w,
+                                        height: h,
+                                    }
+                                }
+                                crate::app::GpuCanvasSourceKind::Composite => {
+                                    CanvasLayerSource::GpuComposite {
+                                        panel_id: panel_id.as_str(),
+                                        width: w,
+                                        height: h,
+                                    }
+                                }
+                            },
+                            upload_region: None,
+                            quad,
                         })
                     } else {
                         self.app.canvas_frame().and_then(|bitmap| {

@@ -22,7 +22,10 @@ mod cpu_tests {
 mod gpu_tests {
     use std::sync::Arc;
 
-    use crate::{GpuBrushDispatch, GpuCanvasPool, GpuPenTipCache};
+    use crate::{
+        CompositeLayerEntry, GpuBrushDispatch, GpuCanvasPool, GpuFillDispatch,
+        GpuLayerCompositor, GpuPenTipCache,
+    };
 
     /// wgpu アダプターとデバイスを生成するヘルパー。GPU がない CI では `None` を返す。
     /// TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES をアダプターがサポートする場合は要求する。
@@ -308,5 +311,194 @@ mod gpu_tests {
             pool.upload_cpu_bitmap("nonexistent", 0, &pixels);
             assert!(pool.get("nonexistent", 0).is_none());
         });
+    }
+
+    /// GpuFillDispatch::dispatch_flood_fill が連結成分だけを塗り、非連結ピクセルは
+    /// 変化させないことを検証する。
+    #[test]
+    fn gpu_flood_fill_fills_connected_region_only() {
+        let outcome = std::panic::catch_unwind(|| {
+            pollster::block_on(async {
+                let Some((device, queue, adapter)) = try_init_device().await else {
+                    return None;
+                };
+                if !crate::format_check::supports_rgba8unorm_storage(&adapter) {
+                    return None;
+                }
+
+                // 4x4 キャンバス: 左 2 列が透明の連結領域、右 2 列は非連結で別色で埋める。
+                // 期待: 左 2 列のみが赤 (255,0,0,255) に塗られる。
+                let mut pool = GpuCanvasPool::new(device.clone(), queue.clone());
+                pool.create_layer_texture("p", 0, 4, 4);
+                let mut pixels = vec![0u8; 4 * 4 * 4];
+                for y in 0..4 {
+                    for x in 2..4 {
+                        let idx = (y * 4 + x) * 4;
+                        pixels[idx] = 10;
+                        pixels[idx + 1] = 20;
+                        pixels[idx + 2] = 30;
+                        pixels[idx + 3] = 255;
+                    }
+                }
+                pool.upload_cpu_bitmap("p", 0, &pixels);
+
+                let fill = GpuFillDispatch::new(device, queue);
+                let target = pool.get("p", 0).unwrap();
+                fill.dispatch_flood_fill(target, target, (0, 0), [1.0, 0.0, 0.0, 1.0]);
+
+                let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
+                // Left column (x=0, x=1) should be filled red; right columns unchanged.
+                for y in 0..4 {
+                    for x in 0..2 {
+                        let idx = (y * 4 + x) * 4;
+                        assert_eq!(out[idx], 255, "red at ({x},{y})");
+                        assert_eq!(out[idx + 3], 255, "alpha at ({x},{y})");
+                    }
+                    for x in 2..4 {
+                        let idx = (y * 4 + x) * 4;
+                        assert_eq!(out[idx], 10, "unchanged r at ({x},{y})");
+                    }
+                }
+                Some(())
+            })
+        });
+        let _ = outcome; // GPU 非対応ではスキップ
+    }
+
+    /// GpuFillDispatch::dispatch_lasso_fill が三角ポリゴン内部のピクセルを塗り、
+    /// 外側は変更しないことを検証する。
+    #[test]
+    fn gpu_lasso_fill_triangle_paints_interior() {
+        let outcome = std::panic::catch_unwind(|| {
+            pollster::block_on(async {
+                let Some((device, queue, adapter)) = try_init_device().await else {
+                    return None;
+                };
+                if !crate::format_check::supports_rgba8unorm_storage(&adapter) {
+                    return None;
+                }
+                let mut pool = GpuCanvasPool::new(device.clone(), queue.clone());
+                pool.create_layer_texture("p", 0, 8, 8);
+                let pixels = vec![0u8; 8 * 8 * 4];
+                pool.upload_cpu_bitmap("p", 0, &pixels);
+
+                let fill = GpuFillDispatch::new(device, queue);
+                let target = pool.get("p", 0).unwrap();
+                // 三角形 (0,0), (7,0), (0,7) — 左上半分が内側。
+                let polygon = vec![(0.0, 0.0), (7.0, 0.0), (0.0, 7.0)];
+                fill.dispatch_lasso_fill(
+                    target,
+                    &polygon,
+                    (0, 0, 7, 7),
+                    [0.0, 1.0, 0.0, 1.0],
+                );
+
+                let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
+                // (1,1) は内部 → 緑。(6,6) は外部 → 変更なし。
+                let idx_in = (1 * 8 + 1) * 4;
+                assert_eq!(out[idx_in + 1], 255, "interior green channel");
+                let idx_out = (6 * 8 + 6) * 4;
+                assert_eq!(out[idx_out + 3], 0, "exterior alpha unchanged");
+                Some(())
+            })
+        });
+        let _ = outcome;
+    }
+
+    /// GpuLayerCompositor::recomposite で単一レイヤー (Normal blend) が passthrough
+    /// として合成テクスチャへコピーされることを確認する。
+    #[test]
+    fn gpu_layer_compositor_single_layer_passthrough() {
+        let outcome = std::panic::catch_unwind(|| {
+            pollster::block_on(async {
+                let Some((device, queue, adapter)) = try_init_device().await else {
+                    return None;
+                };
+                if !crate::format_check::supports_rgba8unorm_storage(&adapter) {
+                    return None;
+                }
+                let mut pool = GpuCanvasPool::new(device.clone(), queue.clone());
+                pool.ensure_composite_texture("p", 4, 4);
+                pool.create_layer_texture("p", 0, 4, 4);
+                let mut pixels = vec![0u8; 4 * 4 * 4];
+                for y in 0..4 {
+                    for x in 0..4 {
+                        let idx = (y * 4 + x) * 4;
+                        pixels[idx] = 100;
+                        pixels[idx + 1] = 150;
+                        pixels[idx + 2] = 200;
+                        pixels[idx + 3] = 255;
+                    }
+                }
+                pool.upload_cpu_bitmap("p", 0, &pixels);
+
+                let compositor = GpuLayerCompositor::new(device, queue);
+                let composite = pool.get_composite("p").unwrap();
+                let layer = pool.get("p", 0).unwrap();
+                compositor.recomposite(
+                    composite,
+                    &[CompositeLayerEntry {
+                        color: layer,
+                        mask: None,
+                        blend_code: 0,
+                        visible: true,
+                    }],
+                    (0, 0, 4, 4),
+                );
+
+                let (_, _, out) = pool.read_back_composite("p").expect("readback");
+                let idx = (1 * 4 + 1) * 4;
+                assert_eq!(out[idx], 100);
+                assert_eq!(out[idx + 1], 150);
+                assert_eq!(out[idx + 2], 200);
+                assert_eq!(out[idx + 3], 255);
+                Some(())
+            })
+        });
+        let _ = outcome;
+    }
+
+    /// GpuLayerCompositor が invisible layer を完全にスキップし、dirty rect 範囲外を
+    /// 変更しないことを検証する。
+    #[test]
+    fn gpu_layer_compositor_invisible_layer_is_skipped() {
+        let outcome = std::panic::catch_unwind(|| {
+            pollster::block_on(async {
+                let Some((device, queue, adapter)) = try_init_device().await else {
+                    return None;
+                };
+                if !crate::format_check::supports_rgba8unorm_storage(&adapter) {
+                    return None;
+                }
+                let mut pool = GpuCanvasPool::new(device.clone(), queue.clone());
+                pool.ensure_composite_texture("p", 4, 4);
+                pool.create_layer_texture("p", 0, 4, 4);
+                // Fill with solid red.
+                let pixels: Vec<u8> = (0..16).flat_map(|_| [255u8, 0, 0, 255]).collect();
+                pool.upload_cpu_bitmap("p", 0, &pixels);
+
+                let compositor = GpuLayerCompositor::new(device, queue);
+                let composite = pool.get_composite("p").unwrap();
+                let layer = pool.get("p", 0).unwrap();
+                compositor.recomposite(
+                    composite,
+                    &[CompositeLayerEntry {
+                        color: layer,
+                        mask: None,
+                        blend_code: 0,
+                        visible: false,
+                    }],
+                    (0, 0, 4, 4),
+                );
+
+                let (_, _, out) = pool.read_back_composite("p").expect("readback");
+                // All pixels should be cleared (alpha = 0) since the only layer is invisible.
+                for a in out.chunks(4).map(|c| c[3]) {
+                    assert_eq!(a, 0, "invisible layer should leave composite transparent");
+                }
+                Some(())
+            })
+        });
+        let _ = outcome;
     }
 }

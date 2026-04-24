@@ -1173,7 +1173,6 @@ fn blend_pixel(dst: [u8; 4], src: [u8; 4], mode: &BlendMode) -> [u8; 4] {
             BlendMode::Multiply => s * d,
             BlendMode::Screen => 1.0 - (1.0 - s) * (1.0 - d),
             BlendMode::Add => (s + d).min(1.0),
-            BlendMode::Custom(_) => s,
         }
     };
 

@@ -62,11 +62,18 @@ pub struct FrameLayer<'a> {
 pub enum CanvasLayerSource<'a> {
     /// CPU ビットマップから転送する通常パス。
     Cpu(TextureSource<'a>),
-    /// GPU テクスチャを直接 Present する高速パス（`gpu` feature 有効時のみ）。
+    /// 単一レイヤーの GPU テクスチャを直接 Present するパス（`gpu` feature 有効時のみ）。
     #[cfg(feature = "gpu")]
     Gpu {
         panel_id: &'a str,
         layer_index: usize,
+        width: u32,
+        height: u32,
+    },
+    /// 多レイヤー合成済み GPU テクスチャ（composite texture）を Present するパス。
+    #[cfg(feature = "gpu")]
+    GpuComposite {
+        panel_id: &'a str,
         width: u32,
         height: u32,
     },
@@ -78,6 +85,8 @@ impl<'a> CanvasLayerSource<'a> {
             Self::Cpu(src) => src.width,
             #[cfg(feature = "gpu")]
             Self::Gpu { width, .. } => width,
+            #[cfg(feature = "gpu")]
+            Self::GpuComposite { width, .. } => width,
         }
     }
     fn height(self) -> u32 {
@@ -85,18 +94,20 @@ impl<'a> CanvasLayerSource<'a> {
             Self::Cpu(src) => src.height,
             #[cfg(feature = "gpu")]
             Self::Gpu { height, .. } => height,
+            #[cfg(feature = "gpu")]
+            Self::GpuComposite { height, .. } => height,
         }
     }
     fn cpu_source(self) -> Option<TextureSource<'a>> {
         match self {
             Self::Cpu(src) => Some(src),
             #[cfg(feature = "gpu")]
-            Self::Gpu { .. } => None,
+            Self::Gpu { .. } | Self::GpuComposite { .. } => None,
         }
     }
     #[cfg(feature = "gpu")]
     fn is_gpu(self) -> bool {
-        matches!(self, Self::Gpu { .. })
+        matches!(self, Self::Gpu { .. } | Self::GpuComposite { .. })
     }
 }
 
@@ -318,15 +329,24 @@ struct LayerUploadStats {
 
 /// GPU キャンバステクスチャ用のバインドグループキャッシュ。
 ///
-/// `(panel_id, layer_index, width, height)` が変化したときのみ再生成する。
+/// キー `(panel_id, kind, layer_index, width, height)` が変化したときのみ再生成する。
+/// `kind == Composite` のとき `layer_index` は意味を持たない（`usize::MAX` を入れる）。
 #[cfg(feature = "gpu")]
 struct GpuBindGroupCache {
     bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
     panel_id: String,
+    kind: GpuBindGroupKind,
     layer_index: usize,
     width: u32,
     height: u32,
+}
+
+#[cfg(feature = "gpu")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GpuBindGroupKind {
+    Single,
+    Composite,
 }
 
 /// wgpu を使って複数レイヤーをウィンドウへ合成・表示するプレゼンター。
@@ -1075,20 +1095,42 @@ impl WgpuPresenter {
         surface_width: u32,
         surface_height: u32,
     ) {
-        let CanvasLayerSource::Gpu { panel_id, layer_index, width, height } = source else {
-            return;
+        let (panel_id, kind, layer_index, width, height) = match source {
+            CanvasLayerSource::Gpu {
+                panel_id,
+                layer_index,
+                width,
+                height,
+            } => (panel_id, GpuBindGroupKind::Single, layer_index, width, height),
+            CanvasLayerSource::GpuComposite {
+                panel_id,
+                width,
+                height,
+            } => (
+                panel_id,
+                GpuBindGroupKind::Composite,
+                usize::MAX,
+                width,
+                height,
+            ),
+            CanvasLayerSource::Cpu(_) => return,
         };
         let Some(pool) = pool else {
             return;
         };
         let needs_rebuild = self.canvas_gpu_bind_group_cache.as_ref().is_none_or(|c| {
             c.panel_id != panel_id
+                || c.kind != kind
                 || c.layer_index != layer_index
                 || c.width != width
                 || c.height != height
         });
         if needs_rebuild {
-            let Some(view) = pool.get_view(panel_id, layer_index) else {
+            let view = match kind {
+                GpuBindGroupKind::Single => pool.get_view(panel_id, layer_index),
+                GpuBindGroupKind::Composite => pool.get_composite_view(panel_id),
+            };
+            let Some(view) = view else {
                 return;
             };
             let uniform_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -1119,6 +1161,7 @@ impl WgpuPresenter {
                 bind_group,
                 uniform_buffer,
                 panel_id: panel_id.to_string(),
+                kind,
                 layer_index,
                 width,
                 height,

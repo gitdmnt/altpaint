@@ -137,16 +137,23 @@ impl DesktopApp {
             }
             Command::SetActiveLayerBlendMode { .. }
             | Command::ToggleActiveLayerVisibility => {
-                let dirty = self
-                    .document
-                    .active_panel()
-                    .map(|p| CanvasDirtyRect::new(p.bounds.x, p.bounds.y, p.bounds.width, p.bounds.height));
-                if let Some(dirty) = dirty {
-                    self.refresh_canvas_frame_region(dirty);
-                    self.append_canvas_dirty_rect(dirty);
+                let panel_info = self.document.active_panel().map(|p| {
+                    (
+                        p.id,
+                        CanvasDirtyRect::new(p.bounds.x, p.bounds.y, p.bounds.width, p.bounds.height),
+                        CanvasDirtyRect::new(0, 0, p.bitmap.width, p.bitmap.height),
+                    )
+                });
+                if let Some((_panel_id, page_dirty, _local_dirty)) = panel_info {
+                    self.refresh_canvas_frame_region(page_dirty);
+                    self.append_canvas_dirty_rect(page_dirty);
                 } else {
                     self.refresh_canvas_frame();
                     self.rebuild_present_frame();
+                }
+                #[cfg(feature = "gpu")]
+                if let Some((panel_id, _page_dirty, local_dirty)) = panel_info {
+                    self.recomposite_panel(panel_id, Some(local_dirty));
                 }
                 self.sync_ui_from_document();
                 self.mark_status_dirty();
@@ -165,7 +172,10 @@ impl DesktopApp {
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
                 #[cfg(feature = "gpu")]
-                self.sync_all_layers_to_gpu();
+                {
+                    self.sync_all_layers_to_gpu();
+                    self.recomposite_all_panels();
+                }
                 true
             }
             Command::AddPanel
@@ -180,7 +190,10 @@ impl DesktopApp {
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
                 #[cfg(feature = "gpu")]
-                self.sync_all_layers_to_gpu();
+                {
+                    self.sync_all_layers_to_gpu();
+                    self.recomposite_all_panels();
+                }
                 true
             }
             Command::NewDocumentSized { .. } => {
@@ -192,7 +205,10 @@ impl DesktopApp {
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
                 #[cfg(feature = "gpu")]
-                self.sync_all_layers_to_gpu();
+                {
+                    self.sync_all_layers_to_gpu();
+                    self.recomposite_all_panels();
+                }
                 true
             }
             Command::Noop

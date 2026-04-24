@@ -590,35 +590,22 @@ fn set_active_layer_blend_mode_sets_requested_mode() {
     assert_eq!(panel.layers[0].blend_mode, BlendMode::Screen);
 }
 
-/// 設定 アクティブ レイヤー ブレンド モード accepts custom formula string が期待どおりに動作することを検証する。
+/// 未知のブレンドモード名は後方互換として Normal にフォールバックする。
 #[test]
-fn set_active_layer_blend_mode_accepts_custom_formula_string() {
-    let mut document = Document::default();
-    let _ = document.apply_command(&Command::SetActiveLayerBlendMode {
-        mode: BlendMode::parse_name("max(src, dst)").expect("custom mode"),
-    });
-
-    let panel = &document.work.pages[0].panels[0];
-    assert_eq!(panel.layers[0].blend_mode.as_str(), "max(src, dst)");
+fn parse_name_falls_back_to_normal_for_unknown_strings() {
+    assert_eq!(BlendMode::parse_name("max(src, dst)"), Some(BlendMode::Normal));
+    assert_eq!(BlendMode::parse_name("unknown_mode"), Some(BlendMode::Normal));
+    assert_eq!(BlendMode::parse_name(""), None);
+    assert_eq!(BlendMode::parse_name("   "), None);
 }
 
-/// custom ブレンド formula is applied during レイヤー composition が期待どおりに動作することを検証する。
+/// BlendMode::gpu_code は GPU shader の switch コードと 1:1 対応する。
 #[test]
-fn custom_blend_formula_is_applied_during_layer_composition() {
-    let mut document = Document::default();
-    let panel = &mut document.work.pages[0].panels[0];
-    panel.layers[0]
-        .bitmap
-        .draw_point_rgba(0, 0, [64, 64, 64, 255]);
-
-    let _ = document.apply_command(&Command::AddRasterLayer);
-    let _ = draw_point(&mut document, 0, 0);
-    let _ = document.apply_command(&Command::SetActiveLayerBlendMode {
-        mode: BlendMode::parse_name("max(src, dst)").expect("custom mode"),
-    });
-
-    let pixel = &document.active_bitmap().expect("bitmap exists").pixels[0..4];
-    assert_eq!(pixel, &[64, 64, 64, 255]);
+fn gpu_code_matches_shader_switch_codes() {
+    assert_eq!(BlendMode::Normal.gpu_code(), 0);
+    assert_eq!(BlendMode::Multiply.gpu_code(), 1);
+    assert_eq!(BlendMode::Screen.gpu_code(), 2);
+    assert_eq!(BlendMode::Add.gpu_code(), 3);
 }
 
 /// 切替 アクティブ レイヤー visibility reveals underlying レイヤー が期待どおりに動作することを検証する。

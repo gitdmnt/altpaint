@@ -128,6 +128,7 @@ impl DesktopApp {
                         &snap.before,
                     );
                     self.append_canvas_dirty_rect(dirty);
+                    self.recomposite_panel(panel_id, Some(dirty));
                 }
                 self.sync_ui_from_document();
                 true
@@ -206,6 +207,7 @@ impl DesktopApp {
                         &snap.after,
                     );
                     self.append_canvas_dirty_rect(dirty);
+                    self.recomposite_panel(panel_id, Some(dirty));
                 }
                 self.sync_ui_from_document();
                 true

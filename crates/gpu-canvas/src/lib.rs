@@ -10,10 +10,22 @@ pub mod format_check;
 pub mod brush;
 
 #[cfg(feature = "gpu")]
+pub mod composite;
+
+#[cfg(feature = "gpu")]
+pub mod fill;
+
+#[cfg(feature = "gpu")]
 mod gpu;
 
 #[cfg(feature = "gpu")]
 pub use brush::GpuBrushDispatch;
+
+#[cfg(feature = "gpu")]
+pub use composite::{CompositeLayerEntry, GpuLayerCompositor};
+
+#[cfg(feature = "gpu")]
+pub use fill::{FloodFillOutcome, GpuFillDispatch};
 
 #[cfg(feature = "gpu")]
 pub use gpu::{GpuCanvasContext, GpuCanvasPool, GpuLayerTexture, GpuPenTipCache};

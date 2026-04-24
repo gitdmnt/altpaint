@@ -178,15 +178,26 @@ impl DesktopApp {
                 });
                 if let Some(dirty) = edit_dirty {
                     self.append_canvas_dirty_rect(dirty);
+                    if let Some(panel_id) = self.document.active_panel().map(|p| p.id) {
+                        self.recomposite_panel(panel_id, Some(dirty));
+                    }
                 }
                 return true;
             }
 
             self.apply_bitmap_edits(edits)
         } else {
-            // 即時操作: 前後スナップショットを取ってすぐ BitmapPatch を積む
+            // FloodFill / LassoFill の即時操作。
             let panel_id = self.document.active_panel().map(|p| p.id);
             let layer_index = self.document.active_panel().map(|p| p.active_layer_index);
+
+            #[cfg(feature = "gpu")]
+            if self.gpu_canvas_pool.is_some()
+                && let (Some(panel_id), Some(layer_index)) = (panel_id, layer_index)
+                && self.execute_gpu_fill(panel_id, layer_index, &input, &edits)
+            {
+                return true;
+            }
 
             if let (Some(panel_id), Some(layer_index)) = (panel_id, layer_index) {
                 let edit_dirty = edits.iter().fold(None::<CanvasDirtyRect>, |acc, edit| {
@@ -205,20 +216,6 @@ impl DesktopApp {
                         self.document
                             .capture_panel_layer_region(panel_id, layer_index, dirty)
                 {
-                    // GPU パス: FloodFill/LassoFill は CPU apply 後に GPU テクスチャを dirty 分だけ同期
-                    #[cfg(feature = "gpu")]
-                    if let Some(pool) = self.gpu_canvas_pool.as_ref() {
-                        let pid = panel_id.0.to_string();
-                        pool.upload_region(
-                            &pid,
-                            layer_index,
-                            dirty.x as u32,
-                            dirty.y as u32,
-                            dirty.width as u32,
-                            dirty.height as u32,
-                            &after.pixels,
-                        );
-                    }
                     self.history.push(HistoryEntry::BitmapPatch {
                         panel_id,
                         layer_index,
@@ -232,6 +229,136 @@ impl DesktopApp {
                 self.apply_bitmap_edits(edits)
             }
         }
+    }
+
+    /// FloodFill / LassoFill を GPU dispatch で実行する。
+    ///
+    /// 成功時に `true` を返し、CPU apply 経路をスキップする。失敗時（GPU テクスチャ
+    /// が無い・入力が不適）は `false` を返して呼び出し元が CPU にフォールバックする。
+    ///
+    /// Undo スナップショットは `snapshot_region` (after) と
+    /// `capture_panel_layer_region` → `create_and_upload` (before) で構築する。
+    #[cfg(feature = "gpu")]
+    fn execute_gpu_fill(
+        &mut self,
+        panel_id: app_core::PanelId,
+        layer_index: usize,
+        input: &PaintInput,
+        edits: &[app_core::BitmapEdit],
+    ) -> bool {
+        use canvas::build_paint_context;
+        let edit_dirty = edits.iter().fold(None::<CanvasDirtyRect>, |acc, edit| {
+            Some(match acc {
+                Some(existing) => existing.merge(edit.dirty_rect),
+                None => edit.dirty_rect,
+            })
+        });
+        let Some(dirty) = edit_dirty else {
+            return false;
+        };
+
+        let pid = panel_id.0.to_string();
+        let Some(resolved) = build_paint_context(&self.document, input) else {
+            return false;
+        };
+        let color = resolved.context.color;
+        let fill_rgba = [
+            color.r as f32 / 255.0,
+            color.g as f32 / 255.0,
+            color.b as f32 / 255.0,
+            color.a as f32 / 255.0,
+        ];
+        drop(resolved);
+
+        // before スナップショットを CPU bitmap から作る（ストローク前の状態が
+        // panel.bitmap / layer.bitmap に残っているのは GPU パスでも同じ — Paint
+        // Runtime は CPU bitmap を変更しない）。
+        let Some(before_region) =
+            self.document
+                .capture_panel_layer_region(panel_id, layer_index, dirty)
+        else {
+            return false;
+        };
+
+        let Some(pool) = self.gpu_canvas_pool.as_ref() else {
+            return false;
+        };
+        let Some(fill) = self.gpu_fill.as_ref() else {
+            return false;
+        };
+        let Some(target) = pool.get(&pid, layer_index) else {
+            return false;
+        };
+        // source は composite があればそれ、無ければ active layer 自身。
+        let source_is_composite = pool.get_composite(&pid).is_some();
+        let source_ref: &gpu_canvas::GpuLayerTexture = if source_is_composite {
+            pool.get_composite(&pid).unwrap()
+        } else {
+            target
+        };
+
+        match input {
+            PaintInput::FloodFill { at } => {
+                fill.dispatch_flood_fill(
+                    source_ref,
+                    target,
+                    (at.x as u32, at.y as u32),
+                    fill_rgba,
+                );
+            }
+            PaintInput::LassoFill { points } => {
+                if points.len() < 3 {
+                    return false;
+                }
+                let polygon: Vec<(f32, f32)> =
+                    points.iter().map(|p| (p.x as f32, p.y as f32)).collect();
+                let (mut x0, mut y0, mut x1, mut y1) =
+                    (u32::MAX, u32::MAX, 0u32, 0u32);
+                for (x, y) in &polygon {
+                    let xi = x.floor().max(0.0) as u32;
+                    let yi = y.floor().max(0.0) as u32;
+                    x0 = x0.min(xi);
+                    y0 = y0.min(yi);
+                    x1 = x1.max(xi);
+                    y1 = y1.max(yi);
+                }
+                fill.dispatch_lasso_fill(target, &polygon, (x0, y0, x1, y1), fill_rgba);
+            }
+            _ => return false,
+        }
+
+        // after スナップショット: GPU-to-GPU コピー
+        let after_tex = pool.snapshot_region(
+            &pid,
+            layer_index,
+            dirty.x as u32,
+            dirty.y as u32,
+            dirty.width as u32,
+            dirty.height as u32,
+        );
+        let Some(after_tex) = after_tex else {
+            // スナップショット失敗時も描画自体は成功しているので dirty rect を push
+            self.append_canvas_dirty_rect(dirty);
+            self.recomposite_panel(panel_id, Some(dirty));
+            return true;
+        };
+        let before_tex = pool.create_and_upload(
+            dirty.width as u32,
+            dirty.height as u32,
+            &before_region.pixels,
+        );
+        self.history.push(HistoryEntry::GpuBitmapPatch {
+            panel_id,
+            layer_index,
+            dirty,
+            gpu_data: app_core::OpaqueGpuData(std::sync::Arc::new(GpuPatchSnapshot {
+                before: before_tex,
+                after: after_tex,
+            })),
+        });
+        self.append_canvas_dirty_rect(dirty);
+        self.recomposite_panel(panel_id, Some(dirty));
+        true
     }
 
     /// ストロークを確定して履歴へ積む。ポインタ Up 後に呼び出す。

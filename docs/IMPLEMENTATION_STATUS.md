@@ -797,3 +797,87 @@
 - 複数レイヤー時は CPU 経路を継続（Phase 8E で GPU 合成予定）
 - `srgb_view_supported = false` の場合は CPU フォールバック（ハードウェア互換性の保障）
 - CPU ペイントパス (`apply_bitmap_edits`) は Phase 8D まで維持
+
+---
+
+## Phase 8E 完了 (2026-04-25) — GPU 塗りつぶし + レイヤー合成 + BlendMode::Custom 削除
+
+作業モデル: claude-opus-4-7 (1M context)
+
+### 実装内容
+
+- **`crates/gpu-canvas/src/fill.rs`** 新設
+  - `GpuFillDispatch::new` / `dispatch_flood_fill(source, target, seed, fill_rgba)` / `dispatch_lasso_fill(target, polygon, aabb, fill_rgba)`
+  - `FloodFillOutcome { iterations, pixels_changed }` 公開
+  - Ping-pong マスクテクスチャ (Rgba8Unorm) による iterative region growing。32 iter ごとに atomic counter readback で早期収束検出
+
+- **`crates/gpu-canvas/src/shaders/`** 追加シェーダー
+  - `flood_fill_step.wgsl` — 4-connect で同色ピクセルを 1 ステップ拡張
+  - `fill_apply.wgsl` — mark 1.0 のピクセルに source-over で fill_color を書き込む
+  - `lasso_fill_mark.wgsl` — point-in-polygon (ray casting) によるポリゴン内部判定
+  - `layer_composite.wgsl` — 単一レイヤーを composite テクスチャへ source-over / multiply / screen / add でブレンド
+  - `composite_clear.wgsl` — dirty 領域の透明クリア
+
+- **`crates/gpu-canvas/src/composite.rs`** 新設
+  - `GpuLayerCompositor::new` / `recomposite(composite, layers, dirty)`
+  - `CompositeLayerEntry { color, mask, blend_code, visible }`
+  - Bottom → top に 1 layer ずつ dispatch する iterative compositor。`visible == false` はスキップ
+
+- **`crates/gpu-canvas/src/gpu.rs`** 拡張
+  - `GpuCanvasPool::ensure_composite_texture(panel_id, w, h)` — panel 毎の合成テクスチャを遅延作成（同サイズなら no-op）
+  - `get_composite` / `get_composite_view` / `upload_mask` / `get_mask` / `remove_mask` / `read_back_composite`
+  - 内部ヘルパー `read_back_texture` を追加して `read_back_full` と共有
+
+- **`crates/app-core/src/document.rs`**
+  - `BlendMode::Custom(String)` variant を完全削除
+  - `BlendMode::parse_name` は未知文字列で `Some(Normal)` を返す（後方互換、保存済み Custom は Normal に落ちる）
+  - `BlendMode::gpu_code() -> u32` (Normal=0, Multiply=1, Screen=2, Add=3) 追加
+  - `crates/app-core/src/document/layer_ops.rs` から `CustomBlendFormula` / `BlendExpr*` / `BlendExprParser` を完全削除
+  - `crates/app-core/src/document/tests.rs` の custom blend 2 テストを `parse_name_falls_back_to_normal_for_unknown_strings` / `gpu_code_matches_shader_switch_codes` に置き換え
+
+- **`apps/desktop/src/wgpu_canvas.rs`**
+  - `CanvasLayerSource::GpuComposite { panel_id, width, height }` variant 追加
+  - `GpuBindGroupCache` に `kind: GpuBindGroupKind { Single, Composite }` フィールド追加
+  - `update_gpu_canvas_bind_group` が `Gpu` / `GpuComposite` 両方に対応
+
+- **`apps/desktop/src/app/mod.rs`**
+  - `gpu_fill: Option<GpuFillDispatch>` / `gpu_compositor: Option<GpuLayerCompositor>` フィールド追加
+  - `install_gpu_resources` に両者を初期化し、`recomposite_all_panels` を最後に呼ぶ
+  - `sync_all_layers_to_gpu` がレイヤー本体に加え mask / composite テクスチャも同期
+  - `should_use_gpu_canvas_source` を `canvas_layer_source_kind() -> Option<GpuCanvasSourceKind>` に拡張
+  - `recomposite_panel(panel_id, dirty)` / `recomposite_all_panels()` 追加
+
+- **`apps/desktop/src/runtime.rs`**
+  - `CanvasLayerSource` の組み立てを `GpuCanvasSourceKind::Single/Composite` で分岐
+
+- **`apps/desktop/src/app/services/project_io.rs`**
+  - `execute_gpu_fill(panel_id, layer_index, input, edits)` 新設: `PaintInput::FloodFill` / `LassoFill` を GPU dispatch に振り分け、`GpuPatchSnapshot` を Undo 履歴に push
+  - Stroke 経路完了時にも `recomposite_panel` を発火
+
+- **`apps/desktop/src/app/command_router.rs`**
+  - レイヤー系 Command / パネル系 Command の完了時に `recomposite_all_panels` を追加
+  - `SetActiveLayerBlendMode` / `ToggleActiveLayerVisibility` はパネル内ローカル dirty で `recomposite_panel` を呼ぶ
+
+- **`apps/desktop/src/app/services/mod.rs`**
+  - `execute_undo` / `execute_redo` の `GpuBitmapPatch` ハンドラで復元後に `recomposite_panel(panel_id, dirty)` を発火
+
+- **`crates/storage/src/project_sqlite.rs`**
+  - `BlendMode::Custom(_)` シリアライズ分岐を削除
+
+### テスト
+
+- **CPU ユニット**: `BlendMode::gpu_code` / `parse_name` 未知文字列 → Normal の動作、params バイトレイアウト 3 種（flood_fill / fill_apply / lasso_mark / composite / composite_clear）
+- **GPU smoke**（`try_init_device` / `supports_rgba8unorm_storage` で未対応環境はスキップ）:
+  - `gpu_flood_fill_fills_connected_region_only`
+  - `gpu_lasso_fill_triangle_paints_interior`
+  - `gpu_layer_compositor_single_layer_passthrough`
+  - `gpu_layer_compositor_invisible_layer_is_skipped`
+- 実機で 21/21 の gpu-canvas テストが通ることを確認
+
+### 設計制約
+
+- `BlendMode::Custom` は完全削除（ユーザー決定 — alpha 期間のため後方互換不要）。保存済み Custom 設定はロード時に Normal へ格下げ
+- FloodFill の seed 色取得は composite テクスチャがあればそこから、なければ active layer 自身から（単一レイヤーでは等価）
+- FloodFill の収束は 32 iter ごとの atomic readback + 最大 iter 上限 `FLOOD_FILL_ITERATION_CAP = 8192`
+- Composite テクスチャは panel ごとに 1 枚。レイヤー数・panel サイズが変わらなければ再利用する
+- `gpu` feature 無効ビルドでは従来の CPU 合成経路 (`composite_panel_bitmap_region` / `compose_canvas_host_region`) がそのまま動作（runtime 分岐で生存）

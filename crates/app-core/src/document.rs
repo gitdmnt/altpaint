@@ -622,7 +622,6 @@ pub enum BlendMode {
     Multiply,
     Screen,
     Add,
-    Custom(String),
 }
 
 impl BlendMode {
@@ -633,13 +632,13 @@ impl BlendMode {
             Self::Multiply => "multiply",
             Self::Screen => "screen",
             Self::Add => "add",
-            Self::Custom(value) => value.as_str(),
         }
     }
 
     /// 入力を解析して 名前 に変換する。
     ///
-    /// 値を生成できない場合は `None` を返します。
+    /// 空文字列は `None` を返す。未知の文字列は後方互換として `Normal` にフォールバック
+    /// する（旧 `Custom(String)` variant の保存値はここで破棄される）。
     pub fn parse_name(value: &str) -> Option<Self> {
         let trimmed = value.trim();
         if trimmed.is_empty() {
@@ -651,7 +650,19 @@ impl BlendMode {
             "multiply" => Some(Self::Multiply),
             "screen" => Some(Self::Screen),
             "add" => Some(Self::Add),
-            _ => Some(Self::Custom(trimmed.to_string())),
+            _ => Some(Self::Normal),
+        }
+    }
+
+    /// GPU compute shader に渡す blend code。
+    ///
+    /// `crates/gpu-canvas/src/shaders/layer_composite.wgsl` の switch と対応する。
+    pub fn gpu_code(&self) -> u32 {
+        match self {
+            Self::Normal => 0,
+            Self::Multiply => 1,
+            Self::Screen => 2,
+            Self::Add => 3,
         }
     }
 
@@ -662,7 +673,6 @@ impl BlendMode {
             Self::Multiply => Self::Screen,
             Self::Screen => Self::Add,
             Self::Add => Self::Normal,
-            Self::Custom(_) => Self::Normal,
         }
     }
 }
