@@ -10,7 +10,7 @@ pub(crate) enum PanelDragState {
     Control {
         panel_id: String,
         node_id: String,
-        source_value: usize,
+        source_value: i32,
     },
     Move {
         panel_id: String,

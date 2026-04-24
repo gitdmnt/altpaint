@@ -392,10 +392,10 @@ fn convert_dsl_view_node(
                     element.attributes.get("on:change"),
                     "change",
                 ),
-                min: attribute_usize(&element.attributes, "min", context).unwrap_or(0),
-                max: attribute_usize(&element.attributes, "max", context).unwrap_or(100),
-                value: attribute_usize(&element.attributes, "value", context).unwrap_or(0),
-                display_value: attribute_usize(&element.attributes, "display_value", context),
+                min: attribute_i32(&element.attributes, "min", context).unwrap_or(0),
+                max: attribute_i32(&element.attributes, "max", context).unwrap_or(100),
+                value: attribute_i32(&element.attributes, "value", context).unwrap_or(0),
+                display_value: attribute_i32(&element.attributes, "display_value", context),
                 fill_color: attribute_string(&element.attributes, "fill", context)
                     .and_then(|value| parse_hex_color(&value)),
             }],
@@ -599,6 +599,31 @@ fn attr_value_to_usize(value: &DslAttrValue, context: &DslEvaluationContext<'_>)
         DslAttrValue::String(text) => text.parse::<usize>().ok(),
         DslAttrValue::Float(_) | DslAttrValue::Bool(_) => None,
     }
+}
+
+fn attr_value_to_i32(value: &DslAttrValue, context: &DslEvaluationContext<'_>) -> Option<i32> {
+    match value {
+        DslAttrValue::Integer(number) => i32::try_from(*number).ok(),
+        DslAttrValue::Expression(expression) => match evaluate_expression(expression, context) {
+            Value::Number(number) => number
+                .as_i64()
+                .and_then(|v| i32::try_from(v).ok()),
+            Value::String(text) => text.parse::<i32>().ok(),
+            _ => None,
+        },
+        DslAttrValue::String(text) => text.parse::<i32>().ok(),
+        DslAttrValue::Float(_) | DslAttrValue::Bool(_) => None,
+    }
+}
+
+fn attribute_i32(
+    attributes: &BTreeMap<String, DslAttrValue>,
+    key: &str,
+    context: &DslEvaluationContext<'_>,
+) -> Option<i32> {
+    attributes
+        .get(key)
+        .and_then(|value| attr_value_to_i32(value, context))
 }
 
 /// attribute usize に必要な処理を行う。

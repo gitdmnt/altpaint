@@ -51,8 +51,8 @@ pub enum PanelHitKind {
     MovePanel,
     Activate,
     Slider {
-        min: usize,
-        max: usize,
+        min: i32,
+        max: i32,
     },
     ColorWheel {
         hue_degrees: usize,
@@ -60,7 +60,7 @@ pub enum PanelHitKind {
         value: usize,
     },
     LayerListItem {
-        value: usize,
+        value: i32,
     },
     DropdownOption {
         value: String,
@@ -571,8 +571,8 @@ fn draw_node(
             let track_y = y + SLIDER_TRACK_TOP;
             let track_width = available_width.max(1);
             let track_inner_width = track_width.saturating_sub(2);
-            let range = max.saturating_sub(*min).max(1);
-            let progress = clamped_value.saturating_sub(*min);
+            let range = (max - min).max(1) as usize;
+            let progress = (clamped_value - min) as usize;
             let fill_width = if track_inner_width == 0 {
                 0
             } else {
@@ -648,7 +648,7 @@ fn draw_node(
                     kind: PanelHitKind::Slider {
                         min: *min,
                         max: *max,
-                    },
+                    }, // min/max は i32
                 },
             );
             SLIDER_HEIGHT
@@ -886,7 +886,7 @@ fn draw_node(
                         height: LAYER_LIST_ITEM_HEIGHT,
                         panel_id: panel_id.to_string(),
                         node_id: id.clone(),
-                        kind: PanelHitKind::LayerListItem { value: index },
+                        kind: PanelHitKind::LayerListItem { value: index as i32 },
                     },
                 );
                 cursor_y += LAYER_LIST_ITEM_HEIGHT;

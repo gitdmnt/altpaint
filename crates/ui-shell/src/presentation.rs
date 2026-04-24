@@ -96,7 +96,7 @@ impl PanelSurface {
         &self,
         panel_id: &str,
         node_id: &str,
-        source_value: usize,
+        source_value: i32,
         point: PanelSurfacePoint,
     ) -> Option<PanelEvent> {
         let source_region = self.hit_regions.iter().rev().find(|region| {
@@ -192,16 +192,17 @@ fn panel_event_for_region(region: &PanelHitRegion, point: PanelSurfacePoint) -> 
 /// Slider 値 for position を有効範囲へ補正して返す。
 fn slider_value_for_position(
     region: &PanelHitRegion,
-    min: usize,
-    max: usize,
+    min: i32,
+    max: i32,
     point: PanelSurfacePoint,
-) -> usize {
+) -> i32 {
     if max <= min || region.width <= 1 {
         return min;
     }
 
     let local_x = point.x.clamp(region.x, region.x + region.width - 1) - region.x;
-    min + ((max - min) * local_x) / (region.width - 1)
+    let range = (max - min) as usize;
+    min + (range * local_x / (region.width - 1)) as i32
 }
 
 /// 色 ホイール 値 for position を有効範囲へ補正して返す。

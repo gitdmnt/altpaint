@@ -55,13 +55,13 @@ pub enum PanelEvent {
     SetValue {
         panel_id: String,
         node_id: String,
-        value: usize,
+        value: i32,
     },
     DragValue {
         panel_id: String,
         node_id: String,
-        from: usize,
-        to: usize,
+        from: i32,
+        to: i32,
     },
     SetText {
         panel_id: String,
@@ -137,12 +137,12 @@ pub enum PanelNode {
         id: String,
         label: String,
         action: HostAction,
-        min: usize,
-        max: usize,
-        value: usize,
+        min: i32,
+        max: i32,
+        value: i32,
         /// ラベルに表示する値。`Some` のとき `value`（内部スライダー位置）の代わりに表示する。
         /// 対数スケールスライダーで実際の値を見せたい場合に使う。
-        display_value: Option<usize>,
+        display_value: Option<i32>,
         fill_color: Option<ColorRgba8>,
     },
     TextInput {
@@ -449,7 +449,7 @@ mod tests {
                         action: HostAction::DispatchCommand(Command::Noop),
                         min: 0,
                         max: 255,
-                        value: 0,
+                        value: 0i32,
                         display_value: None,
                         fill_color: None,
                     }],
