@@ -1,6 +1,8 @@
 //! host service request と補助的な状態同期処理を扱う。
 
 mod export;
+#[cfg(feature = "gpu")]
+mod gpu_sync;
 mod project_io;
 mod snapshot;
 mod text_render;
@@ -86,18 +88,59 @@ impl DesktopApp {
                 ) {
                     self.refresh_canvas_frame_region(page_dirty);
                     self.append_canvas_dirty_rect(page_dirty);
+                    // GPU パス: dirty 領域だけを GPU へ同期（全レイヤー転送は不要）
+                    #[cfg(feature = "gpu")]
+                    if let Some(pool) = self.gpu_canvas_pool.as_ref()
+                        && let Some(region) =
+                            self.document
+                                .capture_panel_layer_region(panel_id, layer_index, page_dirty)
+                    {
+                        pool.upload_region(
+                            &panel_id.0.to_string(),
+                            layer_index,
+                            page_dirty.x as u32,
+                            page_dirty.y as u32,
+                            page_dirty.width as u32,
+                            page_dirty.height as u32,
+                            &region.pixels,
+                        );
+                    }
                 }
                 self.sync_ui_from_document();
-                #[cfg(feature = "gpu")]
-                self.sync_all_layers_to_gpu();
+                true
+            }
+            #[cfg(feature = "gpu")]
+            Some(HistoryEntry::GpuBitmapPatch {
+                panel_id,
+                layer_index,
+                dirty,
+                gpu_data,
+            }) => {
+                if let (Some(pool), Some(snap)) = (
+                    self.gpu_canvas_pool.as_ref(),
+                    (*gpu_data.0).downcast_ref::<project_io::GpuPatchSnapshot>(),
+                ) {
+                    pool.restore_region(
+                        &panel_id.0.to_string(),
+                        layer_index,
+                        dirty.x as u32,
+                        dirty.y as u32,
+                        &snap.before,
+                    );
+                    self.append_canvas_dirty_rect(dirty);
+                }
+                self.sync_ui_from_document();
                 true
             }
             Some(HistoryEntry::BitmapOp(_)) => {
                 // レガシーエントリは何もしない
                 self.sync_ui_from_document();
-                #[cfg(feature = "gpu")]
-                self.sync_all_layers_to_gpu();
                 true
+            }
+            #[cfg(not(feature = "gpu"))]
+            Some(HistoryEntry::GpuBitmapPatch { .. }) => {
+                // GPU feature 無効時は GpuBitmapPatch は生成されないため到達しない
+                false
             }
             None => false,
         }
@@ -124,19 +167,56 @@ impl DesktopApp {
                 ) {
                     self.refresh_canvas_frame_region(page_dirty);
                     self.append_canvas_dirty_rect(page_dirty);
+                    #[cfg(feature = "gpu")]
+                    if let Some(pool) = self.gpu_canvas_pool.as_ref()
+                        && let Some(region) =
+                            self.document
+                                .capture_panel_layer_region(panel_id, layer_index, page_dirty)
+                    {
+                        pool.upload_region(
+                            &panel_id.0.to_string(),
+                            layer_index,
+                            page_dirty.x as u32,
+                            page_dirty.y as u32,
+                            page_dirty.width as u32,
+                            page_dirty.height as u32,
+                            &region.pixels,
+                        );
+                    }
                 }
                 self.sync_ui_from_document();
-                #[cfg(feature = "gpu")]
-                self.sync_all_layers_to_gpu();
+                true
+            }
+            #[cfg(feature = "gpu")]
+            Some(HistoryEntry::GpuBitmapPatch {
+                panel_id,
+                layer_index,
+                dirty,
+                gpu_data,
+            }) => {
+                if let (Some(pool), Some(snap)) = (
+                    self.gpu_canvas_pool.as_ref(),
+                    (*gpu_data.0).downcast_ref::<project_io::GpuPatchSnapshot>(),
+                ) {
+                    pool.restore_region(
+                        &panel_id.0.to_string(),
+                        layer_index,
+                        dirty.x as u32,
+                        dirty.y as u32,
+                        &snap.after,
+                    );
+                    self.append_canvas_dirty_rect(dirty);
+                }
+                self.sync_ui_from_document();
                 true
             }
             Some(HistoryEntry::BitmapOp(_)) => {
                 // レガシーエントリは何もしない
                 self.sync_ui_from_document();
-                #[cfg(feature = "gpu")]
-                self.sync_all_layers_to_gpu();
                 true
             }
+            #[cfg(not(feature = "gpu"))]
+            Some(HistoryEntry::GpuBitmapPatch { .. }) => false,
             None => false,
         }
     }

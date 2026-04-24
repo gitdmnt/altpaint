@@ -196,6 +196,106 @@ mod gpu_tests {
         }
     }
 
+    /// snapshot_region で取り出したテクスチャを restore_region で元のレイヤーへ書き戻すと、
+    /// read_back_full で元のピクセルが一致することを確認する。
+    #[test]
+    fn gpu_canvas_pool_snapshot_and_restore_round_trip() {
+        pollster::block_on(async {
+            let Some((device, queue, _adapter)) = try_init_device().await else {
+                return;
+            };
+            let mut pool = GpuCanvasPool::new(device, queue);
+            pool.create_layer_texture("p", 0, 4, 4);
+            let mut pixels = vec![0u8; 4 * 4 * 4];
+            for i in 0..pixels.len() {
+                pixels[i] = (i % 251) as u8;
+            }
+            pool.upload_cpu_bitmap("p", 0, &pixels);
+
+            // dirty 領域 (1,1)-(2x2) をスナップショット
+            let snap = pool.snapshot_region("p", 0, 1, 1, 2, 2).expect("snapshot");
+
+            // レイヤーを別のピクセルで上書き
+            let zeros = vec![0u8; 4 * 4 * 4];
+            pool.upload_cpu_bitmap("p", 0, &zeros);
+
+            // snap を元の位置へ復元
+            pool.restore_region("p", 0, 1, 1, &snap);
+
+            let (w, h, out) = pool.read_back_full("p", 0).expect("readback");
+            assert_eq!((w, h), (4, 4));
+            // (1,1)-(2x2) は元のピクセル、それ以外は 0 であること
+            for y in 0..4 {
+                for x in 0..4 {
+                    let idx = (y * 4 + x) * 4;
+                    let in_region = (1..=2).contains(&x) && (1..=2).contains(&y);
+                    for c in 0..4 {
+                        let got = out[idx + c];
+                        let expected = if in_region { pixels[idx + c] } else { 0 };
+                        assert_eq!(got, expected, "x={x} y={y} c={c}");
+                    }
+                }
+            }
+        });
+    }
+
+    /// upload_region で指定矩形だけがテクスチャへ反映されることを確認する。
+    #[test]
+    fn gpu_canvas_pool_upload_region_partial() {
+        pollster::block_on(async {
+            let Some((device, queue, _adapter)) = try_init_device().await else {
+                return;
+            };
+            let mut pool = GpuCanvasPool::new(device, queue);
+            pool.create_layer_texture("p", 0, 4, 4);
+            pool.upload_cpu_bitmap("p", 0, &vec![0u8; 4 * 4 * 4]);
+
+            let region = vec![255u8; 2 * 2 * 4];
+            pool.upload_region("p", 0, 1, 1, 2, 2, &region);
+
+            let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
+            for y in 0..4 {
+                for x in 0..4 {
+                    let idx = (y * 4 + x) * 4;
+                    let in_region = (1..=2).contains(&x) && (1..=2).contains(&y);
+                    let expected = if in_region { 255 } else { 0 };
+                    for c in 0..4 {
+                        assert_eq!(out[idx + c], expected, "x={x} y={y} c={c}");
+                    }
+                }
+            }
+        });
+    }
+
+    /// create_and_upload で作成したテクスチャが restore_region のソースとして使えることを確認する。
+    #[test]
+    fn gpu_canvas_pool_create_and_upload_can_be_restored() {
+        pollster::block_on(async {
+            let Some((device, queue, _adapter)) = try_init_device().await else {
+                return;
+            };
+            let mut pool = GpuCanvasPool::new(device, queue);
+            pool.create_layer_texture("p", 0, 4, 4);
+            pool.upload_cpu_bitmap("p", 0, &vec![0u8; 4 * 4 * 4]);
+
+            let region = vec![128u8; 2 * 2 * 4];
+            let tex = pool.create_and_upload(2, 2, &region);
+            pool.restore_region("p", 0, 1, 1, &tex);
+
+            let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
+            for y in 0..4 {
+                for x in 0..4 {
+                    let idx = (y * 4 + x) * 4;
+                    let in_region = (1..=2).contains(&x) && (1..=2).contains(&y);
+                    let expected = if in_region { 128 } else { 0 };
+                    for c in 0..4 {
+                        assert_eq!(out[idx + c], expected);
+                    }
+                }
+            }
+        });
+    }
+
     /// GpuCanvasPool::upload_cpu_bitmap は存在しないキーに対して panic しないことを確認する。
     #[test]
     fn gpu_canvas_pool_upload_nonexistent_key_is_noop() {

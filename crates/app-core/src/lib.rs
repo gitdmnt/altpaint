@@ -25,7 +25,7 @@ pub use document::{
     ToolKind, ToolSettingControl, ToolSettingDefinition, Work, WorkId,
 };
 pub use error::CoreError;
-pub use history::{CommandHistory, DEFAULT_HISTORY_CAPACITY, HistoryEntry};
+pub use history::{CommandHistory, DEFAULT_HISTORY_CAPACITY, HistoryEntry, OpaqueGpuData};
 pub use painting::{
     BitmapComposite, BitmapCompositor, BitmapEdit, BitmapEditOperation, BitmapEditRecord,
     PaintInput, PaintPlugin, PaintPluginContext,

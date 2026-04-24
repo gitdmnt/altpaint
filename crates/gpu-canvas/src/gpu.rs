@@ -144,6 +144,255 @@ impl GpuCanvasPool {
         self.get(panel_id, layer_index)
             .map(|t| t.create_srgb_view())
     }
+
+    /// レイヤーテクスチャの指定矩形を GPU-to-GPU でコピーして返す。
+    ///
+    /// ストローク前/後スナップショット作成用。返却テクスチャは `COPY_SRC | COPY_DST` を持つ。
+    pub fn snapshot_region(
+        &self,
+        panel_id: &str,
+        layer_index: usize,
+        x: u32,
+        y: u32,
+        w: u32,
+        h: u32,
+    ) -> Option<wgpu::Texture> {
+        let src = self.get(panel_id, layer_index)?;
+        let dst = self.ctx.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("gpu-canvas-snapshot"),
+            size: wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let mut encoder = self
+            .ctx
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("gpu-canvas-snapshot-encoder"),
+            });
+        encoder.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &src.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x, y, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture: &dst,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+        );
+        self.ctx.queue.submit(std::iter::once(encoder.finish()));
+        Some(dst)
+    }
+
+    /// スナップショットテクスチャを GPU-to-GPU でレイヤーの指定位置へ復元する。
+    ///
+    /// Undo/Redo 用。`src` の `width/height` 全体をレイヤーへコピーする。
+    pub fn restore_region(
+        &self,
+        panel_id: &str,
+        layer_index: usize,
+        x: u32,
+        y: u32,
+        src: &wgpu::Texture,
+    ) {
+        let Some(dst) = self.get(panel_id, layer_index) else {
+            return;
+        };
+        let w = src.width();
+        let h = src.height();
+        let mut encoder = self
+            .ctx
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("gpu-canvas-restore-encoder"),
+            });
+        encoder.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: src,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture: &dst.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x, y, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+        );
+        self.ctx.queue.submit(std::iter::once(encoder.finish()));
+    }
+
+    /// CPU ピクセルをレイヤーテクスチャの指定矩形へ書き込む（RGBA8、行優先）。
+    ///
+    /// テクスチャが存在しない場合は何もしない。
+    pub fn upload_region(
+        &self,
+        panel_id: &str,
+        layer_index: usize,
+        x: u32,
+        y: u32,
+        w: u32,
+        h: u32,
+        pixels: &[u8],
+    ) {
+        let Some(dst) = self.get(panel_id, layer_index) else {
+            return;
+        };
+        self.ctx.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &dst.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x, y, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            },
+            pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(w * 4),
+                rows_per_image: Some(h),
+            },
+            wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+
+    /// レイヤーテクスチャ全体を CPU へ読み戻す（保存時のみ呼ぶ）。
+    ///
+    /// `bytes_per_row` は `COPY_BYTES_PER_ROW_ALIGNMENT` (256) の倍数に整列する必要があるため、
+    /// パディングバッファを介して読み戻し、パック済み RGBA8 列に詰め直して返す。
+    pub fn read_back_full(
+        &self,
+        panel_id: &str,
+        layer_index: usize,
+    ) -> Option<(u32, u32, Vec<u8>)> {
+        let tex = self.get(panel_id, layer_index)?;
+        let w = tex.width;
+        let h = tex.height;
+        let unpadded_bpr = w * 4;
+        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let padded_bpr = unpadded_bpr.div_ceil(align) * align;
+        let buf_size = (padded_bpr * h) as wgpu::BufferAddress;
+        let readback = self.ctx.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("gpu-canvas-readback"),
+            size: buf_size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = self
+            .ctx
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("gpu-canvas-readback-encoder"),
+            });
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &tex.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded_bpr),
+                    rows_per_image: Some(h),
+                },
+            },
+            wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+        );
+        self.ctx.queue.submit(std::iter::once(encoder.finish()));
+        let slice = readback.slice(..);
+        let (tx, rx) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |r| {
+            let _ = tx.send(r);
+        });
+        let _ = self.ctx.device.poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: None,
+        });
+        rx.recv().ok()?.ok()?;
+        let data = slice.get_mapped_range();
+        let mut pixels = Vec::with_capacity((unpadded_bpr * h) as usize);
+        for row in 0..h {
+            let start = (row * padded_bpr) as usize;
+            let end = start + unpadded_bpr as usize;
+            pixels.extend_from_slice(&data[start..end]);
+        }
+        drop(data);
+        readback.unmap();
+        Some((w, h, pixels))
+    }
+
+    /// 指定ピクセル（RGBA8）を保持する新規 GPU テクスチャを作成して返す。
+    ///
+    /// ストローク before スナップショット用。`COPY_SRC | COPY_DST` を持つ。
+    pub fn create_and_upload(&self, w: u32, h: u32, pixels: &[u8]) -> wgpu::Texture {
+        let texture = self.ctx.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("gpu-canvas-upload"),
+            size: wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.ctx.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(w * 4),
+                rows_per_image: Some(h),
+            },
+            wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+        );
+        texture
+    }
 }
 
 /// ペン先テクスチャのキャッシュ。

@@ -37,6 +37,9 @@ impl DesktopApp {
     ///
     /// 必要に応じて dirty 状態も更新します。
     pub(super) fn enqueue_save_project(&mut self, path: PathBuf) -> bool {
+        // GPU パスで描画した場合は CPU bitmap が古いため、保存前に読み戻して同期する
+        #[cfg(feature = "gpu")]
+        self.sync_gpu_bitmaps_to_cpu();
         let document = self.document.clone();
         let workspace_layout = self.panel_presentation.workspace_layout();
         let plugin_configs = self.panel_runtime.persistent_panel_configs();

@@ -8,6 +8,16 @@ use storage::load_project_from_path;
 use super::super::PendingStroke;
 use super::DesktopApp;
 
+/// GPU テクスチャ方式 Undo/Redo スナップショット。
+///
+/// dirty 領域サイズの小テクスチャを `before` / `after` に保持する。
+/// `HistoryEntry::GpuBitmapPatch::gpu_data` に `OpaqueGpuData(Arc::new(_))` として格納する。
+#[cfg(feature = "gpu")]
+pub(crate) struct GpuPatchSnapshot {
+    pub(crate) before: wgpu::Texture,
+    pub(crate) after: wgpu::Texture,
+}
+
 impl DesktopApp {
     /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_project_service_request(
@@ -60,11 +70,27 @@ impl DesktopApp {
             if self.pending_stroke.is_none() {
                 let panel_id = self.document.active_panel().map(|p| p.id);
                 let layer_index = self.document.active_panel().map(|p| p.active_layer_index);
-                if let (Some(panel_id), Some(layer_index)) = (panel_id, layer_index)
-                    && let Some(before_layer) = self
-                        .document
-                        .clone_panel_layer_bitmap(panel_id, layer_index)
-                {
+                if let (Some(panel_id), Some(layer_index)) = (panel_id, layer_index) {
+                    // GPU パスでは CPU bitmap を書き換えないため before_layer 保存は不要
+                    #[cfg(feature = "gpu")]
+                    let before_layer = if self.gpu_canvas_pool.is_some() {
+                        None
+                    } else {
+                        self.document.clone_panel_layer_bitmap(panel_id, layer_index)
+                    };
+                    #[cfg(not(feature = "gpu"))]
+                    let before_layer =
+                        self.document.clone_panel_layer_bitmap(panel_id, layer_index);
+
+                    // CPU パスで before_layer が取れない場合はストロークを登録しない
+                    #[cfg(not(feature = "gpu"))]
+                    let Some(before_layer) = before_layer
+                    else {
+                        return false;
+                    };
+                    #[cfg(not(feature = "gpu"))]
+                    let before_layer = Some(before_layer);
+
                     self.pending_stroke = Some(PendingStroke {
                         panel_id,
                         layer_index,
@@ -141,6 +167,21 @@ impl DesktopApp {
                 }
             }
 
+            // GPU パス: compute shader が GPU テクスチャへ直接書き込むため CPU 書き込みは不要
+            #[cfg(feature = "gpu")]
+            if self.gpu_canvas_pool.is_some() {
+                let edit_dirty = edits.iter().fold(None::<CanvasDirtyRect>, |acc, edit| {
+                    Some(match acc {
+                        Some(existing) => existing.merge(edit.dirty_rect),
+                        None => edit.dirty_rect,
+                    })
+                });
+                if let Some(dirty) = edit_dirty {
+                    self.append_canvas_dirty_rect(dirty);
+                }
+                return true;
+            }
+
             self.apply_bitmap_edits(edits)
         } else {
             // 即時操作: 前後スナップショットを取ってすぐ BitmapPatch を積む
@@ -164,6 +205,20 @@ impl DesktopApp {
                         self.document
                             .capture_panel_layer_region(panel_id, layer_index, dirty)
                 {
+                    // GPU パス: FloodFill/LassoFill は CPU apply 後に GPU テクスチャを dirty 分だけ同期
+                    #[cfg(feature = "gpu")]
+                    if let Some(pool) = self.gpu_canvas_pool.as_ref() {
+                        let pid = panel_id.0.to_string();
+                        pool.upload_region(
+                            &pid,
+                            layer_index,
+                            dirty.x as u32,
+                            dirty.y as u32,
+                            dirty.width as u32,
+                            dirty.height as u32,
+                            &after.pixels,
+                        );
+                    }
                     self.history.push(HistoryEntry::BitmapPatch {
                         panel_id,
                         layer_index,
@@ -187,10 +242,58 @@ impl DesktopApp {
         let Some(dirty) = stroke.dirty else {
             return;
         };
+
+        // GPU パス: CPU bitmap は書き換えていないため、現在の CPU bitmap から dirty 領域を
+        // 取り出すと「ストローク前」ピクセルになる。それを GPU テクスチャへ 1 回アップロードして
+        // `before` スナップショットを作り、`after` は GPU-to-GPU コピーで取得する。
+        #[cfg(feature = "gpu")]
+        if let Some(pool) = self.gpu_canvas_pool.as_ref() {
+            let pid = stroke.panel_id.0.to_string();
+            let before_pixels =
+                self.document
+                    .capture_panel_layer_region(stroke.panel_id, stroke.layer_index, dirty);
+            let after_tex = pool.snapshot_region(
+                &pid,
+                stroke.layer_index,
+                dirty.x as u32,
+                dirty.y as u32,
+                dirty.width as u32,
+                dirty.height as u32,
+            );
+            if let (Some(bp), Some(after_tex)) = (before_pixels, after_tex) {
+                let before_tex = pool.create_and_upload(
+                    dirty.width as u32,
+                    dirty.height as u32,
+                    &bp.pixels,
+                );
+                let snapshot = GpuPatchSnapshot {
+                    before: before_tex,
+                    after: after_tex,
+                };
+                self.history.push(HistoryEntry::GpuBitmapPatch {
+                    panel_id: stroke.panel_id,
+                    layer_index: stroke.layer_index,
+                    dirty,
+                    gpu_data: app_core::OpaqueGpuData(std::sync::Arc::new(snapshot)),
+                });
+            } else {
+                eprintln!(
+                    "commit_stroke_to_history: GPU snapshot skipped (before/after unavailable) \
+                     panel={panel_id:?} layer={layer} dirty={dirty:?}",
+                    panel_id = stroke.panel_id,
+                    layer = stroke.layer_index,
+                );
+            }
+            self.sync_ui_from_document();
+            return;
+        }
+
+        // CPU パス: 従来通り前後スナップショットを取って BitmapPatch を積む
+        let Some(before_layer) = stroke.before_layer else {
+            return;
+        };
         let Some(before) =
-            stroke
-                .before_layer
-                .extract_region(dirty.x, dirty.y, dirty.width, dirty.height)
+            before_layer.extract_region(dirty.x, dirty.y, dirty.width, dirty.height)
         else {
             return;
         };

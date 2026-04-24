@@ -8,6 +8,19 @@ use crate::{BitmapEditRecord, CanvasBitmap, CanvasDirtyRect, PanelId};
 /// 履歴スタックのデフォルト容量。
 pub const DEFAULT_HISTORY_CAPACITY: usize = 50;
 
+/// GPU テクスチャスナップショットへの型消去ラッパー。
+///
+/// `app-core` は wgpu に依存しないため、desktop 層で定義した GPU スナップショット型を
+/// `Arc<dyn Any + Send + Sync>` として保持する。desktop 層で `downcast_ref` して使う。
+#[derive(Clone)]
+pub struct OpaqueGpuData(pub std::sync::Arc<dyn std::any::Any + Send + Sync>);
+
+impl std::fmt::Debug for OpaqueGpuData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("OpaqueGpuData")
+    }
+}
+
 /// 履歴エントリ。
 ///
 /// 将来的にレイヤー追加・削除などのドキュメントコマンドを追加できるよう
@@ -26,6 +39,15 @@ pub enum HistoryEntry {
         before: CanvasBitmap,
         /// 操作後のビットマップ領域。
         after: CanvasBitmap,
+    },
+    /// GPU テクスチャスナップショット方式（`gpu` feature 有効時のストローク用）。
+    GpuBitmapPatch {
+        panel_id: PanelId,
+        layer_index: usize,
+        /// パネルローカル座標系の変更領域。
+        dirty: CanvasDirtyRect,
+        /// desktop 層で定義した `GpuPatchSnapshot` を保持する型消去ラッパー。
+        gpu_data: OpaqueGpuData,
     },
 }
 

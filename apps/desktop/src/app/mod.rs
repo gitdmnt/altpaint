@@ -59,7 +59,10 @@ struct PendingStroke {
     panel_id: PanelId,
     layer_index: usize,
     /// ストローク開始前のレイヤービットマップ全体。
-    before_layer: CanvasBitmap,
+    ///
+    /// GPU パスでは `None`（commit 時に CPU bitmap がストローク前状態を保持している）。
+    /// CPU パスでは `Some`（ストローク中に CPU bitmap が書き換わるため事前に保存）。
+    before_layer: Option<CanvasBitmap>,
     /// ストローク中に蓄積したパネルローカル dirty rect の合計。
     dirty: Option<CanvasDirtyRect>,
 }
