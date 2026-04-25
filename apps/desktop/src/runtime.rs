@@ -121,11 +121,9 @@ impl ApplicationHandler for DesktopRuntime {
             }
         };
 
-        #[cfg(feature = "gpu")]
         self.app.install_gpu_resources(
             presenter.device(),
             presenter.queue(),
-            presenter.srgb_canvas_view_supported(),
         );
 
         #[cfg(feature = "html-panel")]
@@ -452,7 +450,6 @@ impl ApplicationHandler for DesktopRuntime {
                         width: rect.width as u32,
                         height: rect.height as u32,
                     });
-                #[cfg(feature = "gpu")]
                 let gpu_source_spec: Option<(
                     String,
                     crate::app::GpuCanvasSourceKind,
@@ -472,49 +469,29 @@ impl ApplicationHandler for DesktopRuntime {
                     Some((panel.id.0.to_string(), kind, w, h))
                 });
 
-                let canvas_layer = {
-                    #[cfg(feature = "gpu")]
-                    if let Some((ref panel_id, kind, w, h)) = gpu_source_spec {
-                        canvas_quad.map(|quad| CanvasLayer {
-                            source: match kind {
-                                crate::app::GpuCanvasSourceKind::Single => {
-                                    CanvasLayerSource::Gpu {
-                                        panel_id: panel_id.as_str(),
-                                        layer_index: 0,
-                                        width: w,
-                                        height: h,
-                                    }
+                let canvas_layer = if let Some((ref panel_id, kind, w, h)) = gpu_source_spec {
+                    canvas_quad.map(|quad| CanvasLayer {
+                        source: match kind {
+                            crate::app::GpuCanvasSourceKind::Single => {
+                                CanvasLayerSource::Gpu {
+                                    panel_id: panel_id.as_str(),
+                                    layer_index: 0,
+                                    width: w,
+                                    height: h,
                                 }
-                                crate::app::GpuCanvasSourceKind::Composite => {
-                                    CanvasLayerSource::GpuComposite {
-                                        panel_id: panel_id.as_str(),
-                                        width: w,
-                                        height: h,
-                                    }
+                            }
+                            crate::app::GpuCanvasSourceKind::Composite => {
+                                CanvasLayerSource::GpuComposite {
+                                    panel_id: panel_id.as_str(),
+                                    width: w,
+                                    height: h,
                                 }
-                            },
-                            upload_region: None,
-                            quad,
-                        })
-                    } else {
-                        self.app.canvas_frame().and_then(|bitmap| {
-                            canvas_quad.map(|quad| CanvasLayer {
-                                source: CanvasLayerSource::Cpu(TextureSource {
-                                    width: bitmap.width as u32,
-                                    height: bitmap.height as u32,
-                                    pixels: bitmap.pixels.as_slice(),
-                                }),
-                                upload_region: update.canvas_dirty_rect.map(|rect| UploadRegion {
-                                    x: rect.x as u32,
-                                    y: rect.y as u32,
-                                    width: rect.width as u32,
-                                    height: rect.height as u32,
-                                }),
-                                quad,
-                            })
-                        })
-                    }
-                    #[cfg(not(feature = "gpu"))]
+                            }
+                        },
+                        upload_region: None,
+                        quad,
+                    })
+                } else {
                     self.app.canvas_frame().and_then(|bitmap| {
                         canvas_quad.map(|quad| CanvasLayer {
                             source: CanvasLayerSource::Cpu(TextureSource {
@@ -571,7 +548,6 @@ impl ApplicationHandler for DesktopRuntime {
                         },
                         html_panel_quads: html_panel_quads_slice,
                     },
-                    #[cfg(feature = "gpu")]
                     self.app.gpu_canvas_pool(),
                 ) {
                     Ok(timings) => timings,

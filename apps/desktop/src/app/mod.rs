@@ -102,24 +102,16 @@ pub(crate) struct DesktopApp {
     needs_panel_surface_refresh: bool,
     needs_status_refresh: bool,
     needs_full_present_rebuild: bool,
-    /// GPU レイヤーテクスチャプール。`gpu` feature が有効な場合のみ使用する。
-    #[cfg(feature = "gpu")]
+    /// GPU レイヤーテクスチャプール。
     pub(crate) gpu_canvas_pool: Option<gpu_canvas::GpuCanvasPool>,
-    /// GPU ペン先テクスチャキャッシュ。`gpu` feature が有効な場合のみ使用する。
-    #[cfg(feature = "gpu")]
+    /// GPU ペン先テクスチャキャッシュ。
     pub(crate) gpu_pen_tip_cache: Option<gpu_canvas::GpuPenTipCache>,
-    /// GPU ブラシ計算シェーダーディスパッチャ。`gpu` feature が有効な場合のみ使用する。
-    #[cfg(feature = "gpu")]
+    /// GPU ブラシ計算シェーダーディスパッチャ。
     pub(crate) gpu_brush: Option<gpu_canvas::GpuBrushDispatch>,
-    /// GPU 塗りつぶしディスパッチャ。`gpu` feature が有効な場合のみ使用する。
-    #[cfg(feature = "gpu")]
+    /// GPU 塗りつぶしディスパッチャ。
     pub(crate) gpu_fill: Option<gpu_canvas::GpuFillDispatch>,
-    /// GPU レイヤー合成ディスパッチャ。`gpu` feature が有効な場合のみ使用する。
-    #[cfg(feature = "gpu")]
+    /// GPU レイヤー合成ディスパッチャ。
     pub(crate) gpu_compositor: Option<gpu_canvas::GpuLayerCompositor>,
-    /// Rgba8Unorm テクスチャを sRGB view で Present できるかどうか。起動時に 1 回判定する。
-    #[cfg(feature = "gpu")]
-    pub(crate) srgb_view_supported: bool,
 }
 
 impl DesktopApp {
@@ -194,18 +186,11 @@ impl DesktopApp {
             needs_panel_surface_refresh: true,
             needs_status_refresh: false,
             needs_full_present_rebuild: true,
-            #[cfg(feature = "gpu")]
             gpu_canvas_pool: None,
-            #[cfg(feature = "gpu")]
             gpu_pen_tip_cache: None,
-            #[cfg(feature = "gpu")]
             gpu_brush: None,
-            #[cfg(feature = "gpu")]
             gpu_fill: None,
-            #[cfg(feature = "gpu")]
             gpu_compositor: None,
-            #[cfg(feature = "gpu")]
-            srgb_view_supported: false,
         };
         app.refresh_canvas_frame();
         app.ensure_workspace_presets_file(&app.io_state.workspace_preset_path);
@@ -216,23 +201,16 @@ impl DesktopApp {
     }
 }
 
-#[cfg(feature = "gpu")]
 impl DesktopApp {
     /// GPU リソースを初期化してフィールドへ代入し、全レイヤーを同期する。
     ///
-    /// `srgb_view_supported == false`（= `supports_rgba8unorm_storage` 未対応の
-    /// アダプター）の場合は、compute pipeline 生成が panic する可能性があるため
-    /// GPU リソースを何も作らず CPU フォールバックに任せる。
+    /// `supports_rgba8unorm_storage` 未対応のアダプターでは、compute pipeline 生成が
+    /// panic する可能性がある。alpha 期間としては未対応 GPU を切り捨てる方針 (Phase 9A)。
     pub(crate) fn install_gpu_resources(
         &mut self,
         device: std::sync::Arc<wgpu::Device>,
         queue: std::sync::Arc<wgpu::Queue>,
-        srgb_view_supported: bool,
     ) {
-        self.srgb_view_supported = srgb_view_supported;
-        if !srgb_view_supported {
-            return;
-        }
         self.gpu_canvas_pool = Some(gpu_canvas::GpuCanvasPool::new(
             device.clone(),
             queue.clone(),
@@ -329,6 +307,8 @@ impl DesktopApp {
     ///
     /// `true` のとき: GPU リソースが揃っており、`canvas_layer_source_kind` が
     /// `Gpu` / `GpuComposite` のいずれかを返せる状態。
+    /// 現在はテストからのみ参照される (production コードは `canvas_layer_source_kind()` を直接使う)。
+    #[cfg(test)]
     pub(crate) fn should_use_gpu_canvas_source(&self) -> bool {
         self.canvas_layer_source_kind().is_some()
     }
@@ -340,9 +320,6 @@ impl DesktopApp {
     /// - GPU 非対応: `None`
     pub(crate) fn canvas_layer_source_kind(&self) -> Option<GpuCanvasSourceKind> {
         let pool = self.gpu_canvas_pool.as_ref()?;
-        if !self.srgb_view_supported {
-            return None;
-        }
         let panel = self.document.active_panel()?;
         let pid = panel.id.0.to_string();
         if panel.layers.len() == 1 {
@@ -442,7 +419,6 @@ impl DesktopApp {
 }
 
 /// GPU キャンバスソースの種別。
-#[cfg(feature = "gpu")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GpuCanvasSourceKind {
     Single,

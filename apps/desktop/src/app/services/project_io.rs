@@ -12,7 +12,6 @@ use super::DesktopApp;
 ///
 /// dirty 領域サイズの小テクスチャを `before` / `after` に保持する。
 /// `HistoryEntry::GpuBitmapPatch::gpu_data` に `OpaqueGpuData(Arc::new(_))` として格納する。
-#[cfg(feature = "gpu")]
 pub(crate) struct GpuPatchSnapshot {
     pub(crate) before: wgpu::Texture,
     pub(crate) after: wgpu::Texture,
@@ -72,24 +71,11 @@ impl DesktopApp {
                 let layer_index = self.document.active_panel().map(|p| p.active_layer_index);
                 if let (Some(panel_id), Some(layer_index)) = (panel_id, layer_index) {
                     // GPU パスでは CPU bitmap を書き換えないため before_layer 保存は不要
-                    #[cfg(feature = "gpu")]
                     let before_layer = if self.gpu_canvas_pool.is_some() {
                         None
                     } else {
                         self.document.clone_panel_layer_bitmap(panel_id, layer_index)
                     };
-                    #[cfg(not(feature = "gpu"))]
-                    let before_layer =
-                        self.document.clone_panel_layer_bitmap(panel_id, layer_index);
-
-                    // CPU パスで before_layer が取れない場合はストロークを登録しない
-                    #[cfg(not(feature = "gpu"))]
-                    let Some(before_layer) = before_layer
-                    else {
-                        return false;
-                    };
-                    #[cfg(not(feature = "gpu"))]
-                    let before_layer = Some(before_layer);
 
                     self.pending_stroke = Some(PendingStroke {
                         panel_id,
@@ -117,7 +103,6 @@ impl DesktopApp {
             }
 
             // GPU dispatch (Phase 8B): CPU と並行して GPU レイヤーテクスチャへ描画する
-            #[cfg(feature = "gpu")]
             {
                 use canvas::{build_paint_context, compute_stamp_positions};
                 if let Some(resolved) = build_paint_context(&self.document, &input) {
@@ -168,7 +153,6 @@ impl DesktopApp {
             }
 
             // GPU パス: compute shader が GPU テクスチャへ直接書き込むため CPU 書き込みは不要
-            #[cfg(feature = "gpu")]
             if self.gpu_canvas_pool.is_some() {
                 let edit_dirty = edits.iter().fold(None::<CanvasDirtyRect>, |acc, edit| {
                     Some(match acc {
@@ -191,7 +175,6 @@ impl DesktopApp {
             let panel_id = self.document.active_panel().map(|p| p.id);
             let layer_index = self.document.active_panel().map(|p| p.active_layer_index);
 
-            #[cfg(feature = "gpu")]
             if self.gpu_canvas_pool.is_some()
                 && let (Some(panel_id), Some(layer_index)) = (panel_id, layer_index)
                 && self.execute_gpu_fill(panel_id, layer_index, &input, &edits)
@@ -238,7 +221,6 @@ impl DesktopApp {
     ///
     /// Undo スナップショットは `snapshot_region` (after) と
     /// `capture_panel_layer_region` → `create_and_upload` (before) で構築する。
-    #[cfg(feature = "gpu")]
     fn execute_gpu_fill(
         &mut self,
         panel_id: app_core::PanelId,
@@ -373,7 +355,6 @@ impl DesktopApp {
         // GPU パス: CPU bitmap は書き換えていないため、現在の CPU bitmap から dirty 領域を
         // 取り出すと「ストローク前」ピクセルになる。それを GPU テクスチャへ 1 回アップロードして
         // `before` スナップショットを作り、`after` は GPU-to-GPU コピーで取得する。
-        #[cfg(feature = "gpu")]
         if let Some(pool) = self.gpu_canvas_pool.as_ref() {
             let pid = stroke.panel_id.0.to_string();
             let before_pixels =
@@ -503,7 +484,6 @@ impl DesktopApp {
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
                 self.persist_session_state();
-                #[cfg(feature = "gpu")]
                 self.sync_all_layers_to_gpu();
                 true
             }

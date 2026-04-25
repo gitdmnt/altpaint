@@ -63,8 +63,7 @@ pub struct FrameLayer<'a> {
 pub enum CanvasLayerSource<'a> {
     /// CPU ビットマップから転送する通常パス。
     Cpu(TextureSource<'a>),
-    /// 単一レイヤーの GPU テクスチャを直接 Present するパス（`gpu` feature 有効時のみ）。
-    #[cfg(feature = "gpu")]
+    /// 単一レイヤーの GPU テクスチャを直接 Present するパス。
     Gpu {
         panel_id: &'a str,
         layer_index: usize,
@@ -72,7 +71,6 @@ pub enum CanvasLayerSource<'a> {
         height: u32,
     },
     /// 多レイヤー合成済み GPU テクスチャ（composite texture）を Present するパス。
-    #[cfg(feature = "gpu")]
     GpuComposite {
         panel_id: &'a str,
         width: u32,
@@ -84,29 +82,23 @@ impl<'a> CanvasLayerSource<'a> {
     fn width(self) -> u32 {
         match self {
             Self::Cpu(src) => src.width,
-            #[cfg(feature = "gpu")]
             Self::Gpu { width, .. } => width,
-            #[cfg(feature = "gpu")]
             Self::GpuComposite { width, .. } => width,
         }
     }
     fn height(self) -> u32 {
         match self {
             Self::Cpu(src) => src.height,
-            #[cfg(feature = "gpu")]
             Self::Gpu { height, .. } => height,
-            #[cfg(feature = "gpu")]
             Self::GpuComposite { height, .. } => height,
         }
     }
     fn cpu_source(self) -> Option<TextureSource<'a>> {
         match self {
             Self::Cpu(src) => Some(src),
-            #[cfg(feature = "gpu")]
             Self::Gpu { .. } | Self::GpuComposite { .. } => None,
         }
     }
-    #[cfg(feature = "gpu")]
     fn is_gpu(self) -> bool {
         matches!(self, Self::Gpu { .. } | Self::GpuComposite { .. })
     }
@@ -344,7 +336,6 @@ struct LayerUploadStats {
 ///
 /// キー `(panel_id, kind, layer_index, width, height)` が変化したときのみ再生成する。
 /// `kind == Composite` のとき `layer_index` は意味を持たない（`usize::MAX` を入れる）。
-#[cfg(feature = "gpu")]
 struct GpuBindGroupCache {
     bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
@@ -355,7 +346,6 @@ struct GpuBindGroupCache {
     height: u32,
 }
 
-#[cfg(feature = "gpu")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GpuBindGroupKind {
     Single,
@@ -388,12 +378,7 @@ pub struct WgpuPresenter {
     temp_overlay_layer: Option<UploadedLayerTexture>,
     ui_panel_layer: Option<UploadedLayerTexture>,
     /// GPU キャンバステクスチャのバインドグループキャッシュ。
-    #[cfg(feature = "gpu")]
     canvas_gpu_bind_group_cache: Option<GpuBindGroupCache>,
-    /// Rgba8Unorm テクスチャを sRGB view で Present できるかどうか。
-    /// `false` の場合は GPU キャンバスソースを使わず CPU パスへフォールバックする。
-    #[cfg(feature = "gpu")]
-    srgb_canvas_view_supported: bool,
     /// HTML パネル毎の bind_group キャッシュ。panel_id をキーにし、
     /// 紐づくテクスチャの `global_id` が変わった or サイズ変化で再生成する。
     html_panel_bind_groups: HashMap<String, HtmlPanelBindEntry>,
@@ -483,30 +468,21 @@ impl WgpuPresenter {
         let device = Arc::new(device);
         let queue = Arc::new(queue);
 
-        #[cfg(feature = "gpu")]
         let srgb_canvas_view_supported =
             gpu_canvas::format_check::supports_rgba8unorm_storage(&adapter);
 
         let adapter_info = adapter.get_info();
-        #[cfg(feature = "gpu")]
-        {
-            if srgb_canvas_view_supported {
-                eprintln!(
-                    "[altpaint] canvas backend: GPU (adapter='{}', backend={:?}, Rgba8Unorm STORAGE_READ_WRITE supported)",
-                    adapter_info.name, adapter_info.backend
-                );
-            } else {
-                eprintln!(
-                    "[altpaint] canvas backend: CPU fallback (adapter='{}', backend={:?}, Rgba8Unorm STORAGE_READ_WRITE NOT supported)",
-                    adapter_info.name, adapter_info.backend
-                );
-            }
+        if srgb_canvas_view_supported {
+            eprintln!(
+                "[altpaint] canvas backend: GPU (adapter='{}', backend={:?}, Rgba8Unorm STORAGE_READ_WRITE supported)",
+                adapter_info.name, adapter_info.backend
+            );
+        } else {
+            eprintln!(
+                "[altpaint] canvas backend: GPU (adapter='{}', backend={:?}, Rgba8Unorm STORAGE_READ_WRITE NOT supported — compute pipeline may panic)",
+                adapter_info.name, adapter_info.backend
+            );
         }
-        #[cfg(not(feature = "gpu"))]
-        eprintln!(
-            "[altpaint] canvas backend: CPU (gpu feature disabled at build time, adapter='{}', backend={:?})",
-            adapter_info.name, adapter_info.backend
-        );
 
         // サーフェスがサポートするピクセルフォーマットの一覧を取得する。
         let surface_capabilities = surface.get_capabilities(&adapter);
@@ -647,10 +623,7 @@ impl WgpuPresenter {
             canvas_layer: None,
             temp_overlay_layer: None,
             ui_panel_layer: None,
-            #[cfg(feature = "gpu")]
             canvas_gpu_bind_group_cache: None,
-            #[cfg(feature = "gpu")]
-            srgb_canvas_view_supported,
             html_panel_bind_groups: HashMap::new(),
         })
     }
@@ -668,12 +641,6 @@ impl WgpuPresenter {
     /// gpu-canvas クレートの `GpuCanvasPool` / `GpuPenTipCache` と共有するために使う。
     pub fn queue(&self) -> Arc<wgpu::Queue> {
         Arc::clone(&self.queue)
-    }
-
-    /// Rgba8Unorm テクスチャを sRGB view で Present できるかどうかを返す。
-    #[cfg(feature = "gpu")]
-    pub fn srgb_canvas_view_supported(&self) -> bool {
-        self.srgb_canvas_view_supported
     }
 
     ///
@@ -702,7 +669,7 @@ impl WgpuPresenter {
     pub fn render(
         &mut self,
         scene: PresentScene<'_>,
-        #[cfg(feature = "gpu")] gpu_canvas_pool: Option<&gpu_canvas::GpuCanvasPool>,
+        gpu_canvas_pool: Option<&gpu_canvas::GpuCanvasPool>,
     ) -> Result<PresentTimings> {
         // サーフェスが 0 サイズなら描画をスキップ（最小化時など）。
         if self.config.width == 0 || self.config.height == 0 {
@@ -815,7 +782,6 @@ impl WgpuPresenter {
         );
         // canvas_layer は quad で位置・回転・スケールが指定される。
         if let Some(canvas_layer) = scene.canvas_layer {
-            #[cfg(feature = "gpu")]
             if canvas_layer.source.is_gpu() {
                 self.update_gpu_canvas_bind_group(
                     canvas_layer.source,
@@ -833,14 +799,6 @@ impl WgpuPresenter {
                     self.config.height,
                 );
             }
-            #[cfg(not(feature = "gpu"))]
-            Self::update_quad_uniform(
-                &self.queue,
-                self.canvas_layer.as_ref(),
-                canvas_layer.quad,
-                self.config.width,
-                self.config.height,
-            );
         }
         let upload = upload_started.elapsed();
 
@@ -1013,18 +971,12 @@ impl WgpuPresenter {
             // レイヤーを下から順番に描画（後に描くほど手前に表示される）。
             Self::draw_layer(&mut pass, self.base_layer.as_ref()); // L1 背景
             if let Some(canvas_layer) = scene.canvas_layer {
-                #[cfg(feature = "gpu")]
                 if canvas_layer.source.is_gpu() {
                     if let Some(cache) = &self.canvas_gpu_bind_group_cache {
                         pass.set_bind_group(0, &cache.bind_group, &[]);
                         pass.draw(0..6, 0..1);
                     }
                 } else {
-                    Self::draw_layer(&mut pass, self.canvas_layer.as_ref());
-                }
-                #[cfg(not(feature = "gpu"))]
-                {
-                    let _ = canvas_layer;
                     Self::draw_layer(&mut pass, self.canvas_layer.as_ref());
                 }
             }
@@ -1234,7 +1186,6 @@ impl WgpuPresenter {
     /// GPU キャンバステクスチャのバインドグループを作成/更新してキャッシュに保存する。
     ///
     /// `(panel_id, layer_index, width, height)` が前回と変わった場合のみ再生成する。
-    #[cfg(feature = "gpu")]
     fn update_gpu_canvas_bind_group(
         &mut self,
         source: CanvasLayerSource<'_>,

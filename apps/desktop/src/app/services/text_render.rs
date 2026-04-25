@@ -61,7 +61,6 @@ impl DesktopApp {
         else {
             return false;
         };
-        self.refresh_canvas_frame_region(dirty);
         self.append_canvas_dirty_rect(dirty);
         true
     }

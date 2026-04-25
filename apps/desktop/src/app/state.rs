@@ -28,6 +28,9 @@ impl DesktopApp {
     /// キャンバス フレーム 領域 を更新し、必要な dirty 状態も記録する。
     ///
     /// 必要に応じて dirty 状態も更新します。
+    /// Phase 9A 以降、キャンバス側 caller は GPU が表示正本になったため呼び出さなくなった。
+    /// 関数本体は `crates/render/` 削除 (Phase 9F) と同時に取り除く予定。
+    #[allow(dead_code)]
     pub(super) fn refresh_canvas_frame_region(&mut self, dirty: CanvasDirtyRect) {
         let Some(frame) = self.canvas_frame.as_mut() else {
             self.refresh_canvas_frame();

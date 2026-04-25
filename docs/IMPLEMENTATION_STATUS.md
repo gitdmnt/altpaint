@@ -1026,4 +1026,57 @@ GPU テスト群が並列実行で wgpu Adapter / Device 生成競合により f
 - FloodFill の seed 色取得は composite テクスチャがあればそこから、なければ active layer 自身から（単一レイヤーでは等価）
 - FloodFill の収束は 32 iter ごとの atomic readback + 最大 iter 上限 `FLOOD_FILL_ITERATION_CAP = 8192`
 - Composite テクスチャは panel ごとに 1 枚。レイヤー数・panel サイズが変わらなければ再利用する
-- `gpu` feature 無効ビルドでは従来の CPU 合成経路 (`composite_panel_bitmap_region` / `compose_canvas_host_region`) がそのまま動作（runtime 分岐で生存）
+- `gpu` feature 無効ビルドでは従来の CPU 合成経路 (`composite_panel_bitmap_region` / `compose_canvas_host_region`) がそのまま動作（runtime 分岐で生存） — *Phase 9A で `gpu` feature 自体が撤廃され、本記述は履歴情報。現在は GPU 経路一本*
+
+---
+
+## Phase 9A 完了 (2026-04-26) — `gpu` feature default-on 化、CPU フォールバック削除
+
+作業モデル: claude-opus-4-7 (1M context)
+
+### 実装内容
+
+- **`apps/desktop/Cargo.toml`**
+  - `gpu` feature を完全削除（`gpu-canvas` を必須依存化、`optional = true` 撤廃）
+
+- **`crates/gpu-canvas/Cargo.toml` / `src/lib.rs` / `src/tests.rs`**
+  - `gpu` feature を撤廃し `wgpu` を必須依存化
+  - 全モジュール (`format_check` / `brush` / `composite` / `fill` / `gpu`) の `#[cfg(feature = "gpu")]` を削除
+
+- **`apps/desktop/src/`**
+  - 9 ファイル (mod.rs / wgpu_canvas.rs / runtime.rs / present_state.rs / services/mod.rs / services/project_io.rs / services/text_render.rs / command_router.rs / background_tasks.rs / tests/mod.rs) から `#[cfg(feature = "gpu")]` / `#[cfg(not(feature = "gpu"))]` を全削除
+  - GPU フィールド (`gpu_canvas_pool` / `gpu_pen_tip_cache` / `gpu_brush` / `gpu_fill` / `gpu_compositor`) は無条件で保持
+  - `srgb_view_supported` フィールド削除 / `install_gpu_resources` 引数から除去 / `canvas_layer_source_kind()` の sRGB 分岐削除
+  - `WgpuPresenter` から `srgb_canvas_view_supported` フィールド + 公開 getter 削除（`format_check::supports_rgba8unorm_storage` 呼び出しと診断ログは存続）
+
+- **`apps/desktop/src/app/present_state.rs::apply_bitmap_edits`**
+  - GPU/CPU 分岐を撤廃し `append_canvas_dirty_rect(dirty)` のみ実行する形へ単純化
+
+- **キャンバス用 `refresh_canvas_frame_region` 呼び出しの削除** (4 箇所)
+  - `services/mod.rs::execute_undo` / `execute_redo`、`services/text_render.rs::render_text_to_active_layer`、`command_router.rs` の SetActiveLayerBlendMode/ToggleActiveLayerVisibility 分岐
+  - 関数定義は `crates/render/` 削除 (Phase 9F) と一括除去するため `#[allow(dead_code)]` 付きで存続
+
+- **テスト**
+  - `should_use_gpu_canvas_source_false_if_srgb_not_supported` 削除（前提が消滅）
+  - `try_init_device` を `HighPerformance` + `TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES` opt-in / `supports_rgba8unorm_storage` ガード付きへ更新
+  - `should_use_gpu_canvas_source_false_for_multi_layer` → `should_use_gpu_canvas_source_true_for_multi_layer_via_composite` に書き換え（GPU 常時有効では composite 経由で `true` を維持）
+  - `layer_count_change_updates_gpu_source_decision` → `layer_count_change_switches_gpu_source_kind`（Single → Composite 切替を直接検証）
+  - `interaction.rs:1409` のコメント更新
+
+### 設計制約
+
+- alpha 期間として、Rgba8Unorm STORAGE_READ_WRITE 非対応の旧 GPU を切り捨て (ROADMAP / ADR-006 既出)
+- `should_use_gpu_canvas_source` はテスト専用関数になったため `#[cfg(test)]` 化
+- `wgpu_canvas` 内の CPU `CanvasLayerSource::Cpu` 経路と CPU `canvas_frame` 自体は存続（runtime fallback）。完全な駆除は Phase 9F で `crates/render/` 削除と一括対応
+- text_render 経路は CPU bitmap → GPU 同期が未配線。Phase 9A スコープ外として既存挙動を維持
+
+### 検証
+
+- `cargo build -p desktop` 通過（警告 2 件、いずれも既存の snapshot_store 由来）
+- `cargo build -p desktop --features html-panel` 通過
+- `cargo check --release --workspace` 通過
+- `cargo test --workspace` 通過（116 desktop tests + 全クレート ok）
+- `cargo clippy --workspace --all-targets` 警告増加なし
+- `feature = "gpu"` の cfg 参照が本流コードから 0 件
+- `srgb_view_supported` の参照が 0 件
+- キャンバス用 `refresh_canvas_frame_region` 呼び出しが 0 件（定義のみ存続）

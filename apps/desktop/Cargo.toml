@@ -8,7 +8,7 @@ authors.workspace = true
 [dependencies]
 anyhow.workspace = true
 app-core = { path = "../../crates/app-core" }
-gpu-canvas = { path = "../../crates/gpu-canvas", optional = true }
+gpu-canvas = { path = "../../crates/gpu-canvas" }
 canvas = { path = "../../crates/canvas" }
 desktop-support = { path = "../../crates/desktop-support" }
 panel-api = { path = "../../crates/panel-api" }
@@ -25,7 +25,6 @@ wgpu.workspace = true
 winit.workspace = true
 
 [features]
-gpu = ["dep:gpu-canvas"]
 html-panel = ["panel-runtime/html-panel", "dep:panel-html-experiment", "dep:keyboard-types"]
 
 [dev-dependencies]

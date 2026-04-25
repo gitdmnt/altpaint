@@ -1406,7 +1406,7 @@ fn lasso_preview_drag_marks_temp_overlay_dirty() {
 fn toggle_layer_visibility_sets_canvas_dirty_rect_not_full_rebuild() {
     let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
     let mut profiler = DesktopProfiler::new();
-    // canvas_frame を初期化しておく（refresh_canvas_frame_region の fallback 回避）
+    // canvas_frame を初期化しておく
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     // 初期化後のフラグをリセット
     app.needs_full_present_rebuild = false;

@@ -115,17 +115,7 @@ impl DesktopApp {
     pub(super) fn apply_bitmap_edits(&mut self, edits: Vec<BitmapEdit>) -> bool {
         self.document
             .apply_bitmap_edits_to_active_layer(&edits)
-            .is_some_and(|dirty| {
-                // GPU 経路が有効な場合は CPU canvas_frame の更新をスキップする。
-                // GPU ブラシが直接テクスチャを書き換えるため CPU 合成は不要。
-                #[cfg(feature = "gpu")]
-                if !self.should_use_gpu_canvas_source() {
-                    self.refresh_canvas_frame_region(dirty);
-                }
-                #[cfg(not(feature = "gpu"))]
-                self.refresh_canvas_frame_region(dirty);
-                self.append_canvas_dirty_rect(dirty)
-            })
+            .is_some_and(|dirty| self.append_canvas_dirty_rect(dirty))
     }
 
     /// Append temp オーバーレイ 差分 矩形（L3）に必要な差分領域だけを描画または合成する。

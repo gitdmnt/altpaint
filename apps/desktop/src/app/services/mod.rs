@@ -1,7 +1,6 @@
 //! host service request と補助的な状態同期処理を扱う。
 
 mod export;
-#[cfg(feature = "gpu")]
 mod gpu_sync;
 mod project_io;
 mod snapshot;
@@ -86,10 +85,8 @@ impl DesktopApp {
                     dirty.y,
                     &before,
                 ) {
-                    self.refresh_canvas_frame_region(page_dirty);
                     self.append_canvas_dirty_rect(page_dirty);
                     // GPU パス: dirty 領域だけを GPU へ同期（全レイヤー転送は不要）
-                    #[cfg(feature = "gpu")]
                     if let Some(pool) = self.gpu_canvas_pool.as_ref()
                         && let Some(region) =
                             self.document
@@ -109,7 +106,6 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 true
             }
-            #[cfg(feature = "gpu")]
             Some(HistoryEntry::GpuBitmapPatch {
                 panel_id,
                 layer_index,
@@ -138,11 +134,6 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 true
             }
-            #[cfg(not(feature = "gpu"))]
-            Some(HistoryEntry::GpuBitmapPatch { .. }) => {
-                // GPU feature 無効時は GpuBitmapPatch は生成されないため到達しない
-                false
-            }
             None => false,
         }
     }
@@ -166,9 +157,7 @@ impl DesktopApp {
                     dirty.y,
                     &after,
                 ) {
-                    self.refresh_canvas_frame_region(page_dirty);
                     self.append_canvas_dirty_rect(page_dirty);
-                    #[cfg(feature = "gpu")]
                     if let Some(pool) = self.gpu_canvas_pool.as_ref()
                         && let Some(region) =
                             self.document
@@ -188,7 +177,6 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 true
             }
-            #[cfg(feature = "gpu")]
             Some(HistoryEntry::GpuBitmapPatch {
                 panel_id,
                 layer_index,
@@ -217,8 +205,6 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 true
             }
-            #[cfg(not(feature = "gpu"))]
-            Some(HistoryEntry::GpuBitmapPatch { .. }) => false,
             None => false,
         }
     }
