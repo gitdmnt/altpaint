@@ -142,6 +142,29 @@ fn render_html_panels_returns_empty_when_gpu_not_installed() {
     let plugin = HtmlPanelPlugin::from_parts("html.test", "T", html, "");
     let mut runtime = PanelRuntime::new();
     runtime.register_panel(Box::new(plugin));
-    let frames = runtime.render_html_panels(&[("html.test".to_string(), 100, 50)], 1.0);
+    let frames = runtime.render_html_panels(&[("html.test".to_string(), 100, 50)], 1.0, 0);
     assert!(frames.is_empty(), "no GPU context => no frames");
+}
+
+/// Phase 1: HTML パネルは workspace 統合のために `panel_trees()` に id 付きで現れる必要がある。
+/// `panel_tree()` は children 空でも tree 自体を返すため、ui-shell の `reconcile_runtime_panels`
+/// で workspace_layout エントリが作られる前提が満たされる。
+#[cfg(feature = "html-panel")]
+#[test]
+fn html_panel_appears_in_panel_trees_with_static_id() {
+    use crate::html_panel::HtmlPanelPlugin;
+    let plugin =
+        HtmlPanelPlugin::from_parts("html.workspace.fixture", "T", "<html><body></body></html>", "");
+    let mut runtime = PanelRuntime::new();
+    runtime.register_panel(Box::new(plugin));
+
+    let trees = runtime.panel_trees();
+    let tree = trees
+        .iter()
+        .find(|t| t.id == "html.workspace.fixture")
+        .expect("HTML panel must appear in panel_trees() so workspace can register it");
+    assert!(
+        tree.children.is_empty(),
+        "HTML panel tree intentionally has empty children (GPU 直描画)"
+    );
 }

@@ -267,32 +267,133 @@ impl ApplicationHandler for DesktopRuntime {
                 }
                 #[cfg(feature = "html-panel")]
                 let html_quad_entries: Vec<HtmlQuadEntry> = {
-                    let panel_ids = self.app.panel_runtime.html_panel_ids();
+                    const HTML_CHROME_HEIGHT: u32 = 24;
+                    let all_panel_ids = self.app.panel_runtime.html_panel_ids();
+                    let (panel_ids, hidden_ids): (Vec<String>, Vec<String>) = all_panel_ids
+                        .into_iter()
+                        .partition(|id| self.app.panel_presentation.is_panel_visible(id));
+                    // 不可視になったパネルの hit / move handle 情報は掃除する
+                    for id in &hidden_ids {
+                        self.app.panel_presentation.remove_html_panel_hits(id);
+                        self.app.panel_presentation.remove_html_panel_move_handle(id);
+                    }
                     if panel_ids.is_empty() {
                         Vec::new()
                     } else {
-                        let panel_w = 280u32;
-                        let panel_h = 240u32;
-                        let margin = 8u32;
-                        let surface_w = size.width;
-                        let mut sized: Vec<(String, u32, u32)> = Vec::new();
+                        // パネル毎に panel_rect (workspace_layout 由来) を解決してサイズを決める。
+                        // panel_rect が無い (= 起動直後のレース) ケースは default サイズで描画する。
+                        let mut sized: Vec<(String, u32, u32)> = Vec::with_capacity(panel_ids.len());
+                        let mut panel_rects: Vec<render::PixelRect> =
+                            Vec::with_capacity(panel_ids.len());
                         for id in &panel_ids {
-                            sized.push((id.clone(), panel_w, panel_h));
+                            let rect = self
+                                .app
+                                .panel_presentation
+                                .panel_rect_in_viewport(
+                                    id,
+                                    size.width as usize,
+                                    size.height as usize,
+                                )
+                                .unwrap_or(render::PixelRect {
+                                    x: (size.width as usize).saturating_sub(308),
+                                    y: 8,
+                                    width: 300,
+                                    height: 220,
+                                });
+                            let w = rect.width.max(1) as u32;
+                            let h = rect.height.max(HTML_CHROME_HEIGHT as usize + 1) as u32;
+                            sized.push((id.clone(), w, h));
+                            panel_rects.push(rect);
                         }
-                        let frames = self.app.panel_runtime.render_html_panels(&sized, 1.0);
-                        let mut entries = Vec::with_capacity(frames.len());
-                        for (i, frame) in frames.iter().enumerate() {
-                            let y = margin + (panel_h + margin) * i as u32;
-                            let x = surface_w.saturating_sub(panel_w + margin);
+                        let frames = self.app.panel_runtime.render_html_panels(
+                            &sized,
+                            1.0,
+                            HTML_CHROME_HEIGHT,
+                        );
+                        // 描画されたパネルの hit/move 情報と quad entry を一気に組み立てる
+                        // (frames は &mut panel_runtime に紐付くため、この間 panel_runtime は再借用しない)
+                        type FrameMeta = (
+                            String,
+                            *const wgpu::Texture,
+                            render::PixelRect, // パネル全体 (chrome 含む)
+                            render::PixelRect, // body 部分 (hit 領域)
+                            render::PixelRect, // chrome 部分 (move handle)
+                            Vec<(String, render::PixelRect)>,
+                        );
+                        let mut frame_meta: Vec<FrameMeta> = Vec::with_capacity(frames.len());
+                        for frame in frames.iter() {
+                            // panel_id に対応する panel_rect を取得
+                            let panel_rect = panel_ids
+                                .iter()
+                                .position(|id| id == &frame.panel_id)
+                                .map(|i| panel_rects[i])
+                                .unwrap_or(render::PixelRect {
+                                    x: 0,
+                                    y: 0,
+                                    width: frame.width as usize,
+                                    height: frame.height as usize,
+                                });
+                            let chrome_h = HTML_CHROME_HEIGHT as usize;
+                            let body_screen_rect = render::PixelRect {
+                                x: panel_rect.x,
+                                y: panel_rect.y + chrome_h,
+                                width: panel_rect.width,
+                                height: panel_rect.height.saturating_sub(chrome_h),
+                            };
+                            let chrome_screen_rect = render::PixelRect {
+                                x: panel_rect.x,
+                                y: panel_rect.y,
+                                width: panel_rect.width,
+                                height: chrome_h,
+                            };
+                            let hits: Vec<(String, render::PixelRect)> = frame
+                                .hit_regions
+                                .iter()
+                                .filter_map(|hit| {
+                                    let element_id = hit.element_id.clone()?;
+                                    Some((
+                                        element_id,
+                                        render::PixelRect {
+                                            x: hit.rect.x as usize,
+                                            y: hit.rect.y as usize,
+                                            width: hit.rect.width as usize,
+                                            height: hit.rect.height as usize,
+                                        },
+                                    ))
+                                })
+                                .collect();
+                            frame_meta.push((
+                                frame.panel_id.clone(),
+                                frame.texture as *const wgpu::Texture,
+                                panel_rect,
+                                body_screen_rect,
+                                chrome_screen_rect,
+                                hits,
+                            ));
+                        }
+                        // 描画ループ完了後にまとめて hit/move テーブルを更新する
+                        let mut entries = Vec::with_capacity(frame_meta.len());
+                        for (
+                            panel_id,
+                            texture_ptr,
+                            panel_rect,
+                            body_screen_rect,
+                            chrome_screen_rect,
+                            hits,
+                        ) in frame_meta
+                        {
+                            self.app.panel_presentation.update_html_panel_hits(
+                                &panel_id,
+                                body_screen_rect,
+                                hits,
+                            );
+                            self.app
+                                .panel_presentation
+                                .update_html_panel_move_handle(&panel_id, chrome_screen_rect);
                             entries.push(HtmlQuadEntry {
-                                panel_id: frame.panel_id.clone(),
-                                texture_ptr: frame.texture as *const wgpu::Texture,
-                                screen_rect: render::PixelRect {
-                                    x: x as usize,
-                                    y: y as usize,
-                                    width: panel_w as usize,
-                                    height: panel_h as usize,
-                                },
+                                panel_id,
+                                texture_ptr,
+                                screen_rect: panel_rect,
                             });
                         }
                         entries

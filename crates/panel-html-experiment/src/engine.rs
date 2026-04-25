@@ -119,6 +119,20 @@ impl HtmlPanelEngine {
         height: u32,
         scale: f32,
     ) {
+        self.build_scene_with_offset(scene, width, height, scale, 0, 0);
+    }
+
+    /// `build_scene` の offset 版。HTML 本体を `(x_offset, y_offset)` ピクセル分ずらして描画する。
+    /// ホスト描画タイトルバーを上に重ねるためのオフセット指定に使う。
+    pub fn build_scene_with_offset(
+        &mut self,
+        scene: &mut vello::Scene,
+        width: u32,
+        height: u32,
+        scale: f32,
+        x_offset: u32,
+        y_offset: u32,
+    ) {
         self.resolve_layout(width, height, scale);
         let mut painter = VelloScenePainter::new(scene);
         paint_scene(
@@ -127,8 +141,8 @@ impl HtmlPanelEngine {
             scale as f64,
             width,
             height,
-            0,
-            0,
+            x_offset,
+            y_offset,
         );
     }
 

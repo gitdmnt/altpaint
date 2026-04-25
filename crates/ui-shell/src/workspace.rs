@@ -145,6 +145,39 @@ impl PanelPresentation {
         })
     }
 
+    /// `panel_rect` の viewport 指定版。anchor (TopRight/BottomRight/BottomLeft) で
+    /// `usize::MAX` を使うと座標が画面外に飛ぶため、HTML パネルなど描画前に
+    /// `rendered_panel_rects` を持たないパネルではこちらを使う。
+    pub fn panel_rect_in_viewport(
+        &self,
+        panel_id: &str,
+        viewport_width: usize,
+        viewport_height: usize,
+    ) -> Option<render::PixelRect> {
+        if let Some(rect) = self.rendered_panel_rects.get(panel_id) {
+            return Some(*rect);
+        }
+
+        let entry = self
+            .workspace_layout
+            .panels
+            .iter()
+            .find(|entry| entry.id == panel_id)?;
+        let size = entry.size.unwrap_or_default();
+        let position = entry.resolved_position(
+            viewport_width,
+            viewport_height,
+            size,
+            default_panel_position(panel_id, 0),
+        );
+        Some(render::PixelRect {
+            x: position.x,
+            y: position.y,
+            width: size.width,
+            height: size.height,
+        })
+    }
+
     /// 入力や種別に応じて処理を振り分ける。
     ///
     /// 必要に応じて dirty 状態も更新します。
@@ -268,6 +301,13 @@ impl PanelPresentation {
             .filter(|panel_id| self.panel_is_visible(panel_id))
             .filter_map(|panel_id| panel_trees.get(panel_id).cloned())
             .collect()
+    }
+
+    /// 指定パネルが現在表示状態かを返す (外部 crate 向け公開 API)。
+    ///
+    /// HTML パネルの GPU 描画スキップ判定など、ui-shell 外部からも参照される。
+    pub fn is_panel_visible(&self, panel_id: &str) -> bool {
+        self.panel_is_visible(panel_id)
     }
 
     /// 既存データを走査して パネル is 表示状態 を組み立てる。

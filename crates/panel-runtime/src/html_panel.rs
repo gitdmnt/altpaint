@@ -127,6 +127,9 @@ impl HtmlPanelPlugin {
     }
 
     /// 共有 wgpu/vello で altpaint 所有の target テクスチャに描画する。
+    ///
+    /// `chrome_height` > 0 の場合、テクスチャ上端にホスト描画のタイトルバー (chrome) を
+    /// 単色矩形 + テキストで描き、HTML 本体はその下にオフセットされる。
     #[allow(clippy::too_many_arguments)]
     pub fn render_gpu<'a>(
         &'a mut self,
@@ -137,6 +140,7 @@ impl HtmlPanelPlugin {
         width: u32,
         height: u32,
         scale: f32,
+        chrome_height: u32,
     ) -> RenderOutcome<'a> {
         let size_changed = self
             .target
@@ -152,7 +156,12 @@ impl HtmlPanelPlugin {
         }
 
         scene_buf.reset();
-        self.engine.build_scene(scene_buf, width, height, scale);
+        let body_height = height.saturating_sub(chrome_height);
+        self.engine
+            .build_scene_with_offset(scene_buf, width, body_height, scale, 0, chrome_height);
+        if chrome_height > 0 {
+            paint_chrome(scene_buf, width, chrome_height);
+        }
 
         let target = self.target.as_ref().expect("target ensured");
         let view = target.create_render_view();
@@ -238,6 +247,21 @@ fn collect_text_content(document: &BaseDocument, node_id: usize) -> String {
     }
     walk(document, node_id, &mut out);
     out
+}
+
+/// HTML パネル上端のタイトルバー (chrome) を vello シーンに矩形で描画する。
+/// テキスト描画は将来追加。
+fn paint_chrome(scene: &mut vello::Scene, width: u32, chrome_height: u32) {
+    use vello::kurbo::{Affine, Rect};
+    use vello::peniko::{Color, Fill};
+    let rect = Rect::new(0.0, 0.0, width as f64, chrome_height as f64);
+    scene.fill(
+        Fill::NonZero,
+        Affine::IDENTITY,
+        Color::from_rgba8(40, 60, 90, 255),
+        None,
+        &rect,
+    );
 }
 
 fn descriptor_to_host_action(descriptor: ActionDescriptor) -> Option<HostAction> {
@@ -442,7 +466,7 @@ mod tests {
         let mut scene = vello::Scene::new();
         let html = r#"<html><body><div style="width:60px;height:30px;background:#ff0000;"></div></body></html>"#;
         let mut plugin = make_plugin(html, "");
-        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 100, 50, 1.0);
+        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 100, 50, 1.0, 0);
         assert!(outcome.is_rendered());
         let target = outcome.target();
         // texture から readback して red pixel を検出
@@ -465,9 +489,9 @@ mod tests {
         let mut scene = vello::Scene::new();
         let html = r#"<html><body><div style="width:40px;height:20px;background:#00ff00;"></div></body></html>"#;
         let mut plugin = make_plugin(html, "");
-        let first = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 80, 40, 1.0);
+        let first = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 80, 40, 1.0, 0);
         assert!(first.is_rendered());
-        let second = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 80, 40, 1.0);
+        let second = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 80, 40, 1.0, 0);
         assert!(!second.is_rendered(), "second call should be Skipped");
     }
 
@@ -484,7 +508,7 @@ mod tests {
         let mut scene = vello::Scene::new();
         let html = r#"<html><body style="margin:0;background:#ffffff;color:#000000;font-size:48px"><span>A</span></body></html>"#;
         let mut plugin = make_plugin(html, "");
-        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 64, 64, 1.0);
+        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 64, 64, 1.0, 0);
         assert!(outcome.is_rendered());
         let target = outcome.target();
         let pixels = readback_rgba(&device, &queue, &target.texture, target.width, target.height);
@@ -511,7 +535,7 @@ mod tests {
         let mut scene = vello::Scene::new();
         let html = r#"<html><body style="margin:0;background:#ffffff;color:#000000;font-size:48px"><span>あ</span></body></html>"#;
         let mut plugin = make_plugin(html, "");
-        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 80, 80, 1.0);
+        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 80, 80, 1.0, 0);
         assert!(outcome.is_rendered());
         let target = outcome.target();
         let pixels = readback_rgba(&device, &queue, &target.texture, target.width, target.height);
@@ -539,7 +563,7 @@ mod tests {
         let mut renderer = make_renderer(&device);
         let mut scene = vello::Scene::new();
         let mut plugin = make_plugin(html, css);
-        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 280, 240, 1.0);
+        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 280, 240, 1.0, 0);
         assert!(outcome.is_rendered());
         let target_width = outcome.target().width;
         let target_height = outcome.target().height;
@@ -580,7 +604,7 @@ mod tests {
         let mut renderer = make_renderer(&device);
         let mut scene = vello::Scene::new();
         let mut plugin = make_plugin(html, css);
-        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 280, 240, 1.0);
+        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 280, 240, 1.0, 0);
         assert!(outcome.is_rendered());
         let target = outcome.target();
         let pixels = readback_rgba(&device, &queue, &target.texture, target.width, target.height);
@@ -619,9 +643,9 @@ mod tests {
         let mut scene = vello::Scene::new();
         let html = r#"<html><body><div style="width:30px;height:15px;background:#ffffff;"></div></body></html>"#;
         let mut plugin = make_plugin(html, "");
-        let first = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 80, 40, 1.0);
+        let first = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 80, 40, 1.0, 0);
         assert_eq!(first.target().width, 80);
-        let second = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 120, 60, 1.0);
+        let second = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 120, 60, 1.0, 0);
         assert!(second.is_rendered(), "resize should re-render");
         assert_eq!(second.target().width, 120);
         assert_eq!(second.target().height, 60);

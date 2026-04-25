@@ -131,12 +131,14 @@ impl PanelRuntime {
     }
 
     /// 指定された (panel_id, width, height) リストの HTML パネルを GPU 描画する。
+    /// `chrome_height` > 0 ならパネル上端にホスト描画タイトルバーを重ねる。
     /// `install_gpu_context` 未呼び出しなら空 Vec。
     #[cfg(feature = "html-panel")]
     pub fn render_html_panels(
         &mut self,
         sized: &[(String, u32, u32)],
         scale: f32,
+        chrome_height: u32,
     ) -> Vec<HtmlPanelGpuFrame<'_>> {
         let Some(gpu_ctx) = self.gpu_ctx.as_mut() else {
             return Vec::new();
@@ -164,6 +166,7 @@ impl PanelRuntime {
                     *width,
                     *height,
                     scale,
+                    chrome_height,
                 );
                 let rendered = outcome.is_rendered();
                 let target = outcome.target();

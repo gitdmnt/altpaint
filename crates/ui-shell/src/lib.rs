@@ -66,6 +66,25 @@ pub struct PanelPresentation {
     expanded_dropdown: Option<FocusTarget>,
     /// text input ごとの editor state。
     text_input_states: BTreeMap<(String, String), TextInputEditorState>,
+    /// HTML パネル (GPU 直描画) の hit 情報。`update_html_panel_hits` で毎フレーム更新する。
+    html_panel_hits: BTreeMap<String, HtmlPanelHitMap>,
+    /// HTML パネルのタイトルバードラッグハンドル (screen 座標)。`update_html_panel_move_handle` で更新。
+    html_panel_move_handles: BTreeMap<String, render::PixelRect>,
+}
+
+/// HTML パネル 1 枚分の hit 情報。screen 座標の矩形と panel-relative の hit 群。
+#[derive(Debug, Clone)]
+struct HtmlPanelHitMap {
+    screen_rect: render::PixelRect,
+    hits: Vec<HtmlPanelHitItem>,
+}
+
+#[derive(Debug, Clone)]
+struct HtmlPanelHitItem {
+    /// HTML 要素の `id` 属性。`HtmlPanelPlugin::handle_event` の matching に使われる。
+    node_id: String,
+    /// パネル原点を (0,0) とする矩形。
+    rect_in_panel: render::PixelRect,
 }
 
 impl PanelPresentation {
@@ -95,7 +114,95 @@ impl PanelPresentation {
             focused_target: None,
             expanded_dropdown: None,
             text_input_states: BTreeMap::new(),
+            html_panel_hits: BTreeMap::new(),
+            html_panel_move_handles: BTreeMap::new(),
         }
+    }
+
+    /// HTML パネルのタイトルバー (move handle) 領域を screen 座標で更新する。
+    pub fn update_html_panel_move_handle(
+        &mut self,
+        panel_id: &str,
+        screen_rect: render::PixelRect,
+    ) {
+        self.html_panel_move_handles
+            .insert(panel_id.to_string(), screen_rect);
+    }
+
+    /// 指定 panel_id の HTML パネル move handle を削除する。
+    pub fn remove_html_panel_move_handle(&mut self, panel_id: &str) {
+        self.html_panel_move_handles.remove(panel_id);
+    }
+
+    /// HTML パネル move handle を全削除する。
+    pub fn clear_html_panel_move_handles(&mut self) {
+        self.html_panel_move_handles.clear();
+    }
+
+    /// screen 座標 `(x, y)` の HTML パネル move handle を検索し、panel_id を返す。
+    pub fn html_panel_move_handle_at(&self, x: usize, y: usize) -> Option<String> {
+        for (panel_id, r) in &self.html_panel_move_handles {
+            if x >= r.x && y >= r.y && x < r.x + r.width && y < r.y + r.height {
+                return Some(panel_id.clone());
+            }
+        }
+        None
+    }
+
+    /// HTML パネルの hit 情報を更新する。`hits` は (HTML 要素 id, panel-relative 矩形) の列。
+    pub fn update_html_panel_hits(
+        &mut self,
+        panel_id: &str,
+        screen_rect: render::PixelRect,
+        hits: Vec<(String, render::PixelRect)>,
+    ) {
+        let items = hits
+            .into_iter()
+            .map(|(node_id, rect_in_panel)| HtmlPanelHitItem {
+                node_id,
+                rect_in_panel,
+            })
+            .collect();
+        self.html_panel_hits.insert(
+            panel_id.to_string(),
+            HtmlPanelHitMap {
+                screen_rect,
+                hits: items,
+            },
+        );
+    }
+
+    /// 指定 panel_id の HTML パネル hit 情報を削除する。visibility off になった時などに呼ぶ。
+    pub fn remove_html_panel_hits(&mut self, panel_id: &str) {
+        self.html_panel_hits.remove(panel_id);
+    }
+
+    /// HTML パネル hit 情報を全削除する。
+    pub fn clear_html_panel_hits(&mut self) {
+        self.html_panel_hits.clear();
+    }
+
+    /// screen 座標 `(x, y)` の HTML パネル hit を検索し、`(panel_id, node_id)` を返す。
+    pub fn html_panel_hit_at(&self, x: usize, y: usize) -> Option<(String, String)> {
+        for (panel_id, map) in &self.html_panel_hits {
+            let r = map.screen_rect;
+            if x < r.x || y < r.y || x >= r.x + r.width || y >= r.y + r.height {
+                continue;
+            }
+            let local_x = x - r.x;
+            let local_y = y - r.y;
+            for hit in &map.hits {
+                let h = hit.rect_in_panel;
+                if local_x >= h.x
+                    && local_y >= h.y
+                    && local_x < h.x + h.width
+                    && local_y < h.y + h.height
+                {
+                    return Some((panel_id.clone(), hit.node_id.clone()));
+                }
+            }
+        }
+        None
     }
 
     /// パネル trees を計算して返す。

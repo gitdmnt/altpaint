@@ -38,7 +38,15 @@ impl DesktopApp {
     pub(super) fn begin_panel_interaction(&mut self, point: WindowPoint) -> bool {
         self.panel_interaction.pending_panel_press = None;
         if let Some(panel_id) = self.panel_move_hit_from_window(point) {
-            let Some(panel_rect) = self.panel_presentation.panel_rect(&panel_id) else {
+            let viewport = self
+                .layout
+                .as_ref()
+                .map(|l| (l.window_rect.width, l.window_rect.height))
+                .unwrap_or((usize::MAX, usize::MAX));
+            let Some(panel_rect) = self
+                .panel_presentation
+                .panel_rect_in_viewport(&panel_id, viewport.0, viewport.1)
+            else {
                 return false;
             };
             self.panel_interaction.active_panel_drag = Some(PanelDragState::Move {
@@ -451,8 +459,20 @@ impl DesktopApp {
 
     /// パネル イベント from ウィンドウ を計算して返す。
     ///
+    /// HTML パネル hit を先にチェックし、ヒットすれば `PanelEvent::Activate` を返す。
+    /// HTML パネルは独自に screen 座標系の hit テーブルを持つため、DSL パネル surface とは
+    /// 別経路で解決する。
     /// 値を生成できない場合は `None` を返します。
     pub(super) fn panel_event_from_window(&self, point: WindowPoint) -> Option<PanelEvent> {
+        if point.x >= 0
+            && point.y >= 0
+            && let Some((panel_id, node_id)) = self
+                .panel_presentation
+                .html_panel_hit_at(point.x as usize, point.y as usize)
+        {
+            return Some(PanelEvent::Activate { panel_id, node_id });
+        }
+
         let panel_surface = self.panel_surface.as_ref()?;
         let surface_point = self.panel_surface_coordinates_from_window(point)?;
         panel_surface.hit_test_at(surface_point)
@@ -467,8 +487,18 @@ impl DesktopApp {
 
     /// パネル move hit from ウィンドウ を計算して返す。
     ///
+    /// HTML パネルの move handle (タイトルバー) を先に確認し、ヒットすれば panel_id を返す。
+    /// HTML パネルは独自の screen 座標 hit テーブルを持つため、DSL パネル surface とは別経路。
     /// 値を生成できない場合は `None` を返します。
     pub(super) fn panel_move_hit_from_window(&self, point: WindowPoint) -> Option<String> {
+        if point.x >= 0
+            && point.y >= 0
+            && let Some(panel_id) = self
+                .panel_presentation
+                .html_panel_move_handle_at(point.x as usize, point.y as usize)
+        {
+            return Some(panel_id);
+        }
         let panel_surface = self.panel_surface.as_ref()?;
         let surface_point = self.panel_surface_coordinates_from_window(point)?;
         panel_surface.move_panel_hit_test_at(surface_point)
