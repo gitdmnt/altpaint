@@ -54,6 +54,7 @@
 
 - `app-core`
 - `canvas`
+- `render-types`
 - `render`
 - `storage`
 - `desktop-support`
@@ -1080,3 +1081,51 @@ GPU テスト群が並列実行で wgpu Adapter / Device 生成競合により f
 - `feature = "gpu"` の cfg 参照が本流コードから 0 件
 - `srgb_view_supported` の参照が 0 件
 - キャンバス用 `refresh_canvas_frame_region` 呼び出しが 0 件（定義のみ存続）
+
+## Phase 9B 完了 (2026-04-26) — `render-types` クレート抽出
+
+### 背景
+Phase 9A 完了後、`render` クレートには「純データ DTO + CPU 合成 + パネル CPU
+ラスタ + テキスト描画」が同居していた。Phase 9C/9D (装飾・overlay GPU 化) と
+9E (DSL パネル GPU 化) を並列着手するため、純データ DTO を分離して CPU 実装
+側を触らずに consume できる形を作る必要があった。
+
+### 作業内容
+- 新規クレート `crates/render-types/` を作成 (依存: `app-core` のみ)
+- 移動した型・関数 (12 シンボル + 派生関数群):
+  - `PixelRect`, `TextureQuad`, `CanvasScene`, `prepare_canvas_scene`
+  - `FramePlan`, `CanvasPlan`, `CanvasCompositeSource`, `OverlayPlan`,
+    `PanelPlan`, `PanelSurfaceSource`
+  - `CanvasOverlayState`, `PanelNavigatorOverlay`, `PanelNavigatorEntry`
+  - `LayerGroupDirtyPlan`, `LayerGroup`
+  - `union_dirty_rect`, `union_optional_rect`, `brush_preview_dirty_rect`
+  - `map_canvas_dirty_to_display_with_transform`,
+    `map_view_to_canvas_with_transform`, `canvas_texture_quad`,
+    `canvas_drawn_rect`, `brush_preview_rect`,
+    `brush_preview_rect_for_diameter`, `map_canvas_point_to_display`,
+    `exposed_canvas_background_rect`,
+    `exposed_canvas_background_rect_from_scenes`
+- 既存テスト (15 件) を `render-types/src/tests/` に同伴移動
+- `render`/`canvas`/`ui-shell`/`apps/desktop` の Cargo.toml と use 文を一括
+  更新 (互換 re-export なし)
+
+### 残ったもの (`render` クレート)
+- `RenderFrame`, `RenderContext` (Phase 9F で削除予定)
+- `compose.rs` 全 (Phase 9C/9D で GPU 化)
+- `panel.rs` 全 + UI 型 (Phase 9E で GPU 化)
+- `text.rs` 全 (Phase 9C/9E で parley/cosmic-text 置換予定)
+- `status.rs` 全 (Phase 9C で GPU 化)
+
+### 9B でやらなかったこと
+- panel.rs UI 型 (PanelHitKind/PanelHitRegion/FloatingPanel/PanelRenderState
+  等) の移動 — 9E で GPU 直描画化と一緒に panel-runtime か render-types の
+  どちらに置くか確定させるため保留
+
+### 検証
+- `cargo test --workspace` 通過 (render-types 単独 14 件 + 既存全テスト緑)
+- `cargo build --workspace` 通過
+- `cargo clippy --workspace --all-targets` 警告 83 件 (ベースライン同数)
+- `cargo tree -p render-types` で wgpu/vello/panel-api/fontdb/ab_glyph 非依存
+  を確認 (依存は app-core のみ)
+- `use render::(PixelRect|FramePlan|CanvasPlan|OverlayPlan|PanelPlan|...)` の
+  workspace 内参照が 0 件

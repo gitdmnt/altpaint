@@ -137,7 +137,7 @@ pub struct PresentScene<'a> {
 pub struct GpuPanelQuad<'a> {
     pub panel_id: &'a str,
     pub texture: &'a wgpu::Texture,
-    pub screen_rect: render::PixelRect,
+    pub screen_rect: render_types::PixelRect,
 }
 
 /// WGSL（WebGPU Shading Language）で書かれた描画シェーダ。
@@ -910,7 +910,7 @@ impl WgpuPresenter {
                 .html_panel_bind_groups
                 .get(quad.panel_id)
                 .expect("just inserted");
-            let texture_quad = render::TextureQuad {
+            let texture_quad = render_types::TextureQuad {
                 destination: quad.screen_rect,
                 uv_min: [0.0, 0.0],
                 uv_max: [1.0, 1.0],

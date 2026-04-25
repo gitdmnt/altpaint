@@ -32,6 +32,7 @@
 
 - `app-core`
 - `canvas`
+- `render-types`
 - `render`
 - `storage`
 - `desktop-support`
@@ -204,21 +205,38 @@ graph TD
 - `plugins/builtin_bitmap.rs`
 - `ops/*`
 
-### `render`
+### `render-types` (Phase 9B 追加, 2026-04-26)
 
 担当:
 
-- `Document` から `RenderFrame` を得る最小描画入口
-- `CanvasViewTransform` から canvas scene / quad / dirty 写像 / view 座標変換を得る
-- `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan` の構築
-- dirty rect の union、露出背景、ブラシ preview dirty の判断
+- 純データ DTO 専用クレート (wgpu/fontdb/panel-api 非依存、`app-core` のみ依存)
+- `PixelRect` / `TextureQuad` / `CanvasScene` / `prepare_canvas_scene`
+- `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan` / `LayerGroupDirtyPlan`
+- `CanvasOverlayState` / `PanelNavigatorOverlay` / `PanelNavigatorEntry`
+- dirty rect の union 計算 (`union_dirty_rect`, `union_optional_rect`)
+- ブラシ preview dirty / 露出背景 / 座標変換などの純粋計算
+
+意味:
+
+- 9C/9D で装飾・overlay を GPU 化する際、`render` の CPU 実装に触らずに DTO を
+  consume できる
+- 9F で `render` クレートを削除した後も、GPU 経路への入力 DTO として残る
+
+### `render` (Phase 9B 以降は CPU 実装専用)
+
+担当:
+
+- `Document` から `RenderFrame` を得る最小描画入口 (Phase 9F で削除予定)
 - base / overlay / panel / status の CPU compose
 - floating panel layer の GUI ラスタライズ
 - panel hit region の生成
+- システムフォント + font8x8 によるテキスト描画
 
 現状の実態:
 
-- canvas 幾何に加えて frame compose と dirty plan の中核を持つ
+- 純データ DTO は `render-types` に分離済み (Phase 9B)
+- CPU 合成・パネル CPU ラスタライズ・テキスト描画は Phase 9C/9D/9E で順次 GPU
+  化され、最終的に Phase 9F で本クレート自体が削除される
 - 最終 upload と GPU presenter orchestration は `apps/desktop` / `wgpu_canvas` 側に残る
 
 ### `panel-api`

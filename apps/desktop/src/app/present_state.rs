@@ -146,14 +146,14 @@ impl DesktopApp {
             self.layout.as_ref().map(|layout| layout.canvas_host_rect)
         {
             let (canvas_width, canvas_height) = self.canvas_dimensions();
-            let viewport = render::PixelRect {
+            let viewport = render_types::PixelRect {
                 x: canvas_viewport_rect.x,
                 y: canvas_viewport_rect.y,
                 width: canvas_viewport_rect.width,
                 height: canvas_viewport_rect.height,
             };
             // previous_scene は変更前の transform で計算するためキャッシュは使えない
-            let previous_scene = render::prepare_canvas_scene(
+            let previous_scene = render_types::prepare_canvas_scene(
                 viewport,
                 canvas_width,
                 canvas_height,
@@ -163,7 +163,7 @@ impl DesktopApp {
             self.cached_canvas_scene = None;
             let current_scene = self.canvas_scene();
             if let Some(exposed) =
-                render::exposed_canvas_background_rect_from_scenes(previous_scene, current_scene)
+                render_types::exposed_canvas_background_rect_from_scenes(previous_scene, current_scene)
             {
                 self.pending_background_dirty_rect = Some(
                     self.pending_background_dirty_rect
@@ -171,7 +171,7 @@ impl DesktopApp {
                 );
             }
             if let Some(dirty) = self.hover_canvas_position.and_then(|hover_position| {
-                render::brush_preview_dirty_rect(
+                render_types::brush_preview_dirty_rect(
                     previous_scene,
                     current_scene,
                     hover_position,
@@ -202,15 +202,15 @@ impl DesktopApp {
     }
 
     /// キャンバス texture quad を計算して返す。
-    pub(crate) fn canvas_texture_quad(&mut self) -> Option<render::TextureQuad> {
+    pub(crate) fn canvas_texture_quad(&mut self) -> Option<render_types::TextureQuad> {
         self.canvas_scene().and_then(|scene| scene.texture_quad())
     }
 
     /// キャンバス シーン を計算して返す。入力が変わらない限りキャッシュした結果を再利用する。
-    pub(crate) fn canvas_scene(&mut self) -> Option<render::CanvasScene> {
+    pub(crate) fn canvas_scene(&mut self) -> Option<render_types::CanvasScene> {
         let layout = self.layout.as_ref()?;
         let bitmap = self.canvas_frame()?;
-        let viewport = render::PixelRect {
+        let viewport = render_types::PixelRect {
             x: layout.canvas_host_rect.x,
             y: layout.canvas_host_rect.y,
             width: layout.canvas_host_rect.width,
@@ -228,7 +228,7 @@ impl DesktopApp {
         {
             return cache.scene;
         }
-        let scene = render::prepare_canvas_scene(viewport, canvas_width, canvas_height, transform);
+        let scene = render_types::prepare_canvas_scene(viewport, canvas_width, canvas_height, transform);
         self.cached_canvas_scene = Some(super::CachedCanvasScene {
             viewport,
             canvas_width,

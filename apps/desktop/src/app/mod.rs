@@ -47,11 +47,11 @@ static TEST_SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// canvas_scene のキャッシュエントリ。入力が同じなら再計算を省略するために使う。
 struct CachedCanvasScene {
-    viewport: render::PixelRect,
+    viewport: render_types::PixelRect,
     canvas_width: usize,
     canvas_height: usize,
     transform: app_core::CanvasViewTransform,
-    scene: Option<render::CanvasScene>,
+    scene: Option<render_types::CanvasScene>,
 }
 
 /// ストローク中のビットマップ差分追跡状態。

@@ -17,6 +17,7 @@ panel-html-experiment = { path = "../../crates/panel-html-experiment", optional 
 keyboard-types = { version = "0.7", optional = true }
 pollster.workspace = true
 render = { path = "../../crates/render" }
+render-types = { path = "../../crates/render-types" }
 serde_json.workspace = true
 storage = { path = "../../crates/storage" }
 ui-shell = { path = "../../crates/ui-shell" }

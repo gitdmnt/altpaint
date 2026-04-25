@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use app_core::ColorRgba8;
 use panel_api::{LayerListItem, PanelNode, PanelTree};
 
-use crate::PixelRect;
+use render_types::PixelRect;
+
 use crate::text::{
     draw_text_rgba, line_height as text_line_height, measure_text_width, wrap_text_lines,
 };

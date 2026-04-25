@@ -65,7 +65,7 @@ fn html_panel_move_handle_at_resolves_drag_handle_to_panel_id() {
     let mut presentation = PanelPresentation::new();
     presentation.update_html_panel_move_handle(
         "html.test",
-        render::PixelRect {
+        render_types::PixelRect {
             x: 100,
             y: 50,
             width: 280,
@@ -90,7 +90,7 @@ fn remove_html_panel_move_handle_clears_handle() {
     let mut presentation = PanelPresentation::new();
     presentation.update_html_panel_move_handle(
         "html.test",
-        render::PixelRect {
+        render_types::PixelRect {
             x: 0,
             y: 0,
             width: 100,
@@ -107,7 +107,7 @@ fn remove_html_panel_move_handle_clears_handle() {
 #[test]
 fn html_panel_hit_at_resolves_screen_coordinates_to_panel_event() {
     let mut presentation = PanelPresentation::new();
-    let screen_rect = render::PixelRect {
+    let screen_rect = render_types::PixelRect {
         x: 100,
         y: 50,
         width: 280,
@@ -116,7 +116,7 @@ fn html_panel_hit_at_resolves_screen_coordinates_to_panel_event() {
     let hits = vec![
         (
             "save_btn".to_string(),
-            render::PixelRect {
+            render_types::PixelRect {
                 x: 10,
                 y: 20,
                 width: 60,
@@ -125,7 +125,7 @@ fn html_panel_hit_at_resolves_screen_coordinates_to_panel_event() {
         ),
         (
             "undo_btn".to_string(),
-            render::PixelRect {
+            render_types::PixelRect {
                 x: 80,
                 y: 20,
                 width: 60,
@@ -160,7 +160,7 @@ fn remove_html_panel_hits_clears_hits_for_panel() {
     let mut presentation = PanelPresentation::new();
     presentation.update_html_panel_hits(
         "html.test",
-        render::PixelRect {
+        render_types::PixelRect {
             x: 0,
             y: 0,
             width: 100,
@@ -168,7 +168,7 @@ fn remove_html_panel_hits_clears_hits_for_panel() {
         },
         vec![(
             "btn".to_string(),
-            render::PixelRect {
+            render_types::PixelRect {
                 x: 10,
                 y: 10,
                 width: 40,

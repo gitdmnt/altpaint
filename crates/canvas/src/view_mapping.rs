@@ -1,5 +1,6 @@
 use app_core::{CanvasPoint, CanvasViewTransform, CanvasViewportPoint};
 use render::RenderFrame;
+use render_types::PixelRect;
 
 /// ビュー空間で受け取ったキャンバスポインタイベントを表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,8 +16,8 @@ pub fn map_view_to_canvas_with_transform(
     event: CanvasPointerEvent,
     transform: CanvasViewTransform,
 ) -> Option<CanvasPoint> {
-    render::map_view_to_canvas_with_transform(
-        render::PixelRect {
+    render_types::map_view_to_canvas_with_transform(
+        PixelRect {
             x: 0,
             y: 0,
             width: event.width.max(0) as usize,

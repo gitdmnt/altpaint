@@ -31,7 +31,7 @@ impl DesktopApp {
 
         let transform = self.document.view_transform;
         if let Some(previous) = previous.and_then(|position| {
-            render::brush_preview_rect_for_diameter(
+            render_types::brush_preview_rect_for_diameter(
                 layout,
                 bitmap_width,
                 bitmap_height,
@@ -43,7 +43,7 @@ impl DesktopApp {
             self.append_temp_overlay_dirty_rect(previous);
         }
         if let Some(next) = next.and_then(|position| {
-            render::brush_preview_rect_for_diameter(
+            render_types::brush_preview_rect_for_diameter(
                 layout,
                 bitmap_width,
                 bitmap_height,

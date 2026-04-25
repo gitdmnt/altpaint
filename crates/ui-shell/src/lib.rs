@@ -35,7 +35,7 @@ pub struct PanelPresentation {
     /// 個別パネルごとの計測済みサイズキャッシュ。
     panel_measured_size_cache: BTreeMap<String, render::MeasuredPanelSize>,
     /// 直近描画で使った実効パネル矩形。
-    rendered_panel_rects: BTreeMap<String, render::PixelRect>,
+    rendered_panel_rects: BTreeMap<String, render_types::PixelRect>,
     /// panel content を再構築すべきかのフラグ。
     panel_content_dirty: bool,
     /// 次回 rasterize が全パネル対象かどうか。
@@ -53,7 +53,7 @@ pub struct PanelPresentation {
     /// 直近の panel compose に要した時間。
     last_panel_compose_duration_ms: f64,
     /// 直近の panel surface 更新で実際に変化したグローバル矩形。
-    last_panel_surface_dirty_rect: Option<render::PixelRect>,
+    last_panel_surface_dirty_rect: Option<render_types::PixelRect>,
     /// 現在の縦スクロール量。
     panel_scroll_offset: usize,
     /// content 全体の高さ。
@@ -69,13 +69,13 @@ pub struct PanelPresentation {
     /// HTML パネル (GPU 直描画) の hit 情報。`update_html_panel_hits` で毎フレーム更新する。
     html_panel_hits: BTreeMap<String, HtmlPanelHitMap>,
     /// HTML パネルのタイトルバードラッグハンドル (screen 座標)。`update_html_panel_move_handle` で更新。
-    html_panel_move_handles: BTreeMap<String, render::PixelRect>,
+    html_panel_move_handles: BTreeMap<String, render_types::PixelRect>,
 }
 
 /// HTML パネル 1 枚分の hit 情報。screen 座標の矩形と panel-relative の hit 群。
 #[derive(Debug, Clone)]
 struct HtmlPanelHitMap {
-    screen_rect: render::PixelRect,
+    screen_rect: render_types::PixelRect,
     hits: Vec<HtmlPanelHitItem>,
 }
 
@@ -84,7 +84,7 @@ struct HtmlPanelHitItem {
     /// HTML 要素の `id` 属性。`HtmlPanelPlugin::handle_event` の matching に使われる。
     node_id: String,
     /// パネル原点を (0,0) とする矩形。
-    rect_in_panel: render::PixelRect,
+    rect_in_panel: render_types::PixelRect,
 }
 
 impl PanelPresentation {
@@ -123,7 +123,7 @@ impl PanelPresentation {
     pub fn update_html_panel_move_handle(
         &mut self,
         panel_id: &str,
-        screen_rect: render::PixelRect,
+        screen_rect: render_types::PixelRect,
     ) {
         self.html_panel_move_handles
             .insert(panel_id.to_string(), screen_rect);
@@ -153,8 +153,8 @@ impl PanelPresentation {
     pub fn update_html_panel_hits(
         &mut self,
         panel_id: &str,
-        screen_rect: render::PixelRect,
-        hits: Vec<(String, render::PixelRect)>,
+        screen_rect: render_types::PixelRect,
+        hits: Vec<(String, render_types::PixelRect)>,
     ) {
         let items = hits
             .into_iter()
@@ -300,7 +300,7 @@ impl PanelPresentation {
     /// Last パネル サーフェス 差分 矩形 に必要な差分領域だけを描画または合成する。
     ///
     /// 値を生成できない場合は `None` を返します。
-    pub fn last_panel_surface_dirty_rect(&self) -> Option<render::PixelRect> {
+    pub fn last_panel_surface_dirty_rect(&self) -> Option<render_types::PixelRect> {
         self.last_panel_surface_dirty_rect
     }
 

@@ -8,8 +8,8 @@ pub(crate) use geometry::{
     fit_rect, map_window_to_panel_surface, map_window_to_panel_surface_clamped,
 };
 
-pub(crate) type Rect = render::PixelRect;
-pub(crate) type TextureQuad = render::TextureQuad;
+pub(crate) type Rect = render_types::PixelRect;
+pub(crate) type TextureQuad = render_types::TextureQuad;
 
 /// デスクトップ UI の固定レイアウト情報。
 #[derive(Debug, Clone, PartialEq, Eq)]

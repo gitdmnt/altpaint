@@ -4,11 +4,13 @@ use desktop_support::{
     TEXT_PRIMARY, TEXT_SECONDARY, WINDOW_PADDING,
 };
 
-use crate::status::status_text_bounds;
-use crate::{
+use render_types::{
     CanvasCompositeSource, CanvasOverlayState, FramePlan, PanelNavigatorOverlay,
-    PanelSurfaceSource, PixelRect, RenderFrame, draw_text_rgba, map_canvas_point_to_display,
+    PanelSurfaceSource, PixelRect, map_canvas_point_to_display,
 };
+
+use crate::status::status_text_bounds;
+use crate::{RenderFrame, draw_text_rgba};
 
 const PANEL_NAVIGATOR_BACKGROUND: [u8; 4] = [0x10, 0x16, 0x21, 0xdd];
 const PANEL_NAVIGATOR_BORDER: [u8; 4] = [0x90, 0xa4, 0xae, 0xff];
@@ -833,7 +835,7 @@ fn blit_canvas_with_transform(
     }
 
     let Some(scene) =
-        crate::prepare_canvas_scene(destination, source.width, source.height, transform)
+        render_types::prepare_canvas_scene(destination, source.width, source.height, transform)
     else {
         return;
     };
@@ -1143,7 +1145,7 @@ fn draw_brush_preview(
         return;
     }
     let Some(scene) =
-        crate::prepare_canvas_scene(destination, source.width, source.height, transform)
+        render_types::prepare_canvas_scene(destination, source.width, source.height, transform)
     else {
         return;
     };
@@ -1151,7 +1153,7 @@ fn draw_brush_preview(
         return;
     };
     let radius = ((brush_size.max(1) as f32 * scene.scale()) * 0.5).max(4.0);
-    let Some(target) = crate::brush_preview_rect_for_diameter(
+    let Some(target) = render_types::brush_preview_rect_for_diameter(
         destination,
         source.width,
         source.height,

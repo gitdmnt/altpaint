@@ -7,8 +7,8 @@ use app_core::{WorkspacePanelPosition, WorkspacePanelSize};
 use panel_runtime::PanelRuntime;
 use render::{
     FloatingPanel, PanelFocusTarget, PanelRenderState as RenderPanelState, PanelTextInputState,
-    PixelRect,
 };
+use render_types::PixelRect;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 

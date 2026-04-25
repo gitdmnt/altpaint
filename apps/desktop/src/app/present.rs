@@ -118,19 +118,19 @@ impl DesktopApp {
             let panel_surface = self.panel_surface.as_ref().expect("panel surface exists");
             let status_text = self.status_text();
             let bitmap = self.canvas_frame.as_ref();
-            let canvas_source = render::CanvasCompositeSource {
+            let canvas_source = render_types::CanvasCompositeSource {
                 width: bitmap.map_or(1, |bitmap| bitmap.width),
                 height: bitmap.map_or(1, |bitmap| bitmap.height),
                 pixels: bitmap.map_or(&[][..], |bitmap| bitmap.pixels.as_slice()),
             };
-            let panel_surface_source = render::PanelSurfaceSource {
+            let panel_surface_source = render_types::PanelSurfaceSource {
                 x: panel_surface.x,
                 y: panel_surface.y,
                 width: panel_surface.width,
                 height: panel_surface.height,
                 pixels: panel_surface.pixels.as_slice(),
             };
-            let frame_plan = render::FramePlan::new(
+            let frame_plan = render_types::FramePlan::new(
                 window_width,
                 window_height,
                 layout.canvas_host_rect,
@@ -139,7 +139,7 @@ impl DesktopApp {
                 self.document.view_transform,
                 &status_text,
             );
-            let overlay_state = render::CanvasOverlayState {
+            let overlay_state = render_types::CanvasOverlayState {
                 brush_preview: self.hover_canvas_position,
                 brush_size: self.brush_preview_size(),
                 lasso_points: self.canvas_input.lasso_points.clone(),
@@ -208,9 +208,9 @@ impl DesktopApp {
             return PresentFrameUpdate::default();
         };
 
-        let mut layer_dirty = render::LayerGroupDirtyPlan::default();
+        let mut layer_dirty = render_types::LayerGroupDirtyPlan::default();
 
-        let canvas_source = render::CanvasCompositeSource {
+        let canvas_source = render_types::CanvasCompositeSource {
             width: self.canvas_frame.as_ref().map_or(1, |bitmap| bitmap.width),
             height: self.canvas_frame.as_ref().map_or(1, |bitmap| bitmap.height),
             pixels: self
@@ -219,7 +219,7 @@ impl DesktopApp {
                 .map_or(&[][..], |bitmap| bitmap.pixels.as_slice()),
         };
         let panel_surface = self.panel_surface.as_ref().expect("panel surface exists");
-        let panel_surface_source = render::PanelSurfaceSource {
+        let panel_surface_source = render_types::PanelSurfaceSource {
             x: panel_surface.x,
             y: panel_surface.y,
             width: panel_surface.width,
@@ -227,7 +227,7 @@ impl DesktopApp {
             pixels: panel_surface.pixels.as_slice(),
         };
         let frame_status_text = status_text.as_deref().unwrap_or("");
-        let frame_plan = render::FramePlan::new(
+        let frame_plan = render_types::FramePlan::new(
             window_width,
             window_height,
             layout.canvas_host_rect,
@@ -236,7 +236,7 @@ impl DesktopApp {
             self.document.view_transform,
             frame_status_text,
         );
-        let overlay_state = render::CanvasOverlayState {
+        let overlay_state = render_types::CanvasOverlayState {
             brush_preview: hover_canvas_position,
             brush_size: brush_preview_size,
             lasso_points: lasso_points.clone(),
@@ -264,7 +264,7 @@ impl DesktopApp {
 
         // L1: ステータス更新
         if let Some(status_text) = status_text.as_deref() {
-            let status_plan = render::FramePlan::new(
+            let status_plan = render_types::FramePlan::new(
                 window_width,
                 window_height,
                 layout.canvas_host_rect,

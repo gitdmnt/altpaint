@@ -13,6 +13,7 @@ members = [
   "crates/gpu-canvas",
   "crates/panel-html-experiment",
   "crates/render",
+  "crates/render-types",
   "crates/storage",
   "crates/ui-shell",
   "crates/workspace-persistence",

@@ -120,7 +120,7 @@ impl PanelPresentation {
     /// 既存データを走査して パネル 矩形 を組み立てる。
     ///
     /// 値を生成できない場合は `None` を返します。
-    pub fn panel_rect(&self, panel_id: &str) -> Option<render::PixelRect> {
+    pub fn panel_rect(&self, panel_id: &str) -> Option<render_types::PixelRect> {
         if let Some(rect) = self.rendered_panel_rects.get(panel_id) {
             return Some(*rect);
         }
@@ -137,7 +137,7 @@ impl PanelPresentation {
             size,
             default_panel_position(panel_id, 0),
         );
-        Some(render::PixelRect {
+        Some(render_types::PixelRect {
             x: position.x,
             y: position.y,
             width: size.width,
@@ -177,7 +177,7 @@ impl PanelPresentation {
         panel_id: &str,
         viewport_width: usize,
         viewport_height: usize,
-    ) -> Option<render::PixelRect> {
+    ) -> Option<render_types::PixelRect> {
         if let Some(rect) = self.rendered_panel_rects.get(panel_id) {
             return Some(*rect);
         }
@@ -194,7 +194,7 @@ impl PanelPresentation {
             size,
             default_panel_position(panel_id, 0),
         );
-        Some(render::PixelRect {
+        Some(render_types::PixelRect {
             x: position.x,
             y: position.y,
             width: size.width,

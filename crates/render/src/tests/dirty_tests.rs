@@ -1,65 +1,12 @@
-use app_core::{CanvasPoint, CanvasViewTransform};
-
-use crate::{
+use app_core::CanvasViewTransform;
+use render_types::{
     CanvasCompositeSource, CanvasOverlayState, FramePlan, PanelSurfaceSource, PixelRect,
-    RenderFrame, blit_scaled_rgba_region, brush_preview_dirty_rect, build_source_axis_runs,
-    compose_canvas_host_region, exposed_canvas_background_rect, fill_rgba_block,
-    scroll_canvas_region,
 };
 
-/// ブラシ プレビュー 差分 矩形 unions 前 and 現在 プレビュー が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
-#[test]
-fn brush_preview_dirty_rect_unions_previous_and_current_preview() {
-    let viewport = PixelRect {
-        x: 0,
-        y: 0,
-        width: 400,
-        height: 300,
-    };
-    let previous = crate::prepare_canvas_scene(viewport, 64, 64, CanvasViewTransform::default());
-    let current = crate::prepare_canvas_scene(
-        viewport,
-        64,
-        64,
-        CanvasViewTransform {
-            pan_x: 20.0,
-            ..CanvasViewTransform::default()
-        },
-    );
-
-    let dirty = brush_preview_dirty_rect(previous, current, CanvasPoint::new(20, 20), 12.0)
-        .expect("dirty rect exists");
-
-    assert!(dirty.width > 0);
-    assert!(dirty.height > 0);
-}
-
-/// exposed キャンバス 背景 矩形 reports pan exposure が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
-#[test]
-fn exposed_canvas_background_rect_reports_pan_exposure() {
-    let dirty = exposed_canvas_background_rect(
-        PixelRect {
-            x: 0,
-            y: 0,
-            width: 320,
-            height: 240,
-        },
-        64,
-        64,
-        CanvasViewTransform::default(),
-        CanvasViewTransform {
-            pan_x: 24.0,
-            ..CanvasViewTransform::default()
-        },
-    )
-    .expect("dirty rect exists");
-
-    assert!(dirty.width > 0 || dirty.height > 0);
-}
+use crate::{
+    RenderFrame, blit_scaled_rgba_region, build_source_axis_runs, compose_canvas_host_region,
+    fill_rgba_block, scroll_canvas_region,
+};
 
 /// ソース axis runs merge adjacent pixels with same ソース x が期待どおりに動作することを検証する。
 #[test]

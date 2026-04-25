@@ -3,7 +3,7 @@
 use app_core::{CanvasDirtyRect, ClampToCanvasBounds};
 
 use super::DesktopApp;
-use render::{PanelNavigatorEntry, PanelNavigatorOverlay};
+use render_types::{PanelNavigatorEntry, PanelNavigatorOverlay};
 
 impl DesktopApp {
     /// 入力や種別に応じて処理を振り分ける。

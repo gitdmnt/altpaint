@@ -261,7 +261,7 @@ impl ApplicationHandler for DesktopRuntime {
                 struct HtmlQuadEntry {
                     panel_id: String,
                     texture_ptr: *const wgpu::Texture,
-                    screen_rect: render::PixelRect,
+                    screen_rect: render_types::PixelRect,
                 }
                 #[cfg(feature = "html-panel")]
                 let html_quad_entries: Vec<HtmlQuadEntry> = {
@@ -283,7 +283,7 @@ impl ApplicationHandler for DesktopRuntime {
                         // viewport は GPU テクスチャの上限としてそのまま渡し、Engine 側でクランプさせる。
                         let measured = self.app.panel_runtime.html_measured_sizes();
                         let mut sized: Vec<(String, u32, u32)> = Vec::with_capacity(panel_ids.len());
-                        let mut panel_rects: Vec<render::PixelRect> =
+                        let mut panel_rects: Vec<render_types::PixelRect> =
                             Vec::with_capacity(panel_ids.len());
                         for id in &panel_ids {
                             // measured_size を取得
@@ -301,13 +301,13 @@ impl ApplicationHandler for DesktopRuntime {
                                     size.width as usize,
                                     size.height as usize,
                                 )
-                                .unwrap_or(render::PixelRect {
+                                .unwrap_or(render_types::PixelRect {
                                     x: 0,
                                     y: 0,
                                     width: mw as usize,
                                     height: mh as usize,
                                 });
-                            let panel_rect = render::PixelRect {
+                            let panel_rect = render_types::PixelRect {
                                 x: position_rect.x,
                                 y: position_rect.y,
                                 width: mw as usize,
@@ -327,10 +327,10 @@ impl ApplicationHandler for DesktopRuntime {
                         type FrameMeta = (
                             String,
                             *const wgpu::Texture,
-                            render::PixelRect, // パネル全体 (chrome 含む)
-                            render::PixelRect, // body 部分 (hit 領域)
-                            render::PixelRect, // chrome 部分 (move handle)
-                            Vec<(String, render::PixelRect)>,
+                            render_types::PixelRect, // パネル全体 (chrome 含む)
+                            render_types::PixelRect, // body 部分 (hit 領域)
+                            render_types::PixelRect, // chrome 部分 (move handle)
+                            Vec<(String, render_types::PixelRect)>,
                         );
                         let mut frame_meta: Vec<FrameMeta> = Vec::with_capacity(frames.len());
                         for frame in frames.iter() {
@@ -339,33 +339,33 @@ impl ApplicationHandler for DesktopRuntime {
                                 .iter()
                                 .position(|id| id == &frame.panel_id)
                                 .map(|i| panel_rects[i])
-                                .unwrap_or(render::PixelRect {
+                                .unwrap_or(render_types::PixelRect {
                                     x: 0,
                                     y: 0,
                                     width: frame.width as usize,
                                     height: frame.height as usize,
                                 });
                             let chrome_h = HTML_CHROME_HEIGHT as usize;
-                            let body_screen_rect = render::PixelRect {
+                            let body_screen_rect = render_types::PixelRect {
                                 x: panel_rect.x,
                                 y: panel_rect.y + chrome_h,
                                 width: panel_rect.width,
                                 height: panel_rect.height.saturating_sub(chrome_h),
                             };
-                            let chrome_screen_rect = render::PixelRect {
+                            let chrome_screen_rect = render_types::PixelRect {
                                 x: panel_rect.x,
                                 y: panel_rect.y,
                                 width: panel_rect.width,
                                 height: chrome_h,
                             };
-                            let hits: Vec<(String, render::PixelRect)> = frame
+                            let hits: Vec<(String, render_types::PixelRect)> = frame
                                 .hit_regions
                                 .iter()
                                 .filter_map(|hit| {
                                     let element_id = hit.element_id.clone()?;
                                     Some((
                                         element_id,
-                                        render::PixelRect {
+                                        render_types::PixelRect {
                                             x: hit.rect.x as usize,
                                             y: hit.rect.y as usize,
                                             width: hit.rect.width as usize,

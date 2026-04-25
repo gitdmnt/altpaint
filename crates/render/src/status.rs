@@ -1,6 +1,8 @@
 use desktop_support::FOOTER_HEIGHT;
 
-use crate::{PixelRect, measure_text_width};
+use render_types::PixelRect;
+
+use crate::measure_text_width;
 
 /// 現在の measured ステータス 幅 を返す。
 pub fn measured_status_width(status_text: &str) -> usize {
