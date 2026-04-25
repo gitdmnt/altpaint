@@ -1129,3 +1129,78 @@ Phase 9A 完了後、`render` クレートには「純データ DTO + CPU 合成
   を確認 (依存は app-core のみ)
 - `use render::(PixelRect|FramePlan|CanvasPlan|OverlayPlan|PanelPlan|...)` の
   workspace 内参照が 0 件
+
+## Phase 9C-1 完了 (2026-04-26) — Solid Quad パイプライン + 矩形 GPU 化
+
+### 背景
+Phase 9C は「ステータス / デスクトップ背景 / アクティブパネル枠」を GPU 直
+描画化するサブフェーズ。9C-1 ではテキストを除く単色矩形 (背景・キャンバス
+枠 fill・キャンバスホスト枠線・アクティブ UI パネル枠線) を GPU で塗る基盤
+を整備し、`crates/render/` の対応する CPU 関数を撤去した。9C-2 でステータス
+テキストを GPU (parley + Vello) 化したら L1 `background_frame` 自体を廃止する。
+
+### 作業内容
+- 新規モジュール `apps/desktop/src/frame/solid_quad.rs`:
+  - `SolidQuad { rect, color }` DTO
+  - `pixel_rect_to_ndc(rect, w, h) -> [f32; 4]` (wgpu Y 反転を吸収)
+  - `build_background_solid_quads(window, host, display) -> Vec<SolidQuad>`
+    (ウィンドウ背景 + キャンバス領域 + 4 マージン + ホスト枠線 4 矩形)
+  - `build_foreground_solid_quads(active_rect)` (アクティブ枠線 4 矩形)
+  - 純関数テスト 11 件 (full screen / quadrant / margins / 枠線 / None ケース)
+- `apps/desktop/src/wgpu_canvas.rs`:
+  - 専用 `SolidQuadPipeline` を新設 (32 バイト uniform: rect_ndc + color)
+  - `PresentScene` に `background_quads: &[SolidQuad]` と
+    `foreground_quads: &[SolidQuad]` フィールドを追加
+  - レンダーパス内で L0 (background_quads) → L1〜L5 → L6 (foreground_quads)
+    の順で描画
+- `apps/desktop/src/app/present_state.rs`:
+  - `background_solid_quads()` / `foreground_solid_quads()` accessor を追加
+- `apps/desktop/src/app/present.rs`:
+  - `compose_active_panel_border` 呼び出し 3 箇所を削除
+  - `clear_canvas_host_region` 経由の `pending_background_dirty_rect`
+    再描画ループを撤去 (GPU L0 が毎フレーム塗るため)
+- `crates/render/src/compose.rs`:
+  - `compose_background_frame` を「テキスト専用」最小実装へ縮約
+    (window fill / canvas host fill / 枠線描画コードを削除)
+  - `compose_status_region` の `fill_rect(APP_BACKGROUND)` を透明クリアに変更
+  - 削除した関数: `compose_active_panel_border`,
+    `compose_desktop_frame`, `compose_canvas_host_region`,
+    `clear_canvas_host_region`, `fill_canvas_host_background`,
+    `blit_canvas_with_transform`, `stroke_rect_region`
+- `crates/render/src/lib.rs`: 削除関数の re-export を撤去
+- `crates/desktop-support/src/config.rs`: `ACTIVE_UI_PANEL_BORDER` 定数を
+  追加 (旧 compose.rs 内の private const から昇格)
+- 既存テストの整理:
+  - `crates/render/src/tests/overlay_tests.rs`:
+    `compose_status_region_*` / `compose_active_panel_border_*` テスト削除
+  - `crates/render/src/tests/frame_plan_tests.rs`:
+    `compose_desktop_frame_writes_panel_and_canvas_regions` テスト削除
+  - `crates/render/src/tests/dirty_tests.rs`:
+    `blit_canvas_with_transform_bilinear_at_zoom_out` テスト削除 (CPU 経路廃止)
+  - `apps/desktop/src/app/tests/interaction.rs::pan_view_updates_canvas_without_status_recompose`:
+    `compose_dirty_canvas_base` profiler 期待値と
+    `background_dirty_rect.is_some()` を反転 (GPU 化により dirty 不要)
+
+### 採用判断
+- 単色矩形は **専用 solid-quad パイプライン** (Vello は使用せず)
+  - 理由: 単色 1 矩形に Vello はオーバーヘッド大 / 既存
+    `PRESENT_SHADER` はテクスチャサンプル前提で色固定描画と相性悪い
+- 枠線は **4 矩形分解** (top/bottom/left/right) で 1px を表現
+  - 理由: shader 分岐より CPU 側で 4 quad に分けた方がシェーダが単純
+- NDC 変換ヘルパは `apps/desktop/src/frame/solid_quad.rs` に配置し
+  `render-types` を描画関心事で汚染しない
+
+### 残ったもの (Phase 9C-2 で対応)
+- `compose_background_frame` (テキスト専用、9C-2 で削除)
+- `compose_status_region` (CPU テキスト経路、9C-2 で parley + Vello に置換)
+- L1 `background_frame: RenderFrame` フィールド (9C-2 で廃止)
+- `pending_background_dirty_rect` / `LayerGroup::background` (9C-2 で削除)
+- `crates/render/src/text.rs::draw_text_rgba` (パネル CPU ラスタは 9E)
+- `crates/render/src/status.rs::status_text_bounds` (9C-2 で parley 経路に統一)
+
+### 検証
+- `cargo test -p render` → 10 件 通過
+- `cargo test -p desktop` → 127 件 通過 (parallel テストの flaky failure
+  4 件は test_threads=1 で全て通過する pre-existing collision)
+- `cargo clippy --workspace --all-targets` → 警告 83 件 (ベースライン同数)
+- `cargo build --release -p desktop` → コンパイル成功 (WGSL も valid)

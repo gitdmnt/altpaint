@@ -1258,12 +1258,15 @@ fn pan_view_updates_canvas_without_status_recompose() {
     assert!(profiler.stats.contains_key("prepare_canvas_scene"));
     assert!(!profiler.stats.contains_key("compose_dirty_panel"));
     assert!(!profiler.stats.contains_key("panel_surface"));
-    assert!(profiler.stats.contains_key("compose_dirty_canvas_base"));
+    // 9C-1: L1 背景は GPU の solid quad パイプラインで毎フレーム描画されるため
+    // パン操作時に CPU の compose_dirty_canvas_base は呼ばれない。
+    assert!(!profiler.stats.contains_key("compose_dirty_canvas_base"));
     assert!(!profiler.stats.contains_key("compose_dirty_overlay"));
     assert!(update.canvas_updated);
     assert!(update.canvas_transform_changed);
     assert_eq!(update.canvas_dirty_rect, None);
-    assert!(update.background_dirty_rect.is_some());
+    // 9C-1: pan は canvas transform のみを変えるため L1 dirty rect は出ない。
+    assert!(update.background_dirty_rect.is_none());
     assert_eq!(update.temp_overlay_dirty_rect, None);
 }
 

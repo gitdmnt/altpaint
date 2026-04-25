@@ -157,10 +157,9 @@ impl DesktopApp {
             let temp_overlay_frame = profiler.measure("compose_temp_overlay_frame", || {
                 render::compose_temp_overlay_frame(&frame_plan, &overlay_state)
             });
-            let mut ui_panel_frame = profiler.measure("compose_ui_panel_frame", || {
+            let ui_panel_frame = profiler.measure("compose_ui_panel_frame", || {
                 render::compose_ui_panel_frame(&frame_plan)
             });
-            render::compose_active_panel_border(&mut ui_panel_frame, &overlay_state, None);
             self.background_frame = Some(background_frame);
             self.temp_overlay_frame = Some(temp_overlay_frame);
             self.ui_panel_frame = Some(ui_panel_frame);
@@ -255,7 +254,6 @@ impl DesktopApp {
             profiler.measure("compose_dirty_panel", || {
                 let _ = panel_surface;
                 render::compose_ui_panel_region(ui_panel_frame, &frame_plan, panel_dirty_rect);
-                render::compose_active_panel_border(ui_panel_frame, &overlay_state, panel_dirty_rect);
             });
             if let Some(panel_dirty_rect) = panel_dirty_rect {
                 layer_dirty.mark_ui_panel(panel_dirty_rect);
@@ -286,16 +284,10 @@ impl DesktopApp {
             self.needs_status_refresh = false;
         }
 
-        // L1: キャンバス背景 dirty
-        if let Some(dirty_rect) = self.pending_background_dirty_rect.take()
-            && dirty_rect.width > 0
-            && dirty_rect.height > 0
-        {
-            profiler.measure("compose_dirty_canvas_base", || {
-                render::clear_canvas_host_region(background_frame, &frame_plan, Some(dirty_rect));
-            });
-            layer_dirty.mark_background(dirty_rect);
-        }
+        // L1 のキャンバス背景・枠は GPU L0 solid quad が毎フレーム塗るため、
+        // pending_background_dirty_rect は status text 経路のみで使われる（上で消費済み）。
+        // ここでは破棄するだけ。
+        let _ = self.pending_background_dirty_rect.take();
 
         // L3: キャンバス一時オーバーレイ dirty
         if let Some(dirty_rect) = self.pending_temp_overlay_dirty_rect.take()
@@ -320,11 +312,6 @@ impl DesktopApp {
         {
             profiler.measure("compose_dirty_ui_panel_rect", || {
                 render::compose_ui_panel_region(ui_panel_frame, &frame_plan, Some(dirty_rect));
-                render::compose_active_panel_border(
-                    ui_panel_frame,
-                    &overlay_state,
-                    Some(dirty_rect),
-                );
             });
             layer_dirty.mark_ui_panel(dirty_rect);
         }

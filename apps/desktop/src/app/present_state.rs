@@ -201,6 +201,27 @@ impl DesktopApp {
         self.ui_panel_frame.as_ref()
     }
 
+    /// L0 背景 solid quads (ウィンドウ背景・キャンバス枠 fill・ホスト枠線) を組み立てる。
+    pub(crate) fn background_solid_quads(&self) -> Vec<crate::frame::SolidQuad> {
+        let Some(layout) = self.layout.as_ref() else {
+            return Vec::new();
+        };
+        crate::frame::build_background_solid_quads(
+            layout.window_rect,
+            layout.canvas_host_rect,
+            layout.canvas_display_rect,
+        )
+    }
+
+    /// L6 前景 solid quads (アクティブ UI パネル枠線) を組み立てる。
+    pub(crate) fn foreground_solid_quads(&self) -> Vec<crate::frame::SolidQuad> {
+        let active_rect = self
+            .panel_presentation
+            .focused_target()
+            .and_then(|(panel_id, _)| self.panel_presentation.panel_rect(panel_id));
+        crate::frame::build_foreground_solid_quads(active_rect)
+    }
+
     /// キャンバス texture quad を計算して返す。
     pub(crate) fn canvas_texture_quad(&mut self) -> Option<render_types::TextureQuad> {
         self.canvas_scene().and_then(|scene| scene.texture_quad())

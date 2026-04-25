@@ -36,6 +36,8 @@ pub const CANVAS_BACKGROUND: [u8; 4] = [0x60, 0x60, 0x60, 0xff];
 pub const CANVAS_FRAME_BACKGROUND: [u8; 4] = [0x40, 0x40, 0x40, 0xff];
 /// キャンバス枠線色を表す。
 pub const CANVAS_FRAME_BORDER: [u8; 4] = [0x2a, 0x2a, 0x2a, 0xff];
+/// アクティブ UI パネル枠線の色（水色）。
+pub const ACTIVE_UI_PANEL_BORDER: [u8; 4] = [0x42, 0xa5, 0xf5, 0xff];
 /// 主要ラベル用テキスト色を表す。
 pub const TEXT_PRIMARY: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
 /// 補助情報用テキスト色を表す。

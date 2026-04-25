@@ -1,8 +1,5 @@
 use app_core::{CanvasDisplayPoint, CanvasPoint};
-use desktop_support::{
-    APP_BACKGROUND, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND, CANVAS_FRAME_BORDER, FOOTER_HEIGHT,
-    TEXT_PRIMARY, TEXT_SECONDARY, WINDOW_PADDING,
-};
+use desktop_support::{FOOTER_HEIGHT, TEXT_PRIMARY, TEXT_SECONDARY, WINDOW_PADDING};
 
 use render_types::{
     CanvasCompositeSource, CanvasOverlayState, FramePlan, PanelNavigatorOverlay,
@@ -21,20 +18,17 @@ const ACTIVE_PANEL_BORDER: [u8; 4] = [0xff, 0xc1, 0x07, 0xff];
 const ACTIVE_PANEL_FILL: [u8; 4] = [0xff, 0xc1, 0x07, 0x18];
 const PANEL_PREVIEW_BORDER: [u8; 4] = [0x80, 0xde, 0xea, 0xff];
 const PANEL_PREVIEW_FILL: [u8; 4] = [0x80, 0xde, 0xea, 0x32];
-/// アクティブ UI パネル枠線の色（水色）。
-const ACTIVE_UI_PANEL_BORDER: [u8; 4] = [0x42, 0xa5, 0xf5, 0xff];
-
-/// 合成 background フレーム に必要な差分領域だけを描画または合成する。
+/// 合成 background フレーム を生成する。
+///
+/// 9C-1 時点では透明な L1 バッファを返し、ステータステキストとデバッグラベルだけを CPU で描画する。
+/// 単色矩形・枠線・キャンバスホスト背景は GPU の L0 solid quad パイプラインが担当する。
+/// 9C-2 でテキスト描画を GPU 化したらこの関数自体が削除される。
 pub fn compose_background_frame(plan: &FramePlan<'_>) -> RenderFrame {
     let mut frame = RenderFrame {
         width: plan.window_width,
         height: plan.window_height,
         pixels: vec![0; plan.window_width * plan.window_height * 4],
     };
-
-    fill_rect(&mut frame, plan.window_rect(), APP_BACKGROUND);
-    fill_canvas_host_background(&mut frame, plan, plan.canvas.host_rect);
-    stroke_rect(&mut frame, plan.canvas.host_rect, CANVAS_FRAME_BORDER);
 
     if std::env::var_os("ALTPAINT_DEBUG_LABELS").is_some() {
         draw_text(
@@ -128,55 +122,6 @@ pub fn compose_ui_panel_region(
     compose_panel_host_region(frame, plan.panel_surface, dirty_rect);
 }
 
-/// 合成 desktop フレーム に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
-#[allow(clippy::too_many_arguments)]
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn compose_desktop_frame(plan: &FramePlan<'_>, overlay: &CanvasOverlayState) -> RenderFrame {
-    let mut frame = compose_background_frame(plan);
-    compose_canvas_host_region(&mut frame, plan, overlay, None);
-    frame
-}
-
-/// 合成 キャンバス ホスト 領域 に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn compose_canvas_host_region(
-    frame: &mut RenderFrame,
-    plan: &FramePlan<'_>,
-    overlay: &CanvasOverlayState,
-    dirty_rect: Option<PixelRect>,
-) {
-    clear_canvas_host_region(frame, plan, dirty_rect);
-    blit_canvas_content(frame, plan, dirty_rect);
-    draw_canvas_overlay(frame, plan, overlay, dirty_rect);
-}
-
-/// Clear キャンバス ホスト 領域 に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn clear_canvas_host_region(
-    frame: &mut RenderFrame,
-    plan: &FramePlan<'_>,
-    dirty_rect: Option<PixelRect>,
-) {
-    if let Some(dirty_rect) = dirty_rect {
-        fill_canvas_host_background(frame, plan, dirty_rect);
-        stroke_rect_region(
-            frame,
-            plan.canvas.host_rect,
-            dirty_rect,
-            CANVAS_FRAME_BORDER,
-        );
-    } else {
-        fill_canvas_host_background(frame, plan, plan.canvas.host_rect);
-        stroke_rect(frame, plan.canvas.host_rect, CANVAS_FRAME_BORDER);
-    }
-}
-
 /// 合成 パネル ホスト 領域 に必要な差分領域だけを描画または合成する。
 ///
 /// 必要に応じて dirty 状態も更新します。
@@ -195,31 +140,10 @@ pub fn compose_panel_host_region(
     );
 }
 
-/// アクティブ UI パネル枠線を L4 フレームへ描画する。
+/// ステータス領域の差分更新。
 ///
-/// `overlay.active_ui_panel_rect` が `Some` のときのみ描画する。
-/// `dirty_rect` が指定された場合はクリップして差分描画する。
-pub fn compose_active_panel_border(
-    frame: &mut RenderFrame,
-    overlay: &CanvasOverlayState,
-    dirty_rect: Option<PixelRect>,
-) {
-    let Some(rect) = overlay.active_ui_panel_rect else {
-        return;
-    };
-    if rect.width == 0 || rect.height == 0 {
-        return;
-    }
-    if let Some(dirty) = dirty_rect {
-        stroke_rect_region(frame, rect, dirty, ACTIVE_UI_PANEL_BORDER);
-    } else {
-        stroke_rect(frame, rect, ACTIVE_UI_PANEL_BORDER);
-    }
-}
-
-/// 合成 ステータス 領域 に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
+/// 9C-1 時点では L1 はテキスト専用バッファのため、領域を透明にクリアしてから
+/// 新しい status text を描画し直す。GPU L0 が背景を毎フレーム塗るため fill_rect は不要。
 pub fn compose_status_region(frame: &mut RenderFrame, plan: &FramePlan<'_>) {
     let status_rect = status_text_bounds(
         plan.window_width,
@@ -227,82 +151,13 @@ pub fn compose_status_region(frame: &mut RenderFrame, plan: &FramePlan<'_>) {
         plan.canvas.host_rect,
         plan.status_text,
     );
-    fill_rect(frame, status_rect, APP_BACKGROUND);
+    fill_rect(frame, status_rect, [0, 0, 0, 0]);
     draw_text(
         frame,
         plan.canvas.host_rect.x,
         plan.window_height.saturating_sub(FOOTER_HEIGHT) + 6,
         plan.status_text,
         TEXT_SECONDARY,
-    );
-}
-
-/// 塗りつぶし キャンバス ホスト 背景 に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
-fn fill_canvas_host_background(
-    frame: &mut RenderFrame,
-    plan: &FramePlan<'_>,
-    dirty_rect: PixelRect,
-) {
-    let display = plan.canvas.host_rect;
-    if let Some(display_region) = display.intersect(dirty_rect) {
-        fill_rect(frame, display_region, CANVAS_BACKGROUND);
-    }
-
-    let host = plan.canvas.host_rect;
-    let margins = [
-        PixelRect {
-            x: host.x,
-            y: host.y,
-            width: host.width,
-            height: display.y.saturating_sub(host.y),
-        },
-        PixelRect {
-            x: host.x,
-            y: display.y + display.height,
-            width: host.width,
-            height: (host.y + host.height).saturating_sub(display.y + display.height),
-        },
-        PixelRect {
-            x: host.x,
-            y: display.y,
-            width: display.x.saturating_sub(host.x),
-            height: display.height,
-        },
-        PixelRect {
-            x: display.x + display.width,
-            y: display.y,
-            width: (host.x + host.width).saturating_sub(display.x + display.width),
-            height: display.height,
-        },
-    ];
-
-    for margin in margins {
-        if let Some(region) = margin.intersect(dirty_rect)
-            && region.width > 0
-            && region.height > 0
-        {
-            fill_rect(frame, region, CANVAS_FRAME_BACKGROUND);
-        }
-    }
-}
-
-/// Blit キャンバス content に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
-#[cfg_attr(not(test), allow(dead_code))]
-fn blit_canvas_content(
-    frame: &mut RenderFrame,
-    plan: &FramePlan<'_>,
-    dirty_rect: Option<PixelRect>,
-) {
-    blit_canvas_with_transform(
-        frame,
-        plan.canvas.host_rect,
-        plan.canvas_source,
-        plan.canvas.transform,
-        dirty_rect,
     );
 }
 
@@ -626,53 +481,6 @@ fn stroke_rect(frame: &mut RenderFrame, rect: PixelRect, color: [u8; 4]) {
     );
 }
 
-/// ストローク 矩形 領域 に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
-fn stroke_rect_region(
-    frame: &mut RenderFrame,
-    rect: PixelRect,
-    dirty_rect: PixelRect,
-    color: [u8; 4],
-) {
-    if rect.width == 0 || rect.height == 0 {
-        return;
-    }
-
-    let edges = [
-        PixelRect {
-            x: rect.x,
-            y: rect.y,
-            width: rect.width,
-            height: 1,
-        },
-        PixelRect {
-            x: rect.x,
-            y: rect.y + rect.height.saturating_sub(1),
-            width: rect.width,
-            height: 1,
-        },
-        PixelRect {
-            x: rect.x,
-            y: rect.y,
-            width: 1,
-            height: rect.height,
-        },
-        PixelRect {
-            x: rect.x + rect.width.saturating_sub(1),
-            y: rect.y,
-            width: 1,
-            height: rect.height,
-        },
-    ];
-
-    for edge in edges {
-        if let Some(region) = edge.intersect(dirty_rect) {
-            fill_rect(frame, region, color);
-        }
-    }
-}
-
 /// Blit scaled RGBA 領域 に必要な差分領域だけを描画または合成する。
 ///
 /// 必要に応じて dirty 状態も更新します。
@@ -812,140 +620,6 @@ fn blit_rgba_region_at(
         let dst_row_start = (dst_y * frame.width + target.x) * 4;
         frame.pixels[dst_row_start..dst_row_start + row_bytes]
             .copy_from_slice(&source_pixels[src_row_start..src_row_start + row_bytes]);
-    }
-}
-
-/// Blit キャンバス with 変換 に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
-fn blit_canvas_with_transform(
-    frame: &mut RenderFrame,
-    destination: PixelRect,
-    source: CanvasCompositeSource<'_>,
-    transform: app_core::CanvasViewTransform,
-    dirty_rect: Option<PixelRect>,
-) {
-    if destination.width == 0
-        || destination.height == 0
-        || source.width == 0
-        || source.height == 0
-        || source.pixels.len() < source.width * source.height * 4
-    {
-        return;
-    }
-
-    let Some(scene) =
-        render_types::prepare_canvas_scene(destination, source.width, source.height, transform)
-    else {
-        return;
-    };
-    let Some(drawn_rect) = scene.drawn_rect() else {
-        return;
-    };
-    let target = dirty_rect
-        .and_then(|dirty| destination.intersect(dirty))
-        .unwrap_or(destination)
-        .intersect(drawn_rect)
-        .unwrap_or(PixelRect {
-            x: destination.x,
-            y: destination.y,
-            width: 0,
-            height: 0,
-        });
-
-    if target.width == 0 || target.height == 0 {
-        return;
-    }
-
-    if transform.rotation_degrees.rem_euclid(360.0) != 0.0 || transform.flip_x || transform.flip_y {
-        for dst_y in target.y..target.y + target.height {
-            for dst_x in target.x..target.x + target.width {
-                let Some(source_point) = scene.map_view_to_canvas(
-                    app_core::CanvasViewportPoint::new(dst_x as i32, dst_y as i32),
-                ) else {
-                    continue;
-                };
-                let src_index = (source_point.y * source.width + source_point.x) * 4;
-                let dst_index = (dst_y * frame.width + dst_x) * 4;
-                frame.pixels[dst_index..dst_index + 4]
-                    .copy_from_slice(&source.pixels[src_index..src_index + 4]);
-            }
-        }
-        return;
-    }
-
-    let (offset_x, offset_y) = scene.offset();
-    let scale = scene.scale();
-
-    if scale < 1.0 {
-        // ズームアウト時は bilinear 補間を使って縮小アンチエイリアスを適用する
-        for dst_y in target.y..target.y + target.height {
-            let src_y_f = (dst_y as f32 + 0.5 - offset_y) / scale;
-            let y0 = (src_y_f - 0.5).floor() as i64;
-            let y1 = y0 + 1;
-            let wy = src_y_f - 0.5 - y0 as f32;
-            let y0c = y0.clamp(0, source.height as i64 - 1) as usize;
-            let y1c = y1.clamp(0, source.height as i64 - 1) as usize;
-            for dst_x in target.x..target.x + target.width {
-                let src_x_f = (dst_x as f32 + 0.5 - offset_x) / scale;
-                let x0 = (src_x_f - 0.5).floor() as i64;
-                let x1 = x0 + 1;
-                let wx = src_x_f - 0.5 - x0 as f32;
-                let x0c = x0.clamp(0, source.width as i64 - 1) as usize;
-                let x1c = x1.clamp(0, source.width as i64 - 1) as usize;
-
-                let sample = |sx: usize, sy: usize| -> [f32; 4] {
-                    let i = (sy * source.width + sx) * 4;
-                    [
-                        source.pixels[i] as f32,
-                        source.pixels[i + 1] as f32,
-                        source.pixels[i + 2] as f32,
-                        source.pixels[i + 3] as f32,
-                    ]
-                };
-                let p00 = sample(x0c, y0c);
-                let p10 = sample(x1c, y0c);
-                let p01 = sample(x0c, y1c);
-                let p11 = sample(x1c, y1c);
-
-                let lerp = |a: f32, b: f32, t: f32| -> f32 { a + (b - a) * t };
-                let to_u8 = |v: f32| -> u8 { v.round().clamp(0.0, 255.0) as u8 };
-                let pixel = [
-                    to_u8(lerp(lerp(p00[0], p10[0], wx), lerp(p01[0], p11[0], wx), wy)),
-                    to_u8(lerp(lerp(p00[1], p10[1], wx), lerp(p01[1], p11[1], wx), wy)),
-                    to_u8(lerp(lerp(p00[2], p10[2], wx), lerp(p01[2], p11[2], wx), wy)),
-                    to_u8(lerp(lerp(p00[3], p10[3], wx), lerp(p01[3], p11[3], wx), wy)),
-                ];
-                let dst_index = (dst_y * frame.width + dst_x) * 4;
-                frame.pixels[dst_index..dst_index + 4].copy_from_slice(&pixel);
-            }
-        }
-        return;
-    }
-
-    let src_x_runs = build_source_axis_runs(target.x, target.width, offset_x, scale, source.width);
-    let src_y_runs =
-        build_source_axis_runs(target.y, target.height, offset_y, scale, source.height);
-
-    for y_run in &src_y_runs {
-        let src_row_start = y_run.src_index * source.width * 4;
-        for x_run in &src_x_runs {
-            let src_offset = src_row_start + x_run.src_index * 4;
-            let pixel = [
-                source.pixels[src_offset],
-                source.pixels[src_offset + 1],
-                source.pixels[src_offset + 2],
-                source.pixels[src_offset + 3],
-            ];
-            fill_rgba_block(
-                frame,
-                target.x + x_run.dst_offset,
-                target.y + y_run.dst_offset,
-                x_run.len,
-                y_run.len,
-                pixel,
-            );
-        }
     }
 }
 

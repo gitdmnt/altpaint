@@ -13,11 +13,10 @@ mod text;
 use app_core::Document;
 
 pub use compose::{
-    SourceAxisRun, blit_scaled_rgba_region, build_source_axis_runs, clear_canvas_host_region,
-    compose_active_panel_border, compose_background_frame, compose_canvas_host_region,
-    compose_desktop_frame, compose_panel_host_region, compose_status_region,
-    compose_temp_overlay_frame, compose_temp_overlay_region, compose_ui_panel_frame,
-    compose_ui_panel_region, fill_rgba_block, scroll_canvas_region,
+    SourceAxisRun, blit_scaled_rgba_region, build_source_axis_runs, compose_background_frame,
+    compose_panel_host_region, compose_status_region, compose_temp_overlay_frame,
+    compose_temp_overlay_region, compose_ui_panel_frame, compose_ui_panel_region, fill_rgba_block,
+    scroll_canvas_region,
 };
 pub use panel::{
     FloatingPanel, MeasuredPanelSize, PanelFocusTarget, PanelHitKind, PanelHitRegion,

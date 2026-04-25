@@ -531,8 +531,12 @@ impl ApplicationHandler for DesktopRuntime {
                 #[cfg(not(feature = "html-panel"))]
                 let html_panel_quads_slice: &[crate::wgpu_canvas::GpuPanelQuad<'_>] = &[];
 
+                let background_solid_quads = self.app.background_solid_quads();
+                let foreground_solid_quads = self.app.foreground_solid_quads();
+
                 let timings = match presenter.render(
                     PresentScene {
+                        background_quads: &background_solid_quads,
                         base_layer: FrameLayer {
                             source: TextureSource::from(background_frame),
                             upload_region: base_upload_region,
@@ -547,6 +551,7 @@ impl ApplicationHandler for DesktopRuntime {
                             upload_region: ui_panel_upload_region,
                         },
                         html_panel_quads: html_panel_quads_slice,
+                        foreground_quads: &foreground_solid_quads,
                     },
                     self.app.gpu_canvas_pool(),
                 ) {

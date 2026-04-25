@@ -1,11 +1,16 @@
 //! デスクトップ固有の固定レイアウト計算と presenter 入力変換をまとめる。
 
 mod geometry;
+mod solid_quad;
 use desktop_support::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
 
 #[allow(unused_imports)]
 pub(crate) use geometry::{
     fit_rect, map_window_to_panel_surface, map_window_to_panel_surface_clamped,
+};
+#[allow(unused_imports)]
+pub(crate) use solid_quad::{
+    SolidQuad, build_background_solid_quads, build_foreground_solid_quads, pixel_rect_to_ndc,
 };
 
 pub(crate) type Rect = render_types::PixelRect;

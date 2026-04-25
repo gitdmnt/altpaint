@@ -1,11 +1,8 @@
-use app_core::CanvasViewTransform;
-use render_types::{
-    CanvasCompositeSource, CanvasOverlayState, FramePlan, PanelSurfaceSource, PixelRect,
-};
+use render_types::PixelRect;
 
 use crate::{
-    RenderFrame, blit_scaled_rgba_region, build_source_axis_runs, compose_canvas_host_region,
-    fill_rgba_block, scroll_canvas_region,
+    RenderFrame, blit_scaled_rgba_region, build_source_axis_runs, fill_rgba_block,
+    scroll_canvas_region,
 };
 
 /// ソース axis runs merge adjacent pixels with same ソース x が期待どおりに動作することを検証する。
@@ -98,72 +95,6 @@ fn scroll_canvas_region_moves_existing_pixels_and_reports_exposed_strip() {
     );
     let moved_index = 2 * 4;
     assert_eq!(&frame.pixels[moved_index..moved_index + 4], &[2, 1, 0, 255]);
-}
-
-/// blit_canvas_with_transform がズームアウト時に bilinear 補間を使うことを検証する。
-///
-/// 8x8 の白黒チェッカーパターンを 4x4 の画面に scale=0.5 で描画した場合、
-/// ニアレストネイバーだと純白か純黒になる。bilinear 補間だとグレー（～128）になる。
-#[test]
-fn blit_canvas_with_transform_bilinear_at_zoom_out() {
-    let canvas_size = 8usize;
-    let viewport_size = 4usize;
-
-    // 白黒チェッカーパターン: (x+y) % 2 == 0 → 白、それ以外 → 黒
-    let mut canvas_pixels = vec![0u8; canvas_size * canvas_size * 4];
-    for y in 0..canvas_size {
-        for x in 0..canvas_size {
-            let idx = (y * canvas_size + x) * 4;
-            if (x + y) % 2 == 0 {
-                canvas_pixels[idx..idx + 4].copy_from_slice(&[255, 255, 255, 255]);
-            } else {
-                canvas_pixels[idx..idx + 4].copy_from_slice(&[0, 0, 0, 255]);
-            }
-        }
-    }
-
-    let panel_pixels = vec![0u8; viewport_size * viewport_size * 4];
-    let host_rect = PixelRect {
-        x: 0,
-        y: 0,
-        width: viewport_size,
-        height: viewport_size,
-    };
-    let plan = FramePlan::new(
-        viewport_size,
-        viewport_size,
-        host_rect,
-        PanelSurfaceSource {
-            x: 0,
-            y: 0,
-            width: viewport_size,
-            height: viewport_size,
-            pixels: &panel_pixels,
-        },
-        CanvasCompositeSource {
-            width: canvas_size,
-            height: canvas_size,
-            pixels: &canvas_pixels,
-        },
-        CanvasViewTransform::default(), // zoom=1.0 → fit_scale=0.5 → scale=0.5
-        "",
-    );
-
-    let mut frame = RenderFrame {
-        width: viewport_size,
-        height: viewport_size,
-        pixels: vec![0; viewport_size * viewport_size * 4],
-    };
-    let overlay = CanvasOverlayState::default();
-    compose_canvas_host_region(&mut frame, &plan, &overlay, None);
-
-    // bilinear 補間後はグレー（30〜225 の中間値）になるはず
-    // ニアレストネイバーだと pure white (255) になる（現状の挙動）
-    let r = frame.pixels[0];
-    assert!(
-        r > 30 && r < 225,
-        "bilinear補間でグレーになるはずが R={r} になった（純白/純黒はニアレストネイバーの証拠）"
-    );
 }
 
 /// blit_scaled_rgba_region がパネルサーフェス縮小時に bilinear 補間を使うことを検証する。

@@ -4,7 +4,7 @@ use render_types::{
     PanelNavigatorOverlay, PanelSurfaceSource, PixelRect,
 };
 
-use crate::{RenderContext, compose_desktop_frame, compose_temp_overlay_frame};
+use crate::{RenderContext, compose_temp_overlay_frame};
 
 /// 描画 フレーム places アクティブ パネル ビットマップ inside ページ が期待どおりに動作することを検証する。
 #[test]
@@ -34,46 +34,6 @@ fn render_frame_places_active_panel_bitmap_inside_page() {
     let end_index = ((32 + 2) * frame.width + (40 + 4)) * 4;
     assert_eq!(&frame.pixels[end_index..end_index + 4], &[0, 0, 0, 255]);
     assert_eq!(&frame.pixels[0..4], &[255, 255, 255, 255]);
-}
-
-/// 合成 desktop フレーム writes パネル and キャンバス regions が期待どおりに動作することを検証する。
-#[test]
-fn compose_desktop_frame_writes_panel_and_canvas_regions() {
-    let plan = FramePlan::new(
-        640,
-        480,
-        PixelRect {
-            x: 20,
-            y: 40,
-            width: 400,
-            height: 320,
-        },
-        PanelSurfaceSource {
-            x: 8,
-            y: 6,
-            width: 32,
-            height: 16,
-            pixels: &[0xaa; 32 * 16 * 4],
-        },
-        CanvasCompositeSource {
-            width: 2,
-            height: 2,
-            pixels: &[16; 16],
-        },
-        CanvasViewTransform::default(),
-        "status",
-    );
-
-    let frame = compose_desktop_frame(&plan, &CanvasOverlayState::default());
-
-    assert_eq!(frame.width, 640);
-    assert_eq!(frame.height, 480);
-    assert!(
-        frame
-            .pixels
-            .chunks_exact(4)
-            .any(|pixel| pixel == [16, 16, 16, 16])
-    );
 }
 
 /// オーバーレイ フレーム draws パネル navigator when multiple panels exist が期待どおりに動作することを検証する。
