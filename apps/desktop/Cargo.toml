@@ -13,6 +13,8 @@ canvas = { path = "../../crates/canvas" }
 desktop-support = { path = "../../crates/desktop-support" }
 panel-api = { path = "../../crates/panel-api" }
 panel-runtime = { path = "../../crates/panel-runtime" }
+panel-html-experiment = { path = "../../crates/panel-html-experiment", optional = true }
+keyboard-types = { version = "0.7", optional = true }
 pollster.workspace = true
 render = { path = "../../crates/render" }
 serde_json.workspace = true
@@ -24,6 +26,6 @@ winit.workspace = true
 
 [features]
 gpu = ["dep:gpu-canvas"]
-html-panel = ["panel-runtime/html-panel"]
+html-panel = ["panel-runtime/html-panel", "dep:panel-html-experiment", "dep:keyboard-types"]
 
 [dev-dependencies]

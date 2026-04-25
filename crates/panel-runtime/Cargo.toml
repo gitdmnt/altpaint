@@ -17,6 +17,7 @@ serde_json.workspace = true
 
 [dev-dependencies]
 pollster = { workspace = true }
+keyboard-types = "0.7"
 
 [features]
 default = []

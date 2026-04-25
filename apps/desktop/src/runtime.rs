@@ -280,13 +280,22 @@ impl ApplicationHandler for DesktopRuntime {
                     if panel_ids.is_empty() {
                         Vec::new()
                     } else {
-                        // パネル毎に panel_rect (workspace_layout 由来) を解決してサイズを決める。
-                        // panel_rect が無い (= 起動直後のレース) ケースは default サイズで描画する。
+                        // HTML パネルのサイズは Engine が保有する measured_size が権威。
+                        // 位置は workspace_layout の position（panel_rect_in_viewport の位置部分）から取る。
+                        // viewport は GPU テクスチャの上限としてそのまま渡し、Engine 側でクランプさせる。
+                        let measured = self.app.panel_runtime.html_measured_sizes();
                         let mut sized: Vec<(String, u32, u32)> = Vec::with_capacity(panel_ids.len());
                         let mut panel_rects: Vec<render::PixelRect> =
                             Vec::with_capacity(panel_ids.len());
                         for id in &panel_ids {
-                            let rect = self
+                            // measured_size を取得
+                            let (mw, mh) = measured
+                                .iter()
+                                .find(|(pid, _, _)| pid == id)
+                                .map(|(_, w, h)| (*w, *h))
+                                .unwrap_or((1, 1));
+                            // 位置は workspace_layout の position を使う（サイズは measured で上書き）
+                            let position_rect = self
                                 .app
                                 .panel_presentation
                                 .panel_rect_in_viewport(
@@ -295,15 +304,20 @@ impl ApplicationHandler for DesktopRuntime {
                                     size.height as usize,
                                 )
                                 .unwrap_or(render::PixelRect {
-                                    x: (size.width as usize).saturating_sub(308),
-                                    y: 8,
-                                    width: 300,
-                                    height: 220,
+                                    x: 0,
+                                    y: 0,
+                                    width: mw as usize,
+                                    height: mh as usize,
                                 });
-                            let w = rect.width.max(1) as u32;
-                            let h = rect.height.max(HTML_CHROME_HEIGHT as usize + 1) as u32;
-                            sized.push((id.clone(), w, h));
-                            panel_rects.push(rect);
+                            let panel_rect = render::PixelRect {
+                                x: position_rect.x,
+                                y: position_rect.y,
+                                width: mw as usize,
+                                height: mh as usize,
+                            };
+                            // viewport を Engine に渡す（クランプ用）
+                            sized.push((id.clone(), size.width, size.height));
+                            panel_rects.push(panel_rect);
                         }
                         let frames = self.app.panel_runtime.render_html_panels(
                             &sized,
@@ -395,6 +409,15 @@ impl ApplicationHandler for DesktopRuntime {
                                 texture_ptr,
                                 screen_rect: panel_rect,
                             });
+                        }
+                        // measured_size 変化を workspace_layout に反映（永続化に流す）
+                        let size_changes = self.app.panel_runtime.take_html_size_changes();
+                        for (panel_id, (new_w, new_h)) in size_changes {
+                            self.app.panel_presentation.set_panel_size(
+                                &panel_id,
+                                new_w as usize,
+                                new_h as usize,
+                            );
                         }
                         entries
                     }

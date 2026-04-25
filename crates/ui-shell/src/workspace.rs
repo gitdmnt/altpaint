@@ -145,6 +145,30 @@ impl PanelPresentation {
         })
     }
 
+    /// 指定パネルの workspace_layout 上のサイズを `(width, height)` に書き換える。
+    /// HTML パネルが measured_size の変化を永続化する経路で使う。
+    /// 戻り値: 値が実際に変わった場合 true（永続化 dirty フラグを立てる判断に使う）。
+    pub fn set_panel_size(&mut self, panel_id: &str, width: usize, height: usize) -> bool {
+        let Some(entry) = self
+            .workspace_layout
+            .panels
+            .iter_mut()
+            .find(|entry| entry.id == panel_id)
+        else {
+            return false;
+        };
+        let next = WorkspacePanelSize {
+            width: width.max(1),
+            height: height.max(1),
+        };
+        if entry.size == Some(next) {
+            return false;
+        }
+        entry.size = Some(next);
+        self.panel_layout_dirty = true;
+        true
+    }
+
     /// `panel_rect` の viewport 指定版。anchor (TopRight/BottomRight/BottomLeft) で
     /// `usize::MAX` を使うと座標が画面外に飛ぶため、HTML パネルなど描画前に
     /// `rendered_panel_rects` を持たないパネルではこちらを使う。

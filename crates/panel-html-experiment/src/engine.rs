@@ -16,11 +16,13 @@ use crate::binding::{
 };
 use anyrender_vello::VelloScenePainter;
 use blitz_dom::{
-    BaseDocument, DocumentConfig, DocumentMutator, LocalName, Namespace, QualName, local_name,
+    BaseDocument, DocumentConfig, DocumentMutator, EventDriver, LocalName, Namespace,
+    NoopEventHandler, QualName, local_name,
     node::{Attribute, NodeData},
 };
 use blitz_html::HtmlDocument;
 use blitz_paint::paint_scene;
+use blitz_traits::events::UiEvent;
 use blitz_traits::shell::Viewport;
 use serde_json::Value;
 
@@ -32,6 +34,36 @@ pub struct HtmlPanelEngine {
     /// `apply_bindings` が実際に DOM を変更したか。`resolve_layout` でクリア。
     /// Blitz の `BaseDocument::has_changes()` は内部実装の都合で当てにできないため自前トラック。
     pending_mutation: bool,
+    /// パネル単位の権威サイズ (chrome を含まない HTML 本体の幅・高さ)。
+    /// `on_load` で初期化、`on_render` で intrinsic 結果に応じて更新。
+    measured_size: (u32, u32),
+    /// 次フレームで `resolve_layout` が必要か。
+    /// `on_host_snapshot` / `on_input` / 初回ロードで true を立てる。
+    layout_dirty: bool,
+    /// 次フレームで実描画が必要か。サイズ変化 / DOM mutation / 初回ロードで true。
+    render_dirty: bool,
+    /// 直近の `on_render` で measured_size が変化したか。
+    /// 上位レイヤが `take_size_change` で吸い取って永続化に流す。
+    pending_size_change: bool,
+    /// パネルの GPU レンダーターゲット。`on_render` 内でサイズに応じて再生成。
+    gpu_target: Option<crate::gpu::PanelGpuTarget>,
+}
+
+/// `on_render` の結果。dirty なら `Rendered`、再利用なら `Skipped`。
+pub enum RenderOutcome<'a> {
+    Rendered(&'a crate::gpu::PanelGpuTarget),
+    Skipped(&'a crate::gpu::PanelGpuTarget),
+}
+
+impl<'a> RenderOutcome<'a> {
+    pub fn target(&self) -> &crate::gpu::PanelGpuTarget {
+        match self {
+            RenderOutcome::Rendered(t) | RenderOutcome::Skipped(t) => t,
+        }
+    }
+    pub fn is_rendered(&self) -> bool {
+        matches!(self, RenderOutcome::Rendered(_))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,7 +103,220 @@ impl HtmlPanelEngine {
             user_css: user_css.to_string(),
             last_resolved: None,
             pending_mutation: true,
+            measured_size: (1, 1),
+            layout_dirty: true,
+            render_dirty: true,
+            pending_size_change: false,
+            gpu_target: None,
         }
+    }
+
+    /// パネルロード時に呼ぶ。永続化されたサイズがあれば復元、無ければ intrinsic 測定で初期化。
+    /// 戻り値後の `measured_size()` で初期サイズを取得できる。
+    pub fn on_load(&mut self, restored_size: Option<(u32, u32)>) {
+        let (w, h) = match restored_size {
+            Some((w, h)) => (w.max(1), h.max(1)),
+            None => self.measure_intrinsic(8192),
+        };
+        self.measured_size = (w, h);
+        self.layout_dirty = true;
+        self.render_dirty = true;
+        self.pending_size_change = false;
+    }
+
+    /// 現在の権威サイズ (HTML 本体の width, height)。
+    pub fn measured_size(&self) -> (u32, u32) {
+        self.measured_size
+    }
+
+    /// 次フレームで resolve が必要か。
+    pub fn layout_dirty(&self) -> bool {
+        self.layout_dirty
+    }
+
+    /// 次フレームで実描画が必要か。
+    pub fn render_dirty(&self) -> bool {
+        self.render_dirty
+    }
+
+    /// `on_render` でサイズが変化した直後 true。`take_size_change` で吸い取られる。
+    pub fn pending_size_change(&self) -> bool {
+        self.pending_size_change
+    }
+
+    /// pending な size 変化フラグを取り出してクリアする。
+    /// 上位は変化があった panel_id ごとに workspace_layout に書き戻して永続化する。
+    pub fn take_size_change(&mut self) -> Option<(u32, u32)> {
+        if self.pending_size_change {
+            self.pending_size_change = false;
+            Some(self.measured_size)
+        } else {
+            None
+        }
+    }
+
+    /// 巨大 viewport で resolve し、body のコンテンツ占有サイズを返す（intrinsic 測定）。
+    ///
+    /// 同一 document を変更するため、呼び出し側は次フレームで自身に必要な viewport で
+    /// 再 resolve する想定（`on_render` がそれを行う）。
+    pub fn measure_intrinsic(&mut self, max_width: u32) -> (u32, u32) {
+        let max_w = max_width.clamp(1, 8192);
+        let viewport = Viewport::new(max_w, 8192, 1.0, blitz_traits::shell::ColorScheme::Dark);
+        self.document.set_viewport(viewport);
+        self.document.resolve(0.0);
+        // 内部 cache を無効化（次回 resolve_layout で必ず再計算させる）
+        self.last_resolved = None;
+        self.layout_dirty = true;
+        let (w, h) = compute_intrinsic_from_body(&self.document).unwrap_or((1, 1));
+        (w.min(max_w), h.min(8192))
+    }
+
+    /// `apply_bindings` の新名。host snapshot を DOM に流し、変化があれば dirty を立てる。
+    pub fn on_host_snapshot(&mut self, snapshot: &Value) {
+        self.apply_bindings(snapshot);
+        if self.pending_mutation {
+            self.layout_dirty = true;
+            self.render_dirty = true;
+        }
+    }
+
+    /// 現在の GPU target への参照（render 後に外部が view を作るため）。
+    pub fn gpu_target(&self) -> Option<&crate::gpu::PanelGpuTarget> {
+        self.gpu_target.as_ref()
+    }
+
+    /// パネルを GPU テクスチャに描画する（責務集約）。
+    ///
+    /// 動作：
+    /// 1. layout_dirty なら `resolve_layout(measured_w, body_h)` → root content size を再測定
+    ///    → measured_size が変われば `pending_size_change` を立て GPU target を再作成
+    /// 2. viewport (画面側) でクランプ：`render_w = min(measured_w, viewport_w)` 等
+    /// 3. render_dirty なら scene 構築 + chrome 描画 + render_to_texture
+    ///
+    /// 戻り値: `RenderOutcome::Rendered(target)` か `Skipped(target)`。
+    /// `target` は `gpu_target()` でも取得可能。
+    #[allow(clippy::too_many_arguments)]
+    pub fn on_render<'a>(
+        &'a mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        renderer: &mut vello::Renderer,
+        scene_buf: &mut vello::Scene,
+        viewport: (u32, u32),
+        scale: f32,
+        chrome_height: u32,
+    ) -> RenderOutcome<'a> {
+        // viewport クランプ：画面サイズを超えないように measured_size を調整
+        let (vp_w, vp_h) = (viewport.0.max(1), viewport.1.max(chrome_height + 1));
+        let (mw, mh) = self.measured_size;
+        let clamped_w = mw.min(vp_w);
+        let clamped_h = mh.min(vp_h);
+        if clamped_w != mw || clamped_h != mh {
+            self.measured_size = (clamped_w, clamped_h);
+            self.pending_size_change = true;
+            self.layout_dirty = true;
+            self.render_dirty = true;
+        }
+
+        // body 部分の高さ (chrome を除く)
+        let body_h = self.measured_size.1.saturating_sub(chrome_height).max(1);
+        let panel_w = self.measured_size.0.max(1);
+
+        // layout_dirty なら resolve → content size を再測定して measured を更新
+        if self.layout_dirty {
+            self.resolve_layout(panel_w, body_h, scale);
+            // resolve 後、body コンテンツの実サイズを取って measured_size と比較
+            if let Some((new_w, new_h)) = self.compute_body_content_size() {
+                let new_panel_h = new_h.saturating_add(chrome_height).max(chrome_height + 1);
+                let final_w = new_w.max(1).min(vp_w);
+                let final_h = new_panel_h.min(vp_h);
+                if (final_w, final_h) != self.measured_size {
+                    self.measured_size = (final_w, final_h);
+                    self.pending_size_change = true;
+                    self.render_dirty = true;
+                    // resolve サイズが変わったので invalidate して次回再 resolve
+                    self.last_resolved = None;
+                    // 新サイズで一度 resolve しなおして scene 構築に備える
+                    let new_body_h = final_h.saturating_sub(chrome_height).max(1);
+                    self.resolve_layout(final_w, new_body_h, scale);
+                }
+            }
+            self.layout_dirty = false;
+        }
+
+        // GPU target サイズを measured_size に合わせる
+        let target_size_changed = self
+            .gpu_target
+            .as_ref()
+            .map(|t| t.width != self.measured_size.0 || t.height != self.measured_size.1)
+            .unwrap_or(true);
+        if target_size_changed {
+            self.gpu_target = Some(crate::gpu::PanelGpuTarget::create(
+                device,
+                self.measured_size.0,
+                self.measured_size.1,
+            ));
+            self.render_dirty = true;
+        }
+
+        if !self.render_dirty {
+            return RenderOutcome::Skipped(self.gpu_target.as_ref().expect("target ensured"));
+        }
+
+        // scene 構築 + chrome 描画
+        scene_buf.reset();
+        let body_h_now = self.measured_size.1.saturating_sub(chrome_height).max(1);
+        self.build_scene_with_offset(
+            scene_buf,
+            self.measured_size.0,
+            body_h_now,
+            scale,
+            0,
+            chrome_height,
+        );
+        if chrome_height > 0 {
+            paint_chrome_rect(scene_buf, self.measured_size.0, chrome_height);
+        }
+
+        let target = self.gpu_target.as_ref().expect("target ensured");
+        let view = target.create_render_view();
+        renderer
+            .render_to_texture(
+                device,
+                queue,
+                scene_buf,
+                &view,
+                &vello::RenderParams {
+                    base_color: vello::peniko::Color::TRANSPARENT,
+                    width: self.measured_size.0,
+                    height: self.measured_size.1,
+                    antialiasing_method: vello::AaConfig::Area,
+                },
+            )
+            .expect("vello render_to_texture failed");
+
+        self.render_dirty = false;
+        RenderOutcome::Rendered(self.gpu_target.as_ref().expect("target ensured"))
+    }
+
+    /// `<body>` 直下のコンテンツ占有サイズを取得する。
+    fn compute_body_content_size(&self) -> Option<(u32, u32)> {
+        compute_intrinsic_from_body(&self.document)
+    }
+
+    /// UiEvent (PointerDown/Up/Move 等) を Blitz に流す。
+    /// `:hover` / `<details>` 開閉 / `<button>` のアクティブ状態などはこの経路でのみ反映される。
+    /// 戻り値: layout_dirty を立てた場合 true（呼び出し側がフレーム再描画判断に使う）。
+    pub fn on_input(&mut self, event: UiEvent) -> bool {
+        let mut driver = EventDriver::new(&mut self.document, NoopEventHandler);
+        driver.handle_ui_event(event);
+        // pointer / key 系イベントは hover 状態 / focus / details 開閉 など
+        // レイアウトが変わる可能性が常にあるため無条件で dirty を立てる。
+        // damage を観測してから判断する API は Blitz 0.3.0-alpha では public でないため
+        // 楽観的に再 resolve させる。
+        self.layout_dirty = true;
+        self.render_dirty = true;
+        true
     }
 
     pub fn user_css(&self) -> &str {
@@ -212,6 +457,36 @@ impl HtmlPanelEngine {
     pub fn diagnostics(&self) -> Vec<String> {
         Vec::new()
     }
+}
+
+/// `<body>` 要素のコンテンツ占有サイズを返す。
+///
+/// 取得方法: body の `final_layout.content_size` を使う。これは taffy が計算した
+/// 「コンテンツ自体が必要としたサイズ」で、block/inline どちらの content layout でも反映される。
+/// content_size が 0 の場合（body 自体が空）は (1, 1)。
+/// body が見つからない場合は None。
+fn compute_intrinsic_from_body(document: &BaseDocument) -> Option<(u32, u32)> {
+    let body_id = document.query_selector("body").ok().flatten()?;
+    let body_node = document.get_node(body_id)?;
+    let content_size = body_node.final_layout.content_size;
+    let w = content_size.width.max(1.0).ceil() as u32;
+    let h = content_size.height.max(1.0).ceil() as u32;
+    Some((w, h))
+}
+
+/// HTML パネル上端のタイトルバー (chrome) を vello シーンに矩形で描画する。
+/// テキスト描画は将来追加。Plugin 側から Engine に移管された描画ロジック。
+fn paint_chrome_rect(scene: &mut vello::Scene, width: u32, chrome_height: u32) {
+    use vello::kurbo::{Affine, Rect};
+    use vello::peniko::{Color, Fill};
+    let rect = Rect::new(0.0, 0.0, width as f64, chrome_height as f64);
+    scene.fill(
+        Fill::NonZero,
+        Affine::IDENTITY,
+        Color::from_rgba8(40, 60, 90, 255),
+        None,
+        &rect,
+    );
 }
 
 fn compute_absolute_position(doc: &BaseDocument, start: usize) -> Option<(f32, f32)> {
@@ -359,6 +634,75 @@ mod tests {
 
     fn engine(html: &str) -> HtmlPanelEngine {
         HtmlPanelEngine::new(html, "")
+    }
+
+    /// Phase 1.1: measure_intrinsic が指定 max_width で root 自然サイズを返す
+    #[test]
+    fn measure_intrinsic_returns_root_size_for_simple_html() {
+        let html = r#"<html><body style="margin:0"><div style="width:120px;height:40px;background:red;"></div></body></html>"#;
+        let mut engine = engine(html);
+        let (w, h) = engine.measure_intrinsic(8192);
+        assert!(
+            (w as i32 - 120).abs() <= 2,
+            "expected width ≈120, got {w}"
+        );
+        assert!(
+            (h as i32 - 40).abs() <= 2,
+            "expected height ≈40, got {h}"
+        );
+    }
+
+    /// Phase 1.3: on_load(Some) は measured_size をその値で初期化する
+    #[test]
+    fn on_load_with_persisted_size_uses_it() {
+        let html = r#"<html><body><div style="width:80px;height:30px;"></div></body></html>"#;
+        let mut engine = engine(html);
+        engine.on_load(Some((400, 300)));
+        assert_eq!(engine.measured_size(), (400, 300));
+    }
+
+    /// Phase 1.4: on_load(None) は intrinsic 測定で初期化する
+    #[test]
+    fn on_load_without_persisted_size_uses_intrinsic() {
+        let html = r#"<html><body style="margin:0"><div style="width:150px;height:60px;"></div></body></html>"#;
+        let mut engine = engine(html);
+        engine.on_load(None);
+        let (w, h) = engine.measured_size();
+        assert!(
+            (w as i32 - 150).abs() <= 4,
+            "expected ≈150 width, got {w}"
+        );
+        assert!(
+            (h as i32 - 60).abs() <= 4,
+            "expected ≈60 height, got {h}"
+        );
+    }
+
+    /// Phase 1.7: on_input(PointerMove) で hover state が更新され dirty が立つ
+    #[test]
+    fn on_input_pointer_move_updates_hover_and_marks_dirty() {
+        let html = r#"<html><body style="margin:0"><button id="b" data-action="command:noop" style="display:block;width:80px;height:40px;">B</button></body></html>"#;
+        let mut engine = engine(html);
+        engine.on_load(None);
+        // 一旦 dirty フラグをクリアした想定で on_input が dirty を立てるかをテストする
+        engine.clear_dirty_for_test();
+        let event = blitz_traits::events::UiEvent::PointerMove(test_pointer_event(40.0, 20.0));
+        let changed = engine.on_input(event);
+        assert!(changed, "PointerMove should mark layout dirty");
+        assert!(engine.layout_dirty(), "layout_dirty after on_input");
+    }
+
+    /// Phase 1.6: on_host_snapshot は DOM mutation 時に layout_dirty / render_dirty を立てる
+    #[test]
+    fn on_host_snapshot_marks_dirty_when_dom_mutates() {
+        let html = r#"<html><body><span id="s" data-bind-text="jobs.active">0</span></body></html>"#;
+        let mut engine = engine(html);
+        engine.on_load(None);
+        // on_load 直後は dirty が両方とも立っている (初回 render 必須)。
+        // on_host_snapshot 後も立っていることを確認する。
+        engine.on_host_snapshot(&json!({"jobs": {"active": 7}}));
+        assert!(engine.layout_dirty(), "after on_host_snapshot layout_dirty=true");
+        assert!(engine.render_dirty(), "after on_host_snapshot render_dirty=true");
     }
 
     #[test]
@@ -525,7 +869,36 @@ mod tests {
         assert!(class_attr.contains("btn"));
     }
 
+    fn test_pointer_event(x: f32, y: f32) -> blitz_traits::events::BlitzPointerEvent {
+        use blitz_traits::events::{
+            BlitzPointerEvent, BlitzPointerId, MouseEventButton, MouseEventButtons,
+            PointerCoords, PointerDetails,
+        };
+        BlitzPointerEvent {
+            id: BlitzPointerId::Mouse,
+            is_primary: true,
+            coords: PointerCoords {
+                page_x: x,
+                page_y: y,
+                client_x: x,
+                client_y: y,
+                screen_x: x,
+                screen_y: y,
+            },
+            button: MouseEventButton::Main,
+            buttons: MouseEventButtons::empty(),
+            mods: keyboard_types::Modifiers::empty(),
+            details: PointerDetails::default(),
+        }
+    }
+
     impl HtmlPanelEngine {
+        /// Phase 1.7 テスト用: dirty フラグを手動でクリアする
+        pub(crate) fn clear_dirty_for_test(&mut self) {
+            self.layout_dirty = false;
+            self.render_dirty = false;
+        }
+
         fn find_element_id(&self, dom_id: &str) -> Option<usize> {
             self.document
                 .query_selector(&format!("#{dom_id}"))

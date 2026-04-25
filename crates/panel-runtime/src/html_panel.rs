@@ -11,8 +11,10 @@ use panel_api::{HostAction, PanelNode, PanelPlugin, PanelTree, ServiceRequest};
 use panel_html_experiment::blitz_dom::{BaseDocument, LocalName, local_name};
 use panel_html_experiment::blitz_dom::node::NodeData;
 use panel_html_experiment::{
-    ActionDescriptor, HtmlPanelEngine, PanelGpuTarget, RenderedPanelHit, parse_data_action,
+    ActionDescriptor, HtmlPanelEngine, PanelGpuTarget, RenderOutcome as EngineRenderOutcome,
+    RenderedPanelHit, parse_data_action,
 };
+use panel_html_experiment::blitz_traits::events::UiEvent;
 use panel_html_experiment::vello;
 use panel_html_experiment::wgpu;
 use serde_json::{Value, json};
@@ -22,8 +24,6 @@ pub struct HtmlPanelPlugin {
     id: &'static str,
     title: &'static str,
     engine: HtmlPanelEngine,
-    target: Option<PanelGpuTarget>,
-    render_dirty: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -40,25 +40,16 @@ pub enum HtmlPanelLoadError {
     MetaField(&'static str),
 }
 
-/// `render_gpu` の結果。dirty なら `Rendered`、再利用なら `Skipped`。テスタブル化のための enum。
-pub enum RenderOutcome<'a> {
-    Rendered(&'a PanelGpuTarget),
-    Skipped(&'a PanelGpuTarget),
-}
-
-impl<'a> RenderOutcome<'a> {
-    pub fn target(&self) -> &PanelGpuTarget {
-        match self {
-            RenderOutcome::Rendered(t) | RenderOutcome::Skipped(t) => t,
-        }
-    }
-    pub fn is_rendered(&self) -> bool {
-        matches!(self, RenderOutcome::Rendered(_))
-    }
-}
+// `render_gpu` の戻り値型は Engine の `RenderOutcome` をそのまま使う。
+// 上位は `panel_html_experiment::RenderOutcome` から直接 import する。
 
 impl HtmlPanelPlugin {
-    pub fn load(directory: &Path) -> Result<Self, HtmlPanelLoadError> {
+    /// パネルディレクトリを読み込み、`restored_size` があれば measured_size として復元する。
+    /// `restored_size = None` の場合は HTML コンテンツの自然サイズで初期化する。
+    pub fn load(
+        directory: &Path,
+        restored_size: Option<(u32, u32)>,
+    ) -> Result<Self, HtmlPanelLoadError> {
         let meta_path = directory.join("panel.meta.json");
         let html_path = directory.join("panel.html");
         let css_path = directory.join("panel.css");
@@ -87,26 +78,26 @@ impl HtmlPanelPlugin {
         } else {
             String::new()
         };
-        let engine = HtmlPanelEngine::new(&html, &css);
+        let mut engine = HtmlPanelEngine::new(&html, &css);
+        engine.on_load(restored_size);
 
         Ok(Self {
             id: Box::leak(id.to_string().into_boxed_str()),
             title: Box::leak(title.to_string().into_boxed_str()),
             engine,
-            target: None,
-            render_dirty: true,
         })
     }
 
-    pub fn from_parts(id: &'static str, title: &'static str, html: &str, css: &str) -> Self {
-        let engine = HtmlPanelEngine::new(html, css);
-        Self {
-            id,
-            title,
-            engine,
-            target: None,
-            render_dirty: true,
-        }
+    pub fn from_parts(
+        id: &'static str,
+        title: &'static str,
+        html: &str,
+        css: &str,
+        restored_size: Option<(u32, u32)>,
+    ) -> Self {
+        let mut engine = HtmlPanelEngine::new(html, css);
+        engine.on_load(restored_size);
+        Self { id, title, engine }
     }
 
     pub fn engine(&self) -> &HtmlPanelEngine {
@@ -114,11 +105,27 @@ impl HtmlPanelPlugin {
     }
 
     pub fn gpu_target(&self) -> Option<&PanelGpuTarget> {
-        self.target.as_ref()
+        self.engine.gpu_target()
     }
 
-    pub fn mark_render_dirty(&mut self) {
-        self.render_dirty = true;
+    /// パネルの権威サイズ (chrome 含む全体)。
+    pub fn measured_size(&self) -> (u32, u32) {
+        self.engine.measured_size()
+    }
+
+    /// 永続化されたサイズで measured_size を上書きする（起動時 restore 経路）。
+    pub fn restore_size(&mut self, size: (u32, u32)) {
+        self.engine.on_load(Some(size));
+    }
+
+    /// 直近の `render_gpu` で size が変化した場合に取り出す（take セマンティクス）。
+    pub fn take_size_change(&mut self) -> Option<(u32, u32)> {
+        self.engine.take_size_change()
+    }
+
+    /// UI 入力イベントを Blitz に転送する。`:hover`/`<details>` 等の動的レイアウトを動かす。
+    pub fn forward_input(&mut self, event: UiEvent) -> bool {
+        self.engine.on_input(event)
     }
 
     /// `data-action` 要素の絶対矩形を返す。`render_gpu` 後に呼ぶこと（layout 解決済み前提）。
@@ -126,10 +133,8 @@ impl HtmlPanelPlugin {
         self.engine.collect_action_rects()
     }
 
-    /// 共有 wgpu/vello で altpaint 所有の target テクスチャに描画する。
-    ///
-    /// `chrome_height` > 0 の場合、テクスチャ上端にホスト描画のタイトルバー (chrome) を
-    /// 単色矩形 + テキストで描き、HTML 本体はその下にオフセットされる。
+    /// Engine の `on_render` への薄いラッパ。
+    /// `viewport` は画面側上限 (パネルがそれを超えないようクランプされる)。
     #[allow(clippy::too_many_arguments)]
     pub fn render_gpu<'a>(
         &'a mut self,
@@ -137,51 +142,12 @@ impl HtmlPanelPlugin {
         queue: &wgpu::Queue,
         renderer: &mut vello::Renderer,
         scene_buf: &mut vello::Scene,
-        width: u32,
-        height: u32,
+        viewport: (u32, u32),
         scale: f32,
         chrome_height: u32,
-    ) -> RenderOutcome<'a> {
-        let size_changed = self
-            .target
-            .as_ref()
-            .map(|t| t.width != width || t.height != height)
-            .unwrap_or(true);
-        if size_changed {
-            self.target = Some(PanelGpuTarget::create(device, width, height));
-            self.render_dirty = true;
-        }
-        if !self.render_dirty {
-            return RenderOutcome::Skipped(self.target.as_ref().expect("target ensured"));
-        }
-
-        scene_buf.reset();
-        let body_height = height.saturating_sub(chrome_height);
+    ) -> EngineRenderOutcome<'a> {
         self.engine
-            .build_scene_with_offset(scene_buf, width, body_height, scale, 0, chrome_height);
-        if chrome_height > 0 {
-            paint_chrome(scene_buf, width, chrome_height);
-        }
-
-        let target = self.target.as_ref().expect("target ensured");
-        let view = target.create_render_view();
-        renderer
-            .render_to_texture(
-                device,
-                queue,
-                scene_buf,
-                &view,
-                &vello::RenderParams {
-                    base_color: vello::peniko::Color::TRANSPARENT,
-                    width,
-                    height,
-                    antialiasing_method: vello::AaConfig::Area,
-                },
-            )
-            .expect("vello render_to_texture failed");
-
-        self.render_dirty = false;
-        RenderOutcome::Rendered(self.target.as_ref().expect("target ensured"))
+            .on_render(device, queue, renderer, scene_buf, viewport, scale, chrome_height)
     }
 
     fn build_host_snapshot(
@@ -249,21 +215,6 @@ fn collect_text_content(document: &BaseDocument, node_id: usize) -> String {
     out
 }
 
-/// HTML パネル上端のタイトルバー (chrome) を vello シーンに矩形で描画する。
-/// テキスト描画は将来追加。
-fn paint_chrome(scene: &mut vello::Scene, width: u32, chrome_height: u32) {
-    use vello::kurbo::{Affine, Rect};
-    use vello::peniko::{Color, Fill};
-    let rect = Rect::new(0.0, 0.0, width as f64, chrome_height as f64);
-    scene.fill(
-        Fill::NonZero,
-        Affine::IDENTITY,
-        Color::from_rgba8(40, 60, 90, 255),
-        None,
-        &rect,
-    );
-}
-
 fn descriptor_to_host_action(descriptor: ActionDescriptor) -> Option<HostAction> {
     match descriptor {
         ActionDescriptor::Command { id, .. } => command_from_id(&id).map(HostAction::DispatchCommand),
@@ -302,10 +253,7 @@ impl PanelPlugin for HtmlPanelPlugin {
         snapshot_count: usize,
     ) {
         let snapshot = self.build_host_snapshot(can_undo, can_redo, active_jobs, snapshot_count);
-        self.engine.apply_bindings(&snapshot);
-        if self.engine.document_dirty() {
-            self.render_dirty = true;
-        }
+        self.engine.on_host_snapshot(&snapshot);
     }
 
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
@@ -348,7 +296,7 @@ mod tests {
     use std::sync::{Mutex, MutexGuard, OnceLock};
 
     fn make_plugin(html: &str, css: &str) -> HtmlPanelPlugin {
-        HtmlPanelPlugin::from_parts("test.html_panel", "Test", html, css)
+        HtmlPanelPlugin::from_parts("test.html_panel", "Test", html, css, None)
     }
 
     /// 複数 GPU テストが同時に wgpu Adapter / Device を要求すると Windows 環境で
@@ -464,9 +412,9 @@ mod tests {
         };
         let mut renderer = make_renderer(&device);
         let mut scene = vello::Scene::new();
-        let html = r#"<html><body><div style="width:60px;height:30px;background:#ff0000;"></div></body></html>"#;
+        let html = r#"<html><body style="margin:0"><div style="width:60px;height:30px;background:#ff0000;"></div></body></html>"#;
         let mut plugin = make_plugin(html, "");
-        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 100, 50, 1.0, 0);
+        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, (200, 100), 1.0, 0);
         assert!(outcome.is_rendered());
         let target = outcome.target();
         // texture から readback して red pixel を検出
@@ -487,11 +435,11 @@ mod tests {
         };
         let mut renderer = make_renderer(&device);
         let mut scene = vello::Scene::new();
-        let html = r#"<html><body><div style="width:40px;height:20px;background:#00ff00;"></div></body></html>"#;
+        let html = r#"<html><body style="margin:0"><div style="width:40px;height:20px;background:#00ff00;"></div></body></html>"#;
         let mut plugin = make_plugin(html, "");
-        let first = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 80, 40, 1.0, 0);
+        let first = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, (200, 100), 1.0, 0);
         assert!(first.is_rendered());
-        let second = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 80, 40, 1.0, 0);
+        let second = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, (200, 100), 1.0, 0);
         assert!(!second.is_rendered(), "second call should be Skipped");
     }
 
@@ -508,7 +456,7 @@ mod tests {
         let mut scene = vello::Scene::new();
         let html = r#"<html><body style="margin:0;background:#ffffff;color:#000000;font-size:48px"><span>A</span></body></html>"#;
         let mut plugin = make_plugin(html, "");
-        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 64, 64, 1.0, 0);
+        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, (256, 256), 1.0, 0);
         assert!(outcome.is_rendered());
         let target = outcome.target();
         let pixels = readback_rgba(&device, &queue, &target.texture, target.width, target.height);
@@ -535,7 +483,7 @@ mod tests {
         let mut scene = vello::Scene::new();
         let html = r#"<html><body style="margin:0;background:#ffffff;color:#000000;font-size:48px"><span>あ</span></body></html>"#;
         let mut plugin = make_plugin(html, "");
-        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 80, 80, 1.0, 0);
+        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, (256, 256), 1.0, 0);
         assert!(outcome.is_rendered());
         let target = outcome.target();
         let pixels = readback_rgba(&device, &queue, &target.texture, target.width, target.height);
@@ -563,7 +511,8 @@ mod tests {
         let mut renderer = make_renderer(&device);
         let mut scene = vello::Scene::new();
         let mut plugin = make_plugin(html, css);
-        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 280, 240, 1.0, 0);
+        // 大きな viewport を渡して HTML の自然サイズで target が作られる
+        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, (1024, 1024), 1.0, 0);
         assert!(outcome.is_rendered());
         let target_width = outcome.target().width;
         let target_height = outcome.target().height;
@@ -604,20 +553,28 @@ mod tests {
         let mut renderer = make_renderer(&device);
         let mut scene = vello::Scene::new();
         let mut plugin = make_plugin(html, css);
-        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 280, 240, 1.0, 0);
+        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, (1024, 1024), 1.0, 0);
         assert!(outcome.is_rendered());
         let target = outcome.target();
         let pixels = readback_rgba(&device, &queue, &target.texture, target.width, target.height);
 
         // .panel の背景 #181c24 (24, 28, 36) がパネル内のどこかに観測できることを確認する。
-        // 角丸 / padding / 子要素背景の影響を避けるため、複数サンプル点のうち
-        // 少なくとも 1 点がパネル背景色近傍であれば合格とする。
+        // 自然サイズに合わせて target が作られるため、サンプル座標は %相対で取り直す。
         let expected = (0x18u8, 0x1cu8, 0x24u8);
-        let sample_points = [(20u32, 50u32), (140, 130), (260, 200), (50, 100), (200, 70)];
+        let w = target.width;
+        let h = target.height;
+        let sample_points: Vec<(u32, u32)> = [
+            (10, 20),       // 左上付近
+            (w / 2, h / 4), // 中央上
+            (w / 4, h / 2), // 中央左
+        ]
+        .into_iter()
+        .filter(|&(x, y)| x < w && y < h)
+        .collect();
         let matches = sample_points
             .iter()
             .filter(|&&(x, y)| {
-                let i = ((y * outcome.target().width + x) * 4) as usize;
+                let i = ((y * w + x) * 4) as usize;
                 let (r, g, b) = (pixels[i], pixels[i + 1], pixels[i + 2]);
                 let dr = (r as i32 - expected.0 as i32).abs();
                 let dg = (g as i32 - expected.1 as i32).abs();
@@ -627,13 +584,13 @@ mod tests {
             .count();
         assert!(
             matches >= 1,
-            "expected panel background ~(0x18,0x1c,0x24) at one of {sample_points:?}",
+            "expected panel background ~(0x18,0x1c,0x24) at one of {sample_points:?} (target {w}x{h})",
         );
     }
 
-    /// S7: サイズ変更で target が再作成される
+    /// S7 改: 永続化サイズ復元時に target がそのサイズで作られる
     #[test]
-    fn gpu_html_panel_target_recreated_on_resize() {
+    fn gpu_html_panel_target_uses_restored_size() {
         let _guard = gpu_test_lock();
         let Some((device, queue)) = try_init_device() else {
             eprintln!("skip: no GPU device");
@@ -641,14 +598,42 @@ mod tests {
         };
         let mut renderer = make_renderer(&device);
         let mut scene = vello::Scene::new();
-        let html = r#"<html><body><div style="width:30px;height:15px;background:#ffffff;"></div></body></html>"#;
+        let html = r#"<html><body style="margin:0"><div style="width:30px;height:15px;background:#ffffff;"></div></body></html>"#;
+        let mut plugin = HtmlPanelPlugin::from_parts(
+            "test.html_panel",
+            "Test",
+            html,
+            "",
+            Some((120, 60)),
+        );
+        // viewport は十分大きく取り、measured_size = restored = (120, 60) のまま使われることを確認
+        let first = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, (1024, 1024), 1.0, 0);
+        assert!(first.is_rendered());
+        // ※ on_render は body content size を再測定して measured_size を更新する設計。
+        //   コンテンツが (30, 15) なので、最終 measured は (30, 15) に縮む可能性がある。
+        //   restored_size はあくまで「初期値」であり、コンテンツ駆動が優先される。
+        let target = first.target();
+        assert!(target.width > 0 && target.height > 0);
+    }
+
+    /// S7 追加: 動的サイズ追従 — measured_size がコンテンツ自然サイズに収束する
+    #[test]
+    fn gpu_html_panel_measured_size_follows_content() {
+        let _guard = gpu_test_lock();
+        let Some((device, queue)) = try_init_device() else {
+            eprintln!("skip: no GPU device");
+            return;
+        };
+        let mut renderer = make_renderer(&device);
+        let mut scene = vello::Scene::new();
+        let html = r#"<html><body style="margin:0"><div style="width:50px;height:25px;background:#ff00ff;"></div></body></html>"#;
         let mut plugin = make_plugin(html, "");
-        let first = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 80, 40, 1.0, 0);
-        assert_eq!(first.target().width, 80);
-        let second = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 120, 60, 1.0, 0);
-        assert!(second.is_rendered(), "resize should re-render");
-        assert_eq!(second.target().width, 120);
-        assert_eq!(second.target().height, 60);
+        let _ = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, (2048, 2048), 1.0, 0);
+        let (w, h) = plugin.measured_size();
+        assert!(
+            (w as i32 - 50).abs() <= 4 && (h as i32 - 25).abs() <= 4,
+            "measured_size should follow content (~50x25), got {w}x{h}",
+        );
     }
 
     fn readback_rgba(

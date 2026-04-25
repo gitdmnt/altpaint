@@ -139,11 +139,135 @@ fn mark_dirty_unknown_panel_id_is_ignored() {
 fn render_html_panels_returns_empty_when_gpu_not_installed() {
     use crate::html_panel::HtmlPanelPlugin;
     let html = r#"<html><body><button id="x" data-action="command:noop">X</button></body></html>"#;
-    let plugin = HtmlPanelPlugin::from_parts("html.test", "T", html, "");
+    let plugin = HtmlPanelPlugin::from_parts("html.test", "T", html, "", None);
     let mut runtime = PanelRuntime::new();
     runtime.register_panel(Box::new(plugin));
     let frames = runtime.render_html_panels(&[("html.test".to_string(), 100, 50)], 1.0, 0);
     assert!(frames.is_empty(), "no GPU context => no frames");
+}
+
+/// Phase 3: html_measured_sizes が登録された全 HTML パネルの (id, w, h) を返す
+#[cfg(feature = "html-panel")]
+#[test]
+fn html_measured_sizes_returns_each_panel() {
+    use crate::html_panel::HtmlPanelPlugin;
+    let plugin_a = HtmlPanelPlugin::from_parts(
+        "html.size.a",
+        "A",
+        r#"<html><body style="margin:0"><div style="width:100px;height:40px"></div></body></html>"#,
+        "",
+        Some((100, 40)),
+    );
+    let plugin_b = HtmlPanelPlugin::from_parts(
+        "html.size.b",
+        "B",
+        r#"<html><body><div></div></body></html>"#,
+        "",
+        Some((222, 333)),
+    );
+    let mut runtime = PanelRuntime::new();
+    runtime.register_panel(Box::new(plugin_a));
+    runtime.register_panel(Box::new(plugin_b));
+    let sizes = runtime.html_measured_sizes();
+    let a = sizes.iter().find(|(id, _, _)| id == "html.size.a").expect("a present");
+    let b = sizes.iter().find(|(id, _, _)| id == "html.size.b").expect("b present");
+    assert_eq!((a.1, a.2), (100, 40));
+    assert_eq!((b.1, b.2), (222, 333));
+}
+
+/// Phase 3: forward_html_input は対象パネルの engine.on_input を呼び layout_dirty を立てる
+#[cfg(feature = "html-panel")]
+#[test]
+fn forward_html_input_routes_to_correct_plugin() {
+    use crate::html_panel::HtmlPanelPlugin;
+    use panel_html_experiment::blitz_traits::events::{
+        BlitzPointerEvent, BlitzPointerId, MouseEventButton, MouseEventButtons, PointerCoords,
+        PointerDetails, UiEvent,
+    };
+    let html = r#"<html><body><button id="b" data-action="command:noop" style="display:block;width:80px;height:40px">B</button></body></html>"#;
+    let plugin = HtmlPanelPlugin::from_parts("html.input.target", "T", html, "", Some((80, 40)));
+    let mut runtime = PanelRuntime::new();
+    runtime.register_panel(Box::new(plugin));
+
+    let event = UiEvent::PointerMove(BlitzPointerEvent {
+        id: BlitzPointerId::Mouse,
+        is_primary: true,
+        coords: PointerCoords {
+            page_x: 10.0,
+            page_y: 10.0,
+            client_x: 10.0,
+            client_y: 10.0,
+            screen_x: 10.0,
+            screen_y: 10.0,
+        },
+        button: MouseEventButton::Main,
+        buttons: MouseEventButtons::empty(),
+        mods: keyboard_types::Modifiers::empty(),
+        details: PointerDetails::default(),
+    });
+    let routed = runtime.forward_html_input("html.input.target", event);
+    assert!(routed, "forward_html_input should route to existing panel");
+    let routed_unknown = runtime.forward_html_input("html.input.nonexistent", make_dummy_pointer_move());
+    assert!(!routed_unknown, "unknown panel id should not route");
+}
+
+#[cfg(feature = "html-panel")]
+fn make_dummy_pointer_move() -> panel_html_experiment::blitz_traits::events::UiEvent {
+    use panel_html_experiment::blitz_traits::events::{
+        BlitzPointerEvent, BlitzPointerId, MouseEventButton, MouseEventButtons, PointerCoords,
+        PointerDetails, UiEvent,
+    };
+    UiEvent::PointerMove(BlitzPointerEvent {
+        id: BlitzPointerId::Mouse,
+        is_primary: true,
+        coords: PointerCoords {
+            page_x: 0.0,
+            page_y: 0.0,
+            client_x: 0.0,
+            client_y: 0.0,
+            screen_x: 0.0,
+            screen_y: 0.0,
+        },
+        button: MouseEventButton::Main,
+        buttons: MouseEventButtons::empty(),
+        mods: keyboard_types::Modifiers::empty(),
+        details: PointerDetails::default(),
+    })
+}
+
+/// Phase 3: take_html_size_changes は変化があった panel_id だけを返し、二回目は空
+#[cfg(feature = "html-panel")]
+#[test]
+fn take_html_size_changes_yields_changed_panels_then_empty() {
+    use crate::html_panel::HtmlPanelPlugin;
+    let plugin = HtmlPanelPlugin::from_parts(
+        "html.size.changes",
+        "T",
+        r#"<html><body style="margin:0"><div style="width:50px;height:25px"></div></body></html>"#,
+        "",
+        Some((300, 200)), // ロード時にコンテンツサイズと違う値を渡す
+    );
+    let mut runtime = PanelRuntime::new();
+    runtime.register_panel(Box::new(plugin));
+
+    // 初期サイズは restored = (300, 200)
+    let initial = runtime.html_measured_sizes();
+    assert_eq!(
+        initial.iter().find(|(id, _, _)| id == "html.size.changes").map(|s| (s.1, s.2)),
+        Some((300, 200))
+    );
+
+    // take は GPU render が走らないと変化を検知しない。サイズ変化シミュレートのため
+    // forcibly mark size change via テストフック (本実装では on_render 経由で起きる)。
+    runtime.test_mark_html_size_changed("html.size.changes", (50, 25));
+    let changes = runtime.take_html_size_changes();
+    assert_eq!(changes.len(), 1);
+    assert_eq!(changes[0].0, "html.size.changes");
+    assert_eq!(changes[0].1, (50, 25));
+
+    // 二回目は空
+    let changes_again = runtime.take_html_size_changes();
+    assert!(changes_again.is_empty());
 }
 
 /// Phase 1: HTML パネルは workspace 統合のために `panel_trees()` に id 付きで現れる必要がある。
@@ -153,8 +277,13 @@ fn render_html_panels_returns_empty_when_gpu_not_installed() {
 #[test]
 fn html_panel_appears_in_panel_trees_with_static_id() {
     use crate::html_panel::HtmlPanelPlugin;
-    let plugin =
-        HtmlPanelPlugin::from_parts("html.workspace.fixture", "T", "<html><body></body></html>", "");
+    let plugin = HtmlPanelPlugin::from_parts(
+        "html.workspace.fixture",
+        "T",
+        "<html><body></body></html>",
+        "",
+        None,
+    );
     let mut runtime = PanelRuntime::new();
     runtime.register_panel(Box::new(plugin));
 

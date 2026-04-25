@@ -26,10 +26,13 @@ pub use action::{ActionDescriptor, ActionParseError, parse_data_action};
 pub use binding::{
     BindingAttribute, classify_binding_attribute, evaluate_as_bool, evaluate_as_string,
 };
-pub use engine::{HtmlPanelEngine, PanelHit, PixelRect, RenderedPanelHit, descriptor_from_hit};
+pub use engine::{
+    HtmlPanelEngine, PanelHit, PixelRect, RenderOutcome, RenderedPanelHit, descriptor_from_hit,
+};
 pub use gpu::PanelGpuTarget;
 
 pub use blitz_dom;
 pub use blitz_html;
+pub use blitz_traits;
 pub use vello;
 pub use wgpu;

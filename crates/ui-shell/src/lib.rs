@@ -182,6 +182,22 @@ impl PanelPresentation {
         self.html_panel_hits.clear();
     }
 
+    /// screen 座標 `(x, y)` が HTML パネル領域 (body 部分) のいずれかに入っていれば
+    /// `(panel_id, local_x, local_y)` を返す。chrome 領域は除く（move handle 経路用）。
+    /// `:hover` / `<details>` 開閉などの動的レイアウト追従のための入力転送に使う。
+    pub fn html_panel_at(&self, x: usize, y: usize) -> Option<(String, u32, u32)> {
+        for (panel_id, map) in &self.html_panel_hits {
+            let r = map.screen_rect;
+            if x < r.x || y < r.y || x >= r.x + r.width || y >= r.y + r.height {
+                continue;
+            }
+            let local_x = (x - r.x) as u32;
+            let local_y = (y - r.y) as u32;
+            return Some((panel_id.clone(), local_x, local_y));
+        }
+        None
+    }
+
     /// screen 座標 `(x, y)` の HTML パネル hit を検索し、`(panel_id, node_id)` を返す。
     pub fn html_panel_hit_at(&self, x: usize, y: usize) -> Option<(String, String)> {
         for (panel_id, map) in &self.html_panel_hits {

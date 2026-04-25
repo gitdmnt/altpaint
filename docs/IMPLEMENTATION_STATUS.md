@@ -800,6 +800,75 @@
 
 ---
 
+## Phase 8G: HTML パネル枠サイズの動的化と責務再分離 (2026-04-25) 完了
+
+作業モデル: claude-opus-4-7 (1M context)
+
+### 経緯
+
+Phase 8F で HTML パネル GPU 直描画統合は完了したが、描画枠サイズが `WorkspacePanelSize::default()` の固定値で決まっており、HTML コンテンツ自然サイズと一致しない問題が残っていた。あわせて `HtmlPanelEngine` / `HtmlPanelPlugin` / `apps/desktop/runtime.rs` 間で「枠サイズ・dirty・GPU target・chrome 描画」の責務が散らばっており、枠の動的化と同時に責務再分離を行った。
+
+### 実装内容
+
+- **`crates/panel-html-experiment/src/engine.rs`** に状態とライフサイクルを集約
+  - `measured_size: (u32, u32)` — パネルの権威サイズ。`on_load` で初期化、`on_render` で intrinsic 結果に応じて更新
+  - `layout_dirty` / `render_dirty` / `pending_size_change` フラグを Engine 内で管理（Blitz の `has_changes()` バグを回避するため自前トラック継続）
+  - `gpu_target: Option<PanelGpuTarget>` — Plugin から移管。`on_render` 内でリサイズ判定して再生成
+  - 公開 API: `on_load(restored_size)` / `measured_size()` / `measure_intrinsic(max_w)` / `on_host_snapshot(snapshot)` / `on_input(UiEvent)` / `on_render(device, queue, renderer, scene_buf, viewport, scale, chrome)` / `take_size_change()`
+  - `measure_intrinsic` は viewport (max_w, 8192) で resolve → `<body>` の `final_layout.content_size` から自然サイズを取得
+  - `on_input` は `EventDriver::handle_ui_event` 経由で `:hover` / `<details>` / pointer click を Blitz に流す
+  - `on_render` は viewport クランプ → resolve → content size 比較 → measured_size 変化なら GPU target 再作成 + `pending_size_change` 立て
+
+- **`crates/panel-runtime/src/html_panel.rs`** を panel-api 接合層として薄く再構成
+  - `gpu_target` / `render_dirty` / chrome 描画 / リサイズ判定はすべて Engine に委譲
+  - `load(directory, restored_size: Option<(u32, u32)>)` / `from_parts(id, title, html, css, restored_size)` でロード時に永続値を流せる
+  - `forward_input(UiEvent)` / `measured_size()` / `take_size_change()` / `restore_size((w, h))` を新設
+  - 残った責務: ファイル I/O、host snapshot 構築（Document → JSON）、`data-action` → `HostAction` 翻訳、`PanelPlugin` trait 実装
+
+- **`crates/panel-runtime/src/registry.rs`**
+  - `html_measured_sizes() -> Vec<(String, u32, u32)>` — HTML パネル毎の現在の measured_size
+  - `forward_html_input(panel_id, UiEvent) -> bool` — 指定パネルへ入力転送
+  - `take_html_size_changes() -> Vec<(String, (u32, u32))>` — `render_html_panels` 中に発生したサイズ変化を吸い取り（take セマンティクス）
+  - `restore_html_panel_size(panel_id, (w, h))` — 起動時 restore 用
+  - `render_html_panels` 内で `take_size_change()` を吸い取り `pending_html_size_changes` に蓄積
+
+- **`crates/ui-shell/src/lib.rs` / `workspace.rs`**
+  - `set_panel_size(panel_id, w, h)` — workspace_layout の panel size を書き換える（永続化に流す）
+  - `html_panel_at(x, y) -> Option<(panel_id, local_x, local_y)>` — HTML パネル領域ヒット（chrome 除外）
+
+- **`apps/desktop/src/runtime.rs`**
+  - HTML quad entry 構築から `PixelRect { width: 300, height: 220 }` 固定 fallback を削除
+  - サイズは `panel_runtime.html_measured_sizes()` から取得、位置のみ `panel_rect_in_viewport` から取得
+  - `render_html_panels` 後に `take_html_size_changes()` を吸い取って `set_panel_size` で workspace_layout を更新（既存 persistence 経路に乗る）
+
+- **`apps/desktop/src/runtime/pointer.rs`**
+  - `handle_mouse_cursor_moved` / `handle_mouse_button` で HTML パネル領域内の pointer を `forward_html_input` に転送（PointerDown/Up/Move）
+  - `:hover` / `<details>` 開閉 / `<button>` click が動的に動くようになった
+
+- **`apps/desktop/src/app/bootstrap.rs`**
+  - `apply_ui_state_to_panel_system` 内で workspace_layout に永続化された HTML パネル size を `restore_html_panel_size` 経由で Engine に流し込む
+
+### 受け入れ結果
+
+- HTML パネル起動直後の枠が `panel.html` のコンテンツ自然サイズに一致（300x220 固定撤廃）
+- 永続化された `WorkspacePanelSize` が起動時に復元
+- `:hover` / `<details>` / button click が動的に動作
+- viewport 上限クランプ（コンテンツが viewport を超えてもパネルは画面内に収まる）
+- chrome 領域への pointer は move handle へ、body 領域は HTML エンジンへ正しく振り分け
+- `cargo test -p panel-html-experiment --lib`: 27 passed
+- `cargo test -p panel-runtime --features html-panel --lib`: 26 passed
+- `cargo test -p desktop --features html-panel --bins`: 110 passed
+- `cargo clippy --workspace --all-targets --features html-panel`: 新規コード起因 0 error
+
+### スコープ外
+
+- 手動リサイズハンドル UI（角ドラッグ等）
+- IME / キーボード入力の Blitz 転送
+- スクロール対応（viewport クランプのみ）
+- `<select>` ドロップダウン（popup レイヤ責務の設計が別途必要なため次フェーズ）
+
+---
+
 ## Phase 8F: HTML パネル GPU 直描画統合 (2026-04-25) 完了
 
 作業モデル: claude-opus-4-7 (1M context)
