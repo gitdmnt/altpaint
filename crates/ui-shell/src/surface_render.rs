@@ -161,6 +161,7 @@ impl PanelPresentation {
     }
 
     /// 現在の値を floating panels へ変換する。
+    /// 子ノード空のツリー（HTML パネル等の GPU 直描画パネル）は除外する。
     ///
     /// 必要に応じて dirty 状態も更新します。
     fn collect_floating_panels<'a>(
@@ -173,6 +174,7 @@ impl PanelPresentation {
         trees
             .iter()
             .enumerate()
+            .filter(|(_, tree)| !tree.children.is_empty())
             .map(|(index, tree)| FloatingPanel {
                 panel_id: tree.id,
                 title: tree.title,

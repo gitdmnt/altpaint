@@ -11,4 +11,13 @@ panel-dsl = { path = "../panel-dsl" }
 panel-api = { path = "../panel-api" }
 panel-schema = { path = "../panel-schema" }
 plugin-host = { path = "../plugin-host" }
+panel-html-experiment = { path = "../panel-html-experiment", optional = true }
+thiserror = { workspace = true, optional = true }
 serde_json.workspace = true
+
+[dev-dependencies]
+pollster = { workspace = true }
+
+[features]
+default = []
+html-panel = ["dep:panel-html-experiment", "dep:thiserror"]

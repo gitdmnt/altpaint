@@ -24,5 +24,6 @@ winit.workspace = true
 
 [features]
 gpu = ["dep:gpu-canvas"]
+html-panel = ["panel-runtime/html-panel"]
 
 [dev-dependencies]

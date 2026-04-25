@@ -128,6 +128,14 @@ impl ApplicationHandler for DesktopRuntime {
             presenter.srgb_canvas_view_supported(),
         );
 
+        #[cfg(feature = "html-panel")]
+        {
+            self.app
+                .panel_runtime
+                .install_gpu_context(presenter.device(), presenter.queue());
+            self.app.panel_runtime.mark_all_dirty();
+        }
+
         let _ = self.app.prepare_present_frame(
             size.width as usize,
             size.height as usize,
@@ -248,6 +256,49 @@ impl ApplicationHandler for DesktopRuntime {
                 let quad_t = Instant::now();
                 let canvas_quad = self.app.canvas_texture_quad();
                 self.profiler.record("canvas_texture_quad", quad_t.elapsed());
+
+                // HTML パネル描画も先に処理（&mut panel_runtime を必要とするため、
+                // 続く &self.app 借用と衝突しない順序で実施）。
+                #[cfg(feature = "html-panel")]
+                struct HtmlQuadEntry {
+                    panel_id: String,
+                    texture_ptr: *const wgpu::Texture,
+                    screen_rect: render::PixelRect,
+                }
+                #[cfg(feature = "html-panel")]
+                let html_quad_entries: Vec<HtmlQuadEntry> = {
+                    let panel_ids = self.app.panel_runtime.html_panel_ids();
+                    if panel_ids.is_empty() {
+                        Vec::new()
+                    } else {
+                        let panel_w = 280u32;
+                        let panel_h = 240u32;
+                        let margin = 8u32;
+                        let surface_w = size.width;
+                        let mut sized: Vec<(String, u32, u32)> = Vec::new();
+                        for id in &panel_ids {
+                            sized.push((id.clone(), panel_w, panel_h));
+                        }
+                        let frames = self.app.panel_runtime.render_html_panels(&sized, 1.0);
+                        let mut entries = Vec::with_capacity(frames.len());
+                        for (i, frame) in frames.iter().enumerate() {
+                            let y = margin + (panel_h + margin) * i as u32;
+                            let x = surface_w.saturating_sub(panel_w + margin);
+                            entries.push(HtmlQuadEntry {
+                                panel_id: frame.panel_id.clone(),
+                                texture_ptr: frame.texture as *const wgpu::Texture,
+                                screen_rect: render::PixelRect {
+                                    x: x as usize,
+                                    y: y as usize,
+                                    width: panel_w as usize,
+                                    height: panel_h as usize,
+                                },
+                            });
+                        }
+                        entries
+                    }
+                };
+
                 let Some(background_frame) = self.app.background_frame() else {
                     return;
                 };
@@ -358,6 +409,27 @@ impl ApplicationHandler for DesktopRuntime {
                     })
                 };
                 let present_started = Instant::now();
+
+                // 上で組み立てた html_quad_entries を `GpuPanelQuad<'_>` に変換する。
+                // SAFETY: texture_ptr は self.app.panel_runtime 所有の Box<HtmlPanelPlugin>::target.texture
+                // を指す。Box は heap に固定されており、本フレームの間 panel_runtime に変更を加えないため
+                // 寿命が保たれる。html_quad_entries 自体は本ブロックスコープで保持されている。
+                #[cfg(feature = "html-panel")]
+                let html_panel_quads_owned: Vec<crate::wgpu_canvas::GpuPanelQuad<'_>> =
+                    html_quad_entries
+                        .iter()
+                        .map(|e| crate::wgpu_canvas::GpuPanelQuad {
+                            panel_id: e.panel_id.as_str(),
+                            texture: unsafe { &*e.texture_ptr },
+                            screen_rect: e.screen_rect,
+                        })
+                        .collect();
+                #[cfg(feature = "html-panel")]
+                let html_panel_quads_slice: &[crate::wgpu_canvas::GpuPanelQuad<'_>] =
+                    &html_panel_quads_owned;
+                #[cfg(not(feature = "html-panel"))]
+                let html_panel_quads_slice: &[crate::wgpu_canvas::GpuPanelQuad<'_>] = &[];
+
                 let timings = match presenter.render(
                     PresentScene {
                         base_layer: FrameLayer {
@@ -373,6 +445,7 @@ impl ApplicationHandler for DesktopRuntime {
                             source: TextureSource::from(ui_panel_frame),
                             upload_region: ui_panel_upload_region,
                         },
+                        html_panel_quads: html_panel_quads_slice,
                     },
                     #[cfg(feature = "gpu")]
                     self.app.gpu_canvas_pool(),

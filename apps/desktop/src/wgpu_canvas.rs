@@ -12,6 +12,7 @@ use anyhow::{Context, Result};
 use desktop_support::APP_BACKGROUND;
 use desktop_support::PresentTimings;
 use render::RenderFrame;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use winit::dpi::PhysicalSize;
@@ -126,13 +127,25 @@ pub struct CanvasLayer<'a> {
 ///   L1 base_layer        … バックグラウンド（ドキュメント合成結果）
 ///   L2 canvas_layer      … キャンバス本体（None なら描画しない）
 ///   L3 temp_overlay_layer … ストローク中の一時オーバーレイ
-///   L4 ui_panel_layer    … UI パネル群
+///   L4 ui_panel_layer    … UI パネル群（DSL/Wasm パネルを CPU で合成した 1 枚）
+///   L5 html_panel_quads  … HTML パネル群（vello で個別に GPU 直描画されたテクスチャを quad 合成）
 #[derive(Debug, Clone, Copy)]
 pub struct PresentScene<'a> {
     pub base_layer: FrameLayer<'a>,
     pub canvas_layer: Option<CanvasLayer<'a>>,
     pub temp_overlay_layer: FrameLayer<'a>,
     pub ui_panel_layer: FrameLayer<'a>,
+    pub html_panel_quads: &'a [GpuPanelQuad<'a>],
+}
+
+/// HTML パネル 1 枚分の GPU 描画情報。
+/// `texture` は panel-runtime 側が所有する `Rgba8Unorm + STORAGE_BINDING + view_formats=[Rgba8UnormSrgb]`
+/// テクスチャへの不変参照。`screen_rect` は画面ピクセル座標の配置矩形。
+#[derive(Debug, Clone, Copy)]
+pub struct GpuPanelQuad<'a> {
+    pub panel_id: &'a str,
+    pub texture: &'a wgpu::Texture,
+    pub screen_rect: render::PixelRect,
 }
 
 /// WGSL（WebGPU Shading Language）で書かれた描画シェーダ。
@@ -381,6 +394,19 @@ pub struct WgpuPresenter {
     /// `false` の場合は GPU キャンバスソースを使わず CPU パスへフォールバックする。
     #[cfg(feature = "gpu")]
     srgb_canvas_view_supported: bool,
+    /// HTML パネル毎の bind_group キャッシュ。panel_id をキーにし、
+    /// 紐づくテクスチャの `global_id` が変わった or サイズ変化で再生成する。
+    html_panel_bind_groups: HashMap<String, HtmlPanelBindEntry>,
+}
+
+/// HTML パネル quad 用の bind_group 一式。
+/// テクスチャは panel-runtime 側所有。サイズ一致なら同じテクスチャ実体（panel-runtime が
+/// `PanelGpuTarget::create` で resize 時のみ作り直す契約）。よってサイズキーで再生成判定する。
+struct HtmlPanelBindEntry {
+    bind_group: wgpu::BindGroup,
+    uniform_buffer: wgpu::Buffer,
+    width: u32,
+    height: u32,
 }
 
 /// サポートされているプレゼントモードの中から最も低レイテンシなものを選ぶ。
@@ -437,10 +463,15 @@ impl WgpuPresenter {
         // 物理 GPU（adapter）から論理デバイスとコマンドキューを取得。
         // device: リソース生成・パイプライン構築に使う。
         // queue: GPU へ命令を投入するための FIFO キュー。
+        // Rgba8Unorm の STORAGE_READ_WRITE（gpu-canvas composite shader が要求）を
+        // 利用可能な場合は opt-in する。アダプター非対応時は features に含まれず、
+        // composite 経路は format_check 経由で CPU フォールバックへ落ちる。
+        let storage_format_features =
+            adapter.features() & wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("altpaint-device"),
-                required_features: wgpu::Features::empty(), // 特別な GPU 機能は不要
+                required_features: storage_format_features,
                 experimental_features: Default::default(),
                 required_limits: adapter.limits(), // アダプターのデフォルト制限を引き継ぐ
                 memory_hints: wgpu::MemoryHints::Performance, // パフォーマンス優先の VRAM 配置
@@ -455,6 +486,27 @@ impl WgpuPresenter {
         #[cfg(feature = "gpu")]
         let srgb_canvas_view_supported =
             gpu_canvas::format_check::supports_rgba8unorm_storage(&adapter);
+
+        let adapter_info = adapter.get_info();
+        #[cfg(feature = "gpu")]
+        {
+            if srgb_canvas_view_supported {
+                eprintln!(
+                    "[altpaint] canvas backend: GPU (adapter='{}', backend={:?}, Rgba8Unorm STORAGE_READ_WRITE supported)",
+                    adapter_info.name, adapter_info.backend
+                );
+            } else {
+                eprintln!(
+                    "[altpaint] canvas backend: CPU fallback (adapter='{}', backend={:?}, Rgba8Unorm STORAGE_READ_WRITE NOT supported)",
+                    adapter_info.name, adapter_info.backend
+                );
+            }
+        }
+        #[cfg(not(feature = "gpu"))]
+        eprintln!(
+            "[altpaint] canvas backend: CPU (gpu feature disabled at build time, adapter='{}', backend={:?})",
+            adapter_info.name, adapter_info.backend
+        );
 
         // サーフェスがサポートするピクセルフォーマットの一覧を取得する。
         let surface_capabilities = surface.get_capabilities(&adapter);
@@ -599,6 +651,7 @@ impl WgpuPresenter {
             canvas_gpu_bind_group_cache: None,
             #[cfg(feature = "gpu")]
             srgb_canvas_view_supported,
+            html_panel_bind_groups: HashMap::new(),
         })
     }
 
@@ -839,6 +892,93 @@ impl WgpuPresenter {
                 label: Some("altpaint-present-encoder"),
             });
 
+        // ─── HTML パネル: bind_group を準備（render pass 前に &mut self を済ませる） ───
+        // 各 quad について:
+        //  - 既存 bind_group があり texture_global_id とサイズ一致 → uniform_buffer のみ更新
+        //  - 異なる or 未登録 → bind_group + uniform_buffer を新規生成
+        let surface_w = self.config.width;
+        let surface_h = self.config.height;
+        for quad in scene.html_panel_quads {
+            let w = quad.texture.width();
+            let h = quad.texture.height();
+            let needs_rebuild = self
+                .html_panel_bind_groups
+                .get(quad.panel_id)
+                .map(|e| e.width != w || e.height != h)
+                .unwrap_or(true);
+            if needs_rebuild {
+                let view = quad.texture.create_view(&wgpu::TextureViewDescriptor {
+                    label: Some("html-panel-quad-view"),
+                    format: Some(wgpu::TextureFormat::Rgba8UnormSrgb),
+                    usage: Some(wgpu::TextureUsages::TEXTURE_BINDING),
+                    ..Default::default()
+                });
+                let uniform_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("html-panel-quad-uniform"),
+                    size: LAYER_UNIFORM_SIZE,
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+                let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("html-panel-quad-bind-group"),
+                    layout: &self.bind_group_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&self.sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: uniform_buffer.as_entire_binding(),
+                        },
+                    ],
+                });
+                self.html_panel_bind_groups.insert(
+                    quad.panel_id.to_string(),
+                    HtmlPanelBindEntry {
+                        bind_group,
+                        uniform_buffer,
+                        width: w,
+                        height: h,
+                    },
+                );
+            }
+            // uniform 更新（位置 + サイズ）
+            let entry = self
+                .html_panel_bind_groups
+                .get(quad.panel_id)
+                .expect("just inserted");
+            let texture_quad = render::TextureQuad {
+                destination: quad.screen_rect,
+                uv_min: [0.0, 0.0],
+                uv_max: [1.0, 1.0],
+                rotation_degrees: 0.0,
+                bbox_size: [
+                    quad.screen_rect.width as f32,
+                    quad.screen_rect.height as f32,
+                ],
+                flip_x: false,
+                flip_y: false,
+            };
+            self.queue.write_buffer(
+                &entry.uniform_buffer,
+                0,
+                &quad_uniform_bytes(texture_quad, surface_w, surface_h),
+            );
+        }
+        // 既に消えた panel_id をキャッシュから drop（panel-runtime 側のテクスチャ解放と歩調を合わせる）
+        let live_ids: std::collections::HashSet<&str> = scene
+            .html_panel_quads
+            .iter()
+            .map(|q| q.panel_id)
+            .collect();
+        self.html_panel_bind_groups
+            .retain(|id, _| live_ids.contains(id.as_str()));
+
         let encode_started = Instant::now();
         {
             // RenderPass を開始する。begin_render_pass の時点で「クリア」が指定される。
@@ -890,6 +1030,14 @@ impl WgpuPresenter {
             }
             Self::draw_layer(&mut pass, self.temp_overlay_layer.as_ref()); // L3 ストロークオーバーレイ
             Self::draw_layer(&mut pass, self.ui_panel_layer.as_ref()); // L4 UI パネル
+
+            // L5: HTML パネル群（GPU 直描画）
+            for quad in scene.html_panel_quads {
+                if let Some(entry) = self.html_panel_bind_groups.get(quad.panel_id) {
+                    pass.set_bind_group(0, &entry.bind_group, &[]);
+                    pass.draw(0..6, 0..1);
+                }
+            }
         } // ← ここで pass が drop され、レンダーパス終了コマンドが記録される
 
         // ─── ステップ 6: submit → present ────────────────────────────────────

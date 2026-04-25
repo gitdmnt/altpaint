@@ -189,6 +189,13 @@ pub trait PanelPlugin {
         Vec::new()
     }
 
+    /// プラグイン具体型へのダウンキャスト用ハンドル。
+    /// 自前ラスタライズ等の専用 API を持つプラグイン（例: HtmlPanelPlugin）が
+    /// `Some(self)` を返す。既定は `None`（DSL/Wasm パネルは介入不要）。
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        None
+    }
+
     /// debug summary を計算して返す。
     fn debug_summary(&self) -> String {
         String::new()

@@ -800,6 +800,74 @@
 
 ---
 
+## Phase 8F: HTML パネル GPU 直描画統合 (2026-04-25) 完了
+
+作業モデル: claude-opus-4-7 (1M context)
+関連 ADR: [docs/adr/007-html-panel-experiment.md](adr/007-html-panel-experiment.md)
+
+### 経緯
+
+第 1 稿で自作 HTML/CSS サブセット → 第 2 稿で Blitz + Vello-CPU → **第 3 稿（本フェーズ）で Blitz + Vello-GPU 直描画**に進化。Phase 8 系「CPU-GPU 通信最小化」と整合する形で、HTML パネルが CPU readback ゼロで実画面に CSS 反映される。
+
+### 実装内容
+
+- **`crates/panel-html-experiment/`** — `blitz-* 0.3.0-alpha.2` + `anyrender 0.8` + `anyrender_vello 0.8` + `vello 0.8` へアップグレード（`anyrender_vello_cpu` 削除）
+  - `engine.rs` — `build_scene(&mut vello::Scene, w, h, scale)` で `blitz_paint::paint_scene` を呼んで Vello シーン構築。CPU pixel API は完全削除。`collect_action_rects()` で CSS layout 後の絶対座標を返す。`document_dirty()` は自前トラック
+  - `gpu.rs` — `PanelGpuTarget`: パネル毎の `wgpu::Texture`（`Rgba8Unorm` + `STORAGE_BINDING|TEXTURE_BINDING|COPY_SRC|COPY_DST` + `view_formats=[Rgba8UnormSrgb]`）
+  - `binding.rs` / `action.rs` は維持（DOM 非依存純粋ロジック）
+  - テスト 21 件（GPU 必須 1 件）
+
+- **`crates/panel-runtime/src/html_panel.rs`**
+  - `render_gpu(device, queue, &mut Renderer, &mut Scene, w, h, scale) -> RenderOutcome<'_>` で altpaint 所有テクスチャに直描画
+  - `RenderOutcome::{Rendered, Skipped}` enum で dirty 制御をテスタブル化
+  - `panel_tree()` は空ツリーを返し DSL レンダ経路から自動除外
+  - `handle_event` を Override し `Activate` を `<button data-action="...">` で解決
+  - テスト 17 件（GPU 必須 3 件: red pixel readback / Skipped 判定 / resize 再生成）
+
+- **`crates/panel-runtime/src/registry.rs`**
+  - `install_gpu_context(Arc<Device>, Arc<Queue>)` で `vello::Renderer` を集約構築（`AaSupport::area_only`、失敗時はログ）
+  - `html_panel_ids()` / `render_html_panels(&[(id, w, h)], scale) -> Vec<HtmlPanelGpuFrame>`
+
+- **`crates/panel-api/src/lib.rs`** — `PanelPlugin::as_any_mut` を default `None` で追加（後方互換、既存実装変更不要）
+
+- **`apps/desktop/src/wgpu_canvas.rs`** — `PresentScene::html_panel_quads: &[GpuPanelQuad<'_>]` 追加。bind_group キャッシュを panel_id ベースで保持し、L4 ui_panel_layer 直後にクワッド描画
+
+- **`apps/desktop/src/runtime.rs`** — WgpuPresenter 構築直後に `install_gpu_context`、各フレームで `render_html_panels` を呼んで `GpuPanelQuad` 配列を構築
+
+- **`crates/ui-shell/src/surface_render.rs`** — `collect_floating_panels` で empty children を除外（HTML パネルを DSL 経路から自動除外）
+
+- **`apps/desktop/Cargo.toml`** — `html-panel = ["panel-runtime/html-panel"]` feature 公開
+
+- **`plugins/app-actions/`** — `panel.html` / `panel.css` を最終形に。`data-action` は service 統一
+
+### ベースライン比測定（Windows / clean release build）
+
+| 項目 | ベースライン | 第 2 稿 (CPU 経路) | **第 3 稿 (GPU 直)** |
+|------|-------------|-------------------|---------------------|
+| ビルド時間 | 117s | 335s (+186%) | **215s (+84%)** |
+| バイナリサイズ | 21.97 MiB | 29.43 MiB (+34%) | **36.46 MiB (+66%)** |
+
+GPU 直描画では CPU→GPU 通信ゼロを実現する代わりに vello GPU シェーダ・blitz-paint 0.3-alpha 等で +6.7 MiB を追加。一方ビルド時間は anyrender_vello_cpu 廃止で大幅短縮。
+
+### 受け入れ結果
+
+- `cargo test --workspace`（default features）: **378 passed / 0 failed**
+- `cargo test --workspace --features desktop/html-panel`: **386 passed / 0 failed**
+- `cargo clippy -p panel-html-experiment -p panel-runtime --features panel-runtime/html-panel --all-targets`: 新規コード起因 0 warning
+- `cargo build -p desktop --release --features html-panel`: 成功（3m35s, 36.46 MiB）
+- CSS 反映: `gpu_html_panel_renders_red_pixel_when_css_red_background` で texture readback により実 pixel レベルで検証
+
+### スコープ外（次々フェーズ）
+
+- HiDPI（scale != 1.0）対応
+- HTML パネル数増加時のテクスチャアトラス化
+- HTML パネルのドラッグ移動
+- 他ビルトインパネルの HTML 化
+- `<script>` / JS 実行
+- vello::Renderer 構築コストの遅延化
+
+---
+
 ## Phase 8E 完了 (2026-04-25) — GPU 塗りつぶし + レイヤー合成 + BlendMode::Custom 削除
 
 作業モデル: claude-opus-4-7 (1M context)

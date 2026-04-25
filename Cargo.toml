@@ -11,6 +11,7 @@ members = [
   "crates/plugin-sdk",
   "crates/plugin-host",
   "crates/gpu-canvas",
+  "crates/panel-html-experiment",
   "crates/render",
   "crates/storage",
   "crates/ui-shell",

@@ -1,11 +1,37 @@
 use crate::config::{collect_persistent_panel_configs, restore_persistent_panel_configs};
 use crate::dsl_loader::collect_panel_files_recursive;
 use crate::dsl_panel::DslPanelPlugin;
+#[cfg(feature = "html-panel")]
+use crate::html_panel::HtmlPanelPlugin;
 use app_core::Document;
 use panel_api::{HostAction, PanelEvent, PanelPlugin, PanelTree, PanelView};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+#[cfg(feature = "html-panel")]
+use std::sync::Arc;
+#[cfg(feature = "html-panel")]
+use panel_html_experiment::{vello, wgpu, RenderedPanelHit};
+
+/// `html-panel` feature 時、HTML パネル毎の GPU 描画結果をまとめて返す。
+#[cfg(feature = "html-panel")]
+pub struct HtmlPanelGpuFrame<'a> {
+    pub panel_id: String,
+    pub texture: &'a wgpu::Texture,
+    pub width: u32,
+    pub height: u32,
+    pub hit_regions: Vec<RenderedPanelHit>,
+    pub rendered_this_frame: bool,
+}
+
+/// 共有 wgpu リソース + 集約 vello::Renderer。`install_gpu_context` で初期化。
+#[cfg(feature = "html-panel")]
+struct PanelGpuContext {
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
+    renderer: vello::Renderer,
+    scene_scratch: vello::Scene,
+}
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct RuntimeDispatchResult {
@@ -30,6 +56,9 @@ pub struct PanelRuntime {
     persistent_panel_configs: BTreeMap<String, Value>,
     /// イベント駆動再描画のための dirty パネル集合。
     dirty_panels: BTreeSet<String>,
+    /// html-panel feature 時の GPU コンテキスト（device/queue/renderer/scene scratch）。
+    #[cfg(feature = "html-panel")]
+    gpu_ctx: Option<PanelGpuContext>,
 }
 
 impl Default for PanelRuntime {
@@ -48,7 +77,116 @@ impl PanelRuntime {
             panel_tree_cache: BTreeMap::new(),
             persistent_panel_configs: BTreeMap::new(),
             dirty_panels: BTreeSet::new(),
+            #[cfg(feature = "html-panel")]
+            gpu_ctx: None,
         }
+    }
+
+    /// 共有 wgpu Device/Queue を受け取り、vello::Renderer を集約構築する。
+    /// 失敗時は `gpu_ctx = None` を維持し、HTML パネルは描画スキップにフォールバック。
+    #[cfg(feature = "html-panel")]
+    pub fn install_gpu_context(
+        &mut self,
+        device: Arc<wgpu::Device>,
+        queue: Arc<wgpu::Queue>,
+    ) {
+        match vello::Renderer::new(
+            &device,
+            vello::RendererOptions {
+                use_cpu: false,
+                num_init_threads: None,
+                antialiasing_support: vello::AaSupport::area_only(),
+                pipeline_cache: None,
+            },
+        ) {
+            Ok(renderer) => {
+                self.gpu_ctx = Some(PanelGpuContext {
+                    device,
+                    queue,
+                    renderer,
+                    scene_scratch: vello::Scene::new(),
+                });
+            }
+            Err(err) => {
+                eprintln!(
+                    "panel-runtime: vello renderer init failed: {err:?}; HTML panels disabled"
+                );
+                self.gpu_ctx = None;
+            }
+        }
+    }
+
+    /// HTML パネル ID 一覧（dyn 起こし downcast 経由で識別）。
+    #[cfg(feature = "html-panel")]
+    pub fn html_panel_ids(&mut self) -> Vec<String> {
+        let mut ids = Vec::new();
+        for panel in &mut self.panels {
+            if let Some(any) = panel.as_any_mut()
+                && any.downcast_mut::<HtmlPanelPlugin>().is_some()
+            {
+                ids.push(panel.id().to_string());
+            }
+        }
+        ids
+    }
+
+    /// 指定された (panel_id, width, height) リストの HTML パネルを GPU 描画する。
+    /// `install_gpu_context` 未呼び出しなら空 Vec。
+    #[cfg(feature = "html-panel")]
+    pub fn render_html_panels(
+        &mut self,
+        sized: &[(String, u32, u32)],
+        scale: f32,
+    ) -> Vec<HtmlPanelGpuFrame<'_>> {
+        let Some(gpu_ctx) = self.gpu_ctx.as_mut() else {
+            return Vec::new();
+        };
+        // ループ内で self.panels を可変借用するため、まず ID → 描画情報 のメタを集める
+        type FrameTuple = (String, *const wgpu::Texture, u32, u32, Vec<RenderedPanelHit>, bool);
+        let mut frames: Vec<FrameTuple> = Vec::new();
+        for (panel_id, width, height) in sized {
+            // 該当パネルを mutable で取得
+            let Some(panel) = self.panels.iter_mut().find(|p| p.id() == panel_id.as_str()) else {
+                continue;
+            };
+            let Some(any) = panel.as_any_mut() else {
+                continue;
+            };
+            let Some(html_plugin) = any.downcast_mut::<HtmlPanelPlugin>() else {
+                continue;
+            };
+            let (rendered, texture_ptr, tw, th) = {
+                let outcome = html_plugin.render_gpu(
+                    &gpu_ctx.device,
+                    &gpu_ctx.queue,
+                    &mut gpu_ctx.renderer,
+                    &mut gpu_ctx.scene_scratch,
+                    *width,
+                    *height,
+                    scale,
+                );
+                let rendered = outcome.is_rendered();
+                let target = outcome.target();
+                let ptr: *const wgpu::Texture = &target.texture;
+                (rendered, ptr, target.width, target.height)
+            };
+            let hits = html_plugin.collect_action_rects();
+            frames.push((panel_id.clone(), texture_ptr, tw, th, hits, rendered));
+        }
+        // SAFETY: 各 *const wgpu::Texture は self.panels 内の Box<HtmlPanelPlugin> 内テクスチャを指す。
+        // 戻り値の HtmlPanelGpuFrame の借用は &mut self に紐付くので、戻り値存在中は self.panels が
+        // 不変に保たれる。テクスチャの寿命も同期する。
+        frames
+            .into_iter()
+            .map(|(panel_id, ptr, w, h, hits, rendered)| HtmlPanelGpuFrame {
+                panel_id,
+                texture: unsafe { &*ptr },
+                width: w,
+                height: h,
+                hit_regions: hits,
+                rendered_this_frame: rendered,
+            })
+            .collect()
     }
 
     /// 現在の値を パネル へ変換する。
@@ -123,8 +261,10 @@ impl PanelRuntime {
         panel_files.sort();
 
         let mut diagnostics = Vec::new();
-        for path in panel_files {
-            match panel_dsl::load_panel_file(&path) {
+
+        // DSL パネル: 既存と同じロジック
+        for path in &panel_files {
+            match panel_dsl::load_panel_file(path) {
                 Ok(definition) => {
                     let panel_id = definition.manifest.id.clone();
                     match DslPanelPlugin::from_definition(definition) {
@@ -136,6 +276,32 @@ impl PanelRuntime {
                     }
                 }
                 Err(error) => diagnostics.push(format!("{}: {error}", path.display())),
+            }
+        }
+
+        // html-panel feature: 各パネルディレクトリに panel.html + panel.meta.json があれば
+        // 並列して HTML パネルも登録する（ID が異なれば DSL 版と共存できる）。
+        #[cfg(feature = "html-panel")]
+        {
+            let mut seen_dirs: std::collections::BTreeSet<std::path::PathBuf> =
+                std::collections::BTreeSet::new();
+            for path in &panel_files {
+                let Some(parent) = path.parent() else { continue };
+                if !seen_dirs.insert(parent.to_path_buf()) {
+                    continue;
+                }
+                if parent.join("panel.html").exists() && parent.join("panel.meta.json").exists() {
+                    match HtmlPanelPlugin::load(parent) {
+                        Ok(panel) => {
+                            let panel_id = panel.id().to_string();
+                            self.loaded_panel_ids.push(panel_id);
+                            self.register_panel(Box::new(panel));
+                        }
+                        Err(error) => {
+                            diagnostics.push(format!("{}: {error}", parent.display()));
+                        }
+                    }
+                }
             }
         }
 

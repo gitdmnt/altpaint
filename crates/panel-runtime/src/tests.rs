@@ -132,3 +132,16 @@ fn mark_dirty_unknown_panel_id_is_ignored() {
     runtime.mark_dirty("panel.nonexistent");
     assert!(!runtime.has_dirty_panels());
 }
+
+/// S15: install_gpu_context 未呼び出しでも render_html_panels は空 Vec を返す（パニックしない）
+#[cfg(feature = "html-panel")]
+#[test]
+fn render_html_panels_returns_empty_when_gpu_not_installed() {
+    use crate::html_panel::HtmlPanelPlugin;
+    let html = r#"<html><body><button id="x" data-action="command:noop">X</button></body></html>"#;
+    let plugin = HtmlPanelPlugin::from_parts("html.test", "T", html, "");
+    let mut runtime = PanelRuntime::new();
+    runtime.register_panel(Box::new(plugin));
+    let frames = runtime.render_html_panels(&[("html.test".to_string(), 100, 50)], 1.0);
+    assert!(frames.is_empty(), "no GPU context => no frames");
+}

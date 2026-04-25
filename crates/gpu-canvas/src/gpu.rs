@@ -60,9 +60,13 @@ impl GpuLayerTexture {
     }
 
     /// Rgba8UnormSrgb view を生成して返す。Present 時にガンマ補正を自動適用するために使う。
+    ///
+    /// テクスチャ本体は `STORAGE_BINDING` を含むが、sRGB フォーマットはストレージバインディング
+    /// 非対応のため、view の usage は `TEXTURE_BINDING | COPY_SRC` のみに絞る。
     pub fn create_srgb_view(&self) -> wgpu::TextureView {
         self.texture.create_view(&wgpu::TextureViewDescriptor {
             format: Some(wgpu::TextureFormat::Rgba8UnormSrgb),
+            usage: Some(wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC),
             ..Default::default()
         })
     }
