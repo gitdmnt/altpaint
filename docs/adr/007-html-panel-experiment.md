@@ -7,6 +7,7 @@
   - 2026-04-25: 初稿（自作 HTML/CSS サブセットでの PoC）
   - 2026-04-25: **第 2 稿**。ユーザーから「自作にした根拠が弱い」「Blitz を実際に試すべき」との指摘を受け、自作層を破棄して Blitz をバックエンドに採用
   - 2026-04-25: **第 3 稿（Phase 8F）**。ユーザーから「CPU-GPU 通信は Phase 8 系の方針に反する」との指摘を受け、`anyrender_vello_cpu` を完全削除し、`vello::Renderer::render_to_texture` で altpaint 所有の wgpu テクスチャに直接描画する **GPU 直描画方式**へ移行。CPU pixels 経路はゼロ。
+  - 2026-04-25: **第 4 稿（テキスト描画修正）**。HTML パネルの背景は描画されているがテキストが一切表示されない問題を修正。`blitz-dom` に `default-features = false` を指定していたために `system_fonts`（`parley/system` を有効化）feature が無効化され、parley がフォント Collection を空のまま動作していた。`features = ["system_fonts"]` を明示し復旧。GPU テスト並列実行時の wgpu Adapter / Device 生成競合による flaky を `Mutex` で直列化する形で解消。
 
 ---
 

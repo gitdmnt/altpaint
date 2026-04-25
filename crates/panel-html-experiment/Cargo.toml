@@ -12,7 +12,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 # Blitz rendering engine (DioxusLabs). 0.3-alpha series for wgpu 28 / vello 0.8 compatibility.
-blitz-dom    = { version = "0.3.0-alpha", default-features = false }
+blitz-dom    = { version = "0.3.0-alpha", default-features = false, features = ["system_fonts"] }
 blitz-html   = "0.3.0-alpha"
 blitz-paint  = "0.3.0-alpha"
 blitz-traits = "0.3.0-alpha"

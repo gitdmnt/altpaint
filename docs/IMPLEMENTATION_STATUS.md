@@ -852,10 +852,19 @@ GPU 直描画では CPU→GPU 通信ゼロを実現する代わりに vello GPU 
 ### 受け入れ結果
 
 - `cargo test --workspace`（default features）: **378 passed / 0 failed**
-- `cargo test --workspace --features desktop/html-panel`: **386 passed / 0 failed**
+- `cargo test --workspace --features desktop/html-panel`: **391 passed / 0 failed**（テキスト描画関連のテスト 5 件追加）
 - `cargo clippy -p panel-html-experiment -p panel-runtime --features panel-runtime/html-panel --all-targets`: 新規コード起因 0 warning
 - `cargo build -p desktop --release --features html-panel`: 成功（3m35s, 36.46 MiB）
 - CSS 反映: `gpu_html_panel_renders_red_pixel_when_css_red_background` で texture readback により実 pixel レベルで検証
+- テキスト描画: `ascii_text_renders_dark_pixels_in_text_rect` / `japanese_text_renders_dark_pixels` / `full_panel_html_renders_visible_text` / `panel_background_color_is_preserved` / `ascii_text_emits_glyph_run_in_scene` で texture 上の glyph 出現を pixel レベルで検証
+
+### Phase 8F 修正: テキスト描画 (2026-04-25)
+
+`crates/panel-html-experiment/Cargo.toml` で `blitz-dom = { default-features = false }` としていたために、`system_fonts` feature（`parley/system` を有効化）が抜け落ちていた。これにより parley が `Collection { system_fonts: false }` で動作し、Windows / dwrite 経由のフォントロードが行われず glyph runs が空のまま vello scene に積まれず、結果として「枠は描画されるがテキストは一切出ない」状態になっていた。
+
+修正: `features = ["system_fonts"]` を明示。これだけで日本語含む system font 経路が開通し、`panel.html` のテキストが画面に出るようになる。
+
+GPU テスト群が並列実行で wgpu Adapter / Device 生成競合により flaky だった問題は、`Mutex<()>` ベースの `gpu_test_lock()` で本モジュール内 GPU テストを直列化する形で解消した。
 
 ### スコープ外（次々フェーズ）
 

@@ -359,6 +359,22 @@ mod tests {
         assert_eq!(hit.data_action.as_deref(), Some("command:noop"));
     }
 
+    /// D1: ASCII テキストが vello::Scene に glyph run として積まれることを確認する。
+    /// vello は glyph を `encoding.resources.glyph_runs` に格納するため、その len を見る。
+    /// ここが落ちる場合は paint_scene が glyph 描画コマンドを scene に積んでいない（原因 A）。
+    #[test]
+    fn ascii_text_emits_glyph_run_in_scene() {
+        let html = r#"<html><body><p>Hello</p></body></html>"#;
+        let mut engine = engine(html);
+        let mut scene = vello::Scene::new();
+        engine.build_scene(&mut scene, 200, 80, 1.0);
+        let glyph_runs = scene.encoding().resources.glyph_runs.len();
+        assert!(
+            glyph_runs > 0,
+            "expected vello scene to contain at least one glyph run, got {glyph_runs}",
+        );
+    }
+
     /// S1: build_scene が vello::Scene を埋めること
     #[test]
     fn html_engine_build_scene_populates_vello_scene() {

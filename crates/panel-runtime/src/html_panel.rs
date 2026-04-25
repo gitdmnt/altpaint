@@ -321,9 +321,19 @@ impl PanelPlugin for HtmlPanelPlugin {
 mod tests {
     use super::*;
     use panel_api::services::names;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
 
     fn make_plugin(html: &str, css: &str) -> HtmlPanelPlugin {
         HtmlPanelPlugin::from_parts("test.html_panel", "Test", html, css)
+    }
+
+    /// 複数 GPU テストが同時に wgpu Adapter / Device を要求すると Windows 環境で
+    /// 不安定になるため、本モジュール内の GPU テストを直列化する。
+    fn gpu_test_lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     fn try_init_device() -> Option<(wgpu::Device, wgpu::Queue)> {
@@ -423,6 +433,7 @@ mod tests {
     /// S5: red CSS を render_gpu すると texture に red pixel が書き込まれる
     #[test]
     fn gpu_html_panel_renders_red_pixel_when_css_red_background() {
+        let _guard = gpu_test_lock();
         let Some((device, queue)) = try_init_device() else {
             eprintln!("skip: no GPU device");
             return;
@@ -445,6 +456,7 @@ mod tests {
     /// S6 + S12: dirty でない 2 回目の render_gpu は Skipped
     #[test]
     fn gpu_html_panel_render_outcome_is_skipped_when_not_dirty() {
+        let _guard = gpu_test_lock();
         let Some((device, queue)) = try_init_device() else {
             eprintln!("skip: no GPU device");
             return;
@@ -459,9 +471,146 @@ mod tests {
         assert!(!second.is_rendered(), "second call should be Skipped");
     }
 
+    /// D2: 白背景に黒で 'A' を描画 → readback で暗いピクセルが存在することを確認。
+    /// 失敗 → 原因 (C) AA / blend / clip 経路。
+    #[test]
+    fn ascii_text_renders_dark_pixels_in_text_rect() {
+        let _guard = gpu_test_lock();
+        let Some((device, queue)) = try_init_device() else {
+            eprintln!("skip: no GPU device");
+            return;
+        };
+        let mut renderer = make_renderer(&device);
+        let mut scene = vello::Scene::new();
+        let html = r#"<html><body style="margin:0;background:#ffffff;color:#000000;font-size:48px"><span>A</span></body></html>"#;
+        let mut plugin = make_plugin(html, "");
+        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 64, 64, 1.0);
+        assert!(outcome.is_rendered());
+        let target = outcome.target();
+        let pixels = readback_rgba(&device, &queue, &target.texture, target.width, target.height);
+        let dark = pixels
+            .chunks_exact(4)
+            .filter(|p| (p[0] as u32 + p[1] as u32 + p[2] as u32) < 150 && p[3] > 100)
+            .count();
+        assert!(
+            dark >= 50,
+            "expected at least 50 dark pixels for ASCII glyph, got {dark}"
+        );
+    }
+
+    /// D3: 日本語 'あ' を描画 → 暗いピクセル検出。
+    /// ASCII (D2) は通るが D3 が失敗する場合 → 原因 (B) 日本語フォントフォールバック未設定。
+    #[test]
+    fn japanese_text_renders_dark_pixels() {
+        let _guard = gpu_test_lock();
+        let Some((device, queue)) = try_init_device() else {
+            eprintln!("skip: no GPU device");
+            return;
+        };
+        let mut renderer = make_renderer(&device);
+        let mut scene = vello::Scene::new();
+        let html = r#"<html><body style="margin:0;background:#ffffff;color:#000000;font-size:48px"><span>あ</span></body></html>"#;
+        let mut plugin = make_plugin(html, "");
+        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 80, 80, 1.0);
+        assert!(outcome.is_rendered());
+        let target = outcome.target();
+        let pixels = readback_rgba(&device, &queue, &target.texture, target.width, target.height);
+        let dark = pixels
+            .chunks_exact(4)
+            .filter(|p| (p[0] as u32 + p[1] as u32 + p[2] as u32) < 150 && p[3] > 100)
+            .count();
+        assert!(
+            dark >= 50,
+            "expected at least 50 dark pixels for Japanese glyph, got {dark}"
+        );
+    }
+
+    /// D4: 実 panel.html + panel.css を描画して、ボタンのテキスト色 (`#f3f7ff` 系) が
+    /// `app.undo` 矩形の中央付近で観測されることを確認する。
+    #[test]
+    fn full_panel_html_renders_visible_text() {
+        let _guard = gpu_test_lock();
+        let Some((device, queue)) = try_init_device() else {
+            eprintln!("skip: no GPU device");
+            return;
+        };
+        let html = include_str!("../../../plugins/app-actions/panel.html");
+        let css = include_str!("../../../plugins/app-actions/panel.css");
+        let mut renderer = make_renderer(&device);
+        let mut scene = vello::Scene::new();
+        let mut plugin = make_plugin(html, css);
+        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 280, 240, 1.0);
+        assert!(outcome.is_rendered());
+        let target_width = outcome.target().width;
+        let target_height = outcome.target().height;
+        let pixels = readback_rgba(&device, &queue, &outcome.target().texture, target_width, target_height);
+
+        let undo_rect = plugin
+            .collect_action_rects()
+            .into_iter()
+            .find(|r| r.element_id.as_deref() == Some("app.undo"))
+            .expect("expected app.undo data-action element");
+        let cx = undo_rect.rect.x + undo_rect.rect.width / 2;
+        let cy = undo_rect.rect.y + undo_rect.rect.height / 2;
+        let half = 16i32;
+        let bright = (cx as i32 - half..=cx as i32 + half)
+            .flat_map(|x| (cy as i32 - half..=cy as i32 + half).map(move |y| (x, y)))
+            .filter(|&(x, y)| x >= 0 && y >= 0 && (x as u32) < target_width && (y as u32) < target_height)
+            .filter(|&(x, y)| {
+                let i = ((y as u32 * target_width + x as u32) * 4) as usize;
+                pixels[i] > 200 && pixels[i + 1] > 200 && pixels[i + 2] > 200 && pixels[i + 3] > 100
+            })
+            .count();
+        assert!(
+            bright >= 30,
+            "expected at least 30 bright text pixels around app.undo center, got {bright}"
+        );
+    }
+
+    /// 非回帰: 既存の枠（`.panel` 背景色 #181c24）が描画されたままであることを確認する。
+    #[test]
+    fn panel_background_color_is_preserved() {
+        let _guard = gpu_test_lock();
+        let Some((device, queue)) = try_init_device() else {
+            eprintln!("skip: no GPU device");
+            return;
+        };
+        let html = include_str!("../../../plugins/app-actions/panel.html");
+        let css = include_str!("../../../plugins/app-actions/panel.css");
+        let mut renderer = make_renderer(&device);
+        let mut scene = vello::Scene::new();
+        let mut plugin = make_plugin(html, css);
+        let outcome = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, 280, 240, 1.0);
+        assert!(outcome.is_rendered());
+        let target = outcome.target();
+        let pixels = readback_rgba(&device, &queue, &target.texture, target.width, target.height);
+
+        // .panel の背景 #181c24 (24, 28, 36) がパネル内のどこかに観測できることを確認する。
+        // 角丸 / padding / 子要素背景の影響を避けるため、複数サンプル点のうち
+        // 少なくとも 1 点がパネル背景色近傍であれば合格とする。
+        let expected = (0x18u8, 0x1cu8, 0x24u8);
+        let sample_points = [(20u32, 50u32), (140, 130), (260, 200), (50, 100), (200, 70)];
+        let matches = sample_points
+            .iter()
+            .filter(|&&(x, y)| {
+                let i = ((y * outcome.target().width + x) * 4) as usize;
+                let (r, g, b) = (pixels[i], pixels[i + 1], pixels[i + 2]);
+                let dr = (r as i32 - expected.0 as i32).abs();
+                let dg = (g as i32 - expected.1 as i32).abs();
+                let db = (b as i32 - expected.2 as i32).abs();
+                dr < 20 && dg < 20 && db < 20
+            })
+            .count();
+        assert!(
+            matches >= 1,
+            "expected panel background ~(0x18,0x1c,0x24) at one of {sample_points:?}",
+        );
+    }
+
     /// S7: サイズ変更で target が再作成される
     #[test]
     fn gpu_html_panel_target_recreated_on_resize() {
+        let _guard = gpu_test_lock();
         let Some((device, queue)) = try_init_device() else {
             eprintln!("skip: no GPU device");
             return;
