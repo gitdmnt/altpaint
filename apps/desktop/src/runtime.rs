@@ -266,7 +266,8 @@ impl ApplicationHandler for DesktopRuntime {
                 #[cfg(feature = "html-panel")]
                 let html_quad_entries: Vec<HtmlQuadEntry> = {
                     const HTML_CHROME_HEIGHT: u32 = 24;
-                    let all_panel_ids = self.app.panel_runtime.html_panel_ids();
+                    // 9E-3: DSL/HTML 両方の GPU 対応パネルを統一的に扱う
+                    let all_panel_ids = self.app.panel_runtime.panel_ids_with_gpu();
                     let (panel_ids, hidden_ids): (Vec<String>, Vec<String>) = all_panel_ids
                         .into_iter()
                         .partition(|id| self.app.panel_presentation.is_panel_visible(id));
@@ -278,10 +279,10 @@ impl ApplicationHandler for DesktopRuntime {
                     if panel_ids.is_empty() {
                         Vec::new()
                     } else {
-                        // HTML パネルのサイズは Engine が保有する measured_size が権威。
+                        // GPU パネルのサイズは Engine が保有する measured_size が権威。
                         // 位置は workspace_layout の position（panel_rect_in_viewport の位置部分）から取る。
                         // viewport は GPU テクスチャの上限としてそのまま渡し、Engine 側でクランプさせる。
-                        let measured = self.app.panel_runtime.html_measured_sizes();
+                        let measured = self.app.panel_runtime.panel_measured_sizes();
                         let mut sized: Vec<(String, u32, u32)> = Vec::with_capacity(panel_ids.len());
                         let mut panel_rects: Vec<render_types::PixelRect> =
                             Vec::with_capacity(panel_ids.len());
@@ -317,7 +318,7 @@ impl ApplicationHandler for DesktopRuntime {
                             sized.push((id.clone(), size.width, size.height));
                             panel_rects.push(panel_rect);
                         }
-                        let frames = self.app.panel_runtime.render_html_panels(
+                        let frames = self.app.panel_runtime.render_panels(
                             &sized,
                             1.0,
                             HTML_CHROME_HEIGHT,
@@ -409,7 +410,7 @@ impl ApplicationHandler for DesktopRuntime {
                             });
                         }
                         // measured_size 変化を workspace_layout に反映（永続化に流す）
-                        let size_changes = self.app.panel_runtime.take_html_size_changes();
+                        let size_changes = self.app.panel_runtime.take_panel_size_changes();
                         for (panel_id, (new_w, new_h)) in size_changes {
                             self.app.panel_presentation.set_panel_size(
                                 &panel_id,

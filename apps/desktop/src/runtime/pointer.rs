@@ -331,7 +331,7 @@ impl DesktopRuntime {
             HtmlPointerKind::Up => UiEvent::PointerUp(pointer),
             HtmlPointerKind::Move => UiEvent::PointerMove(pointer),
         };
-        self.app.panel_runtime.forward_html_input(&panel_id, event)
+        self.app.panel_runtime.forward_panel_input(&panel_id, event)
     }
 
     /// キャンバス 入力 if needed を記録する。
