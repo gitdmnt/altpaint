@@ -22,7 +22,7 @@ pub mod binding;
 pub mod engine;
 pub mod gpu;
 
-pub use action::{ActionDescriptor, ActionParseError, parse_data_action};
+pub use action::{ActionDescriptor, ActionParseError, AltpKind, parse_data_action};
 pub use binding::{
     BindingAttribute, classify_binding_attribute, evaluate_as_bool, evaluate_as_string,
 };

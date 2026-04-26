@@ -225,6 +225,9 @@ fn descriptor_to_host_action(descriptor: ActionDescriptor) -> Option<HostAction>
             }
             Some(HostAction::RequestService(request))
         }
+        // HtmlPanelPlugin (純 HTML パネル) では altp: descriptor は使われない。
+        // DSL 翻訳結果が出力するもので、`DslPanelPlugin` 側で解決する。
+        ActionDescriptor::Altp { .. } => None,
     }
 }
 

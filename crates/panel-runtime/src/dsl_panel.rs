@@ -1,3 +1,4 @@
+use crate::dsl_to_html;
 use crate::host_sync::{build_host_snapshot_cached, parse_document_size, parse_hex_color, HostSnapshotCache};
 use app_core::{Command, Document, ToolKind};
 use panel_api::{
@@ -5,6 +6,7 @@ use panel_api::{
     PanelView, ServiceRequest, TextInputMode,
 };
 use panel_dsl::{AttrValue as DslAttrValue, PanelDefinition, StateField, ViewElement, ViewNode};
+use panel_html_experiment::{ActionDescriptor, AltpKind, HtmlPanelEngine};
 use panel_schema::{
     CommandDescriptor, Diagnostic, PanelEventRequest, PanelInitRequest, StatePatch, StatePatchOp,
 };
@@ -23,6 +25,9 @@ pub(crate) struct DslPanelPlugin {
     diagnostics: Vec<Diagnostic>,
     has_keyboard_handler: bool,
     supports_sync_host: bool,
+    /// Phase 9E-2: 翻訳結果を保持する HTML パネルエンジン。GPU 直描画に使用。
+    /// 9E-3 以降は `surface_render` がここから quad を取得する。
+    engine: HtmlPanelEngine,
 }
 
 impl DslPanelPlugin {
@@ -49,7 +54,7 @@ impl DslPanelPlugin {
             })
             .map_err(|error: PluginHostError| error.to_string())?;
 
-        Ok(Self {
+        let mut plugin = Self {
             id,
             title,
             definition,
@@ -60,7 +65,29 @@ impl DslPanelPlugin {
             diagnostics: init.diagnostics,
             has_keyboard_handler,
             supports_sync_host,
-        })
+            // 一旦最小 HTML で初期化し、直後に refresh_engine_document で翻訳結果に差し替える
+            engine: HtmlPanelEngine::new(EMPTY_PANEL_HTML, dsl_to_html::default_css()),
+        };
+        plugin.refresh_engine_document();
+        Ok(plugin)
+    }
+
+    /// 評価済み `PanelTree` を翻訳して `HtmlPanelEngine` に流し込む。
+    /// HTML が未変化なら no-op (engine 内で last_html 比較)。
+    fn refresh_engine_document(&mut self) {
+        let tree = self.evaluate_tree();
+        let (html, css) = dsl_to_html::translate_panel_tree(&tree);
+        self.engine.replace_document(&html, &css);
+    }
+
+    /// Engine への共有参照 (9E-3 で `surface_render` が GPU レンダ用に使う)。
+    pub(crate) fn engine(&self) -> &HtmlPanelEngine {
+        &self.engine
+    }
+
+    /// Engine への可変参照 (9E-3 で `surface_render` が `on_render` を呼ぶ際に使う)。
+    pub(crate) fn engine_mut(&mut self) -> &mut HtmlPanelEngine {
+        &mut self.engine
     }
 
     /// 現在の値を tree へ変換する。
@@ -174,6 +201,9 @@ impl PanelPlugin for DslPanelPlugin {
             &mut self.snapshot_cache,
         );
         self.sync_host_state();
+        // state / host_snapshot の変化に追随して engine の HTML を最新化する。
+        // HTML が未変化なら engine 側で no-op となるため、idle frame オーバーヘッドはない。
+        self.refresh_engine_document();
     }
 
     /// Debug summary 用の表示文字列を組み立てる。
@@ -276,9 +306,67 @@ impl PanelPlugin for DslPanelPlugin {
 
         apply_state_patches(&mut self.state, &result.state_patch);
         self.diagnostics = result.diagnostics.clone();
-        command_descriptors_to_actions(result.commands, &mut self.diagnostics)
+        let actions = command_descriptors_to_actions(result.commands, &mut self.diagnostics);
+        // state 変化を engine HTML に反映 (HTML 未変化なら no-op)
+        self.refresh_engine_document();
+        actions
     }
 }
+
+/// `<altp:>` data-action ヒットを `PanelEvent` に変換する純関数。
+///
+/// - `<button data-action="altp:activate:btn">` → `PanelEvent::Activate { node_id: "btn" }`
+/// - `<input type="range" data-action="altp:slider:s" data-args='{"min":..,"max":..}'>` →
+///   `PanelEvent::SetValue { node_id: "s", value }` (value は呼び出し側が UI イベントから取得)
+/// - `<select data-action="altp:select:d">` → `PanelEvent::SetText { node_id: "d", value }`
+/// - `<input data-action="altp:input:t">` → `PanelEvent::SetText { node_id: "t", value }`
+/// - `<input data-action="altp:color:c">` → `PanelEvent::SetText { node_id: "c", value }` (#rrggbb)
+/// - `<li data-action="altp:layer-select:..." data-args='{"index":N}'>` →
+///   `PanelEvent::SetValue { node_id: "<panel_id>", value: N }`
+///
+/// `value` 引数は altp:slider / altp:layer-select で参照される。それ以外の kind では無視される。
+/// `text_value` は altp:select / altp:input / altp:color で参照される。
+pub fn altp_descriptor_to_panel_event(
+    descriptor: &ActionDescriptor,
+    panel_id: &str,
+    value: i32,
+    text_value: &str,
+) -> Option<PanelEvent> {
+    let ActionDescriptor::Altp { kind, node_id, payload } = descriptor else {
+        return None;
+    };
+    match kind {
+        AltpKind::Activate => Some(PanelEvent::Activate {
+            panel_id: panel_id.to_string(),
+            node_id: node_id.clone(),
+        }),
+        AltpKind::Slider => Some(PanelEvent::SetValue {
+            panel_id: panel_id.to_string(),
+            node_id: node_id.clone(),
+            value,
+        }),
+        AltpKind::LayerSelect => {
+            let index = payload
+                .get("index")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(value as i64) as i32;
+            Some(PanelEvent::SetValue {
+                panel_id: panel_id.to_string(),
+                node_id: node_id.clone(),
+                value: index,
+            })
+        }
+        AltpKind::Select | AltpKind::Input | AltpKind::Color => Some(PanelEvent::SetText {
+            panel_id: panel_id.to_string(),
+            node_id: node_id.clone(),
+            value: text_value.to_string(),
+        }),
+    }
+}
+
+/// 翻訳器が出力する HTML の最小プレースホルダ。Engine 初期化用。
+const EMPTY_PANEL_HTML: &str =
+    "<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body></body></html>";
 
 /// leak string を計算して返す。
 fn leak_string(value: String) -> &'static str {
@@ -1597,5 +1685,139 @@ mod tests {
                     .with_value("preset_id", Value::String("review".to_string()),)
             )
         );
+    }
+
+    // ─── Phase 9E-2: altp: descriptor → PanelEvent ───
+
+    fn altp_desc(kind: AltpKind, node_id: &str, payload: Map<String, Value>) -> ActionDescriptor {
+        ActionDescriptor::Altp {
+            kind,
+            node_id: node_id.to_string(),
+            payload,
+        }
+    }
+
+    #[test]
+    fn altp_activate_becomes_panel_event_activate() {
+        let event = altp_descriptor_to_panel_event(
+            &altp_desc(AltpKind::Activate, "tool.pen", Map::new()),
+            "panel.tool",
+            0,
+            "",
+        )
+        .unwrap();
+        assert_eq!(
+            event,
+            PanelEvent::Activate {
+                panel_id: "panel.tool".into(),
+                node_id: "tool.pen".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn altp_slider_becomes_panel_event_set_value() {
+        let event = altp_descriptor_to_panel_event(
+            &altp_desc(AltpKind::Slider, "color.r", Map::new()),
+            "panel.color",
+            128,
+            "",
+        )
+        .unwrap();
+        assert_eq!(
+            event,
+            PanelEvent::SetValue {
+                panel_id: "panel.color".into(),
+                node_id: "color.r".into(),
+                value: 128,
+            }
+        );
+    }
+
+    #[test]
+    fn altp_layer_select_uses_payload_index() {
+        let mut payload = Map::new();
+        payload.insert("index".into(), Value::Number(3.into()));
+        let event = altp_descriptor_to_panel_event(
+            &altp_desc(AltpKind::LayerSelect, "layers", payload),
+            "panel.layers",
+            0,
+            "",
+        )
+        .unwrap();
+        assert_eq!(
+            event,
+            PanelEvent::SetValue {
+                panel_id: "panel.layers".into(),
+                node_id: "layers".into(),
+                value: 3,
+            }
+        );
+    }
+
+    #[test]
+    fn altp_input_becomes_panel_event_set_text() {
+        let event = altp_descriptor_to_panel_event(
+            &altp_desc(AltpKind::Input, "name", Map::new()),
+            "panel.x",
+            0,
+            "altpaint",
+        )
+        .unwrap();
+        assert_eq!(
+            event,
+            PanelEvent::SetText {
+                panel_id: "panel.x".into(),
+                node_id: "name".into(),
+                value: "altpaint".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn altp_color_becomes_panel_event_set_text() {
+        let event = altp_descriptor_to_panel_event(
+            &altp_desc(AltpKind::Color, "fg", Map::new()),
+            "panel.color",
+            0,
+            "#ff8800",
+        )
+        .unwrap();
+        assert_eq!(
+            event,
+            PanelEvent::SetText {
+                panel_id: "panel.color".into(),
+                node_id: "fg".into(),
+                value: "#ff8800".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn altp_select_becomes_panel_event_set_text() {
+        let event = altp_descriptor_to_panel_event(
+            &altp_desc(AltpKind::Select, "mode", Map::new()),
+            "panel.x",
+            0,
+            "advanced",
+        )
+        .unwrap();
+        assert_eq!(
+            event,
+            PanelEvent::SetText {
+                panel_id: "panel.x".into(),
+                node_id: "mode".into(),
+                value: "advanced".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn non_altp_descriptor_yields_none() {
+        let descriptor = ActionDescriptor::Command {
+            id: "noop".into(),
+            payload: Map::new(),
+        };
+        assert!(altp_descriptor_to_panel_event(&descriptor, "p", 0, "").is_none());
     }
 }

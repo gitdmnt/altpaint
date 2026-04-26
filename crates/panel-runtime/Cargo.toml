@@ -11,8 +11,8 @@ panel-dsl = { path = "../panel-dsl" }
 panel-api = { path = "../panel-api" }
 panel-schema = { path = "../panel-schema" }
 plugin-host = { path = "../plugin-host" }
-panel-html-experiment = { path = "../panel-html-experiment", optional = true }
-thiserror = { workspace = true, optional = true }
+panel-html-experiment = { path = "../panel-html-experiment" }
+thiserror = { workspace = true }
 serde_json.workspace = true
 
 [dev-dependencies]
@@ -20,5 +20,7 @@ pollster = { workspace = true }
 keyboard-types = "0.7"
 
 [features]
-default = []
-html-panel = ["dep:panel-html-experiment", "dep:thiserror"]
+default = ["html-panel"]
+# html-panel は Phase 9E 以降 default-on。feature 自体は下流クレート (apps/desktop) との
+# シンボル整合のため残す。
+html-panel = []

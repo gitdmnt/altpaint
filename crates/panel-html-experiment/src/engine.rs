@@ -30,6 +30,8 @@ use serde_json::Value;
 pub struct HtmlPanelEngine {
     document: HtmlDocument,
     user_css: String,
+    /// 直近の `replace_document` で渡された HTML 文字列。同一なら no-op。
+    last_html: Option<String>,
     last_resolved: Option<(u32, u32)>,
     /// `apply_bindings` が実際に DOM を変更したか。`resolve_layout` でクリア。
     /// Blitz の `BaseDocument::has_changes()` は内部実装の都合で当てにできないため自前トラック。
@@ -101,6 +103,7 @@ impl HtmlPanelEngine {
         Self {
             document,
             user_css: user_css.to_string(),
+            last_html: Some(html.to_string()),
             last_resolved: None,
             pending_mutation: true,
             measured_size: (1, 1),
@@ -325,6 +328,80 @@ impl HtmlPanelEngine {
 
     pub fn document(&self) -> &BaseDocument {
         &self.document
+    }
+
+    /// HTML / CSS を差し替えて document を再構築する。
+    ///
+    /// - 同一 `(html, css)` ならスキップ (idle frame 最適化、`render_dirty` も立てない)。
+    /// - 異なる場合は新しい `HtmlDocument` を構築し、開いていた `<details>` の状態を
+    ///   element id で再適用する (DSL state には details の open/close が無いため)。
+    /// - `gpu_target` は維持する (size 不変ならそのまま使える)。
+    /// - フォーカスは現状維持できないため呼び出し側で `preserve_focus` を利用すること。
+    pub fn replace_document(&mut self, html: &str, css: &str) {
+        if self.last_html.as_deref() == Some(html) && self.user_css == css {
+            return;
+        }
+        let opened_details = self.collect_open_details_ids();
+        let mut config = blitz_dom::DocumentConfig::default();
+        if !css.is_empty() {
+            config.ua_stylesheets = Some(vec![css.to_string()]);
+        }
+        self.document = HtmlDocument::from_html(html, config);
+        self.user_css = css.to_string();
+        self.last_html = Some(html.to_string());
+        self.last_resolved = None;
+        self.pending_mutation = true;
+        self.layout_dirty = true;
+        self.render_dirty = true;
+
+        if !opened_details.is_empty() {
+            self.reapply_open_details(&opened_details);
+        }
+    }
+
+    fn collect_open_details_ids(&self) -> Vec<String> {
+        let Ok(ids) = self.document.query_selector_all("details[open]") else {
+            return Vec::new();
+        };
+        ids.into_iter()
+            .filter_map(|node_id| {
+                let node = self.document.get_node(node_id)?;
+                let NodeData::Element(element) = &node.data else {
+                    return None;
+                };
+                element
+                    .attr(LocalName::from("data-altp-id"))
+                    .or_else(|| element.attr(local_name!("id")))
+                    .map(str::to_string)
+            })
+            .collect()
+    }
+
+    fn reapply_open_details(&mut self, ids: &[String]) {
+        let Ok(all_details) = self.document.query_selector_all("details") else {
+            return;
+        };
+        for node_id in all_details {
+            let Some(node) = self.document.get_node(node_id) else {
+                continue;
+            };
+            let NodeData::Element(element) = &node.data else {
+                continue;
+            };
+            let identity = element
+                .attr(LocalName::from("data-altp-id"))
+                .or_else(|| element.attr(local_name!("id")))
+                .map(str::to_string);
+            let Some(identity) = identity else { continue };
+            if ids.iter().any(|id| id == &identity) {
+                continue; // すでに open 属性付き翻訳結果なら無視
+            }
+            // 翻訳器は常に `<details open>` を出力するため、ids リストに無いものは
+            // 「ユーザーが閉じた」状態。open 属性を取り除く。
+            let mut mutator = self.document.mutate();
+            mutator.clear_attribute(node_id, qual_name("open"));
+            self.pending_mutation = true;
+        }
     }
 
     /// `data-bind-*` を評価して DOM を更新する。
@@ -869,6 +946,48 @@ mod tests {
         assert!(class_attr.contains("btn"));
     }
 
+    #[test]
+    fn replace_document_swaps_html_and_marks_dirty() {
+        let mut engine = engine(r#"<html><body><span id="a">A</span></body></html>"#);
+        engine.on_load(None);
+        engine.clear_dirty_for_test();
+        engine.replace_document(
+            r#"<html><body><span id="b">B</span></body></html>"#,
+            "",
+        );
+        assert!(engine.render_dirty(), "after replace render_dirty=true");
+        assert!(engine.layout_dirty(), "after replace layout_dirty=true");
+        assert!(engine.find_element_id("b").is_some(), "new element id present");
+        assert!(engine.find_element_id("a").is_none(), "old element gone");
+    }
+
+    #[test]
+    fn replace_document_with_same_html_is_no_op() {
+        let html = r#"<html><body><span id="a">A</span></body></html>"#;
+        let mut engine = engine(html);
+        engine.on_load(None);
+        engine.clear_dirty_for_test();
+        engine.replace_document(html, "");
+        assert!(!engine.render_dirty(), "no-op when html unchanged");
+        assert!(!engine.layout_dirty(), "no-op when html unchanged");
+    }
+
+    #[test]
+    fn replace_document_keeps_open_details_when_id_was_open() {
+        // 初期: 開いている details が 1 つ
+        let initial = r#"<html><body><details open data-altp-id="s"><summary>S</summary>x</details></body></html>"#;
+        let mut engine = engine(initial);
+        engine.on_load(None);
+        // 翻訳結果も open: そのまま open を維持すべき
+        let next = r#"<html><body><details open data-altp-id="s"><summary>S</summary>y</details></body></html>"#;
+        engine.replace_document(next, "");
+        let details_id = engine.find_element_id_by_altp("s").expect("details exists");
+        assert!(
+            engine.element_has_attribute(details_id, "open"),
+            "previously open details should remain open after replace"
+        );
+    }
+
     fn test_pointer_event(x: f32, y: f32) -> blitz_traits::events::BlitzPointerEvent {
         use blitz_traits::events::{
             BlitzPointerEvent, BlitzPointerId, MouseEventButton, MouseEventButtons,
@@ -923,6 +1042,24 @@ mod tests {
                     }
                 })
                 .unwrap_or_default()
+        }
+
+        pub(crate) fn find_element_id_by_altp(&self, identity: &str) -> Option<usize> {
+            let ids = self.document.query_selector_all("[data-altp-id]").ok()?;
+            for node_id in ids {
+                let node = self.document.get_node(node_id)?;
+                let NodeData::Element(element) = &node.data else { continue };
+                if element.attr(LocalName::from("data-altp-id")) == Some(identity) {
+                    return Some(node_id);
+                }
+            }
+            None
+        }
+
+        pub(crate) fn element_has_attribute(&self, node_id: usize, attr: &str) -> bool {
+            let Some(node) = self.document.get_node(node_id) else { return false };
+            let NodeData::Element(element) = &node.data else { return false };
+            element.attr(LocalName::from(attr)).is_some()
         }
     }
 

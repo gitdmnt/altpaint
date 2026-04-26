@@ -1,6 +1,7 @@
 mod config;
 mod dsl_loader;
 mod dsl_panel;
+pub mod dsl_to_html;
 mod host_sync;
 mod registry;
 
