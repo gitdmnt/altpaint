@@ -17,11 +17,7 @@ pub use compose::{
     compose_panel_host_region, compose_status_region, compose_ui_panel_frame,
     compose_ui_panel_region, fill_rgba_block, scroll_canvas_region,
 };
-pub use panel::{
-    FloatingPanel, MeasuredPanelSize, PanelFocusTarget, PanelHitKind, PanelHitRegion,
-    PanelRenderState, PanelTextInputState, RasterizedPanelLayer, measure_panel_size,
-    rasterize_panel_layer,
-};
+pub use panel::{PanelHitKind, PanelHitRegion};
 pub use status::{measured_status_width, status_text_bounds, status_text_rect};
 pub use text::{
     draw_text_rgba, line_height as text_line_height, measure_text_width, text_backend_name,
