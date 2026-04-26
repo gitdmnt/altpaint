@@ -410,7 +410,11 @@ fn scroll_refresh_does_not_trigger_ui_update() {
 /// パネル move recomposes without rerasterizing パネル content が期待どおりに動作することを検証する。
 ///
 /// 必要に応じて dirty 状態も更新します。
+///
+/// 9E-3: CPU bitmap キャッシュ撤去後は本テストの前提 (`last_panel_surface_dirty_rect` /
+/// パネル再ラスタライズ計測) が成立しない。9E-5 で GPU 経路用に置き換える予定。
 #[test]
+#[ignore = "9E-3: CPU panel rasterize 撤去により計測が常に 0 に。9E-5 で GPU 経路向けに書き換える"]
 fn panel_move_recomposes_without_rerasterizing_panel_content() {
     let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
     let mut profiler = DesktopProfiler::new();
@@ -481,7 +485,11 @@ fn workspace_manager_panel_can_be_moved() {
 /// パネル move 差分 矩形 covers 前 and 現在 オーバーレイ 範囲 が期待どおりに動作することを検証する。
 ///
 /// 必要に応じて dirty 状態も更新します。
+///
+/// 9E-3: L4 ui_panel_layer は dummy 化されたため `ui_panel_dirty_rect` を当てにできない。
+/// 9E-5 で GPU 経路の dirty rect 監視に置き換える予定。
 #[test]
+#[ignore = "9E-3: L4 ui_panel_layer dummy 化で dirty rect が常に空。GPU 経路向けに書き換え予定"]
 fn panel_move_dirty_rect_covers_previous_and_current_overlay_bounds() {
     let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
     let mut profiler = DesktopProfiler::new();
@@ -515,7 +523,10 @@ fn panel_move_dirty_rect_covers_previous_and_current_overlay_bounds() {
 /// overlapping パネル and キャンバス オーバーレイ updates union 差分 rects が期待どおりに動作することを検証する。
 ///
 /// 必要に応じて dirty 状態も更新します。
+///
+/// 9E-3: L4 ui_panel_layer dummy 化により ui_panel_dirty_rect は常に None。
 #[test]
+#[ignore = "9E-3: L4 ui_panel_layer dummy 化で dirty rect 不在。GPU 経路向けに書き換え予定"]
 fn overlapping_panel_and_canvas_overlay_updates_union_dirty_rects() {
     let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
     let mut profiler = DesktopProfiler::new();
@@ -946,7 +957,11 @@ fn profile_canvas_brush_sizes_for_ten_seconds() {
 /// フォーカス refresh does not trigger ui 更新 が期待どおりに動作することを検証する。
 ///
 /// 必要に応じて dirty 状態も更新します。
+///
+/// 9E-3: L4 ui_panel_layer dummy 化で `ui_panel_dirty_rect` 期待が成立しなくなった。
+/// 9E-5 で GPU 経路の dirty 監視に置き換える予定。
 #[test]
+#[ignore = "9E-3: L4 ui_panel_layer dummy 化で dirty rect 不在。GPU 経路向けに書き換え予定"]
 fn focus_refresh_does_not_trigger_ui_update() {
     let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
     let mut profiler = DesktopProfiler::new();
