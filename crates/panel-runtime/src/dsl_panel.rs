@@ -80,12 +80,7 @@ impl DslPanelPlugin {
         self.engine.replace_document(&html, &css);
     }
 
-    /// Engine への共有参照 (9E-3 で `surface_render` が GPU レンダ用に使う)。
-    pub(crate) fn engine(&self) -> &HtmlPanelEngine {
-        &self.engine
-    }
-
-    /// Engine への可変参照 (9E-3 で `surface_render` が `on_render` を呼ぶ際に使う)。
+    /// Engine への可変参照 (9E-3: `PanelRuntime::render_panels` が `on_render` を呼ぶ際に使う)。
     pub(crate) fn engine_mut(&mut self) -> &mut HtmlPanelEngine {
         &mut self.engine
     }
