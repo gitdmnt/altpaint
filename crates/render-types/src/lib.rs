@@ -11,6 +11,9 @@ mod layer_group;
 mod overlay_plan;
 mod panel_plan;
 
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+
 pub use brush_preview::brush_preview_dirty_rect;
 pub use canvas_plan::{CanvasCompositeSource, CanvasPlan};
 pub use canvas_scene::{

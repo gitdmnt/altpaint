@@ -7,3 +7,8 @@ authors.workspace = true
 
 [dependencies]
 app-core = { path = "../app-core" }
+
+[features]
+# `test_support` モジュールを通常ビルド (cfg(test) 以外) でも有効化するためのフラグ。
+# 他クレートが integration test 等で使う場合に `features = ["test-support"]` で取り込む。
+test-support = []

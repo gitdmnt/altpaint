@@ -407,48 +407,10 @@ fn scroll_refresh_does_not_trigger_ui_update() {
     );
 }
 
-/// パネル move recomposes without rerasterizing パネル content が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
-///
-/// 9E-3: CPU bitmap キャッシュ撤去後は本テストの前提 (`last_panel_surface_dirty_rect` /
-/// パネル再ラスタライズ計測) が成立しない。9E-5 で GPU 経路用に置き換える予定。
-#[test]
-#[ignore = "9E-3: CPU panel rasterize 撤去により計測が常に 0 に。9E-5 で GPU 経路向けに書き換える"]
-fn panel_move_recomposes_without_rerasterizing_panel_content() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
-    let _ = app.prepare_present_frame(1280, 200, &mut profiler);
-    profiler.stats.clear();
-    profiler.value_stats.clear();
-    let layout = app.layout.clone().expect("layout exists");
-
-    assert!(app.panel_presentation.move_panel_to(
-        "builtin.layers-panel",
-        80,
-        96,
-        layout.window_rect.width,
-        layout.window_rect.height,
-    ));
-    app.mark_panel_surface_dirty();
-
-    let _ = app.prepare_present_frame(1280, 200, &mut profiler);
-
-    assert_eq!(
-        profiler
-            .value_stats
-            .get("panel_surface_rasterized_panels")
-            .map(|stat| (stat.samples, stat.total, stat.max)),
-        Some((1, 0.0, 0.0))
-    );
-    assert_eq!(
-        profiler
-            .value_stats
-            .get("panel_surface_composited_panels")
-            .map(|stat| (stat.samples, stat.total > 0.0)),
-        Some((1, true))
-    );
-}
+// 削除: panel_move_recomposes_without_rerasterizing_panel_content (Phase 9E-5)
+// CPU panel rasterize / panel_surface_rasterized_panels / panel_surface_composited_panels
+// 計測は 9E-3 で削除済み。代替検証は workspace_manager_panel_can_be_moved (パネル位置変更
+// が反映されること) で十分カバー済みのため、本テストは削除する。
 
 /// ワークスペース manager パネル can be moved が期待どおりに動作することを検証する。
 ///
@@ -482,104 +444,14 @@ fn workspace_manager_panel_can_be_moved() {
     assert!(after.x >= before.x + 80 || after.y >= before.y + 24);
 }
 
-/// パネル move 差分 矩形 covers 前 and 現在 オーバーレイ 範囲 が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
-///
-/// 9E-3: L4 ui_panel_layer は dummy 化されたため `ui_panel_dirty_rect` を当てにできない。
-/// 9E-5 で GPU 経路の dirty rect 監視に置き換える予定。
-#[test]
-#[ignore = "9E-3: L4 ui_panel_layer dummy 化で dirty rect が常に空。GPU 経路向けに書き換え予定"]
-fn panel_move_dirty_rect_covers_previous_and_current_overlay_bounds() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
-    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
-    let layout = app.layout.clone().expect("layout exists");
+// 削除: panel_move_dirty_rect_covers_previous_and_current_overlay_bounds (Phase 9E-5)
+// L4 ui_panel_layer は 9E-3 で dummy 化されたため `ui_panel_dirty_rect` は常に None。
+// パネル GPU 直描画後の dirty rect 監視は Phase 9F で `panel_quads` レイヤー再構成
+// (PresentScene 改名) と一緒に書き直す。
 
-    assert!(app.panel_presentation.move_panel_to(
-        "builtin.layers-panel",
-        940,
-        540,
-        layout.window_rect.width,
-        layout.window_rect.height,
-    ));
-    app.mark_panel_surface_dirty();
-
-    let update = app.prepare_present_frame(1280, 800, &mut profiler);
-    let expected = app
-        .panel_presentation
-        .last_panel_surface_dirty_rect()
-        .map(|dirty| crate::frame::Rect {
-            x: dirty.x,
-            y: dirty.y,
-            width: dirty.width,
-            height: dirty.height,
-        })
-        .expect("panel dirty rect exists");
-
-    assert_eq!(update.ui_panel_dirty_rect, Some(expected));
-}
-
-/// overlapping パネル and キャンバス オーバーレイ updates union 差分 rects が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
-///
-/// 9E-3: L4 ui_panel_layer dummy 化により ui_panel_dirty_rect は常に None。
-#[test]
-#[ignore = "9E-3: L4 ui_panel_layer dummy 化で dirty rect 不在。GPU 経路向けに書き換え予定"]
-fn overlapping_panel_and_canvas_overlay_updates_union_dirty_rects() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
-    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
-    let layout = app.layout.clone().expect("layout exists");
-    let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
-    let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
-
-    assert!(app.update_canvas_hover(center_x, center_y));
-    let hover_dirty = app
-        .pending_temp_overlay_dirty_rect
-        .expect("hover dirty rect exists");
-
-    let panel_rect = app
-        .panel_presentation
-        .panel_rect("builtin.layers-panel")
-        .expect("panel rect exists");
-    assert!(
-        app.panel_presentation.move_panel_to(
-            "builtin.layers-panel",
-            layout
-                .canvas_display_rect
-                .x
-                .saturating_add(layout.canvas_display_rect.width / 2)
-                .saturating_sub(panel_rect.width / 2),
-            layout
-                .canvas_display_rect
-                .y
-                .saturating_add(layout.canvas_display_rect.height / 2)
-                .saturating_sub(panel_rect.height / 2),
-            layout.window_rect.width,
-            layout.window_rect.height,
-        )
-    );
-    app.mark_panel_surface_dirty();
-
-    let update = app.prepare_present_frame(1280, 800, &mut profiler);
-    let expected_panel_dirty = app
-        .panel_presentation
-        .last_panel_surface_dirty_rect()
-        .map(|dirty| crate::frame::Rect {
-            x: dirty.x,
-            y: dirty.y,
-            width: dirty.width,
-            height: dirty.height,
-        })
-        .expect("panel dirty rect exists");
-
-    assert_eq!(update.ui_panel_dirty_rect, Some(expected_panel_dirty));
-    assert_eq!(update.temp_overlay_dirty_rect, Some(hover_dirty));
-    assert!(profiler.stats.contains_key("compose_dirty_panel"));
-    // L3 オーバーレイは GPU quad で毎フレーム描画されるため compose_dirty_overlay 計測は存在しない (Phase 9D)。
-}
+// 削除: overlapping_panel_and_canvas_overlay_updates_union_dirty_rects (Phase 9E-5)
+// 同上。`ui_panel_dirty_rect` 検証経路が dummy 化されたため、Phase 9F で
+// L3/L5 を統合した dirty rect 検証として書き直す。
 
 /// profile 色 ホイール drag for ten seconds が期待どおりに動作することを検証する。
 ///
@@ -958,10 +830,10 @@ fn profile_canvas_brush_sizes_for_ten_seconds() {
 ///
 /// 必要に応じて dirty 状態も更新します。
 ///
-/// 9E-3: L4 ui_panel_layer dummy 化で `ui_panel_dirty_rect` 期待が成立しなくなった。
-/// 9E-5 で GPU 経路の dirty 監視に置き換える予定。
+/// Phase 9E-5: L4 ui_panel_layer は dummy 化されたため `ui_panel_dirty_rect` ではなく
+/// 「フルリコンポーズ / canvas 更新が起きない」という弱検証に書き換えた。
+/// パネル本体の dirty 検証は 9F で `panel_quads` 経路に対応する形で再導入する。
 #[test]
-#[ignore = "9E-3: L4 ui_panel_layer dummy 化で dirty rect 不在。GPU 経路向けに書き換え予定"]
 fn focus_refresh_does_not_trigger_ui_update() {
     let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
     let mut profiler = DesktopProfiler::new();
@@ -972,16 +844,17 @@ fn focus_refresh_does_not_trigger_ui_update() {
     let update = app.prepare_present_frame(1280, 200, &mut profiler);
     let surface = app.panel_surface.clone().expect("panel surface exists");
 
+    // フォーカス移動はキャンバス再描画も full recompose も起こしてはならない。
     assert!(!profiler.stats.contains_key("ui_update"));
     assert!(!profiler.stats.contains_key("compose_full_frame"));
     assert_eq!(update.background_dirty_rect, None);
-    let panel_dirty = update.ui_panel_dirty_rect.expect("overlay dirty rect");
-    assert!(rect_within_panel_surface(panel_dirty, &surface));
     assert!(!update.canvas_updated);
-    assert_eq!(
-        profiler.stats.get("panel_surface").map(|stat| stat.calls),
-        Some(1)
-    );
+
+    // 9E-5: L4 dummy 化により `ui_panel_dirty_rect` は通常 None。値があれば
+    // panel surface 範囲内に収まることだけ確認する (将来 GPU dirty 経路で意味を持つ)。
+    if let Some(panel_dirty) = update.ui_panel_dirty_rect {
+        assert!(rect_within_panel_surface(panel_dirty, &surface));
+    }
 }
 
 /// ツール change updates ステータス without full recompose が期待どおりに動作することを検証する。
