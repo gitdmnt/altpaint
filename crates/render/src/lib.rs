@@ -1,28 +1,21 @@
 //! `render` は CPU 経路で残存する描画ロジックを束ねるクレート。
 //!
-//! 純データ型 (PixelRect / FramePlan / CanvasPlan / OverlayPlan 他) は
-//! `render-types` クレートに分離済み。本クレートはテキスト描画・CPU 合成・
-//! パネルラスタライズなど Phase 9C 以降で順次 GPU 経路へ置換予定の実装を
-//! 抱える。
+//! Phase 9E-4 までで text / status / panel ラスタライズ経路は完全削除。
+//! 残るのは Phase 9F (`crates/render` 物理削除) までの暫定 CPU 合成 API:
+//! - `compose_*` / `blit_*` / `fill_rgba_block` / `scroll_canvas_region`
+//! - `RenderFrame` / `RenderContext` （L1/L4 dummy 経路と一部テスト）
+//! - `PanelHitKind` / `PanelHitRegion` （ui-shell の hit-test 互換型）
 
 mod compose;
 mod panel;
-mod status;
-mod text;
 
 use app_core::Document;
 
 pub use compose::{
-    SourceAxisRun, blit_scaled_rgba_region, build_source_axis_runs, compose_background_frame,
-    compose_panel_host_region, compose_status_region, compose_ui_panel_frame,
-    compose_ui_panel_region, fill_rgba_block, scroll_canvas_region,
+    SourceAxisRun, blit_scaled_rgba_region, build_source_axis_runs, compose_panel_host_region,
+    compose_ui_panel_frame, compose_ui_panel_region, fill_rgba_block, scroll_canvas_region,
 };
 pub use panel::{PanelHitKind, PanelHitRegion};
-pub use status::{measured_status_width, status_text_bounds, status_text_rect};
-pub use text::{
-    draw_text_rgba, line_height as text_line_height, measure_text_width, text_backend_name,
-    wrap_text_lines,
-};
 
 /// 画面へ転送するための最小フレームデータ。
 /// フレームバッファとしての役割を果たす。

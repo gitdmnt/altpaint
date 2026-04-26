@@ -6,10 +6,6 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-ab_glyph.workspace = true
 app-core = { path = "../app-core" }
 render-types = { path = "../render-types" }
-desktop-support = { path = "../desktop-support" }
-font8x8.workspace = true
-fontdb.workspace = true
 panel-api = { path = "../panel-api" }

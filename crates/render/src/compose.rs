@@ -1,57 +1,26 @@
-use desktop_support::{FOOTER_HEIGHT, TEXT_PRIMARY, TEXT_SECONDARY, WINDOW_PADDING};
+//! `render` クレートの CPU 合成残骸 — Phase 9E-4 で背景・ステータス経路を撤去。
+//!
+//! 残るのは Phase 9F (`crates/render` 物理削除) までの暫定 API:
+//! - `compose_panel_host_region`, `compose_ui_panel_region`, `compose_ui_panel_frame`:
+//!   L4 UI パネルを 1×1 dummy で埋める経路（GPU パネル化済みなので実体はもう使われない）
+//! - `blit_scaled_rgba_region`, `build_source_axis_runs`, `fill_rgba_block`,
+//!   `scroll_canvas_region`, `SourceAxisRun`: 旧 CPU 合成ユーティリティ。
+//!
+//! 9E-4 で削除済み:
+//! - `compose_background_frame`: L1 背景テキストの CPU 合成 (status 経路と一体だった)
+//! - `compose_status_region`: ステータステキスト合成 (HtmlPanelEngine による GPU 化に置換)
+//! - `fill_rect` / `fill_rgba_slice` / `draw_text`: 上記 2 つの内部実装
+//! - text/font 系経路 (`render::text` モジュール全体)
 
-use render_types::{FramePlan, PanelSurfaceSource, PixelRect};
+use render_types::{PanelSurfaceSource, PixelRect};
 
-use crate::status::status_text_bounds;
-use crate::{RenderFrame, draw_text_rgba};
-/// 合成 background フレーム を生成する。
-///
-/// 9C-1 時点では透明な L1 バッファを返し、ステータステキストとデバッグラベルだけを CPU で描画する。
-/// 単色矩形・枠線・キャンバスホスト背景は GPU の L0 solid quad パイプラインが担当する。
-/// 9C-2 でテキスト描画を GPU 化したらこの関数自体が削除される。
-pub fn compose_background_frame(plan: &FramePlan<'_>) -> RenderFrame {
-    let mut frame = RenderFrame {
-        width: plan.window_width,
-        height: plan.window_height,
-        pixels: vec![0; plan.window_width * plan.window_height * 4],
-    };
-
-    if std::env::var_os("ALTPAINT_DEBUG_LABELS").is_some() {
-        draw_text(
-            &mut frame,
-            WINDOW_PADDING,
-            WINDOW_PADDING + 4,
-            "Background layer",
-            TEXT_PRIMARY,
-        );
-        draw_text(
-            &mut frame,
-            plan.canvas.host_rect.x,
-            WINDOW_PADDING + 4,
-            "Canvas layer (winit + wgpu canvas texture)",
-            TEXT_PRIMARY,
-        );
-        draw_text(
-            &mut frame,
-            WINDOW_PADDING,
-            plan.window_height.saturating_sub(FOOTER_HEIGHT) + 6,
-            "UI panels are rendered into an independent floating UI layer.",
-            TEXT_SECONDARY,
-        );
-    }
-    draw_text(
-        &mut frame,
-        plan.canvas.host_rect.x,
-        plan.window_height.saturating_sub(FOOTER_HEIGHT) + 6,
-        plan.status_text,
-        TEXT_SECONDARY,
-    );
-
-    frame
-}
+use crate::RenderFrame;
 
 /// 合成 UI パネル フレーム に必要な差分領域だけを描画または合成する。
-pub fn compose_ui_panel_frame(plan: &FramePlan<'_>) -> RenderFrame {
+///
+/// 9E-3 で DSL/HTML 全パネルが GPU 経路へ移ったため、戻り値は dummy 1×1 透明
+/// バッファでも実用上問題ない。Phase 9F で関数ごと削除予定。
+pub fn compose_ui_panel_frame(plan: &render_types::FramePlan<'_>) -> RenderFrame {
     let mut frame = RenderFrame {
         width: plan.window_width,
         height: plan.window_height,
@@ -64,16 +33,9 @@ pub fn compose_ui_panel_frame(plan: &FramePlan<'_>) -> RenderFrame {
 /// 合成 UI パネル 領域 に必要な差分領域だけを描画または合成する。
 pub fn compose_ui_panel_region(
     frame: &mut RenderFrame,
-    plan: &FramePlan<'_>,
+    plan: &render_types::FramePlan<'_>,
     dirty_rect: Option<PixelRect>,
 ) {
-    let clear_rect = dirty_rect.unwrap_or(PixelRect {
-        x: 0,
-        y: 0,
-        width: frame.width,
-        height: frame.height,
-    });
-    fill_rect(frame, clear_rect, [0, 0, 0, 0]);
     compose_panel_host_region(frame, plan.panel_surface, dirty_rect);
 }
 
@@ -93,56 +55,6 @@ pub fn compose_panel_host_region(
         panel_surface.pixels,
         dirty_rect,
     );
-}
-
-/// ステータス領域の差分更新。
-///
-/// 9C-1 時点では L1 はテキスト専用バッファのため、領域を透明にクリアしてから
-/// 新しい status text を描画し直す。GPU L0 が背景を毎フレーム塗るため fill_rect は不要。
-pub fn compose_status_region(frame: &mut RenderFrame, plan: &FramePlan<'_>) {
-    let status_rect = status_text_bounds(
-        plan.window_width,
-        plan.window_height,
-        plan.canvas.host_rect,
-        plan.status_text,
-    );
-    fill_rect(frame, status_rect, [0, 0, 0, 0]);
-    draw_text(
-        frame,
-        plan.canvas.host_rect.x,
-        plan.window_height.saturating_sub(FOOTER_HEIGHT) + 6,
-        plan.status_text,
-        TEXT_SECONDARY,
-    );
-}
-
-/// 描画 テキスト に必要な描画内容を組み立てる。
-fn draw_text(frame: &mut RenderFrame, x: usize, y: usize, text: &str, color: [u8; 4]) {
-    draw_text_rgba(
-        frame.pixels.as_mut_slice(),
-        frame.width,
-        frame.height,
-        x,
-        y,
-        text,
-        color,
-    );
-}
-
-/// 塗りつぶし 矩形 に必要な描画内容を組み立てる。
-fn fill_rect(frame: &mut RenderFrame, rect: PixelRect, color: [u8; 4]) {
-    let max_x = (rect.x + rect.width).min(frame.width);
-    let max_y = (rect.y + rect.height).min(frame.height);
-    if rect.x >= max_x || rect.y >= max_y {
-        return;
-    }
-
-    let row_start_x = rect.x * 4;
-    let row_len = (max_x - rect.x) * 4;
-    for yy in rect.y..max_y {
-        let row_start = yy * frame.width * 4 + row_start_x;
-        fill_rgba_slice(&mut frame.pixels[row_start..row_start + row_len], color);
-    }
 }
 
 /// 塗りつぶし RGBA slice に必要な描画内容を組み立てる。
@@ -482,4 +394,3 @@ fn exposed_scroll_rect(region: PixelRect, shift_x: i32, shift_y: i32) -> PixelRe
 
     exposed.unwrap_or(region)
 }
-

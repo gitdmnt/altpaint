@@ -119,6 +119,19 @@ impl PanelRuntime {
         }
     }
 
+    /// 集約 vello::Renderer / scene scratch / device / queue への可変アクセスを提供する。
+    /// `install_gpu_context` 未呼び出しなら `None`。
+    /// 9E-4: ステータスバーなど panel-runtime 外部の `HtmlPanelEngine` 利用者が
+    /// 共有 GPU コンテキストを再利用するために公開する。
+    #[cfg(feature = "html-panel")]
+    pub fn gpu_context_parts(
+        &mut self,
+    ) -> Option<(&Arc<wgpu::Device>, &Arc<wgpu::Queue>, &mut vello::Renderer, &mut vello::Scene)>
+    {
+        let ctx = self.gpu_ctx.as_mut()?;
+        Some((&ctx.device, &ctx.queue, &mut ctx.renderer, &mut ctx.scene_scratch))
+    }
+
     /// 共有 wgpu Device/Queue を受け取り、vello::Renderer を集約構築する。
     /// 失敗時は `gpu_ctx = None` を維持し、HTML パネルは描画スキップにフォールバック。
     #[cfg(feature = "html-panel")]

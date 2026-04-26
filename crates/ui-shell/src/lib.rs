@@ -9,9 +9,7 @@ mod workspace;
 #[cfg(test)]
 mod tests;
 
-pub use render::{
-    draw_text_rgba, measure_text_width, text_backend_name, text_line_height, wrap_text_lines,
-};
+// 9E-4: render::text 経路は撤去。ui-shell は GPU 直描画 (HtmlPanelEngine) に統一済み。
 
 use app_core::{WorkspaceLayout, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState};
 use panel_api::{HostAction, PanelEvent, PanelTree};

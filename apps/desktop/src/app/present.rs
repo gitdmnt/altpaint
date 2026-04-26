@@ -1,11 +1,11 @@
 //! フレーム生成と差分更新の責務を `DesktopApp` へ追加する。
 //!
-//! CPU 側ではパネル UI・背景・ステータス・オーバーレイを保持し、
-//! キャンバス本体は GPU テクスチャとして別経路で提示する。
+//! Phase 9E-4 以降、L1 background_frame の CPU 合成は撤去済み。
+//! ステータステキストは `StatusPanel` (HtmlPanelEngine + GPU) に置換され、
+//! L1 base_layer は 1×1 dummy で送る。L4 ui_panel_layer も同様の dummy。
 
 use std::time::Instant;
 
-use app_core::ClampToCanvasBounds;
 use desktop_support::DesktopProfiler;
 
 use super::{DesktopApp, PresentFrameUpdate};
@@ -109,51 +109,28 @@ impl DesktopApp {
             panel_surface_refreshed = true;
         }
 
-        if self.needs_full_present_rebuild
-            || self.background_frame.is_none()
-            || self.ui_panel_frame.is_none()
-        {
-            let layout = self.layout.clone().expect("layout exists");
-            let panel_surface = self.panel_surface.as_ref().expect("panel surface exists");
-            let status_text = self.status_text();
-            let bitmap = self.canvas_frame.as_ref();
-            let canvas_source = render_types::CanvasCompositeSource {
-                width: bitmap.map_or(1, |bitmap| bitmap.width),
-                height: bitmap.map_or(1, |bitmap| bitmap.height),
-                pixels: bitmap.map_or(&[][..], |bitmap| bitmap.pixels.as_slice()),
+        if self.needs_full_present_rebuild || self.ui_panel_frame.is_none() {
+            // Phase 9E-4: L4 ui_panel_layer は GPU パネル化により全パネルが quad で描画される。
+            // ただし PresentScene::ui_panel_layer 型は Phase 9F まで残存するため 1×1 透明 dummy を渡す。
+            let dummy = render::RenderFrame {
+                width: 1,
+                height: 1,
+                pixels: vec![0; 4],
             };
-            let panel_surface_source = render_types::PanelSurfaceSource {
-                x: panel_surface.x,
-                y: panel_surface.y,
-                width: panel_surface.width,
-                height: panel_surface.height,
-                pixels: panel_surface.pixels.as_slice(),
-            };
-            let frame_plan = render_types::FramePlan::new(
-                window_width,
-                window_height,
-                layout.canvas_host_rect,
-                panel_surface_source,
-                canvas_source,
-                self.document.view_transform,
-                &status_text,
-            );
-            let background_frame = profiler.measure("compose_background_frame", || {
-                render::compose_background_frame(&frame_plan)
-            });
-            let ui_panel_frame = profiler.measure("compose_ui_panel_frame", || {
-                render::compose_ui_panel_frame(&frame_plan)
-            });
-            self.background_frame = Some(background_frame);
-            self.ui_panel_frame = Some(ui_panel_frame);
+            self.ui_panel_frame = Some(dummy);
             self.pending_canvas_dirty_rect = None;
-            self.pending_background_dirty_rect = None;
             self.pending_temp_overlay_dirty_rect = None;
             self.pending_ui_panel_dirty_rect = None;
             self.pending_canvas_transform_update = false;
             self.needs_status_refresh = false;
             self.needs_full_present_rebuild = false;
-            let window_rect = frame_plan.window_rect();
+            let bitmap = self.canvas_frame.as_ref();
+            let window_rect = render_types::PixelRect {
+                x: 0,
+                y: 0,
+                width: window_width,
+                height: window_height,
+            };
             return PresentFrameUpdate {
                 background_dirty_rect: Some(window_rect),
                 temp_overlay_dirty_rect: Some(window_rect),
@@ -169,89 +146,25 @@ impl DesktopApp {
             };
         }
 
-        let layout = self.layout.clone().expect("layout exists");
-        let status_text = self.needs_status_refresh.then(|| self.status_text());
-        let Some(background_frame) = self.background_frame.as_mut() else {
-            self.rebuild_present_frame();
-            return PresentFrameUpdate::default();
-        };
-        let Some(ui_panel_frame) = self.ui_panel_frame.as_mut() else {
-            self.rebuild_present_frame();
-            return PresentFrameUpdate::default();
-        };
-
         let mut layer_dirty = render_types::LayerGroupDirtyPlan::default();
 
-        let canvas_source = render_types::CanvasCompositeSource {
-            width: self.canvas_frame.as_ref().map_or(1, |bitmap| bitmap.width),
-            height: self.canvas_frame.as_ref().map_or(1, |bitmap| bitmap.height),
-            pixels: self
-                .canvas_frame
-                .as_ref()
-                .map_or(&[][..], |bitmap| bitmap.pixels.as_slice()),
-        };
-        let panel_surface = self.panel_surface.as_ref().expect("panel surface exists");
-        let panel_surface_source = render_types::PanelSurfaceSource {
-            x: panel_surface.x,
-            y: panel_surface.y,
-            width: panel_surface.width,
-            height: panel_surface.height,
-            pixels: panel_surface.pixels.as_slice(),
-        };
-        let frame_status_text = status_text.as_deref().unwrap_or("");
-        let frame_plan = render_types::FramePlan::new(
-            window_width,
-            window_height,
-            layout.canvas_host_rect,
-            panel_surface_source,
-            canvas_source,
-            self.document.view_transform,
-            frame_status_text,
-        );
-
-        // L4: パネルサーフェス更新
-        if panel_surface_refreshed && let Some(panel_surface) = self.panel_surface.as_ref() {
+        // L4: パネルサーフェス更新 — Phase 9E-3 で GPU 経路に移行済み。dummy ui_panel_frame
+        // は 1×1 のまま再アップロードするだけ。
+        if panel_surface_refreshed {
             let panel_dirty_rect = self.panel_presentation.last_panel_surface_dirty_rect();
-            profiler.measure("compose_dirty_panel", || {
-                let _ = panel_surface;
-                render::compose_ui_panel_region(ui_panel_frame, &frame_plan, panel_dirty_rect);
-            });
             if let Some(panel_dirty_rect) = panel_dirty_rect {
                 layer_dirty.mark_ui_panel(panel_dirty_rect);
             }
         }
 
-        // L1: ステータス更新
-        if let Some(status_text) = status_text.as_deref() {
-            let status_plan = render_types::FramePlan::new(
-                window_width,
-                window_height,
-                layout.canvas_host_rect,
-                panel_surface_source,
-                canvas_source,
-                self.document.view_transform,
-                status_text,
-            );
-            let status_rect = render::status_text_bounds(
-                window_width,
-                window_height,
-                layout.canvas_host_rect,
-                status_text,
-            );
-            profiler.measure("compose_dirty_status", || {
-                render::compose_status_region(background_frame, &status_plan);
-            });
-            layer_dirty.mark_background(status_rect);
+        // L1: ステータス更新 — HtmlPanelEngine 化されたため、毎フレーム
+        // status_panel.update() を呼んで snapshot を engine に流す（差分なら no-op）。
+        // 実際の GPU 描画は runtime.rs の RedrawRequested で行う。
+        if self.needs_status_refresh {
             self.needs_status_refresh = false;
         }
 
-        // L1 のキャンバス背景・枠は GPU L0 solid quad が毎フレーム塗るため、
-        // pending_background_dirty_rect は status text 経路のみで使われる（上で消費済み）。
-        // ここでは破棄するだけ。
-        let _ = self.pending_background_dirty_rect.take();
-
         // L3: 一時オーバーレイは GPU quad で毎フレーム描画されるため CPU 合成は不要。
-        // pending_temp_overlay_dirty_rect は redraw シグナルとしてのみ消費する。
         if let Some(dirty_rect) = self.pending_temp_overlay_dirty_rect.take()
             && dirty_rect.width > 0
             && dirty_rect.height > 0
@@ -264,15 +177,13 @@ impl DesktopApp {
             && dirty_rect.width > 0
             && dirty_rect.height > 0
         {
-            profiler.measure("compose_dirty_ui_panel_rect", || {
-                render::compose_ui_panel_region(ui_panel_frame, &frame_plan, Some(dirty_rect));
-            });
             layer_dirty.mark_ui_panel(dirty_rect);
         }
 
         let canvas_dirty_rect = self.pending_canvas_dirty_rect.take();
         let canvas_transform_changed = std::mem::take(&mut self.pending_canvas_transform_update);
         if let Some(canvas_dirty_rect) = canvas_dirty_rect {
+            use app_core::ClampToCanvasBounds;
             let dirty = canvas_dirty_rect.clamp_to_canvas_bounds(canvas_width, canvas_height);
             let canvas_area = (canvas_width.max(1) * canvas_height.max(1)) as f64;
             profiler.record_value("canvas_upload_area_px", (dirty.width * dirty.height) as f64);
@@ -281,27 +192,6 @@ impl DesktopApp {
             profiler.record_value(
                 "canvas_upload_coverage_pct",
                 ((dirty.width * dirty.height) as f64 / canvas_area) * 100.0,
-            );
-        }
-        if let Some(background_dirty_rect) = layer_dirty.background {
-            let window_area = (window_width.max(1) * window_height.max(1)) as f64;
-            profiler.record_value(
-                "base_upload_area_px",
-                (background_dirty_rect.width * background_dirty_rect.height) as f64,
-            );
-            profiler.record_value(
-                "base_upload_width_px",
-                background_dirty_rect.width as f64,
-            );
-            profiler.record_value(
-                "base_upload_height_px",
-                background_dirty_rect.height as f64,
-            );
-            profiler.record_value(
-                "base_upload_coverage_pct",
-                ((background_dirty_rect.width * background_dirty_rect.height) as f64
-                    / window_area)
-                    * 100.0,
             );
         }
         if let Some(temp_overlay_dirty_rect) = layer_dirty.temp_overlay {

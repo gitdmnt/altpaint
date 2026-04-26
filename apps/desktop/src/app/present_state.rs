@@ -83,7 +83,6 @@ impl DesktopApp {
     pub(super) fn reset_active_interactions(&mut self) {
         self.canvas_input.reset();
         self.pending_canvas_dirty_rect = None;
-        self.pending_background_dirty_rect = None;
         self.pending_temp_overlay_dirty_rect = None;
         self.pending_ui_panel_dirty_rect = None;
         self.pending_canvas_transform_update = false;
@@ -162,14 +161,12 @@ impl DesktopApp {
             // current_scene はキャッシュを使う（キャッシュが古ければ再計算して更新）
             self.cached_canvas_scene = None;
             let current_scene = self.canvas_scene();
-            if let Some(exposed) =
-                render_types::exposed_canvas_background_rect_from_scenes(previous_scene, current_scene)
-            {
-                self.pending_background_dirty_rect = Some(
-                    self.pending_background_dirty_rect
-                        .map_or(exposed, |existing| existing.union(exposed)),
-                );
-            }
+            // Phase 9E-4: pending_background_dirty_rect は status text 用だったが
+            // status panel が GPU 直描画になったため exposed background は記録しない。
+            let _ = render_types::exposed_canvas_background_rect_from_scenes(
+                previous_scene,
+                current_scene,
+            );
             if let Some(dirty) = self.hover_canvas_position.and_then(|hover_position| {
                 render_types::brush_preview_dirty_rect(
                     previous_scene,
@@ -186,12 +183,10 @@ impl DesktopApp {
         true
     }
 
-    /// Background フレーム を返す。
-    pub(crate) fn background_frame(&self) -> Option<&render::RenderFrame> {
-        self.background_frame.as_ref()
-    }
-
     /// UiPanel フレーム を返す。
+    ///
+    /// 9E-3 で全パネルが GPU 経路に移ったため返却値は dummy の 1×1 透明 RGBA。
+    /// Phase 9F (`crates/render` 物理削除) で型ごと撤去予定。
     pub(crate) fn ui_panel_frame(&self) -> Option<&render::RenderFrame> {
         self.ui_panel_frame.as_ref()
     }

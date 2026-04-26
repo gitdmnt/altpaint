@@ -3,6 +3,8 @@
 mod geometry;
 mod overlay_quad;
 mod solid_quad;
+#[cfg(feature = "html-panel")]
+pub(crate) mod status_panel;
 use desktop_support::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
 
 #[allow(unused_imports)]

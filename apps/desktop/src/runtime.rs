@@ -422,18 +422,26 @@ impl ApplicationHandler for DesktopRuntime {
                     }
                 };
 
-                let Some(background_frame) = self.app.background_frame() else {
-                    return;
-                };
-                let Some(ui_panel_frame) = self.app.ui_panel_frame() else {
-                    return;
-                };
-                let base_upload_region = update.background_dirty_rect.map(|rect| UploadRegion {
-                    x: rect.x as u32,
-                    y: rect.y as u32,
-                    width: rect.width as u32,
-                    height: rect.height as u32,
+                // 9E-4: L1 base_layer は dummy 化（型は Phase 9F まで残置）。
+                // 1×1 透明 RGBA を毎フレーム送るが帯域はほぼゼロ。
+                let dummy_base_pixels: [u8; 4] = [0, 0, 0, 0];
+                let base_upload_region = Some(UploadRegion {
+                    x: 0,
+                    y: 0,
+                    width: 1,
+                    height: 1,
                 });
+                // ui_panel_frame は dummy 1×1 だが型整合のため自前で値をコピーしておく
+                // （後段 PresentScene 構築までに &mut self.app の借用を行うため）
+                let (ui_panel_w, ui_panel_h, ui_panel_pixels): (u32, u32, Vec<u8>) =
+                    match self.app.ui_panel_frame() {
+                        Some(frame) => (
+                            frame.width as u32,
+                            frame.height as u32,
+                            frame.pixels.clone(),
+                        ),
+                        None => return,
+                    };
                 let ui_panel_upload_region =
                     update.ui_panel_dirty_rect.map(|rect| UploadRegion {
                         x: rect.x as u32,
@@ -460,6 +468,15 @@ impl ApplicationHandler for DesktopRuntime {
                     Some((panel.id.0.to_string(), kind, w, h))
                 });
 
+                // CPU canvas frame は &mut self.app.status_panel と借用が衝突するため、
+                // pixels/サイズを先に Vec へコピーしてから後段で TextureSource を組み立てる。
+                let cpu_canvas_data: Option<(u32, u32, Vec<u8>)> = if gpu_source_spec.is_none() {
+                    self.app
+                        .canvas_frame()
+                        .map(|b| (b.width as u32, b.height as u32, b.pixels.clone()))
+                } else {
+                    None
+                };
                 let canvas_layer = if let Some((ref panel_id, kind, w, h)) = gpu_source_spec {
                     canvas_quad.map(|quad| CanvasLayer {
                         source: match kind {
@@ -483,12 +500,12 @@ impl ApplicationHandler for DesktopRuntime {
                         quad,
                     })
                 } else {
-                    self.app.canvas_frame().and_then(|bitmap| {
+                    cpu_canvas_data.as_ref().and_then(|(w, h, pixels)| {
                         canvas_quad.map(|quad| CanvasLayer {
                             source: CanvasLayerSource::Cpu(TextureSource {
-                                width: bitmap.width as u32,
-                                height: bitmap.height as u32,
-                                pixels: bitmap.pixels.as_slice(),
+                                width: *w,
+                                height: *h,
+                                pixels: pixels.as_slice(),
                             }),
                             upload_region: update.canvas_dirty_rect.map(|rect| UploadRegion {
                                 x: rect.x as u32,
@@ -527,11 +544,70 @@ impl ApplicationHandler for DesktopRuntime {
                 let (overlay_solid_quads, overlay_circle_quads, overlay_line_quads) =
                     self.app.overlay_quads(size.width as usize, size.height as usize);
 
+                // 9E-4: ステータスバーを HtmlPanelEngine で GPU 描画する。
+                // panel_runtime の gpu_ctx (device/queue/renderer/scene_scratch) を共有借用する。
+                #[cfg(feature = "html-panel")]
+                struct StatusEntry {
+                    texture_ptr: *const wgpu::Texture,
+                    screen_rect: render_types::PixelRect,
+                }
+                #[cfg(feature = "html-panel")]
+                let status_entry: Option<StatusEntry> = {
+                    let snapshot = self.app.build_status_snapshot();
+                    self.app.status_panel.update(&snapshot);
+                    let parts = self.app.panel_runtime.gpu_context_parts();
+                    if let Some((device, queue, renderer, scene_buf)) = parts {
+                        // フッター位置 (画面下端) に幅 = window 幅で配置する
+                        const FOOTER_HEIGHT: u32 = desktop_support::FOOTER_HEIGHT as u32;
+                        let viewport_w = size.width.max(1);
+                        let outcome = self.app.status_panel.render_gpu(
+                            device,
+                            queue,
+                            renderer,
+                            scene_buf,
+                            (viewport_w, FOOTER_HEIGHT),
+                        );
+                        let target = outcome.target();
+                        let texture_ptr: *const wgpu::Texture = &target.texture;
+                        let target_w = target.width;
+                        let target_h = target.height;
+                        let screen_rect = render_types::PixelRect {
+                            x: 0,
+                            y: size.height.saturating_sub(target_h) as usize,
+                            width: target_w as usize,
+                            height: target_h as usize,
+                        };
+                        Some(StatusEntry {
+                            texture_ptr,
+                            screen_rect,
+                        })
+                    } else {
+                        None
+                    }
+                };
+                #[cfg(feature = "html-panel")]
+                let status_quad: Option<crate::wgpu_canvas::GpuPanelQuad<'_>> = status_entry
+                    .as_ref()
+                    .map(|e| crate::wgpu_canvas::GpuPanelQuad {
+                        panel_id: "__status__",
+                        // SAFETY: texture_ptr は self.app.status_panel が所有する
+                        // PanelGpuTarget::texture を指す。本フレーム中、status_panel は
+                        // 借用されない（render_gpu の呼び出しは終わっている）ため寿命が保たれる。
+                        texture: unsafe { &*e.texture_ptr },
+                        screen_rect: e.screen_rect,
+                    });
+                #[cfg(not(feature = "html-panel"))]
+                let status_quad: Option<crate::wgpu_canvas::GpuPanelQuad<'_>> = None;
+
                 let timings = match presenter.render(
                     PresentScene {
                         background_quads: &background_solid_quads,
                         base_layer: FrameLayer {
-                            source: TextureSource::from(background_frame),
+                            source: TextureSource {
+                                width: 1,
+                                height: 1,
+                                pixels: &dummy_base_pixels,
+                            },
                             upload_region: base_upload_region,
                         },
                         canvas_layer,
@@ -539,11 +615,16 @@ impl ApplicationHandler for DesktopRuntime {
                         overlay_circle_quads: &overlay_circle_quads,
                         overlay_line_quads: &overlay_line_quads,
                         ui_panel_layer: FrameLayer {
-                            source: TextureSource::from(ui_panel_frame),
+                            source: TextureSource {
+                                width: ui_panel_w,
+                                height: ui_panel_h,
+                                pixels: ui_panel_pixels.as_slice(),
+                            },
                             upload_region: ui_panel_upload_region,
                         },
                         html_panel_quads: html_panel_quads_slice,
                         foreground_quads: &foreground_solid_quads,
+                        status_quad,
                     },
                     self.app.gpu_canvas_pool(),
                 ) {

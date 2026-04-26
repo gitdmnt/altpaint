@@ -117,14 +117,15 @@ pub struct CanvasLayer<'a> {
 /// 1 フレームに必要な全レイヤーをまとめた描画シーン。
 /// レイヤーは以下の順番で上から合成される:
 ///   L0 background_quads     … 背景 solid quad 群（ウィンドウ背景・キャンバス枠 fill・ホスト枠線）
-///   L1 base_layer           … バックグラウンド（テキスト等 CPU compose 残置分。9C-2 で廃止）
+///   L1 base_layer           … 9E-4 で 1×1 dummy 化（型は Phase 9F まで残置）
 ///   L2 canvas_layer         … キャンバス本体（None なら描画しない）
 ///   L3a overlay_solid_quads … 一時オーバーレイの AABB 単色矩形（マスク・コマプレビュー・navigator）
 ///   L3b overlay_circle_quads … ブラシプレビュー円リング（SDF）
 ///   L3c overlay_line_quads  … ラッソプレビュー線（カプセル SDF）
-///   L4 ui_panel_layer       … UI パネル群（DSL/Wasm パネルを CPU で合成した 1 枚）
-///   L5 html_panel_quads     … HTML パネル群（vello で個別に GPU 直描画されたテクスチャを quad 合成）
+///   L4 ui_panel_layer       … 9E-3 で 1×1 dummy 化（型は Phase 9F まで残置）
+///   L5 html_panel_quads     … DSL/HTML 全パネル（vello で GPU 直描画されたテクスチャを quad 合成）
 ///   L6 foreground_quads     … 前景 solid quad 群（アクティブ UI パネル枠線）
+///   L7 status_quad          … 9E-4: ステータスバー (HtmlPanelEngine GPU 描画) を最前面に配置
 #[derive(Debug, Clone, Copy)]
 pub struct PresentScene<'a> {
     pub background_quads: &'a [SolidQuad],
@@ -136,6 +137,7 @@ pub struct PresentScene<'a> {
     pub ui_panel_layer: FrameLayer<'a>,
     pub html_panel_quads: &'a [GpuPanelQuad<'a>],
     pub foreground_quads: &'a [SolidQuad],
+    pub status_quad: Option<GpuPanelQuad<'a>>,
 }
 
 /// HTML パネル 1 枚分の GPU 描画情報。
@@ -1529,7 +1531,10 @@ impl WgpuPresenter {
         //  - 異なる or 未登録 → bind_group + uniform_buffer を新規生成
         let surface_w = self.config.width;
         let surface_h = self.config.height;
-        for quad in scene.html_panel_quads {
+        // 9E-4: status_quad は html_panel_quads と同じ bind_group キャッシュ仕組みを共有する。
+        // panel_id にプレフィックス "__status__" を付けてキー衝突を避ける。
+        let status_iter = scene.status_quad.as_ref().into_iter();
+        for quad in scene.html_panel_quads.iter().chain(status_iter) {
             let w = quad.texture.width();
             let h = quad.texture.height();
             let needs_rebuild = self
@@ -1602,8 +1607,11 @@ impl WgpuPresenter {
             );
         }
         // 既に消えた panel_id をキャッシュから drop（panel-runtime 側のテクスチャ解放と歩調を合わせる）
-        let live_ids: std::collections::HashSet<&str> =
+        let mut live_ids: std::collections::HashSet<&str> =
             scene.html_panel_quads.iter().map(|q| q.panel_id).collect();
+        if let Some(status) = scene.status_quad.as_ref() {
+            live_ids.insert(status.panel_id);
+        }
         self.html_panel_bind_groups
             .retain(|id, _| live_ids.contains(id.as_str()));
 
@@ -1739,6 +1747,15 @@ impl WgpuPresenter {
                     pass.set_bind_group(0, &slot.bind_group, &[]);
                     pass.draw(0..6, 0..1);
                 }
+            }
+
+            // L7: ステータスバー (HtmlPanelEngine GPU 描画) を最前面に配置
+            if let Some(status) = scene.status_quad.as_ref()
+                && let Some(entry) = self.html_panel_bind_groups.get(status.panel_id)
+            {
+                pass.set_pipeline(&self.pipeline);
+                pass.set_bind_group(0, &entry.bind_group, &[]);
+                pass.draw(0..6, 0..1);
             }
         } // ← ここで pass が drop され、レンダーパス終了コマンドが記録される
 
