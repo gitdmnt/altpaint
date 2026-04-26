@@ -80,7 +80,7 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 | `apps/desktop`                        | winit + wgpu ホスト、`DesktopApp` 統括、入力ルーティング、提示                            |
 | `crates/app-core`                     | `Document`、ドメインモデル（Work→Page→Panel→LayerNode）、`Command`、ペイント基本型        |
 | `crates/canvas`                       | `CanvasRuntime`、ジェスチャーステートマシン、ビットマップ操作                             |
-| `crates/render-types`                 | `FramePlan`/`CanvasPlan`/`OverlayPlan`/`PanelPlan`、`PixelRect`/`CanvasScene` 等の純データ DTO |
+| `crates/render-types`                 | `FramePlan`/`CanvasPlan`/`PanelPlan`、`PixelRect`/`CanvasScene`/`CanvasOverlayState` 等の純データ DTO |
 | `crates/render`                       | CPU フレーム合成、パネル CPU ラスタライズ、テキスト描画 (Phase 9C 以降で順次 GPU 化)      |
 | `crates/panel-runtime`                | パネルレジストリ、DSL/Wasm ブリッジ、ホストスナップショット同期、永続設定                 |
 | `crates/ui-shell`                     | パネルワークスペースレイアウト、フォーカス、ヒットテスト、サーフェスレンダリング          |

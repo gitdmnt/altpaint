@@ -424,9 +424,6 @@ impl ApplicationHandler for DesktopRuntime {
                 let Some(background_frame) = self.app.background_frame() else {
                     return;
                 };
-                let Some(temp_overlay_frame) = self.app.temp_overlay_frame() else {
-                    return;
-                };
                 let Some(ui_panel_frame) = self.app.ui_panel_frame() else {
                     return;
                 };
@@ -436,13 +433,6 @@ impl ApplicationHandler for DesktopRuntime {
                     width: rect.width as u32,
                     height: rect.height as u32,
                 });
-                let temp_overlay_upload_region =
-                    update.temp_overlay_dirty_rect.map(|rect| UploadRegion {
-                        x: rect.x as u32,
-                        y: rect.y as u32,
-                        width: rect.width as u32,
-                        height: rect.height as u32,
-                    });
                 let ui_panel_upload_region =
                     update.ui_panel_dirty_rect.map(|rect| UploadRegion {
                         x: rect.x as u32,
@@ -533,6 +523,8 @@ impl ApplicationHandler for DesktopRuntime {
 
                 let background_solid_quads = self.app.background_solid_quads();
                 let foreground_solid_quads = self.app.foreground_solid_quads();
+                let (overlay_solid_quads, overlay_circle_quads, overlay_line_quads) =
+                    self.app.overlay_quads(size.width as usize, size.height as usize);
 
                 let timings = match presenter.render(
                     PresentScene {
@@ -542,10 +534,9 @@ impl ApplicationHandler for DesktopRuntime {
                             upload_region: base_upload_region,
                         },
                         canvas_layer,
-                        temp_overlay_layer: FrameLayer {
-                            source: TextureSource::from(temp_overlay_frame),
-                            upload_region: temp_overlay_upload_region,
-                        },
+                        overlay_solid_quads: &overlay_solid_quads,
+                        overlay_circle_quads: &overlay_circle_quads,
+                        overlay_line_quads: &overlay_line_quads,
                         ui_panel_layer: FrameLayer {
                             source: TextureSource::from(ui_panel_frame),
                             upload_region: ui_panel_upload_region,

@@ -567,7 +567,7 @@ fn overlapping_panel_and_canvas_overlay_updates_union_dirty_rects() {
     assert_eq!(update.ui_panel_dirty_rect, Some(expected_panel_dirty));
     assert_eq!(update.temp_overlay_dirty_rect, Some(hover_dirty));
     assert!(profiler.stats.contains_key("compose_dirty_panel"));
-    assert!(profiler.stats.contains_key("compose_dirty_overlay"));
+    // L3 オーバーレイは GPU quad で毎フレーム描画されるため compose_dirty_overlay 計測は存在しない (Phase 9D)。
 }
 
 /// profile 色 ホイール drag for ten seconds が期待どおりに動作することを検証する。

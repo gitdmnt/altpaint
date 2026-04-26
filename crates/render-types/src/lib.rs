@@ -22,9 +22,7 @@ pub use canvas_scene::{
 pub use dirty::{union_dirty_rect, union_optional_rect};
 pub use frame_plan::FramePlan;
 pub use layer_group::{LayerGroup, LayerGroupDirtyPlan};
-pub use overlay_plan::{
-    CanvasOverlayState, OverlayPlan, PanelNavigatorEntry, PanelNavigatorOverlay,
-};
+pub use overlay_plan::{CanvasOverlayState, PanelNavigatorEntry, PanelNavigatorOverlay};
 pub use panel_plan::{PanelPlan, PanelSurfaceSource};
 
 #[cfg(test)]

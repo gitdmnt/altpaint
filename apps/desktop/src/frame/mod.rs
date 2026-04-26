@@ -1,12 +1,18 @@
 //! デスクトップ固有の固定レイアウト計算と presenter 入力変換をまとめる。
 
 mod geometry;
+mod overlay_quad;
 mod solid_quad;
 use desktop_support::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
 
 #[allow(unused_imports)]
 pub(crate) use geometry::{
     fit_rect, map_window_to_panel_surface, map_window_to_panel_surface_clamped,
+};
+#[allow(unused_imports)]
+pub(crate) use overlay_quad::{
+    CircleQuad, LineQuad, build_overlay_circle_quads, build_overlay_line_quads,
+    build_overlay_solid_quads,
 };
 #[allow(unused_imports)]
 pub(crate) use solid_quad::{

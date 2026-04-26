@@ -153,16 +153,11 @@ impl DesktopProfiler {
         self.record("present_encode", timings.encode_and_submit);
         self.record("present_swap", timings.present);
         self.record("present_upload_base", timings.base_upload);
-        self.record("present_upload_temp_overlay", timings.temp_overlay_upload);
         self.record("present_upload_canvas", timings.canvas_upload);
         self.record("present_upload_ui_panel", timings.ui_panel_upload);
         self.record_value(
             "present_upload_base_bytes",
             timings.base_upload_bytes as f64,
-        );
-        self.record_value(
-            "present_upload_temp_overlay_bytes",
-            timings.temp_overlay_upload_bytes as f64,
         );
         self.record_value(
             "present_upload_canvas_bytes",

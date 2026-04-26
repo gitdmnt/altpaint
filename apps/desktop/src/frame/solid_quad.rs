@@ -43,7 +43,7 @@ pub(crate) fn pixel_rect_to_ndc(
 /// 矩形を 4 本の 1px 枠線（top/bottom/left/right）に分解する。
 ///
 /// 矩形の幅・高さが 0 の場合は何も追加しない。
-fn push_border_quads(out: &mut Vec<SolidQuad>, rect: Rect, color: [u8; 4]) {
+pub(crate) fn push_border_quads(out: &mut Vec<SolidQuad>, rect: Rect, color: [u8; 4]) {
     if rect.width == 0 || rect.height == 0 {
         return;
     }

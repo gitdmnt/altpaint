@@ -111,7 +111,6 @@ impl DesktopApp {
 
         if self.needs_full_present_rebuild
             || self.background_frame.is_none()
-            || self.temp_overlay_frame.is_none()
             || self.ui_panel_frame.is_none()
         {
             let layout = self.layout.clone().expect("layout exists");
@@ -139,29 +138,13 @@ impl DesktopApp {
                 self.document.view_transform,
                 &status_text,
             );
-            let overlay_state = render_types::CanvasOverlayState {
-                brush_preview: self.hover_canvas_position,
-                brush_size: self.brush_preview_size(),
-                lasso_points: self.canvas_input.lasso_points.clone(),
-                active_panel_bounds: self.active_panel_mask_overlay(),
-                panel_navigator: self.panel_navigator_overlay(),
-                panel_creation_preview: self.panel_creation_preview_bounds(),
-                active_ui_panel_rect: self
-                    .panel_presentation
-                    .focused_target()
-                    .and_then(|(panel_id, _)| self.panel_presentation.panel_rect(panel_id)),
-            };
             let background_frame = profiler.measure("compose_background_frame", || {
                 render::compose_background_frame(&frame_plan)
-            });
-            let temp_overlay_frame = profiler.measure("compose_temp_overlay_frame", || {
-                render::compose_temp_overlay_frame(&frame_plan, &overlay_state)
             });
             let ui_panel_frame = profiler.measure("compose_ui_panel_frame", || {
                 render::compose_ui_panel_frame(&frame_plan)
             });
             self.background_frame = Some(background_frame);
-            self.temp_overlay_frame = Some(temp_overlay_frame);
             self.ui_panel_frame = Some(ui_panel_frame);
             self.pending_canvas_dirty_rect = None;
             self.pending_background_dirty_rect = None;
@@ -188,17 +171,7 @@ impl DesktopApp {
 
         let layout = self.layout.clone().expect("layout exists");
         let status_text = self.needs_status_refresh.then(|| self.status_text());
-        let brush_preview_size = self.brush_preview_size();
-        let hover_canvas_position = self.hover_canvas_position;
-        let lasso_points = self.canvas_input.lasso_points.clone();
-        let active_panel_bounds = self.active_panel_mask_overlay();
-        let panel_navigator = self.panel_navigator_overlay();
-        let panel_creation_preview = self.panel_creation_preview_bounds();
         let Some(background_frame) = self.background_frame.as_mut() else {
-            self.rebuild_present_frame();
-            return PresentFrameUpdate::default();
-        };
-        let Some(temp_overlay_frame) = self.temp_overlay_frame.as_mut() else {
             self.rebuild_present_frame();
             return PresentFrameUpdate::default();
         };
@@ -235,18 +208,6 @@ impl DesktopApp {
             self.document.view_transform,
             frame_status_text,
         );
-        let overlay_state = render_types::CanvasOverlayState {
-            brush_preview: hover_canvas_position,
-            brush_size: brush_preview_size,
-            lasso_points: lasso_points.clone(),
-            active_panel_bounds,
-            panel_navigator: panel_navigator.clone(),
-            panel_creation_preview,
-            active_ui_panel_rect: self
-                .panel_presentation
-                .focused_target()
-                .and_then(|(panel_id, _)| self.panel_presentation.panel_rect(panel_id)),
-        };
 
         // L4: パネルサーフェス更新
         if panel_surface_refreshed && let Some(panel_surface) = self.panel_surface.as_ref() {
@@ -289,19 +250,12 @@ impl DesktopApp {
         // ここでは破棄するだけ。
         let _ = self.pending_background_dirty_rect.take();
 
-        // L3: キャンバス一時オーバーレイ dirty
+        // L3: 一時オーバーレイは GPU quad で毎フレーム描画されるため CPU 合成は不要。
+        // pending_temp_overlay_dirty_rect は redraw シグナルとしてのみ消費する。
         if let Some(dirty_rect) = self.pending_temp_overlay_dirty_rect.take()
             && dirty_rect.width > 0
             && dirty_rect.height > 0
         {
-            profiler.measure("compose_dirty_overlay", || {
-                render::compose_temp_overlay_region(
-                    temp_overlay_frame,
-                    &frame_plan,
-                    &overlay_state,
-                    Some(dirty_rect),
-                );
-            });
             layer_dirty.mark_temp_overlay(dirty_rect);
         }
 

@@ -191,11 +191,6 @@ impl DesktopApp {
         self.background_frame.as_ref()
     }
 
-    /// TempOverlay フレーム を返す。
-    pub(crate) fn temp_overlay_frame(&self) -> Option<&render::RenderFrame> {
-        self.temp_overlay_frame.as_ref()
-    }
-
     /// UiPanel フレーム を返す。
     pub(crate) fn ui_panel_frame(&self) -> Option<&render::RenderFrame> {
         self.ui_panel_frame.as_ref()
@@ -220,6 +215,64 @@ impl DesktopApp {
             .focused_target()
             .and_then(|(panel_id, _)| self.panel_presentation.panel_rect(panel_id));
         crate::frame::build_foreground_solid_quads(active_rect)
+    }
+
+    /// L3 一時オーバーレイ用 quad を組み立てる。毎フレーム呼ぶ前提の純関数経路。
+    /// 戻り値: (AABB 単色, 円リング, 線分カプセル)
+    pub(crate) fn overlay_quads(
+        &self,
+        window_width: usize,
+        window_height: usize,
+    ) -> (
+        Vec<crate::frame::SolidQuad>,
+        Vec<crate::frame::CircleQuad>,
+        Vec<crate::frame::LineQuad>,
+    ) {
+        let Some(layout) = self.layout.as_ref() else {
+            return (Vec::new(), Vec::new(), Vec::new());
+        };
+        let Some(panel_surface) = self.panel_surface.as_ref() else {
+            return (Vec::new(), Vec::new(), Vec::new());
+        };
+        let bitmap = self.canvas_frame.as_ref();
+        let canvas_source = render_types::CanvasCompositeSource {
+            width: bitmap.map_or(1, |b| b.width),
+            height: bitmap.map_or(1, |b| b.height),
+            pixels: bitmap.map_or(&[][..], |b| b.pixels.as_slice()),
+        };
+        let panel_surface_source = render_types::PanelSurfaceSource {
+            x: panel_surface.x,
+            y: panel_surface.y,
+            width: panel_surface.width,
+            height: panel_surface.height,
+            pixels: panel_surface.pixels.as_slice(),
+        };
+        let frame_plan = render_types::FramePlan::new(
+            window_width,
+            window_height,
+            layout.canvas_host_rect,
+            panel_surface_source,
+            canvas_source,
+            self.document.view_transform,
+            "",
+        );
+        let overlay_state = render_types::CanvasOverlayState {
+            brush_preview: self.hover_canvas_position,
+            brush_size: self.brush_preview_size(),
+            lasso_points: self.canvas_input.lasso_points.clone(),
+            active_panel_bounds: self.active_panel_mask_overlay(),
+            panel_navigator: self.panel_navigator_overlay(),
+            panel_creation_preview: self.panel_creation_preview_bounds(),
+            active_ui_panel_rect: self
+                .panel_presentation
+                .focused_target()
+                .and_then(|(panel_id, _)| self.panel_presentation.panel_rect(panel_id)),
+        };
+        (
+            crate::frame::build_overlay_solid_quads(&frame_plan, &overlay_state),
+            crate::frame::build_overlay_circle_quads(&frame_plan, &overlay_state),
+            crate::frame::build_overlay_line_quads(&frame_plan, &overlay_state),
+        )
     }
 
     /// キャンバス texture quad を計算して返す。
