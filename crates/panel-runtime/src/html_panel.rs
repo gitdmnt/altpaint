@@ -104,6 +104,11 @@ impl HtmlPanelPlugin {
         &self.engine
     }
 
+    /// 9E-3: `PanelRuntime::render_panels` から共通アクセサ経由で呼ばれる。
+    pub(crate) fn engine_mut(&mut self) -> &mut HtmlPanelEngine {
+        &mut self.engine
+    }
+
     pub fn gpu_target(&self) -> Option<&PanelGpuTarget> {
         self.engine.gpu_target()
     }

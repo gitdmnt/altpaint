@@ -11,11 +11,12 @@ use std::path::Path;
 #[cfg(feature = "html-panel")]
 use std::sync::Arc;
 #[cfg(feature = "html-panel")]
-use panel_html_experiment::{vello, wgpu, RenderedPanelHit};
+use panel_html_experiment::{vello, wgpu, HtmlPanelEngine, RenderedPanelHit};
 
-/// `html-panel` feature 時、HTML パネル毎の GPU 描画結果をまとめて返す。
+/// `html-panel` feature 時、パネル毎の GPU 描画結果をまとめて返す。
+/// 9E-3 で DSL/HTML 両対応に統一 (旧 `HtmlPanelGpuFrame` から改名)。
 #[cfg(feature = "html-panel")]
-pub struct HtmlPanelGpuFrame<'a> {
+pub struct PanelGpuFrame<'a> {
     pub panel_id: String,
     pub texture: &'a wgpu::Texture,
     pub width: u32,
@@ -31,6 +32,36 @@ struct PanelGpuContext {
     queue: Arc<wgpu::Queue>,
     renderer: vello::Renderer,
     scene_scratch: vello::Scene,
+}
+
+/// パネルから可変 `HtmlPanelEngine` を取り出すための共通アクセサ。
+/// HtmlPanelPlugin / DslPanelPlugin どちらでも `engine_mut()` を介して取得する。
+/// downcast は二段階で行い、それぞれが借用を返すため借用チェッカ通過する形に分離する。
+#[cfg(feature = "html-panel")]
+fn panel_engine_mut(panel: &mut Box<dyn PanelPlugin>) -> Option<&mut HtmlPanelEngine> {
+    // 種別判定: as_any_mut は短時間借用にとどめ、TypeId だけ取り出す
+    let panel_kind = {
+        let any = panel.as_any_mut()?;
+        if any.downcast_ref::<HtmlPanelPlugin>().is_some() {
+            PanelEngineKind::Html
+        } else if any.downcast_ref::<DslPanelPlugin>().is_some() {
+            PanelEngineKind::Dsl
+        } else {
+            return None;
+        }
+    };
+    // 種別が判明したので、改めて &mut を取り直す
+    let any = panel.as_any_mut()?;
+    match panel_kind {
+        PanelEngineKind::Html => any.downcast_mut::<HtmlPanelPlugin>().map(|p| p.engine_mut()),
+        PanelEngineKind::Dsl => any.downcast_mut::<DslPanelPlugin>().map(|p| p.engine_mut()),
+    }
+}
+
+#[cfg(feature = "html-panel")]
+enum PanelEngineKind {
+    Html,
+    Dsl,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -59,10 +90,10 @@ pub struct PanelRuntime {
     /// html-panel feature 時の GPU コンテキスト（device/queue/renderer/scene scratch）。
     #[cfg(feature = "html-panel")]
     gpu_ctx: Option<PanelGpuContext>,
-    /// 直近 `render_html_panels` で measured_size が変化した panel の (id, (w, h)) 列。
-    /// `take_html_size_changes` で吸い取って永続化に流す。
+    /// 直近 `render_panels` で measured_size が変化した panel の (id, (w, h)) 列。
+    /// `take_panel_size_changes` で吸い取って永続化に流す。
     #[cfg(feature = "html-panel")]
-    pending_html_size_changes: Vec<(String, (u32, u32))>,
+    pending_panel_size_changes: Vec<(String, (u32, u32))>,
 }
 
 impl Default for PanelRuntime {
@@ -84,7 +115,7 @@ impl PanelRuntime {
             #[cfg(feature = "html-panel")]
             gpu_ctx: None,
             #[cfg(feature = "html-panel")]
-            pending_html_size_changes: Vec::new(),
+            pending_panel_size_changes: Vec::new(),
         }
     }
 
@@ -122,41 +153,59 @@ impl PanelRuntime {
         }
     }
 
-    /// HTML パネル ID 一覧（dyn 起こし downcast 経由で識別）。
+    /// GPU 直描画対応パネル (DSL + HTML) の ID 一覧。
+    /// downcast 順序: HtmlPanelPlugin → DslPanelPlugin の順で確認する。
     #[cfg(feature = "html-panel")]
-    pub fn html_panel_ids(&mut self) -> Vec<String> {
+    pub fn panel_ids_with_gpu(&mut self) -> Vec<String> {
         let mut ids = Vec::new();
         for panel in &mut self.panels {
-            if let Some(any) = panel.as_any_mut()
-                && any.downcast_mut::<HtmlPanelPlugin>().is_some()
-            {
-                ids.push(panel.id().to_string());
+            let panel_id = panel.id().to_string();
+            if let Some(any) = panel.as_any_mut() {
+                if any.downcast_mut::<HtmlPanelPlugin>().is_some() {
+                    ids.push(panel_id);
+                    continue;
+                }
+                if any.downcast_mut::<DslPanelPlugin>().is_some() {
+                    ids.push(panel_id);
+                }
             }
         }
         ids
     }
 
-    /// HTML パネル毎の現在の権威サイズを返す。
+    /// パネル毎の現在の権威サイズを返す。DSL/HTML 両方が含まれる。
     /// 戻り値: `Vec<(panel_id, width, height)>`。
     #[cfg(feature = "html-panel")]
-    pub fn html_measured_sizes(&mut self) -> Vec<(String, u32, u32)> {
+    pub fn panel_measured_sizes(&mut self) -> Vec<(String, u32, u32)> {
         let mut out = Vec::new();
         for panel in &mut self.panels {
             let panel_id = panel.id().to_string();
-            let Some(any) = panel.as_any_mut() else { continue };
-            let Some(html_plugin) = any.downcast_mut::<HtmlPanelPlugin>() else {
-                continue;
-            };
-            let (w, h) = html_plugin.measured_size();
-            out.push((panel_id, w, h));
+            if let Some(engine) = panel_engine_mut(panel) {
+                let (w, h) = engine.measured_size();
+                out.push((panel_id, w, h));
+            }
         }
         out
     }
 
-    /// 指定 HTML パネルに UI 入力イベントを転送する。`:hover` / `<details>` 開閉等の動的レイアウトを動かす。
+    /// 指定パネル (DSL/HTML) の measured_size を返す。該当無しの場合は `(1, 1)`。
+    #[cfg(feature = "html-panel")]
+    pub fn measured_size(&mut self, panel_id: &str) -> (u32, u32) {
+        for panel in &mut self.panels {
+            if panel.id() != panel_id {
+                continue;
+            }
+            if let Some(engine) = panel_engine_mut(panel) {
+                return engine.measured_size();
+            }
+        }
+        (1, 1)
+    }
+
+    /// 指定パネルに UI 入力イベントを転送する。`:hover` / `<details>` 開閉等の動的レイアウトを動かす。
     /// 戻り値: 該当パネルが見つかった場合 true。
     #[cfg(feature = "html-panel")]
-    pub fn forward_html_input(
+    pub fn forward_panel_input(
         &mut self,
         panel_id: &str,
         event: panel_html_experiment::blitz_traits::events::UiEvent,
@@ -165,58 +214,56 @@ impl PanelRuntime {
             if panel.id() != panel_id {
                 continue;
             }
-            let Some(any) = panel.as_any_mut() else { return false };
-            let Some(html_plugin) = any.downcast_mut::<HtmlPanelPlugin>() else {
-                return false;
-            };
-            html_plugin.forward_input(event);
-            return true;
+            if let Some(engine) = panel_engine_mut(panel) {
+                engine.on_input(event);
+                return true;
+            }
+            return false;
         }
         false
     }
 
     /// 起動時 restore 用：指定 panel_id に永続化された measured_size を流し込む。
-    /// 戻り値: 該当 HTML パネルが見つかった場合 true。
+    /// 戻り値: 該当パネルが見つかった場合 true。
     #[cfg(feature = "html-panel")]
-    pub fn restore_html_panel_size(&mut self, panel_id: &str, size: (u32, u32)) -> bool {
+    pub fn restore_panel_size(&mut self, panel_id: &str, size: (u32, u32)) -> bool {
         for panel in &mut self.panels {
             if panel.id() != panel_id {
                 continue;
             }
-            let Some(any) = panel.as_any_mut() else { return false };
-            let Some(html_plugin) = any.downcast_mut::<HtmlPanelPlugin>() else {
-                return false;
-            };
-            html_plugin.restore_size(size);
-            return true;
+            if let Some(engine) = panel_engine_mut(panel) {
+                engine.on_load(Some(size));
+                return true;
+            }
+            return false;
         }
         false
     }
 
-    /// `render_html_panels` 内で発生した measured_size 変化を吸い取る（take セマンティクス）。
+    /// `render_panels` 内で発生した measured_size 変化を吸い取る（take セマンティクス）。
     /// 戻り値: `(panel_id, (new_w, new_h))` の列。二回目の呼び出しは空。
     #[cfg(feature = "html-panel")]
-    pub fn take_html_size_changes(&mut self) -> Vec<(String, (u32, u32))> {
-        std::mem::take(&mut self.pending_html_size_changes)
+    pub fn take_panel_size_changes(&mut self) -> Vec<(String, (u32, u32))> {
+        std::mem::take(&mut self.pending_panel_size_changes)
     }
 
-    /// テスト専用: size 変化を強制注入する。本番経路では `render_html_panels` 内で記録される。
+    /// テスト専用: size 変化を強制注入する。本番経路では `render_panels` 内で記録される。
     #[cfg(all(feature = "html-panel", test))]
-    pub fn test_mark_html_size_changed(&mut self, panel_id: &str, size: (u32, u32)) {
-        self.pending_html_size_changes
+    pub fn test_mark_panel_size_changed(&mut self, panel_id: &str, size: (u32, u32)) {
+        self.pending_panel_size_changes
             .push((panel_id.to_string(), size));
     }
 
-    /// 指定された (panel_id, width, height) リストの HTML パネルを GPU 描画する。
+    /// 指定された (panel_id, width, height) リストの DSL/HTML パネルを GPU 描画する。
     /// `chrome_height` > 0 ならパネル上端にホスト描画タイトルバーを重ねる。
     /// `install_gpu_context` 未呼び出しなら空 Vec。
     #[cfg(feature = "html-panel")]
-    pub fn render_html_panels(
+    pub fn render_panels(
         &mut self,
         sized: &[(String, u32, u32)],
         scale: f32,
         chrome_height: u32,
-    ) -> Vec<HtmlPanelGpuFrame<'_>> {
+    ) -> Vec<PanelGpuFrame<'_>> {
         let Some(gpu_ctx) = self.gpu_ctx.as_mut() else {
             return Vec::new();
         };
@@ -228,14 +275,11 @@ impl PanelRuntime {
             let Some(panel) = self.panels.iter_mut().find(|p| p.id() == panel_id.as_str()) else {
                 continue;
             };
-            let Some(any) = panel.as_any_mut() else {
-                continue;
-            };
-            let Some(html_plugin) = any.downcast_mut::<HtmlPanelPlugin>() else {
+            let Some(engine) = panel_engine_mut(panel) else {
                 continue;
             };
             let (rendered, texture_ptr, tw, th) = {
-                let outcome = html_plugin.render_gpu(
+                let outcome = engine.on_render(
                     &gpu_ctx.device,
                     &gpu_ctx.queue,
                     &mut gpu_ctx.renderer,
@@ -249,20 +293,21 @@ impl PanelRuntime {
                 let ptr: *const wgpu::Texture = &target.texture;
                 (rendered, ptr, target.width, target.height)
             };
-            // size 変化があれば pending リストへ。take_html_size_changes で吸い取られる。
-            if let Some(new_size) = html_plugin.take_size_change() {
-                self.pending_html_size_changes
+            // size 変化があれば pending リストへ。take_panel_size_changes で吸い取られる。
+            if let Some(new_size) = engine.take_size_change() {
+                self.pending_panel_size_changes
                     .push((panel_id.clone(), new_size));
             }
-            let hits = html_plugin.collect_action_rects();
+            let hits = engine.collect_action_rects();
             frames.push((panel_id.clone(), texture_ptr, tw, th, hits, rendered));
         }
-        // SAFETY: 各 *const wgpu::Texture は self.panels 内の Box<HtmlPanelPlugin> 内テクスチャを指す。
-        // 戻り値の HtmlPanelGpuFrame の借用は &mut self に紐付くので、戻り値存在中は self.panels が
+        // SAFETY: 各 *const wgpu::Texture は self.panels 内の Box<dyn PanelPlugin> 内
+        // engine が保持するテクスチャを指す。Box は heap に固定されており、戻り値の
+        // PanelGpuFrame は &mut self に紐付くので、戻り値存在中は self.panels が
         // 不変に保たれる。テクスチャの寿命も同期する。
         frames
             .into_iter()
-            .map(|(panel_id, ptr, w, h, hits, rendered)| HtmlPanelGpuFrame {
+            .map(|(panel_id, ptr, w, h, hits, rendered)| PanelGpuFrame {
                 panel_id,
                 texture: unsafe { &*ptr },
                 width: w,

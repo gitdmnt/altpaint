@@ -235,6 +235,12 @@ impl PanelPlugin for DslPanelPlugin {
         self.evaluate_tree()
     }
 
+    /// Phase 9E-3: GPU 直描画経路 (`PanelRuntime::render_panels`) で
+    /// `engine_mut()` を介して `HtmlPanelEngine` を取り出すためのフック。
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+
     /// handles キーボード イベント を計算して返す。
     fn handles_keyboard_event(&self) -> bool {
         self.has_keyboard_handler
