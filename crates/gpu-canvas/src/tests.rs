@@ -18,7 +18,6 @@ mod cpu_tests {
 }
 
 /// GPU ありテスト。
-#[cfg(feature = "gpu")]
 mod gpu_tests {
     use std::sync::Arc;
 

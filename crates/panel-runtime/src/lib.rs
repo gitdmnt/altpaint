@@ -1,6 +1,7 @@
 mod config;
 mod dsl_loader;
 mod dsl_panel;
+pub mod dsl_to_html;
 mod host_sync;
 mod registry;
 
@@ -10,8 +11,11 @@ mod html_panel;
 #[cfg(test)]
 mod tests;
 
-pub use dsl_panel::command_from_descriptor;
+pub use dsl_panel::{altp_descriptor_to_panel_event, command_from_descriptor};
 pub use registry::{PanelRuntime, RuntimeDispatchResult, RuntimeKeyboardResult};
+
+#[cfg(feature = "html-panel")]
+pub use registry::PanelGpuFrame;
 
 #[cfg(feature = "html-panel")]
 pub use html_panel::{HtmlPanelLoadError, HtmlPanelPlugin};

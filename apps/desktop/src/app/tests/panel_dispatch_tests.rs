@@ -1,12 +1,10 @@
 //! panel_dispatch の回帰テストをまとめる。
 
-use std::path::PathBuf;
-
 use app_core::{Command, WindowPoint};
 use desktop_support::DesktopProfiler;
 
 use super::{TestDialogs, test_app_with_dialogs};
-use crate::app::{DesktopApp, PanelDragState};
+use crate::app::PanelDragState;
 
 /// パネル 振り分け キーボード パス activates 保存 action が期待どおりに動作することを検証する。
 #[test]
@@ -29,35 +27,6 @@ fn panel_dispatch_keyboard_path_activates_save_action() {
     assert_eq!(app.io_state.pending_jobs.len(), 1);
 }
 
-/// パネル drag ソース advances for レイヤー 一覧 drag が期待どおりに動作することを検証する。
-#[test]
-fn panel_drag_source_advances_for_layer_list_drag() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    app.panel_interaction.active_panel_drag = Some(PanelDragState::Control {
-        panel_id: "builtin.layers-panel".to_string(),
-        node_id: "layers.list".to_string(),
-        source_value: 2,
-    });
-
-    app.advance_panel_drag_source(&panel_api::PanelEvent::DragValue {
-        panel_id: "builtin.layers-panel".to_string(),
-        node_id: "layers.list".to_string(),
-        from: 2,
-        to: 1,
-    });
-
-    assert_eq!(
-        app.panel_interaction
-            .active_panel_drag
-            .as_ref()
-            .and_then(|drag| match drag {
-                PanelDragState::Control { source_value, .. } => Some(*source_value),
-                PanelDragState::Move { .. } => None,
-            }),
-        Some(1)
-    );
-}
-
 /// パネルを drag で移動したとき canvas ホスト領域が dirty になることを検証する。
 ///
 /// パネルが通過した領域のキャンバス背景が再描画されるよう、
@@ -78,7 +47,7 @@ fn drag_panel_move_marks_canvas_host_dirty() {
     };
 
     // パネルをグラブした状態にする
-    app.panel_interaction.active_panel_drag = Some(PanelDragState::Move {
+    app.panel_interaction.active_panel_drag = Some(PanelDragState {
         panel_id: panel_id.clone(),
         grab_offset_x: 10,
         grab_offset_y: 10,

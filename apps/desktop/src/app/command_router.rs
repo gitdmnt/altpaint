@@ -5,7 +5,6 @@ use panel_api::{ServiceRequest, services::names};
 
 use super::DesktopApp;
 
-#[cfg(feature = "gpu")]
 impl DesktopApp {
     /// アクティブペンのペン先テクスチャを GPU キャッシュへアップロードする。
     ///
@@ -100,7 +99,6 @@ impl DesktopApp {
             | Command::SelectPreviousPenPreset => {
                 self.sync_ui_from_document_panels(TOOL_PANEL_IDS);
                 self.mark_status_dirty();
-                #[cfg(feature = "gpu")]
                 self.upload_active_pen_tip_to_gpu_cache();
                 true
             }
@@ -145,13 +143,11 @@ impl DesktopApp {
                     )
                 });
                 if let Some((_panel_id, page_dirty, _local_dirty)) = panel_info {
-                    self.refresh_canvas_frame_region(page_dirty);
                     self.append_canvas_dirty_rect(page_dirty);
                 } else {
                     self.refresh_canvas_frame();
                     self.rebuild_present_frame();
                 }
-                #[cfg(feature = "gpu")]
                 if let Some((panel_id, _page_dirty, local_dirty)) = panel_info {
                     self.recomposite_panel(panel_id, Some(local_dirty));
                 }
@@ -171,11 +167,8 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
-                #[cfg(feature = "gpu")]
-                {
-                    self.sync_all_layers_to_gpu();
-                    self.recomposite_all_panels();
-                }
+                self.sync_all_layers_to_gpu();
+                self.recomposite_all_panels();
                 true
             }
             Command::AddPanel
@@ -189,11 +182,8 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
-                #[cfg(feature = "gpu")]
-                {
-                    self.sync_all_layers_to_gpu();
-                    self.recomposite_all_panels();
-                }
+                self.sync_all_layers_to_gpu();
+                self.recomposite_all_panels();
                 true
             }
             Command::NewDocumentSized { .. } => {
@@ -204,11 +194,8 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
-                #[cfg(feature = "gpu")]
-                {
-                    self.sync_all_layers_to_gpu();
-                    self.recomposite_all_panels();
-                }
+                self.sync_all_layers_to_gpu();
+                self.recomposite_all_panels();
                 true
             }
             Command::Noop

@@ -5,13 +5,9 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
-[features]
-default = ["gpu"]
-gpu = ["dep:wgpu"]
-
 [dependencies]
 app-core = { path = "../app-core" }
-wgpu = { workspace = true, optional = true }
+wgpu = { workspace = true }
 anyhow.workspace = true
 
 [dev-dependencies]

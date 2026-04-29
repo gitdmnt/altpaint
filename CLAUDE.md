@@ -69,9 +69,9 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 
 **起動**: `apps/desktop` が winit + wgpu 初期化 → `DesktopApp::new` がセッション/プロジェクト/ワークスペース復元 → `PanelRuntime` が `plugins/**/*.altp-panel` を読み込む → `storage` がツール・ペンを読み込む → 初期レンダリング
 
-**入力 → 描画**: OS入力 → `runtime/pointer.rs` 正規化 → `app/input.rs` がキャンバスかパネルへ振り分け → `canvas::view_mapping` が座標変換 → `canvas::gesture` が `PaintInput` を生成 → `canvas::context_builder` が `Document` からペイントコンテキストを解決 → ビルトインビットマッププラグインがビットマップ差分を書く → 差分を `Document` に適用 → `render::FramePlan` 組み立て → dirty rect 合成 → `wgpu_canvas.rs` が GPU へ提示
+**入力 → 描画**: OS入力 → `runtime/pointer.rs` 正規化 → `app/input.rs` がキャンバスかパネルへ振り分け → `canvas::view_mapping` が座標変換 → `canvas::gesture` が `PaintInput` を生成 → `canvas::context_builder` が `Document` からペイントコンテキストを解決 → ビルトインビットマッププラグインがビットマップ差分を書く → 差分を `Document` に適用 → `render_types::FramePlan` 組み立て → dirty rect 合成 → `wgpu_canvas.rs` が GPU へ提示
 
-**パネル**: `panel-dsl` が `.altp-panel` をパース → `plugin-host`（wasmtime）が Wasm を実行 → `PanelRuntime` がホストスナップショットを同期 → `PanelEvent`/`HostAction` → `DesktopApp` が `Command` またはサイドエフェクトとして適用 → `render` がパネルサーフェスとヒット領域をラスタライズ
+**パネル**: `panel-dsl` が `.altp-panel` をパース → `plugin-host`（wasmtime）が Wasm を実行 → `PanelRuntime` がホストスナップショットを同期 → `PanelEvent`/`HostAction` → `DesktopApp` が `Command` またはサイドエフェクトとして適用 → `panel-runtime::HtmlPanelEngine` が GPU テクスチャに直描画 → `wgpu_canvas` が `panel_quads` レイヤーで合成
 
 ### 主要クレート
 
@@ -80,7 +80,7 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 | `apps/desktop`                        | winit + wgpu ホスト、`DesktopApp` 統括、入力ルーティング、提示                            |
 | `crates/app-core`                     | `Document`、ドメインモデル（Work→Page→Panel→LayerNode）、`Command`、ペイント基本型        |
 | `crates/canvas`                       | `CanvasRuntime`、ジェスチャーステートマシン、ビットマップ操作                             |
-| `crates/render`                       | `FramePlan`/`CanvasPlan`/`OverlayPlan`/`PanelPlan`、dirty rect、CPU フレーム合成          |
+| `crates/render-types`                 | `FramePlan`/`CanvasPlan`/`PanelPlan`、`PixelRect`/`CanvasScene`/`CanvasOverlayState` 等の純データ DTO |
 | `crates/panel-runtime`                | パネルレジストリ、DSL/Wasm ブリッジ、ホストスナップショット同期、永続設定                 |
 | `crates/ui-shell`                     | パネルワークスペースレイアウト、フォーカス、ヒットテスト、サーフェスレンダリング          |
 | `crates/panel-api`                    | パネル/ホスト間コントラクト（`PanelPlugin`、`PanelEvent`、`HostAction`）                  |

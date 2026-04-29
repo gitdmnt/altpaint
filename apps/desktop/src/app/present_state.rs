@@ -83,7 +83,6 @@ impl DesktopApp {
     pub(super) fn reset_active_interactions(&mut self) {
         self.canvas_input.reset();
         self.pending_canvas_dirty_rect = None;
-        self.pending_background_dirty_rect = None;
         self.pending_temp_overlay_dirty_rect = None;
         self.pending_ui_panel_dirty_rect = None;
         self.pending_canvas_transform_update = false;
@@ -115,17 +114,7 @@ impl DesktopApp {
     pub(super) fn apply_bitmap_edits(&mut self, edits: Vec<BitmapEdit>) -> bool {
         self.document
             .apply_bitmap_edits_to_active_layer(&edits)
-            .is_some_and(|dirty| {
-                // GPU 経路が有効な場合は CPU canvas_frame の更新をスキップする。
-                // GPU ブラシが直接テクスチャを書き換えるため CPU 合成は不要。
-                #[cfg(feature = "gpu")]
-                if !self.should_use_gpu_canvas_source() {
-                    self.refresh_canvas_frame_region(dirty);
-                }
-                #[cfg(not(feature = "gpu"))]
-                self.refresh_canvas_frame_region(dirty);
-                self.append_canvas_dirty_rect(dirty)
-            })
+            .is_some_and(|dirty| self.append_canvas_dirty_rect(dirty))
     }
 
     /// Append temp オーバーレイ 差分 矩形（L3）に必要な差分領域だけを描画または合成する。
@@ -156,14 +145,14 @@ impl DesktopApp {
             self.layout.as_ref().map(|layout| layout.canvas_host_rect)
         {
             let (canvas_width, canvas_height) = self.canvas_dimensions();
-            let viewport = render::PixelRect {
+            let viewport = render_types::PixelRect {
                 x: canvas_viewport_rect.x,
                 y: canvas_viewport_rect.y,
                 width: canvas_viewport_rect.width,
                 height: canvas_viewport_rect.height,
             };
             // previous_scene は変更前の transform で計算するためキャッシュは使えない
-            let previous_scene = render::prepare_canvas_scene(
+            let previous_scene = render_types::prepare_canvas_scene(
                 viewport,
                 canvas_width,
                 canvas_height,
@@ -172,16 +161,14 @@ impl DesktopApp {
             // current_scene はキャッシュを使う（キャッシュが古ければ再計算して更新）
             self.cached_canvas_scene = None;
             let current_scene = self.canvas_scene();
-            if let Some(exposed) =
-                render::exposed_canvas_background_rect_from_scenes(previous_scene, current_scene)
-            {
-                self.pending_background_dirty_rect = Some(
-                    self.pending_background_dirty_rect
-                        .map_or(exposed, |existing| existing.union(exposed)),
-                );
-            }
+            // Phase 9E-4: pending_background_dirty_rect は status text 用だったが
+            // status panel が GPU 直描画になったため exposed background は記録しない。
+            let _ = render_types::exposed_canvas_background_rect_from_scenes(
+                previous_scene,
+                current_scene,
+            );
             if let Some(dirty) = self.hover_canvas_position.and_then(|hover_position| {
-                render::brush_preview_dirty_rect(
+                render_types::brush_preview_dirty_rect(
                     previous_scene,
                     current_scene,
                     hover_position,
@@ -196,31 +183,95 @@ impl DesktopApp {
         true
     }
 
-    /// Background フレーム を返す。
-    pub(crate) fn background_frame(&self) -> Option<&render::RenderFrame> {
-        self.background_frame.as_ref()
+    /// L0 背景 solid quads (ウィンドウ背景・キャンバス枠 fill・ホスト枠線) を組み立てる。
+    pub(crate) fn background_solid_quads(&self) -> Vec<crate::frame::SolidQuad> {
+        let Some(layout) = self.layout.as_ref() else {
+            return Vec::new();
+        };
+        crate::frame::build_background_solid_quads(
+            layout.window_rect,
+            layout.canvas_host_rect,
+            layout.canvas_display_rect,
+        )
     }
 
-    /// TempOverlay フレーム を返す。
-    pub(crate) fn temp_overlay_frame(&self) -> Option<&render::RenderFrame> {
-        self.temp_overlay_frame.as_ref()
+    /// L6 前景 solid quads (アクティブ UI パネル枠線) を組み立てる。
+    pub(crate) fn foreground_solid_quads(&self) -> Vec<crate::frame::SolidQuad> {
+        let active_rect = self
+            .panel_presentation
+            .focused_target()
+            .and_then(|(panel_id, _)| self.panel_presentation.panel_rect(panel_id));
+        crate::frame::build_foreground_solid_quads(active_rect)
     }
 
-    /// UiPanel フレーム を返す。
-    pub(crate) fn ui_panel_frame(&self) -> Option<&render::RenderFrame> {
-        self.ui_panel_frame.as_ref()
+    /// L3 一時オーバーレイ用 quad を組み立てる。毎フレーム呼ぶ前提の純関数経路。
+    /// 戻り値: (AABB 単色, 円リング, 線分カプセル)
+    pub(crate) fn overlay_quads(
+        &self,
+        window_width: usize,
+        window_height: usize,
+    ) -> (
+        Vec<crate::frame::SolidQuad>,
+        Vec<crate::frame::CircleQuad>,
+        Vec<crate::frame::LineQuad>,
+    ) {
+        let Some(layout) = self.layout.as_ref() else {
+            return (Vec::new(), Vec::new(), Vec::new());
+        };
+        let Some(panel_surface) = self.panel_surface.as_ref() else {
+            return (Vec::new(), Vec::new(), Vec::new());
+        };
+        let bitmap = self.canvas_frame.as_ref();
+        let canvas_source = render_types::CanvasCompositeSource {
+            width: bitmap.map_or(1, |b| b.width),
+            height: bitmap.map_or(1, |b| b.height),
+            pixels: bitmap.map_or(&[][..], |b| b.pixels.as_slice()),
+        };
+        let panel_surface_source = render_types::PanelSurfaceSource {
+            x: panel_surface.x,
+            y: panel_surface.y,
+            width: panel_surface.width,
+            height: panel_surface.height,
+            pixels: panel_surface.pixels.as_slice(),
+        };
+        let frame_plan = render_types::FramePlan::new(
+            window_width,
+            window_height,
+            layout.canvas_host_rect,
+            panel_surface_source,
+            canvas_source,
+            self.document.view_transform,
+            "",
+        );
+        let overlay_state = render_types::CanvasOverlayState {
+            brush_preview: self.hover_canvas_position,
+            brush_size: self.brush_preview_size(),
+            lasso_points: self.canvas_input.lasso_points.clone(),
+            active_panel_bounds: self.active_panel_mask_overlay(),
+            panel_navigator: self.panel_navigator_overlay(),
+            panel_creation_preview: self.panel_creation_preview_bounds(),
+            active_ui_panel_rect: self
+                .panel_presentation
+                .focused_target()
+                .and_then(|(panel_id, _)| self.panel_presentation.panel_rect(panel_id)),
+        };
+        (
+            crate::frame::build_overlay_solid_quads(&frame_plan, &overlay_state),
+            crate::frame::build_overlay_circle_quads(&frame_plan, &overlay_state),
+            crate::frame::build_overlay_line_quads(&frame_plan, &overlay_state),
+        )
     }
 
     /// キャンバス texture quad を計算して返す。
-    pub(crate) fn canvas_texture_quad(&mut self) -> Option<render::TextureQuad> {
+    pub(crate) fn canvas_texture_quad(&mut self) -> Option<render_types::TextureQuad> {
         self.canvas_scene().and_then(|scene| scene.texture_quad())
     }
 
     /// キャンバス シーン を計算して返す。入力が変わらない限りキャッシュした結果を再利用する。
-    pub(crate) fn canvas_scene(&mut self) -> Option<render::CanvasScene> {
+    pub(crate) fn canvas_scene(&mut self) -> Option<render_types::CanvasScene> {
         let layout = self.layout.as_ref()?;
         let bitmap = self.canvas_frame()?;
-        let viewport = render::PixelRect {
+        let viewport = render_types::PixelRect {
             x: layout.canvas_host_rect.x,
             y: layout.canvas_host_rect.y,
             width: layout.canvas_host_rect.width,
@@ -238,7 +289,7 @@ impl DesktopApp {
         {
             return cache.scene;
         }
-        let scene = render::prepare_canvas_scene(viewport, canvas_width, canvas_height, transform);
+        let scene = render_types::prepare_canvas_scene(viewport, canvas_width, canvas_height, transform);
         self.cached_canvas_scene = Some(super::CachedCanvasScene {
             viewport,
             canvas_width,
@@ -250,7 +301,7 @@ impl DesktopApp {
     }
 
     /// キャンバス フレーム を返す。
-    pub(crate) fn canvas_frame(&self) -> Option<&render::RenderFrame> {
+    pub(crate) fn canvas_frame(&self) -> Option<&super::canvas_frame::CanvasFrame> {
         self.canvas_frame.as_ref()
     }
 }

@@ -20,6 +20,30 @@ pub enum ActionDescriptor {
         name: String,
         payload: Map<String, Value>,
     },
+    /// DSL パネル翻訳結果が出力する `altp:<kind>:<node_id>` 形式。
+    /// 9E-1 で導入、9E-2 以降で `panel-runtime::dsl_panel` が `PanelEvent` に解決する。
+    Altp {
+        kind: AltpKind,
+        node_id: String,
+        payload: Map<String, Value>,
+    },
+}
+
+/// `altp:` data-action のサブ種別。Phase 9E で DSL パネルが GPU 経路に乗る際に使用。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AltpKind {
+    /// `<button>` クリック → `PanelEvent::Activate`
+    Activate,
+    /// `<input type="range">` change → `PanelEvent::SetValue`
+    Slider,
+    /// `<select>` change → `PanelEvent::SetText` (option value を文字列で送る)
+    Select,
+    /// `<input type="text|number">` change → `PanelEvent::SetText`
+    Input,
+    /// `<input type="color">` change → `PanelEvent::SetText` (#rrggbb)
+    Color,
+    /// `<li data-action="altp:layer-select:...">` クリック → `PanelEvent::SetValue` (index)
+    LayerSelect,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq)]
@@ -69,10 +93,47 @@ pub fn parse_data_action(
             name: identifier.to_string(),
             payload,
         }),
+        "altp" => parse_altp(identifier, payload),
         other => Err(ActionParseError::UnknownPrefix {
             raw: other.to_string(),
         }),
     }
+}
+
+fn parse_altp(
+    identifier: &str,
+    payload: Map<String, Value>,
+) -> Result<ActionDescriptor, ActionParseError> {
+    let (kind_raw, node_id) =
+        identifier
+            .split_once(':')
+            .ok_or_else(|| ActionParseError::UnknownPrefix {
+                raw: format!("altp:{identifier}"),
+            })?;
+    let node_id = node_id.trim();
+    if node_id.is_empty() {
+        return Err(ActionParseError::MissingIdentifier {
+            prefix: format!("altp:{kind_raw}"),
+        });
+    }
+    let kind = match kind_raw.trim() {
+        "activate" => AltpKind::Activate,
+        "slider" => AltpKind::Slider,
+        "select" => AltpKind::Select,
+        "input" => AltpKind::Input,
+        "color" => AltpKind::Color,
+        "layer-select" => AltpKind::LayerSelect,
+        other => {
+            return Err(ActionParseError::UnknownPrefix {
+                raw: format!("altp:{other}"),
+            });
+        }
+    };
+    Ok(ActionDescriptor::Altp {
+        kind,
+        node_id: node_id.to_string(),
+        payload,
+    })
 }
 
 fn parse_data_args(raw: Option<&str>) -> Map<String, Value> {
@@ -173,5 +234,57 @@ mod tests {
             ActionDescriptor::Command { id, .. } => assert_eq!(id, "save"),
             _ => panic!("expected command"),
         }
+    }
+
+    #[test]
+    fn parse_altp_activate_descriptor() {
+        let desc = parse_data_action("altp:activate:tool.pen", None).unwrap();
+        assert_eq!(
+            desc,
+            ActionDescriptor::Altp {
+                kind: AltpKind::Activate,
+                node_id: "tool.pen".to_string(),
+                payload: Map::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_altp_slider_descriptor_with_args() {
+        let desc =
+            parse_data_action("altp:slider:color.red", Some(r#"{"min":0,"max":255}"#)).unwrap();
+        match desc {
+            ActionDescriptor::Altp { kind, node_id, payload } => {
+                assert_eq!(kind, AltpKind::Slider);
+                assert_eq!(node_id, "color.red");
+                assert_eq!(payload.get("min").and_then(|v| v.as_i64()), Some(0));
+                assert_eq!(payload.get("max").and_then(|v| v.as_i64()), Some(255));
+            }
+            _ => panic!("expected altp"),
+        }
+    }
+
+    #[test]
+    fn parse_altp_layer_select_descriptor() {
+        let desc = parse_data_action("altp:layer-select:layers", Some(r#"{"index":3}"#)).unwrap();
+        match desc {
+            ActionDescriptor::Altp { kind, payload, .. } => {
+                assert_eq!(kind, AltpKind::LayerSelect);
+                assert_eq!(payload.get("index").and_then(|v| v.as_i64()), Some(3));
+            }
+            _ => panic!("expected altp"),
+        }
+    }
+
+    #[test]
+    fn parse_altp_unknown_kind_returns_error() {
+        let err = parse_data_action("altp:bogus:x", None).unwrap_err();
+        assert!(matches!(err, ActionParseError::UnknownPrefix { .. }));
+    }
+
+    #[test]
+    fn parse_altp_missing_node_id_returns_error() {
+        let err = parse_data_action("altp:activate:", None).unwrap_err();
+        assert!(matches!(err, ActionParseError::MissingIdentifier { .. }));
     }
 }

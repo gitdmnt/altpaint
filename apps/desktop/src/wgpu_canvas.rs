@@ -11,14 +11,14 @@
 use anyhow::{Context, Result};
 use desktop_support::APP_BACKGROUND;
 use desktop_support::PresentTimings;
-use render::RenderFrame;
+use crate::app::CanvasFrame;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
-use crate::frame::{Rect, TextureQuad};
+use crate::frame::{CircleQuad, LineQuad, Rect, SolidQuad, TextureQuad, pixel_rect_to_ndc};
 
 /// CPU 側のピクセルデータへの参照を保持する軽量ビュー。
 /// GPU へアップロードする直前にこの形で渡す。
@@ -30,8 +30,8 @@ pub struct TextureSource<'a> {
     pub pixels: &'a [u8],
 }
 
-impl<'a> From<&'a RenderFrame> for TextureSource<'a> {
-    fn from(frame: &'a RenderFrame) -> Self {
+impl<'a> From<&'a CanvasFrame> for TextureSource<'a> {
+    fn from(frame: &'a CanvasFrame) -> Self {
         Self {
             width: frame.width as u32,
             height: frame.height as u32,
@@ -50,21 +50,12 @@ pub struct UploadRegion {
     pub height: u32,
 }
 
-/// フルスクリーンに貼るレイヤー（ベース / オーバーレイ / UI パネル）の転送仕様。
-#[derive(Debug, Clone, Copy)]
-pub struct FrameLayer<'a> {
-    pub source: TextureSource<'a>,
-    /// `None` なら今フレームはアップロードをスキップする（更新なし）。
-    pub upload_region: Option<UploadRegion>,
-}
-
 /// キャンバスレイヤーのデータソース。CPU ビットマップか GPU テクスチャかを表す。
 #[derive(Debug, Clone, Copy)]
 pub enum CanvasLayerSource<'a> {
     /// CPU ビットマップから転送する通常パス。
     Cpu(TextureSource<'a>),
-    /// 単一レイヤーの GPU テクスチャを直接 Present するパス（`gpu` feature 有効時のみ）。
-    #[cfg(feature = "gpu")]
+    /// 単一レイヤーの GPU テクスチャを直接 Present するパス。
     Gpu {
         panel_id: &'a str,
         layer_index: usize,
@@ -72,7 +63,6 @@ pub enum CanvasLayerSource<'a> {
         height: u32,
     },
     /// 多レイヤー合成済み GPU テクスチャ（composite texture）を Present するパス。
-    #[cfg(feature = "gpu")]
     GpuComposite {
         panel_id: &'a str,
         width: u32,
@@ -84,36 +74,30 @@ impl<'a> CanvasLayerSource<'a> {
     fn width(self) -> u32 {
         match self {
             Self::Cpu(src) => src.width,
-            #[cfg(feature = "gpu")]
             Self::Gpu { width, .. } => width,
-            #[cfg(feature = "gpu")]
             Self::GpuComposite { width, .. } => width,
         }
     }
     fn height(self) -> u32 {
         match self {
             Self::Cpu(src) => src.height,
-            #[cfg(feature = "gpu")]
             Self::Gpu { height, .. } => height,
-            #[cfg(feature = "gpu")]
             Self::GpuComposite { height, .. } => height,
         }
     }
     fn cpu_source(self) -> Option<TextureSource<'a>> {
         match self {
             Self::Cpu(src) => Some(src),
-            #[cfg(feature = "gpu")]
             Self::Gpu { .. } | Self::GpuComposite { .. } => None,
         }
     }
-    #[cfg(feature = "gpu")]
     fn is_gpu(self) -> bool {
         matches!(self, Self::Gpu { .. } | Self::GpuComposite { .. })
     }
 }
 
 /// キャンバスレイヤーの転送仕様。
-/// `quad` でスクリーン上の描画位置・UV・回転を指定できる点が FrameLayer と異なる。
+/// `quad` でスクリーン上の描画位置・UV・回転を指定できる。
 #[derive(Debug, Clone, Copy)]
 pub struct CanvasLayer<'a> {
     pub source: CanvasLayerSource<'a>,
@@ -124,18 +108,24 @@ pub struct CanvasLayer<'a> {
 
 /// 1 フレームに必要な全レイヤーをまとめた描画シーン。
 /// レイヤーは以下の順番で上から合成される:
-///   L1 base_layer        … バックグラウンド（ドキュメント合成結果）
-///   L2 canvas_layer      … キャンバス本体（None なら描画しない）
-///   L3 temp_overlay_layer … ストローク中の一時オーバーレイ
-///   L4 ui_panel_layer    … UI パネル群（DSL/Wasm パネルを CPU で合成した 1 枚）
-///   L5 html_panel_quads  … HTML パネル群（vello で個別に GPU 直描画されたテクスチャを quad 合成）
+///   L0 background_quads     … 背景 solid quad 群（ウィンドウ背景・キャンバス枠 fill・ホスト枠線）
+///   L1 canvas_layer         … キャンバス本体（None なら描画しない）
+///   L2a overlay_solid_quads … 一時オーバーレイの AABB 単色矩形（マスク・コマプレビュー・navigator）
+///   L2b overlay_circle_quads … ブラシプレビュー円リング（SDF）
+///   L2c overlay_line_quads  … ラッソプレビュー線（カプセル SDF）
+///   L3 panel_quads          … DSL/HTML 全パネル（vello で GPU 直描画されたテクスチャを quad 合成）
+///   L4 foreground_quads     … 前景 solid quad 群（アクティブ UI パネル枠線）
+///   L5 status_quad          … ステータスバー (HtmlPanelEngine GPU 描画) を最前面に配置
 #[derive(Debug, Clone, Copy)]
 pub struct PresentScene<'a> {
-    pub base_layer: FrameLayer<'a>,
+    pub background_quads: &'a [SolidQuad],
     pub canvas_layer: Option<CanvasLayer<'a>>,
-    pub temp_overlay_layer: FrameLayer<'a>,
-    pub ui_panel_layer: FrameLayer<'a>,
-    pub html_panel_quads: &'a [GpuPanelQuad<'a>],
+    pub overlay_solid_quads: &'a [SolidQuad],
+    pub overlay_circle_quads: &'a [CircleQuad],
+    pub overlay_line_quads: &'a [LineQuad],
+    pub panel_quads: &'a [GpuPanelQuad<'a>],
+    pub foreground_quads: &'a [SolidQuad],
+    pub status_quad: Option<GpuPanelQuad<'a>>,
 }
 
 /// HTML パネル 1 枚分の GPU 描画情報。
@@ -145,7 +135,7 @@ pub struct PresentScene<'a> {
 pub struct GpuPanelQuad<'a> {
     pub panel_id: &'a str,
     pub texture: &'a wgpu::Texture,
-    pub screen_rect: render::PixelRect,
+    pub screen_rect: render_types::PixelRect,
 }
 
 /// WGSL（WebGPU Shading Language）で書かれた描画シェーダ。
@@ -311,6 +301,212 @@ const LAYER_UNIFORM_VISIBILITY: wgpu::ShaderStages =
 /// `LayerUniform` は f32 × 16 = 64 バイト（vec2×4 + vec4×2 = 16 floats）。
 const LAYER_UNIFORM_SIZE: u64 = std::mem::size_of::<[f32; 16]>() as u64;
 
+/// solid quad 用シェーダ。各 quad は NDC 矩形と RGBA 色だけで指定される。
+const SOLID_QUAD_SHADER: &str = r#"
+struct SolidQuadUniform {
+    rect_ndc: vec4<f32>,
+    color: vec4<f32>,
+};
+
+@group(0) @binding(0) var<uniform> u: SolidQuadUniform;
+
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+};
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+    var unit = array<vec2<f32>, 6>(
+        vec2<f32>(0.0, 0.0),
+        vec2<f32>(1.0, 0.0),
+        vec2<f32>(0.0, 1.0),
+        vec2<f32>(0.0, 1.0),
+        vec2<f32>(1.0, 0.0),
+        vec2<f32>(1.0, 1.0)
+    );
+    let p = unit[vertex_index];
+    var output: VertexOutput;
+    output.position = vec4<f32>(
+        mix(u.rect_ndc.x, u.rect_ndc.z, p.x),
+        mix(u.rect_ndc.y, u.rect_ndc.w, p.y),
+        0.0,
+        1.0,
+    );
+    return output;
+}
+
+@fragment
+fn fs_main(_in: VertexOutput) -> @location(0) vec4<f32> {
+    return u.color;
+}
+"#;
+
+/// solid quad uniform のバイト数 (vec4 × 2 = 32 バイト)。
+const SOLID_QUAD_UNIFORM_SIZE: u64 = std::mem::size_of::<[f32; 8]>() as u64;
+
+/// 円リング SDF シェーダ。
+///
+/// uniform:
+///   rect_ndc: bbox を NDC 化した矩形
+///   bbox_min_px / bbox_max_px: bbox のピクセル座標 (フラグメントで再構成)
+///   center_px: 円の中心 (px)
+///   radius_thickness: x = 半径(px), y = 線幅(px), z/w = 未使用
+///   color: 線色
+const CIRCLE_QUAD_SHADER: &str = r#"
+struct CircleUniform {
+    rect_ndc: vec4<f32>,
+    bbox_min_px: vec2<f32>,
+    bbox_max_px: vec2<f32>,
+    center_px: vec2<f32>,
+    /// .x = 半径(px), .y = 線幅(px)
+    radius_thickness: vec2<f32>,
+    color: vec4<f32>,
+};
+
+@group(0) @binding(0) var<uniform> u: CircleUniform;
+
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) unit: vec2<f32>,
+};
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+    var unit = array<vec2<f32>, 6>(
+        vec2<f32>(0.0, 0.0),
+        vec2<f32>(1.0, 0.0),
+        vec2<f32>(0.0, 1.0),
+        vec2<f32>(0.0, 1.0),
+        vec2<f32>(1.0, 0.0),
+        vec2<f32>(1.0, 1.0)
+    );
+    let p = unit[vertex_index];
+    var output: VertexOutput;
+    output.position = vec4<f32>(
+        mix(u.rect_ndc.x, u.rect_ndc.z, p.x),
+        mix(u.rect_ndc.y, u.rect_ndc.w, p.y),
+        0.0,
+        1.0,
+    );
+    output.unit = p;
+    return output;
+}
+
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
+    let pixel = vec2<f32>(
+        mix(u.bbox_min_px.x, u.bbox_max_px.x, input.unit.x),
+        mix(u.bbox_min_px.y, u.bbox_max_px.y, input.unit.y),
+    );
+    let dist = distance(pixel, u.center_px);
+    let radius = u.radius_thickness.x;
+    let thickness = u.radius_thickness.y;
+    let edge = abs(dist - radius);
+    // 1 px 幅のフェザリングでアンチエイリアス。edge <= thickness の領域に色を載せる。
+    let alpha = 1.0 - smoothstep(thickness - 0.5, thickness + 0.5, edge);
+    if alpha <= 0.0 {
+        discard;
+    }
+    return vec4<f32>(u.color.rgb, u.color.a * alpha);
+}
+"#;
+
+/// 円リング uniform バイト数。
+/// レイアウト (WGSL std140):
+///   vec4 rect_ndc        (offset 0,  16B)
+///   vec2 bbox_min_px     (offset 16, 8B)
+///   vec2 bbox_max_px     (offset 24, 8B)
+///   vec2 center_px       (offset 32, 8B)
+///   vec2 radius_thickness (offset 40, 8B)
+///   vec4 color           (offset 48, 16B)
+/// 合計 64 バイト。
+const CIRCLE_QUAD_UNIFORM_SIZE: u64 = std::mem::size_of::<[f32; 16]>() as u64;
+
+/// 線分カプセル SDF シェーダ。
+///
+/// uniform:
+///   rect_ndc: bbox を NDC 化した矩形
+///   bbox_min_px / bbox_max_px: bbox のピクセル座標
+///   start_px / end_px: 線分端点 (px)
+///   thickness: x = カプセル半径 (px), y/z/w = 未使用
+///   color: 線色
+const LINE_QUAD_SHADER: &str = r#"
+struct LineUniform {
+    rect_ndc: vec4<f32>,
+    bbox_min_px: vec2<f32>,
+    bbox_max_px: vec2<f32>,
+    start_px: vec2<f32>,
+    end_px: vec2<f32>,
+    // .x のみ使用。WGSL std140 アライメントのため vec4 として宣言。
+    thickness: vec4<f32>,
+    color: vec4<f32>,
+};
+
+@group(0) @binding(0) var<uniform> u: LineUniform;
+
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) unit: vec2<f32>,
+};
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+    var unit = array<vec2<f32>, 6>(
+        vec2<f32>(0.0, 0.0),
+        vec2<f32>(1.0, 0.0),
+        vec2<f32>(0.0, 1.0),
+        vec2<f32>(0.0, 1.0),
+        vec2<f32>(1.0, 0.0),
+        vec2<f32>(1.0, 1.0)
+    );
+    let p = unit[vertex_index];
+    var output: VertexOutput;
+    output.position = vec4<f32>(
+        mix(u.rect_ndc.x, u.rect_ndc.z, p.x),
+        mix(u.rect_ndc.y, u.rect_ndc.w, p.y),
+        0.0,
+        1.0,
+    );
+    output.unit = p;
+    return output;
+}
+
+fn distance_to_segment(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
+    let ab = b - a;
+    let length_sq = max(dot(ab, ab), 1e-6);
+    let t = clamp(dot(p - a, ab) / length_sq, 0.0, 1.0);
+    let closest = a + ab * t;
+    return distance(p, closest);
+}
+
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
+    let pixel = vec2<f32>(
+        mix(u.bbox_min_px.x, u.bbox_max_px.x, input.unit.x),
+        mix(u.bbox_min_px.y, u.bbox_max_px.y, input.unit.y),
+    );
+    let dist = distance_to_segment(pixel, u.start_px, u.end_px);
+    let r = u.thickness.x;
+    let alpha = 1.0 - smoothstep(r - 0.5, r + 0.5, dist);
+    if alpha <= 0.0 {
+        discard;
+    }
+    return vec4<f32>(u.color.rgb, u.color.a * alpha);
+}
+"#;
+
+/// 線分 uniform バイト数。
+/// レイアウト (WGSL std140):
+///   vec4 rect_ndc        (offset 0,  16B)
+///   vec2 bbox_min_px     (offset 16, 8B)
+///   vec2 bbox_max_px     (offset 24, 8B)
+///   vec2 start_px        (offset 32, 8B)
+///   vec2 end_px          (offset 40, 8B)
+///   vec4 thickness       (offset 48, 16B; .x のみ使用)
+///   vec4 color           (offset 64, 16B)
+/// 合計 80 バイト。
+const LINE_QUAD_UNIFORM_SIZE: u64 = std::mem::size_of::<[f32; 20]>() as u64;
+
 /// GPU 側に確保した 1 レイヤー分のリソース群。
 /// テクスチャ・バインドグループ・ユニフォームバッファをまとめて管理する。
 #[derive(Debug)]
@@ -344,7 +540,6 @@ struct LayerUploadStats {
 ///
 /// キー `(panel_id, kind, layer_index, width, height)` が変化したときのみ再生成する。
 /// `kind == Composite` のとき `layer_index` は意味を持たない（`usize::MAX` を入れる）。
-#[cfg(feature = "gpu")]
 struct GpuBindGroupCache {
     bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
@@ -355,7 +550,6 @@ struct GpuBindGroupCache {
     height: u32,
 }
 
-#[cfg(feature = "gpu")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GpuBindGroupKind {
     Single,
@@ -383,20 +577,18 @@ pub struct WgpuPresenter {
     /// バインドグループレイアウト。シェーダが期待するバインディング構造を宣言する。
     bind_group_layout: wgpu::BindGroupLayout,
     // 各レイヤーの GPU リソース（None = 未初期化）
-    base_layer: Option<UploadedLayerTexture>,
     canvas_layer: Option<UploadedLayerTexture>,
-    temp_overlay_layer: Option<UploadedLayerTexture>,
-    ui_panel_layer: Option<UploadedLayerTexture>,
     /// GPU キャンバステクスチャのバインドグループキャッシュ。
-    #[cfg(feature = "gpu")]
     canvas_gpu_bind_group_cache: Option<GpuBindGroupCache>,
-    /// Rgba8Unorm テクスチャを sRGB view で Present できるかどうか。
-    /// `false` の場合は GPU キャンバスソースを使わず CPU パスへフォールバックする。
-    #[cfg(feature = "gpu")]
-    srgb_canvas_view_supported: bool,
     /// HTML パネル毎の bind_group キャッシュ。panel_id をキーにし、
     /// 紐づくテクスチャの `global_id` が変わった or サイズ変化で再生成する。
     html_panel_bind_groups: HashMap<String, HtmlPanelBindEntry>,
+    /// 単色矩形 (背景・キャンバス枠・アクティブパネル枠・L3 overlay AABB) 用 GPU パイプライン。
+    solid_quad_pipeline: SolidQuadPipeline,
+    /// L3 ブラシプレビュー円リング用 GPU パイプライン (SDF)。
+    overlay_circle_pipeline: CircleQuadPipeline,
+    /// L3 ラッソ線分用 GPU パイプライン (カプセル SDF)。
+    overlay_line_pipeline: LineQuadPipeline,
 }
 
 /// HTML パネル quad 用の bind_group 一式。
@@ -407,6 +599,475 @@ struct HtmlPanelBindEntry {
     uniform_buffer: wgpu::Buffer,
     width: u32,
     height: u32,
+}
+
+/// solid quad 用の単一スロット（bind_group + uniform buffer）。
+struct SolidQuadSlot {
+    bind_group: wgpu::BindGroup,
+    uniform_buffer: wgpu::Buffer,
+}
+
+/// 単色矩形の GPU 直描画パイプライン。
+///
+/// 使用フロー:
+///   1. `prepare(quads)` で必要数の slot を確保し uniform を書き込む
+///   2. レンダーパス内で `record(pass, count)` を呼んで draw コールを積む
+struct SolidQuadPipeline {
+    pipeline: wgpu::RenderPipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
+    slots: Vec<SolidQuadSlot>,
+}
+
+impl SolidQuadPipeline {
+    fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("altpaint-solid-quad-bind-group-layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX.union(wgpu::ShaderStages::FRAGMENT),
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("altpaint-solid-quad-shader"),
+            source: wgpu::ShaderSource::Wgsl(SOLID_QUAD_SHADER.into()),
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("altpaint-solid-quad-pipeline-layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            immediate_size: 0,
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("altpaint-solid-quad-pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        Self {
+            pipeline,
+            bind_group_layout,
+            slots: Vec::new(),
+        }
+    }
+
+    /// `quads` の各エントリに対し uniform を書き込み、必要なら slot をプールに追加する。
+    fn prepare(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        quads: &[SolidQuad],
+        surface_width: u32,
+        surface_height: u32,
+    ) {
+        while self.slots.len() < quads.len() {
+            let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("altpaint-solid-quad-uniform"),
+                size: SOLID_QUAD_UNIFORM_SIZE,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("altpaint-solid-quad-bind-group"),
+                layout: &self.bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                }],
+            });
+            self.slots.push(SolidQuadSlot {
+                bind_group,
+                uniform_buffer,
+            });
+        }
+        for (slot, quad) in self.slots.iter().zip(quads.iter()) {
+            queue.write_buffer(
+                &slot.uniform_buffer,
+                0,
+                &solid_quad_uniform_bytes(*quad, surface_width, surface_height),
+            );
+        }
+    }
+
+    /// レンダーパスへ `count` 個の solid quad の draw コールを積む。
+    fn record(&self, pass: &mut wgpu::RenderPass<'_>, count: usize) {
+        if count == 0 {
+            return;
+        }
+        pass.set_pipeline(&self.pipeline);
+        for slot in self.slots.iter().take(count) {
+            pass.set_bind_group(0, &slot.bind_group, &[]);
+            pass.draw(0..6, 0..1);
+        }
+    }
+}
+
+/// 円リング SDF パイプライン。
+///
+/// 各円リングは bbox quad 1 枚 + フラグメントの距離計算でアンチエイリアスする。
+struct CircleQuadPipeline {
+    pipeline: wgpu::RenderPipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
+    slots: Vec<SolidQuadSlot>,
+}
+
+impl CircleQuadPipeline {
+    fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("altpaint-circle-quad-bind-group-layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX.union(wgpu::ShaderStages::FRAGMENT),
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("altpaint-circle-quad-shader"),
+            source: wgpu::ShaderSource::Wgsl(CIRCLE_QUAD_SHADER.into()),
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("altpaint-circle-quad-pipeline-layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            immediate_size: 0,
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("altpaint-circle-quad-pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        Self {
+            pipeline,
+            bind_group_layout,
+            slots: Vec::new(),
+        }
+    }
+
+    fn prepare(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        quads: &[CircleQuad],
+        surface_width: u32,
+        surface_height: u32,
+    ) {
+        while self.slots.len() < quads.len() {
+            let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("altpaint-circle-quad-uniform"),
+                size: CIRCLE_QUAD_UNIFORM_SIZE,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("altpaint-circle-quad-bind-group"),
+                layout: &self.bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                }],
+            });
+            self.slots.push(SolidQuadSlot {
+                bind_group,
+                uniform_buffer,
+            });
+        }
+        for (slot, quad) in self.slots.iter().zip(quads.iter()) {
+            queue.write_buffer(
+                &slot.uniform_buffer,
+                0,
+                &circle_quad_uniform_bytes(*quad, surface_width, surface_height),
+            );
+        }
+    }
+
+    fn record(&self, pass: &mut wgpu::RenderPass<'_>, count: usize) {
+        if count == 0 {
+            return;
+        }
+        pass.set_pipeline(&self.pipeline);
+        for slot in self.slots.iter().take(count) {
+            pass.set_bind_group(0, &slot.bind_group, &[]);
+            pass.draw(0..6, 0..1);
+        }
+    }
+}
+
+/// 線分カプセル SDF パイプライン。`CircleQuadPipeline` と同じ構造を持つ。
+struct LineQuadPipeline {
+    pipeline: wgpu::RenderPipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
+    slots: Vec<SolidQuadSlot>,
+}
+
+impl LineQuadPipeline {
+    fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("altpaint-line-quad-bind-group-layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX.union(wgpu::ShaderStages::FRAGMENT),
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("altpaint-line-quad-shader"),
+            source: wgpu::ShaderSource::Wgsl(LINE_QUAD_SHADER.into()),
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("altpaint-line-quad-pipeline-layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            immediate_size: 0,
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("altpaint-line-quad-pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        Self {
+            pipeline,
+            bind_group_layout,
+            slots: Vec::new(),
+        }
+    }
+
+    fn prepare(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        quads: &[LineQuad],
+        surface_width: u32,
+        surface_height: u32,
+    ) {
+        while self.slots.len() < quads.len() {
+            let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("altpaint-line-quad-uniform"),
+                size: LINE_QUAD_UNIFORM_SIZE,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("altpaint-line-quad-bind-group"),
+                layout: &self.bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                }],
+            });
+            self.slots.push(SolidQuadSlot {
+                bind_group,
+                uniform_buffer,
+            });
+        }
+        for (slot, quad) in self.slots.iter().zip(quads.iter()) {
+            queue.write_buffer(
+                &slot.uniform_buffer,
+                0,
+                &line_quad_uniform_bytes(*quad, surface_width, surface_height),
+            );
+        }
+    }
+
+    fn record(&self, pass: &mut wgpu::RenderPass<'_>, count: usize) {
+        if count == 0 {
+            return;
+        }
+        pass.set_pipeline(&self.pipeline);
+        for slot in self.slots.iter().take(count) {
+            pass.set_bind_group(0, &slot.bind_group, &[]);
+            pass.draw(0..6, 0..1);
+        }
+    }
+}
+
+/// `SolidQuad` を 32 バイトの uniform バイト列へ変換する。
+fn solid_quad_uniform_bytes(quad: SolidQuad, surface_width: u32, surface_height: u32) -> [u8; 32] {
+    let ndc = pixel_rect_to_ndc(quad.rect, surface_width, surface_height);
+    let color = [
+        quad.color[0] as f32 / 255.0,
+        quad.color[1] as f32 / 255.0,
+        quad.color[2] as f32 / 255.0,
+        quad.color[3] as f32 / 255.0,
+    ];
+    let values = [
+        ndc[0], ndc[1], ndc[2], ndc[3], color[0], color[1], color[2], color[3],
+    ];
+    let mut bytes = [0u8; 32];
+    for (index, value) in values.into_iter().enumerate() {
+        bytes[index * 4..index * 4 + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    bytes
+}
+
+/// 円リングの bbox を NDC 化し、ピクセル座標と SDF パラメータを 64 バイトの uniform へ詰める。
+fn circle_quad_uniform_bytes(
+    quad: CircleQuad,
+    surface_width: u32,
+    surface_height: u32,
+) -> [u8; 64] {
+    let pad = quad.radius + quad.thickness + 1.0;
+    let bbox_min_x = (quad.center_px[0] - pad).floor();
+    let bbox_min_y = (quad.center_px[1] - pad).floor();
+    let bbox_max_x = (quad.center_px[0] + pad).ceil();
+    let bbox_max_y = (quad.center_px[1] + pad).ceil();
+    let rect = Rect {
+        x: bbox_min_x.max(0.0) as usize,
+        y: bbox_min_y.max(0.0) as usize,
+        width: (bbox_max_x - bbox_min_x).max(1.0) as usize,
+        height: (bbox_max_y - bbox_min_y).max(1.0) as usize,
+    };
+    let ndc = pixel_rect_to_ndc(rect, surface_width, surface_height);
+    let color = [
+        quad.color[0] as f32 / 255.0,
+        quad.color[1] as f32 / 255.0,
+        quad.color[2] as f32 / 255.0,
+        quad.color[3] as f32 / 255.0,
+    ];
+    let values = [
+        ndc[0],
+        ndc[1],
+        ndc[2],
+        ndc[3],
+        bbox_min_x,
+        bbox_min_y,
+        bbox_max_x,
+        bbox_max_y,
+        quad.center_px[0],
+        quad.center_px[1],
+        quad.radius,
+        quad.thickness,
+        color[0],
+        color[1],
+        color[2],
+        color[3],
+    ];
+    let mut bytes = [0u8; 64];
+    for (index, value) in values.into_iter().enumerate() {
+        bytes[index * 4..index * 4 + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    bytes
+}
+
+/// 線分カプセルの bbox を NDC 化し、ピクセル座標と SDF パラメータを 80 バイトの uniform へ詰める。
+fn line_quad_uniform_bytes(quad: LineQuad, surface_width: u32, surface_height: u32) -> [u8; 80] {
+    let pad = quad.thickness + 1.0;
+    let bbox_min_x = quad.start_px[0].min(quad.end_px[0]) - pad;
+    let bbox_min_y = quad.start_px[1].min(quad.end_px[1]) - pad;
+    let bbox_max_x = quad.start_px[0].max(quad.end_px[0]) + pad;
+    let bbox_max_y = quad.start_px[1].max(quad.end_px[1]) + pad;
+    let rect = Rect {
+        x: bbox_min_x.max(0.0).floor() as usize,
+        y: bbox_min_y.max(0.0).floor() as usize,
+        width: (bbox_max_x.ceil() - bbox_min_x.floor()).max(1.0) as usize,
+        height: (bbox_max_y.ceil() - bbox_min_y.floor()).max(1.0) as usize,
+    };
+    let ndc = pixel_rect_to_ndc(rect, surface_width, surface_height);
+    let color = [
+        quad.color[0] as f32 / 255.0,
+        quad.color[1] as f32 / 255.0,
+        quad.color[2] as f32 / 255.0,
+        quad.color[3] as f32 / 255.0,
+    ];
+    let values = [
+        ndc[0],
+        ndc[1],
+        ndc[2],
+        ndc[3],
+        bbox_min_x.floor(),
+        bbox_min_y.floor(),
+        bbox_max_x.ceil(),
+        bbox_max_y.ceil(),
+        quad.start_px[0],
+        quad.start_px[1],
+        quad.end_px[0],
+        quad.end_px[1],
+        // thickness: vec4 (.x のみ使用、残りはパディング)
+        quad.thickness,
+        0.0,
+        0.0,
+        0.0,
+        // color: vec4
+        color[0],
+        color[1],
+        color[2],
+        color[3],
+    ];
+    let mut bytes = [0u8; 80];
+    for (index, value) in values.into_iter().enumerate() {
+        bytes[index * 4..index * 4 + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    bytes
 }
 
 /// サポートされているプレゼントモードの中から最も低レイテンシなものを選ぶ。
@@ -483,30 +1144,21 @@ impl WgpuPresenter {
         let device = Arc::new(device);
         let queue = Arc::new(queue);
 
-        #[cfg(feature = "gpu")]
         let srgb_canvas_view_supported =
             gpu_canvas::format_check::supports_rgba8unorm_storage(&adapter);
 
         let adapter_info = adapter.get_info();
-        #[cfg(feature = "gpu")]
-        {
-            if srgb_canvas_view_supported {
-                eprintln!(
-                    "[altpaint] canvas backend: GPU (adapter='{}', backend={:?}, Rgba8Unorm STORAGE_READ_WRITE supported)",
-                    adapter_info.name, adapter_info.backend
-                );
-            } else {
-                eprintln!(
-                    "[altpaint] canvas backend: CPU fallback (adapter='{}', backend={:?}, Rgba8Unorm STORAGE_READ_WRITE NOT supported)",
-                    adapter_info.name, adapter_info.backend
-                );
-            }
+        if srgb_canvas_view_supported {
+            eprintln!(
+                "[altpaint] canvas backend: GPU (adapter='{}', backend={:?}, Rgba8Unorm STORAGE_READ_WRITE supported)",
+                adapter_info.name, adapter_info.backend
+            );
+        } else {
+            eprintln!(
+                "[altpaint] canvas backend: GPU (adapter='{}', backend={:?}, Rgba8Unorm STORAGE_READ_WRITE NOT supported — compute pipeline may panic)",
+                adapter_info.name, adapter_info.backend
+            );
         }
-        #[cfg(not(feature = "gpu"))]
-        eprintln!(
-            "[altpaint] canvas backend: CPU (gpu feature disabled at build time, adapter='{}', backend={:?})",
-            adapter_info.name, adapter_info.backend
-        );
 
         // サーフェスがサポートするピクセルフォーマットの一覧を取得する。
         let surface_capabilities = surface.get_capabilities(&adapter);
@@ -635,6 +1287,10 @@ impl WgpuPresenter {
             cache: None,
         });
 
+        let solid_quad_pipeline = SolidQuadPipeline::new(&device, config.format);
+        let overlay_circle_pipeline = CircleQuadPipeline::new(&device, config.format);
+        let overlay_line_pipeline = LineQuadPipeline::new(&device, config.format);
+
         Ok(Self {
             surface,
             device,
@@ -643,15 +1299,12 @@ impl WgpuPresenter {
             pipeline,
             sampler,
             bind_group_layout,
-            base_layer: None, // 初回フレームで ensure_layer_texture が生成する
-            canvas_layer: None,
-            temp_overlay_layer: None,
-            ui_panel_layer: None,
-            #[cfg(feature = "gpu")]
+            canvas_layer: None, // 初回フレームで ensure_layer_texture が生成する
             canvas_gpu_bind_group_cache: None,
-            #[cfg(feature = "gpu")]
-            srgb_canvas_view_supported,
             html_panel_bind_groups: HashMap::new(),
+            solid_quad_pipeline,
+            overlay_circle_pipeline,
+            overlay_line_pipeline,
         })
     }
 
@@ -668,12 +1321,6 @@ impl WgpuPresenter {
     /// gpu-canvas クレートの `GpuCanvasPool` / `GpuPenTipCache` と共有するために使う。
     pub fn queue(&self) -> Arc<wgpu::Queue> {
         Arc::clone(&self.queue)
-    }
-
-    /// Rgba8Unorm テクスチャを sRGB view で Present できるかどうかを返す。
-    #[cfg(feature = "gpu")]
-    pub fn srgb_canvas_view_supported(&self) -> bool {
-        self.srgb_canvas_view_supported
     }
 
     ///
@@ -702,7 +1349,7 @@ impl WgpuPresenter {
     pub fn render(
         &mut self,
         scene: PresentScene<'_>,
-        #[cfg(feature = "gpu")] gpu_canvas_pool: Option<&gpu_canvas::GpuCanvasPool>,
+        gpu_canvas_pool: Option<&gpu_canvas::GpuCanvasPool>,
     ) -> Result<PresentTimings> {
         // サーフェスが 0 サイズなら描画をスキップ（最小化時など）。
         if self.config.width == 0 || self.config.height == 0 {
@@ -710,37 +1357,11 @@ impl WgpuPresenter {
         }
 
         // ─── ステップ 1: テクスチャの確保 ────────────────────────────────────
-        // 各レイヤーについて GPU テクスチャが存在しなければ（または解像度が変わっていれば）
-        // 作り直す。テクスチャ生成はコストが高いので必要なときだけ行う。
-        Self::ensure_layer_texture(
-            &self.device,
-            &self.sampler,
-            &self.bind_group_layout,
-            &mut self.base_layer,
-            scene.base_layer.source.width,
-            scene.base_layer.source.height,
-            "base",
-        );
-        Self::ensure_layer_texture(
-            &self.device,
-            &self.sampler,
-            &self.bind_group_layout,
-            &mut self.temp_overlay_layer,
-            scene.temp_overlay_layer.source.width,
-            scene.temp_overlay_layer.source.height,
-            "temp-overlay",
-        );
-        Self::ensure_layer_texture(
-            &self.device,
-            &self.sampler,
-            &self.bind_group_layout,
-            &mut self.ui_panel_layer,
-            scene.ui_panel_layer.source.width,
-            scene.ui_panel_layer.source.height,
-            "ui-panel",
-        );
         // canvas_layer は省略可能。GPU ソース時は ensure をスキップ（gpu-canvas プール管理）。
-        if let Some(canvas_layer) = scene.canvas_layer.filter(|c| c.source.cpu_source().is_some()) {
+        if let Some(canvas_layer) = scene
+            .canvas_layer
+            .filter(|c| c.source.cpu_source().is_some())
+        {
             Self::ensure_layer_texture(
                 &self.device,
                 &self.sampler,
@@ -756,24 +1377,6 @@ impl WgpuPresenter {
         // upload_region が Some なら dirty rect 範囲だけ転送し、None ならスキップする。
         // needs_full_upload フラグが立っている場合はフルアップロードが優先される。
         let upload_started = Instant::now();
-        let base_upload = Self::upload_layer(
-            &self.queue,
-            self.base_layer.as_mut(),
-            scene.base_layer.source,
-            scene.base_layer.upload_region,
-        );
-        let temp_overlay_upload = Self::upload_layer(
-            &self.queue,
-            self.temp_overlay_layer.as_mut(),
-            scene.temp_overlay_layer.source,
-            scene.temp_overlay_layer.upload_region,
-        );
-        let ui_panel_upload = Self::upload_layer(
-            &self.queue,
-            self.ui_panel_layer.as_mut(),
-            scene.ui_panel_layer.source,
-            scene.ui_panel_layer.upload_region,
-        );
         let canvas_upload = if let Some(canvas_layer) = scene.canvas_layer {
             if let Some(cpu_src) = canvas_layer.source.cpu_source() {
                 Self::upload_layer(
@@ -791,31 +1394,8 @@ impl WgpuPresenter {
 
         // ─── ステップ 3: ユニフォームバッファ更新 ────────────────────────────
         // ユニフォームバッファに描画先矩形（NDC）・UV 範囲・回転などを書き込む。
-        // base / temp_overlay / ui_panel はフルスクリーンクワッドを使う。
-        Self::update_quad_uniform(
-            &self.queue,
-            self.base_layer.as_ref(),
-            fullscreen_quad(self.config.width, self.config.height),
-            self.config.width,
-            self.config.height,
-        );
-        Self::update_quad_uniform(
-            &self.queue,
-            self.temp_overlay_layer.as_ref(),
-            fullscreen_quad(self.config.width, self.config.height),
-            self.config.width,
-            self.config.height,
-        );
-        Self::update_quad_uniform(
-            &self.queue,
-            self.ui_panel_layer.as_ref(),
-            fullscreen_quad(self.config.width, self.config.height),
-            self.config.width,
-            self.config.height,
-        );
         // canvas_layer は quad で位置・回転・スケールが指定される。
         if let Some(canvas_layer) = scene.canvas_layer {
-            #[cfg(feature = "gpu")]
             if canvas_layer.source.is_gpu() {
                 self.update_gpu_canvas_bind_group(
                     canvas_layer.source,
@@ -833,14 +1413,6 @@ impl WgpuPresenter {
                     self.config.height,
                 );
             }
-            #[cfg(not(feature = "gpu"))]
-            Self::update_quad_uniform(
-                &self.queue,
-                self.canvas_layer.as_ref(),
-                canvas_layer.quad,
-                self.config.width,
-                self.config.height,
-            );
         }
         let upload = upload_started.elapsed();
 
@@ -861,14 +1433,8 @@ impl WgpuPresenter {
                 // タイムアウト: このフレームは表示をスキップして次フレームへ。
                 return Ok(PresentTimings {
                     upload,
-                    base_upload: base_upload.duration,
-                    temp_overlay_upload: temp_overlay_upload.duration,
                     canvas_upload: canvas_upload.duration,
-                    ui_panel_upload: ui_panel_upload.duration,
-                    base_upload_bytes: base_upload.bytes,
-                    temp_overlay_upload_bytes: temp_overlay_upload.bytes,
                     canvas_upload_bytes: canvas_upload.bytes,
-                    ui_panel_upload_bytes: ui_panel_upload.bytes,
                     ..Default::default()
                 });
             }
@@ -898,7 +1464,10 @@ impl WgpuPresenter {
         //  - 異なる or 未登録 → bind_group + uniform_buffer を新規生成
         let surface_w = self.config.width;
         let surface_h = self.config.height;
-        for quad in scene.html_panel_quads {
+        // status_quad は panel_quads と同じ bind_group キャッシュ仕組みを共有する。
+        // panel_id にプレフィックス "__status__" を付けてキー衝突を避ける。
+        let status_iter = scene.status_quad.as_ref().into_iter();
+        for quad in scene.panel_quads.iter().chain(status_iter) {
             let w = quad.texture.width();
             let h = quad.texture.height();
             let needs_rebuild = self
@@ -952,7 +1521,7 @@ impl WgpuPresenter {
                 .html_panel_bind_groups
                 .get(quad.panel_id)
                 .expect("just inserted");
-            let texture_quad = render::TextureQuad {
+            let texture_quad = render_types::TextureQuad {
                 destination: quad.screen_rect,
                 uv_min: [0.0, 0.0],
                 uv_max: [1.0, 1.0],
@@ -971,13 +1540,49 @@ impl WgpuPresenter {
             );
         }
         // 既に消えた panel_id をキャッシュから drop（panel-runtime 側のテクスチャ解放と歩調を合わせる）
-        let live_ids: std::collections::HashSet<&str> = scene
-            .html_panel_quads
-            .iter()
-            .map(|q| q.panel_id)
-            .collect();
+        let mut live_ids: std::collections::HashSet<&str> =
+            scene.panel_quads.iter().map(|q| q.panel_id).collect();
+        if let Some(status) = scene.status_quad.as_ref() {
+            live_ids.insert(status.panel_id);
+        }
         self.html_panel_bind_groups
             .retain(|id, _| live_ids.contains(id.as_str()));
+
+        // solid quad の uniform を準備（背景 + L3 overlay AABB + 前景 を 1 本の Vec に連結）
+        let mut combined_solid_quads: Vec<SolidQuad> = Vec::with_capacity(
+            scene.background_quads.len()
+                + scene.overlay_solid_quads.len()
+                + scene.foreground_quads.len(),
+        );
+        combined_solid_quads.extend_from_slice(scene.background_quads);
+        combined_solid_quads.extend_from_slice(scene.overlay_solid_quads);
+        combined_solid_quads.extend_from_slice(scene.foreground_quads);
+        self.solid_quad_pipeline.prepare(
+            &self.device,
+            &self.queue,
+            &combined_solid_quads,
+            self.config.width,
+            self.config.height,
+        );
+        let background_quad_count = scene.background_quads.len();
+        let overlay_solid_quad_count = scene.overlay_solid_quads.len();
+        let foreground_quad_count = scene.foreground_quads.len();
+
+        // L3 SDF パイプライン (円リング・ラッソ線分) の uniform を準備。
+        self.overlay_circle_pipeline.prepare(
+            &self.device,
+            &self.queue,
+            scene.overlay_circle_quads,
+            self.config.width,
+            self.config.height,
+        );
+        self.overlay_line_pipeline.prepare(
+            &self.device,
+            &self.queue,
+            scene.overlay_line_quads,
+            self.config.width,
+            self.config.height,
+        );
 
         let encode_started = Instant::now();
         {
@@ -1007,13 +1612,15 @@ impl WgpuPresenter {
                 multiview_mask: None,
             });
 
+            // L0: 背景 solid quads（ウィンドウ背景・キャンバス枠 fill・ホスト枠線）
+            self.solid_quad_pipeline
+                .record(&mut pass, background_quad_count);
+
             // レンダーパイプラインをセット（この後の draw コールに使うシェーダを指定）。
             pass.set_pipeline(&self.pipeline);
 
             // レイヤーを下から順番に描画（後に描くほど手前に表示される）。
-            Self::draw_layer(&mut pass, self.base_layer.as_ref()); // L1 背景
             if let Some(canvas_layer) = scene.canvas_layer {
-                #[cfg(feature = "gpu")]
                 if canvas_layer.source.is_gpu() {
                     if let Some(cache) = &self.canvas_gpu_bind_group_cache {
                         pass.set_bind_group(0, &cache.bind_group, &[]);
@@ -1022,21 +1629,64 @@ impl WgpuPresenter {
                 } else {
                     Self::draw_layer(&mut pass, self.canvas_layer.as_ref());
                 }
-                #[cfg(not(feature = "gpu"))]
+            }
+
+            // L3a: 一時オーバーレイの AABB 単色矩形（マスク・コマプレビュー・navigator）
+            if overlay_solid_quad_count > 0 {
+                pass.set_pipeline(&self.solid_quad_pipeline.pipeline);
+                for slot in self
+                    .solid_quad_pipeline
+                    .slots
+                    .iter()
+                    .skip(background_quad_count)
+                    .take(overlay_solid_quad_count)
                 {
-                    let _ = canvas_layer;
-                    Self::draw_layer(&mut pass, self.canvas_layer.as_ref());
+                    pass.set_bind_group(0, &slot.bind_group, &[]);
+                    pass.draw(0..6, 0..1);
                 }
             }
-            Self::draw_layer(&mut pass, self.temp_overlay_layer.as_ref()); // L3 ストロークオーバーレイ
-            Self::draw_layer(&mut pass, self.ui_panel_layer.as_ref()); // L4 UI パネル
+            // L3b: ブラシプレビュー円リング（SDF）
+            self.overlay_circle_pipeline
+                .record(&mut pass, scene.overlay_circle_quads.len());
+            // L3c: ラッソ線分（カプセル SDF）
+            self.overlay_line_pipeline
+                .record(&mut pass, scene.overlay_line_quads.len());
 
-            // L5: HTML パネル群（GPU 直描画）
-            for quad in scene.html_panel_quads {
+            // 後続レイヤー (L3 HTML パネル群) はテクスチャ pipeline を使う。
+            pass.set_pipeline(&self.pipeline);
+
+            // L3: HTML パネル群（GPU 直描画）
+            for quad in scene.panel_quads {
                 if let Some(entry) = self.html_panel_bind_groups.get(quad.panel_id) {
                     pass.set_bind_group(0, &entry.bind_group, &[]);
                     pass.draw(0..6, 0..1);
                 }
+            }
+
+            // L4: 前景 solid quads（アクティブ UI パネル枠線）
+            // solid quad slot は連結 vec で先頭 background_quad_count + overlay_solid_quad_count を
+            // スキップした位置から foreground_quad_count 個。
+            if foreground_quad_count > 0 {
+                pass.set_pipeline(&self.solid_quad_pipeline.pipeline);
+                for slot in self
+                    .solid_quad_pipeline
+                    .slots
+                    .iter()
+                    .skip(background_quad_count + overlay_solid_quad_count)
+                    .take(foreground_quad_count)
+                {
+                    pass.set_bind_group(0, &slot.bind_group, &[]);
+                    pass.draw(0..6, 0..1);
+                }
+            }
+
+            // L5: ステータスバー (HtmlPanelEngine GPU 描画) を最前面に配置
+            if let Some(status) = scene.status_quad.as_ref()
+                && let Some(entry) = self.html_panel_bind_groups.get(status.panel_id)
+            {
+                pass.set_pipeline(&self.pipeline);
+                pass.set_bind_group(0, &entry.bind_group, &[]);
+                pass.draw(0..6, 0..1);
             }
         } // ← ここで pass が drop され、レンダーパス終了コマンドが記録される
 
@@ -1055,14 +1705,8 @@ impl WgpuPresenter {
             upload,
             encode_and_submit,
             present: present_started.elapsed(),
-            base_upload: base_upload.duration,
-            temp_overlay_upload: temp_overlay_upload.duration,
             canvas_upload: canvas_upload.duration,
-            ui_panel_upload: ui_panel_upload.duration,
-            base_upload_bytes: base_upload.bytes,
-            temp_overlay_upload_bytes: temp_overlay_upload.bytes,
             canvas_upload_bytes: canvas_upload.bytes,
-            ui_panel_upload_bytes: ui_panel_upload.bytes,
         })
     }
 
@@ -1234,7 +1878,6 @@ impl WgpuPresenter {
     /// GPU キャンバステクスチャのバインドグループを作成/更新してキャッシュに保存する。
     ///
     /// `(panel_id, layer_index, width, height)` が前回と変わった場合のみ再生成する。
-    #[cfg(feature = "gpu")]
     fn update_gpu_canvas_bind_group(
         &mut self,
         source: CanvasLayerSource<'_>,
@@ -1249,7 +1892,13 @@ impl WgpuPresenter {
                 layer_index,
                 width,
                 height,
-            } => (panel_id, GpuBindGroupKind::Single, layer_index, width, height),
+            } => (
+                panel_id,
+                GpuBindGroupKind::Single,
+                layer_index,
+                width,
+                height,
+            ),
             CanvasLayerSource::GpuComposite {
                 panel_id,
                 width,
@@ -1425,6 +2074,7 @@ fn upload_texture_region(
 ///
 /// destination は左上 (0,0) から (width, height) までのピクセル矩形。
 /// uv_min/uv_max は (0,0)〜(1,1) でテクスチャ全体を使う。
+#[cfg(test)]
 fn fullscreen_quad(width: u32, height: u32) -> TextureQuad {
     TextureQuad {
         destination: Rect {

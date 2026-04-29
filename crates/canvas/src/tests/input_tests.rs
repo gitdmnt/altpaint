@@ -1,25 +1,19 @@
 use app_core::{CanvasPoint, CanvasViewTransform, CanvasViewportPoint, PanelLocalPoint, ToolKind};
-use render::RenderFrame;
 
 use crate::{
     CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, CanvasPointerEvent,
     advance_pointer_gesture, map_view_to_canvas_with_transform, panel_creation_preview_bounds,
 };
 
-/// Sample フレーム に必要な描画内容を組み立てる。
-fn sample_frame() -> RenderFrame {
-    RenderFrame {
-        width: 64,
-        height: 64,
-        pixels: vec![255; 64 * 64 * 4],
-    }
-}
+const SAMPLE_CANVAS_WIDTH: usize = 64;
+const SAMPLE_CANVAS_HEIGHT: usize = 64;
 
 /// map ビュー center into キャンバス center が期待どおりに動作することを検証する。
 #[test]
 fn map_view_center_into_canvas_center() {
     let mapped = map_view_to_canvas_with_transform(
-        &sample_frame(),
+        SAMPLE_CANVAS_WIDTH,
+        SAMPLE_CANVAS_HEIGHT,
         CanvasPointerEvent {
             position: CanvasViewportPoint::new(320, 320),
             width: 640,
@@ -35,7 +29,8 @@ fn map_view_center_into_canvas_center() {
 #[test]
 fn map_view_returns_none_outside_letterboxed_canvas() {
     let mapped = map_view_to_canvas_with_transform(
-        &sample_frame(),
+        SAMPLE_CANVAS_WIDTH,
+        SAMPLE_CANVAS_HEIGHT,
         CanvasPointerEvent {
             position: CanvasViewportPoint::new(10, 10),
             width: 900,
