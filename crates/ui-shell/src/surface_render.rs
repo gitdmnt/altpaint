@@ -1,16 +1,14 @@
 //! `UiShell` のパネルレイヤー責務を簡略化したスタブ。
 //!
 //! Phase 9E-3 で CPU bitmap 経路 (`rebuild_panel_bitmaps` /
-//! `compose_panel_surface[_incremental]`) は完全撤去された。すべての DSL/HTML
-//! パネルは `PanelRuntime::render_panels` で GPU 直描画される。
+//! `compose_panel_surface[_incremental]`) は完全撤去され、Phase 9F で旧 L4
+//! `ui_panel_layer` `FrameLayer` も削除された。すべての DSL/HTML パネルは
+//! `PanelRuntime::render_panels` で GPU 直描画され、`PresentScene::panel_quads`
+//! として合成される。
 //!
 //! このモジュールに残るのは
-//! - `render_panel_surface`: 1×1 dummy `PanelSurface` を返すだけのスタブ (L4 互換)
+//! - `render_panel_surface`: 1×1 dummy `PanelSurface` を返すだけのスタブ (旧テスト互換)
 //! - `max_panel_scroll_offset`: 0 を返すだけのスタブ (スクロール経路は Engine 側へ移譲)
-//!
-//! `PanelSurface` 型自体は `interaction.rs` の旧テスト群が参照しているため、
-//! 9E-5 のテスト基準値再設定までは残置。GPU 経路では中身が常に空 (1×1 透明) のため
-//! 画面に何も寄与せず、L4 ui_panel_layer は実質 dummy。
 
 use panel_runtime::PanelRuntime;
 
@@ -19,9 +17,9 @@ use super::*;
 pub(super) const PANEL_SCROLL_PIXELS_PER_LINE: i32 = 48;
 
 impl PanelPresentation {
-    /// 9E-3: GPU 経路に統一されたため、L4 ui_panel_layer 用の dummy `PanelSurface` を返す。
-    /// 呼び出し側 (apps/desktop/src/app/present.rs) は dummy をそのまま FrameLayer に積むが、
-    /// 中身は空 (1×1 透明) なため画面に何も寄与しない。
+    /// GPU 経路に統一されたため、互換用に 1×1 dummy `PanelSurface` を返す。
+    /// `PresentScene::panel_quads` 経路ではこの戻り値は描画に使われず、
+    /// `panel_surface_*` 系プロファイラ集計のサイズ参照のみ。
     pub fn render_panel_surface(
         &mut self,
         runtime: &PanelRuntime,

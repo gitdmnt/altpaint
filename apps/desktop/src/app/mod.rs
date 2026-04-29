@@ -5,6 +5,7 @@
 
 mod background_tasks;
 mod bootstrap;
+pub(crate) mod canvas_frame;
 mod command_router;
 mod commands;
 mod drawing;
@@ -30,9 +31,9 @@ use desktop_support::{
     DesktopDialogs, NativeDesktopDialogs, WorkspacePresetCatalog, default_workspace_preset_path,
 };
 use panel_runtime::PanelRuntime;
-use render::RenderFrame;
 use ui_shell::{PanelPresentation, PanelSurface};
 
+pub(crate) use self::canvas_frame::CanvasFrame;
 use self::io_state::DesktopIoState;
 #[cfg(test)]
 pub(crate) use self::panel_dispatch::PanelDragState;
@@ -82,8 +83,7 @@ pub(crate) struct DesktopApp {
     canvas_input: CanvasInputState,
     pub(crate) panel_surface: Option<PanelSurface>,
     pub(crate) layout: Option<DesktopLayout>,
-    canvas_frame: Option<RenderFrame>,
-    ui_panel_frame: Option<RenderFrame>,
+    canvas_frame: Option<CanvasFrame>,
     /// Phase 9E-4: ステータスバー (HtmlPanelEngine GPU 描画)。
     #[cfg(feature = "html-panel")]
     pub(crate) status_panel: crate::frame::status_panel::StatusPanel,
@@ -167,7 +167,6 @@ impl DesktopApp {
             panel_surface: None,
             layout: None,
             canvas_frame: None,
-            ui_panel_frame: None,
             #[cfg(feature = "html-panel")]
             status_panel: crate::frame::status_panel::StatusPanel::new(),
             pending_canvas_dirty_rect: None,

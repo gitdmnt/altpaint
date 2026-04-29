@@ -145,40 +145,34 @@
 - `registry.rs` が `PaintPluginRegistry` 型エイリアスと `default_paint_plugins()` を持ち、plugin 登録を `runtime.rs` から分離した。
 - `src/tests/` 配下に context / fill / input / stamp / stroke の境界テストが揃っている。
 
-### 4. `crates/render`
+### 4. `crates/render-types`
 
-現在の描画計画・表示幾何・panel software rasterize 層であり、次を担う。
+純データ DTO を提供する描画計画ライブラリ。Phase 9F 完了 (2026-04-29) で旧 `crates/render` は物理削除され、本クレートが描画計画の唯一の crate となった。
 
-- `RenderFrame`
-- `CanvasScene`
-- `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan`
+- `CanvasScene` / `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan`
+- `PixelRect` / `TextureQuad` / `LayerGroup` / `LayerGroupDirtyPlan`
 - canvas quad / UV / dirty rect 写像
 - 画面座標 <-> canvas 座標変換
 - ブラシプレビュー矩形計算
 - dirty rect の union とブラシプレビュー dirty 計算
-- base frame / overlay frame / panel surface / status の CPU compose
-- floating panel layer のラスタライズ
-- panel hit region 生成
-- panel 描画用 text 計測・描画
 
 主なモジュール:
 
 - `src/lib.rs`
 - `src/frame_plan.rs`
 - `src/canvas_plan.rs`
+- `src/canvas_scene.rs`
 - `src/overlay_plan.rs`
 - `src/panel_plan.rs`
 - `src/dirty.rs`
-- `src/compose.rs`
-- `src/status.rs`
 - `src/brush_preview.rs`
-- `src/panel.rs`
-- `src/text.rs`
+- `src/layer_group.rs`
 
 補足:
 
-- フェーズ5で desktop 側 `frame/` の compose 実装を吸収し、CPU 側の frame 計画と compose の中心になった。
-- `apps/desktop` 側には desktop layout と `wgpu` presenter 入力変換が主に残る。
+- 旧 `crates/render` の CPU compose / panel rasterize / text 描画は Phase 9C〜9E で順次 GPU 化され、Phase 9F でクレートごと削除済み。
+- CPU canvas snapshot (`RenderFrame` 後継) は `apps/desktop/src/app/canvas_frame.rs::CanvasFrame` に移管。
+- 詳細: `docs/adr/010-render-crate-removal.md`。
 
 ### 4. `crates/panel-runtime`
 
@@ -352,7 +346,7 @@ workspace member として存在するもの:
 | --------------- | ---------------------- | ---------------------- | ------------------------------------------- |
 | `desktopApp`    | `apps/desktop`         | `apps/desktop`         | 現在は orchestration 以外も広く抱える       |
 | `app-core`      | `crates/app-core`      | `crates/app-core`      | `Document` に tool / pen state が残る       |
-| `render`        | `crates/render`        | `crates/render`        | frame plan / dirty / compose を集約済み     |
+| `render-types`  | `crates/render-types`  | `crates/render-types`  | 純データ DTO バンドル (旧 `render` は 9F で削除) |
 | `canvas`        | `crates/canvas`        | `crates/canvas`        | runtime / gesture / bitmap op を集約        |
 | `ui-shell`      | `crates/ui-shell`      | `crates/ui-shell`      | presentation 中心へ整理済み                 |
 | `panel-runtime` | `crates/panel-runtime` | `crates/panel-runtime` | Phase 3 で新設済み                          |
@@ -523,7 +517,7 @@ panel host API として固定した。
 
 - canvas 座標変換、eraser/stroke/fill の期待値テスト → `crates/canvas/src/tests/` に移転済み（フェーズ2完了）
 - panel dispatch、host action 適用、focus/control activation → `panel_dispatch_tests.rs` / `command_router_tests.rs` として分割済み（フェーズ1完了）
-- dirty rect と panel 差分 compose の検証 → `crates/render/src/tests/*` へ移転済み（フェーズ5完了）
+- dirty rect と panel 差分 compose の検証 → `crates/render-types/src/tests/*` へ移転済み（フェーズ5完了。Phase 9F で旧 `crates/render` 削除に伴い render-types に統合）
 - workspace preset config 同期や bootstrap 復元 → `bootstrap_tests.rs` として分割済み（フェーズ1完了）
 - service request 経由の I/O 操作 → `service_dispatch_tests.rs` として分割済み（フェーズ4補足)
 

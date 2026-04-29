@@ -9,5 +9,4 @@ authors.workspace = true
 app-core = { path = "../app-core" }
 panel-api = { path = "../panel-api" }
 panel-runtime = { path = "../panel-runtime" }
-render = { path = "../render" }
 render-types = { path = "../render-types" }

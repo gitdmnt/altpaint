@@ -23,8 +23,7 @@ use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::app::DesktopApp;
 use crate::wgpu_canvas::{
-    CanvasLayer, CanvasLayerSource, FrameLayer, PresentScene, TextureSource, UploadRegion,
-    WgpuPresenter,
+    CanvasLayer, CanvasLayerSource, PresentScene, TextureSource, UploadRegion, WgpuPresenter,
 };
 
 /// `winit` アプリケーションとして振る舞う実行時コンテナを表す。
@@ -422,33 +421,6 @@ impl ApplicationHandler for DesktopRuntime {
                     }
                 };
 
-                // 9E-4: L1 base_layer は dummy 化（型は Phase 9F まで残置）。
-                // 1×1 透明 RGBA を毎フレーム送るが帯域はほぼゼロ。
-                let dummy_base_pixels: [u8; 4] = [0, 0, 0, 0];
-                let base_upload_region = Some(UploadRegion {
-                    x: 0,
-                    y: 0,
-                    width: 1,
-                    height: 1,
-                });
-                // ui_panel_frame は dummy 1×1 だが型整合のため自前で値をコピーしておく
-                // （後段 PresentScene 構築までに &mut self.app の借用を行うため）
-                let (ui_panel_w, ui_panel_h, ui_panel_pixels): (u32, u32, Vec<u8>) =
-                    match self.app.ui_panel_frame() {
-                        Some(frame) => (
-                            frame.width as u32,
-                            frame.height as u32,
-                            frame.pixels.clone(),
-                        ),
-                        None => return,
-                    };
-                let ui_panel_upload_region =
-                    update.ui_panel_dirty_rect.map(|rect| UploadRegion {
-                        x: rect.x as u32,
-                        y: rect.y as u32,
-                        width: rect.width as u32,
-                        height: rect.height as u32,
-                    });
                 let gpu_source_spec: Option<(
                     String,
                     crate::app::GpuCanvasSourceKind,
@@ -602,27 +574,11 @@ impl ApplicationHandler for DesktopRuntime {
                 let timings = match presenter.render(
                     PresentScene {
                         background_quads: &background_solid_quads,
-                        base_layer: FrameLayer {
-                            source: TextureSource {
-                                width: 1,
-                                height: 1,
-                                pixels: &dummy_base_pixels,
-                            },
-                            upload_region: base_upload_region,
-                        },
                         canvas_layer,
                         overlay_solid_quads: &overlay_solid_quads,
                         overlay_circle_quads: &overlay_circle_quads,
                         overlay_line_quads: &overlay_line_quads,
-                        ui_panel_layer: FrameLayer {
-                            source: TextureSource {
-                                width: ui_panel_w,
-                                height: ui_panel_h,
-                                pixels: ui_panel_pixels.as_slice(),
-                            },
-                            upload_region: ui_panel_upload_region,
-                        },
-                        html_panel_quads: html_panel_quads_slice,
+                        panel_quads: html_panel_quads_slice,
                         foreground_quads: &foreground_solid_quads,
                         status_quad,
                     },

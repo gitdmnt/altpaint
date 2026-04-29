@@ -47,6 +47,7 @@
   - **プランE（レイヤー名変更 UI）**: `plugins/layers-panel/panel.altp-panel` に確定ボタン追加・`rename_text` state 追加。`src/lib.rs` に `RENAME_BUF`（`thread_local! RefCell<String>`）、`update_rename_text` / `confirm_rename` ハンドラを追加。
   - **プランF（visibility/blend_mode パフォーマンス）**: `apps/desktop/src/app/command_router.rs` で `SetActiveLayerBlendMode` / `ToggleActiveLayerVisibility` を独立した match arm に分離し、`refresh_canvas_frame_region(panel_bounds)` + `append_canvas_dirty_rect(panel_bounds)` による差分更新に変更。全体 recomposite を回避。
   - **プランA（Wasm 再ビルド）**: `.\scripts\build-ui-wasm.ps1` で全 11 プラグインの `.wasm` を再ビルド。app-actions・undo/redo・panel_rect 等の export エラーを解消。
+- **Phase 9F 完了 (2026-04-29)**: `crates/render/` クレート物理削除。`RenderFrame` を `apps/desktop/src/app/canvas_frame.rs::CanvasFrame` へ吸収、`PresentScene` から dummy 化されていた `base_layer` (L1) と `ui_panel_layer` (L4) を撤去、`html_panel_quads` を `panel_quads` にリネーム。`PresentTimings` から `base_upload`/`ui_panel_upload` 系フィールド削除。さらに dead code 撤去として `PanelHitKind`/`PanelHitRegion`/`PanelSurface::hit_regions` 一式、`PanelDragState::Control` ヴァリアント、`refresh_canvas_frame_region`、`panel_surface_hit_regions` profiler value を削除。HTML パネル hit-test を `html_panel_hit_at`/`html_panel_move_handle_at` に統一し、関連テストを synthetic hit-table 注入で書き直し。最終ベースライン: 127 passed / 0 failed / 6 ignored、clippy 警告 83 件 (着手前と同数)。詳細: `docs/adr/010-render-crate-removal.md`。
 
 ## 現在の workspace 構成
 
@@ -55,7 +56,6 @@
 - `app-core`
 - `canvas`
 - `render-types`
-- `render`
 - `storage`
 - `desktop-support`
 - `panel-api`

@@ -355,20 +355,16 @@ MVPで扱う変換:
 - 透視変換
 - 非一様スケール
 
-## レンダリングエンジンの最小モジュール案
+## レンダリングエンジンの最小モジュール構成
 
-`crates/render/src/` の候補分割は以下。
+Phase 9F (2026-04-29) で旧 `crates/render/` は物理削除され、現状は次の構成:
 
-- `lib.rs`
-- `context.rs`
-- `frame.rs`
-- `tile.rs`
-- `compositor.rs`
-- `overlay.rs`
-- `view_transform.rs`
-- `cache.rs`
+- `crates/render-types/src/` — 純データ DTO (FramePlan / CanvasPlan / PanelPlan / PixelRect / CanvasScene 等)
+- `apps/desktop/src/wgpu_canvas.rs` — `PresentScene` と GPU 提示パイプライン
+- `apps/desktop/src/frame/` — 背景・前景・overlay の solid/circle/line quad 構築
+- `apps/desktop/src/app/canvas_frame.rs` — CPU キャンバススナップショット (`CanvasFrame`)
 
-MVPではファイル数を抑えてよいが、この責務分離は崩さない。
+MVPではファイル数を抑えてよいが、純データ DTO と GPU 提示パイプラインを分離する責務境界は崩さない。
 
 ## パフォーマンス目標との接続
 

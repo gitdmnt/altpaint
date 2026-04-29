@@ -294,12 +294,10 @@ impl DesktopApp {
             layout.canvas_host_rect.height,
         );
         let viewport_point = window_rect.clamp_to_canvas_viewport_point(point)?;
+        let (canvas_width, canvas_height) = self.canvas_dimensions();
         map_view_to_canvas_with_transform(
-            &render::RenderFrame {
-                width: self.canvas_dimensions().0,
-                height: self.canvas_dimensions().1,
-                pixels: Vec::new(),
-            },
+            canvas_width,
+            canvas_height,
             CanvasPointerEvent {
                 position: viewport_point,
                 width: layout.canvas_host_rect.width as i32,

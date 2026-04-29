@@ -183,14 +183,6 @@ impl DesktopApp {
         true
     }
 
-    /// UiPanel フレーム を返す。
-    ///
-    /// 9E-3 で全パネルが GPU 経路に移ったため返却値は dummy の 1×1 透明 RGBA。
-    /// Phase 9F (`crates/render` 物理削除) で型ごと撤去予定。
-    pub(crate) fn ui_panel_frame(&self) -> Option<&render::RenderFrame> {
-        self.ui_panel_frame.as_ref()
-    }
-
     /// L0 背景 solid quads (ウィンドウ背景・キャンバス枠 fill・ホスト枠線) を組み立てる。
     pub(crate) fn background_solid_quads(&self) -> Vec<crate::frame::SolidQuad> {
         let Some(layout) = self.layout.as_ref() else {
@@ -309,7 +301,7 @@ impl DesktopApp {
     }
 
     /// キャンバス フレーム を返す。
-    pub(crate) fn canvas_frame(&self) -> Option<&render::RenderFrame> {
+    pub(crate) fn canvas_frame(&self) -> Option<&super::canvas_frame::CanvasFrame> {
         self.canvas_frame.as_ref()
     }
 }

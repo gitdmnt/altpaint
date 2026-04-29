@@ -204,23 +204,13 @@ fn move_panel_host_action_updates_status_without_full_recompose() {
         panel_id: "builtin.layers-panel".to_string(),
         direction: PanelMoveDirection::Up,
     }));
-    let update = app.prepare_present_frame(1280, 200, &mut profiler);
+    let _update = app.prepare_present_frame(1280, 200, &mut profiler);
 
-    // 9E-4: status text は GPU 描画化されたため background_dirty_rect / compose_dirty_status の
-    // ピクセル比較は不要。MovePanel が full recompose を起こさないことだけ検証する。
+    // Phase 9F: status text は GPU 描画化済み、L1/L4 dummy 経路も撤去済み。
+    // MovePanel が full recompose を起こさず ui_update を発火しないことのみ検証する。
+    // (CPU dirty rect のピクセル一致比較は Phase 9E-4 までで撤去済み。)
     assert!(!profiler.stats.contains_key("ui_update"));
     assert!(!profiler.stats.contains_key("compose_full_frame"));
-    assert_eq!(
-        update.ui_panel_dirty_rect,
-        app.panel_presentation
-            .last_panel_surface_dirty_rect()
-            .map(|dirty| crate::frame::Rect {
-                x: dirty.x,
-                y: dirty.y,
-                width: dirty.width,
-                height: dirty.height,
-            })
-    );
 }
 
 /// 設定 パネル visibility updates ステータス without full recompose が期待どおりに動作することを検証する。

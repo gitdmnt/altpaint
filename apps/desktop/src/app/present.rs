@@ -1,8 +1,8 @@
 //! フレーム生成と差分更新の責務を `DesktopApp` へ追加する。
 //!
-//! Phase 9E-4 以降、L1 background_frame の CPU 合成は撤去済み。
-//! ステータステキストは `StatusPanel` (HtmlPanelEngine + GPU) に置換され、
-//! L1 base_layer は 1×1 dummy で送る。L4 ui_panel_layer も同様の dummy。
+//! Phase 9F 完了後、`PresentScene` のレイヤーは
+//! `background_quads` / `canvas_layer` / `overlay_*_quads` / `panel_quads` /
+//! `foreground_quads` / `status_quad` のみ。CPU 合成経路は完全撤去済み。
 
 use std::time::Instant;
 
@@ -85,10 +85,6 @@ impl DesktopApp {
                 ((panel_surface.width * panel_surface.height) as f64 / window_area) * 100.0,
             );
             profiler.record_value(
-                "panel_surface_hit_regions",
-                panel_surface.hit_region_count() as f64,
-            );
-            profiler.record_value(
                 "panel_surface_rasterized_panels",
                 self.panel_presentation.last_panel_rasterized_panels() as f64,
             );
@@ -109,15 +105,7 @@ impl DesktopApp {
             panel_surface_refreshed = true;
         }
 
-        if self.needs_full_present_rebuild || self.ui_panel_frame.is_none() {
-            // Phase 9E-4: L4 ui_panel_layer は GPU パネル化により全パネルが quad で描画される。
-            // ただし PresentScene::ui_panel_layer 型は Phase 9F まで残存するため 1×1 透明 dummy を渡す。
-            let dummy = render::RenderFrame {
-                width: 1,
-                height: 1,
-                pixels: vec![0; 4],
-            };
-            self.ui_panel_frame = Some(dummy);
+        if self.needs_full_present_rebuild {
             self.pending_canvas_dirty_rect = None;
             self.pending_temp_overlay_dirty_rect = None;
             self.pending_ui_panel_dirty_rect = None;
@@ -148,8 +136,8 @@ impl DesktopApp {
 
         let mut layer_dirty = render_types::LayerGroupDirtyPlan::default();
 
-        // L4: パネルサーフェス更新 — Phase 9E-3 で GPU 経路に移行済み。dummy ui_panel_frame
-        // は 1×1 のまま再アップロードするだけ。
+        // パネルサーフェス更新 — Phase 9E-3 で GPU 経路に移行済み。dirty rect は
+        // GPU panel_quads の再描画範囲監視に使う。
         if panel_surface_refreshed {
             let panel_dirty_rect = self.panel_presentation.last_panel_surface_dirty_rect();
             if let Some(panel_dirty_rect) = panel_dirty_rect {
@@ -157,14 +145,14 @@ impl DesktopApp {
             }
         }
 
-        // L1: ステータス更新 — HtmlPanelEngine 化されたため、毎フレーム
+        // ステータス更新 — HtmlPanelEngine 化されたため、毎フレーム
         // status_panel.update() を呼んで snapshot を engine に流す（差分なら no-op）。
         // 実際の GPU 描画は runtime.rs の RedrawRequested で行う。
         if self.needs_status_refresh {
             self.needs_status_refresh = false;
         }
 
-        // L3: 一時オーバーレイは GPU quad で毎フレーム描画されるため CPU 合成は不要。
+        // 一時オーバーレイは GPU quad で毎フレーム描画されるため CPU 合成は不要。
         if let Some(dirty_rect) = self.pending_temp_overlay_dirty_rect.take()
             && dirty_rect.width > 0
             && dirty_rect.height > 0
@@ -172,7 +160,7 @@ impl DesktopApp {
             layer_dirty.mark_temp_overlay(dirty_rect);
         }
 
-        // L4: UIパネル dirty
+        // UIパネル dirty
         if let Some(dirty_rect) = self.pending_ui_panel_dirty_rect.take()
             && dirty_rect.width > 0
             && dirty_rect.height > 0

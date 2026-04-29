@@ -1,8 +1,7 @@
 //! `DesktopApp` のキャンバスフレーム状態と overlay 補助を定義する。
 
-use app_core::{CanvasDirtyRect, ClampToCanvasBounds};
-
 use super::DesktopApp;
+use super::canvas_frame::build_canvas_frame;
 use render_types::{PanelNavigatorEntry, PanelNavigatorOverlay};
 
 impl DesktopApp {
@@ -22,64 +21,7 @@ impl DesktopApp {
 
     /// キャンバス フレーム を更新する。
     pub(super) fn refresh_canvas_frame(&mut self) {
-        self.canvas_frame = Some(render::RenderContext::new().render_frame(&self.document));
-    }
-
-    /// キャンバス フレーム 領域 を更新し、必要な dirty 状態も記録する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
-    /// Phase 9A 以降、キャンバス側 caller は GPU が表示正本になったため呼び出さなくなった。
-    /// 関数本体は `crates/render/` 削除 (Phase 9F) と同時に取り除く予定。
-    #[allow(dead_code)]
-    pub(super) fn refresh_canvas_frame_region(&mut self, dirty: CanvasDirtyRect) {
-        let Some(frame) = self.canvas_frame.as_mut() else {
-            self.refresh_canvas_frame();
-            return;
-        };
-        let Some(page) = self.document.active_page() else {
-            self.refresh_canvas_frame();
-            return;
-        };
-        let Some(panel) = self.document.active_panel() else {
-            self.refresh_canvas_frame();
-            return;
-        };
-
-        if frame.width != page.width.max(1) || frame.height != page.height.max(1) {
-            self.refresh_canvas_frame();
-            return;
-        }
-
-        let dirty = dirty.clamp_to_canvas_bounds(frame.width, frame.height);
-        if dirty.width == 0 || dirty.height == 0 {
-            return;
-        }
-
-        let panel_bounds = panel.bounds;
-        let panel_right = panel_bounds.x.saturating_add(panel.bitmap.width);
-        let panel_bottom = panel_bounds.y.saturating_add(panel.bitmap.height);
-        let dirty_right = dirty.x.saturating_add(dirty.width);
-        let dirty_bottom = dirty.y.saturating_add(dirty.height);
-        let copy_left = dirty.x.max(panel_bounds.x);
-        let copy_top = dirty.y.max(panel_bounds.y);
-        let copy_right = dirty_right.min(panel_right).min(frame.width);
-        let copy_bottom = dirty_bottom.min(panel_bottom).min(frame.height);
-
-        if copy_left >= copy_right || copy_top >= copy_bottom {
-            return;
-        }
-
-        let copy_width = copy_right - copy_left;
-        for row in copy_top..copy_bottom {
-            let local_y = row.saturating_sub(panel_bounds.y);
-            let local_x = copy_left.saturating_sub(panel_bounds.x);
-            let src_row_start = (local_y * panel.bitmap.width + local_x) * 4;
-            let src_row_end = src_row_start + copy_width * 4;
-            let dst_row_start = (row * frame.width + copy_left) * 4;
-            let dst_row_end = dst_row_start + copy_width * 4;
-            frame.pixels[dst_row_start..dst_row_end]
-                .copy_from_slice(&panel.bitmap.pixels[src_row_start..src_row_end]);
-        }
+        self.canvas_frame = Some(build_canvas_frame(&self.document));
     }
 
     /// アクティブな パネル マスク オーバーレイ を返す。

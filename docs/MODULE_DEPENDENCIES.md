@@ -119,9 +119,8 @@ graph TD
 ### 依存関係の要点
 
 - `app-core` は workspace 内の土台であり、ローカル依存を持たない
-- `canvas` / `render` / `storage` / `desktop-support` / `panel-api` / `workspace-persistence` は `app-core` に依存する周辺クレートである
-- `canvas` は `render` の view mapping API を使うが、project I/O や panel runtime へは依存しない
-- `render` は floating panel rasterize のため `panel-api` にも依存する
+- `canvas` / `storage` / `desktop-support` / `panel-api` / `workspace-persistence` は `app-core` に依存する周辺クレートである
+- `canvas` は `render-types` の view mapping API を使うが、project I/O や panel runtime へは依存しない
 - `panel-runtime` が現在の panel runtime 統合点であり、DSL 読み込み・Wasm 実行・host sync を持つ
 - `ui-shell` は `panel-runtime` に依存する presentation crate になった
 - `plugin-host` は `panel-runtime` の内側で使われ、`apps/desktop` は直接依存していない
@@ -220,25 +219,21 @@ graph TD
 
 - 9C/9D で装飾・overlay を GPU 化する際、`render` の CPU 実装に触らずに DTO を
   consume できる
-- 9F で `render` クレートを削除した後も、GPU 経路への入力 DTO として残る
+- 9F で `render` クレートを削除し、GPU 経路への入力 DTO として残った
 
-### `render` (Phase 9B 以降は CPU 実装専用)
+### `render` (Phase 9F で削除完了 — 2026-04-29)
 
-担当:
+旧クレートは物理削除済み。残存していた API の移管先:
 
-- `Document` から `RenderFrame` を得る最小描画入口 (Phase 9F で削除予定)
-- base / panel / status の CPU compose (Phase 9D で overlay 系は撤去済)
-- floating panel layer の GUI ラスタライズ
-- panel hit region の生成
-- システムフォント + font8x8 によるテキスト描画
+- `RenderFrame` (CPU canvas snapshot) → `apps/desktop/src/app/canvas_frame.rs::CanvasFrame`
+- `RenderContext::render_frame` → `apps/desktop` 内 `build_canvas_frame(document)` 純関数
+- `PanelHitKind` / `PanelHitRegion` → `crates/ui-shell/src/presentation.rs` 内部型
+- `compose_*` / `blit_*` / `fill_rgba_block` / `scroll_canvas_region` /
+  `build_source_axis_runs` / `SourceAxisRun` → 呼び出し元 0 件のため削除のみ
+- `PresentScene::base_layer` (L1) / `ui_panel_layer` (L4) `FrameLayer` → dummy 経路ごと撤去
+- `PresentScene::html_panel_quads` → `panel_quads` にリネーム
 
-現状の実態:
-
-- 純データ DTO は `render-types` に分離済み (Phase 9B)
-- L0 背景 (Phase 9C-1) と L3 一時オーバーレイ (Phase 9D) は GPU 直描画化済
-- 残る CPU 合成・パネル CPU ラスタライズ・テキスト描画は Phase 9C-2/9E で順次
-  GPU 化され、最終的に Phase 9F で本クレート自体が削除される
-- 最終 upload と GPU presenter orchestration は `apps/desktop` / `wgpu_canvas` 側に残る
+詳細は `docs/adr/010-render-crate-removal.md`。
 
 ### `panel-api`
 

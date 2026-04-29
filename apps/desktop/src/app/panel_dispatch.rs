@@ -4,19 +4,12 @@ use app_core::WindowPoint;
 use panel_api::{HostAction, PanelEvent};
 
 use super::DesktopApp;
-/// スライダードラッグ中のパネルノード情報を保持する。
+/// パネル移動ドラッグ中の被操作パネル情報を保持する。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum PanelDragState {
-    Control {
-        panel_id: String,
-        node_id: String,
-        source_value: i32,
-    },
-    Move {
-        panel_id: String,
-        grab_offset_x: usize,
-        grab_offset_y: usize,
-    },
+pub(crate) struct PanelDragState {
+    pub panel_id: String,
+    pub grab_offset_x: usize,
+    pub grab_offset_y: usize,
 }
 
 /// ボタン系パネル操作の押下開始情報を保持する。
@@ -49,7 +42,7 @@ impl DesktopApp {
             else {
                 return false;
             };
-            self.panel_interaction.active_panel_drag = Some(PanelDragState::Move {
+            self.panel_interaction.active_panel_drag = Some(PanelDragState {
                 panel_id,
                 grab_offset_x: (point.x.max(0) as usize).saturating_sub(panel_rect.x),
                 grab_offset_y: (point.y.max(0) as usize).saturating_sub(panel_rect.y),
@@ -62,46 +55,22 @@ impl DesktopApp {
             return false;
         };
 
-        match &event {
-            PanelEvent::Activate { panel_id, node_id } => {
-                let changed = self.panel_presentation.focus_panel_node(
-                    &self.panel_runtime,
-                    panel_id,
-                    node_id,
-                );
-                self.panel_interaction.pending_panel_press = Some(PanelPressState {
-                    panel_id: panel_id.clone(),
-                    node_id: node_id.clone(),
-                });
-                self.refresh_panel_surface_if_changed(changed);
-                // パネルボタンにヒットした場合は常に処理済みとしてキャンバスへのフォールスルーを防ぐ
-                true
-            }
-            PanelEvent::SetValue {
-                panel_id,
-                node_id,
-                value,
-            } => {
-                self.panel_interaction.active_panel_drag = Some(PanelDragState::Control {
-                    panel_id: panel_id.clone(),
-                    node_id: node_id.clone(),
-                    source_value: *value,
-                });
-                self.dispatch_panel_event(event)
-            }
-            PanelEvent::SetText {
-                panel_id, node_id, ..
-            } => {
-                let drag_state = PanelDragState::Control {
-                    panel_id: panel_id.clone(),
-                    node_id: node_id.clone(),
-                    source_value: 0,
-                };
-                self.panel_interaction.active_panel_drag = Some(drag_state);
-                self.dispatch_panel_event(event)
-            }
-            PanelEvent::DragValue { .. } | PanelEvent::Keyboard { .. } => false,
-        }
+        // Phase 9F: panel_event_from_window は HTML hit-table のみを参照するため
+        // 返り値は常に PanelEvent::Activate になる。SetValue / SetText / DragValue は
+        // Wasm パネル handler が dispatch_panel_event 経由で直接発行する経路に統一。
+        let PanelEvent::Activate { panel_id, node_id } = &event else {
+            return false;
+        };
+        let changed = self
+            .panel_presentation
+            .focus_panel_node(&self.panel_runtime, panel_id, node_id);
+        self.panel_interaction.pending_panel_press = Some(PanelPressState {
+            panel_id: panel_id.clone(),
+            node_id: node_id.clone(),
+        });
+        self.refresh_panel_surface_if_changed(changed);
+        // パネルボタンにヒットした場合は常に処理済みとしてキャンバスへのフォールスルーを防ぐ
+        true
     }
 
     /// 入力や種別に応じて処理を振り分ける。
@@ -109,77 +78,32 @@ impl DesktopApp {
         let Some(state) = self.panel_interaction.active_panel_drag.clone() else {
             return false;
         };
-        match state {
-            PanelDragState::Control {
-                ref panel_id,
-                ref node_id,
-                ..
-            } => {
-                let Some(event) = self
-                    .panel_drag_event_from_window(&state, point)
-                    .or_else(|| {
-                        let event = self.panel_event_from_window(point)?;
-                        match &event {
-                            PanelEvent::SetValue {
-                                panel_id: event_panel_id,
-                                node_id: event_node_id,
-                                ..
-                            }
-                            | PanelEvent::SetText {
-                                panel_id: event_panel_id,
-                                node_id: event_node_id,
-                                ..
-                            } if *event_panel_id == *panel_id && *event_node_id == *node_id => {
-                                Some(event)
-                            }
-                            _ => None,
-                        }
-                    })
-                else {
-                    return false;
-                };
-                let _changed = self.dispatch_panel_event(event.clone());
-                self.advance_panel_drag_source(&event);
-                true
-            }
-            PanelDragState::Move {
-                panel_id,
-                grab_offset_x,
-                grab_offset_y,
-            } => {
-                let Some(layout) = self.layout.as_ref() else {
-                    return false;
-                };
-                let (win_w, win_h) = (layout.window_rect.width, layout.window_rect.height);
-                let window_x = point.x.max(0) as usize;
-                let window_y = point.y.max(0) as usize;
-                let previous_rect = self.panel_presentation.panel_rect(&panel_id);
-                let changed = self.panel_presentation.move_panel_to(
-                    &panel_id,
-                    window_x.saturating_sub(grab_offset_x),
-                    window_y.saturating_sub(grab_offset_y),
-                    win_w,
-                    win_h,
-                );
-                if changed {
-                    self.mark_panel_surface_dirty();
-                    if let Some(rect) = previous_rect {
-                        self.append_ui_panel_dirty_rect(rect);
-                    }
-                }
-                changed
+        let PanelDragState {
+            panel_id,
+            grab_offset_x,
+            grab_offset_y,
+        } = state;
+        let Some(layout) = self.layout.as_ref() else {
+            return false;
+        };
+        let (win_w, win_h) = (layout.window_rect.width, layout.window_rect.height);
+        let window_x = point.x.max(0) as usize;
+        let window_y = point.y.max(0) as usize;
+        let previous_rect = self.panel_presentation.panel_rect(&panel_id);
+        let changed = self.panel_presentation.move_panel_to(
+            &panel_id,
+            window_x.saturating_sub(grab_offset_x),
+            window_y.saturating_sub(grab_offset_y),
+            win_w,
+            win_h,
+        );
+        if changed {
+            self.mark_panel_surface_dirty();
+            if let Some(rect) = previous_rect {
+                self.append_ui_panel_dirty_rect(rect);
             }
         }
-    }
-
-    /// パネル drag ソース を進行させる。
-    pub(crate) fn advance_panel_drag_source(&mut self, event: &PanelEvent) {
-        if let PanelEvent::DragValue { to, .. } = event
-            && let Some(PanelDragState::Control { source_value, .. }) =
-                self.panel_interaction.active_panel_drag.as_mut()
-        {
-            *source_value = *to;
-        }
+        changed
     }
 
     /// パネル control をアクティブ化する。
@@ -459,23 +383,17 @@ impl DesktopApp {
 
     /// パネル イベント from ウィンドウ を計算して返す。
     ///
-    /// HTML パネル hit を先にチェックし、ヒットすれば `PanelEvent::Activate` を返す。
-    /// HTML パネルは独自に screen 座標系の hit テーブルを持つため、DSL パネル surface とは
-    /// 別経路で解決する。
+    /// HTML パネル hit テーブルだけを参照する。Phase 9F で DSL surface 側の hit-test 経路は
+    /// 削除済みのため、ここに来るのは HTML パネルのみ。
     /// 値を生成できない場合は `None` を返します。
     pub(super) fn panel_event_from_window(&self, point: WindowPoint) -> Option<PanelEvent> {
-        if point.x >= 0
-            && point.y >= 0
-            && let Some((panel_id, node_id)) = self
-                .panel_presentation
-                .html_panel_hit_at(point.x as usize, point.y as usize)
-        {
-            return Some(PanelEvent::Activate { panel_id, node_id });
+        if point.x < 0 || point.y < 0 {
+            return None;
         }
-
-        let panel_surface = self.panel_surface.as_ref()?;
-        let surface_point = self.panel_surface_coordinates_from_window(point)?;
-        panel_surface.hit_test_at(surface_point)
+        let (panel_id, node_id) = self
+            .panel_presentation
+            .html_panel_hit_at(point.x as usize, point.y as usize)?;
+        Some(PanelEvent::Activate { panel_id, node_id })
     }
 
     /// パネル is hovered を計算して返す。
@@ -487,50 +405,13 @@ impl DesktopApp {
 
     /// パネル move hit from ウィンドウ を計算して返す。
     ///
-    /// HTML パネルの move handle (タイトルバー) を先に確認し、ヒットすれば panel_id を返す。
-    /// HTML パネルは独自の screen 座標 hit テーブルを持つため、DSL パネル surface とは別経路。
+    /// HTML パネルの move handle (タイトルバー) のみを確認する。
     /// 値を生成できない場合は `None` を返します。
     pub(super) fn panel_move_hit_from_window(&self, point: WindowPoint) -> Option<String> {
-        if point.x >= 0
-            && point.y >= 0
-            && let Some(panel_id) = self
-                .panel_presentation
-                .html_panel_move_handle_at(point.x as usize, point.y as usize)
-        {
-            return Some(panel_id);
-        }
-        let panel_surface = self.panel_surface.as_ref()?;
-        let surface_point = self.panel_surface_coordinates_from_window(point)?;
-        panel_surface.move_panel_hit_test_at(surface_point)
-    }
-
-    /// パネル サーフェス coordinates from ウィンドウ に必要な処理を行う。
-    pub(super) fn panel_surface_coordinates_from_window(
-        &self,
-        point: app_core::WindowPoint,
-    ) -> Option<app_core::PanelSurfacePoint> {
-        let panel_surface = self.panel_surface.as_ref()?;
-        panel_surface.global_bounds().to_surface_point(point)
-    }
-
-    /// パネル drag イベント from ウィンドウ に必要な処理を行う。
-    pub(super) fn panel_drag_event_from_window(
-        &self,
-        state: &PanelDragState,
-        point: WindowPoint,
-    ) -> Option<PanelEvent> {
-        let PanelDragState::Control {
-            panel_id,
-            node_id,
-            source_value,
-        } = state
-        else {
+        if point.x < 0 || point.y < 0 {
             return None;
-        };
-        let panel_surface = self.panel_surface.as_ref()?;
-        let surface_point = panel_surface
-            .global_bounds()
-            .clamp_to_surface_point(point)?;
-        panel_surface.drag_event_at(panel_id, node_id, *source_value, surface_point)
+        }
+        self.panel_presentation
+            .html_panel_move_handle_at(point.x as usize, point.y as usize)
     }
 }

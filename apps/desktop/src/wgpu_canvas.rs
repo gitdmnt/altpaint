@@ -11,7 +11,7 @@
 use anyhow::{Context, Result};
 use desktop_support::APP_BACKGROUND;
 use desktop_support::PresentTimings;
-use render::RenderFrame;
+use crate::app::CanvasFrame;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -30,8 +30,8 @@ pub struct TextureSource<'a> {
     pub pixels: &'a [u8],
 }
 
-impl<'a> From<&'a RenderFrame> for TextureSource<'a> {
-    fn from(frame: &'a RenderFrame) -> Self {
+impl<'a> From<&'a CanvasFrame> for TextureSource<'a> {
+    fn from(frame: &'a CanvasFrame) -> Self {
         Self {
             width: frame.width as u32,
             height: frame.height as u32,
@@ -48,14 +48,6 @@ pub struct UploadRegion {
     pub y: u32,
     pub width: u32,
     pub height: u32,
-}
-
-/// フルスクリーンに貼るレイヤー（ベース / オーバーレイ / UI パネル）の転送仕様。
-#[derive(Debug, Clone, Copy)]
-pub struct FrameLayer<'a> {
-    pub source: TextureSource<'a>,
-    /// `None` なら今フレームはアップロードをスキップする（更新なし）。
-    pub upload_region: Option<UploadRegion>,
 }
 
 /// キャンバスレイヤーのデータソース。CPU ビットマップか GPU テクスチャかを表す。
@@ -105,7 +97,7 @@ impl<'a> CanvasLayerSource<'a> {
 }
 
 /// キャンバスレイヤーの転送仕様。
-/// `quad` でスクリーン上の描画位置・UV・回転を指定できる点が FrameLayer と異なる。
+/// `quad` でスクリーン上の描画位置・UV・回転を指定できる。
 #[derive(Debug, Clone, Copy)]
 pub struct CanvasLayer<'a> {
     pub source: CanvasLayerSource<'a>,
@@ -117,25 +109,21 @@ pub struct CanvasLayer<'a> {
 /// 1 フレームに必要な全レイヤーをまとめた描画シーン。
 /// レイヤーは以下の順番で上から合成される:
 ///   L0 background_quads     … 背景 solid quad 群（ウィンドウ背景・キャンバス枠 fill・ホスト枠線）
-///   L1 base_layer           … 9E-4 で 1×1 dummy 化（型は Phase 9F まで残置）
-///   L2 canvas_layer         … キャンバス本体（None なら描画しない）
-///   L3a overlay_solid_quads … 一時オーバーレイの AABB 単色矩形（マスク・コマプレビュー・navigator）
-///   L3b overlay_circle_quads … ブラシプレビュー円リング（SDF）
-///   L3c overlay_line_quads  … ラッソプレビュー線（カプセル SDF）
-///   L4 ui_panel_layer       … 9E-3 で 1×1 dummy 化（型は Phase 9F まで残置）
-///   L5 html_panel_quads     … DSL/HTML 全パネル（vello で GPU 直描画されたテクスチャを quad 合成）
-///   L6 foreground_quads     … 前景 solid quad 群（アクティブ UI パネル枠線）
-///   L7 status_quad          … 9E-4: ステータスバー (HtmlPanelEngine GPU 描画) を最前面に配置
+///   L1 canvas_layer         … キャンバス本体（None なら描画しない）
+///   L2a overlay_solid_quads … 一時オーバーレイの AABB 単色矩形（マスク・コマプレビュー・navigator）
+///   L2b overlay_circle_quads … ブラシプレビュー円リング（SDF）
+///   L2c overlay_line_quads  … ラッソプレビュー線（カプセル SDF）
+///   L3 panel_quads          … DSL/HTML 全パネル（vello で GPU 直描画されたテクスチャを quad 合成）
+///   L4 foreground_quads     … 前景 solid quad 群（アクティブ UI パネル枠線）
+///   L5 status_quad          … ステータスバー (HtmlPanelEngine GPU 描画) を最前面に配置
 #[derive(Debug, Clone, Copy)]
 pub struct PresentScene<'a> {
     pub background_quads: &'a [SolidQuad],
-    pub base_layer: FrameLayer<'a>,
     pub canvas_layer: Option<CanvasLayer<'a>>,
     pub overlay_solid_quads: &'a [SolidQuad],
     pub overlay_circle_quads: &'a [CircleQuad],
     pub overlay_line_quads: &'a [LineQuad],
-    pub ui_panel_layer: FrameLayer<'a>,
-    pub html_panel_quads: &'a [GpuPanelQuad<'a>],
+    pub panel_quads: &'a [GpuPanelQuad<'a>],
     pub foreground_quads: &'a [SolidQuad],
     pub status_quad: Option<GpuPanelQuad<'a>>,
 }
@@ -589,9 +577,7 @@ pub struct WgpuPresenter {
     /// バインドグループレイアウト。シェーダが期待するバインディング構造を宣言する。
     bind_group_layout: wgpu::BindGroupLayout,
     // 各レイヤーの GPU リソース（None = 未初期化）
-    base_layer: Option<UploadedLayerTexture>,
     canvas_layer: Option<UploadedLayerTexture>,
-    ui_panel_layer: Option<UploadedLayerTexture>,
     /// GPU キャンバステクスチャのバインドグループキャッシュ。
     canvas_gpu_bind_group_cache: Option<GpuBindGroupCache>,
     /// HTML パネル毎の bind_group キャッシュ。panel_id をキーにし、
@@ -1313,9 +1299,7 @@ impl WgpuPresenter {
             pipeline,
             sampler,
             bind_group_layout,
-            base_layer: None, // 初回フレームで ensure_layer_texture が生成する
-            canvas_layer: None,
-            ui_panel_layer: None,
+            canvas_layer: None, // 初回フレームで ensure_layer_texture が生成する
             canvas_gpu_bind_group_cache: None,
             html_panel_bind_groups: HashMap::new(),
             solid_quad_pipeline,
@@ -1373,26 +1357,6 @@ impl WgpuPresenter {
         }
 
         // ─── ステップ 1: テクスチャの確保 ────────────────────────────────────
-        // 各レイヤーについて GPU テクスチャが存在しなければ（または解像度が変わっていれば）
-        // 作り直す。テクスチャ生成はコストが高いので必要なときだけ行う。
-        Self::ensure_layer_texture(
-            &self.device,
-            &self.sampler,
-            &self.bind_group_layout,
-            &mut self.base_layer,
-            scene.base_layer.source.width,
-            scene.base_layer.source.height,
-            "base",
-        );
-        Self::ensure_layer_texture(
-            &self.device,
-            &self.sampler,
-            &self.bind_group_layout,
-            &mut self.ui_panel_layer,
-            scene.ui_panel_layer.source.width,
-            scene.ui_panel_layer.source.height,
-            "ui-panel",
-        );
         // canvas_layer は省略可能。GPU ソース時は ensure をスキップ（gpu-canvas プール管理）。
         if let Some(canvas_layer) = scene
             .canvas_layer
@@ -1413,18 +1377,6 @@ impl WgpuPresenter {
         // upload_region が Some なら dirty rect 範囲だけ転送し、None ならスキップする。
         // needs_full_upload フラグが立っている場合はフルアップロードが優先される。
         let upload_started = Instant::now();
-        let base_upload = Self::upload_layer(
-            &self.queue,
-            self.base_layer.as_mut(),
-            scene.base_layer.source,
-            scene.base_layer.upload_region,
-        );
-        let ui_panel_upload = Self::upload_layer(
-            &self.queue,
-            self.ui_panel_layer.as_mut(),
-            scene.ui_panel_layer.source,
-            scene.ui_panel_layer.upload_region,
-        );
         let canvas_upload = if let Some(canvas_layer) = scene.canvas_layer {
             if let Some(cpu_src) = canvas_layer.source.cpu_source() {
                 Self::upload_layer(
@@ -1442,21 +1394,6 @@ impl WgpuPresenter {
 
         // ─── ステップ 3: ユニフォームバッファ更新 ────────────────────────────
         // ユニフォームバッファに描画先矩形（NDC）・UV 範囲・回転などを書き込む。
-        // base / temp_overlay / ui_panel はフルスクリーンクワッドを使う。
-        Self::update_quad_uniform(
-            &self.queue,
-            self.base_layer.as_ref(),
-            fullscreen_quad(self.config.width, self.config.height),
-            self.config.width,
-            self.config.height,
-        );
-        Self::update_quad_uniform(
-            &self.queue,
-            self.ui_panel_layer.as_ref(),
-            fullscreen_quad(self.config.width, self.config.height),
-            self.config.width,
-            self.config.height,
-        );
         // canvas_layer は quad で位置・回転・スケールが指定される。
         if let Some(canvas_layer) = scene.canvas_layer {
             if canvas_layer.source.is_gpu() {
@@ -1496,12 +1433,8 @@ impl WgpuPresenter {
                 // タイムアウト: このフレームは表示をスキップして次フレームへ。
                 return Ok(PresentTimings {
                     upload,
-                    base_upload: base_upload.duration,
                     canvas_upload: canvas_upload.duration,
-                    ui_panel_upload: ui_panel_upload.duration,
-                    base_upload_bytes: base_upload.bytes,
                     canvas_upload_bytes: canvas_upload.bytes,
-                    ui_panel_upload_bytes: ui_panel_upload.bytes,
                     ..Default::default()
                 });
             }
@@ -1531,10 +1464,10 @@ impl WgpuPresenter {
         //  - 異なる or 未登録 → bind_group + uniform_buffer を新規生成
         let surface_w = self.config.width;
         let surface_h = self.config.height;
-        // 9E-4: status_quad は html_panel_quads と同じ bind_group キャッシュ仕組みを共有する。
+        // status_quad は panel_quads と同じ bind_group キャッシュ仕組みを共有する。
         // panel_id にプレフィックス "__status__" を付けてキー衝突を避ける。
         let status_iter = scene.status_quad.as_ref().into_iter();
-        for quad in scene.html_panel_quads.iter().chain(status_iter) {
+        for quad in scene.panel_quads.iter().chain(status_iter) {
             let w = quad.texture.width();
             let h = quad.texture.height();
             let needs_rebuild = self
@@ -1608,7 +1541,7 @@ impl WgpuPresenter {
         }
         // 既に消えた panel_id をキャッシュから drop（panel-runtime 側のテクスチャ解放と歩調を合わせる）
         let mut live_ids: std::collections::HashSet<&str> =
-            scene.html_panel_quads.iter().map(|q| q.panel_id).collect();
+            scene.panel_quads.iter().map(|q| q.panel_id).collect();
         if let Some(status) = scene.status_quad.as_ref() {
             live_ids.insert(status.panel_id);
         }
@@ -1687,7 +1620,6 @@ impl WgpuPresenter {
             pass.set_pipeline(&self.pipeline);
 
             // レイヤーを下から順番に描画（後に描くほど手前に表示される）。
-            Self::draw_layer(&mut pass, self.base_layer.as_ref()); // L1 背景
             if let Some(canvas_layer) = scene.canvas_layer {
                 if canvas_layer.source.is_gpu() {
                     if let Some(cache) = &self.canvas_gpu_bind_group_cache {
@@ -1720,19 +1652,18 @@ impl WgpuPresenter {
             self.overlay_line_pipeline
                 .record(&mut pass, scene.overlay_line_quads.len());
 
-            // 後続レイヤー (L4 UI パネル / L5 HTML) はテクスチャ pipeline を使う。
+            // 後続レイヤー (L3 HTML パネル群) はテクスチャ pipeline を使う。
             pass.set_pipeline(&self.pipeline);
-            Self::draw_layer(&mut pass, self.ui_panel_layer.as_ref()); // L4 UI パネル
 
-            // L5: HTML パネル群（GPU 直描画）
-            for quad in scene.html_panel_quads {
+            // L3: HTML パネル群（GPU 直描画）
+            for quad in scene.panel_quads {
                 if let Some(entry) = self.html_panel_bind_groups.get(quad.panel_id) {
                     pass.set_bind_group(0, &entry.bind_group, &[]);
                     pass.draw(0..6, 0..1);
                 }
             }
 
-            // L6: 前景 solid quads（アクティブ UI パネル枠線）
+            // L4: 前景 solid quads（アクティブ UI パネル枠線）
             // solid quad slot は連結 vec で先頭 background_quad_count + overlay_solid_quad_count を
             // スキップした位置から foreground_quad_count 個。
             if foreground_quad_count > 0 {
@@ -1749,7 +1680,7 @@ impl WgpuPresenter {
                 }
             }
 
-            // L7: ステータスバー (HtmlPanelEngine GPU 描画) を最前面に配置
+            // L5: ステータスバー (HtmlPanelEngine GPU 描画) を最前面に配置
             if let Some(status) = scene.status_quad.as_ref()
                 && let Some(entry) = self.html_panel_bind_groups.get(status.panel_id)
             {
@@ -1774,12 +1705,8 @@ impl WgpuPresenter {
             upload,
             encode_and_submit,
             present: present_started.elapsed(),
-            base_upload: base_upload.duration,
             canvas_upload: canvas_upload.duration,
-            ui_panel_upload: ui_panel_upload.duration,
-            base_upload_bytes: base_upload.bytes,
             canvas_upload_bytes: canvas_upload.bytes,
-            ui_panel_upload_bytes: ui_panel_upload.bytes,
         })
     }
 
@@ -2147,6 +2074,7 @@ fn upload_texture_region(
 ///
 /// destination は左上 (0,0) から (width, height) までのピクセル矩形。
 /// uv_min/uv_max は (0,0)〜(1,1) でテクスチャ全体を使う。
+#[cfg(test)]
 fn fullscreen_quad(width: u32, height: u32) -> TextureQuad {
     TextureQuad {
         destination: Rect {
