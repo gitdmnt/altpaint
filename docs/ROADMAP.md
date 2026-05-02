@@ -21,6 +21,7 @@
 | 9D       | L3 ブラシプレビュー / lasso / mask / navigator overlay GPU 化                     | 2026-04-26 |
 | 9E       | DSL パネル + ステータスバー GPU 化 (HtmlPanelEngine 経路統合) + 9C-2 統合         | 2026-04-26 |
 | 9F       | `crates/render/` 物理削除と `PresentScene` レイヤー再編成                          | 2026-04-29 |
+| 9G       | `html-panel` feature gate 完全撤去 (Phase 9E で唯一経路化した HTML 描画を default 化) | 2026-05-02 |
 
 詳細は [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) を参照。
 

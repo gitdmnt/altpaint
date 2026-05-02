@@ -1,21 +1,17 @@
 use crate::config::{collect_persistent_panel_configs, restore_persistent_panel_configs};
 use crate::dsl_loader::collect_panel_files_recursive;
 use crate::dsl_panel::DslPanelPlugin;
-#[cfg(feature = "html-panel")]
 use crate::html_panel::HtmlPanelPlugin;
 use app_core::Document;
 use panel_api::{HostAction, PanelEvent, PanelPlugin, PanelTree, PanelView};
+use panel_html_experiment::{vello, wgpu, HtmlPanelEngine, RenderedPanelHit};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
-#[cfg(feature = "html-panel")]
 use std::sync::Arc;
-#[cfg(feature = "html-panel")]
-use panel_html_experiment::{vello, wgpu, HtmlPanelEngine, RenderedPanelHit};
 
-/// `html-panel` feature 時、パネル毎の GPU 描画結果をまとめて返す。
+/// パネル毎の GPU 描画結果をまとめて返す。
 /// 9E-3 で DSL/HTML 両対応に統一 (旧 `HtmlPanelGpuFrame` から改名)。
-#[cfg(feature = "html-panel")]
 pub struct PanelGpuFrame<'a> {
     pub panel_id: String,
     pub texture: &'a wgpu::Texture,
@@ -26,7 +22,6 @@ pub struct PanelGpuFrame<'a> {
 }
 
 /// 共有 wgpu リソース + 集約 vello::Renderer。`install_gpu_context` で初期化。
-#[cfg(feature = "html-panel")]
 struct PanelGpuContext {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
@@ -37,7 +32,6 @@ struct PanelGpuContext {
 /// パネルから可変 `HtmlPanelEngine` を取り出すための共通アクセサ。
 /// HtmlPanelPlugin / DslPanelPlugin どちらでも `engine_mut()` を介して取得する。
 /// downcast は二段階で行い、それぞれが借用を返すため借用チェッカ通過する形に分離する。
-#[cfg(feature = "html-panel")]
 fn panel_engine_mut(panel: &mut Box<dyn PanelPlugin>) -> Option<&mut HtmlPanelEngine> {
     // 種別判定: as_any_mut は短時間借用にとどめ、TypeId だけ取り出す
     let panel_kind = {
@@ -58,7 +52,6 @@ fn panel_engine_mut(panel: &mut Box<dyn PanelPlugin>) -> Option<&mut HtmlPanelEn
     }
 }
 
-#[cfg(feature = "html-panel")]
 enum PanelEngineKind {
     Html,
     Dsl,
@@ -87,12 +80,10 @@ pub struct PanelRuntime {
     persistent_panel_configs: BTreeMap<String, Value>,
     /// イベント駆動再描画のための dirty パネル集合。
     dirty_panels: BTreeSet<String>,
-    /// html-panel feature 時の GPU コンテキスト（device/queue/renderer/scene scratch）。
-    #[cfg(feature = "html-panel")]
+    /// GPU コンテキスト（device/queue/renderer/scene scratch）。
     gpu_ctx: Option<PanelGpuContext>,
     /// 直近 `render_panels` で measured_size が変化した panel の (id, (w, h)) 列。
     /// `take_panel_size_changes` で吸い取って永続化に流す。
-    #[cfg(feature = "html-panel")]
     pending_panel_size_changes: Vec<(String, (u32, u32))>,
 }
 
@@ -112,9 +103,7 @@ impl PanelRuntime {
             panel_tree_cache: BTreeMap::new(),
             persistent_panel_configs: BTreeMap::new(),
             dirty_panels: BTreeSet::new(),
-            #[cfg(feature = "html-panel")]
             gpu_ctx: None,
-            #[cfg(feature = "html-panel")]
             pending_panel_size_changes: Vec::new(),
         }
     }
@@ -123,7 +112,6 @@ impl PanelRuntime {
     /// `install_gpu_context` 未呼び出しなら `None`。
     /// 9E-4: ステータスバーなど panel-runtime 外部の `HtmlPanelEngine` 利用者が
     /// 共有 GPU コンテキストを再利用するために公開する。
-    #[cfg(feature = "html-panel")]
     pub fn gpu_context_parts(
         &mut self,
     ) -> Option<(&Arc<wgpu::Device>, &Arc<wgpu::Queue>, &mut vello::Renderer, &mut vello::Scene)>
@@ -134,7 +122,6 @@ impl PanelRuntime {
 
     /// 共有 wgpu Device/Queue を受け取り、vello::Renderer を集約構築する。
     /// 失敗時は `gpu_ctx = None` を維持し、HTML パネルは描画スキップにフォールバック。
-    #[cfg(feature = "html-panel")]
     pub fn install_gpu_context(
         &mut self,
         device: Arc<wgpu::Device>,
@@ -168,7 +155,6 @@ impl PanelRuntime {
 
     /// GPU 直描画対応パネル (DSL + HTML) の ID 一覧。
     /// downcast 順序: HtmlPanelPlugin → DslPanelPlugin の順で確認する。
-    #[cfg(feature = "html-panel")]
     pub fn panel_ids_with_gpu(&mut self) -> Vec<String> {
         let mut ids = Vec::new();
         for panel in &mut self.panels {
@@ -188,7 +174,6 @@ impl PanelRuntime {
 
     /// パネル毎の現在の権威サイズを返す。DSL/HTML 両方が含まれる。
     /// 戻り値: `Vec<(panel_id, width, height)>`。
-    #[cfg(feature = "html-panel")]
     pub fn panel_measured_sizes(&mut self) -> Vec<(String, u32, u32)> {
         let mut out = Vec::new();
         for panel in &mut self.panels {
@@ -202,7 +187,6 @@ impl PanelRuntime {
     }
 
     /// 指定パネル (DSL/HTML) の measured_size を返す。該当無しの場合は `(1, 1)`。
-    #[cfg(feature = "html-panel")]
     pub fn measured_size(&mut self, panel_id: &str) -> (u32, u32) {
         for panel in &mut self.panels {
             if panel.id() != panel_id {
@@ -217,7 +201,6 @@ impl PanelRuntime {
 
     /// 指定パネルに UI 入力イベントを転送する。`:hover` / `<details>` 開閉等の動的レイアウトを動かす。
     /// 戻り値: 該当パネルが見つかった場合 true。
-    #[cfg(feature = "html-panel")]
     pub fn forward_panel_input(
         &mut self,
         panel_id: &str,
@@ -238,7 +221,6 @@ impl PanelRuntime {
 
     /// 起動時 restore 用：指定 panel_id に永続化された measured_size を流し込む。
     /// 戻り値: 該当パネルが見つかった場合 true。
-    #[cfg(feature = "html-panel")]
     pub fn restore_panel_size(&mut self, panel_id: &str, size: (u32, u32)) -> bool {
         for panel in &mut self.panels {
             if panel.id() != panel_id {
@@ -255,13 +237,12 @@ impl PanelRuntime {
 
     /// `render_panels` 内で発生した measured_size 変化を吸い取る（take セマンティクス）。
     /// 戻り値: `(panel_id, (new_w, new_h))` の列。二回目の呼び出しは空。
-    #[cfg(feature = "html-panel")]
     pub fn take_panel_size_changes(&mut self) -> Vec<(String, (u32, u32))> {
         std::mem::take(&mut self.pending_panel_size_changes)
     }
 
     /// テスト専用: size 変化を強制注入する。本番経路では `render_panels` 内で記録される。
-    #[cfg(all(feature = "html-panel", test))]
+    #[cfg(test)]
     pub fn test_mark_panel_size_changed(&mut self, panel_id: &str, size: (u32, u32)) {
         self.pending_panel_size_changes
             .push((panel_id.to_string(), size));
@@ -270,7 +251,6 @@ impl PanelRuntime {
     /// 指定された (panel_id, width, height) リストの DSL/HTML パネルを GPU 描画する。
     /// `chrome_height` > 0 ならパネル上端にホスト描画タイトルバーを重ねる。
     /// `install_gpu_context` 未呼び出しなら空 Vec。
-    #[cfg(feature = "html-panel")]
     pub fn render_panels(
         &mut self,
         sized: &[(String, u32, u32)],
@@ -421,9 +401,8 @@ impl PanelRuntime {
             }
         }
 
-        // html-panel feature: 各パネルディレクトリに panel.html + panel.meta.json があれば
+        // 各パネルディレクトリに panel.html + panel.meta.json があれば
         // 並列して HTML パネルも登録する（ID が異なれば DSL 版と共存できる）。
-        #[cfg(feature = "html-panel")]
         {
             let mut seen_dirs: std::collections::BTreeSet<std::path::PathBuf> =
                 std::collections::BTreeSet::new();

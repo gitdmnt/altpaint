@@ -13,8 +13,8 @@ canvas = { path = "../../crates/canvas" }
 desktop-support = { path = "../../crates/desktop-support" }
 panel-api = { path = "../../crates/panel-api" }
 panel-runtime = { path = "../../crates/panel-runtime" }
-panel-html-experiment = { path = "../../crates/panel-html-experiment", optional = true }
-keyboard-types = { version = "0.7", optional = true }
+panel-html-experiment = { path = "../../crates/panel-html-experiment" }
+keyboard-types = "0.7"
 pollster.workspace = true
 render-types = { path = "../../crates/render-types" }
 serde_json.workspace = true
@@ -23,8 +23,5 @@ ui-shell = { path = "../../crates/ui-shell" }
 workspace-persistence = { path = "../../crates/workspace-persistence" }
 wgpu.workspace = true
 winit.workspace = true
-
-[features]
-html-panel = ["panel-runtime/html-panel", "dep:panel-html-experiment", "dep:keyboard-types"]
 
 [dev-dependencies]

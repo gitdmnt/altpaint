@@ -7,7 +7,6 @@
 //! - スケール: 1.0 固定（HiDPI はスコープ外）
 //! - フォント: `system-ui` フォールバック
 
-#[cfg(feature = "html-panel")]
 use panel_html_experiment::{
     vello, wgpu, HtmlPanelEngine, PanelGpuTarget, RenderOutcome,
 };
@@ -43,7 +42,6 @@ body { width: 100%; }
 .status .text { color: #d8d8d8; white-space: nowrap; overflow: hidden; }
 "#;
 
-#[cfg(feature = "html-panel")]
 fn render_html(snapshot: &StatusSnapshot) -> String {
     format!(
         "<!DOCTYPE html><html><body><div class=\"status\">\
@@ -57,7 +55,6 @@ fn render_html(snapshot: &StatusSnapshot) -> String {
     )
 }
 
-#[cfg(feature = "html-panel")]
 fn html_escape(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     for ch in input.chars() {
@@ -73,13 +70,11 @@ fn html_escape(input: &str) -> String {
     out
 }
 
-#[cfg(feature = "html-panel")]
 pub(crate) struct StatusPanel {
     engine: HtmlPanelEngine,
     last_snapshot: Option<StatusSnapshot>,
 }
 
-#[cfg(feature = "html-panel")]
 impl StatusPanel {
     /// 初期 HTML テンプレートで engine を初期化する。
     pub(crate) fn new() -> Self {
@@ -140,7 +135,7 @@ impl StatusPanel {
     }
 }
 
-#[cfg(all(test, feature = "html-panel"))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::{Mutex, MutexGuard, OnceLock};

@@ -10,7 +10,6 @@ use winit::event::{ElementState, Force, MouseScrollDelta, TouchPhase};
 
 use super::DesktopRuntime;
 
-#[cfg(feature = "html-panel")]
 #[derive(Clone, Copy)]
 pub(super) enum HtmlPointerKind {
     Down,
@@ -48,10 +47,7 @@ impl DesktopRuntime {
             .record("canvas_input_window_event", std::time::Duration::ZERO);
 
         // HTML パネル領域内なら Blitz に PointerMove を転送（:hover を動かすため）
-        #[cfg(feature = "html-panel")]
         let html_changed = self.forward_html_pointer(x, y, HtmlPointerKind::Move);
-        #[cfg(not(feature = "html-panel"))]
-        let html_changed = false;
 
         let hover_changed = self.app.update_canvas_hover(position.0, position.1);
         let changed = self.app.handle_pointer_dragged(position.0, position.1)
@@ -98,15 +94,11 @@ impl DesktopRuntime {
         };
 
         // HTML パネル領域内なら Blitz に PointerDown/Up を転送（<details>/<button> click 経路）
-        #[cfg(feature = "html-panel")]
         let html_kind = match state {
             ElementState::Pressed => HtmlPointerKind::Down,
             ElementState::Released => HtmlPointerKind::Up,
         };
-        #[cfg(feature = "html-panel")]
         let html_changed = self.forward_html_pointer(x, y, html_kind);
-        #[cfg(not(feature = "html-panel"))]
-        let html_changed = false;
 
         let canvas_changed = match state {
             ElementState::Pressed => {
@@ -288,7 +280,6 @@ impl DesktopRuntime {
 
     /// HTML パネル body 領域内なら、対応 Blitz `UiEvent` を Engine に転送する。
     /// 戻り値: 転送した場合 true（再描画トリガに使う）。
-    #[cfg(feature = "html-panel")]
     pub(super) fn forward_html_pointer(
         &mut self,
         x: i32,

@@ -134,7 +134,6 @@ fn mark_dirty_unknown_panel_id_is_ignored() {
 }
 
 /// S15: install_gpu_context 未呼び出しでも render_panels は空 Vec を返す（パニックしない）
-#[cfg(feature = "html-panel")]
 #[test]
 fn render_panels_returns_empty_when_gpu_not_installed() {
     use crate::html_panel::HtmlPanelPlugin;
@@ -147,7 +146,6 @@ fn render_panels_returns_empty_when_gpu_not_installed() {
 }
 
 /// Phase 3: panel_measured_sizes が登録された全 GPU パネルの (id, w, h) を返す
-#[cfg(feature = "html-panel")]
 #[test]
 fn panel_measured_sizes_returns_each_panel() {
     use crate::html_panel::HtmlPanelPlugin;
@@ -176,7 +174,6 @@ fn panel_measured_sizes_returns_each_panel() {
 }
 
 /// Phase 3: forward_panel_input は対象パネルの engine.on_input を呼び layout_dirty を立てる
-#[cfg(feature = "html-panel")]
 #[test]
 fn forward_panel_input_routes_to_correct_plugin() {
     use crate::html_panel::HtmlPanelPlugin;
@@ -211,7 +208,6 @@ fn forward_panel_input_routes_to_correct_plugin() {
     assert!(!routed_unknown, "unknown panel id should not route");
 }
 
-#[cfg(feature = "html-panel")]
 fn make_dummy_pointer_move() -> panel_html_experiment::blitz_traits::events::UiEvent {
     use panel_html_experiment::blitz_traits::events::{
         BlitzPointerEvent, BlitzPointerId, MouseEventButton, MouseEventButtons, PointerCoords,
@@ -236,7 +232,6 @@ fn make_dummy_pointer_move() -> panel_html_experiment::blitz_traits::events::UiE
 }
 
 /// Phase 3: take_panel_size_changes は変化があった panel_id だけを返し、二回目は空
-#[cfg(feature = "html-panel")]
 #[test]
 fn take_panel_size_changes_yields_changed_panels_then_empty() {
     use crate::html_panel::HtmlPanelPlugin;
@@ -273,7 +268,6 @@ fn take_panel_size_changes_yields_changed_panels_then_empty() {
 /// Phase 1: HTML パネルは workspace 統合のために `panel_trees()` に id 付きで現れる必要がある。
 /// `panel_tree()` は children 空でも tree 自体を返すため、ui-shell の `reconcile_runtime_panels`
 /// で workspace_layout エントリが作られる前提が満たされる。
-#[cfg(feature = "html-panel")]
 #[test]
 fn html_panel_appears_in_panel_trees_with_static_id() {
     use crate::html_panel::HtmlPanelPlugin;
@@ -300,7 +294,6 @@ fn html_panel_appears_in_panel_trees_with_static_id() {
 
 // ───── Phase 9E-3: DSL→HTML GPU 統合経路のテスト ─────────────────────────
 
-#[cfg(feature = "html-panel")]
 mod gpu_unified {
     use super::*;
     use crate::html_panel::HtmlPanelPlugin;

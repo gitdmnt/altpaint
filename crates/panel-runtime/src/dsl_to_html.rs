@@ -21,8 +21,8 @@ const DEFAULT_CSS: &str = r#"
 .alt-panel-root { font-family: system-ui, sans-serif; font-size: 12px; color: #ddd; padding: 4px 6px; }
 .alt-col { display: flex; flex-direction: column; gap: 4px; }
 .alt-row { display: flex; flex-direction: row; gap: 6px; align-items: center; }
-.alt-section { margin-top: 4px; padding: 2px 4px; border-top: 1px solid #333; }
-.alt-section > summary { cursor: pointer; font-weight: bold; padding: 2px 0; }
+.alt-section { margin-top: 4px; padding: 2px 4px; border-top: 1px solid #333; display: flex; flex-direction: column; gap: 4px; }
+.alt-section > .alt-section-title { font-weight: bold; padding: 2px 0; }
 .alt-text { display: inline-block; }
 .alt-text-row { display: flex; gap: 4px; align-items: baseline; }
 .alt-text-label { color: #999; }
@@ -84,15 +84,18 @@ fn translate_node(node: &PanelNode, out: &mut String) {
             out.push_str("</div>");
         }
         PanelNode::Section { id, title, children } => {
-            out.push_str("<details class=\"alt-section\" open data-altp-id=\"");
+            // Phase 9G: Blitz/stylo がネストした <details> で primary style 解決に
+            // 失敗して panic するため、<div> + 見出しタイトル方式へ切り替えた。
+            // open/close UX は当面失われる (post-alpha で再検討)。
+            out.push_str("<div class=\"alt-section\" data-altp-id=\"");
             out.push_str(&escape_attr(id));
-            out.push_str("\"><summary>");
+            out.push_str("\"><div class=\"alt-section-title\">");
             out.push_str(&escape_html(title));
-            out.push_str("</summary>");
+            out.push_str("</div>");
             for child in children {
                 translate_node(child, out);
             }
-            out.push_str("</details>");
+            out.push_str("</div>");
         }
         PanelNode::Text { id, text } => {
             out.push_str("<span class=\"alt-text\" data-altp-id=\"");
@@ -396,7 +399,7 @@ mod tests {
     }
 
     #[test]
-    fn translate_section_uses_details_summary() {
+    fn translate_section_uses_div_with_title() {
         let tree = tree_with(vec![PanelNode::Section {
             id: "s".to_string(),
             title: "編集".to_string(),
@@ -406,8 +409,8 @@ mod tests {
             }],
         }]);
         let (html, _) = translate_panel_tree(&tree);
-        assert!(html.contains("<details class=\"alt-section\" open"));
-        assert!(html.contains("<summary>編集</summary>"));
+        assert!(html.contains("<div class=\"alt-section\""));
+        assert!(html.contains("<div class=\"alt-section-title\">編集</div>"));
         assert!(html.contains(">hello</span>"));
     }
 

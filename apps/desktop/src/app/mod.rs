@@ -85,7 +85,6 @@ pub(crate) struct DesktopApp {
     pub(crate) layout: Option<DesktopLayout>,
     canvas_frame: Option<CanvasFrame>,
     /// Phase 9E-4: ステータスバー (HtmlPanelEngine GPU 描画)。
-    #[cfg(feature = "html-panel")]
     pub(crate) status_panel: crate::frame::status_panel::StatusPanel,
     pending_canvas_dirty_rect: Option<app_core::CanvasDirtyRect>,
     pending_temp_overlay_dirty_rect: Option<crate::frame::Rect>,
@@ -167,7 +166,6 @@ impl DesktopApp {
             panel_surface: None,
             layout: None,
             canvas_frame: None,
-            #[cfg(feature = "html-panel")]
             status_panel: crate::frame::status_panel::StatusPanel::new(),
             pending_canvas_dirty_rect: None,
             pending_temp_overlay_dirty_rect: None,
