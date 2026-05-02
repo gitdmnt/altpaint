@@ -32,6 +32,7 @@
 
 - `app-core`
 - `canvas`
+- `render-types`
 - `render`
 - `storage`
 - `desktop-support`
@@ -118,9 +119,8 @@ graph TD
 ### 依存関係の要点
 
 - `app-core` は workspace 内の土台であり、ローカル依存を持たない
-- `canvas` / `render` / `storage` / `desktop-support` / `panel-api` / `workspace-persistence` は `app-core` に依存する周辺クレートである
-- `canvas` は `render` の view mapping API を使うが、project I/O や panel runtime へは依存しない
-- `render` は floating panel rasterize のため `panel-api` にも依存する
+- `canvas` / `storage` / `desktop-support` / `panel-api` / `workspace-persistence` は `app-core` に依存する周辺クレートである
+- `canvas` は `render-types` の view mapping API を使うが、project I/O や panel runtime へは依存しない
 - `panel-runtime` が現在の panel runtime 統合点であり、DSL 読み込み・Wasm 実行・host sync を持つ
 - `ui-shell` は `panel-runtime` に依存する presentation crate になった
 - `plugin-host` は `panel-runtime` の内側で使われ、`apps/desktop` は直接依存していない
@@ -204,22 +204,36 @@ graph TD
 - `plugins/builtin_bitmap.rs`
 - `ops/*`
 
-### `render`
+### `render-types` (Phase 9B 追加, 2026-04-26)
 
 担当:
 
-- `Document` から `RenderFrame` を得る最小描画入口
-- `CanvasViewTransform` から canvas scene / quad / dirty 写像 / view 座標変換を得る
-- `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan` の構築
-- dirty rect の union、露出背景、ブラシ preview dirty の判断
-- base / overlay / panel / status の CPU compose
-- floating panel layer の GUI ラスタライズ
-- panel hit region の生成
+- 純データ DTO 専用クレート (wgpu/fontdb/panel-api 非依存、`app-core` のみ依存)
+- `PixelRect` / `TextureQuad` / `CanvasScene` / `prepare_canvas_scene`
+- `FramePlan` / `CanvasPlan` / `PanelPlan` / `LayerGroupDirtyPlan`
+- `CanvasOverlayState` / `PanelNavigatorOverlay` / `PanelNavigatorEntry`
+- dirty rect の union 計算 (`union_dirty_rect`, `union_optional_rect`)
+- ブラシ preview dirty / 露出背景 / 座標変換などの純粋計算
 
-現状の実態:
+意味:
 
-- canvas 幾何に加えて frame compose と dirty plan の中核を持つ
-- 最終 upload と GPU presenter orchestration は `apps/desktop` / `wgpu_canvas` 側に残る
+- 9C/9D で装飾・overlay を GPU 化する際、`render` の CPU 実装に触らずに DTO を
+  consume できる
+- 9F で `render` クレートを削除し、GPU 経路への入力 DTO として残った
+
+### `render` (Phase 9F で削除完了 — 2026-04-29)
+
+旧クレートは物理削除済み。残存していた API の移管先:
+
+- `RenderFrame` (CPU canvas snapshot) → `apps/desktop/src/app/canvas_frame.rs::CanvasFrame`
+- `RenderContext::render_frame` → `apps/desktop` 内 `build_canvas_frame(document)` 純関数
+- `PanelHitKind` / `PanelHitRegion` → `crates/ui-shell/src/presentation.rs` 内部型
+- `compose_*` / `blit_*` / `fill_rgba_block` / `scroll_canvas_region` /
+  `build_source_axis_runs` / `SourceAxisRun` → 呼び出し元 0 件のため削除のみ
+- `PresentScene::base_layer` (L1) / `ui_panel_layer` (L4) `FrameLayer` → dummy 経路ごと撤去
+- `PresentScene::html_panel_quads` → `panel_quads` にリネーム
+
+詳細は `docs/adr/010-render-crate-removal.md`。
 
 ### `panel-api`
 

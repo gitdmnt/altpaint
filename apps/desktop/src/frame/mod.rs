@@ -1,15 +1,27 @@
 //! デスクトップ固有の固定レイアウト計算と presenter 入力変換をまとめる。
 
 mod geometry;
+mod overlay_quad;
+mod solid_quad;
+pub(crate) mod status_panel;
 use desktop_support::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
 
 #[allow(unused_imports)]
 pub(crate) use geometry::{
     fit_rect, map_window_to_panel_surface, map_window_to_panel_surface_clamped,
 };
+#[allow(unused_imports)]
+pub(crate) use overlay_quad::{
+    CircleQuad, LineQuad, build_overlay_circle_quads, build_overlay_line_quads,
+    build_overlay_solid_quads,
+};
+#[allow(unused_imports)]
+pub(crate) use solid_quad::{
+    SolidQuad, build_background_solid_quads, build_foreground_solid_quads, pixel_rect_to_ndc,
+};
 
-pub(crate) type Rect = render::PixelRect;
-pub(crate) type TextureQuad = render::TextureQuad;
+pub(crate) type Rect = render_types::PixelRect;
+pub(crate) type TextureQuad = render_types::TextureQuad;
 
 /// デスクトップ UI の固定レイアウト情報。
 #[derive(Debug, Clone, PartialEq, Eq)]

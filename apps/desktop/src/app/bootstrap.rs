@@ -199,4 +199,16 @@ fn apply_ui_state_to_panel_system(
         panel_runtime.replace_persistent_panel_configs(ui_state.plugin_configs.clone());
     }
     panel_presentation.reconcile_runtime_panels(panel_runtime);
+
+    // GPU パネル (DSL/HTML) の permanent size を Engine の measured_size に流し込む。
+    // workspace_layout が後から差し替わった場合も、ここで再 restore する。
+    let panel_ids = panel_runtime.panel_ids_with_gpu();
+    for panel_id in panel_ids {
+        if let Some(rect) = panel_presentation.panel_rect(&panel_id) {
+            let _ = panel_runtime.restore_panel_size(
+                &panel_id,
+                (rect.width.max(1) as u32, rect.height.max(1) as u32),
+            );
+        }
+    }
 }

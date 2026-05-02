@@ -113,14 +113,14 @@ impl PanelPresentation {
             viewport_height,
             size,
         );
-        self.panel_layout_dirty = true;
+        // 9E-3: panel_layout_dirty 廃止 (CPU bitmap キャッシュ撤去)
         true
     }
 
     /// 既存データを走査して パネル 矩形 を組み立てる。
     ///
     /// 値を生成できない場合は `None` を返します。
-    pub fn panel_rect(&self, panel_id: &str) -> Option<render::PixelRect> {
+    pub fn panel_rect(&self, panel_id: &str) -> Option<render_types::PixelRect> {
         if let Some(rect) = self.rendered_panel_rects.get(panel_id) {
             return Some(*rect);
         }
@@ -137,7 +137,64 @@ impl PanelPresentation {
             size,
             default_panel_position(panel_id, 0),
         );
-        Some(render::PixelRect {
+        Some(render_types::PixelRect {
+            x: position.x,
+            y: position.y,
+            width: size.width,
+            height: size.height,
+        })
+    }
+
+    /// 指定パネルの workspace_layout 上のサイズを `(width, height)` に書き換える。
+    /// HTML パネルが measured_size の変化を永続化する経路で使う。
+    /// 戻り値: 値が実際に変わった場合 true（永続化 dirty フラグを立てる判断に使う）。
+    pub fn set_panel_size(&mut self, panel_id: &str, width: usize, height: usize) -> bool {
+        let Some(entry) = self
+            .workspace_layout
+            .panels
+            .iter_mut()
+            .find(|entry| entry.id == panel_id)
+        else {
+            return false;
+        };
+        let next = WorkspacePanelSize {
+            width: width.max(1),
+            height: height.max(1),
+        };
+        if entry.size == Some(next) {
+            return false;
+        }
+        entry.size = Some(next);
+        // 9E-3: panel_layout_dirty 廃止 (CPU bitmap キャッシュ撤去)
+        true
+    }
+
+    /// `panel_rect` の viewport 指定版。anchor (TopRight/BottomRight/BottomLeft) で
+    /// `usize::MAX` を使うと座標が画面外に飛ぶため、HTML パネルなど描画前に
+    /// `rendered_panel_rects` を持たないパネルではこちらを使う。
+    pub fn panel_rect_in_viewport(
+        &self,
+        panel_id: &str,
+        viewport_width: usize,
+        viewport_height: usize,
+    ) -> Option<render_types::PixelRect> {
+        if let Some(rect) = self.rendered_panel_rects.get(panel_id) {
+            return Some(*rect);
+        }
+
+        let entry = self
+            .workspace_layout
+            .panels
+            .iter()
+            .find(|entry| entry.id == panel_id)?;
+        let size = entry.size.unwrap_or_default();
+        let position = entry.resolved_position(
+            viewport_width,
+            viewport_height,
+            size,
+            default_panel_position(panel_id, 0),
+        );
+        Some(render_types::PixelRect {
             x: position.x,
             y: position.y,
             width: size.width,
@@ -166,7 +223,7 @@ impl PanelPresentation {
 
         self.workspace_layout.panels.swap(index, target_index);
         self.mark_all_panel_content_dirty();
-        self.panel_layout_dirty = true;
+        // 9E-3: panel_layout_dirty 廃止 (CPU bitmap キャッシュ撤去)
         true
     }
 
@@ -201,7 +258,7 @@ impl PanelPresentation {
             self.focused_target = None;
         }
         self.mark_all_panel_content_dirty();
-        self.panel_layout_dirty = true;
+        // 9E-3: panel_layout_dirty 廃止 (CPU bitmap キャッシュ撤去)
         true
     }
 
@@ -268,6 +325,13 @@ impl PanelPresentation {
             .filter(|panel_id| self.panel_is_visible(panel_id))
             .filter_map(|panel_id| panel_trees.get(panel_id).cloned())
             .collect()
+    }
+
+    /// 指定パネルが現在表示状態かを返す (外部 crate 向け公開 API)。
+    ///
+    /// HTML パネルの GPU 描画スキップ判定など、ui-shell 外部からも参照される。
+    pub fn is_panel_visible(&self, panel_id: &str) -> bool {
+        self.panel_is_visible(panel_id)
     }
 
     /// 既存データを走査して パネル is 表示状態 を組み立てる。

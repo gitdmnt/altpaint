@@ -1,6 +1,6 @@
 use app_core::{CanvasPoint, PanelBounds};
 
-use crate::{CanvasPlan, PanelSurfaceSource, PixelRect};
+use crate::PixelRect;
 
 /// キャンバス上の一時オーバーレイ状態を保持する。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -28,12 +28,4 @@ pub struct PanelNavigatorOverlay {
     pub page_width: usize,
     pub page_height: usize,
     pub panels: Vec<PanelNavigatorEntry>,
-}
-
-/// overlay 合成に必要な入力をまとめた計画を表す。
-#[derive(Clone)]
-pub struct OverlayPlan<'a> {
-    pub canvas: CanvasPlan,
-    pub panel_surface: PanelSurfaceSource<'a>,
-    pub overlay: CanvasOverlayState,
 }

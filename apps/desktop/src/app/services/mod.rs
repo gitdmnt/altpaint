@@ -1,7 +1,6 @@
 //! host service request と補助的な状態同期処理を扱う。
 
 mod export;
-#[cfg(feature = "gpu")]
 mod gpu_sync;
 mod project_io;
 mod snapshot;
@@ -86,10 +85,8 @@ impl DesktopApp {
                     dirty.y,
                     &before,
                 ) {
-                    self.refresh_canvas_frame_region(page_dirty);
                     self.append_canvas_dirty_rect(page_dirty);
                     // GPU パス: dirty 領域だけを GPU へ同期（全レイヤー転送は不要）
-                    #[cfg(feature = "gpu")]
                     if let Some(pool) = self.gpu_canvas_pool.as_ref()
                         && let Some(region) =
                             self.document
@@ -109,7 +106,6 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 true
             }
-            #[cfg(feature = "gpu")]
             Some(HistoryEntry::GpuBitmapPatch {
                 panel_id,
                 layer_index,
@@ -138,11 +134,6 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 true
             }
-            #[cfg(not(feature = "gpu"))]
-            Some(HistoryEntry::GpuBitmapPatch { .. }) => {
-                // GPU feature 無効時は GpuBitmapPatch は生成されないため到達しない
-                false
-            }
             None => false,
         }
     }
@@ -166,9 +157,7 @@ impl DesktopApp {
                     dirty.y,
                     &after,
                 ) {
-                    self.refresh_canvas_frame_region(page_dirty);
                     self.append_canvas_dirty_rect(page_dirty);
-                    #[cfg(feature = "gpu")]
                     if let Some(pool) = self.gpu_canvas_pool.as_ref()
                         && let Some(region) =
                             self.document
@@ -188,7 +177,6 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 true
             }
-            #[cfg(feature = "gpu")]
             Some(HistoryEntry::GpuBitmapPatch {
                 panel_id,
                 layer_index,
@@ -217,8 +205,6 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 true
             }
-            #[cfg(not(feature = "gpu"))]
-            Some(HistoryEntry::GpuBitmapPatch { .. }) => false,
             None => false,
         }
     }
@@ -283,6 +269,22 @@ impl DesktopApp {
         }
         document.replace_tool_catalog(tools);
         true
+    }
+
+    /// 9E-4: HtmlPanelEngine ステータスバー用のスナップショットを組み立てる。
+    /// ツール名・ズーム % ・status text を集約して返す。
+    pub(crate) fn build_status_snapshot(&self) -> crate::frame::status_panel::StatusSnapshot {
+        let tool_name = match self.document.active_tool {
+            app_core::ToolKind::Pen => "Pen",
+            app_core::ToolKind::Eraser => "Eraser",
+            app_core::ToolKind::Bucket => "Bucket",
+            app_core::ToolKind::LassoBucket => "LassoBucket",
+            app_core::ToolKind::PanelRect => "PanelRect",
+        };
+        let zoom_percent =
+            (self.document.view_transform.zoom * 100.0).round().clamp(1.0, 100_000.0) as u32;
+        let status_text = self.status_text();
+        crate::frame::status_panel::StatusSnapshot::new(tool_name, zoom_percent, status_text)
     }
 
     /// ステータス テキスト 用の表示文字列を組み立てる。

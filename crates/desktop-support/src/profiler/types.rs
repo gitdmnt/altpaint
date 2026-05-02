@@ -8,14 +8,8 @@ pub struct PresentTimings {
     pub upload: Duration,
     pub encode_and_submit: Duration,
     pub present: Duration,
-    pub base_upload: Duration,
-    pub temp_overlay_upload: Duration,
     pub canvas_upload: Duration,
-    pub ui_panel_upload: Duration,
-    pub base_upload_bytes: u64,
-    pub temp_overlay_upload_bytes: u64,
     pub canvas_upload_bytes: u64,
-    pub ui_panel_upload_bytes: u64,
 }
 
 /// 計測ラベルごとの回数・合計・最大値を保持する。

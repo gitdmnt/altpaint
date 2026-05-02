@@ -10,15 +10,27 @@ use winit::event::{ElementState, Force, MouseScrollDelta, TouchPhase};
 
 use super::DesktopRuntime;
 
+#[derive(Clone, Copy)]
+pub(super) enum HtmlPointerKind {
+    Down,
+    Up,
+    Move,
+}
+
 impl DesktopRuntime {
     /// 入力や種別に応じて処理を振り分ける。
     fn wheel_delta_lines(delta: MouseScrollDelta) -> (f32, f32) {
         match delta {
             MouseScrollDelta::LineDelta(x, y) => (x, y),
-            MouseScrollDelta::PixelDelta(position) => (
-                position.x as f32 / ui_shell::text_line_height() as f32,
-                position.y as f32 / ui_shell::text_line_height() as f32,
-            ),
+            MouseScrollDelta::PixelDelta(position) => {
+                // 9E-4: 旧 ui_shell::text_line_height() (font8x8 由来) を撤去。
+                // wheel pixel → line 換算用に system-ui の標準行高 16px を採用する。
+                const PIXELS_PER_LINE: f32 = 16.0;
+                (
+                    position.x as f32 / PIXELS_PER_LINE,
+                    position.y as f32 / PIXELS_PER_LINE,
+                )
+            }
         }
     }
 
@@ -33,8 +45,14 @@ impl DesktopRuntime {
         self.last_cursor_position_f64 = Some((x as f64, y as f64));
         self.profiler
             .record("canvas_input_window_event", std::time::Duration::ZERO);
+
+        // HTML パネル領域内なら Blitz に PointerMove を転送（:hover を動かすため）
+        let html_changed = self.forward_html_pointer(x, y, HtmlPointerKind::Move);
+
         let hover_changed = self.app.update_canvas_hover(position.0, position.1);
-        let changed = self.app.handle_pointer_dragged(position.0, position.1) || hover_changed;
+        let changed = self.app.handle_pointer_dragged(position.0, position.1)
+            || hover_changed
+            || html_changed;
         self.record_canvas_input_if_needed(changed)
     }
 
@@ -75,13 +93,21 @@ impl DesktopRuntime {
             return false;
         };
 
-        match state {
+        // HTML パネル領域内なら Blitz に PointerDown/Up を転送（<details>/<button> click 経路）
+        let html_kind = match state {
+            ElementState::Pressed => HtmlPointerKind::Down,
+            ElementState::Released => HtmlPointerKind::Up,
+        };
+        let html_changed = self.forward_html_pointer(x, y, html_kind);
+
+        let canvas_changed = match state {
             ElementState::Pressed => {
                 let changed = self.app.handle_pointer_pressed_with_pressure(x, y, 1.0);
                 self.record_canvas_input_if_needed(changed)
             }
             ElementState::Released => self.app.handle_pointer_released_with_pressure(x, y, 1.0),
-        }
+        };
+        canvas_changed || html_changed
     }
 
     /// Has pending ホイール animation かどうかを返す。
@@ -250,6 +276,58 @@ impl DesktopRuntime {
                     .handle_pointer_released_with_pressure(position.0, position.1, pressure)
             }
         }
+    }
+
+    /// HTML パネル body 領域内なら、対応 Blitz `UiEvent` を Engine に転送する。
+    /// 戻り値: 転送した場合 true（再描画トリガに使う）。
+    pub(super) fn forward_html_pointer(
+        &mut self,
+        x: i32,
+        y: i32,
+        kind: HtmlPointerKind,
+    ) -> bool {
+        if x < 0 || y < 0 {
+            return false;
+        }
+        let Some((panel_id, local_x, local_y)) = self
+            .app
+            .panel_presentation
+            .html_panel_at(x as usize, y as usize)
+        else {
+            return false;
+        };
+        use panel_html_experiment::blitz_traits::events::{
+            BlitzPointerEvent, BlitzPointerId, MouseEventButton, MouseEventButtons,
+            PointerCoords, PointerDetails, UiEvent,
+        };
+        // local_x/y は chrome を含む panel 全体原点（screen_rect 基準）なので
+        // body オフセット（chrome_height）を Engine 側で扱う。Blitz には panel-local 座標を渡す。
+        let coords = PointerCoords {
+            page_x: local_x as f32,
+            page_y: local_y as f32,
+            client_x: local_x as f32,
+            client_y: local_y as f32,
+            screen_x: x as f32,
+            screen_y: y as f32,
+        };
+        let pointer = BlitzPointerEvent {
+            id: BlitzPointerId::Mouse,
+            is_primary: true,
+            coords,
+            button: MouseEventButton::Main,
+            buttons: match kind {
+                HtmlPointerKind::Down => MouseEventButtons::Primary,
+                _ => MouseEventButtons::empty(),
+            },
+            mods: keyboard_types::Modifiers::empty(),
+            details: PointerDetails::default(),
+        };
+        let event = match kind {
+            HtmlPointerKind::Down => UiEvent::PointerDown(pointer),
+            HtmlPointerKind::Up => UiEvent::PointerUp(pointer),
+            HtmlPointerKind::Move => UiEvent::PointerMove(pointer),
+        };
+        self.app.panel_runtime.forward_panel_input(&panel_id, event)
     }
 
     /// キャンバス 入力 if needed を記録する。

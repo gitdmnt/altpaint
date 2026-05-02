@@ -206,7 +206,7 @@ plugin panel の SDK は `plugin-sdk` が担当し、macro はそのサブモジ
 | --------------- | -------------------------------------------- | ---------------------- | ----------------------------------------------------- | ---------------------------------------------------- |
 | `desktopApp`    | `apps/desktop`                               | `apps/desktop`         | event loop、OS I/O、GPU 所有、subsystem orchestration | OS/window/GPU/event loop に触るならここ              |
 | `app-core`      | `crates/app-core`                            | `crates/app-core`      | `Document`、`Command`、純粋状態、不変条件             | UI/GPU/Wasm を知らない純粋状態ならここ               |
-| `render`        | `crates/render`                              | `crates/render`        | frame plan、dirty rect、座標変換、compose 計画        | 画面生成のための計算ならここ                         |
+| `render-types`  | `crates/render-types`                        | `crates/render-types`  | frame plan、dirty rect、座標変換、純データ DTO        | 画面生成のための純粋計算ならここ                     |
 | `canvas`        | 未作成                                       | `crates/canvas`        | canvas 入力解釈、tool runtime、bitmap op              | canvas 差分生成や gesture state machine ならここ     |
 | `ui-shell`      | `crates/ui-shell`                            | `crates/ui-shell`      | panel presentation、host facade、panel UI 管理 API    | panel の見た目・hit-test・focus・text input ならここ |
 | `panel-runtime` | 未作成                                       | `crates/panel-runtime` | panel discovery、DSL/Wasm bridge、host snapshot sync  | panel runtime と presentation を分けたい処理ならここ |
@@ -219,7 +219,7 @@ plugin panel の SDK は `plugin-sdk` が担当し、macro はそのサブモジ
 ```text
 apps/desktop
 	-> app-core
-	-> render
+	-> render-types
 	-> canvas
 	-> ui-shell
 		 -> panel-runtime

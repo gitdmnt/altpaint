@@ -47,6 +47,8 @@
   - **プランE（レイヤー名変更 UI）**: `plugins/layers-panel/panel.altp-panel` に確定ボタン追加・`rename_text` state 追加。`src/lib.rs` に `RENAME_BUF`（`thread_local! RefCell<String>`）、`update_rename_text` / `confirm_rename` ハンドラを追加。
   - **プランF（visibility/blend_mode パフォーマンス）**: `apps/desktop/src/app/command_router.rs` で `SetActiveLayerBlendMode` / `ToggleActiveLayerVisibility` を独立した match arm に分離し、`refresh_canvas_frame_region(panel_bounds)` + `append_canvas_dirty_rect(panel_bounds)` による差分更新に変更。全体 recomposite を回避。
   - **プランA（Wasm 再ビルド）**: `.\scripts\build-ui-wasm.ps1` で全 11 プラグインの `.wasm` を再ビルド。app-actions・undo/redo・panel_rect 等の export エラーを解消。
+- **Phase 9F 完了 (2026-04-29)**: `crates/render/` クレート物理削除。`RenderFrame` を `apps/desktop/src/app/canvas_frame.rs::CanvasFrame` へ吸収、`PresentScene` から dummy 化されていた `base_layer` (L1) と `ui_panel_layer` (L4) を撤去、`html_panel_quads` を `panel_quads` にリネーム。`PresentTimings` から `base_upload`/`ui_panel_upload` 系フィールド削除。さらに dead code 撤去として `PanelHitKind`/`PanelHitRegion`/`PanelSurface::hit_regions` 一式、`PanelDragState::Control` ヴァリアント、`refresh_canvas_frame_region`、`panel_surface_hit_regions` profiler value を削除。HTML パネル hit-test を `html_panel_hit_at`/`html_panel_move_handle_at` に統一し、関連テストを synthetic hit-table 注入で書き直し。最終ベースライン: 127 passed / 0 failed / 6 ignored、clippy 警告 83 件 (着手前と同数)。詳細: `docs/adr/010-render-crate-removal.md`。
+- **Phase 9G 完了 (2026-05-02)**: `html-panel` feature gate を完全撤去。Phase 9E で CPU パネルラスタライザを撤去した結果、`HtmlPanelEngine` 経路がパネル描画の唯一の手段となっていたが、`apps/desktop` の `html-panel` feature が default OFF のまま放置されており、`cargo run -p desktop` (feature 指定なし) では `panel_quads = &[]` / `status_quad = None` となり全パネル＋ステータスバーが画面から消える状態だった。`apps/desktop/Cargo.toml` と `crates/panel-runtime/Cargo.toml` から `[features]` テーブル削除、`panel-html-experiment` / `keyboard-types` を必須依存へ昇格、`apps/desktop` 内 14 箇所と `panel-runtime` 内 23 箇所の `cfg(feature = "html-panel")` / `cfg(not(feature = "html-panel"))` 分岐を完全撤去。clippy 警告 83 → 70 件 (13 件減)。あわせて `crates/panel-runtime/src/dsl_to_html.rs` の `PanelNode::Section` 翻訳を `<details><summary>` から `<div class="alt-section">` へ切り替え (Blitz/stylo がネストした `<details>` の primary style 解決に失敗して panic する潜在バグ回避)。詳細: `docs/adr/011-html-panel-feature-removal.md`。
 
 ## 現在の workspace 構成
 
@@ -54,7 +56,7 @@
 
 - `app-core`
 - `canvas`
-- `render`
+- `render-types`
 - `storage`
 - `desktop-support`
 - `panel-api`
@@ -800,6 +802,75 @@
 
 ---
 
+## Phase 8G: HTML パネル枠サイズの動的化と責務再分離 (2026-04-25) 完了
+
+作業モデル: claude-opus-4-7 (1M context)
+
+### 経緯
+
+Phase 8F で HTML パネル GPU 直描画統合は完了したが、描画枠サイズが `WorkspacePanelSize::default()` の固定値で決まっており、HTML コンテンツ自然サイズと一致しない問題が残っていた。あわせて `HtmlPanelEngine` / `HtmlPanelPlugin` / `apps/desktop/runtime.rs` 間で「枠サイズ・dirty・GPU target・chrome 描画」の責務が散らばっており、枠の動的化と同時に責務再分離を行った。
+
+### 実装内容
+
+- **`crates/panel-html-experiment/src/engine.rs`** に状態とライフサイクルを集約
+  - `measured_size: (u32, u32)` — パネルの権威サイズ。`on_load` で初期化、`on_render` で intrinsic 結果に応じて更新
+  - `layout_dirty` / `render_dirty` / `pending_size_change` フラグを Engine 内で管理（Blitz の `has_changes()` バグを回避するため自前トラック継続）
+  - `gpu_target: Option<PanelGpuTarget>` — Plugin から移管。`on_render` 内でリサイズ判定して再生成
+  - 公開 API: `on_load(restored_size)` / `measured_size()` / `measure_intrinsic(max_w)` / `on_host_snapshot(snapshot)` / `on_input(UiEvent)` / `on_render(device, queue, renderer, scene_buf, viewport, scale, chrome)` / `take_size_change()`
+  - `measure_intrinsic` は viewport (max_w, 8192) で resolve → `<body>` の `final_layout.content_size` から自然サイズを取得
+  - `on_input` は `EventDriver::handle_ui_event` 経由で `:hover` / `<details>` / pointer click を Blitz に流す
+  - `on_render` は viewport クランプ → resolve → content size 比較 → measured_size 変化なら GPU target 再作成 + `pending_size_change` 立て
+
+- **`crates/panel-runtime/src/html_panel.rs`** を panel-api 接合層として薄く再構成
+  - `gpu_target` / `render_dirty` / chrome 描画 / リサイズ判定はすべて Engine に委譲
+  - `load(directory, restored_size: Option<(u32, u32)>)` / `from_parts(id, title, html, css, restored_size)` でロード時に永続値を流せる
+  - `forward_input(UiEvent)` / `measured_size()` / `take_size_change()` / `restore_size((w, h))` を新設
+  - 残った責務: ファイル I/O、host snapshot 構築（Document → JSON）、`data-action` → `HostAction` 翻訳、`PanelPlugin` trait 実装
+
+- **`crates/panel-runtime/src/registry.rs`**
+  - `html_measured_sizes() -> Vec<(String, u32, u32)>` — HTML パネル毎の現在の measured_size
+  - `forward_html_input(panel_id, UiEvent) -> bool` — 指定パネルへ入力転送
+  - `take_html_size_changes() -> Vec<(String, (u32, u32))>` — `render_html_panels` 中に発生したサイズ変化を吸い取り（take セマンティクス）
+  - `restore_html_panel_size(panel_id, (w, h))` — 起動時 restore 用
+  - `render_html_panels` 内で `take_size_change()` を吸い取り `pending_html_size_changes` に蓄積
+
+- **`crates/ui-shell/src/lib.rs` / `workspace.rs`**
+  - `set_panel_size(panel_id, w, h)` — workspace_layout の panel size を書き換える（永続化に流す）
+  - `html_panel_at(x, y) -> Option<(panel_id, local_x, local_y)>` — HTML パネル領域ヒット（chrome 除外）
+
+- **`apps/desktop/src/runtime.rs`**
+  - HTML quad entry 構築から `PixelRect { width: 300, height: 220 }` 固定 fallback を削除
+  - サイズは `panel_runtime.html_measured_sizes()` から取得、位置のみ `panel_rect_in_viewport` から取得
+  - `render_html_panels` 後に `take_html_size_changes()` を吸い取って `set_panel_size` で workspace_layout を更新（既存 persistence 経路に乗る）
+
+- **`apps/desktop/src/runtime/pointer.rs`**
+  - `handle_mouse_cursor_moved` / `handle_mouse_button` で HTML パネル領域内の pointer を `forward_html_input` に転送（PointerDown/Up/Move）
+  - `:hover` / `<details>` 開閉 / `<button>` click が動的に動くようになった
+
+- **`apps/desktop/src/app/bootstrap.rs`**
+  - `apply_ui_state_to_panel_system` 内で workspace_layout に永続化された HTML パネル size を `restore_html_panel_size` 経由で Engine に流し込む
+
+### 受け入れ結果
+
+- HTML パネル起動直後の枠が `panel.html` のコンテンツ自然サイズに一致（300x220 固定撤廃）
+- 永続化された `WorkspacePanelSize` が起動時に復元
+- `:hover` / `<details>` / button click が動的に動作
+- viewport 上限クランプ（コンテンツが viewport を超えてもパネルは画面内に収まる）
+- chrome 領域への pointer は move handle へ、body 領域は HTML エンジンへ正しく振り分け
+- `cargo test -p panel-html-experiment --lib`: 27 passed
+- `cargo test -p panel-runtime --features html-panel --lib`: 26 passed
+- `cargo test -p desktop --features html-panel --bins`: 110 passed
+- `cargo clippy --workspace --all-targets --features html-panel`: 新規コード起因 0 error
+
+### スコープ外
+
+- 手動リサイズハンドル UI（角ドラッグ等）
+- IME / キーボード入力の Blitz 転送
+- スクロール対応（viewport クランプのみ）
+- `<select>` ドロップダウン（popup レイヤ責務の設計が別途必要なため次フェーズ）
+
+---
+
 ## Phase 8F: HTML パネル GPU 直描画統合 (2026-04-25) 完了
 
 作業モデル: claude-opus-4-7 (1M context)
@@ -852,10 +923,19 @@ GPU 直描画では CPU→GPU 通信ゼロを実現する代わりに vello GPU 
 ### 受け入れ結果
 
 - `cargo test --workspace`（default features）: **378 passed / 0 failed**
-- `cargo test --workspace --features desktop/html-panel`: **386 passed / 0 failed**
+- `cargo test --workspace --features desktop/html-panel`: **391 passed / 0 failed**（テキスト描画関連のテスト 5 件追加）
 - `cargo clippy -p panel-html-experiment -p panel-runtime --features panel-runtime/html-panel --all-targets`: 新規コード起因 0 warning
 - `cargo build -p desktop --release --features html-panel`: 成功（3m35s, 36.46 MiB）
 - CSS 反映: `gpu_html_panel_renders_red_pixel_when_css_red_background` で texture readback により実 pixel レベルで検証
+- テキスト描画: `ascii_text_renders_dark_pixels_in_text_rect` / `japanese_text_renders_dark_pixels` / `full_panel_html_renders_visible_text` / `panel_background_color_is_preserved` / `ascii_text_emits_glyph_run_in_scene` で texture 上の glyph 出現を pixel レベルで検証
+
+### Phase 8F 修正: テキスト描画 (2026-04-25)
+
+`crates/panel-html-experiment/Cargo.toml` で `blitz-dom = { default-features = false }` としていたために、`system_fonts` feature（`parley/system` を有効化）が抜け落ちていた。これにより parley が `Collection { system_fonts: false }` で動作し、Windows / dwrite 経由のフォントロードが行われず glyph runs が空のまま vello scene に積まれず、結果として「枠は描画されるがテキストは一切出ない」状態になっていた。
+
+修正: `features = ["system_fonts"]` を明示。これだけで日本語含む system font 経路が開通し、`panel.html` のテキストが画面に出るようになる。
+
+GPU テスト群が並列実行で wgpu Adapter / Device 生成競合により flaky だった問題は、`Mutex<()>` ベースの `gpu_test_lock()` で本モジュール内 GPU テストを直列化する形で解消した。
 
 ### スコープ外（次々フェーズ）
 
@@ -948,4 +1028,373 @@ GPU 直描画では CPU→GPU 通信ゼロを実現する代わりに vello GPU 
 - FloodFill の seed 色取得は composite テクスチャがあればそこから、なければ active layer 自身から（単一レイヤーでは等価）
 - FloodFill の収束は 32 iter ごとの atomic readback + 最大 iter 上限 `FLOOD_FILL_ITERATION_CAP = 8192`
 - Composite テクスチャは panel ごとに 1 枚。レイヤー数・panel サイズが変わらなければ再利用する
-- `gpu` feature 無効ビルドでは従来の CPU 合成経路 (`composite_panel_bitmap_region` / `compose_canvas_host_region`) がそのまま動作（runtime 分岐で生存）
+- `gpu` feature 無効ビルドでは従来の CPU 合成経路 (`composite_panel_bitmap_region` / `compose_canvas_host_region`) がそのまま動作（runtime 分岐で生存） — *Phase 9A で `gpu` feature 自体が撤廃され、本記述は履歴情報。現在は GPU 経路一本*
+
+---
+
+## Phase 9A 完了 (2026-04-26) — `gpu` feature default-on 化、CPU フォールバック削除
+
+作業モデル: claude-opus-4-7 (1M context)
+
+### 実装内容
+
+- **`apps/desktop/Cargo.toml`**
+  - `gpu` feature を完全削除（`gpu-canvas` を必須依存化、`optional = true` 撤廃）
+
+- **`crates/gpu-canvas/Cargo.toml` / `src/lib.rs` / `src/tests.rs`**
+  - `gpu` feature を撤廃し `wgpu` を必須依存化
+  - 全モジュール (`format_check` / `brush` / `composite` / `fill` / `gpu`) の `#[cfg(feature = "gpu")]` を削除
+
+- **`apps/desktop/src/`**
+  - 9 ファイル (mod.rs / wgpu_canvas.rs / runtime.rs / present_state.rs / services/mod.rs / services/project_io.rs / services/text_render.rs / command_router.rs / background_tasks.rs / tests/mod.rs) から `#[cfg(feature = "gpu")]` / `#[cfg(not(feature = "gpu"))]` を全削除
+  - GPU フィールド (`gpu_canvas_pool` / `gpu_pen_tip_cache` / `gpu_brush` / `gpu_fill` / `gpu_compositor`) は無条件で保持
+  - `srgb_view_supported` フィールド削除 / `install_gpu_resources` 引数から除去 / `canvas_layer_source_kind()` の sRGB 分岐削除
+  - `WgpuPresenter` から `srgb_canvas_view_supported` フィールド + 公開 getter 削除（`format_check::supports_rgba8unorm_storage` 呼び出しと診断ログは存続）
+
+- **`apps/desktop/src/app/present_state.rs::apply_bitmap_edits`**
+  - GPU/CPU 分岐を撤廃し `append_canvas_dirty_rect(dirty)` のみ実行する形へ単純化
+
+- **キャンバス用 `refresh_canvas_frame_region` 呼び出しの削除** (4 箇所)
+  - `services/mod.rs::execute_undo` / `execute_redo`、`services/text_render.rs::render_text_to_active_layer`、`command_router.rs` の SetActiveLayerBlendMode/ToggleActiveLayerVisibility 分岐
+  - 関数定義は `crates/render/` 削除 (Phase 9F) と一括除去するため `#[allow(dead_code)]` 付きで存続
+
+- **テスト**
+  - `should_use_gpu_canvas_source_false_if_srgb_not_supported` 削除（前提が消滅）
+  - `try_init_device` を `HighPerformance` + `TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES` opt-in / `supports_rgba8unorm_storage` ガード付きへ更新
+  - `should_use_gpu_canvas_source_false_for_multi_layer` → `should_use_gpu_canvas_source_true_for_multi_layer_via_composite` に書き換え（GPU 常時有効では composite 経由で `true` を維持）
+  - `layer_count_change_updates_gpu_source_decision` → `layer_count_change_switches_gpu_source_kind`（Single → Composite 切替を直接検証）
+  - `interaction.rs:1409` のコメント更新
+
+### 設計制約
+
+- alpha 期間として、Rgba8Unorm STORAGE_READ_WRITE 非対応の旧 GPU を切り捨て (ROADMAP / ADR-006 既出)
+- `should_use_gpu_canvas_source` はテスト専用関数になったため `#[cfg(test)]` 化
+- `wgpu_canvas` 内の CPU `CanvasLayerSource::Cpu` 経路と CPU `canvas_frame` 自体は存続（runtime fallback）。完全な駆除は Phase 9F で `crates/render/` 削除と一括対応
+- text_render 経路は CPU bitmap → GPU 同期が未配線。Phase 9A スコープ外として既存挙動を維持
+
+### 検証
+
+- `cargo build -p desktop` 通過（警告 2 件、いずれも既存の snapshot_store 由来）
+- `cargo build -p desktop --features html-panel` 通過
+- `cargo check --release --workspace` 通過
+- `cargo test --workspace` 通過（116 desktop tests + 全クレート ok）
+- `cargo clippy --workspace --all-targets` 警告増加なし
+- `feature = "gpu"` の cfg 参照が本流コードから 0 件
+- `srgb_view_supported` の参照が 0 件
+- キャンバス用 `refresh_canvas_frame_region` 呼び出しが 0 件（定義のみ存続）
+
+## Phase 9B 完了 (2026-04-26) — `render-types` クレート抽出
+
+### 背景
+Phase 9A 完了後、`render` クレートには「純データ DTO + CPU 合成 + パネル CPU
+ラスタ + テキスト描画」が同居していた。Phase 9C/9D (装飾・overlay GPU 化) と
+9E (DSL パネル GPU 化) を並列着手するため、純データ DTO を分離して CPU 実装
+側を触らずに consume できる形を作る必要があった。
+
+### 作業内容
+- 新規クレート `crates/render-types/` を作成 (依存: `app-core` のみ)
+- 移動した型・関数 (12 シンボル + 派生関数群):
+  - `PixelRect`, `TextureQuad`, `CanvasScene`, `prepare_canvas_scene`
+  - `FramePlan`, `CanvasPlan`, `CanvasCompositeSource`, `OverlayPlan`,
+    `PanelPlan`, `PanelSurfaceSource`
+  - `CanvasOverlayState`, `PanelNavigatorOverlay`, `PanelNavigatorEntry`
+  - `LayerGroupDirtyPlan`, `LayerGroup`
+  - `union_dirty_rect`, `union_optional_rect`, `brush_preview_dirty_rect`
+  - `map_canvas_dirty_to_display_with_transform`,
+    `map_view_to_canvas_with_transform`, `canvas_texture_quad`,
+    `canvas_drawn_rect`, `brush_preview_rect`,
+    `brush_preview_rect_for_diameter`, `map_canvas_point_to_display`,
+    `exposed_canvas_background_rect`,
+    `exposed_canvas_background_rect_from_scenes`
+- 既存テスト (15 件) を `render-types/src/tests/` に同伴移動
+- `render`/`canvas`/`ui-shell`/`apps/desktop` の Cargo.toml と use 文を一括
+  更新 (互換 re-export なし)
+
+### 残ったもの (`render` クレート)
+- `RenderFrame`, `RenderContext` (Phase 9F で削除予定)
+- `compose.rs` 全 (Phase 9C/9D で GPU 化)
+- `panel.rs` 全 + UI 型 (Phase 9E で GPU 化)
+- `text.rs` 全 (Phase 9C/9E で parley/cosmic-text 置換予定)
+- `status.rs` 全 (Phase 9C で GPU 化)
+
+### 9B でやらなかったこと
+- panel.rs UI 型 (PanelHitKind/PanelHitRegion/FloatingPanel/PanelRenderState
+  等) の移動 — 9E で GPU 直描画化と一緒に panel-runtime か render-types の
+  どちらに置くか確定させるため保留
+
+### 検証
+- `cargo test --workspace` 通過 (render-types 単独 14 件 + 既存全テスト緑)
+- `cargo build --workspace` 通過
+- `cargo clippy --workspace --all-targets` 警告 83 件 (ベースライン同数)
+- `cargo tree -p render-types` で wgpu/vello/panel-api/fontdb/ab_glyph 非依存
+  を確認 (依存は app-core のみ)
+- `use render::(PixelRect|FramePlan|CanvasPlan|OverlayPlan|PanelPlan|...)` の
+  workspace 内参照が 0 件
+
+## Phase 9C-1 完了 (2026-04-26) — Solid Quad パイプライン + 矩形 GPU 化
+
+### 背景
+Phase 9C は「ステータス / デスクトップ背景 / アクティブパネル枠」を GPU 直
+描画化するサブフェーズ。9C-1 ではテキストを除く単色矩形 (背景・キャンバス
+枠 fill・キャンバスホスト枠線・アクティブ UI パネル枠線) を GPU で塗る基盤
+を整備し、`crates/render/` の対応する CPU 関数を撤去した。9C-2 でステータス
+テキストを GPU (parley + Vello) 化したら L1 `background_frame` 自体を廃止する。
+
+### 作業内容
+- 新規モジュール `apps/desktop/src/frame/solid_quad.rs`:
+  - `SolidQuad { rect, color }` DTO
+  - `pixel_rect_to_ndc(rect, w, h) -> [f32; 4]` (wgpu Y 反転を吸収)
+  - `build_background_solid_quads(window, host, display) -> Vec<SolidQuad>`
+    (ウィンドウ背景 + キャンバス領域 + 4 マージン + ホスト枠線 4 矩形)
+  - `build_foreground_solid_quads(active_rect)` (アクティブ枠線 4 矩形)
+  - 純関数テスト 11 件 (full screen / quadrant / margins / 枠線 / None ケース)
+- `apps/desktop/src/wgpu_canvas.rs`:
+  - 専用 `SolidQuadPipeline` を新設 (32 バイト uniform: rect_ndc + color)
+  - `PresentScene` に `background_quads: &[SolidQuad]` と
+    `foreground_quads: &[SolidQuad]` フィールドを追加
+  - レンダーパス内で L0 (background_quads) → L1〜L5 → L6 (foreground_quads)
+    の順で描画
+- `apps/desktop/src/app/present_state.rs`:
+  - `background_solid_quads()` / `foreground_solid_quads()` accessor を追加
+- `apps/desktop/src/app/present.rs`:
+  - `compose_active_panel_border` 呼び出し 3 箇所を削除
+  - `clear_canvas_host_region` 経由の `pending_background_dirty_rect`
+    再描画ループを撤去 (GPU L0 が毎フレーム塗るため)
+- `crates/render/src/compose.rs`:
+  - `compose_background_frame` を「テキスト専用」最小実装へ縮約
+    (window fill / canvas host fill / 枠線描画コードを削除)
+  - `compose_status_region` の `fill_rect(APP_BACKGROUND)` を透明クリアに変更
+  - 削除した関数: `compose_active_panel_border`,
+    `compose_desktop_frame`, `compose_canvas_host_region`,
+    `clear_canvas_host_region`, `fill_canvas_host_background`,
+    `blit_canvas_with_transform`, `stroke_rect_region`
+- `crates/render/src/lib.rs`: 削除関数の re-export を撤去
+- `crates/desktop-support/src/config.rs`: `ACTIVE_UI_PANEL_BORDER` 定数を
+  追加 (旧 compose.rs 内の private const から昇格)
+- 既存テストの整理:
+  - `crates/render/src/tests/overlay_tests.rs`:
+    `compose_status_region_*` / `compose_active_panel_border_*` テスト削除
+  - `crates/render/src/tests/frame_plan_tests.rs`:
+    `compose_desktop_frame_writes_panel_and_canvas_regions` テスト削除
+  - `crates/render/src/tests/dirty_tests.rs`:
+    `blit_canvas_with_transform_bilinear_at_zoom_out` テスト削除 (CPU 経路廃止)
+  - `apps/desktop/src/app/tests/interaction.rs::pan_view_updates_canvas_without_status_recompose`:
+    `compose_dirty_canvas_base` profiler 期待値と
+    `background_dirty_rect.is_some()` を反転 (GPU 化により dirty 不要)
+
+### 採用判断
+- 単色矩形は **専用 solid-quad パイプライン** (Vello は使用せず)
+  - 理由: 単色 1 矩形に Vello はオーバーヘッド大 / 既存
+    `PRESENT_SHADER` はテクスチャサンプル前提で色固定描画と相性悪い
+- 枠線は **4 矩形分解** (top/bottom/left/right) で 1px を表現
+  - 理由: shader 分岐より CPU 側で 4 quad に分けた方がシェーダが単純
+- NDC 変換ヘルパは `apps/desktop/src/frame/solid_quad.rs` に配置し
+  `render-types` を描画関心事で汚染しない
+
+### 残ったもの (Phase 9C-2 で対応)
+- `compose_background_frame` (テキスト専用、9C-2 で削除)
+- `compose_status_region` (CPU テキスト経路、9C-2 で parley + Vello に置換)
+- L1 `background_frame: RenderFrame` フィールド (9C-2 で廃止)
+- `pending_background_dirty_rect` / `LayerGroup::background` (9C-2 で削除)
+- `crates/render/src/text.rs::draw_text_rgba` (パネル CPU ラスタは 9E)
+- `crates/render/src/status.rs::status_text_bounds` (9C-2 で parley 経路に統一)
+
+### 検証
+- `cargo test -p render` → 10 件 通過
+- `cargo test -p desktop` → 127 件 通過 (parallel テストの flaky failure
+  4 件は test_threads=1 で全て通過する pre-existing collision)
+- `cargo clippy --workspace --all-targets` → 警告 83 件 (ベースライン同数)
+- `cargo build --release -p desktop` → コンパイル成功 (WGSL も valid)
+
+## Phase 9D 完了 (2026-04-26) — L3 一時オーバーレイ完全 GPU 化
+
+### 背景
+Phase 9C-1 で L0 (背景・キャンバス枠・アクティブ UI パネル枠) を solid quad
+GPU パイプラインへ移した。Phase 9D は L3 (`temp_overlay_layer`) 担当。
+`crates/render/src/compose.rs` に残っていた overlay 関連 5 サブ要素 (brush
+preview / active panel mask / lasso preview / panel creation preview /
+panel navigator) を全て GPU 直描画化し、`compose_temp_overlay_frame` /
+`compose_temp_overlay_region` および補助関数 (draw_canvas_overlay,
+draw_active_panel_mask, draw_brush_preview, draw_lasso_preview,
+draw_overlay_line, draw_panel_creation_preview, draw_panel_navigator) を撤去。
+`stroke_rect` 補助関数および overlay private 定数も削除。
+
+### 作業内容
+- 新規モジュール `apps/desktop/src/frame/overlay_quad.rs`:
+  - `CircleQuad { center_px, radius, thickness, color }` DTO
+  - `LineQuad { start_px, end_px, thickness, color }` DTO
+  - `build_overlay_solid_quads(plan, overlay) -> Vec<SolidQuad>`
+    (active panel mask / panel creation preview / panel navigator を
+     AABB 単色矩形に展開)
+  - `build_overlay_circle_quads(plan, overlay) -> Vec<CircleQuad>`
+    (ブラシプレビュー円リング)
+  - `build_overlay_line_quads(plan, overlay) -> Vec<LineQuad>`
+    (ラッソ線分カプセル)
+  - 純関数テスト 6 件 (空入力 / active mask / brush preview / lasso /
+     panel navigator / panel creation preview)
+- `apps/desktop/src/wgpu_canvas.rs`:
+  - 新規 `CircleQuadPipeline` (SDF 円リング、64B uniform)
+  - 新規 `LineQuadPipeline` (カプセル SDF、80B uniform)
+  - WGSL `CIRCLE_QUAD_SHADER` / `LINE_QUAD_SHADER` 追加
+  - `PresentScene` のフィールド変更:
+    - 削除: `temp_overlay_layer: FrameLayer<'a>`
+    - 追加: `overlay_solid_quads`, `overlay_circle_quads`, `overlay_line_quads`
+  - `WgpuPresenter::temp_overlay_layer: Option<UploadedLayerTexture>` 削除
+  - レンダーパス順序: L0 → L1 → L2 → **L3a overlay_solid → L3b overlay_circle
+    → L3c overlay_line** → L4 → L5 → L6
+  - solid quad slot プールを `[background; overlay_solid; foreground]` の
+    3 連結に拡張し、各レンジを描画
+- `crates/render/src/compose.rs`:
+  - 削除関数: `compose_temp_overlay_frame`, `compose_temp_overlay_region`,
+    `draw_canvas_overlay`, `draw_active_panel_mask`, `draw_brush_preview`,
+    `draw_lasso_preview`, `draw_overlay_line`, `draw_panel_creation_preview`,
+    `draw_panel_navigator`, `stroke_rect`
+  - 削除 private 定数: `PANEL_NAVIGATOR_*`, `ACTIVE_PANEL_*`, `PANEL_PREVIEW_*`
+  - `fill_rect` は `compose_status_region` で継続使用するため残置
+- `crates/render/src/lib.rs`: 削除関数の re-export を撤去
+- `crates/render-types/`:
+  - `OverlayPlan` 型を削除 (新ビルダが直接 `CanvasOverlayState` を消費)
+  - `FramePlan::overlay_plan()` メソッド削除
+  - `lib.rs` の re-export 整理
+- `crates/desktop-support/src/config.rs`: 11 個の overlay 色定数を昇格
+  (`ACTIVE_PANEL_*`, `PANEL_PREVIEW_*`, `PANEL_NAVIGATOR_*`,
+   `BRUSH_PREVIEW_RING`, `LASSO_LINE`)
+- `crates/desktop-support/src/profiler/types.rs`: `PresentTimings` から
+  `temp_overlay_upload` / `temp_overlay_upload_bytes` フィールド削除
+- `apps/desktop/src/app/`:
+  - `mod.rs`: `temp_overlay_frame: Option<RenderFrame>` フィールド削除
+  - `present.rs`: full rebuild と dirty パスから L3 CPU 合成経路を削除。
+    `pending_temp_overlay_dirty_rect` は redraw シグナルとして残存
+  - `present_state.rs`: `temp_overlay_frame()` accessor 削除、
+    `overlay_quads(window_w, window_h) -> (Vec<SolidQuad>, Vec<CircleQuad>,
+    Vec<LineQuad>)` 追加
+- `apps/desktop/src/runtime.rs`: PresentScene へ overlay quad 配列を供給
+- 既存テストの整理:
+  - `crates/render/src/tests/frame_plan_tests.rs` から
+    `overlay_frame_draws_panel_navigator_when_multiple_panels_exist` 削除
+  - `crates/render-types/src/tests/overlay_plan_tests.rs` ファイル削除
+  - `apps/desktop/src/app/tests/interaction.rs::overlapping_panel_and_canvas_overlay_updates_union_dirty_rects`:
+    `compose_dirty_overlay` profiler 期待アサーションを削除
+
+### 採用判断
+- Phase 9C-1 と同様、SDF プリミティブごとに小型パイプライン
+  (`CircleQuadPipeline` / `LineQuadPipeline`) を並べる方針を採用
+  - 円とカプセルは数学的に異なる SDF (中心距離 vs. 線分距離)。1 本に
+    まとめると分岐が増え、将来の拡張 (アロー線分など) にも不利
+  - vello は overhead が大きいためスキップ
+- AABB 単色矩形 (mask / fill / stroke / navigator) は既存
+  `SolidQuadPipeline` の slot プールを単一連結 `Vec` に拡張して再利用
+- 線幅・リング太さは CPU 経路の現行値を踏襲 (ブラシリング 1.0px、
+  ラッソ線 1.25px) し、SDF 1px フェザリングで AA を実装
+- `pending_temp_overlay_dirty_rect` は redraw シグナルとして残存
+  (テストの hover/lasso 振る舞い検証を維持)
+
+### 残ったもの (Phase 9C-2 / 9E / 9F で対応)
+- `compose_background_frame` / `compose_status_region` (Phase 9C-2 で削除)
+- L1 `background_frame: RenderFrame` フィールド (Phase 9C-2 で廃止)
+- `crates/render/src/panel.rs` (Phase 9E)
+- `crates/render/src/text.rs::draw_text_rgba` (Phase 9C-2 / 9E)
+- `crates/render/` クレート完全削除 (Phase 9F)
+
+### 検証
+- `cargo test -p render-types` → 13 件 通過
+- `cargo test -p render` → 9 件 通過
+- `cargo test -p desktop` → 133 件 通過 (うち 6 件は `#[ignore]`)
+- `cargo test --workspace` → 全クレート通過
+- `cargo clippy --workspace --all-targets` → 警告 83 件 (ベースライン同数、
+  新規警告なし)
+- `cargo build --release -p desktop` → コンパイル成功 (WGSL も valid)
+
+## Phase 9E 完了 (2026-04-26) — DSL パネル / ステータスバー GPU 化 + テスト基準再設定
+
+Phase 9C-2 / 9D 完了時点で残っていた CPU 経路は次の三つだった:
+- DSL `.altp-panel` 9 個の CPU ラスタライザ (`render::panel::rasterize_panel_layer`)
+- ステータスバー CPU テキスト (`render::status::compose_status_region`)
+- font8x8 / ab_glyph / fontdb によるテキストレンダリング (`render::text`)
+
+Phase 9E は 5 サブフェーズで上記をすべて駆除し、DSL パネルを Phase 8F の
+`HtmlPanelEngine` (Blitz HTML/CSS + parley + vello) 経路に乗せ替えた。
+
+### サブフェーズ別の作業内容
+
+- **9E-1**: `panel-runtime/src/dsl_to_html.rs` を新規追加。`PanelTree → (html, css)`
+  の純関数翻訳器を実装。PanelNode 11 種すべて (Column / Row / Section / Text /
+  Button / Slider / Dropdown / TextInput / LayerList / ColorPreview / ColorWheel)
+  を HTML プリミティブへ写像。`data-action` ペイロード仕様を確定 (`alt:slider:<id>`,
+  `alt:select:<id>`, `alt:input:<id>`, `alt:layer-select`, `alt:color:<id>`)。
+- **9E-2**: `DslPanelPlugin` に `HtmlPanelEngine` を内蔵し `render_gpu()` /
+  `gpu_target()` / `forward_input()` / `collect_action_rects()` を追加。CPU 経路と
+  並走可能な状態にし、フォーカス / details 開閉状態 / Tab 順 を翻訳再生成で保持。
+- **9E-3**: `ui-shell::surface_render::rebuild_panel_bitmaps` 系を削除し L4
+  `ui_panel_layer` を 1×1 dummy 化。`render::panel::rasterize_panel_layer` /
+  `measure_panel_size` / `draw_node` および private 描画関数群、`RasterizedPanelLayer`
+  / `FloatingPanel` / `PanelRenderState` / `PanelFocusTarget` / `PanelTextInputState`
+  型を削除。`PanelHitKind` / `PanelHitRegion` のみ ui-shell 互換型として存続。
+- **9E-4**: `apps/desktop/src/frame/status_panel.rs` を新規追加し `StatusPanel`
+  (`HtmlPanelEngine` 内蔵) を導入。`crates/render/src/text.rs` (font8x8 / ab_glyph
+  / fontdb 一式) と `crates/render/src/status.rs` を完全削除。`render` の依存から
+  `font8x8` / `ab_glyph` / `fontdb` を除去。
+- **9E-5**: ピクセル比較系テストを実装非依存アサート (色矩形 / 暗色ピクセル数 /
+  DOM 構造) に書き換える方針を確立。`crates/render-types/src/test_support.rs` を
+  新規追加し `find_dark_pixels` / `find_color_in_rect` を共通化 (`vello::Scene`
+  glyph run カウントは vello 直接依存となるため module docs にのみパターン記載)。
+  9E-3 で `#[ignore]` した 4 件を整理 (3 件削除 / 1 件書き換え PASS 化)。
+  ピクセル比較系テスト自体は 9E-4 までで既に存在しなくなっており追加書き換えは
+  不要だった。
+
+### 撤去した関数 / 型 / 依存の総括
+
+- 撤去関数 (9E-3 / 9E-4 で削除済み):
+  - `render::panel::rasterize_panel_layer`
+  - `render::panel::measure_panel_size`
+  - `render::panel::draw_node` および 11 種の private ノード描画関数
+  - `render::status::compose_status_region`
+  - `render::status::status_text_bounds`
+  - `render::text::draw_text_rgba`
+  - `render::text::wrap_text_lines`
+  - `render::text::measure_text_width`
+  - `ui-shell::surface_render::rebuild_panel_bitmaps`
+  - `ui-shell::surface_render::compose_panel_surface[_incremental]`
+- 撤去型:
+  - `RasterizedPanelLayer` / `FloatingPanel` / `PanelRenderState`
+  - `PanelFocusTarget` / `PanelTextInputState` / `MeasuredPanelSize`
+- 撤去依存 (`crates/render/Cargo.toml`):
+  - `font8x8` / `ab_glyph` / `fontdb`
+
+### 採用判断 (詳細は ADR 009)
+
+- 翻訳経路: **案 B (DSL → HTML 翻訳器)** を採用 (案 A: Blitz スタイル直接構築 /
+  案 C: 専用 GPU パイプライン)
+- 工数最小化のため `HtmlPanelEngine` (Phase 8F 既存) を全面再利用
+- color-wheel は `<input type="color">` で alpha 期間の妥協を許容 (post-alpha で
+  カスタム widget 化予定)
+- LayerList の多選択 / D&D は現行 CPU 実装非サポートを踏襲 (将来 Phase で個別検討)
+- Slider / Dropdown / TextInput / ColorWheel の `alt:*` 配線は 9E-3 で未完了
+  (Phase 9F 以降で配線)
+
+### 9E スコープ縮小事項 (Phase 9F に移送)
+
+- `PresentScene::base_layer` / `ui_panel_layer` の **型自体** の物理削除
+- `html_panel_quads` → `panel_quads` リネーム
+- `crates/render/` クレート物理削除
+
+これらは render クレート削除と同じレイヤー整理タスクで PR 粒度を揃えるため
+Phase 9F に集約する。9E 完了時点では「中身が dummy / 1×1 テクスチャ」状態。
+
+### 検証 (9E-5 完了時)
+
+- `cargo test --workspace` → 113 passed / 17 failed / 6 ignored
+  (失敗 17 件はすべて pre-existing: builtin.app-actions Wasm hits 未取得・
+  shortcut 解決失敗・ICU 言語データ欠落など。dev HEAD baseline と同数)
+- `cargo clippy --workspace --all-targets` → 警告 83 件 (baseline と同数、新規 0)
+- `cargo build --release -p desktop` → 成功
+- `crates/render-types/src/test_support.rs` の単体テスト 2 件追加 通過
+- `app::tests::interaction::focus_refresh_does_not_trigger_ui_update` を弱検証に
+  書き換えて PASS 化 (baseline では `#[ignore]`)
+
+### Phase 9F 着手準備
+
+- `crates/render` 残存表面: `RenderFrame` / `RenderContext` / `compose_*` / `blit_*`
+  / `fill_rgba_block` / `scroll_canvas_region` / `PanelHitKind` / `PanelHitRegion`
+- すべて Phase 9F でクレート物理削除と同期して撤去予定。`PresentScene::base_layer`
+  / `ui_panel_layer` 型と `html_panel_quads` → `panel_quads` リネームも 9F で対応。

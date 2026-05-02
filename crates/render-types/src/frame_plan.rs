@@ -1,9 +1,6 @@
 use app_core::CanvasViewTransform;
 
-use crate::{
-    CanvasCompositeSource, CanvasOverlayState, CanvasPlan, OverlayPlan, PanelPlan,
-    PanelSurfaceSource, PixelRect,
-};
+use crate::{CanvasCompositeSource, CanvasPlan, PanelPlan, PanelSurfaceSource, PixelRect};
 
 /// desktop host が `render` に渡す 1 フレーム分の計画を表す。
 #[derive(Clone, Copy)]
@@ -55,14 +52,5 @@ impl<'a> FramePlan<'a> {
     /// パネル plan を計算して返す。
     pub fn panel_plan(&self) -> PanelPlan {
         self.panel_surface.plan()
-    }
-
-    /// オーバーレイ plan を計算して返す。
-    pub fn overlay_plan(&self, overlay: CanvasOverlayState) -> OverlayPlan<'a> {
-        OverlayPlan {
-            canvas: self.canvas,
-            panel_surface: self.panel_surface,
-            overlay,
-        }
     }
 }

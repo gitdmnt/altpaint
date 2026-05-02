@@ -8,22 +8,20 @@ authors.workspace = true
 [dependencies]
 anyhow.workspace = true
 app-core = { path = "../../crates/app-core" }
-gpu-canvas = { path = "../../crates/gpu-canvas", optional = true }
+gpu-canvas = { path = "../../crates/gpu-canvas" }
 canvas = { path = "../../crates/canvas" }
 desktop-support = { path = "../../crates/desktop-support" }
 panel-api = { path = "../../crates/panel-api" }
 panel-runtime = { path = "../../crates/panel-runtime" }
+panel-html-experiment = { path = "../../crates/panel-html-experiment" }
+keyboard-types = "0.7"
 pollster.workspace = true
-render = { path = "../../crates/render" }
+render-types = { path = "../../crates/render-types" }
 serde_json.workspace = true
 storage = { path = "../../crates/storage" }
 ui-shell = { path = "../../crates/ui-shell" }
 workspace-persistence = { path = "../../crates/workspace-persistence" }
 wgpu.workspace = true
 winit.workspace = true
-
-[features]
-gpu = ["dep:gpu-canvas"]
-html-panel = ["panel-runtime/html-panel"]
 
 [dev-dependencies]
