@@ -20,7 +20,8 @@ use blitz_dom::{
     NoopEventHandler, QualName, local_name,
     node::{Attribute, NodeData},
 };
-use blitz_html::HtmlDocument;
+use blitz_html::{HtmlDocument, HtmlProvider};
+use std::sync::Arc;
 use blitz_paint::paint_scene;
 use blitz_traits::events::UiEvent;
 use blitz_traits::shell::Viewport;
@@ -36,17 +37,15 @@ pub struct HtmlPanelEngine {
     /// `apply_bindings` が実際に DOM を変更したか。`resolve_layout` でクリア。
     /// Blitz の `BaseDocument::has_changes()` は内部実装の都合で当てにできないため自前トラック。
     pending_mutation: bool,
-    /// パネル単位の権威サイズ (chrome を含まない HTML 本体の幅・高さ)。
-    /// `on_load` で初期化、`on_render` で intrinsic 結果に応じて更新。
+    /// パネル単位の権威サイズ (chrome を含む幅・高さ)。
+    /// Phase 11: workspace_layout の永続値が唯一の入力経路 (`on_load` / `restore_size`)。
+    /// engine 自身は自動測定/上書きを行わない。
     measured_size: (u32, u32),
     /// 次フレームで `resolve_layout` が必要か。
     /// `on_host_snapshot` / `on_input` / 初回ロードで true を立てる。
     layout_dirty: bool,
     /// 次フレームで実描画が必要か。サイズ変化 / DOM mutation / 初回ロードで true。
     render_dirty: bool,
-    /// 直近の `on_render` で measured_size が変化したか。
-    /// 上位レイヤが `take_size_change` で吸い取って永続化に流す。
-    pending_size_change: bool,
     /// パネルの GPU レンダーターゲット。`on_render` 内でサイズに応じて再生成。
     gpu_target: Option<crate::gpu::PanelGpuTarget>,
 }
@@ -55,6 +54,16 @@ pub struct HtmlPanelEngine {
 pub enum RenderOutcome<'a> {
     Rendered(&'a crate::gpu::PanelGpuTarget),
     Skipped(&'a crate::gpu::PanelGpuTarget),
+}
+
+/// Phase 11: パネル root 要素の CSS `min-width` / `max-width` / `min-height` /
+/// `max-height` を px 単位で取り出した制約。`%` や `auto` は `None` として扱う。
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct PanelSizeConstraints {
+    pub min_width: Option<u32>,
+    pub max_width: Option<u32>,
+    pub min_height: Option<u32>,
+    pub max_height: Option<u32>,
 }
 
 impl<'a> RenderOutcome<'a> {
@@ -99,6 +108,7 @@ impl HtmlPanelEngine {
         if !user_css.is_empty() {
             config.ua_stylesheets = Some(vec![user_css.to_string()]);
         }
+        config.html_parser_provider = Some(Arc::new(HtmlProvider));
         let document = HtmlDocument::from_html(html, config);
         Self {
             document,
@@ -109,27 +119,44 @@ impl HtmlPanelEngine {
             measured_size: (1, 1),
             layout_dirty: true,
             render_dirty: true,
-            pending_size_change: false,
             gpu_target: None,
         }
     }
 
-    /// パネルロード時に呼ぶ。永続化されたサイズがあれば復元、無ければ intrinsic 測定で初期化。
-    /// 戻り値後の `measured_size()` で初期サイズを取得できる。
-    pub fn on_load(&mut self, restored_size: Option<(u32, u32)>) {
-        let (w, h) = match restored_size {
-            Some((w, h)) => (w.max(1), h.max(1)),
-            None => self.measure_intrinsic(8192),
-        };
-        self.measured_size = (w, h);
+    /// パネルロード時に呼ぶ。bootstrap で必ず確定したサイズ
+    /// (workspace 永続値 or panel.meta.json `default_size`) が渡される。
+    pub fn on_load(&mut self, size: (u32, u32)) {
+        self.measured_size = (size.0.max(1), size.1.max(1));
         self.layout_dirty = true;
         self.render_dirty = true;
-        self.pending_size_change = false;
     }
 
     /// 現在の権威サイズ (HTML 本体の width, height)。
     pub fn measured_size(&self) -> (u32, u32) {
         self.measured_size
+    }
+
+    /// Phase 11: パネル root 要素 (body 直下の最初の要素) の CSS `min-width` /
+    /// `max-width` / `min-height` / `max-height` を `px` 単位の `u32` で返す。
+    /// `auto` や `%` 単位は `None` (制約なし) として扱う。
+    ///
+    /// 注意: 取り出すのは taffy の `min_size` / `max_size` (CSS → stylo → taffy へと
+    /// 反映された値) なので、`resolve_layout` が一度走った後でないとデフォルト値
+    /// (= Auto) が返る可能性がある。リサイズハンドルから問い合わせる経路では
+    /// 既に少なくとも一度フレームが描画済みのため問題にならない。
+    pub fn root_size_constraints(&self) -> PanelSizeConstraints {
+        let Some(root) = root_panel_node_id(&self.document) else {
+            return PanelSizeConstraints::default();
+        };
+        let Some(node) = self.document.get_node(root) else {
+            return PanelSizeConstraints::default();
+        };
+        PanelSizeConstraints {
+            min_width: dimension_to_px(node.style.min_size.width),
+            max_width: dimension_to_px(node.style.max_size.width),
+            min_height: dimension_to_px(node.style.min_size.height),
+            max_height: dimension_to_px(node.style.max_size.height),
+        }
     }
 
     /// 次フレームで resolve が必要か。
@@ -140,38 +167,6 @@ impl HtmlPanelEngine {
     /// 次フレームで実描画が必要か。
     pub fn render_dirty(&self) -> bool {
         self.render_dirty
-    }
-
-    /// `on_render` でサイズが変化した直後 true。`take_size_change` で吸い取られる。
-    pub fn pending_size_change(&self) -> bool {
-        self.pending_size_change
-    }
-
-    /// pending な size 変化フラグを取り出してクリアする。
-    /// 上位は変化があった panel_id ごとに workspace_layout に書き戻して永続化する。
-    pub fn take_size_change(&mut self) -> Option<(u32, u32)> {
-        if self.pending_size_change {
-            self.pending_size_change = false;
-            Some(self.measured_size)
-        } else {
-            None
-        }
-    }
-
-    /// 巨大 viewport で resolve し、body のコンテンツ占有サイズを返す（intrinsic 測定）。
-    ///
-    /// 同一 document を変更するため、呼び出し側は次フレームで自身に必要な viewport で
-    /// 再 resolve する想定（`on_render` がそれを行う）。
-    pub fn measure_intrinsic(&mut self, max_width: u32) -> (u32, u32) {
-        let max_w = max_width.clamp(1, 8192);
-        let viewport = Viewport::new(max_w, 8192, 1.0, blitz_traits::shell::ColorScheme::Dark);
-        self.document.set_viewport(viewport);
-        self.document.resolve(0.0);
-        // 内部 cache を無効化（次回 resolve_layout で必ず再計算させる）
-        self.last_resolved = None;
-        self.layout_dirty = true;
-        let (w, h) = compute_intrinsic_from_body(&self.document).unwrap_or((1, 1));
-        (w.min(max_w), h.min(8192))
     }
 
     /// `apply_bindings` の新名。host snapshot を DOM に流し、変化があれば dirty を立てる。
@@ -190,11 +185,11 @@ impl HtmlPanelEngine {
 
     /// パネルを GPU テクスチャに描画する（責務集約）。
     ///
-    /// 動作：
-    /// 1. layout_dirty なら `resolve_layout(measured_w, body_h)` → root content size を再測定
-    ///    → measured_size が変われば `pending_size_change` を立て GPU target を再作成
-    /// 2. viewport (画面側) でクランプ：`render_w = min(measured_w, viewport_w)` 等
-    /// 3. render_dirty なら scene 構築 + chrome 描画 + render_to_texture
+    /// 動作 (Phase 11):
+    /// 1. viewport (画面側) で **描画用ローカル size** を算出: `min(measured_w, viewport_w)` 等。
+    ///    `measured_size` 自体は変更しない (ウィンドウ縮小→復元時の往復不変)。
+    /// 2. layout_dirty なら local size で `resolve_layout` を走らせる (content size の自動再測定はしない)。
+    /// 3. render_dirty なら scene 構築 + chrome 描画 + render_to_texture。
     ///
     /// 戻り値: `RenderOutcome::Rendered(target)` か `Skipped(target)`。
     /// `target` は `gpu_target()` でも取得可能。
@@ -209,56 +204,28 @@ impl HtmlPanelEngine {
         scale: f32,
         chrome_height: u32,
     ) -> RenderOutcome<'a> {
-        // viewport クランプ：画面サイズを超えないように measured_size を調整
+        // viewport クランプ: 描画用 local 変数のみで行い measured_size は変更しない。
         let (vp_w, vp_h) = (viewport.0.max(1), viewport.1.max(chrome_height + 1));
-        let (mw, mh) = self.measured_size;
-        let clamped_w = mw.min(vp_w);
-        let clamped_h = mh.min(vp_h);
-        if clamped_w != mw || clamped_h != mh {
-            self.measured_size = (clamped_w, clamped_h);
-            self.pending_size_change = true;
-            self.layout_dirty = true;
-            self.render_dirty = true;
-        }
+        let local_w = self.measured_size.0.min(vp_w).max(1);
+        let local_h = self.measured_size.1.min(vp_h).max(chrome_height + 1);
 
         // body 部分の高さ (chrome を除く)
-        let body_h = self.measured_size.1.saturating_sub(chrome_height).max(1);
-        let panel_w = self.measured_size.0.max(1);
+        let body_h = local_h.saturating_sub(chrome_height).max(1);
 
-        // layout_dirty なら resolve → content size を再測定して measured を更新
+        // layout_dirty なら resolve のみ実行 (content size の再測定 + measured_size 更新は廃止)
         if self.layout_dirty {
-            self.resolve_layout(panel_w, body_h, scale);
-            // resolve 後、body コンテンツの実サイズを取って measured_size と比較
-            if let Some((new_w, new_h)) = self.compute_body_content_size() {
-                let new_panel_h = new_h.saturating_add(chrome_height).max(chrome_height + 1);
-                let final_w = new_w.max(1).min(vp_w);
-                let final_h = new_panel_h.min(vp_h);
-                if (final_w, final_h) != self.measured_size {
-                    self.measured_size = (final_w, final_h);
-                    self.pending_size_change = true;
-                    self.render_dirty = true;
-                    // resolve サイズが変わったので invalidate して次回再 resolve
-                    self.last_resolved = None;
-                    // 新サイズで一度 resolve しなおして scene 構築に備える
-                    let new_body_h = final_h.saturating_sub(chrome_height).max(1);
-                    self.resolve_layout(final_w, new_body_h, scale);
-                }
-            }
+            self.resolve_layout(local_w, body_h, scale);
             self.layout_dirty = false;
         }
 
-        // GPU target サイズを measured_size に合わせる
+        // GPU target サイズを local size に合わせる
         let target_size_changed = self
             .gpu_target
             .as_ref()
-            .map(|t| t.width != self.measured_size.0 || t.height != self.measured_size.1)
+            .map(|t| t.width != local_w || t.height != local_h)
             .unwrap_or(true);
         if target_size_changed {
-            self.gpu_target = Some(crate::gpu::PanelGpuTarget::create(
-                device,
-                self.measured_size.0,
-                self.measured_size.1,
-            ));
+            self.gpu_target = Some(crate::gpu::PanelGpuTarget::create(device, local_w, local_h));
             self.render_dirty = true;
         }
 
@@ -268,17 +235,9 @@ impl HtmlPanelEngine {
 
         // scene 構築 + chrome 描画
         scene_buf.reset();
-        let body_h_now = self.measured_size.1.saturating_sub(chrome_height).max(1);
-        self.build_scene_with_offset(
-            scene_buf,
-            self.measured_size.0,
-            body_h_now,
-            scale,
-            0,
-            chrome_height,
-        );
+        self.build_scene_with_offset(scene_buf, local_w, body_h, scale, 0, chrome_height);
         if chrome_height > 0 {
-            paint_chrome_rect(scene_buf, self.measured_size.0, chrome_height);
+            paint_chrome_rect(scene_buf, local_w, chrome_height);
         }
 
         let target = self.gpu_target.as_ref().expect("target ensured");
@@ -291,8 +250,8 @@ impl HtmlPanelEngine {
                 &view,
                 &vello::RenderParams {
                     base_color: vello::peniko::Color::TRANSPARENT,
-                    width: self.measured_size.0,
-                    height: self.measured_size.1,
+                    width: local_w,
+                    height: local_h,
                     antialiasing_method: vello::AaConfig::Area,
                 },
             )
@@ -300,11 +259,6 @@ impl HtmlPanelEngine {
 
         self.render_dirty = false;
         RenderOutcome::Rendered(self.gpu_target.as_ref().expect("target ensured"))
-    }
-
-    /// `<body>` 直下のコンテンツ占有サイズを取得する。
-    fn compute_body_content_size(&self) -> Option<(u32, u32)> {
-        compute_intrinsic_from_body(&self.document)
     }
 
     /// UiEvent (PointerDown/Up/Move 等) を Blitz に流す。
@@ -330,6 +284,21 @@ impl HtmlPanelEngine {
         &self.document
     }
 
+    /// Wasm DOM mutation API のために `HtmlDocument` への可変借用を返す。
+    ///
+    /// 呼び出し側 (panel-runtime) は `WasmPanelRuntime::call_with_dom` のスコープ内でのみ使い、
+    /// 戻り際に `mark_mutated()` を呼んで dirty を立てる契約。
+    pub fn document_mut(&mut self) -> &mut HtmlDocument {
+        &mut self.document
+    }
+
+    /// Wasm が DOM mutation を行ったあとに呼び、次フレームで再 layout/render を要求する。
+    pub fn mark_mutated(&mut self) {
+        self.pending_mutation = true;
+        self.layout_dirty = true;
+        self.render_dirty = true;
+    }
+
     /// HTML / CSS を差し替えて document を再構築する。
     ///
     /// - 同一 `(html, css)` ならスキップ (idle frame 最適化、`render_dirty` も立てない)。
@@ -346,6 +315,7 @@ impl HtmlPanelEngine {
         if !css.is_empty() {
             config.ua_stylesheets = Some(vec![css.to_string()]);
         }
+        config.html_parser_provider = Some(Arc::new(HtmlProvider));
         self.document = HtmlDocument::from_html(html, config);
         self.user_css = css.to_string();
         self.last_html = Some(html.to_string());
@@ -536,19 +506,26 @@ impl HtmlPanelEngine {
     }
 }
 
-/// `<body>` 要素のコンテンツ占有サイズを返す。
-///
-/// 取得方法: body の `final_layout.content_size` を使う。これは taffy が計算した
-/// 「コンテンツ自体が必要としたサイズ」で、block/inline どちらの content layout でも反映される。
-/// content_size が 0 の場合（body 自体が空）は (1, 1)。
-/// body が見つからない場合は None。
-fn compute_intrinsic_from_body(document: &BaseDocument) -> Option<(u32, u32)> {
+/// Phase 11: パネル root 要素 (body 直下の最初の Element ノード) の NodeId を返す。
+/// 通常 `<body><div class="panel">...</div></body>` 形式なので `.panel` div を指す。
+fn root_panel_node_id(document: &BaseDocument) -> Option<usize> {
     let body_id = document.query_selector("body").ok().flatten()?;
-    let body_node = document.get_node(body_id)?;
-    let content_size = body_node.final_layout.content_size;
-    let w = content_size.width.max(1.0).ceil() as u32;
-    let h = content_size.height.max(1.0).ceil() as u32;
-    Some((w, h))
+    let body = document.get_node(body_id)?;
+    for child_id in &body.children {
+        if let Some(child) = document.get_node(*child_id) {
+            if matches!(child.data, NodeData::Element(_)) {
+                return Some(*child_id);
+            }
+        }
+    }
+    None
+}
+
+/// taffy::Dimension が `Length(px)` なら u32 で返す。`Auto` / `Percent` / `Calc` は `None`。
+fn dimension_to_px(d: taffy::Dimension) -> Option<u32> {
+    // taffy 0.10 の Dimension::into_option() は `grid` feature 配下で
+    // `LENGTH_TAG` のみを Some(value) として返す純粋関数。
+    d.into_option().map(|px| px.max(0.0).round() as u32)
 }
 
 /// HTML パネル上端のタイトルバー (chrome) を vello シーンに矩形で描画する。
@@ -713,46 +690,64 @@ mod tests {
         HtmlPanelEngine::new(html, "")
     }
 
-    /// Phase 1.1: measure_intrinsic が指定 max_width で root 自然サイズを返す
+    /// Phase 11: on_load(size) は measured_size をその値で初期化する
     #[test]
-    fn measure_intrinsic_returns_root_size_for_simple_html() {
-        let html = r#"<html><body style="margin:0"><div style="width:120px;height:40px;background:red;"></div></body></html>"#;
-        let mut engine = engine(html);
-        let (w, h) = engine.measure_intrinsic(8192);
-        assert!(
-            (w as i32 - 120).abs() <= 2,
-            "expected width ≈120, got {w}"
-        );
-        assert!(
-            (h as i32 - 40).abs() <= 2,
-            "expected height ≈40, got {h}"
-        );
-    }
-
-    /// Phase 1.3: on_load(Some) は measured_size をその値で初期化する
-    #[test]
-    fn on_load_with_persisted_size_uses_it() {
+    fn on_load_uses_passed_size() {
         let html = r#"<html><body><div style="width:80px;height:30px;"></div></body></html>"#;
         let mut engine = engine(html);
-        engine.on_load(Some((400, 300)));
+        engine.on_load((400, 300));
         assert_eq!(engine.measured_size(), (400, 300));
     }
 
-    /// Phase 1.4: on_load(None) は intrinsic 測定で初期化する
+    /// Phase 11: 連続 on_load が同じサイズを返す (intrinsic 自動測定で書き換わらない)
     #[test]
-    fn on_load_without_persisted_size_uses_intrinsic() {
-        let html = r#"<html><body style="margin:0"><div style="width:150px;height:60px;"></div></body></html>"#;
+    fn on_load_does_not_invoke_intrinsic_measurement() {
+        // body コンテンツは (10, 10) しかないが on_load の引数 (320, 240) で確定する
+        let html =
+            r#"<html><body style="margin:0"><div style="width:10px;height:10px;"></div></body></html>"#;
         let mut engine = engine(html);
-        engine.on_load(None);
-        let (w, h) = engine.measured_size();
-        assert!(
-            (w as i32 - 150).abs() <= 4,
-            "expected ≈150 width, got {w}"
-        );
-        assert!(
-            (h as i32 - 60).abs() <= 4,
-            "expected ≈60 height, got {h}"
-        );
+        engine.on_load((320, 240));
+        assert_eq!(engine.measured_size(), (320, 240));
+    }
+
+    /// Phase 11: root 要素の CSS `min-width` / `max-width` / `min-height` / `max-height` を取り出す。
+    #[test]
+    fn root_size_constraints_reads_min_max_from_root_element_css() {
+        let html = r#"<html><body><div class="panel" style="min-width:240px; max-width:600px; min-height:120px; max-height:480px;"></div></body></html>"#;
+        let mut engine = engine(html);
+        engine.on_load((400, 300));
+        // resolve_layout を一度走らせて taffy::Style が生成される状態にする
+        engine.resolve_layout(400, 300, 1.0);
+        let constraints = engine.root_size_constraints();
+        assert_eq!(constraints.min_width, Some(240));
+        assert_eq!(constraints.max_width, Some(600));
+        assert_eq!(constraints.min_height, Some(120));
+        assert_eq!(constraints.max_height, Some(480));
+    }
+
+    /// Phase 11: CSS 指定が無い軸は `None` (= 制約なし) を返す。
+    #[test]
+    fn root_size_constraints_returns_none_when_unset() {
+        let html = r#"<html><body><div class="panel"></div></body></html>"#;
+        let mut engine = engine(html);
+        engine.on_load((400, 300));
+        engine.resolve_layout(400, 300, 1.0);
+        let constraints = engine.root_size_constraints();
+        assert_eq!(constraints.min_width, None);
+        assert_eq!(constraints.max_width, None);
+        assert_eq!(constraints.min_height, None);
+        assert_eq!(constraints.max_height, None);
+    }
+
+    /// Phase 11: `%` 単位は制約なし扱い (`None`) として返す。
+    #[test]
+    fn root_size_constraints_returns_none_for_percent_units() {
+        let html = r#"<html><body><div class="panel" style="min-width:50%;"></div></body></html>"#;
+        let mut engine = engine(html);
+        engine.on_load((400, 300));
+        engine.resolve_layout(400, 300, 1.0);
+        let constraints = engine.root_size_constraints();
+        assert_eq!(constraints.min_width, None);
     }
 
     /// Phase 1.7: on_input(PointerMove) で hover state が更新され dirty が立つ
@@ -760,7 +755,7 @@ mod tests {
     fn on_input_pointer_move_updates_hover_and_marks_dirty() {
         let html = r#"<html><body style="margin:0"><button id="b" data-action="command:noop" style="display:block;width:80px;height:40px;">B</button></body></html>"#;
         let mut engine = engine(html);
-        engine.on_load(None);
+        engine.on_load((400, 300));
         // 一旦 dirty フラグをクリアした想定で on_input が dirty を立てるかをテストする
         engine.clear_dirty_for_test();
         let event = blitz_traits::events::UiEvent::PointerMove(test_pointer_event(40.0, 20.0));
@@ -774,7 +769,7 @@ mod tests {
     fn on_host_snapshot_marks_dirty_when_dom_mutates() {
         let html = r#"<html><body><span id="s" data-bind-text="jobs.active">0</span></body></html>"#;
         let mut engine = engine(html);
-        engine.on_load(None);
+        engine.on_load((400, 300));
         // on_load 直後は dirty が両方とも立っている (初回 render 必須)。
         // on_host_snapshot 後も立っていることを確認する。
         engine.on_host_snapshot(&json!({"jobs": {"active": 7}}));
@@ -949,7 +944,7 @@ mod tests {
     #[test]
     fn replace_document_swaps_html_and_marks_dirty() {
         let mut engine = engine(r#"<html><body><span id="a">A</span></body></html>"#);
-        engine.on_load(None);
+        engine.on_load((400, 200));
         engine.clear_dirty_for_test();
         engine.replace_document(
             r#"<html><body><span id="b">B</span></body></html>"#,
@@ -965,7 +960,7 @@ mod tests {
     fn replace_document_with_same_html_is_no_op() {
         let html = r#"<html><body><span id="a">A</span></body></html>"#;
         let mut engine = engine(html);
-        engine.on_load(None);
+        engine.on_load((400, 200));
         engine.clear_dirty_for_test();
         engine.replace_document(html, "");
         assert!(!engine.render_dirty(), "no-op when html unchanged");
@@ -977,7 +972,7 @@ mod tests {
         // 初期: 開いている details が 1 つ
         let initial = r#"<html><body><details open data-altp-id="s"><summary>S</summary>x</details></body></html>"#;
         let mut engine = engine(initial);
-        engine.on_load(None);
+        engine.on_load((400, 200));
         // 翻訳結果も open: そのまま open を維持すべき
         let next = r#"<html><body><details open data-altp-id="s"><summary>S</summary>y</details></body></html>"#;
         engine.replace_document(next, "");

@@ -1,0 +1,22 @@
+<div class="panel">
+  <header class="panel-title">コマ一覧</header>
+  <div class="alt-section">
+    <div class="alt-section-title">現在のコマ</div>
+    <p><span id="title"></span></p>
+    <p>ページ <span id="active-page-number">1</span> / コマ <span id="active-panel-number">1</span> / 総数 <span id="active-page-panel-count">1</span></p>
+    <p>境界: <span id="active-panel-bounds">(0, 0) 0×0</span></p>
+    <div class="row">
+      <button class="btn" id="panel.prev" data-action="altp:activate:select_previous_panel">← 前</button>
+      <button class="btn" id="panel.next" data-action="altp:activate:select_next_panel">次 →</button>
+      <button class="btn" id="panel.focus" data-action="altp:activate:focus_active_panel">中央表示</button>
+    </div>
+  </div>
+  <div class="alt-section">
+    <div class="alt-section-title">コマ一覧</div>
+    <div class="row">
+      <button class="btn" id="panel.add" data-action="altp:activate:add_panel">＋ 追加</button>
+      <button class="btn" id="panel.remove" data-action="altp:activate:remove_panel">－ 削除</button>
+    </div>
+    <ul id="panel-list" class="layer-list"></ul>
+  </div>
+</div>

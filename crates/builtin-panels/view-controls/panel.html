@@ -1,0 +1,35 @@
+<div class="panel">
+  <header class="panel-title">表示</header>
+  <div class="alt-section">
+    <div class="alt-section-title">キャンバス表示</div>
+    <p>拡大率: <span id="zoom-label">100%</span></p>
+    <input type="range" id="zoom-slider" min="25" max="1600" value="100"
+           data-action="altp:slider:set_zoom">
+    <p>位置: <span id="pan-label">0, 0</span></p>
+    <input type="range" id="pan-x-slider" min="0" max="4000" value="2000"
+           data-action="altp:slider:set_pan_x">
+    <input type="range" id="pan-y-slider" min="0" max="4000" value="2000"
+           data-action="altp:slider:set_pan_y">
+    <p>回転: <span id="rotation-label">0°</span></p>
+    <input type="range" id="rotation-slider" min="0" max="359" value="0"
+           data-action="altp:slider:set_rotation">
+
+    <div class="alt-section">
+      <div class="alt-section-title">コマ中心ビュー</div>
+      <div class="row">
+        <button class="btn" id="panel.prev" data-action="altp:activate:previous_panel">← 前のコマ</button>
+        <button class="btn" id="panel.next" data-action="altp:activate:next_panel">次のコマ →</button>
+      </div>
+      <button class="btn" id="panel.focus" data-action="altp:activate:focus_active_panel">選択中コマを中央表示</button>
+    </div>
+
+    <div class="alt-section">
+      <div class="alt-section-title">回転 / 反転</div>
+      <div class="row">
+        <button class="btn" id="view.flip.x" data-action="altp:activate:flip_horizontal">↔ 左右反転</button>
+        <button class="btn" id="view.flip.y" data-action="altp:activate:flip_vertical">↕ 上下反転</button>
+        <button class="btn" id="view.reset" data-action="altp:activate:reset_view">⟳ リセット</button>
+      </div>
+    </div>
+  </div>
+</div>

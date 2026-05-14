@@ -2,6 +2,7 @@
 
 mod builder;
 pub mod commands;
+pub mod dom;
 pub mod host;
 pub mod runtime;
 pub mod services;

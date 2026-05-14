@@ -1,0 +1,21 @@
+# altpaint workspace cargo config.
+#
+# Phase 10 (2026-05-03): debug ビルドで Blitz/stylo の selector 解決が深い再帰により
+# Windows 既定スタック (1MB) を溢れさせる。以下 2 箇所で対処する:
+#
+# 1. stylo の worker thread (`StyleThread#N`): 8MB に拡張。
+#    `STYLE_THREAD_STACK_SIZE_KB` は `option_env!("SERVO_STYLE_THREAD_STACK_SIZE_KB")` で
+#    コンパイル時に決定されるため、ここで env を渡してビルド時に値を上書きする。
+#    release ビルドでは既定 512KB で足りるが、debug でも安全側に倒すため 8192KB にする。
+#
+# 2. main thread: linker の `/STACK` フラグで 32MB に拡張。
+#    winit が EventLoop を main thread でしか作れない (Windows) ため、main thread 自体を
+#    大きく確保する必要がある。MSVC linker のオプションで予約サイズを設定する。
+[env]
+SERVO_STYLE_THREAD_STACK_SIZE_KB = "8192"
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/STACK:33554432"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/STACK:33554432"]

@@ -1,0 +1,5 @@
+{
+  "id": "builtin.view-controls",
+  "title": "表示",
+  "default_size": { "width": 280, "height": 200 }
+}

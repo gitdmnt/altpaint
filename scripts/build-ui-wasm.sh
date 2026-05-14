@@ -22,17 +22,17 @@ if [ "$RELEASE" -eq 1 ]; then
 fi
 
 declare -A PANELS=(
-  ["builtin-panel-app-actions"]="plugins/app-actions/builtin_panel_app_actions.wasm"
-  ["builtin-panel-workspace-presets"]="plugins/workspace-presets/builtin_panel_workspace_presets.wasm"
-  ["builtin-panel-tool-palette"]="plugins/tool-palette/builtin_panel_tool_palette.wasm"
-  ["builtin-panel-view-controls"]="plugins/view-controls/builtin_panel_view_controls.wasm"
-  ["builtin-panel-panel-list"]="plugins/panel-list/builtin_panel_panel_list.wasm"
-  ["builtin-panel-layers-panel"]="plugins/layers-panel/builtin_panel_layers_panel.wasm"
-  ["builtin-panel-color-palette"]="plugins/color-palette/builtin_panel_color_palette.wasm"
-  ["builtin-panel-pen-settings"]="plugins/pen-settings/builtin_panel_pen_settings.wasm"
-  ["builtin-panel-job-progress"]="plugins/job-progress/builtin_panel_job_progress.wasm"
-  ["builtin-panel-snapshot-panel"]="plugins/snapshot-panel/builtin_panel_snapshot_panel.wasm"
-  ["builtin-panel-text-flow"]="plugins/text-flow/builtin_panel_text_flow.wasm"
+  ["builtin-panel-app-actions"]="crates/builtin-panels/app-actions/builtin_panel_app_actions.wasm"
+  ["builtin-panel-workspace-presets"]="crates/builtin-panels/workspace-presets/builtin_panel_workspace_presets.wasm"
+  ["builtin-panel-tool-palette"]="crates/builtin-panels/tool-palette/builtin_panel_tool_palette.wasm"
+  ["builtin-panel-view-controls"]="crates/builtin-panels/view-controls/builtin_panel_view_controls.wasm"
+  ["builtin-panel-panel-list"]="crates/builtin-panels/panel-list/builtin_panel_panel_list.wasm"
+  ["builtin-panel-layers-panel"]="crates/builtin-panels/layers-panel/builtin_panel_layers_panel.wasm"
+  ["builtin-panel-color-palette"]="crates/builtin-panels/color-palette/builtin_panel_color_palette.wasm"
+  ["builtin-panel-pen-settings"]="crates/builtin-panels/pen-settings/builtin_panel_pen_settings.wasm"
+  ["builtin-panel-job-progress"]="crates/builtin-panels/job-progress/builtin_panel_job_progress.wasm"
+  ["builtin-panel-snapshot-panel"]="crates/builtin-panels/snapshot-panel/builtin_panel_snapshot_panel.wasm"
+  ["builtin-panel-text-flow"]="crates/builtin-panels/text-flow/builtin_panel_text_flow.wasm"
 )
 
 echo "Ensuring wasm target is installed..."

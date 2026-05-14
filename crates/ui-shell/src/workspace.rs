@@ -11,6 +11,9 @@ pub(super) const WORKSPACE_PANEL_ID: &str = "builtin.workspace-layout";
 const HIDDEN_BY_DEFAULT_PANEL_IDS: &[&str] = &["builtin.panel-list"];
 
 /// 既定の パネル 状態 を返す。
+///
+/// Phase 11: `size` は `None` で挿入し、bootstrap 経路で panel.meta.json の
+/// `default_size` を流し込む。`WorkspacePanelSize::default()` には頼らない。
 pub(super) fn default_panel_state(panel_id: &str, index: usize) -> WorkspacePanelState {
     let (anchor, position) = default_panel_anchor_and_position(panel_id, index);
     WorkspacePanelState {
@@ -18,7 +21,7 @@ pub(super) fn default_panel_state(panel_id: &str, index: usize) -> WorkspacePane
         visible: !HIDDEN_BY_DEFAULT_PANEL_IDS.contains(&panel_id),
         anchor,
         position: Some(position),
-        size: Some(WorkspacePanelSize::default()),
+        size: None,
     }
 }
 
@@ -142,6 +145,42 @@ impl PanelPresentation {
             y: position.y,
             width: size.width,
             height: size.height,
+        })
+    }
+
+    /// Phase 11: リサイズドラッグ結果を atomic に反映する。
+    /// 1. 最終 rect を viewport 内にクランプ
+    /// 2. `set_panel_size` で workspace 上の size を確定
+    /// 3. `set_position_from_absolute` で anchor を再計算しつつ position を確定
+    /// 戻り値: 反映に成功した場合 `Some(applied_rect)` (なお `set_position_from_absolute`
+    /// 内部で再度クランプされた結果を返す)。該当パネルが workspace に存在しない場合 `None`。
+    pub fn resize_panel_keeping_anchor(
+        &mut self,
+        panel_id: &str,
+        new_rect: render_types::PixelRect,
+        viewport: (usize, usize),
+    ) -> Option<render_types::PixelRect> {
+        let (vw, vh) = viewport;
+        let width = new_rect.width.clamp(1, vw.max(1));
+        let height = new_rect.height.clamp(1, vh.max(1));
+        let max_x = vw.saturating_sub(width);
+        let max_y = vh.saturating_sub(height);
+        let x = new_rect.x.min(max_x);
+        let y = new_rect.y.min(max_y);
+
+        let entry = self
+            .workspace_layout
+            .panels
+            .iter_mut()
+            .find(|entry| entry.id == panel_id)?;
+        let next_size = WorkspacePanelSize { width, height };
+        entry.size = Some(next_size);
+        entry.set_position_from_absolute(x, y, vw, vh, next_size);
+        Some(render_types::PixelRect {
+            x,
+            y,
+            width,
+            height,
         })
     }
 
@@ -291,9 +330,8 @@ impl PanelPresentation {
             if entry.position.is_none() {
                 entry.position = Some(default_panel_position(&entry.id, index));
             }
-            if entry.size.is_none() {
-                entry.size = Some(WorkspacePanelSize::default());
-            }
+            // Phase 11: size は bootstrap 経路で meta.json から注入されるため、
+            // ここでは触らない (size=None のままにする)。
         }
 
         if self

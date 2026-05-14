@@ -9,6 +9,7 @@ use desktop_support::{
     default_workspace_preset_catalog, load_session_state, load_workspace_preset_catalog,
     save_canvas_templates, save_workspace_preset_catalog,
 };
+use builtin_panels::register_builtin_panels;
 use panel_runtime::PanelRuntime;
 use ui_shell::PanelPresentation;
 use workspace_persistence::WorkspaceUiState;
@@ -82,7 +83,10 @@ impl DesktopApp {
     ) -> (PanelRuntime, PanelPresentation) {
         let mut panel_runtime = PanelRuntime::new();
         let mut panel_presentation = PanelPresentation::new();
-        let _ = panel_runtime.load_panel_directory(default_panel_dir());
+        let diags = register_builtin_panels(&mut panel_runtime, &default_panel_dir());
+        for diag in &diags {
+            eprintln!("register_builtin_panels: {diag}");
+        }
         panel_presentation.reconcile_runtime_panels(&panel_runtime);
 
         if let Some(default_preset) = workspace_presets
@@ -200,15 +204,25 @@ fn apply_ui_state_to_panel_system(
     }
     panel_presentation.reconcile_runtime_panels(panel_runtime);
 
-    // GPU パネル (DSL/HTML) の permanent size を Engine の measured_size に流し込む。
-    // workspace_layout が後から差し替わった場合も、ここで再 restore する。
+    // Phase 11: GPU パネル (HTML) の size を確定する。
+    // 1. workspace_layout に永続値があればそれを使う。
+    // 2. 無ければ panel.meta.json の default_size を使う。
+    // 3. どちらも無ければ (1, 1) を最終 fallback (実質的に到達しない経路)。
+    // 確定値を panel_presentation.set_panel_size で workspace に書き戻し、
+    // panel_runtime.restore_panel_size で engine の measured_size にも反映する。
     let panel_ids = panel_runtime.panel_ids_with_gpu();
+    let layout_snapshot = panel_presentation.workspace_layout();
     for panel_id in panel_ids {
-        if let Some(rect) = panel_presentation.panel_rect(&panel_id) {
-            let _ = panel_runtime.restore_panel_size(
-                &panel_id,
-                (rect.width.max(1) as u32, rect.height.max(1) as u32),
-            );
-        }
+        let persisted = layout_snapshot
+            .panels
+            .iter()
+            .find(|entry| entry.id == panel_id)
+            .and_then(|entry| entry.size)
+            .map(|s| (s.width as u32, s.height as u32));
+        let size = persisted
+            .or_else(|| panel_runtime.panel_default_size(&panel_id))
+            .unwrap_or((1, 1));
+        let _ = panel_presentation.set_panel_size(&panel_id, size.0 as usize, size.1 as usize);
+        let _ = panel_runtime.restore_panel_size(&panel_id, size);
     }
 }

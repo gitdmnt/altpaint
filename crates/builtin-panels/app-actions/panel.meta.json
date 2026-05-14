@@ -1,0 +1,5 @@
+{
+  "id": "builtin.app-actions",
+  "title": "ファイル",
+  "default_size": { "width": 240, "height": 320 }
+}

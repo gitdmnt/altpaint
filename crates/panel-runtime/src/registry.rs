@@ -1,13 +1,11 @@
+use crate::builtin_plugin::BuiltinPanelPlugin;
 use crate::config::{collect_persistent_panel_configs, restore_persistent_panel_configs};
-use crate::dsl_loader::collect_panel_files_recursive;
-use crate::dsl_panel::DslPanelPlugin;
 use crate::html_panel::HtmlPanelPlugin;
 use app_core::Document;
 use panel_api::{HostAction, PanelEvent, PanelPlugin, PanelTree, PanelView};
-use panel_html_experiment::{vello, wgpu, HtmlPanelEngine, RenderedPanelHit};
+use panel_html_experiment::{vello, wgpu, HtmlPanelEngine, PanelSizeConstraints, RenderedPanelHit};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
 use std::sync::Arc;
 
 /// パネル毎の GPU 描画結果をまとめて返す。
@@ -36,10 +34,10 @@ fn panel_engine_mut(panel: &mut Box<dyn PanelPlugin>) -> Option<&mut HtmlPanelEn
     // 種別判定: as_any_mut は短時間借用にとどめ、TypeId だけ取り出す
     let panel_kind = {
         let any = panel.as_any_mut()?;
-        if any.downcast_ref::<HtmlPanelPlugin>().is_some() {
+        if any.downcast_ref::<BuiltinPanelPlugin>().is_some() {
+            PanelEngineKind::Builtin
+        } else if any.downcast_ref::<HtmlPanelPlugin>().is_some() {
             PanelEngineKind::Html
-        } else if any.downcast_ref::<DslPanelPlugin>().is_some() {
-            PanelEngineKind::Dsl
         } else {
             return None;
         }
@@ -47,14 +45,16 @@ fn panel_engine_mut(panel: &mut Box<dyn PanelPlugin>) -> Option<&mut HtmlPanelEn
     // 種別が判明したので、改めて &mut を取り直す
     let any = panel.as_any_mut()?;
     match panel_kind {
+        PanelEngineKind::Builtin => any
+            .downcast_mut::<BuiltinPanelPlugin>()
+            .map(|p| p.engine_mut()),
         PanelEngineKind::Html => any.downcast_mut::<HtmlPanelPlugin>().map(|p| p.engine_mut()),
-        PanelEngineKind::Dsl => any.downcast_mut::<DslPanelPlugin>().map(|p| p.engine_mut()),
     }
 }
 
 enum PanelEngineKind {
+    Builtin,
     Html,
-    Dsl,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -72,19 +72,15 @@ pub struct RuntimeKeyboardResult {
     pub config_changed: bool,
 }
 
-/// DSL/Wasm panel runtime と registry を保持する。
+/// パネル runtime と registry を保持する。
 pub struct PanelRuntime {
     panels: Vec<Box<dyn PanelPlugin>>,
-    loaded_panel_ids: Vec<String>,
     panel_tree_cache: BTreeMap<String, PanelTree>,
     persistent_panel_configs: BTreeMap<String, Value>,
     /// イベント駆動再描画のための dirty パネル集合。
     dirty_panels: BTreeSet<String>,
     /// GPU コンテキスト（device/queue/renderer/scene scratch）。
     gpu_ctx: Option<PanelGpuContext>,
-    /// 直近 `render_panels` で measured_size が変化した panel の (id, (w, h)) 列。
-    /// `take_panel_size_changes` で吸い取って永続化に流す。
-    pending_panel_size_changes: Vec<(String, (u32, u32))>,
 }
 
 impl Default for PanelRuntime {
@@ -99,12 +95,10 @@ impl PanelRuntime {
     pub fn new() -> Self {
         Self {
             panels: Vec::new(),
-            loaded_panel_ids: Vec::new(),
             panel_tree_cache: BTreeMap::new(),
             persistent_panel_configs: BTreeMap::new(),
             dirty_panels: BTreeSet::new(),
             gpu_ctx: None,
-            pending_panel_size_changes: Vec::new(),
         }
     }
 
@@ -160,11 +154,11 @@ impl PanelRuntime {
         for panel in &mut self.panels {
             let panel_id = panel.id().to_string();
             if let Some(any) = panel.as_any_mut() {
-                if any.downcast_mut::<HtmlPanelPlugin>().is_some() {
+                if any.downcast_mut::<BuiltinPanelPlugin>().is_some() {
                     ids.push(panel_id);
                     continue;
                 }
-                if any.downcast_mut::<DslPanelPlugin>().is_some() {
+                if any.downcast_mut::<HtmlPanelPlugin>().is_some() {
                     ids.push(panel_id);
                 }
             }
@@ -219,6 +213,41 @@ impl PanelRuntime {
         false
     }
 
+    /// Phase 11: 指定パネル root 要素の CSS `min/max-width/height` 制約を返す。
+    /// リサイズ時のクランプ値として `compute_resized_rect` で使う。
+    /// GPU パネルでない or 未登録の場合は `None` (= 制約なし)。
+    pub fn panel_size_constraints(&mut self, panel_id: &str) -> Option<PanelSizeConstraints> {
+        for panel in &mut self.panels {
+            if panel.id() != panel_id {
+                continue;
+            }
+            if let Some(engine) = panel_engine_mut(panel) {
+                return Some(engine.root_size_constraints());
+            }
+            return None;
+        }
+        None
+    }
+
+    /// 指定パネルの meta.json `default_size` を返す。`None` は GPU パネルでないか未登録。
+    /// 起動時に workspace に未記録のパネルへ初期サイズとして注入する用途。
+    pub fn panel_default_size(&mut self, panel_id: &str) -> Option<(u32, u32)> {
+        for panel in &mut self.panels {
+            if panel.id() != panel_id {
+                continue;
+            }
+            let any = panel.as_any_mut()?;
+            if let Some(p) = any.downcast_ref::<BuiltinPanelPlugin>() {
+                return Some(p.default_size());
+            }
+            if let Some(p) = any.downcast_ref::<HtmlPanelPlugin>() {
+                return Some(p.default_size());
+            }
+            return None;
+        }
+        None
+    }
+
     /// 起動時 restore 用：指定 panel_id に永続化された measured_size を流し込む。
     /// 戻り値: 該当パネルが見つかった場合 true。
     pub fn restore_panel_size(&mut self, panel_id: &str, size: (u32, u32)) -> bool {
@@ -227,7 +256,7 @@ impl PanelRuntime {
                 continue;
             }
             if let Some(engine) = panel_engine_mut(panel) {
-                engine.on_load(Some(size));
+                engine.on_load(size);
                 return true;
             }
             return false;
@@ -235,20 +264,7 @@ impl PanelRuntime {
         false
     }
 
-    /// `render_panels` 内で発生した measured_size 変化を吸い取る（take セマンティクス）。
-    /// 戻り値: `(panel_id, (new_w, new_h))` の列。二回目の呼び出しは空。
-    pub fn take_panel_size_changes(&mut self) -> Vec<(String, (u32, u32))> {
-        std::mem::take(&mut self.pending_panel_size_changes)
-    }
-
-    /// テスト専用: size 変化を強制注入する。本番経路では `render_panels` 内で記録される。
-    #[cfg(test)]
-    pub fn test_mark_panel_size_changed(&mut self, panel_id: &str, size: (u32, u32)) {
-        self.pending_panel_size_changes
-            .push((panel_id.to_string(), size));
-    }
-
-    /// 指定された (panel_id, width, height) リストの DSL/HTML パネルを GPU 描画する。
+    /// 指定された (panel_id, width, height) リストの GPU パネルを描画する。
     /// `chrome_height` > 0 ならパネル上端にホスト描画タイトルバーを重ねる。
     /// `install_gpu_context` 未呼び出しなら空 Vec。
     pub fn render_panels(
@@ -286,11 +302,6 @@ impl PanelRuntime {
                 let ptr: *const wgpu::Texture = &target.texture;
                 (rendered, ptr, target.width, target.height)
             };
-            // size 変化があれば pending リストへ。take_panel_size_changes で吸い取られる。
-            if let Some(new_size) = engine.take_size_change() {
-                self.pending_panel_size_changes
-                    .push((panel_id.clone(), new_size));
-            }
             let hits = engine.collect_action_rects();
             frames.push((panel_id.clone(), texture_ptr, tw, th, hits, rendered));
         }
@@ -370,67 +381,6 @@ impl PanelRuntime {
         let dirty = std::mem::take(&mut self.dirty_panels);
         self.sync_document_subset(document, Some(&dirty), can_undo, can_redo, active_jobs, snapshot_count)
     }
-
-    /// 入力や種別に応じて処理を振り分ける。
-    pub fn load_panel_directory(&mut self, directory: impl AsRef<Path>) -> Vec<String> {
-        let directory = directory.as_ref();
-        self.remove_loaded_panels();
-
-        let mut panel_files = Vec::new();
-        if collect_panel_files_recursive(directory, &mut panel_files).is_err() {
-            return Vec::new();
-        }
-        panel_files.sort();
-
-        let mut diagnostics = Vec::new();
-
-        // DSL パネル: 既存と同じロジック
-        for path in &panel_files {
-            match panel_dsl::load_panel_file(path) {
-                Ok(definition) => {
-                    let panel_id = definition.manifest.id.clone();
-                    match DslPanelPlugin::from_definition(definition) {
-                        Ok(panel) => {
-                            self.loaded_panel_ids.push(panel_id);
-                            self.register_panel(Box::new(panel));
-                        }
-                        Err(error) => diagnostics.push(format!("{}: {error}", path.display())),
-                    }
-                }
-                Err(error) => diagnostics.push(format!("{}: {error}", path.display())),
-            }
-        }
-
-        // 各パネルディレクトリに panel.html + panel.meta.json があれば
-        // 並列して HTML パネルも登録する（ID が異なれば DSL 版と共存できる）。
-        {
-            let mut seen_dirs: std::collections::BTreeSet<std::path::PathBuf> =
-                std::collections::BTreeSet::new();
-            for path in &panel_files {
-                let Some(parent) = path.parent() else { continue };
-                if !seen_dirs.insert(parent.to_path_buf()) {
-                    continue;
-                }
-                if parent.join("panel.html").exists() && parent.join("panel.meta.json").exists() {
-                    // restored_size は Phase 5 で workspace_layout から引いて渡す。
-                    // 現状はロード時 intrinsic 測定で初期化する。
-                    match HtmlPanelPlugin::load(parent, None) {
-                        Ok(panel) => {
-                            let panel_id = panel.id().to_string();
-                            self.loaded_panel_ids.push(panel_id);
-                            self.register_panel(Box::new(panel));
-                        }
-                        Err(error) => {
-                            diagnostics.push(format!("{}: {error}", parent.display()));
-                        }
-                    }
-                }
-            }
-        }
-
-        diagnostics
-    }
-
 
     /// 現在の パネル 件数 を返す。
     pub fn panel_count(&self) -> usize {
@@ -584,21 +534,6 @@ impl PanelRuntime {
             }
         }
         changed_panels
-    }
-
-    /// Loaded panels を削除する。
-    fn remove_loaded_panels(&mut self) {
-        if self.loaded_panel_ids.is_empty() {
-            return;
-        }
-        self.panels.retain(|panel| {
-            !self
-                .loaded_panel_ids
-                .iter()
-                .any(|loaded_id| loaded_id == panel.id())
-        });
-        self.loaded_panel_ids.clear();
-        self.rebuild_tree_cache();
     }
 
     /// Tree cache を再構築する。

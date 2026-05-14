@@ -16,6 +16,9 @@ blitz-dom    = { version = "0.3.0-alpha", default-features = false, features = [
 blitz-html   = "0.3.0-alpha"
 blitz-paint  = "0.3.0-alpha"
 blitz-traits = "0.3.0-alpha"
+# taffy は blitz-dom が同バージョンを使う。Phase 11: root 要素の min/max-size を
+# CSS から取り出すため Dimension への直接アクセスが必要。
+taffy        = { version = "0.10.1", default-features = false, features = ["std", "grid"] }
 anyrender         = "0.8"
 anyrender_vello   = "0.8"
 vello             = "0.8"

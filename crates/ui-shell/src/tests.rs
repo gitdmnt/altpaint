@@ -249,3 +249,44 @@ fn focus_moves_to_runtime_panel_node() {
         Some(("builtin.mock", "mock.button"))
     );
 }
+
+/// Phase 11: TopRight anchor のパネルで W ハンドルドラッグ → 右辺の screen 座標が固定される。
+#[test]
+fn resize_panel_keeping_anchor_top_right_keeps_right_edge_fixed() {
+    use app_core::{
+        WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
+        WorkspacePanelState,
+    };
+    use render_types::PixelRect;
+
+    let mut presentation = PanelPresentation::new();
+    presentation.replace_workspace_layout(WorkspaceLayout {
+        panels: vec![WorkspacePanelState {
+            id: "builtin.mock".to_string(),
+            visible: true,
+            anchor: WorkspacePanelAnchor::TopRight,
+            position: Some(WorkspacePanelPosition { x: 0, y: 0 }),
+            size: Some(WorkspacePanelSize {
+                width: 200,
+                height: 150,
+            }),
+        }],
+    });
+
+    let viewport = (1280usize, 800usize);
+    // 元の rect: x = 1280 - 200 - 0 = 1080, width = 200 → 右辺 = 1280
+    // W ハンドルで左へドラッグ: 新しい width = 300, x = 980 → 右辺 = 1280 (不変)
+    let new_rect = PixelRect {
+        x: 980,
+        y: 0,
+        width: 300,
+        height: 150,
+    };
+    let applied = presentation
+        .resize_panel_keeping_anchor("builtin.mock", new_rect, viewport)
+        .expect("applied");
+    assert_eq!(applied.x, 980);
+    assert_eq!(applied.width, 300);
+    // 反映後の rect の右辺が 1280 で不変
+    assert_eq!(applied.x + applied.width, 1280);
+}

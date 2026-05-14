@@ -73,12 +73,13 @@ pub const INPUT_SAMPLING_TARGET_HZ: f64 = 120.0;
 const MAX_DOCUMENT_DIMENSION: usize = 8192;
 const MAX_DOCUMENT_PIXELS: usize = 16_777_216;
 
-/// 既定の パネル dir を返す。
+/// 既定の パネル dir (Phase 10 で `crates/builtin-panels/`) を返す。
 pub fn default_panel_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
-        .join("plugins")
+        .join("crates")
+        .join("builtin-panels")
 }
 
 /// 既定の ペン dir を返す。

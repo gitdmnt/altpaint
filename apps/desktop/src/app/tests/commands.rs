@@ -231,42 +231,17 @@ fn execute_command_new_document_sized_replaces_bitmap() {
     assert_eq!((bitmap.width, bitmap.height), (320, 240));
 }
 
-/// phase6 sample assets live under tools experimental が期待どおりに動作することを検証する。
+/// Phase 10: builtin パネルが正しく登録されているか確認する。
+/// (旧 phase6/phase7 DSL 系のアサーションは Phase 10 で PanelTree が空になったため撤去)
 #[test]
-fn phase6_sample_assets_live_under_tools_experimental() {
+fn builtin_panels_are_registered() {
     let app = test_app_with_dialogs(TestDialogs::default());
-
-    assert!(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("apps dir")
-            .parent()
-            .expect("workspace root")
-            .join("tools")
-            .join("experimental")
-            .join("phase6-sample")
-            .join("panel.altp-panel")
-            .exists()
-    );
-    assert!(
-        !default_panel_dir()
-            .join("phase6-sample")
-            .join("panel.altp-panel")
-            .exists()
-    );
-    assert!(
-        app.panel_presentation
-            .panel_trees(&app.panel_runtime)
-            .iter()
-            .all(|panel| panel.id != "builtin.dsl-sample")
-    );
-}
-
-/// desktop アプリ replaces builtin panels with phase7 dsl variants が期待どおりに動作することを検証する。
-#[test]
-fn desktop_app_replaces_builtin_panels_with_phase7_dsl_variants() {
-    let app = test_app_with_dialogs(TestDialogs::default());
-    let panels = app.panel_presentation.panel_trees(&app.panel_runtime);
+    let registered: Vec<&str> = app
+        .panel_runtime
+        .panel_debug_summaries()
+        .into_iter()
+        .map(|(id, _, _)| id)
+        .collect();
 
     for panel_id in [
         "builtin.app-actions",
@@ -274,25 +249,18 @@ fn desktop_app_replaces_builtin_panels_with_phase7_dsl_variants() {
         "builtin.tool-palette",
         "builtin.layers-panel",
         "builtin.pen-settings",
+        "builtin.color-palette",
+        "builtin.view-controls",
+        "builtin.panel-list",
+        "builtin.snapshot-panel",
+        "builtin.text-flow",
+        "builtin.job-progress",
     ] {
-        assert_eq!(
-            panels.iter().filter(|panel| panel.id == panel_id).count(),
-            1,
-            "expected a single panel for {panel_id}"
+        assert!(
+            registered.contains(&panel_id),
+            "expected panel {panel_id} to be registered, got {registered:?}"
         );
     }
-
-    let app_actions = panels
-        .iter()
-        .find(|panel| panel.id == "builtin.app-actions")
-        .expect("app actions panel exists");
-    let layers = panels
-        .iter()
-        .find(|panel| panel.id == "builtin.layers-panel")
-        .expect("layers panel exists");
-
-    assert!(tree_contains_button_id(&app_actions.children, "app.save"));
-    assert!(tree_contains_text(&layers.children, "Untitled"));
 }
 
 /// 再読込 ペン presets reads 既定 ペン directory が期待どおりに動作することを検証する。

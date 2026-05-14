@@ -231,16 +231,17 @@ fn make_dummy_pointer_move() -> panel_html_experiment::blitz_traits::events::UiE
     })
 }
 
-/// Phase 3: take_panel_size_changes は変化があった panel_id だけを返し、二回目は空
+/// Phase 11: restore_panel_size は engine の measured_size を確定し、自動追従経路は撤去済み。
+/// 旧 `take_panel_size_changes` 経路は ADR 013 に従い廃止された。
 #[test]
-fn take_panel_size_changes_yields_changed_panels_then_empty() {
+fn restore_panel_size_fixes_measured_size() {
     use crate::html_panel::HtmlPanelPlugin;
     let plugin = HtmlPanelPlugin::from_parts(
         "html.size.changes",
         "T",
         r#"<html><body style="margin:0"><div style="width:50px;height:25px"></div></body></html>"#,
         "",
-        Some((300, 200)), // ロード時にコンテンツサイズと違う値を渡す
+        Some((300, 200)),
     );
     let mut runtime = PanelRuntime::new();
     runtime.register_panel(Box::new(plugin));
@@ -248,21 +249,23 @@ fn take_panel_size_changes_yields_changed_panels_then_empty() {
     // 初期サイズは restored = (300, 200)
     let initial = runtime.panel_measured_sizes();
     assert_eq!(
-        initial.iter().find(|(id, _, _)| id == "html.size.changes").map(|s| (s.1, s.2)),
+        initial
+            .iter()
+            .find(|(id, _, _)| id == "html.size.changes")
+            .map(|s| (s.1, s.2)),
         Some((300, 200))
     );
 
-    // take は GPU render が走らないと変化を検知しない。サイズ変化シミュレートのため
-    // forcibly mark size change via テストフック (本実装では on_render 経由で起きる)。
-    runtime.test_mark_panel_size_changed("html.size.changes", (50, 25));
-    let changes = runtime.take_panel_size_changes();
-    assert_eq!(changes.len(), 1);
-    assert_eq!(changes[0].0, "html.size.changes");
-    assert_eq!(changes[0].1, (50, 25));
-
-    // 二回目は空
-    let changes_again = runtime.take_panel_size_changes();
-    assert!(changes_again.is_empty());
+    // restore_panel_size で別サイズに上書き
+    assert!(runtime.restore_panel_size("html.size.changes", (640, 480)));
+    let after = runtime.panel_measured_sizes();
+    assert_eq!(
+        after
+            .iter()
+            .find(|(id, _, _)| id == "html.size.changes")
+            .map(|s| (s.1, s.2)),
+        Some((640, 480))
+    );
 }
 
 /// Phase 1: HTML パネルは workspace 統合のために `panel_trees()` に id 付きで現れる必要がある。

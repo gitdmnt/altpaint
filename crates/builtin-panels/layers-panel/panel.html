@@ -1,0 +1,40 @@
+<div class="panel">
+  <header class="panel-title">レイヤー</header>
+  <div class="alt-section">
+    <div class="alt-section-title">ドキュメント</div>
+    <p><span id="title"></span></p>
+    <p>ページ <span id="page-count">0</span> / パネル <span id="panel-count">0</span> / レイヤー <span id="layer-count">0</span></p>
+  </div>
+  <div class="alt-section">
+    <div class="alt-section-title">レイヤー一覧</div>
+    <div class="row">
+      <button class="btn" id="layers.add" data-action="altp:activate:add_layer">＋ 追加</button>
+      <button class="btn" id="layers.remove" data-action="altp:activate:remove_layer">－ 削除</button>
+    </div>
+    <p class="muted">項目右端の取っ手をドラッグすると並び替えできます。</p>
+    <ul id="layers-list" class="layer-list"></ul>
+  </div>
+  <div class="alt-section">
+    <div class="alt-section-title">選択中のレイヤー</div>
+    <div class="row">
+      <input type="text" id="layers.name" placeholder="レイヤー名"
+             data-action="altp:input:update_rename_text">
+      <button class="btn" id="layers.rename_confirm" data-action="altp:activate:confirm_rename">確定</button>
+    </div>
+    <p>番号: <span id="active-layer-index">0</span></p>
+    <label>
+      <span>合成モード</span>
+      <select id="layers.blend_mode" data-action="altp:select:set_blend_mode">
+        <option value="normal">通常</option>
+        <option value="multiply">乗算</option>
+        <option value="screen">スクリーン</option>
+        <option value="add">加算</option>
+        <option value="max(src,dst)">比較(明)</option>
+      </select>
+    </label>
+    <button class="btn" id="layers.visibility" data-action="altp:activate:toggle_layer_visibility">👁 表示切替</button>
+    <button class="btn" id="layers.mask" data-action="altp:activate:toggle_layer_mask">◫ マスク切替</button>
+    <p>表示: <span id="active-layer-visible">true</span></p>
+    <p>マスク: <span id="active-layer-masked">false</span></p>
+  </div>
+</div>

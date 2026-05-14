@@ -46,6 +46,10 @@ impl DesktopRuntime {
         self.profiler
             .record("canvas_input_window_event", std::time::Duration::ZERO);
 
+        // Phase 11: リサイズハンドル hover に応じて OS カーソル icon を更新する。
+        // active resize 中はその edge を、それ以外なら hover 先の edge を採用。
+        self.update_cursor_icon_for_pointer(x, y);
+
         // HTML パネル領域内なら Blitz に PointerMove を転送（:hover を動かすため）
         let html_changed = self.forward_html_pointer(x, y, HtmlPointerKind::Move);
 
@@ -54,6 +58,30 @@ impl DesktopRuntime {
             || hover_changed
             || html_changed;
         self.record_canvas_input_if_needed(changed)
+    }
+
+    /// Phase 11: 現在のポインタ位置に応じて OS カーソルアイコンを更新する。
+    /// active resize 中はその edge を優先 (hover hit 判定をスキップ)。
+    fn update_cursor_icon_for_pointer(&self, x: i32, y: i32) {
+        use crate::app::cursor::cursor_icon_for_edge;
+        use winit::window::Cursor;
+
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        let active_edge = self
+            .app
+            .panel_interaction
+            .active_panel_resize
+            .as_ref()
+            .map(|s| s.edge);
+        let edge = active_edge.or_else(|| {
+            self.app
+                .panel_resize_hit_from_window(app_core::WindowPoint::new(x, y))
+                .map(|(_, edge)| edge)
+        });
+        let icon = cursor_icon_for_edge(edge);
+        window.set_cursor(Cursor::Icon(icon));
     }
 
     /// 入力や種別に応じて処理を振り分ける。

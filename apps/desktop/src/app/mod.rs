@@ -8,6 +8,7 @@ mod bootstrap;
 pub(crate) mod canvas_frame;
 mod command_router;
 mod commands;
+pub(crate) mod cursor;
 mod drawing;
 mod input;
 mod io_state;

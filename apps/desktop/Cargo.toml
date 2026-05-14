@@ -8,6 +8,7 @@ authors.workspace = true
 [dependencies]
 anyhow.workspace = true
 app-core = { path = "../../crates/app-core" }
+builtin-panels = { path = "../../crates/builtin-panels" }
 gpu-canvas = { path = "../../crates/gpu-canvas" }
 canvas = { path = "../../crates/canvas" }
 desktop-support = { path = "../../crates/desktop-support" }

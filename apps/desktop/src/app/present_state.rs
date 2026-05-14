@@ -89,6 +89,7 @@ impl DesktopApp {
         self.deferred_view_panel_sync = false;
         self.deferred_status_refresh = false;
         self.panel_interaction.active_panel_drag = None;
+        self.panel_interaction.active_panel_resize = None;
         self.panel_interaction.pending_panel_press = None;
         self.hover_canvas_position = None;
     }

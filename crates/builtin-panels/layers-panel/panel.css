@@ -1,0 +1,66 @@
+.panel {
+  padding: 12px;
+  background: #181c24;
+  color: #f3f7ff;
+  font-family: sans-serif;
+  font-size: 13px;
+  border: 1px solid #2a3140;
+  border-radius: 8px;
+  min-width: 260px;
+}
+.panel-title {
+  font-size: 14px;
+  font-weight: bold;
+  padding: 4px 0 8px;
+  border-bottom: 1px solid #434c5d;
+  margin-bottom: 8px;
+}
+.alt-section {
+  margin-top: 10px;
+}
+.alt-section > .alt-section-title {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: #8aa2c0;
+  text-transform: uppercase;
+}
+.row { display: flex; gap: 6px; }
+.muted { color: #8aa2c0; font-size: 11px; }
+.btn {
+  padding: 6px 10px;
+  background: #273540;
+  color: #f3f7ff;
+  border: 1px solid #4d5a70;
+  border-radius: 4px;
+  margin-bottom: 2px;
+}
+input[type="text"], select {
+  background: #232a36;
+  color: #f3f7ff;
+  border: 1px solid #4d5a70;
+  border-radius: 3px;
+  padding: 4px 6px;
+}
+label { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
+label > span { font-size: 11px; color: #8aa2c0; }
+p { margin: 4px 0; }
+.layer-list {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0;
+  border: 1px solid #2a3140;
+  border-radius: 4px;
+  max-height: 240px;
+}
+.layer-list li {
+  padding: 4px 8px;
+  border-bottom: 1px solid #2a3140;
+}
+.layer-list li.active {
+  background: #3b4f63;
+}
+.layer-list .meta {
+  display: block;
+  font-size: 11px;
+  color: #8aa2c0;
+}

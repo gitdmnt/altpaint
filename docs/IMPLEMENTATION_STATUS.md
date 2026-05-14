@@ -21,12 +21,14 @@
 - 複数ラスタレイヤー、blend mode、簡易 mask、pan / zoom / rotation / flip
 - dirty rect を使う差分提示
 - マウス / touch / wheel / keyboard を含む入力処理
-- `.altp-panel` + Rust/Wasm による built-in panel 実装
-- `plugins/` 配下 panel の再帰ロード
+- HTML+CSS + Wasm DOM mutation による built-in panel 実装 (Phase 10 で `.altp-panel` DSL を撤去)
+- `crates/builtin-panels/` 配下 panel の再帰ロード
 - `tools/` 配下 tool 定義の再帰ロード
 - `pens/` 配下の外部ペン preset 読込
 - panel local state / host snapshot / persistent config
 - 4隅アンカー基準の workspace panel 配置
+- 全 4 辺 + 4 角の 8 ハンドルによる手動パネルリサイズ (Phase 11、anchor 維持・最小 80x60・viewport クランプ・edge 別カーソル切替)
+- パネルサイズの単一権威化: `panel.meta.json::default_size` を初期値とし、workspace 永続値を SoT とする (Phase 11 で自動サイズ追従撤去)
 - workspace preset の読込 / 切替 / 保存 / 書き出し
 - SQLite ベース project save/load
 - page / panel 単位の project index / 部分ロード
@@ -64,25 +66,26 @@
 - `ui-shell`
 - `workspace-persistence`
 - `plugin-host`
-- `panel-dsl`
 - `panel-schema`
 - `plugin-macros`
 - `plugin-sdk`
+- `panel-html-experiment`
+- `builtin-panels`
 - `apps/desktop`
 
-### workspace member の built-in panel plugin
+### workspace member の built-in panel plugin (Phase 10 で `crates/builtin-panels/` 配下に移行)
 
-- `plugins/app-actions`
-- `plugins/workspace-presets`
-- `plugins/tool-palette`
-- `plugins/view-controls`
-- `plugins/panel-list`
-- `plugins/layers-panel`
-- `plugins/color-palette`
-- `plugins/pen-settings`
-- `plugins/job-progress`
-- `plugins/snapshot-panel`
-- `plugins/text-flow`
+- `crates/builtin-panels/app-actions`
+- `crates/builtin-panels/workspace-presets`
+- `crates/builtin-panels/tool-palette`
+- `crates/builtin-panels/view-controls`
+- `crates/builtin-panels/panel-list`
+- `crates/builtin-panels/layers-panel`
+- `crates/builtin-panels/color-palette`
+- `crates/builtin-panels/pen-settings`
+- `crates/builtin-panels/job-progress`
+- `crates/builtin-panels/snapshot-panel`
+- `crates/builtin-panels/text-flow`
 
 補足:
 
@@ -166,13 +169,14 @@
 
 現在の panel stack は次で構成される。
 
-- `panel-api`: `PanelTree`, `PanelNode`, `PanelEvent`, `HostAction`, `ServiceRequest`
-- `panel-dsl`: `.altp-panel` parser / validator / normalized IR
+- `panel-api`: `PanelEvent`, `HostAction`, `ServiceRequest` (Phase 10 で `PanelTree` は builtin パネルでは未使用)
 - `panel-schema`: host-Wasm 間 DTO
-- `plugin-sdk`: plugin 作者向け SDK、typed service request builder、macro 再 export
+- `plugin-sdk`: plugin 作者向け SDK、typed service request builder、macro 再 export、`dom` モジュール (DOM mutation API)
 - `plugin-macros`: `plugin-sdk` が再 export する proc-macro 実装
-- `plugin-host`: `wasmtime` ベース runtime
-- `panel-runtime`: panel discovery / DSL-Wasm bridge / host snapshot sync / persistent config
+- `plugin-host`: `wasmtime` ベース runtime + `dom` host functions (Blitz `DocumentMutator` を Wasm に公開)
+- `panel-html-experiment`: `HtmlPanelEngine` (Blitz HTML/CSS + parley + vello)
+- `panel-runtime`: `BuiltinPanelPlugin` / panel registry / host snapshot sync / persistent config
+- `builtin-panels`: 同梱 11 パネル定義 (HTML+CSS+Wasm) と `register_builtin_panels` orchestration
 - `ui-shell`: panel presentation / workspace layout / focus / hit-test / surface render
 
 ### 5. 永続化
@@ -220,7 +224,7 @@
 
 補足:
 
-- これらは `plugins/` 配下に `.altp-panel` と Rust/Wasm 実装を同居させる構成で揃っている。
+- これらは `crates/builtin-panels/<name>/` 配下に `panel.html` + `panel.css` + `panel.meta.json` + Rust/Wasm 実装を同居させる構成で揃っている (Phase 10 で `.altp-panel` DSL から移行)。
 
 ### 7. ツールとペン
 

@@ -1,15 +1,12 @@
-use app_core::{ColorRgba8, Document, ToolKind};
+use app_core::{Document, ToolKind};
 use serde_json::{Value, json};
-
-pub(crate) const MAX_DOCUMENT_DIMENSION: usize = 8192;
-pub(crate) const MAX_DOCUMENT_PIXELS: usize = 16_777_216;
 
 /// 高価な JSON シリアライズ結果を再利用するためのキャッシュ。
 ///
 /// ズーム/パンなど view のみが変わる操作では pen_presets / tool_catalog 等の
 /// 再シリアライズをスキップし、build_host_snapshot のコストを大幅に削減する。
 #[derive(Default)]
-pub(crate) struct HostSnapshotCache {
+pub struct HostSnapshotCache {
     /// 初回呼び出しで必ず全フィールドを構築するためのフラグ。
     initialized: bool,
 
@@ -50,7 +47,7 @@ pub(crate) fn active_tool_name(tool: ToolKind) -> &'static str {
 ///
 /// 変化していないフィールドのシリアライズを再利用することで、
 /// ズーム/パン操作時のコストを大幅に削減する。
-pub(crate) fn build_host_snapshot_cached(
+pub fn build_host_snapshot_cached(
     document: &Document,
     can_undo: bool,
     can_redo: bool,
@@ -275,41 +272,3 @@ pub(crate) fn build_host_snapshot_cached(
     })
 }
 
-/// 入力を解析して 16進文字列 色 に変換する。
-///
-/// 値を生成できない場合は `None` を返します。
-pub(crate) fn parse_hex_color(input: &str) -> Option<ColorRgba8> {
-    let hex = input.strip_prefix('#')?;
-    if hex.len() != 6 {
-        return None;
-    }
-    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-    Some(ColorRgba8::new(r, g, b, 0xff))
-}
-
-/// 入力を解析して ドキュメント サイズ に変換する。
-///
-/// 値を生成できない場合は `None` を返します。
-pub(crate) fn parse_document_size(input: &str) -> Option<(usize, usize)> {
-    let normalized = input.replace(['×', ',', ';'], "x");
-    let parts = normalized
-        .split(|ch: char| ch == 'x' || ch.is_whitespace())
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>();
-    if parts.len() != 2 {
-        return None;
-    }
-    let width = parts[0].parse::<usize>().ok()?;
-    let height = parts[1].parse::<usize>().ok()?;
-    if width == 0
-        || height == 0
-        || width > MAX_DOCUMENT_DIMENSION
-        || height > MAX_DOCUMENT_DIMENSION
-        || width.saturating_mul(height) > MAX_DOCUMENT_PIXELS
-    {
-        return None;
-    }
-    Some((width, height))
-}

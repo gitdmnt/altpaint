@@ -1,6 +1,11 @@
+mod dom_api;
+
 use std::path::{Path, PathBuf};
+use std::ptr::NonNull;
 use std::sync::OnceLock;
 
+use blitz_html::HtmlDocument;
+use dom_api::DomCtx;
 use panel_schema::{
     CommandDescriptor, Diagnostic, DiagnosticLevel, HandlerResult, PanelEventRequest,
     PanelInitRequest, PanelInitResponse, StatePatch,
@@ -32,10 +37,11 @@ pub enum PluginHostError {
     Runtime(String),
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct RuntimeCollector {
     result: HandlerResult,
     current_request: Option<PanelEventRequest>,
+    dom_ctx: DomCtx,
 }
 
 impl RuntimeCollector {
@@ -43,6 +49,7 @@ impl RuntimeCollector {
     fn clear(&mut self) {
         self.result = HandlerResult::default();
         self.current_request = None;
+        // dom_ctx は call_with_dom が制御するためここではクリアしない
     }
 }
 
@@ -678,6 +685,13 @@ impl WasmPanelRuntime {
                 message: error.to_string(),
             })?;
 
+        dom_api::register_dom_host_functions(&mut linker).map_err(|error| {
+            PluginHostError::Instantiate {
+                path: path.clone(),
+                message: error.to_string(),
+            }
+        })?;
+
         let mut store = Store::new(&engine, RuntimeCollector::default());
         let instance = linker.instantiate(&mut store, &module).map_err(|error| {
             PluginHostError::Instantiate {
@@ -783,6 +797,41 @@ impl WasmPanelRuntime {
         self.instance
             .get_func(&mut self.store, &export_name)
             .is_some()
+    }
+
+    /// DOM context をスコープに設定して f を実行する。
+    ///
+    /// f の中で呼ばれる Wasm 関数は dom 系 host function を介して `document` を mutate できる。
+    /// f が抜けたら dom_ctx は必ず None に戻り、iter handle もクリアされる。
+    ///
+    /// SAFETY: 渡された `&mut HtmlDocument` の参照は f が return するまで生存している必要がある。
+    pub fn call_with_dom<R>(
+        &mut self,
+        document: &mut HtmlDocument,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let ptr = NonNull::from(document);
+        {
+            let dom_ctx = &mut self.store.data_mut().dom_ctx;
+            dom_ctx.document = Some(ptr);
+            dom_ctx.iters.clear();
+        }
+        let result = f(self);
+        let dom_ctx = &mut self.store.data_mut().dom_ctx;
+        dom_ctx.clear();
+        result
+    }
+
+    /// `panel_init` export を呼び出す (DOM context 必須)。
+    ///
+    /// 戻り値は handler の `HandlerResult` (commands / state_patch / diagnostics)。
+    /// init 中に Wasm が DOM を mutate するなら `call_with_dom` 内で呼ぶこと。
+    pub fn panel_init(&mut self) -> Result<HandlerResult, PluginHostError> {
+        self.store.data_mut().clear();
+        if let Some(init) = self.instance.get_func(&mut self.store, PANEL_INIT_EXPORT) {
+            call_export(&mut self.store, init, None).map_err(PluginHostError::Runtime)?;
+        }
+        Ok(self.store.data().result.clone())
     }
 }
 

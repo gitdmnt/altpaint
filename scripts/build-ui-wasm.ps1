@@ -18,17 +18,17 @@ try {
     }
 
     $panelPackages = @(
-        @{ Package = 'builtin-panel-app-actions'; Destination = 'plugins/app-actions/builtin_panel_app_actions.wasm' },
-        @{ Package = 'builtin-panel-workspace-presets'; Destination = 'plugins/workspace-presets/builtin_panel_workspace_presets.wasm' },
-        @{ Package = 'builtin-panel-tool-palette'; Destination = 'plugins/tool-palette/builtin_panel_tool_palette.wasm' },
-        @{ Package = 'builtin-panel-view-controls'; Destination = 'plugins/view-controls/builtin_panel_view_controls.wasm' },
-        @{ Package = 'builtin-panel-panel-list'; Destination = 'plugins/panel-list/builtin_panel_panel_list.wasm' },
-        @{ Package = 'builtin-panel-layers-panel'; Destination = 'plugins/layers-panel/builtin_panel_layers_panel.wasm' },
-        @{ Package = 'builtin-panel-color-palette'; Destination = 'plugins/color-palette/builtin_panel_color_palette.wasm' },
-        @{ Package = 'builtin-panel-pen-settings'; Destination = 'plugins/pen-settings/builtin_panel_pen_settings.wasm' },
-        @{ Package = 'builtin-panel-job-progress'; Destination = 'plugins/job-progress/builtin_panel_job_progress.wasm' },
-        @{ Package = 'builtin-panel-snapshot-panel'; Destination = 'plugins/snapshot-panel/builtin_panel_snapshot_panel.wasm' },
-        @{ Package = 'builtin-panel-text-flow'; Destination = 'plugins/text-flow/builtin_panel_text_flow.wasm' }
+        @{ Package = 'builtin-panel-app-actions'; Destination = 'crates/builtin-panels/app-actions/builtin_panel_app_actions.wasm' },
+        @{ Package = 'builtin-panel-workspace-presets'; Destination = 'crates/builtin-panels/workspace-presets/builtin_panel_workspace_presets.wasm' },
+        @{ Package = 'builtin-panel-tool-palette'; Destination = 'crates/builtin-panels/tool-palette/builtin_panel_tool_palette.wasm' },
+        @{ Package = 'builtin-panel-view-controls'; Destination = 'crates/builtin-panels/view-controls/builtin_panel_view_controls.wasm' },
+        @{ Package = 'builtin-panel-panel-list'; Destination = 'crates/builtin-panels/panel-list/builtin_panel_panel_list.wasm' },
+        @{ Package = 'builtin-panel-layers-panel'; Destination = 'crates/builtin-panels/layers-panel/builtin_panel_layers_panel.wasm' },
+        @{ Package = 'builtin-panel-color-palette'; Destination = 'crates/builtin-panels/color-palette/builtin_panel_color_palette.wasm' },
+        @{ Package = 'builtin-panel-pen-settings'; Destination = 'crates/builtin-panels/pen-settings/builtin_panel_pen_settings.wasm' },
+        @{ Package = 'builtin-panel-job-progress'; Destination = 'crates/builtin-panels/job-progress/builtin_panel_job_progress.wasm' },
+        @{ Package = 'builtin-panel-snapshot-panel'; Destination = 'crates/builtin-panels/snapshot-panel/builtin_panel_snapshot_panel.wasm' },
+        @{ Package = 'builtin-panel-text-flow'; Destination = 'crates/builtin-panels/text-flow/builtin_panel_text_flow.wasm' }
     )
 
     if (-not $SkipTargetInstall) {

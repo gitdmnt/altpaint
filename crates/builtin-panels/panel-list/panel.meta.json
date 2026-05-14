@@ -1,0 +1,5 @@
+{
+  "id": "builtin.panel-list",
+  "title": "コマ一覧",
+  "default_size": { "width": 240, "height": 320 }
+}

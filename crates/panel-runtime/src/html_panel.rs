@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 pub struct HtmlPanelPlugin {
     id: &'static str,
     title: &'static str,
+    default_size: (u32, u32),
     engine: HtmlPanelEngine,
 }
 
@@ -36,8 +37,6 @@ pub enum HtmlPanelLoadError {
     Io(#[from] std::io::Error),
     #[error("meta json error: {0}")]
     MetaJson(#[from] serde_json::Error),
-    #[error("meta missing required field: {0}")]
-    MetaField(&'static str),
 }
 
 // `render_gpu` の戻り値型は Engine の `RenderOutcome` をそのまま使う。
@@ -45,7 +44,7 @@ pub enum HtmlPanelLoadError {
 
 impl HtmlPanelPlugin {
     /// パネルディレクトリを読み込み、`restored_size` があれば measured_size として復元する。
-    /// `restored_size = None` の場合は HTML コンテンツの自然サイズで初期化する。
+    /// `restored_size = None` の場合は meta.json の `default_size` で初期化する。
     pub fn load(
         directory: &Path,
         restored_size: Option<(u32, u32)>,
@@ -62,15 +61,8 @@ impl HtmlPanelPlugin {
         }
 
         let meta_raw = std::fs::read_to_string(&meta_path)?;
-        let meta: Value = serde_json::from_str(&meta_raw)?;
-        let id = meta
-            .get("id")
-            .and_then(Value::as_str)
-            .ok_or(HtmlPanelLoadError::MetaField("id"))?;
-        let title = meta
-            .get("title")
-            .and_then(Value::as_str)
-            .ok_or(HtmlPanelLoadError::MetaField("title"))?;
+        let meta: crate::meta::PanelMeta = serde_json::from_str(&meta_raw)?;
+        let default_size = meta.default_size.as_tuple();
 
         let html = std::fs::read_to_string(&html_path)?;
         let css = if css_path.exists() {
@@ -79,11 +71,12 @@ impl HtmlPanelPlugin {
             String::new()
         };
         let mut engine = HtmlPanelEngine::new(&html, &css);
-        engine.on_load(restored_size);
+        engine.on_load(restored_size.unwrap_or(default_size));
 
         Ok(Self {
-            id: Box::leak(id.to_string().into_boxed_str()),
-            title: Box::leak(title.to_string().into_boxed_str()),
+            id: Box::leak(meta.id.into_boxed_str()),
+            title: Box::leak(meta.title.into_boxed_str()),
+            default_size,
             engine,
         })
     }
@@ -95,9 +88,31 @@ impl HtmlPanelPlugin {
         css: &str,
         restored_size: Option<(u32, u32)>,
     ) -> Self {
+        Self::from_parts_with_default(id, title, html, css, restored_size, (300, 220))
+    }
+
+    pub fn from_parts_with_default(
+        id: &'static str,
+        title: &'static str,
+        html: &str,
+        css: &str,
+        restored_size: Option<(u32, u32)>,
+        default_size: (u32, u32),
+    ) -> Self {
         let mut engine = HtmlPanelEngine::new(html, css);
-        engine.on_load(restored_size);
-        Self { id, title, engine }
+        engine.on_load(restored_size.unwrap_or(default_size));
+        Self {
+            id,
+            title,
+            default_size,
+            engine,
+        }
+    }
+
+    /// panel.meta.json の `default_size` を返す。
+    /// 起動時に workspace に未記録のパネルへ初期サイズとして注入される。
+    pub fn default_size(&self) -> (u32, u32) {
+        self.default_size
     }
 
     pub fn engine(&self) -> &HtmlPanelEngine {
@@ -120,12 +135,7 @@ impl HtmlPanelPlugin {
 
     /// 永続化されたサイズで measured_size を上書きする（起動時 restore 経路）。
     pub fn restore_size(&mut self, size: (u32, u32)) {
-        self.engine.on_load(Some(size));
-    }
-
-    /// 直近の `render_gpu` で size が変化した場合に取り出す（take セマンティクス）。
-    pub fn take_size_change(&mut self) -> Option<(u32, u32)> {
-        self.engine.take_size_change()
+        self.engine.on_load(size);
     }
 
     /// UI 入力イベントを Blitz に転送する。`:hover`/`<details>` 等の動的レイアウトを動かす。
@@ -514,8 +524,8 @@ mod tests {
             eprintln!("skip: no GPU device");
             return;
         };
-        let html = include_str!("../../../plugins/app-actions/panel.html");
-        let css = include_str!("../../../plugins/app-actions/panel.css");
+        let html = include_str!("../../builtin-panels/app-actions/panel.html");
+        let css = include_str!("../../builtin-panels/app-actions/panel.css");
         let mut renderer = make_renderer(&device);
         let mut scene = vello::Scene::new();
         let mut plugin = make_plugin(html, css);
@@ -556,8 +566,8 @@ mod tests {
             eprintln!("skip: no GPU device");
             return;
         };
-        let html = include_str!("../../../plugins/app-actions/panel.html");
-        let css = include_str!("../../../plugins/app-actions/panel.css");
+        let html = include_str!("../../builtin-panels/app-actions/panel.html");
+        let css = include_str!("../../builtin-panels/app-actions/panel.css");
         let mut renderer = make_renderer(&device);
         let mut scene = vello::Scene::new();
         let mut plugin = make_plugin(html, css);
@@ -596,7 +606,7 @@ mod tests {
         );
     }
 
-    /// S7 改: 永続化サイズ復元時に target がそのサイズで作られる
+    /// Phase 11: 永続化サイズ復元時に target がそのサイズで作られる
     #[test]
     fn gpu_html_panel_target_uses_restored_size() {
         let _guard = gpu_test_lock();
@@ -614,19 +624,21 @@ mod tests {
             "",
             Some((120, 60)),
         );
-        // viewport は十分大きく取り、measured_size = restored = (120, 60) のまま使われることを確認
+        // viewport は十分大きく取り、restored = (120, 60) がそのまま target サイズになることを確認。
         let first = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, (1024, 1024), 1.0, 0);
         assert!(first.is_rendered());
-        // ※ on_render は body content size を再測定して measured_size を更新する設計。
-        //   コンテンツが (30, 15) なので、最終 measured は (30, 15) に縮む可能性がある。
-        //   restored_size はあくまで「初期値」であり、コンテンツ駆動が優先される。
         let target = first.target();
-        assert!(target.width > 0 && target.height > 0);
+        assert_eq!(
+            (target.width, target.height),
+            (120, 60),
+            "target size should match restored_size, not content-driven"
+        );
     }
 
-    /// S7 追加: 動的サイズ追従 — measured_size がコンテンツ自然サイズに収束する
+    /// Phase 11 回帰防止: measured_size はコンテンツ自然サイズに追従しない。
+    /// 自動サイズ追従撤去後、measured_size は on_load の引数で確定し、render 後も変化しない。
     #[test]
-    fn gpu_html_panel_measured_size_follows_content() {
+    fn gpu_html_panel_measured_size_does_not_drift_after_render() {
         let _guard = gpu_test_lock();
         let Some((device, queue)) = try_init_device() else {
             eprintln!("skip: no GPU device");
@@ -634,13 +646,49 @@ mod tests {
         };
         let mut renderer = make_renderer(&device);
         let mut scene = vello::Scene::new();
+        // body コンテンツは (50, 25) しかないが measured_size は (320, 240) で確定する
         let html = r#"<html><body style="margin:0"><div style="width:50px;height:25px;background:#ff00ff;"></div></body></html>"#;
-        let mut plugin = make_plugin(html, "");
-        let _ = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, (2048, 2048), 1.0, 0);
-        let (w, h) = plugin.measured_size();
-        assert!(
-            (w as i32 - 50).abs() <= 4 && (h as i32 - 25).abs() <= 4,
-            "measured_size should follow content (~50x25), got {w}x{h}",
+        let mut plugin = HtmlPanelPlugin::from_parts(
+            "test.html_panel",
+            "Test",
+            html,
+            "",
+            Some((320, 240)),
+        );
+        for _ in 0..10 {
+            let _ = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, (2048, 2048), 1.0, 0);
+        }
+        assert_eq!(
+            plugin.measured_size(),
+            (320, 240),
+            "measured_size must not drift after repeated on_render",
+        );
+    }
+
+    /// Phase 11 回帰防止: viewport クランプは描画用 local のみで行われ measured_size を変更しない。
+    #[test]
+    fn gpu_html_panel_viewport_clamp_does_not_mutate_measured_size() {
+        let _guard = gpu_test_lock();
+        let Some((device, queue)) = try_init_device() else {
+            eprintln!("skip: no GPU device");
+            return;
+        };
+        let mut renderer = make_renderer(&device);
+        let mut scene = vello::Scene::new();
+        let html = r#"<html><body style="margin:0"><div style="width:20px;height:10px;"></div></body></html>"#;
+        let mut plugin = HtmlPanelPlugin::from_parts(
+            "test.html_panel",
+            "Test",
+            html,
+            "",
+            Some((1000, 800)),
+        );
+        // viewport (400, 300) は measured_size (1000, 800) より小さい → 描画は (400, 300) に clamp
+        let _ = plugin.render_gpu(&device, &queue, &mut renderer, &mut scene, (400, 300), 1.0, 0);
+        assert_eq!(
+            plugin.measured_size(),
+            (1000, 800),
+            "measured_size must not shrink during viewport clamp",
         );
     }
 
