@@ -75,6 +75,10 @@ const BUILTIN_PANELS: &[BuiltinPanelDef] = &[
         directory_name: "color-palette",
         wasm_filename: "builtin_panel_color_palette.wasm",
     },
+    BuiltinPanelDef {
+        directory_name: "workspace-layout",
+        wasm_filename: "builtin_panel_workspace_layout.wasm",
+    },
 ];
 
 /// 同梱パネルを `PanelRuntime` に登録する。

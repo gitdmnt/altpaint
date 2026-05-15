@@ -11,13 +11,10 @@
 //! 共有 `wgpu::Device` で render する。
 
 use crate::action::ActionDescriptor;
-use crate::binding::{
-    BindingAttribute, classify_binding_attribute, evaluate_as_bool, evaluate_as_string,
-};
 use anyrender_vello::VelloScenePainter;
 use blitz_dom::{
-    BaseDocument, DocumentConfig, DocumentMutator, EventDriver, LocalName, Namespace,
-    NoopEventHandler, QualName, local_name,
+    BaseDocument, DocumentConfig, EventDriver, LocalName, Namespace, NoopEventHandler, QualName,
+    local_name,
     node::{Attribute, NodeData},
 };
 use blitz_html::{HtmlDocument, HtmlProvider};
@@ -25,7 +22,6 @@ use std::sync::Arc;
 use blitz_paint::paint_scene;
 use blitz_traits::events::UiEvent;
 use blitz_traits::shell::Viewport;
-use serde_json::Value;
 
 /// パネル描画器。`HtmlDocument` を保持し、layout 解決と vello scene 構築を行う。
 pub struct HtmlPanelEngine {
@@ -34,7 +30,7 @@ pub struct HtmlPanelEngine {
     /// 直近の `replace_document` で渡された HTML 文字列。同一なら no-op。
     last_html: Option<String>,
     last_resolved: Option<(u32, u32)>,
-    /// `apply_bindings` が実際に DOM を変更したか。`resolve_layout` でクリア。
+    /// Wasm の DOM mutation API (`mark_mutated`) が呼ばれたか。`resolve_layout` でクリア。
     /// Blitz の `BaseDocument::has_changes()` は内部実装の都合で当てにできないため自前トラック。
     pending_mutation: bool,
     /// パネル単位の権威サイズ (chrome を含む幅・高さ)。
@@ -42,7 +38,7 @@ pub struct HtmlPanelEngine {
     /// engine 自身は自動測定/上書きを行わない。
     measured_size: (u32, u32),
     /// 次フレームで `resolve_layout` が必要か。
-    /// `on_host_snapshot` / `on_input` / 初回ロードで true を立てる。
+    /// `mark_mutated` / `on_input` / 初回ロードで true を立てる。
     layout_dirty: bool,
     /// 次フレームで実描画が必要か。サイズ変化 / DOM mutation / 初回ロードで true。
     render_dirty: bool,
@@ -167,15 +163,6 @@ impl HtmlPanelEngine {
     /// 次フレームで実描画が必要か。
     pub fn render_dirty(&self) -> bool {
         self.render_dirty
-    }
-
-    /// `apply_bindings` の新名。host snapshot を DOM に流し、変化があれば dirty を立てる。
-    pub fn on_host_snapshot(&mut self, snapshot: &Value) {
-        self.apply_bindings(snapshot);
-        if self.pending_mutation {
-            self.layout_dirty = true;
-            self.render_dirty = true;
-        }
     }
 
     /// 現在の GPU target への参照（render 後に外部が view を作るため）。
@@ -374,19 +361,7 @@ impl HtmlPanelEngine {
         }
     }
 
-    /// `data-bind-*` を評価して DOM を更新する。
-    pub fn apply_bindings(&mut self, snapshot: &Value) {
-        let nodes_with_bindings = collect_binding_targets(&self.document);
-        for target in nodes_with_bindings {
-            let mut mutr = self.document.mutate();
-            let mutated = apply_binding_target(&mut mutr, &target, snapshot);
-            if mutated {
-                self.pending_mutation = true;
-            }
-        }
-    }
-
-    /// 直前の `resolve_layout` 以降に DOM mutation があったか（`apply_bindings` 由来）。
+    /// 直前の `resolve_layout` 以降に DOM mutation があったか（Wasm `mark_mutated` 由来）。
     pub fn document_dirty(&self) -> bool {
         self.pending_mutation
     }
@@ -562,110 +537,6 @@ fn compute_absolute_position(doc: &BaseDocument, start: usize) -> Option<(f32, f
     }
 }
 
-#[derive(Debug, Clone)]
-struct BindingTarget {
-    node_id: usize,
-    bindings: Vec<(String, String)>,
-    current_class: String,
-}
-
-fn collect_binding_targets(document: &BaseDocument) -> Vec<BindingTarget> {
-    let mut out = Vec::new();
-    let root_id = document.root_node().id;
-    walk(document, root_id, &mut out);
-    out
-}
-
-fn walk(document: &BaseDocument, node_id: usize, out: &mut Vec<BindingTarget>) {
-    let Some(node) = document.get_node(node_id) else {
-        return;
-    };
-    if let NodeData::Element(element) = &node.data {
-        let mut bindings = Vec::new();
-        for attr in element.attrs() {
-            let name = attr.name.local.to_string();
-            if name.starts_with("data-bind-") {
-                bindings.push((name, attr.value.clone()));
-            }
-        }
-        if !bindings.is_empty() {
-            let current_class = element
-                .attr(local_name!("class"))
-                .unwrap_or("")
-                .to_string();
-            out.push(BindingTarget {
-                node_id,
-                bindings,
-                current_class,
-            });
-        }
-    }
-    for child_id in &node.children {
-        walk(document, *child_id, out);
-    }
-}
-
-/// `target` の data-bind を適用。実際に DOM を変更したら true。
-fn apply_binding_target(
-    mutr: &mut DocumentMutator<'_>,
-    target: &BindingTarget,
-    snapshot: &Value,
-) -> bool {
-    let mut next_classes: Vec<String> = target
-        .current_class
-        .split_ascii_whitespace()
-        .map(str::to_string)
-        .collect();
-    let mut class_dirty = false;
-    let mut any_mutation = false;
-
-    for (attr_key, expr) in &target.bindings {
-        match classify_binding_attribute(attr_key) {
-            BindingAttribute::Text => {
-                let text = evaluate_as_string(expr, snapshot);
-                mutr.remove_and_drop_all_children(target.node_id);
-                let text_node = mutr.create_text_node(&text);
-                mutr.append_children(target.node_id, &[text_node]);
-                any_mutation = true;
-            }
-            BindingAttribute::Disabled => {
-                let truthy = evaluate_as_bool(expr, snapshot);
-                let qname = qual_name("disabled");
-                if truthy {
-                    mutr.set_attribute(target.node_id, qname, "");
-                } else {
-                    mutr.clear_attribute(target.node_id, qname);
-                }
-                any_mutation = true;
-            }
-            BindingAttribute::Class(class_name) => {
-                let truthy = evaluate_as_bool(expr, snapshot);
-                let already_has = next_classes.iter().any(|c| c == class_name);
-                if truthy && !already_has {
-                    next_classes.push(class_name.to_string());
-                    class_dirty = true;
-                } else if !truthy && already_has {
-                    next_classes.retain(|c| c != class_name);
-                    class_dirty = true;
-                }
-            }
-            BindingAttribute::None => {}
-        }
-    }
-
-    if class_dirty {
-        let qname = qual_name("class");
-        if next_classes.is_empty() {
-            mutr.clear_attribute(target.node_id, qname);
-        } else {
-            mutr.set_attribute(target.node_id, qname, &next_classes.join(" "));
-        }
-        any_mutation = true;
-    }
-
-    any_mutation
-}
-
 fn qual_name(local: &str) -> QualName {
     QualName::new(None, Namespace::default(), LocalName::from(local))
 }
@@ -684,7 +555,6 @@ fn _attribute_helper_namespace_check(attr: &Attribute) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     fn engine(html: &str) -> HtmlPanelEngine {
         HtmlPanelEngine::new(html, "")
@@ -764,19 +634,6 @@ mod tests {
         assert!(engine.layout_dirty(), "layout_dirty after on_input");
     }
 
-    /// Phase 1.6: on_host_snapshot は DOM mutation 時に layout_dirty / render_dirty を立てる
-    #[test]
-    fn on_host_snapshot_marks_dirty_when_dom_mutates() {
-        let html = r#"<html><body><span id="s" data-bind-text="jobs.active">0</span></body></html>"#;
-        let mut engine = engine(html);
-        engine.on_load((400, 300));
-        // on_load 直後は dirty が両方とも立っている (初回 render 必須)。
-        // on_host_snapshot 後も立っていることを確認する。
-        engine.on_host_snapshot(&json!({"jobs": {"active": 7}}));
-        assert!(engine.layout_dirty(), "after on_host_snapshot layout_dirty=true");
-        assert!(engine.render_dirty(), "after on_host_snapshot render_dirty=true");
-    }
-
     #[test]
     fn engine_parses_html_and_finds_button_via_hit_test() {
         let html = r#"<html><body><button id="undo" data-action="command:noop" style="display:block; width:100px; height:40px;">Undo</button></body></html>"#;
@@ -842,23 +699,6 @@ mod tests {
         assert!(a.rect.width > 0 && a.rect.height > 0);
     }
 
-    /// S3: document_dirty が apply_bindings 後に true、resolve_layout 後に false
-    #[test]
-    fn html_engine_document_dirty_reports_apply_bindings_changes() {
-        let html =
-            r#"<html><body><span id="s" data-bind-text="jobs.active">0</span></body></html>"#;
-        let mut engine = engine(html);
-        engine.resolve_layout(100, 50, 1.0);
-        assert!(!engine.document_dirty(), "after resolve_layout dirty=false");
-        engine.apply_bindings(&json!({"jobs": {"active": 7}}));
-        assert!(engine.document_dirty(), "after apply_bindings dirty=true");
-        engine.resolve_layout(100, 50, 1.0);
-        assert!(
-            !engine.document_dirty(),
-            "after second resolve_layout dirty=false"
-        );
-    }
-
     /// S14: ヒットテストが CSS padding を尊重
     #[test]
     fn html_engine_hit_test_screen_to_node_with_css_padding() {
@@ -877,68 +717,6 @@ mod tests {
         let hit_inside = engine.hit_test(60.0, 50.0);
         assert!(hit_inside.is_some());
         assert_eq!(hit_inside.unwrap().element_id.as_deref(), Some("x"));
-    }
-
-    #[test]
-    fn binding_disabled_with_negation_is_applied_to_dom() {
-        let html = r#"<html><body><button id="undo" data-action="command:noop" data-bind-disabled="!host.can_undo">U</button></body></html>"#;
-        let mut engine = engine(html);
-        engine.apply_bindings(&json!({"host": {"can_undo": true}}));
-        let id_true = engine.find_element_id("undo").unwrap();
-        let has_disabled_true = engine
-            .document
-            .get_node(id_true)
-            .and_then(|n| {
-                if let NodeData::Element(e) = &n.data {
-                    Some(e.has_attr(local_name!("disabled")))
-                } else {
-                    None
-                }
-            })
-            .unwrap();
-        assert!(!has_disabled_true);
-
-        engine.apply_bindings(&json!({"host": {"can_undo": false}}));
-        let id_false = engine.find_element_id("undo").unwrap();
-        let has_disabled_false = engine
-            .document
-            .get_node(id_false)
-            .and_then(|n| {
-                if let NodeData::Element(e) = &n.data {
-                    Some(e.has_attr(local_name!("disabled")))
-                } else {
-                    None
-                }
-            })
-            .unwrap();
-        assert!(has_disabled_false);
-    }
-
-    #[test]
-    fn binding_text_updates_text_content() {
-        let html = r#"<html><body><span id="job-count" data-bind-text="jobs.active">0</span></body></html>"#;
-        let mut engine = engine(html);
-        engine.apply_bindings(&json!({"jobs": {"active": 7}}));
-        let id = engine.find_element_id("job-count").unwrap();
-        let text = engine.document_text_content(id);
-        assert_eq!(text, "7");
-    }
-
-    #[test]
-    fn binding_class_toggle_adds_and_removes_class() {
-        let html = r#"<html><body><button id="b" class="btn" data-action="command:noop" data-bind-class-enabled="host.can_undo">B</button></body></html>"#;
-        let mut engine = engine(html);
-        engine.apply_bindings(&json!({"host": {"can_undo": true}}));
-        let id = engine.find_element_id("b").unwrap();
-        let class_attr = engine.element_class(id);
-        assert!(class_attr.contains("enabled"));
-        assert!(class_attr.contains("btn"));
-
-        engine.apply_bindings(&json!({"host": {"can_undo": false}}));
-        let id = engine.find_element_id("b").unwrap();
-        let class_attr = engine.element_class(id);
-        assert!(!class_attr.contains("enabled"));
-        assert!(class_attr.contains("btn"));
     }
 
     #[test]
@@ -1018,25 +796,6 @@ mod tests {
                 .query_selector(&format!("#{dom_id}"))
                 .ok()
                 .flatten()
-        }
-
-        fn document_text_content(&self, node_id: usize) -> String {
-            let mut out = String::new();
-            collect_text(self.document(), node_id, &mut out);
-            out
-        }
-
-        fn element_class(&self, node_id: usize) -> String {
-            self.document
-                .get_node(node_id)
-                .and_then(|n| {
-                    if let NodeData::Element(e) = &n.data {
-                        Some(e.attr(local_name!("class")).unwrap_or("").to_string())
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or_default()
         }
 
         pub(crate) fn find_element_id_by_altp(&self, identity: &str) -> Option<usize> {

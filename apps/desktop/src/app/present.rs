@@ -31,6 +31,12 @@ impl DesktopApp {
             self.rebuild_present_frame();
         }
 
+        // workspace_layout パネル用に、登録パネル一覧 (id/title/visible) を JSON 化して runtime に注入。
+        // 値が変わっていれば workspace-layout が dirty 扱いとなり次の sync_dirty_panels で再描画される。
+        let workspace_panels_json = self.build_workspace_panels_json();
+        self.panel_runtime
+            .set_workspace_panels_json(workspace_panels_json);
+
         if self.panel_runtime.has_dirty_panels() {
             profiler.record_value("ui_update_panels", self.panel_runtime.dirty_panel_count() as f64);
             let can_undo = self.history.can_undo();

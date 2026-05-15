@@ -10,8 +10,8 @@ use app_core::{
     WorkspacePanelState,
 };
 use desktop_support::{
-    DesktopProfiler, WorkspacePreset, WorkspacePresetCatalog, default_panel_dir,
-    parse_document_size, save_workspace_preset_catalog,
+    DesktopProfiler, WorkspacePreset, WorkspacePresetCatalog, parse_document_size,
+    save_workspace_preset_catalog,
 };
 use panel_api::{HostAction, PanelEvent};
 use serde_json::json;
@@ -19,7 +19,6 @@ use workspace_persistence::WorkspaceUiState;
 
 use super::{
     TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_workspace_preset_path,
-    tree_contains_button_id, tree_contains_text,
 };
 
 /// 現在の unique ワークスペース preset パス を返す。

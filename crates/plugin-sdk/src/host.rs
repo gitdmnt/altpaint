@@ -367,6 +367,19 @@ pub mod jobs {
     }
 }
 
+/// ワークスペース (パネル一覧) 関連 host 値を読む。
+pub mod workspace {
+    use crate::runtime::host_string;
+
+    /// ワークスペースに登録されたパネル一覧 (id / title / visible) を JSON 文字列として返す。
+    ///
+    /// 形式: `[{"id":"builtin.xxx","title":"...","visible":true}, ...]`。
+    /// builtin.workspace-layout 自身も含めて返すので、利用側でフィルタする。
+    pub fn panels_json() -> String {
+        host_string("workspace.panels_json")
+    }
+}
+
 /// スナップショット関連 host 値を読む。
 pub mod snapshot {
     use crate::runtime::{host_i32, host_string};

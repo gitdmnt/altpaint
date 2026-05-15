@@ -13,13 +13,15 @@ use std::any::Any;
 use std::path::Path;
 
 use app_core::{Command, Document};
-use panel_api::{HostAction, PanelEvent, PanelPlugin, PanelTree, ServiceRequest};
+use panel_api::{HostAction, PanelEvent, PanelPlugin, ServiceRequest};
 use panel_html_experiment::{
     ActionDescriptor, HtmlPanelEngine, blitz_dom::LocalName, blitz_dom::node::NodeData,
     parse_data_action,
 };
 use crate::commands::command_from_descriptor;
-use crate::host_sync::{HostSnapshotCache, build_host_snapshot_cached};
+use crate::host_sync::{
+    EMPTY_WORKSPACE_PANELS_JSON, HostSnapshotCache, build_host_snapshot_cached,
+};
 use crate::meta::PanelMeta;
 use plugin_host::{PluginHostError, WasmPanelRuntime};
 use serde_json::{Value, json};
@@ -36,6 +38,10 @@ pub struct BuiltinPanelPlugin {
     snapshot_cache: HostSnapshotCache,
     /// 最新の host snapshot (handler 内 host_get_* で利用される)。
     last_host_snapshot: Value,
+    /// ワークスペースに登録されたパネル一覧 (id / title / visible) を JSON 化したもの。
+    /// `PanelRuntime::set_workspace_panels_json` 経由で更新され、次回 `update` で
+    /// host snapshot に含められる。builtin.workspace-layout 用。
+    workspace_panels_json: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -93,7 +99,14 @@ impl BuiltinPanelPlugin {
             state,
             snapshot_cache: HostSnapshotCache::default(),
             last_host_snapshot: json!({}),
+            workspace_panels_json: EMPTY_WORKSPACE_PANELS_JSON.to_string(),
         })
+    }
+
+    /// ワークスペースに登録されたパネル一覧 JSON を更新する。
+    /// 次回 `update` で host snapshot に反映される。
+    pub fn set_workspace_panels_json(&mut self, json: String) {
+        self.workspace_panels_json = json;
     }
 
     /// panel.meta.json の `default_size` を返す。
@@ -235,6 +248,7 @@ impl PanelPlugin for BuiltinPanelPlugin {
             active_jobs,
             snapshot_count,
             &mut self.snapshot_cache,
+            &self.workspace_panels_json,
         );
         self.last_host_snapshot = host_snapshot.clone();
         if !self.wasm.supports_sync_host() {
@@ -266,15 +280,6 @@ impl PanelPlugin for BuiltinPanelPlugin {
         }
         if let Some(obj) = self.state.as_object_mut() {
             obj.insert("config".to_string(), config.clone());
-        }
-    }
-
-    /// HTML 直描画パスでは PanelTree は使われない。
-    fn panel_tree(&self) -> PanelTree {
-        PanelTree {
-            id: self.id,
-            title: self.title,
-            children: Vec::new(),
         }
     }
 

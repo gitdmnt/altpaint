@@ -752,6 +752,27 @@ fn focus_refresh_does_not_trigger_ui_update() {
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();
 
+    // ADR 014 以降、focus は HTML hit table を辿る経路に統一されたため、
+    // テストでは事前に hit を 1 件 inject して focus 対象を用意する。
+    app.panel_presentation.update_html_panel_hits(
+        "builtin.app-actions",
+        render_types::PixelRect {
+            x: 100,
+            y: 50,
+            width: 200,
+            height: 32,
+        },
+        vec![(
+            "app.save".to_string(),
+            render_types::PixelRect {
+                x: 8,
+                y: 4,
+                width: 80,
+                height: 24,
+            },
+        )],
+    );
+
     assert!(app.focus_next_panel_control());
     let update = app.prepare_present_frame(1280, 200, &mut profiler);
     let surface = app.panel_surface.clone().expect("panel surface exists");

@@ -12,6 +12,7 @@ members = [
   "crates/builtin-panels/pen-settings",
   "crates/builtin-panels/layers-panel",
   "crates/builtin-panels/color-palette",
+  "crates/builtin-panels/workspace-layout",
   "crates/panel-api",
   "crates/canvas",
   "crates/app-core",

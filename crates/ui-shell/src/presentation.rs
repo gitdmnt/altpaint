@@ -1,25 +1,9 @@
-use std::collections::BTreeMap;
-
 use app_core::PanelSurfaceRect;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FocusTarget {
     pub(crate) panel_id: String,
     pub(crate) node_id: String,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct TextInputEditorState {
-    pub(crate) cursor_chars: usize,
-    pub(crate) preedit: Option<String>,
-}
-
-#[allow(dead_code)]
-#[derive(Clone, Copy)]
-pub(crate) struct PanelRenderState<'a> {
-    pub(crate) focused_target: Option<&'a FocusTarget>,
-    pub(crate) expanded_dropdown: Option<&'a FocusTarget>,
-    pub(crate) text_input_states: &'a BTreeMap<(String, String), TextInputEditorState>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

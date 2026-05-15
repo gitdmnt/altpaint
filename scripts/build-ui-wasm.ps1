@@ -28,7 +28,8 @@ try {
         @{ Package = 'builtin-panel-pen-settings'; Destination = 'crates/builtin-panels/pen-settings/builtin_panel_pen_settings.wasm' },
         @{ Package = 'builtin-panel-job-progress'; Destination = 'crates/builtin-panels/job-progress/builtin_panel_job_progress.wasm' },
         @{ Package = 'builtin-panel-snapshot-panel'; Destination = 'crates/builtin-panels/snapshot-panel/builtin_panel_snapshot_panel.wasm' },
-        @{ Package = 'builtin-panel-text-flow'; Destination = 'crates/builtin-panels/text-flow/builtin_panel_text_flow.wasm' }
+        @{ Package = 'builtin-panel-text-flow'; Destination = 'crates/builtin-panels/text-flow/builtin_panel_text_flow.wasm' },
+        @{ Package = 'builtin-panel-workspace-layout'; Destination = 'crates/builtin-panels/workspace-layout/builtin_panel_workspace_layout.wasm' }
     )
 
     if (-not $SkipTargetInstall) {

@@ -3,7 +3,6 @@
 mod focus;
 mod presentation;
 mod surface_render;
-mod tree_query;
 mod workspace;
 
 #[cfg(test)]
@@ -12,13 +11,12 @@ mod tests;
 // 9E-4: render::text 経路は撤去。ui-shell は GPU 直描画 (HtmlPanelEngine) に統一済み。
 
 use app_core::{WorkspaceLayout, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState};
-use panel_api::{HostAction, PanelEvent, PanelTree};
+use panel_api::{HostAction, PanelEvent};
 use panel_runtime::PanelRuntime;
 pub use presentation::PanelSurface;
-use presentation::{FocusTarget, TextInputEditorState};
+use presentation::FocusTarget;
 use std::collections::BTreeMap;
 use surface_render::PANEL_SCROLL_PIXELS_PER_LINE;
-use workspace::{WORKSPACE_PANEL_ID, event_panel_id, workspace_panel_actions};
 
 /// パネルの presentation 状態を保持する。
 ///
@@ -34,10 +32,6 @@ pub struct PanelPresentation {
     panel_scroll_offset: usize,
     /// 現在 focus 中の node。
     focused_target: Option<FocusTarget>,
-    /// 展開中 dropdown。
-    expanded_dropdown: Option<FocusTarget>,
-    /// text input ごとの editor state。
-    text_input_states: BTreeMap<(String, String), TextInputEditorState>,
     /// HTML パネル (GPU 直描画) の hit 情報。`update_html_panel_hits` で毎フレーム更新する。
     html_panel_hits: BTreeMap<String, HtmlPanelHitMap>,
     /// HTML パネルのタイトルバードラッグハンドル (screen 座標)。`update_html_panel_move_handle` で更新。
@@ -70,8 +64,6 @@ impl PanelPresentation {
             rendered_panel_rects: BTreeMap::new(),
             panel_scroll_offset: 0,
             focused_target: None,
-            expanded_dropdown: None,
-            text_input_states: BTreeMap::new(),
             html_panel_hits: BTreeMap::new(),
             html_panel_move_handles: BTreeMap::new(),
             html_panel_full_rects: BTreeMap::new(),
@@ -213,13 +205,6 @@ impl PanelPresentation {
         None
     }
 
-    /// パネル trees を計算して返す。
-    pub fn panel_trees(&self, runtime: &PanelRuntime) -> Vec<PanelTree> {
-        let mut trees = vec![self.workspace_manager_tree(runtime)];
-        trees.extend(self.visible_panels_in_order(runtime));
-        trees
-    }
-
     /// 現在の ワークスペース レイアウト を返す。
     pub fn workspace_layout(&self) -> WorkspaceLayout {
         self.workspace_layout.clone()
@@ -235,11 +220,7 @@ impl PanelPresentation {
 
     /// 既存データを走査して reconcile runtime panels を組み立てる。
     pub fn reconcile_runtime_panels(&mut self, runtime: &PanelRuntime) {
-        let panel_ids = runtime
-            .panel_trees()
-            .into_iter()
-            .map(|tree| tree.id)
-            .collect::<Vec<_>>();
+        let panel_ids = runtime.panel_static_ids();
         self.reconcile_workspace_layout(panel_ids);
     }
 
@@ -306,7 +287,9 @@ impl PanelPresentation {
 
     /// 入力や種別に応じて処理を振り分ける。
     ///
-    /// 必要に応じて dirty 状態も更新します。
+    /// HTML パネル (Phase 12 完了) のみが残り、tree 走査による dropdown / workspace 特殊分岐は撤去済み。
+    /// 受け取った event は常にランタイムへ転送する。focus は呼び出し側が
+    /// `focus_panel_node` を介して直接設定する。
     pub fn handle_panel_event(
         &mut self,
         runtime: &PanelRuntime,
@@ -314,43 +297,6 @@ impl PanelPresentation {
     ) -> PresentationEventResult {
         if let PanelEvent::Activate { panel_id, node_id } = event {
             self.focus_panel_node(runtime, panel_id, node_id);
-            if self.is_dropdown_target(runtime, panel_id, node_id) {
-                let dropdown = FocusTarget {
-                    panel_id: panel_id.clone(),
-                    node_id: node_id.clone(),
-                };
-                self.expanded_dropdown = if self.expanded_dropdown.as_ref() == Some(&dropdown) {
-                    None
-                } else {
-                    Some(dropdown)
-                };
-                let _ = panel_id;
-                return PresentationEventResult {
-                    forward_to_runtime: false,
-                    actions: Vec::new(),
-                    changed: true,
-                };
-            }
-        }
-        if let PanelEvent::SetText {
-            panel_id, node_id, ..
-        } = event
-            && self.is_dropdown_target(runtime, panel_id, node_id)
-        {
-            self.expanded_dropdown = None;
-        }
-        if event_panel_id(event) == WORKSPACE_PANEL_ID {
-            let ordered_panels = self
-                .workspace_panel_entries(runtime)
-                .into_iter()
-                .map(|(entry, _)| (entry.id.clone(), entry.visible))
-                .collect::<Vec<_>>();
-            let actions = workspace_panel_actions(ordered_panels.as_slice(), event);
-            return PresentationEventResult {
-                forward_to_runtime: false,
-                actions,
-                changed: true,
-            };
         }
         PresentationEventResult {
             forward_to_runtime: true,

@@ -1,11 +1,10 @@
 use super::*;
-use panel_api::{HostAction, PanelNode, PanelPlugin, PanelTree};
+use panel_api::PanelPlugin;
 use panel_runtime::PanelRuntime;
 
 struct MockPanel {
     id: &'static str,
     title: &'static str,
-    tree: PanelTree,
 }
 
 impl PanelPlugin for MockPanel {
@@ -18,11 +17,6 @@ impl PanelPlugin for MockPanel {
     fn title(&self) -> &'static str {
         self.title
     }
-
-    /// 現在の パネル tree を返す。
-    fn panel_tree(&self) -> PanelTree {
-        self.tree.clone()
-    }
 }
 
 /// 現在の値を runtime へ変換する。
@@ -31,32 +25,32 @@ fn mock_runtime() -> PanelRuntime {
     runtime.register_panel(Box::new(MockPanel {
         id: "builtin.mock",
         title: "Mock",
-        tree: PanelTree {
-            id: "builtin.mock",
-            title: "Mock",
-            children: vec![PanelNode::Button {
-                id: "mock.button".to_string(),
-                label: "Push".to_string(),
-                action: HostAction::DispatchCommand(app_core::Command::Noop),
-                active: false,
-                fill_color: None,
-            }],
-        },
     }));
     runtime
 }
 
-/// パネル trees include ワークスペース manager and runtime panels が期待どおりに動作することを検証する。
+/// `reconcile_runtime_panels` が登録パネル全件 + workspace 自身を workspace_layout の panels に追加する。
 #[test]
-fn panel_trees_include_workspace_manager_and_runtime_panels() {
+fn workspace_panel_entries_include_all_registered_panels() {
     let runtime = mock_runtime();
     let mut presentation = PanelPresentation::new();
     presentation.reconcile_runtime_panels(&runtime);
 
-    let trees = presentation.panel_trees(&runtime);
-
-    assert_eq!(trees[0].id, workspace::WORKSPACE_PANEL_ID);
-    assert!(trees.iter().any(|tree| tree.id == "builtin.mock"));
+    let layout = presentation.workspace_layout();
+    assert!(
+        layout
+            .panels
+            .iter()
+            .any(|entry| entry.id == workspace::WORKSPACE_PANEL_ID),
+        "workspace-layout self entry must be present"
+    );
+    assert!(
+        layout
+            .panels
+            .iter()
+            .any(|entry| entry.id == "builtin.mock"),
+        "registered panel must be present in workspace layout"
+    );
 }
 
 /// Phase 4: HTML パネルの move handle (タイトルバー) を screen 座標で検索すると panel_id が返る。
@@ -190,11 +184,6 @@ fn html_panel_visibility_can_be_toggled_and_queried() {
     runtime.register_panel(Box::new(MockPanel {
         id: "builtin.mock.html",
         title: "Mock HTML",
-        tree: PanelTree {
-            id: "builtin.mock.html",
-            title: "Mock HTML",
-            children: Vec::new(),
-        },
     }));
     let mut presentation = PanelPresentation::new();
     presentation.reconcile_runtime_panels(&runtime);
@@ -209,7 +198,7 @@ fn html_panel_visibility_can_be_toggled_and_queried() {
     assert!(presentation.is_panel_visible("builtin.mock.html"));
 }
 
-/// Phase 1: HTML パネル相当 (children 空の tree) も `reconcile_runtime_panels` で
+/// Phase 1: HTML パネル相当 (`PanelTree` を経由せず登録した) も `reconcile_runtime_panels` で
 /// workspace_layout のエントリを取得する。これが visibility / move のための前提となる。
 #[test]
 fn html_panel_with_empty_tree_gets_workspace_entry_after_reconcile() {
@@ -217,11 +206,6 @@ fn html_panel_with_empty_tree_gets_workspace_entry_after_reconcile() {
     runtime.register_panel(Box::new(MockPanel {
         id: "builtin.mock.html",
         title: "Mock HTML",
-        tree: PanelTree {
-            id: "builtin.mock.html",
-            title: "Mock HTML",
-            children: Vec::new(),
-        },
     }));
     let mut presentation = PanelPresentation::new();
     presentation.reconcile_runtime_panels(&runtime);
@@ -234,20 +218,6 @@ fn html_panel_with_empty_tree_gets_workspace_entry_after_reconcile() {
         .expect("HTML panel must have a workspace entry after reconcile");
     assert!(entry.visible, "HTML panel default visibility is true");
     assert!(entry.position.is_some(), "default position assigned");
-}
-
-/// フォーカス moves to runtime パネル node が期待どおりに動作することを検証する。
-#[test]
-fn focus_moves_to_runtime_panel_node() {
-    let runtime = mock_runtime();
-    let mut presentation = PanelPresentation::new();
-    presentation.reconcile_runtime_panels(&runtime);
-
-    assert!(presentation.focus_panel_node(&runtime, "builtin.mock", "mock.button"));
-    assert_eq!(
-        presentation.focused_target(),
-        Some(("builtin.mock", "mock.button"))
-    );
 }
 
 /// Phase 11: TopRight anchor のパネルで W ハンドルドラッグ → 右辺の screen 座標が固定される。

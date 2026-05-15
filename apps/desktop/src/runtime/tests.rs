@@ -11,7 +11,7 @@ use crate::app::DesktopApp;
 use crate::app::canvas_frame::build_canvas_frame;
 
 use super::DesktopRuntime;
-use super::keyboard::{normalized_key_name, supports_editing_repeat};
+use super::keyboard::normalized_key_name;
 
 /// test runtime を計算して返す。
 fn test_runtime() -> DesktopRuntime {
@@ -208,14 +208,6 @@ fn normalized_key_name_uppercases_character_keys() {
     assert_eq!(normalized_key_name(&Key::Named(NamedKey::Shift)), None);
 }
 
-/// editing repeat support matches テキスト navigation keys が期待どおりに動作することを検証する。
-#[test]
-fn editing_repeat_support_matches_text_navigation_keys() {
-    assert!(supports_editing_repeat(&Key::Character("x".into())));
-    assert!(supports_editing_repeat(&Key::Named(NamedKey::ArrowLeft)));
-    assert!(!supports_editing_repeat(&Key::Named(NamedKey::Tab)));
-}
-
 /// normalized ショートカット includes アクティブ modifiers が期待どおりに動作することを検証する。
 #[test]
 fn normalized_shortcut_includes_active_modifiers() {
@@ -249,6 +241,25 @@ fn builtin_shortcut_can_move_focus_backward() {
     let mut runtime = test_runtime();
     let mut profiler = DesktopProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 200, &mut profiler);
+    // ADR 014 以降、focus は HTML hit table を辿るため事前に hit を 1 件 inject する。
+    runtime.app.panel_presentation.update_html_panel_hits(
+        "builtin.app-actions",
+        render_types::PixelRect {
+            x: 100,
+            y: 50,
+            width: 200,
+            height: 32,
+        },
+        vec![(
+            "app.save".to_string(),
+            render_types::PixelRect {
+                x: 8,
+                y: 4,
+                width: 80,
+                height: 24,
+            },
+        )],
+    );
     runtime.modifiers = ModifiersState::SHIFT;
 
     assert!(runtime.handle_builtin_shortcut(&Key::Named(NamedKey::Tab)));

@@ -85,3 +85,14 @@ workspace_layout へ書き戻す **自動サイズ追従** が残っており、
   **却下**。
 - リサイズ中は engine 追従せず drag end のみ反映 → ドラッグ中の描画が古い
   viewport のままになり CSS layout (text wrap 等) が追従しない違和感。**却下**。
+
+## Post-Acceptance Note (2026-05-15)
+
+Phase 11 着地時点で 11 パネルは HTML 化済みだったが、`builtin.workspace-layout`
+(パネル表示/非表示管理 UI) のみ Rust ネイティブ実装 (`crates/ui-shell/src/workspace.rs`
+`workspace_manager_tree()`) が残っており、PanelTree/PanelNode を経由した GPU 描画経路を
+通っていた。これにより 8 ハンドルリサイズ機構が workspace-layout で動作しない問題と、
+ADR 012 で「DSL 撤廃完了」と書いた文言の不整合があった。
+
+ADR 014 で workspace-layout を 12 番目の HTML パネルとして実装し直し、PanelTree/PanelNode を
+完全撤廃する。撤廃完了後は workspace-layout でも 8 ハンドルリサイズが利用可能になる。

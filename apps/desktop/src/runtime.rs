@@ -75,9 +75,10 @@ impl DesktopRuntime {
     }
 
     /// 次のフレームで再描画が行われるよう要求する。
+    /// ADR 014 でテキスト入力は HTML パネル内部完結に統一済みのため、IME 許可は常に false。
     fn request_redraw(&self) {
         if let Some(window) = &self.window {
-            window.set_ime_allowed(self.app.has_focused_panel_input());
+            window.set_ime_allowed(false);
             window.request_redraw();
         }
     }

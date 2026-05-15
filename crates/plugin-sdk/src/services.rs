@@ -286,6 +286,27 @@ pub mod export_image {
     }
 }
 
+/// ワークスペース パネル管理 (workspace-layout パネル) 用サービス。
+pub mod workspace_layout {
+    use super::{descriptor, json};
+    use panel_schema::CommandDescriptor;
+
+    /// 指定パネルの表示/非表示を切り替える。
+    pub fn set_panel_visibility(
+        panel_id: impl Into<String>,
+        visible: bool,
+    ) -> CommandDescriptor {
+        let mut descriptor = descriptor("workspace_layout.set_panel_visibility");
+        descriptor
+            .payload
+            .insert("panel_id".to_string(), json!(panel_id.into()));
+        descriptor
+            .payload
+            .insert("visible".to_string(), json!(visible));
+        descriptor
+    }
+}
+
 /// テキスト描画サービス。
 pub mod text_render {
     use panel_schema::CommandDescriptor;

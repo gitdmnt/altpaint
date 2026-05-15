@@ -99,6 +99,31 @@ fn snapshot_restore_service_restores_document() {
     );
 }
 
+/// `workspace_layout.set_panel_visibility` がパネル可視性を切り替える。
+#[test]
+fn request_service_workspace_layout_set_panel_visibility_toggles_visibility() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    assert!(
+        app.panel_presentation
+            .is_panel_visible("builtin.tool-palette"),
+        "tool-palette defaults to visible"
+    );
+
+    assert!(
+        app.execute_host_action(HostAction::RequestService(
+            ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+                .with_value("panel_id", "builtin.tool-palette")
+                .with_value("visible", false),
+        ))
+    );
+
+    assert!(
+        !app.panel_presentation
+            .is_panel_visible("builtin.tool-palette"),
+        "tool-palette should be hidden after service call"
+    );
+}
+
 /// 要求 サービス 再読込 ペン presets refreshes ドキュメント 状態 が期待どおりに動作することを検証する。
 #[test]
 fn request_service_reload_pen_presets_refreshes_document_state() {

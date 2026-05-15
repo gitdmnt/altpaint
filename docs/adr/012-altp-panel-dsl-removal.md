@@ -162,3 +162,15 @@ XSS 境界を検証する。
 - 得る: 中間表現除去、HTML/CSS による直接著述、DOM mutation の表現力 (動的リスト等が素直に書ける)
 - 著者は Blitz `DocumentMutator` を直接学ぶ必要がある。合成 API を持たないため Wasm 側で
   HTML 文字列組立 + `set_inner_html` を多用するパターンに収束する見込み
+
+## Post-Acceptance Note (2026-05-15)
+
+本 ADR の Decision で「`PanelTree` DTO 削除」「`PanelNode` 削除」を宣言したが、Phase 10 着地時点では
+`crates/panel-api/src/lib.rs` 内に `PanelTree` / `PanelNode` / `PanelView` 型と
+`PanelPlugin::panel_tree()` / `view()` のデフォルト実装が**残存**していた。`builtin.workspace-layout`
+パネル (パネル表示/非表示管理 UI) が Rust ネイティブ実装 (`crates/ui-shell/src/workspace.rs`
+`workspace_manager_tree()`) で構築する `PanelTree` を介して GPU 描画する経路を通っていたためである。
+
+この乖離は ADR 014 で正式に解消する: workspace-layout を 12 番目の HTML パネルとして実装し直し、
+PanelTree / PanelNode / PanelView と関連 trait method、`tree_query`、focus 経路の dropdown /
+text_input 走査、`TextInputEditorState` を一括撤去する。
