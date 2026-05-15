@@ -1,15 +1,12 @@
-use app_core::{ColorRgba8, Document, ToolKind};
+use app_core::{Document, ToolKind};
 use serde_json::{Value, json};
-
-pub(crate) const MAX_DOCUMENT_DIMENSION: usize = 8192;
-pub(crate) const MAX_DOCUMENT_PIXELS: usize = 16_777_216;
 
 /// 高価な JSON シリアライズ結果を再利用するためのキャッシュ。
 ///
 /// ズーム/パンなど view のみが変わる操作では pen_presets / tool_catalog 等の
 /// 再シリアライズをスキップし、build_host_snapshot のコストを大幅に削減する。
 #[derive(Default)]
-pub(crate) struct HostSnapshotCache {
+pub struct HostSnapshotCache {
     /// 初回呼び出しで必ず全フィールドを構築するためのフラグ。
     initialized: bool,
 
@@ -35,6 +32,10 @@ pub(crate) struct HostSnapshotCache {
     panels_json: String,
 }
 
+/// `build_host_snapshot_cached` 呼出側が事前に組み立てた workspace パネル一覧 JSON のデフォルト。
+/// 未設定時は空配列を返す。
+pub const EMPTY_WORKSPACE_PANELS_JSON: &str = "[]";
+
 /// アクティブな ツール 名前 を返す。
 pub(crate) fn active_tool_name(tool: ToolKind) -> &'static str {
     match tool {
@@ -50,13 +51,18 @@ pub(crate) fn active_tool_name(tool: ToolKind) -> &'static str {
 ///
 /// 変化していないフィールドのシリアライズを再利用することで、
 /// ズーム/パン操作時のコストを大幅に削減する。
-pub(crate) fn build_host_snapshot_cached(
+///
+/// `workspace_panels_json` には呼出元が事前に組み立てた
+/// `[{"id","title","visible"}, ...]` 形式の JSON 文字列を渡す。
+/// `workspace.panels_json` キーに格納され、`host::workspace::panels_json()` から参照される。
+pub fn build_host_snapshot_cached(
     document: &Document,
     can_undo: bool,
     can_redo: bool,
     active_jobs: usize,
     snapshot_count: usize,
     cache: &mut HostSnapshotCache,
+    workspace_panels_json: &str,
 ) -> Value {
     let active_tool_definition = document.active_tool_definition().cloned();
     let active_page = document.active_page();
@@ -272,44 +278,64 @@ pub(crate) fn build_host_snapshot_cached(
             "flip_x": document.view_transform.flip_x,
             "flip_y": document.view_transform.flip_y,
         },
+        "workspace": {
+            "panels_json": workspace_panels_json,
+        },
     })
 }
 
-/// 入力を解析して 16進文字列 色 に変換する。
-///
-/// 値を生成できない場合は `None` を返します。
-pub(crate) fn parse_hex_color(input: &str) -> Option<ColorRgba8> {
-    let hex = input.strip_prefix('#')?;
-    if hex.len() != 6 {
-        return None;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use app_core::Document;
+
+    /// build_host_snapshot_cached が `workspace.panels_json` を登録順 + visible 反映で出力する。
+    #[test]
+    fn host_sync_emits_workspace_panels_json_in_registered_order() {
+        let document = Document::default();
+        let mut cache = HostSnapshotCache::default();
+        let workspace_panels_json = r#"[{"id":"builtin.foo","title":"Foo","visible":true},{"id":"builtin.bar","title":"Bar","visible":false}]"#;
+
+        let snapshot = build_host_snapshot_cached(
+            &document,
+            false,
+            false,
+            0,
+            0,
+            &mut cache,
+            workspace_panels_json,
+        );
+
+        let emitted = snapshot
+            .get("workspace")
+            .and_then(|v| v.get("panels_json"))
+            .and_then(|v| v.as_str())
+            .expect("workspace.panels_json must be present");
+        assert_eq!(emitted, workspace_panels_json);
     }
-    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-    Some(ColorRgba8::new(r, g, b, 0xff))
+
+    /// `workspace_panels_json` が空 (デフォルト) の場合は空配列文字列がそのまま出る。
+    #[test]
+    fn host_sync_emits_empty_workspace_panels_json_when_absent() {
+        let document = Document::default();
+        let mut cache = HostSnapshotCache::default();
+
+        let snapshot = build_host_snapshot_cached(
+            &document,
+            false,
+            false,
+            0,
+            0,
+            &mut cache,
+            EMPTY_WORKSPACE_PANELS_JSON,
+        );
+
+        let emitted = snapshot
+            .get("workspace")
+            .and_then(|v| v.get("panels_json"))
+            .and_then(|v| v.as_str())
+            .expect("workspace.panels_json must be present");
+        assert_eq!(emitted, "[]");
+    }
 }
 
-/// 入力を解析して ドキュメント サイズ に変換する。
-///
-/// 値を生成できない場合は `None` を返します。
-pub(crate) fn parse_document_size(input: &str) -> Option<(usize, usize)> {
-    let normalized = input.replace(['×', ',', ';'], "x");
-    let parts = normalized
-        .split(|ch: char| ch == 'x' || ch.is_whitespace())
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>();
-    if parts.len() != 2 {
-        return None;
-    }
-    let width = parts[0].parse::<usize>().ok()?;
-    let height = parts[1].parse::<usize>().ok()?;
-    if width == 0
-        || height == 0
-        || width > MAX_DOCUMENT_DIMENSION
-        || height > MAX_DOCUMENT_DIMENSION
-        || width.saturating_mul(height) > MAX_DOCUMENT_PIXELS
-    {
-        return None;
-    }
-    Some((width, height))
-}

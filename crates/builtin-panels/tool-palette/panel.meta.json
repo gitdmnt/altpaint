@@ -1,0 +1,5 @@
+{
+  "id": "builtin.tool-palette",
+  "title": "ツール",
+  "default_size": { "width": 220, "height": 320 }
+}

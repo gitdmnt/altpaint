@@ -7,6 +7,7 @@ mod snapshot;
 mod text_render;
 mod tool_catalog;
 mod workspace_io;
+mod workspace_layout;
 
 use app_core::{Command, Document, HistoryEntry};
 use desktop_support::DEFAULT_PROJECT_PATH;
@@ -30,6 +31,9 @@ impl DesktopApp {
             return changed;
         }
         if let Some(changed) = self.handle_workspace_service_request(&request) {
+            return changed;
+        }
+        if let Some(changed) = self.handle_workspace_layout_service_request(&request) {
             return changed;
         }
         if let Some(changed) = self.handle_tool_catalog_service_request(&request) {

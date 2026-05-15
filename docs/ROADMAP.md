@@ -22,6 +22,9 @@
 | 9E       | DSL パネル + ステータスバー GPU 化 (HtmlPanelEngine 経路統合) + 9C-2 統合         | 2026-04-26 |
 | 9F       | `crates/render/` 物理削除と `PresentScene` レイヤー再編成                          | 2026-04-29 |
 | 9G       | `html-panel` feature gate 完全撤去 (Phase 9E で唯一経路化した HTML 描画を default 化) | 2026-05-02 |
+| 10       | `.altp-panel` DSL 撤去・全 11 パネルを HTML+CSS+Wasm DOM mutation へ移行             | 2026-05-03 |
+| 11       | HTML パネル自動サイズ廃止 + 8 ハンドル手動リサイズ導入 + `default_size` 必須化       | 2026-05-12 |
+| 12       | `PanelTree`/`PanelNode`/`PanelView` 撤廃 + `builtin.workspace-layout` を HTML 化 (全 12 パネル統一) | 2026-05-15 |
 
 詳細は [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) を参照。
 

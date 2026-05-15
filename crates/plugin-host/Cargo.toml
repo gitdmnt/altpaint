@@ -10,3 +10,5 @@ panel-schema = { path = "../panel-schema" }
 serde_json.workspace = true
 thiserror.workspace = true
 wasmtime = { version = "30.0", features = ["cache"] }
+blitz-dom = { version = "0.3.0-alpha", default-features = false, features = ["system_fonts"] }
+blitz-html = "0.3.0-alpha"

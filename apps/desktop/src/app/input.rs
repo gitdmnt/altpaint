@@ -103,6 +103,11 @@ impl DesktopApp {
         if self.canvas_input.is_drawing {
             return self.handle_canvas_pointer("up", point, pressure);
         }
+        if self.panel_interaction.active_panel_resize.take().is_some() {
+            self.panel_interaction.pending_panel_press = None;
+            self.persist_session_state();
+            return false;
+        }
         if self.panel_interaction.active_panel_drag.take().is_some() {
             self.panel_interaction.pending_panel_press = None;
             self.persist_session_state();
@@ -128,7 +133,9 @@ impl DesktopApp {
             return self.handle_canvas_pointer("drag", point, pressure);
         }
 
-        if self.panel_interaction.active_panel_drag.is_some() {
+        if self.panel_interaction.active_panel_drag.is_some()
+            || self.panel_interaction.active_panel_resize.is_some()
+        {
             return self.drag_panel_interaction(point);
         }
 

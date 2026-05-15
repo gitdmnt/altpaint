@@ -1,16 +1,20 @@
 //! `UiShell` の workspace 管理責務をまとめる。
 //!
-//! panel 並び順・表示状態・workspace 管理 panel の生成をここへ寄せ、
-//! shell 本体から UI 管理ロジックを分離する。
+//! panel 並び順・表示状態の管理をここへ寄せる。
+//! ADR 014 以降、`builtin.workspace-layout` は通常の HTML パネルとして
+//! `crates/builtin-panels/workspace-layout/` に実装されており、
+//! ここでは「workspace 自身」に対する特別扱いは行わない (生成・配置だけ管理)。
 
 use super::*;
-use panel_api::{PanelMoveDirection, PanelNode, PanelTree};
-use panel_runtime::PanelRuntime;
+use panel_api::PanelMoveDirection;
 
 pub(super) const WORKSPACE_PANEL_ID: &str = "builtin.workspace-layout";
 const HIDDEN_BY_DEFAULT_PANEL_IDS: &[&str] = &["builtin.panel-list"];
 
 /// 既定の パネル 状態 を返す。
+///
+/// Phase 11: `size` は `None` で挿入し、bootstrap 経路で panel.meta.json の
+/// `default_size` を流し込む。`WorkspacePanelSize::default()` には頼らない。
 pub(super) fn default_panel_state(panel_id: &str, index: usize) -> WorkspacePanelState {
     let (anchor, position) = default_panel_anchor_and_position(panel_id, index);
     WorkspacePanelState {
@@ -18,7 +22,7 @@ pub(super) fn default_panel_state(panel_id: &str, index: usize) -> WorkspacePane
         visible: !HIDDEN_BY_DEFAULT_PANEL_IDS.contains(&panel_id),
         anchor,
         position: Some(position),
-        size: Some(WorkspacePanelSize::default()),
+        size: None,
     }
 }
 
@@ -37,29 +41,6 @@ impl PanelPresentation {
         self.workspace_layout
             .panels
             .insert(0, default_panel_state(WORKSPACE_PANEL_ID, 0));
-    }
-
-    /// 現在の値を パネル entries へ変換する。
-    pub(super) fn workspace_panel_entries(
-        &self,
-        runtime: &PanelRuntime,
-    ) -> Vec<(&WorkspacePanelState, String)> {
-        let panel_titles = runtime
-            .panel_trees()
-            .into_iter()
-            .map(|tree| (tree.id, tree.title.to_string()))
-            .collect::<std::collections::BTreeMap<_, _>>();
-
-        self.workspace_layout
-            .panels
-            .iter()
-            .filter_map(|entry| {
-                panel_titles
-                    .get(entry.id.as_str())
-                    .cloned()
-                    .map(|title| (entry, title))
-            })
-            .collect()
     }
 
     /// 既存データを走査して move パネル to を組み立てる。
@@ -142,6 +123,42 @@ impl PanelPresentation {
             y: position.y,
             width: size.width,
             height: size.height,
+        })
+    }
+
+    /// Phase 11: リサイズドラッグ結果を atomic に反映する。
+    /// 1. 最終 rect を viewport 内にクランプ
+    /// 2. `set_panel_size` で workspace 上の size を確定
+    /// 3. `set_position_from_absolute` で anchor を再計算しつつ position を確定
+    /// 戻り値: 反映に成功した場合 `Some(applied_rect)` (なお `set_position_from_absolute`
+    /// 内部で再度クランプされた結果を返す)。該当パネルが workspace に存在しない場合 `None`。
+    pub fn resize_panel_keeping_anchor(
+        &mut self,
+        panel_id: &str,
+        new_rect: render_types::PixelRect,
+        viewport: (usize, usize),
+    ) -> Option<render_types::PixelRect> {
+        let (vw, vh) = viewport;
+        let width = new_rect.width.clamp(1, vw.max(1));
+        let height = new_rect.height.clamp(1, vh.max(1));
+        let max_x = vw.saturating_sub(width);
+        let max_y = vh.saturating_sub(height);
+        let x = new_rect.x.min(max_x);
+        let y = new_rect.y.min(max_y);
+
+        let entry = self
+            .workspace_layout
+            .panels
+            .iter_mut()
+            .find(|entry| entry.id == panel_id)?;
+        let next_size = WorkspacePanelSize { width, height };
+        entry.size = Some(next_size);
+        entry.set_position_from_absolute(x, y, vw, vh, next_size);
+        Some(render_types::PixelRect {
+            x,
+            y,
+            width,
+            height,
         })
     }
 
@@ -291,9 +308,8 @@ impl PanelPresentation {
             if entry.position.is_none() {
                 entry.position = Some(default_panel_position(&entry.id, index));
             }
-            if entry.size.is_none() {
-                entry.size = Some(WorkspacePanelSize::default());
-            }
+            // Phase 11: size は bootstrap 経路で meta.json から注入されるため、
+            // ここでは触らない (size=None のままにする)。
         }
 
         if self
@@ -303,28 +319,6 @@ impl PanelPresentation {
         {
             self.focused_target = None;
         }
-    }
-
-    /// 既存データを走査して 表示状態 panels in order を組み立てる。
-    pub(super) fn visible_panels_in_order(&self, runtime: &PanelRuntime) -> Vec<PanelTree> {
-        let ordered_ids = self
-            .workspace_layout
-            .panels
-            .iter()
-            .map(|entry| entry.id.as_str())
-            .collect::<Vec<_>>();
-
-        let panel_trees = runtime
-            .panel_trees()
-            .into_iter()
-            .map(|tree| (tree.id, tree))
-            .collect::<std::collections::BTreeMap<_, _>>();
-
-        ordered_ids
-            .into_iter()
-            .filter(|panel_id| self.panel_is_visible(panel_id))
-            .filter_map(|panel_id| panel_trees.get(panel_id).cloned())
-            .collect()
     }
 
     /// 指定パネルが現在表示状態かを返す (外部 crate 向け公開 API)。
@@ -346,50 +340,6 @@ impl PanelPresentation {
             .find(|entry| entry.id == panel_id)
             .map(|entry| entry.visible)
             .unwrap_or(true)
-    }
-
-    /// 現在の値を manager tree へ変換する。
-    pub(super) fn workspace_manager_tree(&self, runtime: &PanelRuntime) -> PanelTree {
-        let ordered_entries = self.workspace_panel_entries(runtime);
-
-        let rows = ordered_entries
-            .iter()
-            .map(|(entry, title)| PanelNode::Row {
-                id: format!("workspace.row.{}", entry.id),
-                children: vec![
-                    PanelNode::Text {
-                        id: format!("workspace.title.{}", entry.id),
-                        text: title.clone(),
-                    },
-                    PanelNode::Button {
-                        id: format!("workspace.visibility.{}", entry.id),
-                        label: if entry.visible {
-                            "👁 非表示".to_string()
-                        } else {
-                            "👁 表示".to_string()
-                        },
-                        action: HostAction::SetPanelVisibility {
-                            panel_id: entry.id.clone(),
-                            visible: !entry.visible,
-                        },
-                        active: !entry.visible,
-                        fill_color: None,
-                    },
-                ],
-            })
-            .collect::<Vec<_>>();
-        PanelTree {
-            id: WORKSPACE_PANEL_ID,
-            title: "パネル管理",
-            children: vec![PanelNode::Column {
-                id: "workspace.root".to_string(),
-                children: vec![PanelNode::Section {
-                    id: "workspace.panels".to_string(),
-                    title: "表示 / 非表示".to_string(),
-                    children: rows,
-                }],
-            }],
-        }
     }
 }
 
@@ -434,37 +384,3 @@ fn default_panel_position(panel_id: &str, index: usize) -> WorkspacePanelPositio
     default_panel_anchor_and_position(panel_id, index).1
 }
 
-/// イベント パネル ID を計算して返す。
-pub(super) fn event_panel_id(event: &PanelEvent) -> &str {
-    match event {
-        PanelEvent::Activate { panel_id, .. }
-        | PanelEvent::SetValue { panel_id, .. }
-        | PanelEvent::DragValue { panel_id, .. }
-        | PanelEvent::SetText { panel_id, .. }
-        | PanelEvent::Keyboard { panel_id, .. } => panel_id,
-    }
-}
-
-/// 現在の値を パネル actions へ変換する。
-pub(super) fn workspace_panel_actions(
-    ordered_panels: &[(String, bool)],
-    event: &PanelEvent,
-) -> Vec<HostAction> {
-    match event {
-        PanelEvent::Activate { node_id, .. } => node_id
-            .strip_prefix("workspace.visibility.")
-            .map(|panel_id| {
-                let visible = ordered_panels
-                    .iter()
-                    .find(|(candidate, _)| candidate.as_str() == panel_id)
-                    .map(|(_, visible)| *visible)
-                    .unwrap_or(true);
-                vec![HostAction::SetPanelVisibility {
-                    panel_id: panel_id.to_string(),
-                    visible: !visible,
-                }]
-            })
-            .unwrap_or_default(),
-        _ => Vec::new(),
-    }
-}

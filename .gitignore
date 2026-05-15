@@ -2,6 +2,7 @@
 target/
 Cargo.lock
 plugins/**/*.wasm
+crates/builtin-panels/**/*.wasm
 *.log
 *.tmp
 *.bak

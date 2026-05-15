@@ -1,0 +1,5 @@
+{
+  "id": "builtin.workspace-layout",
+  "title": "パネル管理",
+  "default_size": { "width": 280, "height": 320 }
+}

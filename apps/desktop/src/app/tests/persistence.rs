@@ -45,9 +45,8 @@ fn execute_command_load_project_uses_native_dialog_path() {
     assert_eq!(app.io_state.project_path, path);
     assert!(
         !app.panel_presentation
-            .panel_trees(&app.panel_runtime)
-            .iter()
-            .any(|panel| panel.id == "builtin.tool-palette")
+            .is_panel_visible("builtin.tool-palette"),
+        "tool-palette visibility was persisted as hidden"
     );
 
     let _ = std::fs::remove_file(app.io_state.project_path.clone());
@@ -178,11 +177,10 @@ fn load_project_restores_workspace_layout() {
         path: path.to_string_lossy().to_string(),
     }));
 
-    let panels = app.panel_presentation.panel_trees(&app.panel_runtime);
     assert!(
-        !panels
-            .iter()
-            .any(|panel| panel.id == "builtin.tool-palette")
+        !app.panel_presentation
+            .is_panel_visible("builtin.tool-palette"),
+        "tool-palette visibility was persisted as hidden"
     );
     assert_eq!(app.panel_presentation.workspace_layout(), expected_layout);
 
@@ -437,9 +435,10 @@ fn startup_restores_last_opened_project_from_session() {
     let _ = std::fs::remove_file(app.io_state.project_path.clone());
 }
 
-/// パネル レイアウト persists across restart via セッション が期待どおりに動作することを検証する。
+/// パネル visibility round-trip: session 永続化 → 復元後も非表示状態が復元される。
+/// (旧テスト名 `panel_layout_persists_across_restart_via_session` をリネーム + visibility 観点に集約)
 #[test]
-fn panel_layout_persists_across_restart_via_session() {
+fn panel_visibility_round_trip_through_session_save_load() {
     let session_path = unique_test_path("layout-session");
     let mut source_app =
         test_app_with_dialogs_and_session_path(TestDialogs::default(), session_path.clone());
@@ -457,11 +456,10 @@ fn panel_layout_persists_across_restart_via_session() {
     let expected_layout = source_app.panel_presentation.workspace_layout();
 
     let app = test_app_with_dialogs_and_session_path(TestDialogs::default(), session_path.clone());
-    let panels = app.panel_presentation.panel_trees(&app.panel_runtime);
     assert!(
-        !panels
-            .iter()
-            .any(|panel| panel.id == "builtin.tool-palette")
+        !app.panel_presentation
+            .is_panel_visible("builtin.tool-palette"),
+        "tool-palette stays hidden after session round-trip"
     );
     assert_eq!(app.panel_presentation.workspace_layout(), expected_layout);
 

@@ -81,8 +81,10 @@ impl StatusPanel {
         let initial = StatusSnapshot::new("Pen", 100, "");
         let html = render_html(&initial);
         let mut engine = HtmlPanelEngine::new(&html, STATUS_CSS);
-        // 初期サイズは on_load の intrinsic 測定に任せる
-        engine.on_load(None);
+        // 初期サイズはダミー (1, 1)。`render_gpu` 内で viewport に応じて on_load し直す。
+        // 状態行はビューポートの全幅を埋める性質なので workspace パネルと違って
+        // engine の measured_size をビューポートに常に追従させる方針。
+        engine.on_load((1, 1));
         Self {
             engine,
             last_snapshot: Some(initial),
@@ -100,6 +102,7 @@ impl StatusPanel {
     }
 
     /// `engine.on_render` の薄いラッパ。
+    /// 状態行は viewport の全幅を埋める性質のため、viewport 変化時は engine に流し込む。
     pub(crate) fn render_gpu<'a>(
         &'a mut self,
         device: &wgpu::Device,
@@ -108,6 +111,9 @@ impl StatusPanel {
         scene_buf: &mut vello::Scene,
         viewport: (u32, u32),
     ) -> RenderOutcome<'a> {
+        if self.engine.measured_size() != viewport {
+            self.engine.on_load(viewport);
+        }
         // chrome_height = 0（タイトルバー無し、純粋な status row）
         self.engine
             .on_render(device, queue, renderer, scene_buf, viewport, 1.0, 0)

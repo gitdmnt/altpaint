@@ -11,23 +11,19 @@
 //! - [`gpu::PanelGpuTarget`] — パネル毎の GPU テクスチャ（`Rgba8Unorm` + `STORAGE_BINDING` +
 //!   `view_formats=[Rgba8UnormSrgb]`）
 //! - [`action`] — `data-action` / `data-args` → `ActionDescriptor`（panel-api 非依存）
-//! - [`binding`] — `data-bind-*` 式評価ロジック（DOM 非依存）
 //!
 //! ## 再エクスポート
 //!
 //! - `blitz_dom` / `blitz_html` / `vello` / `wgpu` — 上位 crate が直接型を扱えるよう公開
 
 pub mod action;
-pub mod binding;
 pub mod engine;
 pub mod gpu;
 
 pub use action::{ActionDescriptor, ActionParseError, AltpKind, parse_data_action};
-pub use binding::{
-    BindingAttribute, classify_binding_attribute, evaluate_as_bool, evaluate_as_string,
-};
 pub use engine::{
-    HtmlPanelEngine, PanelHit, PixelRect, RenderOutcome, RenderedPanelHit, descriptor_from_hit,
+    HtmlPanelEngine, PanelHit, PanelSizeConstraints, PixelRect, RenderOutcome, RenderedPanelHit,
+    descriptor_from_hit,
 };
 pub use gpu::PanelGpuTarget;
 

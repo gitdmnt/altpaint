@@ -75,9 +75,10 @@ impl DesktopRuntime {
     }
 
     /// 次のフレームで再描画が行われるよう要求する。
+    /// ADR 014 でテキスト入力は HTML パネル内部完結に統一済みのため、IME 許可は常に false。
     fn request_redraw(&self) {
         if let Some(window) = &self.window {
-            window.set_ime_allowed(self.app.has_focused_panel_input());
+            window.set_ime_allowed(false);
             window.request_redraw();
         }
     }
@@ -397,21 +398,19 @@ impl ApplicationHandler for DesktopRuntime {
                             self.app
                                 .panel_presentation
                                 .update_html_panel_move_handle(&panel_id, chrome_screen_rect);
+                            // Phase 11: リサイズハンドル hit テスト用に full rect も更新
+                            self.app
+                                .panel_presentation
+                                .update_html_panel_full_rect(&panel_id, panel_rect);
                             entries.push(HtmlQuadEntry {
                                 panel_id,
                                 texture_ptr,
                                 screen_rect: panel_rect,
                             });
                         }
-                        // measured_size 変化を workspace_layout に反映（永続化に流す）
-                        let size_changes = self.app.panel_runtime.take_panel_size_changes();
-                        for (panel_id, (new_w, new_h)) in size_changes {
-                            self.app.panel_presentation.set_panel_size(
-                                &panel_id,
-                                new_w as usize,
-                                new_h as usize,
-                            );
-                        }
+                        // Phase 11: 自動サイズ追従は撤去。パネルサイズの権威は
+                        // workspace_layout.panels[*].size のみで、手動リサイズ経路
+                        // (panel_dispatch.rs::Resize) からのみ更新される。
                         entries
                     }
                 };

@@ -156,38 +156,3 @@ pub(crate) fn unique_test_path(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("altpaint-{name}-{}-{id}.json", std::process::id()))
 }
 
-/// 入力や種別に応じて処理を振り分ける。
-fn tree_contains_text(nodes: &[panel_api::PanelNode], target: &str) -> bool {
-    nodes.iter().any(|node| match node {
-        panel_api::PanelNode::Text { text, .. } => text == target,
-        panel_api::PanelNode::Column { children, .. }
-        | panel_api::PanelNode::Row { children, .. }
-        | panel_api::PanelNode::Section { children, .. } => tree_contains_text(children, target),
-        panel_api::PanelNode::ColorPreview { .. }
-        | panel_api::PanelNode::ColorWheel { .. }
-        | panel_api::PanelNode::Button { .. }
-        | panel_api::PanelNode::Slider { .. }
-        | panel_api::PanelNode::TextInput { .. }
-        | panel_api::PanelNode::Dropdown { .. }
-        | panel_api::PanelNode::LayerList { .. } => false,
-    })
-}
-
-/// 入力や種別に応じて処理を振り分ける。
-fn tree_contains_button_id(nodes: &[panel_api::PanelNode], target: &str) -> bool {
-    nodes.iter().any(|node| match node {
-        panel_api::PanelNode::Button { id, .. } => id == target,
-        panel_api::PanelNode::Column { children, .. }
-        | panel_api::PanelNode::Row { children, .. }
-        | panel_api::PanelNode::Section { children, .. } => {
-            tree_contains_button_id(children, target)
-        }
-        panel_api::PanelNode::Text { .. }
-        | panel_api::PanelNode::Slider { .. }
-        | panel_api::PanelNode::TextInput { .. }
-        | panel_api::PanelNode::Dropdown { .. }
-        | panel_api::PanelNode::LayerList { .. }
-        | panel_api::PanelNode::ColorPreview { .. }
-        | panel_api::PanelNode::ColorWheel { .. } => false,
-    })
-}

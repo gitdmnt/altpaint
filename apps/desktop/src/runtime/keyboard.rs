@@ -1,7 +1,8 @@
-//! キーボード・IME 入力の正規化を `DesktopRuntime` へ追加する。
+//! キーボード入力の正規化を `DesktopRuntime` へ追加する。
 //!
-//! 文字編集とグローバルショートカットの分岐をここへ閉じ込め、
-//! `ApplicationHandler` 実装を高水準の分配だけに保つ。
+//! ADR 014 以降、テキスト入力 / IME 編集は HTML パネル内部の DOM mutation で完結する。
+//! ui-shell 側のテキスト editor state はすべて撤去済み。
+//! ここではアプリ全体のグローバルショートカットだけを扱う。
 
 use app_core::Command;
 use winit::event::{ElementState, Ime, KeyEvent};
@@ -10,30 +11,15 @@ use winit::keyboard::{Key, NamedKey};
 use super::DesktopRuntime;
 
 impl DesktopRuntime {
-    /// 現在の値を ime イベント へ変換する。
-    pub(super) fn handle_ime_event(&mut self, ime: Ime) -> bool {
-        match ime {
-            Ime::Commit(text) => {
-                self.app.set_focused_panel_input_preedit(None);
-                self.app.insert_text_into_focused_panel_input(text.as_ref())
-            }
-            Ime::Preedit(text, _) => self
-                .app
-                .set_focused_panel_input_preedit(Some(text.to_string())),
-            Ime::Enabled | Ime::Disabled => false,
-        }
+    /// IME イベントは HTML パネル内部で完結するため、winit 経由では消費しない。
+    pub(super) fn handle_ime_event(&mut self, _ime: Ime) -> bool {
+        false
     }
 
     /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_keyboard_input(&mut self, event: &KeyEvent) -> bool {
-        let editing_repeat =
-            self.app.has_focused_panel_input() && supports_editing_repeat(&event.logical_key);
-        if event.state != ElementState::Pressed || (event.repeat && !editing_repeat) {
+        if event.state != ElementState::Pressed || event.repeat {
             return false;
-        }
-
-        if self.handle_text_edit_key(&event.logical_key) {
-            return true;
         }
 
         if let Some((shortcut, key_name)) = self.normalized_shortcut(&event.logical_key)
@@ -45,25 +31,6 @@ impl DesktopRuntime {
         }
 
         self.handle_builtin_shortcut(&event.logical_key)
-    }
-
-    /// 入力や種別に応じて処理を振り分ける。
-    pub(super) fn handle_text_edit_key(&mut self, key: &Key) -> bool {
-        if self.modifiers.control_key() || self.modifiers.alt_key() {
-            return false;
-        }
-
-        match key {
-            Key::Named(NamedKey::Backspace) => self.app.backspace_focused_panel_input(),
-            Key::Named(NamedKey::Delete) => self.app.delete_focused_panel_input(),
-            Key::Named(NamedKey::ArrowLeft) => self.app.move_focused_panel_input_cursor(-1),
-            Key::Named(NamedKey::ArrowRight) => self.app.move_focused_panel_input_cursor(1),
-            Key::Named(NamedKey::Home) => self.app.move_focused_panel_input_cursor_to_start(),
-            Key::Named(NamedKey::End) => self.app.move_focused_panel_input_cursor_to_end(),
-            Key::Named(NamedKey::Space) => self.app.insert_text_into_focused_panel_input(" "),
-            Key::Character(text) => self.app.insert_text_into_focused_panel_input(text),
-            _ => false,
-        }
     }
 
     /// 入力や種別に応じて処理を振り分ける。
@@ -104,9 +71,7 @@ impl DesktopRuntime {
             Key::Named(NamedKey::Home) if self.modifiers.alt_key() => {
                 self.app.execute_command(Command::FocusActivePanel)
             }
-            Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space)
-                if !self.app.has_focused_panel_input() =>
-            {
+            Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
                 self.app.activate_focused_panel_control().is_some()
             }
             _ => false,
@@ -181,20 +146,4 @@ pub(super) fn normalized_key_name(key: &Key) -> Option<String> {
         },
         _ => None,
     }
-}
-
-/// Supports editing repeat かどうかを返す。
-pub(super) fn supports_editing_repeat(key: &Key) -> bool {
-    matches!(
-        key,
-        Key::Named(
-            NamedKey::Backspace
-                | NamedKey::Delete
-                | NamedKey::ArrowLeft
-                | NamedKey::ArrowRight
-                | NamedKey::Home
-                | NamedKey::End
-                | NamedKey::Space
-        ) | Key::Character(_)
-    )
 }

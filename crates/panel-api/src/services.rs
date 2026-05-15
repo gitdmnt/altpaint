@@ -45,6 +45,9 @@ pub mod names {
     pub const EXPORT_IMAGE: &str = "export.image";
 
     pub const TEXT_RENDER_TO_LAYER: &str = "text_render.render_to_layer";
+
+    pub const WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY: &str =
+        "workspace_layout.set_panel_visibility";
 }
 
 #[derive(Debug, Clone, PartialEq)]

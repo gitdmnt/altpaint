@@ -1,0 +1,55 @@
+<div class="panel">
+  <header class="panel-title">ツール</header>
+  <div class="alt-section">
+    <div class="alt-section-title">ツール</div>
+    <label>
+      <span>登録ツール</span>
+      <select id="tool.catalog" data-action="altp:select:select_tool"></select>
+    </label>
+    <p>選択中: <span id="active-tool-label"></span></p>
+    <p class="muted">ID: <span id="active-tool-id"></span></p>
+    <p class="muted">管轄 plugin: <span id="provider-plugin-id"></span></p>
+    <p class="muted">描画 plugin: <span id="drawing-plugin-id"></span></p>
+    <hr>
+    <button class="btn" id="tool.pen" data-action="altp:activate:activate_pen">✏ ペン</button>
+    <button class="btn" id="tool.eraser" data-action="altp:activate:activate_eraser">⌫ 消しゴム</button>
+    <button class="btn" id="tool.bucket" data-action="altp:activate:activate_bucket">🪣 塗りつぶし</button>
+    <button class="btn" id="tool.lasso-bucket" data-action="altp:activate:activate_lasso_bucket">⬠ 囲って塗る</button>
+    <button class="btn" id="tool.panel-rect" data-action="altp:activate:activate_panel_rect">▭ コマ矩形</button>
+
+    <div id="child-tools-section" class="alt-section" hidden>
+      <div class="alt-section-title">子ツール</div>
+      <p class="muted">選択中: <span id="active-child-tool-label"></span></p>
+    </div>
+
+    <hr>
+    <p>プリセット: <span id="pen-name"></span></p>
+    <p>サイズ: <span id="pen-size">1</span>px / 登録数: <span id="pen-count">0</span></p>
+    <div class="row">
+      <button class="btn" id="tool.pen.prev" data-action="altp:activate:previous_pen">◀ 前へ</button>
+      <button class="btn" id="tool.pen.next" data-action="altp:activate:next_pen">次へ ▶</button>
+    </div>
+    <button class="btn" id="tool.pen.reload" data-action="altp:activate:reload_pens">⟳ ペン再読込</button>
+    <button class="btn" id="tool.pen.import" data-action="altp:activate:import_pens">＋ 外部ペンを読み込み...</button>
+
+    <div id="import-section" class="alt-section" hidden>
+      <div class="alt-section-title">インポート結果</div>
+      <p><span id="import-summary"></span></p>
+      <p class="muted" id="import-preview-row" hidden>Preview: <span id="import-preview"></span></p>
+      <p class="muted" id="import-issues-row" hidden>Issues: <span id="import-issues"></span></p>
+    </div>
+
+    <button class="btn" id="tool.shortcuts" data-action="altp:activate:toggle_shortcuts">⌨ ショートカット</button>
+    <div id="shortcuts-section" class="alt-section" hidden>
+      <div class="alt-section-title">ショートカット</div>
+      <p>ペン: <span id="pen-shortcut">P</span></p>
+      <button class="btn" id="tool.shortcut.pen" data-action="altp:activate:capture_pen_shortcut">ペンを再設定</button>
+      <p>消しゴム: <span id="eraser-shortcut">E</span></p>
+      <button class="btn" id="tool.shortcut.eraser" data-action="altp:activate:capture_eraser_shortcut">消しゴムを再設定</button>
+      <p>塗りつぶし: <span id="bucket-shortcut">G</span></p>
+      <p>囲って塗る: <span id="lasso-bucket-shortcut">Shift+G</span></p>
+      <p>コマ矩形: <span id="panel-rect-shortcut">K</span></p>
+      <p class="muted" id="capture-hint" hidden>次に押したキーの組み合わせで置き換えます。</p>
+    </div>
+  </div>
+</div>

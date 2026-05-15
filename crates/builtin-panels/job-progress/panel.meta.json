@@ -1,0 +1,5 @@
+{
+  "id": "builtin.job-progress",
+  "title": "Jobs",
+  "default_size": { "width": 320, "height": 200 }
+}

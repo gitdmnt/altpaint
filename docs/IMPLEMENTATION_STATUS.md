@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、2026-03-15 時点の `altpaint` が**実際にどこまで実装されているか**を短く把握するための現況整理である。
+この文書は、2026-05-15 時点の `altpaint` が**実際にどこまで実装されているか**を短く把握するための現況整理である。
 
 この文書は理想図ではなく現況の要約であり、次と役割を分ける。
 
@@ -21,12 +21,14 @@
 - 複数ラスタレイヤー、blend mode、簡易 mask、pan / zoom / rotation / flip
 - dirty rect を使う差分提示
 - マウス / touch / wheel / keyboard を含む入力処理
-- `.altp-panel` + Rust/Wasm による built-in panel 実装
-- `plugins/` 配下 panel の再帰ロード
+- HTML+CSS + Wasm DOM mutation による built-in panel 実装 (Phase 10 で `.altp-panel` DSL を撤去、Phase 12 で workspace-layout も HTML 化し全 12 パネル統一)
+- `crates/builtin-panels/` 配下 panel の再帰ロード
 - `tools/` 配下 tool 定義の再帰ロード
 - `pens/` 配下の外部ペン preset 読込
 - panel local state / host snapshot / persistent config
 - 4隅アンカー基準の workspace panel 配置
+- 全 4 辺 + 4 角の 8 ハンドルによる手動パネルリサイズ (Phase 11、anchor 維持・最小 80x60・viewport クランプ・edge 別カーソル切替)
+- パネルサイズの単一権威化: `panel.meta.json::default_size` を初期値とし、workspace 永続値を SoT とする (Phase 11 で自動サイズ追従撤去)
 - workspace preset の読込 / 切替 / 保存 / 書き出し
 - SQLite ベース project save/load
 - page / panel 単位の project index / 部分ロード
@@ -49,6 +51,7 @@
   - **プランA（Wasm 再ビルド）**: `.\scripts\build-ui-wasm.ps1` で全 11 プラグインの `.wasm` を再ビルド。app-actions・undo/redo・panel_rect 等の export エラーを解消。
 - **Phase 9F 完了 (2026-04-29)**: `crates/render/` クレート物理削除。`RenderFrame` を `apps/desktop/src/app/canvas_frame.rs::CanvasFrame` へ吸収、`PresentScene` から dummy 化されていた `base_layer` (L1) と `ui_panel_layer` (L4) を撤去、`html_panel_quads` を `panel_quads` にリネーム。`PresentTimings` から `base_upload`/`ui_panel_upload` 系フィールド削除。さらに dead code 撤去として `PanelHitKind`/`PanelHitRegion`/`PanelSurface::hit_regions` 一式、`PanelDragState::Control` ヴァリアント、`refresh_canvas_frame_region`、`panel_surface_hit_regions` profiler value を削除。HTML パネル hit-test を `html_panel_hit_at`/`html_panel_move_handle_at` に統一し、関連テストを synthetic hit-table 注入で書き直し。最終ベースライン: 127 passed / 0 failed / 6 ignored、clippy 警告 83 件 (着手前と同数)。詳細: `docs/adr/010-render-crate-removal.md`。
 - **Phase 9G 完了 (2026-05-02)**: `html-panel` feature gate を完全撤去。Phase 9E で CPU パネルラスタライザを撤去した結果、`HtmlPanelEngine` 経路がパネル描画の唯一の手段となっていたが、`apps/desktop` の `html-panel` feature が default OFF のまま放置されており、`cargo run -p desktop` (feature 指定なし) では `panel_quads = &[]` / `status_quad = None` となり全パネル＋ステータスバーが画面から消える状態だった。`apps/desktop/Cargo.toml` と `crates/panel-runtime/Cargo.toml` から `[features]` テーブル削除、`panel-html-experiment` / `keyboard-types` を必須依存へ昇格、`apps/desktop` 内 14 箇所と `panel-runtime` 内 23 箇所の `cfg(feature = "html-panel")` / `cfg(not(feature = "html-panel"))` 分岐を完全撤去。clippy 警告 83 → 70 件 (13 件減)。あわせて `crates/panel-runtime/src/dsl_to_html.rs` の `PanelNode::Section` 翻訳を `<details><summary>` から `<div class="alt-section">` へ切り替え (Blitz/stylo がネストした `<details>` の primary style 解決に失敗して panic する潜在バグ回避)。詳細: `docs/adr/011-html-panel-feature-removal.md`。
+- **Phase 12 完了 (2026-05-15)**: ADR 014 — `PanelTree` / `PanelNode` / `PanelView` 型と `PanelPlugin::panel_tree()` / `view()` trait method を完全撤去 (ADR 012 で宣言済みだったが残置されていた DSL 時代の中間表現 / dead code を一括清算)。並行して、唯一 Rust ネイティブ実装で残っていた `builtin.workspace-layout` (パネル表示/非表示管理 UI) を 12 番目の HTML+CSS+Wasm パネルとして再実装し、HTML 経路へ完全統一。新規サービス `workspace_layout.set_panel_visibility` と新規 host snapshot field `workspace.panels_json` を追加し、Wasm パネル handler がチェック切替で可視性を制御する経路を整備。同時に DSL 時代の `tree_query.rs` / `focus.rs` の dropdown / text_input 走査 / `TextInputEditorState` / winit IME 編集経路を撤去 (HTML パネル内部完結に統一)。約 800 行縮小、clippy 警告 84 → 76 件 (8 件減)、テスト 139 passed / 5 failed (failure はベースライン e6f84f6 と完全一致、新規 failure ゼロ)。詳細: `docs/adr/014-paneltree-removal-and-workspace-layout-html.md`。
 
 ## 現在の workspace 構成
 
@@ -64,25 +67,27 @@
 - `ui-shell`
 - `workspace-persistence`
 - `plugin-host`
-- `panel-dsl`
 - `panel-schema`
 - `plugin-macros`
 - `plugin-sdk`
+- `panel-html-experiment`
+- `builtin-panels`
 - `apps/desktop`
 
-### workspace member の built-in panel plugin
+### workspace member の built-in panel plugin (Phase 10 で `crates/builtin-panels/` 配下に移行)
 
-- `plugins/app-actions`
-- `plugins/workspace-presets`
-- `plugins/tool-palette`
-- `plugins/view-controls`
-- `plugins/panel-list`
-- `plugins/layers-panel`
-- `plugins/color-palette`
-- `plugins/pen-settings`
-- `plugins/job-progress`
-- `plugins/snapshot-panel`
-- `plugins/text-flow`
+- `crates/builtin-panels/app-actions`
+- `crates/builtin-panels/workspace-presets`
+- `crates/builtin-panels/tool-palette`
+- `crates/builtin-panels/view-controls`
+- `crates/builtin-panels/panel-list`
+- `crates/builtin-panels/layers-panel`
+- `crates/builtin-panels/color-palette`
+- `crates/builtin-panels/pen-settings`
+- `crates/builtin-panels/job-progress`
+- `crates/builtin-panels/snapshot-panel`
+- `crates/builtin-panels/text-flow`
+- `crates/builtin-panels/workspace-layout` (Phase 12 で追加、ADR 014)
 
 補足:
 
@@ -166,13 +171,14 @@
 
 現在の panel stack は次で構成される。
 
-- `panel-api`: `PanelTree`, `PanelNode`, `PanelEvent`, `HostAction`, `ServiceRequest`
-- `panel-dsl`: `.altp-panel` parser / validator / normalized IR
+- `panel-api`: `PanelEvent`, `HostAction`, `ServiceRequest` (Phase 12 で `PanelTree` / `PanelNode` / `PanelView` を完全撤去)
 - `panel-schema`: host-Wasm 間 DTO
-- `plugin-sdk`: plugin 作者向け SDK、typed service request builder、macro 再 export
+- `plugin-sdk`: plugin 作者向け SDK、typed service request builder、macro 再 export、`dom` モジュール (DOM mutation API)
 - `plugin-macros`: `plugin-sdk` が再 export する proc-macro 実装
-- `plugin-host`: `wasmtime` ベース runtime
-- `panel-runtime`: panel discovery / DSL-Wasm bridge / host snapshot sync / persistent config
+- `plugin-host`: `wasmtime` ベース runtime + `dom` host functions (Blitz `DocumentMutator` を Wasm に公開)
+- `panel-html-experiment`: `HtmlPanelEngine` (Blitz HTML/CSS + parley + vello)
+- `panel-runtime`: `BuiltinPanelPlugin` / panel registry / host snapshot sync / persistent config
+- `builtin-panels`: 同梱 12 パネル定義 (HTML+CSS+Wasm) と `register_builtin_panels` orchestration
 - `ui-shell`: panel presentation / workspace layout / focus / hit-test / surface render
 
 ### 5. 永続化
@@ -220,7 +226,7 @@
 
 補足:
 
-- これらは `plugins/` 配下に `.altp-panel` と Rust/Wasm 実装を同居させる構成で揃っている。
+- これらは `crates/builtin-panels/<name>/` 配下に `panel.html` + `panel.css` + `panel.meta.json` + Rust/Wasm 実装を同居させる構成で揃っている (Phase 10 で `.altp-panel` DSL から移行)。
 
 ### 7. ツールとペン
 

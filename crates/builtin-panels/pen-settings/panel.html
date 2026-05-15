@@ -1,0 +1,35 @@
+<div class="panel">
+  <header class="panel-title">筆設定</header>
+  <div class="alt-section">
+    <div class="alt-section-title">現在のツール</div>
+    <p><span id="active-tool-label"></span></p>
+    <p class="muted"><span id="pen-name"></span></p>
+  </div>
+
+  <div id="size-section" class="alt-section">
+    <div class="alt-section-title">太さ</div>
+    <div class="row">
+      <input type="range" id="pen.size" min="0" max="1000" value="0"
+             data-action="altp:slider:set_pen_size">
+      <input type="text" id="pen.size.input" placeholder="1" value="1"
+             data-action="altp:input:set_pen_size_text" inputmode="numeric">
+    </div>
+    <p class="muted">サイズ: <span id="size-display">1</span> px</p>
+  </div>
+
+  <div id="characteristics-section" class="alt-section">
+    <div class="alt-section-title">描画特性</div>
+    <button class="btn" id="pen.pressure" data-action="altp:activate:toggle_pressure" hidden>筆圧</button>
+    <button class="btn" id="pen.antialias" data-action="altp:activate:toggle_antialias" hidden>なめらか</button>
+    <label id="stabilization-row" hidden>
+      <span>手ぶれ補正: <span id="stabilization-display">0</span></span>
+      <input type="range" id="pen.stabilization" min="0" max="100" value="0"
+             data-action="altp:slider:set_stabilization">
+    </label>
+  </div>
+
+  <div id="no-settings-section" class="alt-section" hidden>
+    <div class="alt-section-title">設定</div>
+    <p class="muted">このツールに設定可能項目はありません。</p>
+  </div>
+</div>
