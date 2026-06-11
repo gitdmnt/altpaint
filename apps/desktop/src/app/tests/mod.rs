@@ -115,9 +115,13 @@ impl DesktopDialogs for TestDialogs {
 }
 
 /// test アプリ with dialogs を計算して返す。
+///
+/// project / session / workspace preset の全パスをテストごとに一意化する。
+/// 共有パスは並列テスト間の状態汚染 (一方の persist を他方の bootstrap が読む) を
+/// 引き起こすため使用しない (ADR 015)。
 fn test_app_with_dialogs(dialogs: TestDialogs) -> DesktopApp {
     DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from("/tmp/altpaint-test.altp.json"),
+        unique_test_project_path(),
         Box::new(dialogs),
         unique_test_path("session"),
         unique_test_path("workspace-presets"),
@@ -130,7 +134,7 @@ fn test_app_with_dialogs_and_session_path(
     session_path: PathBuf,
 ) -> DesktopApp {
     DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from("/tmp/altpaint-test.altp.json"),
+        unique_test_project_path(),
         Box::new(dialogs),
         session_path,
         unique_test_path("workspace-presets"),
@@ -143,7 +147,7 @@ fn test_app_with_dialogs_and_workspace_preset_path(
     workspace_preset_path: PathBuf,
 ) -> DesktopApp {
     DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from("/tmp/altpaint-test.altp.json"),
+        unique_test_project_path(),
         Box::new(dialogs),
         unique_test_path("session"),
         workspace_preset_path,
@@ -154,5 +158,14 @@ fn test_app_with_dialogs_and_workspace_preset_path(
 pub(crate) fn unique_test_path(name: &str) -> PathBuf {
     let id = TEST_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!("altpaint-{name}-{}-{id}.json", std::process::id()))
+}
+
+/// テストごとに一意なプロジェクトパスを返す。
+pub(crate) fn unique_test_project_path() -> PathBuf {
+    let id = TEST_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "altpaint-project-{}-{id}.altp.json",
+        std::process::id()
+    ))
 }
 

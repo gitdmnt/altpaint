@@ -1,7 +1,5 @@
 //! `runtime` モジュールの入力ルーティング回帰テストをまとめる。
 
-use std::path::PathBuf;
-
 use desktop_support::DesktopProfiler;
 use winit::event::MouseScrollDelta;
 use winit::event::TouchPhase;
@@ -17,7 +15,7 @@ use super::keyboard::normalized_key_name;
 fn test_runtime() -> DesktopRuntime {
     DesktopRuntime {
         app: DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-            PathBuf::from("/tmp/altpaint-test.altp.json"),
+            crate::app::tests::unique_test_project_path(),
             Box::new(crate::app::tests::TestDialogs::default()),
             crate::app::tests::unique_test_path("runtime-session"),
             crate::app::tests::unique_test_path("runtime-workspace-presets"),

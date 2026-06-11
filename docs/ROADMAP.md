@@ -25,6 +25,7 @@
 | 10       | `.altp-panel` DSL 撤去・全 11 パネルを HTML+CSS+Wasm DOM mutation へ移行             | 2026-05-03 |
 | 11       | HTML パネル自動サイズ廃止 + 8 ハンドル手動リサイズ導入 + `default_size` 必須化       | 2026-05-12 |
 | 12       | `PanelTree`/`PanelNode`/`PanelView` 撤廃 + `builtin.workspace-layout` を HTML 化 (全 12 パネル統一) | 2026-05-15 |
+| 13       | HTML パネルのキーボード ABI 配線 + hit テーブル GPU 非依存化 (キーボード系 5 テスト失敗の解消、テスト失敗ゼロ化) | 2026-06-11 |
 
 詳細は [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) を参照。
 

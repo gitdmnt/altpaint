@@ -260,158 +260,62 @@ impl ApplicationHandler for DesktopRuntime {
                     screen_rect: render_types::PixelRect,
                 }
                 let html_quad_entries: Vec<HtmlQuadEntry> = {
-                    const HTML_CHROME_HEIGHT: u32 = 24;
-                    // 9E-3: DSL/HTML 両方の GPU 対応パネルを統一的に扱う
-                    let all_panel_ids = self.app.panel_runtime.panel_ids_with_gpu();
-                    let (panel_ids, hidden_ids): (Vec<String>, Vec<String>) = all_panel_ids
+                    // hit / move handle / full rect テーブルは prepare_present_frame
+                    // (refresh_html_panel_hit_tables) が CPU 側で更新済み。
+                    // ここでは GPU テクスチャの描画と quad 配置のみを担う。
+                    let panel_ids: Vec<String> = self
+                        .app
+                        .panel_runtime
+                        .panel_ids_with_gpu()
                         .into_iter()
-                        .partition(|id| self.app.panel_presentation.is_panel_visible(id));
-                    // 不可視になったパネルの hit / move handle 情報は掃除する
-                    for id in &hidden_ids {
-                        self.app.panel_presentation.remove_html_panel_hits(id);
-                        self.app.panel_presentation.remove_html_panel_move_handle(id);
-                    }
+                        .filter(|id| self.app.panel_presentation.is_panel_visible(id))
+                        .collect();
                     if panel_ids.is_empty() {
                         Vec::new()
                     } else {
-                        // GPU パネルのサイズは Engine が保有する measured_size が権威。
-                        // 位置は workspace_layout の position（panel_rect_in_viewport の位置部分）から取る。
                         // viewport は GPU テクスチャの上限としてそのまま渡し、Engine 側でクランプさせる。
-                        let measured = self.app.panel_runtime.panel_measured_sizes();
-                        let mut sized: Vec<(String, u32, u32)> = Vec::with_capacity(panel_ids.len());
-                        let mut panel_rects: Vec<render_types::PixelRect> =
-                            Vec::with_capacity(panel_ids.len());
-                        for id in &panel_ids {
-                            // measured_size を取得
-                            let (mw, mh) = measured
-                                .iter()
-                                .find(|(pid, _, _)| pid == id)
-                                .map(|(_, w, h)| (*w, *h))
-                                .unwrap_or((1, 1));
-                            // 位置は workspace_layout の position を使う（サイズは measured で上書き）
-                            let position_rect = self
-                                .app
-                                .panel_presentation
-                                .panel_rect_in_viewport(
-                                    id,
-                                    size.width as usize,
-                                    size.height as usize,
-                                )
-                                .unwrap_or(render_types::PixelRect {
-                                    x: 0,
-                                    y: 0,
-                                    width: mw as usize,
-                                    height: mh as usize,
-                                });
-                            let panel_rect = render_types::PixelRect {
-                                x: position_rect.x,
-                                y: position_rect.y,
-                                width: mw as usize,
-                                height: mh as usize,
-                            };
-                            // viewport を Engine に渡す（クランプ用）
-                            sized.push((id.clone(), size.width, size.height));
-                            panel_rects.push(panel_rect);
-                        }
+                        let sized: Vec<(String, u32, u32)> = panel_ids
+                            .iter()
+                            .map(|id| (id.clone(), size.width, size.height))
+                            .collect();
                         let frames = self.app.panel_runtime.render_panels(
                             &sized,
                             1.0,
-                            HTML_CHROME_HEIGHT,
+                            crate::app::HTML_PANEL_CHROME_HEIGHT,
                         );
-                        // 描画されたパネルの hit/move 情報と quad entry を一気に組み立てる
+                        // quad の screen rect は hit テーブルと同じ full rect を共有する
                         // (frames は &mut panel_runtime に紐付くため、この間 panel_runtime は再借用しない)
-                        type FrameMeta = (
-                            String,
-                            *const wgpu::Texture,
-                            render_types::PixelRect, // パネル全体 (chrome 含む)
-                            render_types::PixelRect, // body 部分 (hit 領域)
-                            render_types::PixelRect, // chrome 部分 (move handle)
-                            Vec<(String, render_types::PixelRect)>,
-                        );
-                        let mut frame_meta: Vec<FrameMeta> = Vec::with_capacity(frames.len());
-                        for frame in frames.iter() {
-                            // panel_id に対応する panel_rect を取得
-                            let panel_rect = panel_ids
-                                .iter()
-                                .position(|id| id == &frame.panel_id)
-                                .map(|i| panel_rects[i])
-                                .unwrap_or(render_types::PixelRect {
-                                    x: 0,
-                                    y: 0,
-                                    width: frame.width as usize,
-                                    height: frame.height as usize,
-                                });
-                            let chrome_h = HTML_CHROME_HEIGHT as usize;
-                            let body_screen_rect = render_types::PixelRect {
-                                x: panel_rect.x,
-                                y: panel_rect.y + chrome_h,
-                                width: panel_rect.width,
-                                height: panel_rect.height.saturating_sub(chrome_h),
-                            };
-                            let chrome_screen_rect = render_types::PixelRect {
-                                x: panel_rect.x,
-                                y: panel_rect.y,
-                                width: panel_rect.width,
-                                height: chrome_h,
-                            };
-                            let hits: Vec<(String, render_types::PixelRect)> = frame
-                                .hit_regions
-                                .iter()
-                                .filter_map(|hit| {
-                                    let element_id = hit.element_id.clone()?;
-                                    Some((
-                                        element_id,
-                                        render_types::PixelRect {
-                                            x: hit.rect.x as usize,
-                                            y: hit.rect.y as usize,
-                                            width: hit.rect.width as usize,
-                                            height: hit.rect.height as usize,
-                                        },
-                                    ))
-                                })
-                                .collect();
-                            frame_meta.push((
-                                frame.panel_id.clone(),
-                                frame.texture as *const wgpu::Texture,
-                                panel_rect,
-                                body_screen_rect,
-                                chrome_screen_rect,
-                                hits,
-                            ));
-                        }
-                        // 描画ループ完了後にまとめて hit/move テーブルを更新する
-                        let mut entries = Vec::with_capacity(frame_meta.len());
-                        for (
-                            panel_id,
-                            texture_ptr,
-                            panel_rect,
-                            body_screen_rect,
-                            chrome_screen_rect,
-                            hits,
-                        ) in frame_meta
-                        {
-                            self.app.panel_presentation.update_html_panel_hits(
-                                &panel_id,
-                                body_screen_rect,
-                                hits,
-                            );
-                            self.app
-                                .panel_presentation
-                                .update_html_panel_move_handle(&panel_id, chrome_screen_rect);
-                            // Phase 11: リサイズハンドル hit テスト用に full rect も更新
-                            self.app
-                                .panel_presentation
-                                .update_html_panel_full_rect(&panel_id, panel_rect);
-                            entries.push(HtmlQuadEntry {
-                                panel_id,
-                                texture_ptr,
-                                screen_rect: panel_rect,
-                            });
-                        }
-                        // Phase 11: 自動サイズ追従は撤去。パネルサイズの権威は
-                        // workspace_layout.panels[*].size のみで、手動リサイズ経路
-                        // (panel_dispatch.rs::Resize) からのみ更新される。
-                        entries
+                        let frame_meta: Vec<(String, *const wgpu::Texture, u32, u32)> = frames
+                            .iter()
+                            .map(|frame| {
+                                (
+                                    frame.panel_id.clone(),
+                                    frame.texture as *const wgpu::Texture,
+                                    frame.width,
+                                    frame.height,
+                                )
+                            })
+                            .collect();
+                        frame_meta
+                            .into_iter()
+                            .map(|(panel_id, texture_ptr, tex_w, tex_h)| {
+                                let screen_rect = self
+                                    .app
+                                    .panel_presentation
+                                    .html_panel_full_rect(&panel_id)
+                                    .unwrap_or(render_types::PixelRect {
+                                        x: 0,
+                                        y: 0,
+                                        width: tex_w as usize,
+                                        height: tex_h as usize,
+                                    });
+                                HtmlQuadEntry {
+                                    panel_id,
+                                    texture_ptr,
+                                    screen_rect,
+                                }
+                            })
+                            .collect()
                     }
                 };
 

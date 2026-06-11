@@ -160,6 +160,12 @@ impl PanelPresentation {
             .insert(panel_id.to_string(), screen_rect);
     }
 
+    /// 指定 panel_id の HTML パネル full rect (chrome + body の screen 座標矩形) を返す。
+    /// GPU quad の配置 (`runtime.rs`) が hit テーブル更新側と同じ矩形を共有するために使う。
+    pub fn html_panel_full_rect(&self, panel_id: &str) -> Option<render_types::PixelRect> {
+        self.html_panel_full_rects.get(panel_id).copied()
+    }
+
     /// 指定 panel_id の HTML パネル full rect を削除する。
     pub fn remove_html_panel_full_rect(&mut self, panel_id: &str) {
         self.html_panel_full_rects.remove(panel_id);

@@ -36,7 +36,7 @@ fn unique_workspace_preset_path(name: &str) -> PathBuf {
 /// execute コマンド updates ドキュメント ツール が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_updates_document_tool() {
-    let mut app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut app = test_app_with_dialogs(TestDialogs::default());
 
     let _ = app.execute_command(Command::SetActiveTool {
         tool: ToolKind::Eraser,
@@ -48,7 +48,7 @@ fn execute_command_updates_document_tool() {
 /// execute コマンド 選択 ツール updates ドキュメント ツール ID が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_select_tool_updates_document_tool_id() {
-    let mut app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut app = test_app_with_dialogs(TestDialogs::default());
 
     let _ = app.execute_command(Command::SelectTool {
         tool_id: "builtin.eraser".to_string(),
@@ -61,7 +61,7 @@ fn execute_command_select_tool_updates_document_tool_id() {
 /// execute コマンド SelectChildTool sets active_child_tool_id が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_select_child_tool_updates_active_child_tool_id() {
-    let mut app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut app = test_app_with_dialogs(TestDialogs::default());
     // Pen tool must be loaded so we can select one of its children
     let _ = app.execute_command(Command::SelectTool {
         tool_id: "builtin.pen".to_string(),
@@ -94,7 +94,7 @@ fn execute_command_select_child_tool_updates_active_child_tool_id() {
 /// execute コマンド updates ドキュメント 色 が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_updates_document_color() {
-    let mut app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut app = test_app_with_dialogs(TestDialogs::default());
 
     let _ = app.execute_command(Command::SetActiveColor {
         color: ColorRgba8::new(0x1e, 0x88, 0xe5, 0xff),
@@ -123,7 +123,7 @@ fn execute_command_new_document_resets_tool_to_default() {
 /// ホスト action dispatches ツール switch コマンド が期待どおりに動作することを検証する。
 #[test]
 fn host_action_dispatches_tool_switch_command() {
-    let mut app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut app = test_app_with_dialogs(TestDialogs::default());
 
     let _ = app.execute_host_action(HostAction::DispatchCommand(Command::SetActiveTool {
         tool: ToolKind::Eraser,
@@ -265,7 +265,7 @@ fn builtin_panels_are_registered() {
 /// 再読込 ペン presets reads 既定 ペン directory が期待どおりに動作することを検証する。
 #[test]
 fn reload_pen_presets_reads_default_pen_directory() {
-    let mut app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut app = test_app_with_dialogs(TestDialogs::default());
 
     assert!(app.execute_command(Command::ReloadPenPresets));
     assert!(app.document.pen_presets.len() >= 3);
@@ -274,7 +274,7 @@ fn reload_pen_presets_reads_default_pen_directory() {
 /// startup loads ツール カタログ from 既定 ツール directory が期待どおりに動作することを検証する。
 #[test]
 fn startup_loads_tool_catalog_from_default_tool_directory() {
-    let app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let app = test_app_with_dialogs(TestDialogs::default());
 
     assert!(app.document.tool_catalog.len() >= 5);
     assert!(

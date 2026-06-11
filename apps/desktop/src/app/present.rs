@@ -62,6 +62,14 @@ impl DesktopApp {
             }
         }
 
+        // HTML パネルの hit / move handle / full rect テーブルを CPU 側で更新する。
+        // レイアウト解決は GPU 非依存 (`collect_panel_hits`) のため、GPU 提示の有無
+        // (headless テスト含む) にかかわらずフォーカス巡回・キーボード操作・
+        // pointer hit が機能する。GPU ループ (runtime.rs) は quad 組み立てのみを担う。
+        profiler.measure("html_panel_hits", || {
+            self.refresh_html_panel_hit_tables(window_width, window_height);
+        });
+
         let mut panel_surface_refreshed = false;
         if self.needs_panel_surface_refresh {
             let panel_surface_size = self
@@ -222,6 +230,102 @@ impl DesktopApp {
             canvas_dirty_rect,
             canvas_transform_changed,
             canvas_updated: canvas_dirty_rect.is_some() || canvas_transform_changed,
+        }
+    }
+
+    /// HTML パネルの hit / move handle / full rect テーブルを更新する。
+    ///
+    /// パネル位置は workspace_layout、サイズは Engine の `measured_size` が権威。
+    /// hit 矩形は `collect_panel_hits` が GPU 描画と同一のクランプ規則で
+    /// レイアウト解決して返すため、実描画と常に一致する。
+    fn refresh_html_panel_hit_tables(&mut self, window_width: usize, window_height: usize) {
+        let all_panel_ids = self.panel_runtime.panel_ids_with_gpu();
+        let (panel_ids, hidden_ids): (Vec<String>, Vec<String>) = all_panel_ids
+            .into_iter()
+            .partition(|id| self.panel_presentation.is_panel_visible(id));
+        // 不可視パネルの hit / move handle / full rect は掃除する
+        for id in &hidden_ids {
+            self.panel_presentation.remove_html_panel_hits(id);
+            self.panel_presentation.remove_html_panel_move_handle(id);
+            self.panel_presentation.remove_html_panel_full_rect(id);
+        }
+        if panel_ids.is_empty() {
+            return;
+        }
+
+        let chrome_h = super::HTML_PANEL_CHROME_HEIGHT as usize;
+        let measured = self.panel_runtime.panel_measured_sizes();
+        let mut sized: Vec<(String, u32, u32)> = Vec::with_capacity(panel_ids.len());
+        let mut panel_rects: Vec<render_types::PixelRect> = Vec::with_capacity(panel_ids.len());
+        for id in &panel_ids {
+            let (mw, mh) = measured
+                .iter()
+                .find(|(pid, _, _)| pid == id)
+                .map(|(_, w, h)| (*w, *h))
+                .unwrap_or((1, 1));
+            // 位置は workspace_layout の position を使う（サイズは measured で上書き）
+            let position_rect = self
+                .panel_presentation
+                .panel_rect_in_viewport(id, window_width, window_height)
+                .unwrap_or(render_types::PixelRect {
+                    x: 0,
+                    y: 0,
+                    width: mw as usize,
+                    height: mh as usize,
+                });
+            panel_rects.push(render_types::PixelRect {
+                x: position_rect.x,
+                y: position_rect.y,
+                width: mw as usize,
+                height: mh as usize,
+            });
+            // viewport はクランプ上限としてそのまま渡し、Engine 側でクランプさせる
+            sized.push((id.clone(), window_width as u32, window_height as u32));
+        }
+
+        let hits_by_panel = self.panel_runtime.collect_panel_hits(
+            &sized,
+            1.0,
+            super::HTML_PANEL_CHROME_HEIGHT,
+        );
+        for (panel_id, hits) in hits_by_panel {
+            let Some(index) = panel_ids.iter().position(|id| id == &panel_id) else {
+                continue;
+            };
+            let panel_rect = panel_rects[index];
+            let body_screen_rect = render_types::PixelRect {
+                x: panel_rect.x,
+                y: panel_rect.y + chrome_h,
+                width: panel_rect.width,
+                height: panel_rect.height.saturating_sub(chrome_h),
+            };
+            let chrome_screen_rect = render_types::PixelRect {
+                x: panel_rect.x,
+                y: panel_rect.y,
+                width: panel_rect.width,
+                height: chrome_h,
+            };
+            let hit_rects: Vec<(String, render_types::PixelRect)> = hits
+                .into_iter()
+                .filter_map(|hit| {
+                    let element_id = hit.element_id?;
+                    Some((
+                        element_id,
+                        render_types::PixelRect {
+                            x: hit.rect.x as usize,
+                            y: hit.rect.y as usize,
+                            width: hit.rect.width as usize,
+                            height: hit.rect.height as usize,
+                        },
+                    ))
+                })
+                .collect();
+            self.panel_presentation
+                .update_html_panel_hits(&panel_id, body_screen_rect, hit_rects);
+            self.panel_presentation
+                .update_html_panel_move_handle(&panel_id, chrome_screen_rect);
+            self.panel_presentation
+                .update_html_panel_full_rect(&panel_id, panel_rect);
         }
     }
 }

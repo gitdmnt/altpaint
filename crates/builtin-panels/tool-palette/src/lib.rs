@@ -6,8 +6,8 @@ use plugin_sdk::{
     dom::{clear_attribute, html_escape, query_selector, set_attribute, set_inner_html},
     host,
     runtime::{
-        emit_command, emit_service, event_string, set_state_bool, set_state_string,
-        state_bool, state_string, toggle_state,
+        StatePatchBuffer, emit_command, emit_service, event_string, set_state_bool,
+        set_state_string, state_bool, state_string, toggle_state,
     },
     services, state,
 };
@@ -136,6 +136,16 @@ fn set_button_active(selector: &str, active: bool) {
 
 #[plugin_sdk::panel_init]
 fn init() {
+    // DSL 時代の初期 state 宣言に相当するデフォルトショートカット。
+    // 永続化済み config がある場合は registry の restore_persistent_config が
+    // init 後に config 全体を上書きするため、ここは初回起動時の既定値のみ担う。
+    let mut defaults = StatePatchBuffer::new();
+    defaults.set_string(PEN_SHORTCUT.as_ref(), "P");
+    defaults.set_string(ERASER_SHORTCUT.as_ref(), "E");
+    defaults.set_string(BUCKET_SHORTCUT.as_ref(), "G");
+    defaults.set_string(LASSO_BUCKET_SHORTCUT.as_ref(), "Shift+G");
+    defaults.set_string(PANEL_RECT_SHORTCUT.as_ref(), "K");
+    defaults.apply();
     render_dom();
 }
 

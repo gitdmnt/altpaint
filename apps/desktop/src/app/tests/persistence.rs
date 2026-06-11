@@ -192,7 +192,7 @@ fn load_project_restores_workspace_layout() {
 /// 必要に応じて dirty 状態も更新します。
 #[test]
 fn move_panel_host_action_updates_status_without_full_recompose() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut app = test_app_with_dialogs(TestDialogs::default());
     let mut profiler = DesktopProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();

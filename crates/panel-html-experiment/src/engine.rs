@@ -98,6 +98,14 @@ pub struct RenderedPanelHit {
     pub rect: PixelRect,
 }
 
+/// stylo の resolve を直列化するグローバルロック。
+///
+/// Blitz の `BaseDocument::resolve` はグローバル rayon プール (StyleThread) で
+/// スタイル計算を行い、複数ドキュメントの並行 resolve は stylo 内部の
+/// `atomic_refcell` borrow 競合で panic する。プロダクションでは resolve は
+/// 単一 UI スレッドからのみ呼ばれるため無競合 (ロックコストは実質ゼロ)。
+static STYLE_RESOLVE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 impl HtmlPanelEngine {
     pub fn new(html: &str, user_css: &str) -> Self {
         let mut config = DocumentConfig::default();
@@ -371,6 +379,13 @@ impl HtmlPanelEngine {
         if self.last_resolved == Some((width, height)) && !self.pending_mutation {
             return;
         }
+        // stylo (Blitz `resolve`) はグローバル rayon プール (StyleThread) を共有しており、
+        // 別ドキュメントの並行 resolve は atomic_refcell の borrow 競合で panic する。
+        // プロダクションは単一 UI スレッドのため無競合だが、並列テストの安全のため
+        // resolve をグローバルに直列化する (ADR 015)。
+        let _style_lock = STYLE_RESOLVE_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let viewport = Viewport::new(width, height, scale, blitz_traits::shell::ColorScheme::Dark);
         self.document.set_viewport(viewport);
         self.document.resolve(0.0);
@@ -435,6 +450,28 @@ impl HtmlPanelEngine {
             }
             current = node.parent?;
         }
+    }
+
+    /// GPU 非依存でレイアウトを解決し、`data-action` 要素の hit 矩形を返す。
+    ///
+    /// `on_render` と同一のクランプ規則 (measured_size を viewport / chrome_height で
+    /// クランプした local size) で `resolve_layout` を走らせるため、GPU 描画と
+    /// hit 矩形が常に一致する。headless (GPU コンテキストなし) でも動作する。
+    pub fn resolve_action_rects(
+        &mut self,
+        viewport: (u32, u32),
+        scale: f32,
+        chrome_height: u32,
+    ) -> Vec<RenderedPanelHit> {
+        let (vp_w, vp_h) = (viewport.0.max(1), viewport.1.max(chrome_height + 1));
+        let local_w = self.measured_size.0.min(vp_w).max(1);
+        let local_h = self.measured_size.1.min(vp_h).max(chrome_height + 1);
+        let body_h = local_h.saturating_sub(chrome_height).max(1);
+        if self.layout_dirty {
+            self.resolve_layout(local_w, body_h, scale);
+            self.layout_dirty = false;
+        }
+        self.collect_action_rects()
     }
 
     /// `data-action` 属性を持つ全要素の絶対矩形を返す（要 `resolve_layout` 済み）。
@@ -697,6 +734,69 @@ mod tests {
             .find(|r| r.element_id.as_deref() == Some("a"))
             .unwrap();
         assert!(a.rect.width > 0 && a.rect.height > 0);
+    }
+
+    /// S2d: resolve_action_rects は複数スレッドの同時実行でも panic しない
+    /// (ADR 015: prepare_present_frame 経由で並列テストが同時に layout 解決するため)
+    #[test]
+    fn concurrent_resolve_action_rects_is_safe() {
+        let html = r#"<html><body>
+            <div class="panel">
+              <header>ツール パレット</header>
+              <button id="a" data-action="command:noop">✏ ペン (日本語テキスト)</button>
+              <button id="b" data-action="command:noop">⌫ 消しゴム</button>
+              <p>選択中: ペン / サイズ: 12px の説明文。折り返しが発生する長さの日本語文章をここに置く。</p>
+            </div>
+        </body></html>"#;
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                std::thread::spawn(move || {
+                    for _ in 0..20 {
+                        let mut engine = HtmlPanelEngine::new(html, "");
+                        engine.on_load((280, 640));
+                        let rects = engine.resolve_action_rects((1280, 720), 1.0, 24);
+                        assert_eq!(rects.len(), 2);
+                    }
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().expect("concurrent resolve must not panic");
+        }
+    }
+
+    /// S2b: resolve_action_rects は GPU コンテキストなしで layout 解決と hit 収集を行う
+    #[test]
+    fn resolve_action_rects_returns_hits_without_gpu() {
+        let html = r#"<html><body>
+            <button id="app.save" data-action="service:project_io.save" style="display:block;">Save</button>
+        </body></html>"#;
+        let mut engine = engine(html);
+        engine.on_load((280, 160));
+        let rects = engine.resolve_action_rects((1280, 720), 1.0, 24);
+        assert_eq!(rects.len(), 1, "expected 1 data-action element");
+        let hit = &rects[0];
+        assert_eq!(hit.element_id.as_deref(), Some("app.save"));
+        assert!(hit.rect.width > 0 && hit.rect.height > 0);
+    }
+
+    /// S2c: resolve_action_rects は viewport が measured_size より小さい場合
+    /// on_render と同じ local size でクランプして解決する
+    #[test]
+    fn resolve_action_rects_clamps_to_viewport_like_on_render() {
+        let html = r#"<html><body>
+            <button id="a" data-action="command:noop" style="display:block;width:100%;">A</button>
+        </body></html>"#;
+        let mut engine = engine(html);
+        engine.on_load((800, 600));
+        let rects = engine.resolve_action_rects((200, 124), 1.0, 24);
+        assert_eq!(rects.len(), 1);
+        // local_w = min(800, 200) = 200 なので width:100% のボタンは 200px を超えない
+        assert!(
+            rects[0].rect.width <= 200,
+            "expected clamped width <= 200, got {}",
+            rects[0].rect.width
+        );
     }
 
     /// S14: ヒットテストが CSS padding を尊重

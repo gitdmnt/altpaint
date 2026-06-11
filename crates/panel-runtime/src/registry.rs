@@ -9,13 +9,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 /// パネル毎の GPU 描画結果をまとめて返す。
+///
+/// hit 矩形は GPU 描画から分離済み (`collect_panel_hits`)。
 pub struct PanelGpuFrame<'a> {
     pub panel_id: String,
     pub texture: &'a wgpu::Texture,
     pub width: u32,
     pub height: u32,
-    pub hit_regions: Vec<RenderedPanelHit>,
-    pub rendered_this_frame: bool,
 }
 
 /// 共有 wgpu リソース + 集約 vello::Renderer。`install_gpu_context` で初期化。
@@ -268,7 +268,7 @@ impl PanelRuntime {
             return Vec::new();
         };
         // ループ内で self.panels を可変借用するため、まず ID → 描画情報 のメタを集める
-        type FrameTuple = (String, *const wgpu::Texture, u32, u32, Vec<RenderedPanelHit>, bool);
+        type FrameTuple = (String, *const wgpu::Texture, u32, u32);
         let mut frames: Vec<FrameTuple> = Vec::new();
         for (panel_id, width, height) in sized {
             // 該当パネルを mutable で取得
@@ -278,23 +278,18 @@ impl PanelRuntime {
             let Some(engine) = panel_engine_mut(panel) else {
                 continue;
             };
-            let (rendered, texture_ptr, tw, th) = {
-                let outcome = engine.on_render(
-                    &gpu_ctx.device,
-                    &gpu_ctx.queue,
-                    &mut gpu_ctx.renderer,
-                    &mut gpu_ctx.scene_scratch,
-                    (*width, *height),
-                    scale,
-                    chrome_height,
-                );
-                let rendered = outcome.is_rendered();
-                let target = outcome.target();
-                let ptr: *const wgpu::Texture = &target.texture;
-                (rendered, ptr, target.width, target.height)
-            };
-            let hits = engine.collect_action_rects();
-            frames.push((panel_id.clone(), texture_ptr, tw, th, hits, rendered));
+            let outcome = engine.on_render(
+                &gpu_ctx.device,
+                &gpu_ctx.queue,
+                &mut gpu_ctx.renderer,
+                &mut gpu_ctx.scene_scratch,
+                (*width, *height),
+                scale,
+                chrome_height,
+            );
+            let target = outcome.target();
+            let ptr: *const wgpu::Texture = &target.texture;
+            frames.push((panel_id.clone(), ptr, target.width, target.height));
         }
         // SAFETY: 各 *const wgpu::Texture は self.panels 内の Box<dyn PanelPlugin> 内
         // engine が保持するテクスチャを指す。Box は heap に固定されており、戻り値の
@@ -302,15 +297,38 @@ impl PanelRuntime {
         // 不変に保たれる。テクスチャの寿命も同期する。
         frames
             .into_iter()
-            .map(|(panel_id, ptr, w, h, hits, rendered)| PanelGpuFrame {
+            .map(|(panel_id, ptr, w, h)| PanelGpuFrame {
                 panel_id,
                 texture: unsafe { &*ptr },
                 width: w,
                 height: h,
-                hit_regions: hits,
-                rendered_this_frame: rendered,
             })
             .collect()
+    }
+
+    /// 指定された (panel_id, viewport_w, viewport_h) リストのパネルについて、
+    /// GPU コンテキスト不要でレイアウトを解決し `data-action` hit 矩形を収集する。
+    ///
+    /// `render_panels` (GPU 描画) と同一のクランプ規則で resolve するため、
+    /// hit 矩形と実描画は常に一致する。headless 環境 (テスト等) でも動作する。
+    pub fn collect_panel_hits(
+        &mut self,
+        sized: &[(String, u32, u32)],
+        scale: f32,
+        chrome_height: u32,
+    ) -> Vec<(String, Vec<RenderedPanelHit>)> {
+        let mut out = Vec::with_capacity(sized.len());
+        for (panel_id, width, height) in sized {
+            let Some(panel) = self.panels.iter_mut().find(|p| p.id() == panel_id.as_str()) else {
+                continue;
+            };
+            let Some(engine) = panel_engine_mut(panel) else {
+                continue;
+            };
+            let hits = engine.resolve_action_rects((*width, *height), scale, chrome_height);
+            out.push((panel_id.clone(), hits));
+        }
+        out
     }
 
     /// 現在の値を パネル へ変換する。
@@ -514,5 +532,70 @@ fn event_panel_id(event: &PanelEvent) -> &str {
         | PanelEvent::DragValue { panel_id, .. }
         | PanelEvent::SetText { panel_id, .. }
         | PanelEvent::Keyboard { panel_id, .. } => panel_id,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::builtin_plugin::test_fixture::{
+        KEYBOARD_WAT, NO_KEYBOARD_WAT, write_panel_fixture,
+    };
+    use serde_json::json;
+
+    fn runtime_with_panel(name: &str, wat: &str) -> PanelRuntime {
+        let dir = write_panel_fixture(name, wat);
+        let panel = BuiltinPanelPlugin::load(&dir, "panel.wasm", None).expect("panel loads");
+        let mut runtime = PanelRuntime::new();
+        runtime.register_panel(Box::new(panel));
+        runtime
+    }
+
+    /// collect_panel_hits は GPU コンテキストなし (headless) でも hit 矩形を返す。
+    #[test]
+    fn collect_panel_hits_works_without_gpu_context() {
+        let mut runtime = runtime_with_panel("registry-hits", NO_KEYBOARD_WAT);
+
+        let hits = runtime.collect_panel_hits(
+            &[("builtin.test-kb".to_string(), 1280, 720)],
+            1.0,
+            24,
+        );
+
+        assert_eq!(hits.len(), 1);
+        let (panel_id, panel_hits) = &hits[0];
+        assert_eq!(panel_id, "builtin.test-kb");
+        assert!(
+            panel_hits
+                .iter()
+                .any(|h| h.element_id.as_deref() == Some("kb.test")),
+            "expected data-action button hit, got {panel_hits:?}"
+        );
+    }
+
+    /// dispatch_keyboard が Wasm keyboard handler へ届き、config 変化が報告される。
+    #[test]
+    fn dispatch_keyboard_reaches_wasm_handler_and_reports_config_change() {
+        let mut runtime = runtime_with_panel("registry-kb", KEYBOARD_WAT);
+
+        let result = runtime.dispatch_keyboard("Ctrl+K", "K", false);
+
+        assert!(result.handled);
+        assert!(result.config_changed);
+        assert_eq!(
+            runtime.persistent_panel_configs().get("builtin.test-kb"),
+            Some(&json!({ "last_shortcut": "Ctrl+K" }))
+        );
+    }
+
+    /// keyboard handler を持たないパネルは dispatch_keyboard でスキップされる。
+    #[test]
+    fn dispatch_keyboard_skips_panels_without_keyboard_handler() {
+        let mut runtime = runtime_with_panel("registry-no-kb", NO_KEYBOARD_WAT);
+
+        let result = runtime.dispatch_keyboard("Ctrl+K", "K", false);
+
+        assert!(!result.handled);
+        assert!(!result.config_changed);
     }
 }

@@ -63,15 +63,15 @@ bash scripts/build-ui-wasm.sh          # Linux / WSL2
 
 ## アーキテクチャ概要
 
-altpaint はデスクトップ向けデジタルペイントアプリ。Rust 2024-edition Cargo workspace（28 メンバー: ライブラリ 15、プラグイン 10、デスクトップアプリ 1）。
+altpaint はデスクトップ向けデジタルペイントアプリ。Rust 2024-edition Cargo workspace（29 メンバー: ライブラリ 16、ビルトインパネル 12、デスクトップアプリ 1）。
 
 ### Runtime Flow
 
-**起動**: `apps/desktop` が winit + wgpu 初期化 → `DesktopApp::new` がセッション/プロジェクト/ワークスペース復元 → `PanelRuntime` が `plugins/**/*.altp-panel` を読み込む → `storage` がツール・ペンを読み込む → 初期レンダリング
+**起動**: `apps/desktop` が winit + wgpu 初期化 → `DesktopApp::new` がセッション/プロジェクト/ワークスペース復元 → `PanelRuntime` が `crates/builtin-panels/` の HTML+CSS+Wasm パネル 12 個を読み込む → `storage` がツール・ペンを読み込む → 初期レンダリング
 
-**入力 → 描画**: OS入力 → `runtime/pointer.rs` 正規化 → `app/input.rs` がキャンバスかパネルへ振り分け → `canvas::view_mapping` が座標変換 → `canvas::gesture` が `PaintInput` を生成 → `canvas::context_builder` が `Document` からペイントコンテキストを解決 → ビルトインビットマッププラグインがビットマップ差分を書く → 差分を `Document` に適用 → `render_types::FramePlan` 組み立て → dirty rect 合成 → `wgpu_canvas.rs` が GPU へ提示
+**入力 → 描画**: OS入力 → `runtime/pointer.rs` 正規化 → `app/input.rs` がキャンバスかパネルへ振り分け → `canvas::view_mapping` が座標変換 → `canvas::gesture` が `PaintInput` を生成 → `canvas::context_builder` が `Document` からペイントコンテキストを解決 → `gpu-canvas` の compute shader が GPU レイヤーテクスチャへ直接描画（ブラシ/塗りつぶし/合成）→ `wgpu_canvas.rs` が GPU へ提示
 
-**パネル**: `panel-dsl` が `.altp-panel` をパース → `plugin-host`（wasmtime）が Wasm を実行 → `PanelRuntime` がホストスナップショットを同期 → `PanelEvent`/`HostAction` → `DesktopApp` が `Command` またはサイドエフェクトとして適用 → `panel-runtime::HtmlPanelEngine` が GPU テクスチャに直描画 → `wgpu_canvas` が `panel_quads` レイヤーで合成
+**パネル**: `BuiltinPanelPlugin` が `panel.html` + `panel.css` をロード → `plugin-host`（wasmtime）が Wasm を実行し DOM mutation host function で直接 DOM を書換え → `PanelRuntime` がホストスナップショットを同期 → `PanelEvent`（Activate/Keyboard 等）/`HostAction` → `DesktopApp` が `Command` またはサイドエフェクトとして適用 → `panel-html-experiment::HtmlPanelEngine`（Blitz + vello）が GPU テクスチャに直描画 → `wgpu_canvas` が `panel_quads` レイヤーで合成。hit / move handle テーブルは `prepare_present_frame` が GPU 非依存で毎フレーム更新
 
 ### 主要クレート
 
@@ -80,18 +80,19 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 | `apps/desktop`                        | winit + wgpu ホスト、`DesktopApp` 統括、入力ルーティング、提示                            |
 | `crates/app-core`                     | `Document`、ドメインモデル（Work→Page→Panel→LayerNode）、`Command`、ペイント基本型        |
 | `crates/canvas`                       | `CanvasRuntime`、ジェスチャーステートマシン、ビットマップ操作                             |
+| `crates/gpu-canvas`                   | GPU レイヤーテクスチャプール、ブラシ/塗りつぶし/レイヤー合成の compute shader dispatch    |
 | `crates/render-types`                 | `FramePlan`/`CanvasPlan`/`PanelPlan`、`PixelRect`/`CanvasScene`/`CanvasOverlayState` 等の純データ DTO |
-| `crates/panel-runtime`                | パネルレジストリ、DSL/Wasm ブリッジ、ホストスナップショット同期、永続設定                 |
-| `crates/ui-shell`                     | パネルワークスペースレイアウト、フォーカス、ヒットテスト、サーフェスレンダリング          |
+| `crates/panel-runtime`                | パネルレジストリ（`BuiltinPanelPlugin`）、Wasm ブリッジ、ホストスナップショット同期、永続設定 |
+| `crates/panel-html-experiment`        | `HtmlPanelEngine`（Blitz HTML/CSS + parley + vello GPU 直描画、hit 矩形収集）             |
+| `crates/ui-shell`                     | パネルワークスペースレイアウト、フォーカス、ヒットテスト                                  |
 | `crates/panel-api`                    | パネル/ホスト間コントラクト（`PanelPlugin`、`PanelEvent`、`HostAction`）                  |
-| `crates/plugin-host`                  | wasmtime ベースの Wasm パネルランタイム                                                   |
-| `crates/panel-dsl`                    | `.altp-panel` パーサー/バリデーター/IR                                                    |
+| `crates/plugin-host`                  | wasmtime ベースの Wasm パネルランタイム + DOM mutation host functions                     |
 | `crates/panel-schema`                 | ホスト↔Wasm 共有 DTO                                                                      |
 | `crates/plugin-sdk` + `plugin-macros` | プラグイン作者向け SDK と proc-macro                                                      |
 | `crates/storage`                      | SQLite プロジェクト永続化、ペン/ツールカタログ                                            |
 | `crates/desktop-support`              | セッション、ダイアログ、パス、プロファイラー、キャンバステンプレート                      |
 | `crates/workspace-persistence`        | `WorkspaceUiState`、`PluginConfigs` 共有 DTO                                              |
-| `plugins/*`                           | 10 個のビルトインパネル（各々 `.altp-panel` + Rust/Wasm ソース + コンパイル済み `.wasm`） |
+| `crates/builtin-panels/*`             | 12 個のビルトインパネル（各々 `panel.html` + `panel.css` + `panel.meta.json` + Rust/Wasm ソース） |
 
 ### ファイル配置規則
 
