@@ -453,6 +453,57 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    /// 保存→読込ラウンドトリップでレイヤー構造 (名前・可視・ブレンド・マスク・選択 index) が保全されることを検証する。
+    #[test]
+    fn save_and_load_roundtrip_preserves_layer_structure() {
+        let path = temp_path("layer-structure");
+        let mut document = multi_page_document();
+        document.normalize_phase9_state();
+
+        save_project_to_path(
+            &path,
+            &document,
+            &WorkspaceLayout::default(),
+            &BTreeMap::new(),
+        )
+        .expect("save should succeed");
+        let loaded = load_project_from_path(&path)
+            .expect("load should succeed")
+            .document;
+
+        assert_eq!(loaded.work.pages.len(), document.work.pages.len());
+        for (page, loaded_page) in document.work.pages.iter().zip(loaded.work.pages.iter()) {
+            assert_eq!(loaded_page.panels.len(), page.panels.len());
+            for (panel, loaded_panel) in page.panels.iter().zip(loaded_page.panels.iter()) {
+                assert_eq!(loaded_panel.id, panel.id);
+                assert_eq!(loaded_panel.bounds, panel.bounds);
+                assert_eq!(loaded_panel.active_layer_index, panel.active_layer_index);
+                assert_eq!(loaded_panel.created_layer_count, panel.created_layer_count);
+                assert_eq!(loaded_panel.bitmap.pixels, panel.bitmap.pixels);
+                assert_eq!(loaded_panel.layers.len(), panel.layers.len());
+                for (layer, loaded_layer) in panel.layers.iter().zip(loaded_panel.layers.iter()) {
+                    assert_eq!(loaded_layer.id, layer.id);
+                    assert_eq!(loaded_layer.name, layer.name);
+                    assert_eq!(loaded_layer.visible, layer.visible);
+                    assert_eq!(loaded_layer.blend_mode, layer.blend_mode);
+                    assert_eq!(loaded_layer.bitmap.pixels, layer.bitmap.pixels);
+                    assert_eq!(
+                        loaded_layer
+                            .mask
+                            .as_ref()
+                            .map(|mask| (mask.width, mask.height, mask.alpha.clone())),
+                        layer
+                            .mask
+                            .as_ref()
+                            .map(|mask| (mask.width, mask.height, mask.alpha.clone())),
+                    );
+                }
+            }
+        }
+
+        let _ = fs::remove_file(path);
+    }
+
     /// 保存 and 読込 roundtrip preserves ワークスペース レイアウト が期待どおりに動作することを検証する。
     #[test]
     fn save_and_load_roundtrip_preserves_workspace_layout() {
