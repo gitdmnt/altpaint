@@ -378,7 +378,7 @@ graph TD
 
 - SQLite ベース project save/load（`rusqlite` bundled）
 - `format_version` 管理
-- page / panel 単位の部分読込、layer chunk 保存（`rmp-serde` + `zstd`）
+- page / panel 単位の部分読込、layer chunk 保存（`zstd` 圧縮チャンク）
 - current panel snapshot 永続化
 - PNG export
 - ペンプリセット読込と import/export

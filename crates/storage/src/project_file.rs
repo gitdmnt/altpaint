@@ -1,32 +1,19 @@
-use std::fs;
-use std::io::Cursor;
 use std::path::Path;
 
-use app_core::{Document, Page, PageId, Panel, PanelId, WorkId, WorkspaceLayout};
-use serde::{Deserialize, Serialize};
+use app_core::{Document, Page, PageId, Panel, PanelId, WorkspaceLayout};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use thiserror::Error;
 use app_core::{PluginConfigs, WorkspaceUiState};
 
 use crate::project_sqlite::{
-    DEFAULT_PROJECT_CHUNK_SIZE, PersistedPanelSnapshot, PersistedPanelSnapshotSummary,
-    ProjectIndex, ProjectPageSummary, ProjectPanelSummary, ProjectSaveMode, ProjectSaveOptions,
-    is_sqlite_project_path, load_page_from_sqlite_path, load_panel_from_sqlite_path,
-    load_panel_snapshot_from_sqlite_path, load_project_from_sqlite_path,
-    load_project_index_from_sqlite_path, save_project_to_sqlite_path,
+    PersistedPanelSnapshot, ProjectIndex, ProjectSaveOptions, is_sqlite_project_path,
+    load_page_from_sqlite_path, load_panel_from_sqlite_path, load_panel_snapshot_from_sqlite_path,
+    load_project_from_sqlite_path, load_project_index_from_sqlite_path,
+    save_project_to_sqlite_path,
 };
 
-/// ワークスペース レイアウト is empty を計算して返す。
-fn workspace_layout_is_empty(layout: &WorkspaceLayout) -> bool {
-    layout.panels.is_empty()
-}
-
 pub const CURRENT_FORMAT_VERSION: u32 = 7;
-const BINARY_MAGIC: &[u8; 8] = b"ALTPBIN\0";
-const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
-#[cfg(test)]
-const ZSTD_COMPRESSION_LEVEL: i32 = 3;
 
 #[derive(Debug, Clone)]
 pub struct LoadedProject {
@@ -46,51 +33,16 @@ impl LoadedProject {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AltpaintProjectFile {
-    pub format_version: u32,
-    pub document: Document,
-    #[serde(default)]
-    pub ui_state: WorkspaceUiState,
-    #[serde(default, skip_serializing_if = "workspace_layout_is_empty")]
-    pub workspace_layout: WorkspaceLayout,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub plugin_configs: PluginConfigs,
-}
-
-impl AltpaintProjectFile {
-    /// 既定値を使って新しいインスタンスを生成する。
-    pub fn new(
-        document: &Document,
-        workspace_layout: &WorkspaceLayout,
-        plugin_configs: &BTreeMap<String, Value>,
-    ) -> Self {
-        Self {
-            format_version: CURRENT_FORMAT_VERSION,
-            document: document.clone(),
-            ui_state: WorkspaceUiState::new(workspace_layout.clone(), plugin_configs.clone()),
-            workspace_layout: WorkspaceLayout::default(),
-            plugin_configs: BTreeMap::new(),
-        }
-    }
-}
-
 #[derive(Debug, Error)]
 pub enum StorageError {
     #[error("unsupported altpaint project format version: {0}")]
     UnsupportedFormatVersion(u32),
-    #[error("failed to encode project file: {0}")]
-    Encode(#[source] rmp_serde::encode::Error),
-    #[error("failed to decode project file: {0}")]
-    Decode(#[source] rmp_serde::decode::Error),
     #[error("failed to compress project file: {0}")]
     Compress(#[source] std::io::Error),
     #[error("failed to decompress project file: {0}")]
     Decompress(#[source] std::io::Error),
     #[error("sqlite failed: {0}")]
     Sqlite(#[from] rusqlite::Error),
-    #[error("failed to deserialize legacy json project file: {0}")]
-    DeserializeLegacyJson(#[source] serde_json::Error),
     #[error("failed to serialize metadata json: {0}")]
     SerializeMetadataJson(#[source] serde_json::Error),
     #[error("failed to deserialize metadata json: {0}")]
@@ -105,34 +57,17 @@ pub enum StorageError {
     Io(#[from] std::io::Error),
 }
 
-/// 現在の値を プロジェクト へ変換する。
+/// 指定パスが altpaint の sqlite プロジェクトファイルであることを確認する。
 ///
-/// 失敗時はエラーを返します。
-#[cfg(test)]
-fn serialize_project(project: &AltpaintProjectFile) -> Result<Vec<u8>, StorageError> {
-    let encoded = rmp_serde::to_vec(project).map_err(StorageError::Encode)?;
-    let compressed = zstd::stream::encode_all(Cursor::new(encoded), ZSTD_COMPRESSION_LEVEL)
-        .map_err(StorageError::Compress)?;
-    let mut bytes = Vec::with_capacity(BINARY_MAGIC.len() + compressed.len());
-    bytes.extend_from_slice(BINARY_MAGIC);
-    bytes.extend_from_slice(&compressed);
-    Ok(bytes)
-}
-
-/// 入力を解析して プロジェクト に変換し、失敗時はエラーを返す。
-///
-/// 失敗時はエラーを返します。
-fn deserialize_project(bytes: &[u8]) -> Result<AltpaintProjectFile, StorageError> {
-    if let Some(payload) = bytes.strip_prefix(BINARY_MAGIC) {
-        let decoded_bytes = if payload.starts_with(&ZSTD_MAGIC) {
-            zstd::stream::decode_all(Cursor::new(payload)).map_err(StorageError::Decompress)?
-        } else {
-            payload.to_vec()
-        };
-        rmp_serde::from_slice(&decoded_bytes).map_err(StorageError::Decode)
-    } else {
-        serde_json::from_slice(bytes).map_err(StorageError::DeserializeLegacyJson)
+/// sqlite ヘッダーを持たないファイル (旧 JSON / ALTPBIN 形式を含む) はエラーになる。
+fn ensure_sqlite_project(path: &Path) -> Result<(), StorageError> {
+    if is_sqlite_project_path(path)? {
+        return Ok(());
     }
+    Err(StorageError::InvalidProject(format!(
+        "not an altpaint sqlite project file: {}",
+        path.display()
+    )))
 }
 
 /// ドキュメント to パス を保存先へ書き出す。
@@ -186,29 +121,8 @@ pub fn load_document_from_path(path: impl AsRef<Path>) -> Result<Document, Stora
 /// 失敗時はエラーを返します。
 pub fn load_project_from_path(path: impl AsRef<Path>) -> Result<LoadedProject, StorageError> {
     let path = path.as_ref();
-    if is_sqlite_project_path(path)? {
-        return load_project_from_sqlite_path(path);
-    }
-
-    let bytes = fs::read(path)?;
-    let project = deserialize_project(&bytes)?;
-
-    if !(1..=CURRENT_FORMAT_VERSION).contains(&project.format_version) {
-        return Err(StorageError::UnsupportedFormatVersion(
-            project.format_version,
-        ));
-    }
-
-    let mut document = project.document;
-    document.normalize_phase9_state();
-
-    let ui_state = if project.ui_state != WorkspaceUiState::default() {
-        project.ui_state
-    } else {
-        WorkspaceUiState::new(project.workspace_layout, project.plugin_configs)
-    };
-
-    Ok(LoadedProject { document, ui_state })
+    ensure_sqlite_project(path)?;
+    load_project_from_sqlite_path(path)
 }
 
 /// プロジェクト インデックス from パス を読み込み、必要に応じて整形して返す。
@@ -216,26 +130,8 @@ pub fn load_project_from_path(path: impl AsRef<Path>) -> Result<LoadedProject, S
 /// 失敗時はエラーを返します。
 pub fn load_project_index_from_path(path: impl AsRef<Path>) -> Result<ProjectIndex, StorageError> {
     let path = path.as_ref();
-    if is_sqlite_project_path(path)? {
-        return load_project_index_from_sqlite_path(path);
-    }
-
-    let bytes = fs::read(path)?;
-    let project = deserialize_project(&bytes)?;
-    if !(1..=CURRENT_FORMAT_VERSION).contains(&project.format_version) {
-        return Err(StorageError::UnsupportedFormatVersion(
-            project.format_version,
-        ));
-    }
-
-    let loaded = load_project_from_path(path)?;
-    Ok(derive_project_index(
-        project.format_version,
-        DEFAULT_PROJECT_CHUNK_SIZE,
-        ProjectSaveMode::Full,
-        &loaded,
-        Vec::new(),
-    ))
+    ensure_sqlite_project(path)?;
+    load_project_index_from_sqlite_path(path)
 }
 
 /// ページ from パス を読み込み、必要に応じて整形して返す。
@@ -243,18 +139,8 @@ pub fn load_project_index_from_path(path: impl AsRef<Path>) -> Result<ProjectInd
 /// 失敗時はエラーを返します。
 pub fn load_page_from_path(path: impl AsRef<Path>, page_id: PageId) -> Result<Page, StorageError> {
     let path = path.as_ref();
-    if is_sqlite_project_path(path)? {
-        return load_page_from_sqlite_path(path, page_id);
-    }
-
-    let project = load_project_from_path(path)?;
-    project
-        .document
-        .work
-        .pages
-        .into_iter()
-        .find(|page| page.id == page_id)
-        .ok_or(StorageError::PageNotFound(page_id.0))
+    ensure_sqlite_project(path)?;
+    load_page_from_sqlite_path(path, page_id)
 }
 
 /// パネル from パス を読み込み、必要に応じて整形して返す。
@@ -264,18 +150,8 @@ pub fn load_panel_from_path(
     panel_id: PanelId,
 ) -> Result<Panel, StorageError> {
     let path = path.as_ref();
-    if is_sqlite_project_path(path)? {
-        return load_panel_from_sqlite_path(path, page_id, panel_id);
-    }
-
-    let page = load_page_from_path(path, page_id)?;
-    page.panels
-        .into_iter()
-        .find(|panel| panel.id == panel_id)
-        .ok_or(StorageError::PanelNotFound {
-            page_id: page_id.0,
-            panel_id: panel_id.0,
-        })
+    ensure_sqlite_project(path)?;
+    load_panel_from_sqlite_path(path, page_id, panel_id)
 }
 
 /// パネル スナップショット from パス を読み込み、必要に応じて整形して返す。
@@ -284,60 +160,8 @@ pub fn load_panel_snapshot_from_path(
     snapshot_id: &str,
 ) -> Result<Option<PersistedPanelSnapshot>, StorageError> {
     let path = path.as_ref();
-    if is_sqlite_project_path(path)? {
-        return load_panel_snapshot_from_sqlite_path(path, snapshot_id);
-    }
-    Ok(None)
-}
-
-/// 現在の derive プロジェクト インデックス を返す。
-fn derive_project_index(
-    format_version: u32,
-    chunk_size: usize,
-    save_mode: ProjectSaveMode,
-    loaded: &LoadedProject,
-    snapshots: Vec<PersistedPanelSnapshotSummary>,
-) -> ProjectIndex {
-    let snapshot_map =
-        snapshots
-            .iter()
-            .fold(BTreeMap::<u64, Vec<String>>::new(), |mut map, snapshot| {
-                map.entry(snapshot.panel_id.0)
-                    .or_default()
-                    .push(snapshot.snapshot_id.clone());
-                map
-            });
-
-    ProjectIndex {
-        format_version,
-        work_id: WorkId(loaded.document.work.id.0),
-        title: loaded.document.work.title.clone(),
-        save_mode,
-        chunk_size,
-        pages: loaded
-            .document
-            .work
-            .pages
-            .iter()
-            .map(|page| ProjectPageSummary {
-                id: page.id,
-                panels: page
-                    .panels
-                    .iter()
-                    .map(|panel| ProjectPanelSummary {
-                        id: panel.id,
-                        width: panel.bitmap.width,
-                        height: panel.bitmap.height,
-                        layer_count: panel.layers.len(),
-                        snapshot_ids: snapshot_map.get(&panel.id.0).cloned().unwrap_or_default(),
-                    })
-                    .collect(),
-            })
-            .collect(),
-        workspace_layout: loaded.ui_state.workspace_layout.clone(),
-        plugin_configs: loaded.ui_state.plugin_configs.clone(),
-        snapshots,
-    }
+    ensure_sqlite_project(path)?;
+    load_panel_snapshot_from_sqlite_path(path, snapshot_id)
 }
 
 #[cfg(test)]
@@ -345,7 +169,7 @@ mod tests {
     use super::*;
     use app_core::{BlendMode, ColorRgba8, Document, LayerMask, Page, PageId, PanelId};
     use rusqlite::Connection;
-    use std::time::Instant;
+    use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     /// small ドキュメント を計算して返す。
@@ -362,18 +186,6 @@ mod tests {
                 .draw_point_sized_rgba(x, y, color, 1, true);
             panel.bitmap = panel.layers[0].bitmap.clone();
         }
-    }
-
-    /// Benchmark ドキュメント に必要な描画内容を組み立てる。
-    fn benchmark_document(width: usize, height: usize) -> Document {
-        let mut document = Document::new(width, height);
-        document.set_active_color(ColorRgba8::new(0x11, 0x66, 0xcc, 0xff));
-
-        for offset in (0..width.min(height)).step_by(25) {
-            draw_test_point(&mut document, offset, offset);
-        }
-
-        document
     }
 
     /// 現在の temp パス を返す。
@@ -562,27 +374,6 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
-    /// 読込 version 1 file defaults ワークスペース レイアウト が期待どおりに動作することを検証する。
-    #[test]
-    fn load_version_1_file_defaults_workspace_layout() {
-        let path = temp_path("version1");
-        let project = serde_json::json!({
-            "format_version": 1,
-            "document": small_document(),
-        });
-        fs::write(
-            &path,
-            serde_json::to_vec(&project).expect("serialize should succeed"),
-        )
-        .expect("write should succeed");
-
-        let loaded = load_project_from_path(&path).expect("load should succeed");
-        assert!(loaded.ui_state.workspace_layout.panels.is_empty());
-        assert!(loaded.ui_state.plugin_configs.is_empty());
-
-        let _ = fs::remove_file(path);
-    }
-
     /// 保存 プロジェクト writes sqlite header and チャンク tables が期待どおりに動作することを検証する。
     #[test]
     fn save_project_writes_sqlite_header_and_chunk_tables() {
@@ -590,11 +381,6 @@ mod tests {
         let mut document = Document::new(256, 256);
         document.set_active_color(ColorRgba8::new(0x12, 0x34, 0x56, 0xff));
         draw_test_point(&mut document, 32, 48);
-
-        let project =
-            AltpaintProjectFile::new(&document, &WorkspaceLayout::default(), &BTreeMap::new());
-        let legacy_json =
-            serde_json::to_vec_pretty(&project).expect("legacy json serialize should succeed");
 
         save_project_to_path(
             &path,
@@ -613,7 +399,6 @@ mod tests {
 
         assert!(saved.starts_with(crate::project_sqlite::SQLITE_HEADER));
         assert!(chunk_count > 0);
-        assert!(saved.len() < legacy_json.len().saturating_mul(2));
 
         let _ = fs::remove_file(path);
     }
@@ -705,69 +490,31 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
-    /// 読込 プロジェクト supports 前 uncompressed binary 形式 が期待どおりに動作することを検証する。
-    #[test]
-    fn load_project_supports_previous_uncompressed_binary_format() {
-        let path = temp_path("legacy-binary");
-        let mut document = small_document();
-        document.set_active_color(ColorRgba8::new(0x55, 0x66, 0x77, 0xff));
-        let project = AltpaintProjectFile {
-            format_version: 5,
-            document: document.clone(),
-            ui_state: WorkspaceUiState::default(),
-            workspace_layout: WorkspaceLayout::default(),
-            plugin_configs: BTreeMap::new(),
-        };
-
-        let mut serialized = Vec::new();
-        serialized.extend_from_slice(BINARY_MAGIC);
-        serialized.extend_from_slice(
-            &rmp_serde::to_vec(&project).expect("legacy binary serialize should succeed"),
-        );
-        fs::write(&path, serialized).expect("write should succeed");
-
-        let loaded = load_project_from_path(&path).expect("legacy binary load should succeed");
-
-        assert_eq!(loaded.document.active_color, document.active_color);
-        assert_eq!(loaded.document.work.title, document.work.title);
-
-        let _ = fs::remove_file(path);
+    /// 保存済み sqlite プロジェクトの format_version を書き換えるテストヘルパー。
+    fn overwrite_format_version(path: &std::path::Path, version: u32) {
+        let connection = Connection::open(path).expect("sqlite open should succeed");
+        connection
+            .execute(
+                "UPDATE metadata SET value_json = ?1 WHERE key = 'format_version'",
+                [version.to_string()],
+            )
+            .expect("format_version update should succeed");
     }
 
-    /// 読込 プロジェクト supports legacy JSON 形式 が期待どおりに動作することを検証する。
-    #[test]
-    fn load_project_supports_legacy_json_format() {
-        let path = temp_path("legacy-json");
-        let mut document = small_document();
-        document.set_active_color(ColorRgba8::new(0xaa, 0xbb, 0xcc, 0xff));
-        let project =
-            AltpaintProjectFile::new(&document, &WorkspaceLayout::default(), &BTreeMap::new());
-        let serialized = serde_json::to_vec_pretty(&project).expect("serialize should succeed");
-        fs::write(&path, serialized).expect("write should succeed");
-
-        let loaded = load_project_from_path(&path).expect("legacy json load should succeed");
-
-        assert_eq!(loaded.document.active_color, document.active_color);
-        assert_eq!(loaded.document.work.title, document.work.title);
-
-        let _ = fs::remove_file(path);
-    }
-
-    /// 読込 rejects unknown 形式 version が期待どおりに動作することを検証する。
+    /// 現行より新しい format_version の sqlite プロジェクトを拒否することを検証する。
     #[test]
     fn load_rejects_unknown_format_version() {
-        let path = temp_path("version");
-        let project = AltpaintProjectFile {
-            format_version: CURRENT_FORMAT_VERSION + 1,
-            document: small_document(),
-            ui_state: WorkspaceUiState::default(),
-            workspace_layout: WorkspaceLayout::default(),
-            plugin_configs: BTreeMap::new(),
-        };
-        let serialized = serialize_project(&project).expect("serialize should succeed");
-        fs::write(&path, serialized).expect("write should succeed");
+        let path = temp_path("version-unknown");
+        save_project_to_path(
+            &path,
+            &small_document(),
+            &WorkspaceLayout::default(),
+            &BTreeMap::new(),
+        )
+        .expect("save should succeed");
+        overwrite_format_version(&path, CURRENT_FORMAT_VERSION + 1);
 
-        let error = load_document_from_path(&path).expect_err("unknown version should fail");
+        let error = load_project_from_path(&path).expect_err("unknown version should fail");
         assert!(matches!(
             error,
             StorageError::UnsupportedFormatVersion(version) if version == CURRENT_FORMAT_VERSION + 1
@@ -776,43 +523,46 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
-    /// サイズ difference benchmark for 1000 square ドキュメント が期待どおりに動作することを検証する。
+    /// 現行より古い format_version の sqlite プロジェクトを拒否することを検証する (旧版受理の全廃)。
     #[test]
-    #[ignore = "manual benchmark: run with `cargo test -p storage size_difference_benchmark_for_1000_square_document -- --ignored --nocapture`"]
-    fn size_difference_benchmark_for_1000_square_document() {
-        let document = benchmark_document(1000, 1000);
-        let project =
-            AltpaintProjectFile::new(&document, &WorkspaceLayout::default(), &BTreeMap::new());
+    fn load_rejects_outdated_format_version() {
+        let path = temp_path("version-outdated");
+        save_project_to_path(
+            &path,
+            &small_document(),
+            &WorkspaceLayout::default(),
+            &BTreeMap::new(),
+        )
+        .expect("save should succeed");
+        overwrite_format_version(&path, CURRENT_FORMAT_VERSION - 1);
 
-        let json_started = Instant::now();
-        let json_bytes =
-            serde_json::to_vec_pretty(&project).expect("json serialize should succeed");
-        let json_elapsed = json_started.elapsed();
+        let error = load_project_from_path(&path).expect_err("outdated version should fail");
+        assert!(matches!(
+            error,
+            StorageError::UnsupportedFormatVersion(version) if version == CURRENT_FORMAT_VERSION - 1
+        ));
 
-        let binary_started = Instant::now();
-        let compressed_bytes =
-            serialize_project(&project).expect("binary serialize should succeed");
-        let binary_elapsed = binary_started.elapsed();
-
-        let saved_bytes = json_bytes.len().saturating_sub(compressed_bytes.len());
-        let reduction_ratio = if json_bytes.is_empty() {
-            0.0
-        } else {
-            saved_bytes as f64 / json_bytes.len() as f64 * 100.0
-        };
-
-        println!(
-            "1000x1000 project size benchmark\n  json:       {} bytes ({:?})\n  compressed: {} bytes ({:?})\n  saved:      {} bytes ({:.2}% smaller)",
-            json_bytes.len(),
-            json_elapsed,
-            compressed_bytes.len(),
-            binary_elapsed,
-            saved_bytes,
-            reduction_ratio,
-        );
-
-        assert!(compressed_bytes.starts_with(BINARY_MAGIC));
-        assert!(compressed_bytes[BINARY_MAGIC.len()..].starts_with(&ZSTD_MAGIC));
-        assert!(compressed_bytes.len() < json_bytes.len());
+        let _ = fs::remove_file(path);
     }
+
+    /// sqlite 形式でないレガシー JSON プロジェクトファイルを拒否することを検証する。
+    #[test]
+    fn load_rejects_legacy_json_project_file() {
+        let path = temp_path("legacy-json-rejected");
+        let legacy = serde_json::json!({
+            "format_version": CURRENT_FORMAT_VERSION,
+            "document": small_document(),
+        });
+        fs::write(
+            &path,
+            serde_json::to_vec(&legacy).expect("serialize should succeed"),
+        )
+        .expect("write should succeed");
+
+        let error = load_project_from_path(&path).expect_err("legacy json should fail");
+        assert!(matches!(error, StorageError::InvalidProject(_)));
+
+        let _ = fs::remove_file(path);
+    }
+
 }

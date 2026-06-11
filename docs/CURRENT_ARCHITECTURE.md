@@ -330,7 +330,7 @@ project / pen / tool catalog の永続化と読込を担う。
 
 - SQLite ベース project save/load（`rusqlite` bundled）
 - format version 管理、page / panel 単位の部分読込
-- layer chunk 保存（`rmp-serde` + `zstd`）と current panel snapshot 永続化
+- layer chunk 保存（`zstd` 圧縮チャンク）と current panel snapshot 永続化
 - PNG export（`src/export.rs`）
 - pen import/export（`pen_exchange.rs` / `pen_format.rs` / `pen_presets.rs`）
 - `tools/` カタログ読込（`tool_catalog.rs`）

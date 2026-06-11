@@ -583,12 +583,12 @@ fn get_metadata<T: DeserializeOwned>(
     decode_json(&value)
 }
 
-/// 検証 形式 version を計算して返す。
+/// 保存された format_version が現行版と一致することを検証する。
 ///
-/// 失敗時はエラーを返します。
+/// 旧版の受理は行わない (alpha 方針で互換を持たない)。失敗時はエラーを返します。
 fn validate_format_version(connection: &Connection) -> Result<(), StorageError> {
     let format_version: u32 = get_metadata(connection, METADATA_FORMAT_VERSION)?;
-    if !(1..=CURRENT_FORMAT_VERSION).contains(&format_version) {
+    if format_version != CURRENT_FORMAT_VERSION {
         return Err(StorageError::UnsupportedFormatVersion(format_version));
     }
     Ok(())

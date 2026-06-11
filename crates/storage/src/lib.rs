@@ -17,10 +17,10 @@ pub use pen_format::{
 };
 pub use pen_presets::load_pen_directory;
 pub use project_file::{
-    AltpaintProjectFile, CURRENT_FORMAT_VERSION, LoadedProject, StorageError,
-    load_document_from_path, load_page_from_path, load_panel_from_path,
-    load_panel_snapshot_from_path, load_project_from_path, load_project_index_from_path,
-    save_document_to_path, save_project_to_path, save_project_to_path_with_options,
+    CURRENT_FORMAT_VERSION, LoadedProject, StorageError, load_document_from_path,
+    load_page_from_path, load_panel_from_path, load_panel_snapshot_from_path,
+    load_project_from_path, load_project_index_from_path, save_document_to_path,
+    save_project_to_path, save_project_to_path_with_options,
 };
 pub use project_sqlite::{
     DEFAULT_PROJECT_CHUNK_SIZE, PersistedPanelSnapshot, PersistedPanelSnapshotSummary,
