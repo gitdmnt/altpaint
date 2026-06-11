@@ -58,25 +58,6 @@ pub fn find_color_in_rect(
     count
 }
 
-/// vello scene 内の glyph run 数をカウントするための placeholder。
-///
-/// `render-types` は意図的に vello に依存しないため、ここでは関数を
-/// 提供しない。glyph run 検証が必要なクレートは vello を直接依存に
-/// 持つテスト側で次のように記述する:
-///
-/// ```ignore
-/// // panel-html などの vello を直接持つクレートにて:
-/// fn count_glyph_runs(scene: &vello::Scene) -> usize {
-///     scene
-///         .encoding()
-///         .resources
-///         .glyph_runs
-///         .len()
-/// }
-/// ```
-#[doc(hidden)]
-pub const _GLYPH_RUN_NOTE: &str = "see module docs";
-
 #[cfg(test)]
 mod tests {
     use super::*;

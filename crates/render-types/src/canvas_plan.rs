@@ -1,9 +1,8 @@
-use app_core::{CanvasDirtyRect, CanvasPoint, CanvasViewTransform};
+use app_core::{CanvasDirtyRect, CanvasViewTransform};
 
 use crate::{
-    CanvasScene, PixelRect, TextureQuad, brush_preview_rect_for_diameter,
-    exposed_canvas_background_rect, map_canvas_dirty_to_display_with_transform,
-    prepare_canvas_scene,
+    CanvasScene, PixelRect, exposed_canvas_background_rect,
+    map_canvas_dirty_to_display_with_transform, prepare_canvas_scene,
 };
 
 /// キャンバス合成元を `RenderFrame` に依存させずに渡すための軽量ビュー。
@@ -36,13 +35,6 @@ impl CanvasPlan {
         )
     }
 
-    /// texture quad を計算して返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
-    pub fn texture_quad(&self) -> Option<TextureQuad> {
-        self.scene().and_then(|scene| scene.texture_quad())
-    }
-
     /// 差分 矩形 を別座標系へ変換する。
     ///
     /// 必要に応じて dirty 状態も更新します。
@@ -53,22 +45,6 @@ impl CanvasPlan {
             self.source_width,
             self.source_height,
             self.transform,
-        )
-    }
-
-    /// ブラシ プレビュー 矩形 に必要な処理を行う。
-    pub fn brush_preview_rect(
-        &self,
-        canvas_position: CanvasPoint,
-        brush_diameter: f32,
-    ) -> Option<PixelRect> {
-        brush_preview_rect_for_diameter(
-            self.host_rect,
-            self.source_width,
-            self.source_height,
-            self.transform,
-            canvas_position,
-            brush_diameter,
         )
     }
 

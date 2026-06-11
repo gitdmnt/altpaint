@@ -2,15 +2,6 @@ use app_core::CanvasDirtyRect;
 
 use crate::{PixelRect, union_dirty_rect};
 
-/// 描画レイヤーグループの識別子。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LayerGroup {
-    Background,
-    Canvas,
-    TempOverlay,
-    UiPanel,
-}
-
 /// 各レイヤーグループの dirty rect を独立して管理する。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct LayerGroupDirtyPlan {

@@ -144,11 +144,6 @@ impl CanvasScene {
         self.scale
     }
 
-    /// オフセット を計算して返す。
-    pub fn offset(&self) -> (f32, f32) {
-        (self.offset_x, self.offset_y)
-    }
-
     /// キャンバス 差分 矩形 を別座標系へ変換する。
     ///
     /// 必要に応じて dirty 状態も更新します。
@@ -161,13 +156,6 @@ impl CanvasScene {
                 width: 0,
                 height: 0,
             })
-    }
-
-    /// ブラシ プレビュー 矩形 を計算して返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
-    pub fn brush_preview_rect(&self, canvas_position: CanvasPoint) -> Option<PixelRect> {
-        self.brush_preview_rect_for_diameter(canvas_position, 1.0)
     }
 
     /// ブラシ プレビュー 矩形 for diameter に必要な処理を行う。
@@ -485,29 +473,6 @@ pub fn map_canvas_dirty_to_display_with_transform(
             width: 0,
             height: 0,
         })
-}
-
-/// キャンバス drawn 矩形 に必要な処理を行う。
-pub fn canvas_drawn_rect(
-    viewport: PixelRect,
-    source_width: usize,
-    source_height: usize,
-    transform: CanvasViewTransform,
-) -> Option<PixelRect> {
-    prepare_canvas_scene(viewport, source_width, source_height, transform)
-        .and_then(|scene| scene.drawn_rect())
-}
-
-/// ブラシ プレビュー 矩形 に必要な処理を行う。
-pub fn brush_preview_rect(
-    viewport: PixelRect,
-    source_width: usize,
-    source_height: usize,
-    transform: CanvasViewTransform,
-    canvas_position: CanvasPoint,
-) -> Option<PixelRect> {
-    prepare_canvas_scene(viewport, source_width, source_height, transform)
-        .and_then(|scene| scene.brush_preview_rect(canvas_position))
 }
 
 /// ブラシ プレビュー 矩形 for diameter に必要な処理を行う。

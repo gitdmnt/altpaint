@@ -35,14 +35,4 @@ impl<'a> FramePlan<'a> {
             status_text,
         }
     }
-
-    /// ウィンドウ 矩形 を計算して返す。
-    pub fn window_rect(&self) -> PixelRect {
-        PixelRect {
-            x: 0,
-            y: 0,
-            width: self.window_width,
-            height: self.window_height,
-        }
-    }
 }
