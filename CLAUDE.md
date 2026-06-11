@@ -78,7 +78,7 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 | クレート                              | 責務                                                                                      |
 | ------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `apps/desktop`                        | winit + wgpu ホスト、`DesktopApp` 統括、入力ルーティング、提示                            |
-| `crates/app-core`                     | `Document`、ドメインモデル（Work→Page→Panel→LayerNode）、`Command`、ペイント基本型、`WorkspaceUiState` |
+| `crates/app-core`                     | `Document`、ドメインモデル（Work→Page→Panel→RasterLayer）、`Command`、ペイント基本型、`WorkspaceUiState` |
 | `crates/canvas`                       | `CanvasRuntime`、ジェスチャーステートマシン、ビットマップ操作                             |
 | `crates/gpu-canvas`                   | GPU レイヤーテクスチャプール、ブラシ/塗りつぶし/レイヤー合成の compute shader dispatch    |
 | `crates/render-types`                 | `FramePlan`/`CanvasPlan`、`PixelRect`/`CanvasScene`/`CanvasOverlayState` 等の純データ DTO |

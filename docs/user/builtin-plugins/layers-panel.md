@@ -51,7 +51,7 @@ PanelTree 上では 2 つの Section を持ちます。
 - work_title は作品タイトルです
 - page_count は Work 配下のページ数です
 - panel_count は全ページ合計のコマ数です
-- active_panel_layer_name は、現実装では先頭ページ・先頭コマの root_layer.name を指します
+- active_panel_layer_name は、現実装では先頭ページ・先頭コマのアクティブレイヤー名を指します
 
 ## 既知の制約
 

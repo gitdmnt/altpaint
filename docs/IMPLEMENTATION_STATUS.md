@@ -121,7 +121,7 @@
 `app-core` には次がある。
 
 - `Document`
-- `Work`, `Page`, `Panel`, `LayerNode`, `RasterLayer`
+- `Work`, `Page`, `Panel`, `RasterLayer`
 - `Command`
 - `CanvasBitmap`
 - `CanvasViewTransform`

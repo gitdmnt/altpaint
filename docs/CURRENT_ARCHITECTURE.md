@@ -84,7 +84,7 @@ workspace は 27 メンバー（ライブラリ 14、ビルトインパネル 12
 現在のドメイン中核であり、次を担う。
 
 - `Document`
-- `Work -> Page -> Panel -> LayerNode`
+- `Work -> Page -> Panel -> RasterLayer`
 - `Command`
 - `CommandHistory`（`HistoryEntry::BitmapPatch` による undo/redo）
 - `CanvasBitmap`

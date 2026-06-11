@@ -188,7 +188,6 @@ impl Document {
                 height,
             ));
             panel.active_layer_index = panel.layers.len().saturating_sub(1);
-            sync_root_layer_summary(panel);
         }
     }
 
@@ -204,7 +203,6 @@ impl Document {
                 .active_layer_index
                 .min(panel.layers.len().saturating_sub(1));
             panel.bitmap = composite_panel_bitmap(panel);
-            sync_root_layer_summary(panel);
         }
     }
 
@@ -213,7 +211,6 @@ impl Document {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
             panel.active_layer_index = index.min(panel.layers.len().saturating_sub(1));
-            sync_root_layer_summary(panel);
         }
     }
 
@@ -223,7 +220,6 @@ impl Document {
             ensure_panel_layers(panel);
             if let Some(layer) = panel.layers.get_mut(panel.active_layer_index) {
                 layer.name = name.to_string();
-                sync_root_layer_summary(panel);
             }
         }
     }
@@ -254,7 +250,6 @@ impl Document {
             };
 
             panel.bitmap = composite_panel_bitmap(panel);
-            sync_root_layer_summary(panel);
         }
     }
 
@@ -263,7 +258,6 @@ impl Document {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
             panel.active_layer_index = (panel.active_layer_index + 1) % panel.layers.len().max(1);
-            sync_root_layer_summary(panel);
         }
     }
 
@@ -321,8 +315,8 @@ pub(super) fn ensure_panel_layers(panel: &mut Panel) {
     let mut repaired = false;
     if panel.layers.is_empty() {
         panel.layers.push(RasterLayer::background(
-            panel.root_layer.id,
-            panel.root_layer.name.clone(),
+            LayerNodeId(1),
+            "Layer 1".to_string(),
             panel.bitmap.width,
             panel.bitmap.height,
         ));
@@ -338,19 +332,11 @@ pub(super) fn ensure_panel_layers(panel: &mut Panel) {
     panel.active_layer_index = panel
         .active_layer_index
         .min(panel.layers.len().saturating_sub(1));
-    sync_root_layer_summary(panel);
     if repaired {
         panel.bitmap = composite_panel_bitmap(panel);
     }
 }
 
-/// Root レイヤー summary を現在の状態へ同期する。
-fn sync_root_layer_summary(panel: &mut Panel) {
-    if let Some(layer) = panel.layers.get(panel.active_layer_index) {
-        panel.root_layer.id = layer.id;
-        panel.root_layer.name = layer.name.clone();
-    }
-}
 
 /// 入力や種別に応じて処理を振り分ける。
 ///

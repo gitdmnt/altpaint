@@ -91,7 +91,7 @@ fn default_document_has_single_page_single_panel_single_layer() {
     assert_eq!(document.work.title, "Untitled");
     assert_eq!(document.work.pages.len(), 1);
     assert_eq!(document.work.pages[0].panels.len(), 1);
-    assert_eq!(document.work.pages[0].panels[0].root_layer.name, "Layer 1");
+    assert_eq!(document.work.pages[0].panels[0].layers[0].name, "Layer 1");
     assert_eq!(
         document.work.pages[0].panels[0].bitmap.width,
         DEFAULT_DOCUMENT_WIDTH
@@ -575,7 +575,6 @@ fn rename_active_layer_updates_selected_layer_name() {
 
     let panel = &document.work.pages[0].panels[0];
     assert_eq!(panel.layers[1].name, "Ink");
-    assert_eq!(panel.root_layer.name, "Ink");
 }
 
 /// 設定 アクティブ レイヤー ブレンド モード sets requested モード が期待どおりに動作することを検証する。

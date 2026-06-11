@@ -6,8 +6,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use app_core::{
     BlendMode, CanvasBitmap, CanvasDirtyRect, CanvasViewTransform, ClampToCanvasBounds, ColorRgba8,
-    Document, LayerMask, LayerNode, LayerNodeId, Page, PageId, Panel, PanelBounds, PanelId,
-    PenPreset, RasterLayer, ToolKind, Work, WorkId, WorkspaceLayout,
+    Document, LayerMask, LayerNodeId, Page, PageId, Panel, PanelBounds, PanelId, PenPreset,
+    RasterLayer, ToolKind, Work, WorkId, WorkspaceLayout,
 };
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -137,7 +137,6 @@ struct SqliteDocumentRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct StoredPanelRecord {
     bounds: PanelBounds,
-    root_layer: LayerNode,
     active_layer_index: usize,
     created_layer_count: u64,
     composed_width: usize,
@@ -237,7 +236,6 @@ pub(crate) fn save_project_to_sqlite_path(
         for (panel_index, panel) in page.panels.iter().enumerate() {
             let panel_record = StoredPanelRecord {
                 bounds: panel.bounds,
-                root_layer: panel.root_layer.clone(),
                 active_layer_index: panel.active_layer_index,
                 created_layer_count: panel.created_layer_count,
                 composed_width: panel.bitmap.width,
@@ -876,7 +874,6 @@ fn load_panel(
     Ok(Panel {
         id: panel_id,
         bounds: panel_record.bounds,
-        root_layer: panel_record.root_layer,
         bitmap,
         layers,
         active_layer_index: panel_record.active_layer_index,

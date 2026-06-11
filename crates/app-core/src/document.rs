@@ -557,9 +557,6 @@ impl Default for PanelBounds {
 }
 
 /// 漫画のコマを表す最小単位。
-///
-/// 将来的には境界情報やスナップショット参照を持つが、
-/// 現段階ではレイヤーツリーのルートだけを持つ。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Panel {
     /// コマID。
@@ -567,8 +564,6 @@ pub struct Panel {
     /// ページ内でのコマ矩形。
     #[serde(default)]
     pub bounds: PanelBounds,
-    /// このコマが持つレイヤーツリーのルート。
-    pub root_layer: LayerNode,
     /// フェーズ2の最小ラスタキャンバス。
     pub bitmap: CanvasBitmap,
     /// フェーズ9の最小レイヤー列。
@@ -601,7 +596,6 @@ impl Panel {
         Self {
             id,
             bounds: PanelBounds::full_page(width, height),
-            root_layer: LayerNode::default(),
             bitmap: background.bitmap.clone(),
             layers: vec![background],
             active_layer_index: 0,
@@ -1648,28 +1642,6 @@ fn resize_mask_nearest(mask: &LayerMask, width: usize, height: usize) -> LayerMa
         width,
         height,
         alpha,
-    }
-}
-
-/// レイヤーツリーの最小ノード。
-///
-/// フェーズ0では名前付き単一ノードのみを扱い、
-/// 将来的に子ノードや種別情報を追加する。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LayerNode {
-    /// レイヤーノードID。
-    pub id: LayerNodeId,
-    /// UIで表示するレイヤー名。
-    pub name: String,
-}
-
-impl Default for LayerNode {
-    /// 既定値を持つインスタンスを返す。
-    fn default() -> Self {
-        Self {
-            id: LayerNodeId(1),
-            name: "Layer 1".to_string(),
-        }
     }
 }
 

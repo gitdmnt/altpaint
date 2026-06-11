@@ -55,7 +55,7 @@ UIパネルのレイアウトやプラグイン実行は主目的ではない。
    - `Document`
    - `Page`
    - `Panel`
-   - `LayerNode`
+   - `RasterLayer`
 2. 描画準備層
    - 可視範囲計算
    - 表示対象のレイヤー解決

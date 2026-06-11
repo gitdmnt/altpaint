@@ -20,7 +20,7 @@ pub use coordinates::{
 };
 pub use document::{
     BlendMode, CanvasBitmap, CanvasViewTransform, ColorRgba8, DEFAULT_DOCUMENT_HEIGHT,
-    DEFAULT_DOCUMENT_WIDTH, Document, LayerMask, LayerNode, LayerNodeId, Page, PageId, Panel,
+    DEFAULT_DOCUMENT_WIDTH, Document, LayerMask, LayerNodeId, Page, PageId, Panel,
     PanelBounds, PanelId, PenPreset, PenRuntimeEngine, PenTipBitmap, RasterLayer, ToolDefinition,
     ToolKind, ToolSettingControl, ToolSettingDefinition, Work, WorkId,
 };
