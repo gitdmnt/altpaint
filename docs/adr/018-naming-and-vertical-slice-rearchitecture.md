@@ -1,0 +1,69 @@
+# ADR 018: 用語体系の確立と垂直スライス再編 (大規模リファクタリング)
+
+- 作業日時: 2026-06-12 (起票。各バッチ完了時に追記し、B10 で確定)
+- 作業 Agent: claude-fable-5 (Claude Code)
+- ステータス: 進行中
+- 設計書: [docs/refactor/2026-06-naming-and-boundaries.md](../refactor/2026-06-naming-and-boundaries.md)
+
+## 背景
+
+19 エージェントによる全クレート調査 (2026-06-12) で、次の構造問題が列挙された。
+
+1. **命名と責務の乖離**: `app_core::Panel` (漫画のコマ) と UI パネルの衝突、`plugin-*` クレート群が実態はパネル専用、`CommandHistory` が Command を保持しない、`canvas` / `gpu-canvas` / `render-types` の用語混線、ほか約 100 件。
+2. **責務集中**: `Document` の God オブジェクト化 (作品ツリー + セッション状態 + レイアウトポリシー + ラスタ演算)、`DesktopApp` の orchestration 肥大、`build_host_state` / `command_from_descriptor` の水平チョークポイント化。
+3. **境界リーク**: `Command` enum への I/O variant 混入 (apply_command が no-op で握り潰し desktop が再変換する二重ディスパッチ)、panel-api の app-core 依存、GPU dispatch 判断の desktop 漏出。
+4. **実バグ**: 筆圧カーブ二重適用 (CPU/GPU 線幅乖離)、HostSnapshotCache の stale 配信、`panel_rect` の usize::MAX フォールバックによる右/下アンカーの dirty rect 無効化。
+
+## 決定
+
+詳細は設計書を正本とする。骨子:
+
+### 1. 用語体系
+
+| 用語 | 意味 |
+| --- | --- |
+| **koma** / `Koma` | 漫画のコマ (旧 `app_core::Panel`) |
+| **panel** | ワークスペース上の UI パネル (HTML+Wasm) 専用 |
+| **page** | 作品のピクセル空間 (描画対象座標系) |
+| **canvas** | キャンバスの表示面 (ビューポート上の見え方) |
+| **paint** | 描画入力の解釈・差分生成・GPU 実行 |
+| **frame** | 提示の 1 描画フレーム専用 |
+| **plugin** | 予約語 (現行コードで使用禁止。将来の拡張機構名) |
+| **host state** | ホスト→パネルへ配る状態 JSON (旧 host snapshot) |
+| **snapshot** | `DocumentSnapshot` (ユーザー向け快照機能) 専用 |
+| **runtime** | `panel-runtime` 専用 |
+| **session** | エディタの一過性編集状態 |
+
+### 2. コマ = `Koma` の採用理由
+
+`Frame` は提示系語彙 (描画フレーム、profiler) と再衝突し Panel 二義問題を Frame 二義問題に移し替えるだけになる。`ComicPanel` は "Panel" 部分文字列が残り grep 分離不能。`Koma` は衝突ゼロ・grep 一意・UI 表示「コマ N」(プロジェクト文書は日本語が正本) と一致する。
+
+### 3. クレート再編 (水平土台 + 垂直 feature)
+
+- 水平土台: `geometry` / `raster` / `document-model` / `editor-state` / `canvas-geometry` / `frame-profiler` (旧 app-core / render-types を解体)
+- パネル基盤 (水平): `panel-protocol` / `panel-wasm-host` / `panel-html` / `panel-runtime` / `panel-workspace` / `panel-sdk` / `panel-macros` (旧 panel-schema / plugin-host / ui-shell / plugin-sdk / plugin-macros を改名、panel-api は解体)
+- 垂直 feature: `paint-engine` (旧 canvas) / `gpu-paint` (旧 gpu-canvas) / `project-store` + `pen-io` (旧 storage を分割)。desktop-support は解体
+- desktop 内: `features/` 12 スライス (paint / project / export / workspace / tools / koma / view / snapshots / text / panel_interaction / status_bar 等)
+
+### 4. 原則の例外: wire 名定数
+
+「feature 固有の知識を水平土台に置かない」原則の唯一の例外として、Wasm 境界の wire 名定数は `panel-protocol` の feature 別 `names::<feature>` モジュールに置く。共有契約点が必要であり、新 feature は自分のモジュールを additive に追加するだけで既存モジュールの横断編集が発生しないため、垂直分割の目的 (横断編集の排除) とは矛盾しない。
+
+### 5. その他の確定判断
+
+- **GPU 非必須を維持** (BL-136): `CpuPaintBackend` を GPU 初期化失敗時の表示フォールバックとして残す。GPU 必須化はしない。
+- **コマ合成は即時合成を維持** (BL-080): レイヤー変異の単一ミューテーション入口に集約。B8 の profiler 計測で合成コストが問題化した場合のみ dirty フラグ遅延評価へ切替える。
+- **perf 項目の in/out 基準**: 境界修正・API 再形成に随伴して解消される性能問題は in-scope (GPU 同期粒度、encoder 集約、flood fill の CPU 走査廃止)。新規実装を要する性能機能 (タイルキャッシュ、hit 収集 dirty スキップ) は ROADMAP へ。
+- **互換性は捨てる** (alpha 方針): Koma 改名 + SQLite スキーマ変更 + パネル ID 改名により、既存のプロジェクトファイル・セッション・ワークスペースプリセットは読めなくなる。マイグレーションは書かない。
+- **Blitz/stylo グローバル Mutex** (`STYLE_RESOLVE_LOCK`): 外部ライブラリ制約のため維持。マルチウィンドウ/並行 resolve が要件化した時点で再評価。
+- **レイヤー操作の安定 id 指定** (BL-148): layers パネルの index 反転問題は表示順 index ではなく `RasterLayer.id` ベースの request に統一して解消する。
+
+## 実装バッチ
+
+B0 死コード一掃 → B1 Koma 用語統一 → B2 クレート・型機械改名 → B3 重複一本化 + 既知バグ修正 → B4 コマンド経路一本化 → B5 土台再編 → B6 パネル境界整理 → B7 desktop 垂直分割 → B8 描画パイプライン再設計 → B9 パネル API 再設計 → B10 文書改稿。
+
+各バッチの完了条件: `cargo test --workspace` 0 failed / `cargo clippy --workspace --all-targets` 警告 0 / wasm ビルド成功 / バッチ別スモーク (設計書 §4)。
+
+## 経過記録
+
+- 2026-06-12: 起票。調査 (19 agents) → 設計 → judge panel 3 レンズ × 3 ラウンドのレビューを完了し実装開始。ベースライン: テスト 415 passed / 0 failed / 8 ignored、clippy 警告 0。
