@@ -1,8 +1,7 @@
 use app_core::{CanvasDirtyRect, CanvasViewTransform};
 
 use crate::{
-    CanvasScene, PixelRect, exposed_canvas_background_rect,
-    map_canvas_dirty_to_display_with_transform, prepare_canvas_scene,
+    CanvasScene, PixelRect, map_canvas_dirty_to_display_with_transform, prepare_canvas_scene,
 };
 
 /// キャンバス合成元を `RenderFrame` に依存させずに渡すための軽量ビュー。
@@ -48,17 +47,4 @@ impl CanvasPlan {
         )
     }
 
-    /// exposed 背景 矩形 に必要な処理を行う。
-    pub fn exposed_background_rect(
-        &self,
-        previous_transform: CanvasViewTransform,
-    ) -> Option<PixelRect> {
-        exposed_canvas_background_rect(
-            self.host_rect,
-            self.source_width,
-            self.source_height,
-            previous_transform,
-            self.transform,
-        )
-    }
 }

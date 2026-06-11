@@ -106,7 +106,6 @@ pub struct CanvasScene {
     sin_theta: f32,
     flip_x: bool,
     flip_y: bool,
-    drawn_rect: Option<PixelRect>,
     texture_quad: Option<TextureQuad>,
 }
 
@@ -123,13 +122,6 @@ impl CanvasScene {
             cos_theta: self.cos_theta,
             sin_theta: self.sin_theta,
         }
-    }
-
-    /// drawn 矩形 を計算して返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
-    pub fn drawn_rect(&self) -> Option<PixelRect> {
-        self.drawn_rect
     }
 
     /// texture quad を計算して返す。
@@ -373,7 +365,6 @@ pub fn prepare_canvas_scene(
         sin_theta,
         flip_x: transform.flip_x,
         flip_y: transform.flip_y,
-        drawn_rect,
         texture_quad,
     })
 }
@@ -521,77 +512,4 @@ pub fn map_view_to_canvas_with_transform(
 ) -> Option<CanvasPoint> {
     prepare_canvas_scene(viewport, source_width, source_height, transform)
         .and_then(|scene| scene.map_view_to_canvas(point))
-}
-
-/// exposed キャンバス 背景 矩形 に必要な処理を行う。
-pub fn exposed_canvas_background_rect(
-    viewport: PixelRect,
-    source_width: usize,
-    source_height: usize,
-    previous_transform: CanvasViewTransform,
-    current_transform: CanvasViewTransform,
-) -> Option<PixelRect> {
-    let previous = prepare_canvas_scene(viewport, source_width, source_height, previous_transform);
-    let current = prepare_canvas_scene(viewport, source_width, source_height, current_transform);
-
-    exposed_canvas_background_rect_from_scenes(previous, current)
-}
-
-/// 入力や種別に応じて処理を振り分ける。
-pub fn exposed_canvas_background_rect_from_scenes(
-    previous: Option<CanvasScene>,
-    current: Option<CanvasScene>,
-) -> Option<PixelRect> {
-    let previous = previous.and_then(|scene| scene.drawn_rect())?;
-    let current = current.and_then(|scene| scene.drawn_rect());
-
-    let Some(current) = current else {
-        return Some(previous);
-    };
-
-    if previous == current {
-        return None;
-    }
-
-    let overlap = previous.intersect(current);
-    let mut exposed = Vec::with_capacity(4);
-    match overlap {
-        None => exposed.push(previous),
-        Some(overlap) => {
-            let candidates = [
-                PixelRect {
-                    x: previous.x,
-                    y: previous.y,
-                    width: previous.width,
-                    height: overlap.y.saturating_sub(previous.y),
-                },
-                PixelRect {
-                    x: previous.x,
-                    y: overlap.y + overlap.height,
-                    width: previous.width,
-                    height: (previous.y + previous.height)
-                        .saturating_sub(overlap.y + overlap.height),
-                },
-                PixelRect {
-                    x: previous.x,
-                    y: overlap.y,
-                    width: overlap.x.saturating_sub(previous.x),
-                    height: overlap.height,
-                },
-                PixelRect {
-                    x: overlap.x + overlap.width,
-                    y: overlap.y,
-                    width: (previous.x + previous.width).saturating_sub(overlap.x + overlap.width),
-                    height: overlap.height,
-                },
-            ];
-            for rect in candidates {
-                if rect.width > 0 && rect.height > 0 {
-                    exposed.push(rect);
-                }
-            }
-        }
-    }
-
-    exposed.into_iter().reduce(|acc, rect| acc.union(rect))
 }

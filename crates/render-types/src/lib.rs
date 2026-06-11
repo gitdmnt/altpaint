@@ -17,7 +17,6 @@ pub use brush_preview::brush_preview_dirty_rect;
 pub use canvas_plan::{CanvasCompositeSource, CanvasPlan};
 pub use canvas_scene::{
     CanvasScene, PixelRect, TextureQuad, brush_preview_rect_for_diameter, canvas_texture_quad,
-    exposed_canvas_background_rect, exposed_canvas_background_rect_from_scenes,
     map_canvas_dirty_to_display_with_transform, map_canvas_point_to_display,
     map_view_to_canvas_with_transform, prepare_canvas_scene,
 };

@@ -201,12 +201,6 @@ impl DesktopApp {
             // current_scene はキャッシュを使う（キャッシュが古ければ再計算して更新）
             self.cached_canvas_scene = None;
             let current_scene = self.canvas_scene();
-            // Phase 9E-4: pending_background_dirty_rect は status text 用だったが
-            // status panel が GPU 直描画になったため exposed background は記録しない。
-            let _ = render_types::exposed_canvas_background_rect_from_scenes(
-                previous_scene,
-                current_scene,
-            );
             if let Some(dirty) = self.hover_canvas_position.and_then(|hover_position| {
                 render_types::brush_preview_dirty_rect(
                     previous_scene,

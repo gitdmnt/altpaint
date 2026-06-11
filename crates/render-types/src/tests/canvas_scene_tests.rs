@@ -4,7 +4,7 @@ use app_core::{
 };
 
 use crate::{
-    PixelRect, brush_preview_dirty_rect, canvas_texture_quad, exposed_canvas_background_rect,
+    PixelRect, brush_preview_dirty_rect, canvas_texture_quad,
     map_canvas_dirty_to_display_with_transform, map_canvas_point_to_display,
     map_view_to_canvas_with_transform, prepare_canvas_scene,
 };
@@ -83,28 +83,6 @@ fn brush_preview_dirty_rect_unions_previous_and_current_preview() {
 
     assert!(dirty.width > 0);
     assert!(dirty.height > 0);
-}
-
-#[test]
-fn exposed_canvas_background_rect_reports_pan_exposure() {
-    let dirty = exposed_canvas_background_rect(
-        PixelRect {
-            x: 0,
-            y: 0,
-            width: 320,
-            height: 240,
-        },
-        64,
-        64,
-        CanvasViewTransform::default(),
-        CanvasViewTransform {
-            pan_x: 24.0,
-            ..CanvasViewTransform::default()
-        },
-    )
-    .expect("dirty rect exists");
-
-    assert!(dirty.width > 0 || dirty.height > 0);
 }
 
 #[test]
