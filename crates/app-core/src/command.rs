@@ -72,8 +72,6 @@ pub enum Command {
     SetActiveLayerBlendMode { mode: crate::document::BlendMode },
     /// アクティブレイヤーの表示状態を切り替える。
     ToggleActiveLayerVisibility,
-    /// アクティブレイヤーの最小デモマスクを切り替える。
-    ToggleActiveLayerMask,
     /// 新しいコマを現在ページへ追加する。
     AddPanel,
     /// 現在のアクティブコマを削除する。

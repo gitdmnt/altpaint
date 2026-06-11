@@ -269,7 +269,6 @@ pub fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command
             Ok(Command::SetActiveLayerBlendMode { mode })
         }
         "layer.toggle_visibility" => Ok(Command::ToggleActiveLayerVisibility),
-        "layer.toggle_mask" => Ok(Command::ToggleActiveLayerMask),
         "panel.add" => Ok(Command::AddPanel),
         "panel.remove" => Ok(Command::RemoveActivePanel),
         "panel.select" => {

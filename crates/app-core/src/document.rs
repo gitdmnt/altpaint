@@ -679,23 +679,6 @@ pub struct LayerMask {
 }
 
 impl LayerMask {
-    /// 入力値を束ねた新しいインスタンスを生成する。
-    pub fn demo(width: usize, height: usize) -> Self {
-        let mut alpha = vec![255; width.saturating_mul(height)];
-        for y in 0..height {
-            for x in 0..width {
-                if x < width / 3 || y >= (height * 5) / 6 {
-                    alpha[y * width + x] = 0;
-                }
-            }
-        }
-        Self {
-            width,
-            height,
-            alpha,
-        }
-    }
-
     /// 指定位置の アルファ を計算して返す。
     fn alpha_at(&self, x: usize, y: usize) -> u8 {
         if x >= self.width || y >= self.height {
@@ -1408,9 +1391,6 @@ impl Document {
             }
             Command::ToggleActiveLayerVisibility => {
                 self.toggle_active_layer_visibility();
-            }
-            Command::ToggleActiveLayerMask => {
-                self.toggle_active_layer_mask();
             }
             Command::AddPanel => {
                 self.add_panel();

@@ -5,7 +5,7 @@
 
 use crate::{BitmapEdit, CanvasDirtyRect, ClampToCanvasBounds, MergeInSpace, PanelId};
 
-use super::{BlendMode, CanvasBitmap, Document, LayerMask, LayerNodeId, Panel, RasterLayer};
+use super::{BlendMode, CanvasBitmap, Document, LayerNodeId, Panel, RasterLayer};
 
 /// Local 差分 to ページ 差分 に必要な差分領域だけを描画または合成する。
 ///
@@ -294,20 +294,6 @@ impl Document {
         }
     }
 
-    /// アクティブ レイヤー マスク の有効状態を切り替える。
-    pub fn toggle_active_layer_mask(&mut self) {
-        if let Some(panel) = self.active_panel_mut() {
-            ensure_panel_layers(panel);
-            if let Some(layer) = panel.layers.get_mut(panel.active_layer_index) {
-                layer.mask = if layer.mask.is_some() {
-                    None
-                } else {
-                    Some(LayerMask::demo(layer.bitmap.width, layer.bitmap.height))
-                };
-                panel.bitmap = composite_panel_bitmap(panel);
-            }
-        }
-    }
 }
 
 /// パネル layers が満たされるよう整える。

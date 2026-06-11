@@ -161,8 +161,7 @@ impl DesktopApp {
             | Command::RenameActiveLayer { .. }
             | Command::MoveLayer { .. }
             | Command::SelectNextLayer
-            | Command::CycleActiveLayerBlendMode
-            | Command::ToggleActiveLayerMask => {
+            | Command::CycleActiveLayerBlendMode => {
                 self.refresh_canvas_frame();
                 self.sync_ui_from_document();
                 self.mark_status_dirty();

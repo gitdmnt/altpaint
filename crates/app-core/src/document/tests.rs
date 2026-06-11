@@ -621,22 +621,6 @@ fn toggle_active_layer_visibility_reveals_underlying_layer() {
     );
 }
 
-/// 切替 アクティブ レイヤー マスク applies demo マスク が期待どおりに動作することを検証する。
-#[test]
-fn toggle_active_layer_mask_applies_demo_mask() {
-    let mut document = Document::default();
-    document.apply_command(&Command::AddRasterLayer);
-    let _ = draw_point(&mut document, 1, 1);
-
-    let before_mask = document.active_bitmap().expect("bitmap exists").clone();
-    document.apply_command(&Command::ToggleActiveLayerMask);
-    let after_mask = document.active_bitmap().expect("bitmap exists");
-
-    let index = (before_mask.width + 1) * 4;
-    assert_eq!(&before_mask.pixels[index..index + 4], &[0, 0, 0, 255]);
-    assert_eq!(&after_mask.pixels[index..index + 4], &[255, 255, 255, 255]);
-}
-
 /// 生成 パネル コマンド adds rectangular パネル without relayout が期待どおりに動作することを検証する。
 #[test]
 fn create_panel_command_adds_rectangular_panel_without_relayout() {

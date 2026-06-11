@@ -453,9 +453,4 @@ pub mod layer {
     pub fn toggle_visibility() -> CommandDescriptor {
         CommandDescriptor::new("layer.toggle_visibility")
     }
-
-    /// マスク の有効状態を切り替える。
-    pub fn toggle_mask() -> CommandDescriptor {
-        CommandDescriptor::new("layer.toggle_mask")
-    }
 }

@@ -188,7 +188,6 @@ fn typed_layer_commands_cover_remaining_variants() {
         commands::layer::toggle_visibility().name,
         "layer.toggle_visibility"
     );
-    assert_eq!(commands::layer::toggle_mask().name, "layer.toggle_mask");
 }
 
 /// typed 状態 keys can be declared once が期待どおりに動作することを検証する。

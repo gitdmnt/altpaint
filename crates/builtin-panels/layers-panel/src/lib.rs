@@ -179,11 +179,6 @@ fn toggle_layer_visibility() {
     emit_command(&commands::layer::toggle_visibility());
 }
 
-#[plugin_sdk::panel_handler]
-fn toggle_layer_mask() {
-    emit_command(&commands::layer::toggle_mask());
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,7 +194,6 @@ mod tests {
         confirm_rename();
         set_blend_mode();
         toggle_layer_visibility();
-        toggle_layer_mask();
     }
 
     #[test]
