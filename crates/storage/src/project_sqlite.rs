@@ -12,7 +12,7 @@ use app_core::{
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use workspace_persistence::{PluginConfigs, WorkspaceUiState};
+use app_core::{PluginConfigs, WorkspaceUiState};
 
 use crate::project_file::{CURRENT_FORMAT_VERSION, LoadedProject, StorageError};
 

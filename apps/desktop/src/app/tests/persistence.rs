@@ -251,7 +251,7 @@ fn hiding_panel_clears_previous_overlay_bounds_when_surface_shrinks() {
         layout.window_rect.width,
         layout.window_rect.height,
     ));
-    app.mark_panel_surface_dirty();
+    app.request_panel_reconcile();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let hidden_panel_rect = app
         .panel_presentation
@@ -283,7 +283,7 @@ fn startup_uses_default_workspace_preset_when_project_and_session_are_empty() {
             presets: vec![WorkspacePreset {
                 id: "test-preset".to_string(),
                 label: "Test preset".to_string(),
-                ui_state: workspace_persistence::WorkspaceUiState::new(
+                ui_state: app_core::WorkspaceUiState::new(
                     app_core::WorkspaceLayout {
                         panels: vec![WorkspacePanelState {
                             id: "builtin.layers-panel".to_string(),
@@ -340,7 +340,7 @@ fn session_layout_overrides_default_workspace_preset() {
             presets: vec![WorkspacePreset {
                 id: "test-preset".to_string(),
                 label: "Test preset".to_string(),
-                ui_state: workspace_persistence::WorkspaceUiState::new(
+                ui_state: app_core::WorkspaceUiState::new(
                     app_core::WorkspaceLayout {
                         panels: vec![WorkspacePanelState {
                             id: "builtin.layers-panel".to_string(),
@@ -364,7 +364,7 @@ fn session_layout_overrides_default_workspace_preset() {
         &session_path,
         &desktop_support::DesktopSessionState {
             last_project_path: None,
-            ui_state: workspace_persistence::WorkspaceUiState::new(
+            ui_state: app_core::WorkspaceUiState::new(
                 app_core::WorkspaceLayout {
                     panels: vec![WorkspacePanelState {
                         id: "builtin.layers-panel".to_string(),
@@ -479,12 +479,12 @@ fn startup_preserves_last_selected_workspace_preset_id() {
                 WorkspacePreset {
                     id: "default".to_string(),
                     label: "Default".to_string(),
-                    ui_state: workspace_persistence::WorkspaceUiState::default(),
+                    ui_state: app_core::WorkspaceUiState::default(),
                 },
                 WorkspacePreset {
                     id: "review".to_string(),
                     label: "Review".to_string(),
-                    ui_state: workspace_persistence::WorkspaceUiState::new(
+                    ui_state: app_core::WorkspaceUiState::new(
                         app_core::WorkspaceLayout {
                             panels: vec![WorkspacePanelState {
                                 id: "builtin.layers-panel".to_string(),

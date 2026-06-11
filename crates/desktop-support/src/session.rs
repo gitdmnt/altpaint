@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use workspace_persistence::WorkspaceUiState;
+use app_core::WorkspaceUiState;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct DesktopSessionState {
@@ -22,7 +22,7 @@ impl DesktopSessionState {
     }
 
     /// プラグイン configs を計算して返す。
-    pub fn plugin_configs(&self) -> &workspace_persistence::PluginConfigs {
+    pub fn plugin_configs(&self) -> &app_core::PluginConfigs {
         &self.ui_state.plugin_configs
     }
 }

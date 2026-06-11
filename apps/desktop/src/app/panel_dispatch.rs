@@ -100,14 +100,12 @@ impl DesktopApp {
         let PanelEvent::Activate { panel_id, node_id } = &event else {
             return false;
         };
-        let changed = self
-            .panel_presentation
-            .focus_panel_node(&self.panel_runtime, panel_id, node_id);
+        let changed = self.panel_presentation.focus_panel_node(panel_id, node_id);
         self.panel_interaction.pending_panel_press = Some(PanelPressState {
             panel_id: panel_id.clone(),
             node_id: node_id.clone(),
         });
-        self.refresh_panel_surface_if_changed(changed);
+        self.request_panel_reconcile_if_changed(changed);
         // パネルボタンにヒットした場合は常に処理済みとしてキャンバスへのフォールスルーを防ぐ
         true
     }
@@ -142,7 +140,7 @@ impl DesktopApp {
             win_h,
         );
         if changed {
-            self.mark_panel_surface_dirty();
+            self.request_panel_reconcile();
             if let Some(rect) = previous_rect {
                 self.append_ui_panel_dirty_rect(rect);
             }
@@ -190,7 +188,7 @@ impl DesktopApp {
                 applied_rect.height.max(1) as u32,
             ),
         );
-        self.mark_panel_surface_dirty();
+        self.request_panel_reconcile();
         if let Some(rect) = previous_rect {
             self.append_ui_panel_dirty_rect(rect);
         }
@@ -220,15 +218,11 @@ impl DesktopApp {
         if runtime.config_changed {
             self.persist_session_state();
         }
-        if !runtime.changed_panel_ids.is_empty() {
-            self.panel_presentation
-                .mark_runtime_panels_dirty(&runtime.changed_panel_ids);
-            changed = true;
-        }
+        changed |= !runtime.changed_panel_ids.is_empty();
         for action in runtime.actions {
             changed |= self.execute_host_action(action);
         }
-        self.refresh_panel_surface_if_changed(changed)
+        self.request_panel_reconcile_if_changed(changed)
     }
 
     /// 入力や種別に応じて処理を振り分ける。
@@ -246,7 +240,7 @@ impl DesktopApp {
                 let previous_rect = self.panel_presentation.panel_rect(&panel_id);
                 let changed = self.panel_presentation.move_panel(&panel_id, direction);
                 if changed {
-                    self.mark_panel_surface_dirty();
+                    self.request_panel_reconcile();
                     self.mark_status_dirty();
                     self.persist_session_state();
                     if let Some(rect) = previous_rect {
@@ -261,7 +255,7 @@ impl DesktopApp {
                     .panel_presentation
                     .set_panel_visibility(&panel_id, visible);
                 if changed {
-                    self.mark_panel_surface_dirty();
+                    self.request_panel_reconcile();
                     self.mark_status_dirty();
                     self.persist_session_state();
                     if let Some(rect) = previous_rect {
@@ -290,26 +284,19 @@ impl DesktopApp {
 
         let mut needs_redraw = true;
         let mut first_command = None;
-        let presentation = self
-            .panel_presentation
-            .handle_panel_event(&self.panel_runtime, &event);
-        changed |= presentation.changed;
-        let mut actions = presentation.actions;
-
-        if presentation.forward_to_runtime {
-            let runtime = self.panel_runtime.dispatch_event(&event);
-            if runtime.config_changed
-                || self.panel_runtime.persistent_panel_configs() != previous_configs
-            {
-                self.persist_session_state();
-            }
-            if !runtime.changed_panel_ids.is_empty() {
-                self.panel_presentation
-                    .mark_runtime_panels_dirty(&runtime.changed_panel_ids);
-                changed = true;
-            }
-            actions.extend(runtime.actions);
+        // Activate は focus を更新したうえで常にランタイムへ転送する。
+        if let PanelEvent::Activate { panel_id, node_id } = &event {
+            self.panel_presentation.focus_panel_node(panel_id, node_id);
         }
+
+        let runtime = self.panel_runtime.dispatch_event(&event);
+        if runtime.config_changed
+            || self.panel_runtime.persistent_panel_configs() != previous_configs
+        {
+            self.persist_session_state();
+        }
+        changed |= !runtime.changed_panel_ids.is_empty();
+        let actions = runtime.actions;
 
         for action in actions {
             if first_command.is_none() {
@@ -334,7 +321,7 @@ impl DesktopApp {
 
         let changed = changed || needs_redraw;
         if changed {
-            self.mark_panel_surface_dirty();
+            self.request_panel_reconcile();
         }
         (changed, first_command)
     }
@@ -364,14 +351,14 @@ impl DesktopApp {
 
     /// 次 パネル control へフォーカスを移す。
     pub(crate) fn focus_next_panel_control(&mut self) -> bool {
-        let changed = self.panel_presentation.focus_next(&self.panel_runtime);
-        self.refresh_panel_surface_if_changed(changed)
+        let changed = self.panel_presentation.focus_next();
+        self.request_panel_reconcile_if_changed(changed)
     }
 
     /// 前 パネル control へフォーカスを移す。
     pub(crate) fn focus_previous_panel_control(&mut self) -> bool {
-        let changed = self.panel_presentation.focus_previous(&self.panel_runtime);
-        self.refresh_panel_surface_if_changed(changed)
+        let changed = self.panel_presentation.focus_previous();
+        self.request_panel_reconcile_if_changed(changed)
     }
 
     /// Focused パネル control をアクティブ化する。
@@ -380,23 +367,6 @@ impl DesktopApp {
     pub(crate) fn activate_focused_panel_control(&mut self) -> Option<app_core::Command> {
         let event = self.panel_presentation.activate_focused()?;
         self.dispatch_panel_event_with_command(event).1
-    }
-
-    /// スクロール パネル サーフェス に必要な描画内容を組み立てる。
-    pub(crate) fn scroll_panel_surface(&mut self, delta_lines: i32) -> bool {
-        let viewport_height = self
-            .layout
-            .as_ref()
-            .map(|layout| layout.panel_surface_rect.height)
-            .unwrap_or(0);
-        if viewport_height == 0 {
-            return false;
-        }
-
-        let changed = self
-            .panel_presentation
-            .scroll_panels(delta_lines, viewport_height);
-        self.refresh_panel_surface_if_changed(changed)
     }
 
     /// パネル イベント from ウィンドウ を計算して返す。

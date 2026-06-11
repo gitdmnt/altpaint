@@ -147,7 +147,9 @@ MVPでは `RenderFrame` を返す単純な入口でもよいが、将来的に�
 2026-03-12 時点では、さらに次を `render` 側へ寄せた。
 
 - `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan` (`OverlayPlan`
-  は Phase 9D で削除)
+  は Phase 9D で削除。`PanelPlan` も依存最小化リアーキテクト (ADR 016) で
+  削除済み — パネルは `PanelRuntime::render_panels` による GPU 直描画で、
+  `FramePlan` にパネル面は含まれない)
 - `DirtyFramePlan`
 - base / overlay / panel / status の CPU compose (overlay は Phase 9D で
   GPU 直描画化)
@@ -359,7 +361,7 @@ MVPで扱う変換:
 
 Phase 9F (2026-04-29) で旧 `crates/render/` は物理削除され、現状は次の構成:
 
-- `crates/render-types/src/` — 純データ DTO (FramePlan / CanvasPlan / PanelPlan / PixelRect / CanvasScene 等)
+- `crates/render-types/src/` — 純データ DTO (FramePlan / CanvasPlan / PixelRect / CanvasScene 等。パネル面は含まない — パネルは `PanelRuntime::render_panels` による GPU 直描画)
 - `apps/desktop/src/wgpu_canvas.rs` — `PresentScene` と GPU 提示パイプライン
 - `apps/desktop/src/frame/` — 背景・前景・overlay の solid/circle/line quad 構築
 - `apps/desktop/src/app/canvas_frame.rs` — CPU キャンバススナップショット (`CanvasFrame`)

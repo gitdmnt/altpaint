@@ -17,9 +17,9 @@ pub(crate) struct PresentFrameUpdate {
 }
 
 impl DesktopApp {
-    /// パネル サーフェス 差分 を更新し、必要な dirty 状態も記録する。
-    pub(super) fn mark_panel_surface_dirty(&mut self) {
-        self.needs_panel_surface_refresh = true;
+    /// presentation と runtime のパネル一覧の再整合を予約する。
+    pub(super) fn request_panel_reconcile(&mut self) {
+        self.needs_panel_reconcile = true;
     }
 
     /// ステータス 差分 を更新し、必要な dirty 状態も記録する。
@@ -35,7 +35,7 @@ impl DesktopApp {
     /// 全パネルを dirty としてマークし、ドキュメント同期をスケジュールする。
     pub(super) fn sync_ui_from_document(&mut self) {
         self.panel_runtime.mark_all_dirty();
-        self.mark_panel_surface_dirty();
+        self.request_panel_reconcile();
     }
 
     /// 指定パネルを dirty としてマークし、ドキュメント同期をスケジュールする。
@@ -46,7 +46,7 @@ impl DesktopApp {
         for &id in panel_ids {
             self.panel_runtime.mark_dirty(id);
         }
-        self.mark_panel_surface_dirty();
+        self.request_panel_reconcile();
     }
 
     /// ビュー パネル 同期 を後段の処理へ遅延させる。
@@ -94,10 +94,10 @@ impl DesktopApp {
         self.hover_canvas_position = None;
     }
 
-    /// パネル サーフェス if changed を更新し、必要な dirty 状態も記録する。
-    pub(super) fn refresh_panel_surface_if_changed(&mut self, changed: bool) -> bool {
+    /// 変更があった場合のみパネル再整合を予約する。
+    pub(super) fn request_panel_reconcile_if_changed(&mut self, changed: bool) -> bool {
         if changed {
-            self.mark_panel_surface_dirty();
+            self.request_panel_reconcile();
         }
         changed
     }
@@ -219,27 +219,16 @@ impl DesktopApp {
         let Some(layout) = self.layout.as_ref() else {
             return (Vec::new(), Vec::new(), Vec::new());
         };
-        let Some(panel_surface) = self.panel_surface.as_ref() else {
-            return (Vec::new(), Vec::new(), Vec::new());
-        };
         let bitmap = self.canvas_frame.as_ref();
         let canvas_source = render_types::CanvasCompositeSource {
             width: bitmap.map_or(1, |b| b.width),
             height: bitmap.map_or(1, |b| b.height),
             pixels: bitmap.map_or(&[][..], |b| b.pixels.as_slice()),
         };
-        let panel_surface_source = render_types::PanelSurfaceSource {
-            x: panel_surface.x,
-            y: panel_surface.y,
-            width: panel_surface.width,
-            height: panel_surface.height,
-            pixels: panel_surface.pixels.as_slice(),
-        };
         let frame_plan = render_types::FramePlan::new(
             window_width,
             window_height,
             layout.canvas_host_rect,
-            panel_surface_source,
             canvas_source,
             self.document.view_transform,
             "",

@@ -23,11 +23,10 @@ members = [
   "crates/plugin-sdk",
   "crates/plugin-host",
   "crates/gpu-canvas",
-  "crates/panel-html-experiment",
+  "crates/panel-html",
   "crates/render-types",
   "crates/storage",
   "crates/ui-shell",
-  "crates/workspace-persistence",
   "apps/desktop",
 ]
 resolver = "2"
@@ -39,7 +38,6 @@ version = "0.1.0"
 authors = ["Naoto"]
 
 [workspace.dependencies]
-ab_glyph = "0.2"
 anyhow = "1.0"
 font8x8 = "0.3"
 fontdb = "0.23"

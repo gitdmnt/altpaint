@@ -51,7 +51,7 @@ impl DesktopApp {
     /// FloodFill/LassoFill は即座に `BitmapPatch` として確定する。
     pub(crate) fn execute_paint_input(&mut self, input: PaintInput) -> bool {
         // ビットマップ差分を取得
-        let Some((edits, _)) = self
+        let Some(edits) = self
             .paint_runtime
             .execute_paint_input(&self.document, &input)
         else {
@@ -476,7 +476,7 @@ impl DesktopApp {
                 self.panel_runtime
                     .replace_persistent_panel_configs(project.ui_state.plugin_configs);
                 self.panel_presentation
-                    .reconcile_runtime_panels(&self.panel_runtime);
+                    .reconcile_panels(self.panel_runtime.panel_static_ids());
                 self.refresh_new_document_templates();
                 self.refresh_workspace_presets();
                 self.reset_active_interactions();

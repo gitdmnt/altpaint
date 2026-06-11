@@ -6,18 +6,17 @@
 
 use super::*;
 use panel_api::PanelEvent;
-use panel_runtime::PanelRuntime;
+
+/// 現在 focus 中の panel node。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FocusTarget {
+    pub(crate) panel_id: String,
+    pub(crate) node_id: String,
+}
 
 impl PanelPresentation {
     /// パネル node へフォーカスを移す。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
-    pub fn focus_panel_node(
-        &mut self,
-        _runtime: &PanelRuntime,
-        panel_id: &str,
-        node_id: &str,
-    ) -> bool {
+    pub fn focus_panel_node(&mut self, panel_id: &str, node_id: &str) -> bool {
         let exists = self
             .focusable_targets()
             .iter()
@@ -34,22 +33,17 @@ impl PanelPresentation {
             return false;
         }
 
-        let previous = self.focused_target.clone();
         self.focused_target = Some(next);
-        if let Some(previous) = previous.as_ref() {
-            self.mark_panel_content_dirty(&previous.panel_id);
-        }
-        self.mark_panel_content_dirty(panel_id);
         true
     }
 
     /// 次 へフォーカスを移す。
-    pub fn focus_next(&mut self, _runtime: &PanelRuntime) -> bool {
+    pub fn focus_next(&mut self) -> bool {
         self.move_focus(1)
     }
 
     /// 前 へフォーカスを移す。
-    pub fn focus_previous(&mut self, _runtime: &PanelRuntime) -> bool {
+    pub fn focus_previous(&mut self) -> bool {
         self.move_focus(-1)
     }
 
@@ -100,15 +94,7 @@ impl PanelPresentation {
             return false;
         }
 
-        let previous = self.focused_target.clone();
         self.focused_target = Some(next);
-        if let Some(previous) = previous.as_ref() {
-            self.mark_panel_content_dirty(&previous.panel_id);
-        }
-        if let Some(current) = self.focused_target.as_ref() {
-            let panel_id = current.panel_id.clone();
-            self.mark_panel_content_dirty(&panel_id);
-        }
         true
     }
 }

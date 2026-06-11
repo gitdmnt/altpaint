@@ -12,7 +12,7 @@ use desktop_support::{
 use builtin_panels::register_builtin_panels;
 use panel_runtime::PanelRuntime;
 use ui_shell::PanelPresentation;
-use workspace_persistence::WorkspaceUiState;
+use app_core::WorkspaceUiState;
 
 use super::{DesktopApp, panel_config_sync::selected_workspace_preset_id_from_configs};
 
@@ -63,7 +63,7 @@ impl DesktopApp {
         Self::reload_pen_presets_into_document(&mut document);
         panel_runtime.mark_all_dirty();
         let _changed_panels = panel_runtime.sync_dirty_panels(&document, false, false, 0, 0);
-        panel_presentation.reconcile_runtime_panels(&panel_runtime);
+        panel_presentation.reconcile_panels(panel_runtime.panel_static_ids());
 
         BootstrapState {
             document,
@@ -87,7 +87,7 @@ impl DesktopApp {
         for diag in &diags {
             eprintln!("register_builtin_panels: {diag}");
         }
-        panel_presentation.reconcile_runtime_panels(&panel_runtime);
+        panel_presentation.reconcile_panels(panel_runtime.panel_static_ids());
 
         if let Some(default_preset) = workspace_presets
             .presets
@@ -127,11 +127,11 @@ impl DesktopApp {
         self.panel_runtime
             .replace_persistent_panel_configs(plugin_configs);
         self.panel_presentation
-            .reconcile_runtime_panels(&self.panel_runtime);
+            .reconcile_panels(self.panel_runtime.panel_static_ids());
         self.refresh_new_document_templates();
         self.refresh_workspace_presets();
         self.reset_active_interactions();
-        self.mark_panel_surface_dirty();
+        self.request_panel_reconcile();
         self.mark_status_dirty();
         self.rebuild_present_frame();
         self.persist_session_state();
@@ -202,7 +202,7 @@ fn apply_ui_state_to_panel_system(
     if !ui_state.plugin_configs.is_empty() {
         panel_runtime.replace_persistent_panel_configs(ui_state.plugin_configs.clone());
     }
-    panel_presentation.reconcile_runtime_panels(panel_runtime);
+    panel_presentation.reconcile_panels(panel_runtime.panel_static_ids());
 
     // Phase 11: GPU パネル (HTML) の size を確定する。
     // 1. workspace_layout に永続値があればそれを使う。

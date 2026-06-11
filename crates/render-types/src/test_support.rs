@@ -6,7 +6,7 @@
 //!
 //! - 純データ依存: `app-core` のドメイン型と本クレート内の `PixelRect` のみ。
 //! - vello scene の glyph run 数カウントは `vello` 直接依存が必要となるため
-//!   ここには置かず、各クレート (panel-html-experiment 等) のテスト側で
+//!   ここには置かず、各クレート (panel-html 等) のテスト側で
 //!   `scene.encoding().resources` を直接参照する形を取る。
 
 use crate::PixelRect;
@@ -65,7 +65,7 @@ pub fn find_color_in_rect(
 /// 持つテスト側で次のように記述する:
 ///
 /// ```ignore
-/// // panel-html-experiment などの vello を直接持つクレートにて:
+/// // panel-html などの vello を直接持つクレートにて:
 /// fn count_glyph_runs(scene: &vello::Scene) -> usize {
 ///     scene
 ///         .encoding()

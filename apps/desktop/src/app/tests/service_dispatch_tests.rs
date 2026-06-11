@@ -2,7 +2,7 @@
 
 use desktop_support::{WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog};
 use panel_api::{HostAction, ServiceRequest, services::names};
-use workspace_persistence::WorkspaceUiState;
+use app_core::WorkspaceUiState;
 
 use super::{
     TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_workspace_preset_path,

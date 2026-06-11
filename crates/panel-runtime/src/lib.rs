@@ -11,5 +11,5 @@ pub use host_sync::{
     EMPTY_WORKSPACE_PANELS_JSON, HostSnapshotCache, build_host_snapshot_cached,
 };
 pub use meta::{PanelMeta, PanelSizeMeta};
-pub use panel_html_experiment::PanelSizeConstraints;
+pub use panel_html::PanelSizeConstraints;
 pub use registry::{PanelGpuFrame, PanelRuntime, RuntimeDispatchResult, RuntimeKeyboardResult};

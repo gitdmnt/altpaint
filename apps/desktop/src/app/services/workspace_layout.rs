@@ -41,7 +41,7 @@ impl DesktopApp {
         }
         self.panel_runtime
             .mark_dirty("builtin.workspace-layout");
-        self.mark_panel_surface_dirty();
+        self.request_panel_reconcile();
         self.mark_status_dirty();
         self.persist_session_state();
         true

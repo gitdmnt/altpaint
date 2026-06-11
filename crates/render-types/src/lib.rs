@@ -9,7 +9,6 @@ mod dirty;
 mod frame_plan;
 mod layer_group;
 mod overlay_plan;
-mod panel_plan;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
@@ -26,7 +25,6 @@ pub use dirty::{union_dirty_rect, union_optional_rect};
 pub use frame_plan::FramePlan;
 pub use layer_group::{LayerGroup, LayerGroupDirtyPlan};
 pub use overlay_plan::{CanvasOverlayState, PanelNavigatorEntry, PanelNavigatorOverlay};
-pub use panel_plan::{PanelPlan, PanelSurfaceSource};
 
 #[cfg(test)]
 mod tests;

@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、**2026-06-11 時点の実装コードを正本として**、workspace 内のクレートと主要モジュールの依存関係を整理するための文書である。
+この文書は、**2026-06-12 時点の実装コードを正本として**、workspace 内のクレートと主要モジュールの依存関係を整理するための文書である。
 
 主に次を明確にする。
 
@@ -22,11 +22,11 @@
 
 1. `app-core` がドメインの中心である
 2. `apps/desktop` がデスクトップ実行ホストである
-3. パネル系は `panel-api` / `panel-schema` / `plugin-host` / `plugin-sdk` / `panel-html-experiment` / `panel-runtime` / `builtin-panels` / `ui-shell` に分散している
+3. パネル系は `panel-api` / `panel-schema` / `plugin-host` / `plugin-sdk` / `panel-html` / `panel-runtime` / `builtin-panels` / `ui-shell` に分散している
 
 ## workspace パッケージ一覧
 
-2026-06-11 時点の workspace package は次の通り（計 29 メンバー）。
+2026-06-12 時点の workspace package は次の通り（計 28 メンバー）。
 
 ### 中核クレート
 
@@ -38,12 +38,11 @@
 - `desktop-support`
 - `panel-api`
 - `ui-shell`
-- `workspace-persistence`
 - `plugin-host`
 - `panel-schema`
 - `plugin-macros`
 - `plugin-sdk`
-- `panel-html-experiment`
+- `panel-html`
 - `panel-runtime`
 - `builtin-panels`（ローダ umbrella crate）
 - `apps/desktop`
@@ -53,6 +52,8 @@
 - `crates/gpu-canvas` は Phase 8 で追加済みである（GPU ペイント compute shader）。
 - `crates/render-types` は Phase 9B で追加済みである（純データ DTO）。旧 `crates/render` は Phase 9F で物理削除済み。
 - `crates/panel-dsl` は Phase 10（ADR 012）で `.altp-panel` DSL ごと削除済み。
+- `crates/workspace-persistence` は ADR 016 で `app-core::workspace` へ統合し削除済み。
+- `crates/panel-html` は旧名 `panel-html-experiment` を ADR 016 で正式名称化したもの。
 - `panel-api` / `plugin-sdk` を正面名とし、proc-macro は `plugin-macros` として物理分離する。
 
 ### 組み込みパネル crate（`crates/builtin-panels/` 配下、12 個）
@@ -81,28 +82,23 @@ graph TD
     desktop --> gpucanvas[gpu-canvas]
     desktop --> rendertypes[render-types]
     desktop --> panelruntime[panel-runtime]
-    desktop --> phtml[panel-html-experiment]
+    desktop --> phtml[panel-html]
     desktop --> uishell[ui-shell]
     desktop --> panelapi[panel-api]
     desktop --> builtinpanels[builtin-panels]
     desktop --> storage[storage]
     desktop --> dsupport[desktop-support]
-    desktop --> wpersist[workspace-persistence]
 
     canvas --> appcore
     canvas --> rendertypes
     gpucanvas --> appcore
     rendertypes --> appcore
     storage --> appcore
-    storage --> wpersist
     dsupport --> appcore
-    dsupport --> wpersist
     panelapi --> appcore
-    wpersist --> appcore
 
     uishell --> appcore
     uishell --> panelapi
-    uishell --> panelruntime
     uishell --> rendertypes
 
     panelruntime --> appcore
@@ -122,13 +118,15 @@ graph TD
 
 ### 依存関係の要点
 
-- `app-core` は workspace 内の土台であり、ローカル依存を持たない
-- `canvas` / `gpu-canvas` / `render-types` / `panel-api` / `workspace-persistence` は `app-core` 系の周辺クレートである
+- `app-core` は workspace 内の土台であり、ローカル依存を持たない。UI 永続化 DTO
+  （`WorkspaceUiState` / `PluginConfigs`）も ADR 016 で `app-core::workspace` に統合された
+- `canvas` / `gpu-canvas` / `render-types` / `panel-api` は `app-core` 系の周辺クレートである
 - `canvas` は `render-types` の view mapping API を使うが、project I/O や panel runtime へは依存しない
 - `gpu-canvas` は `wgpu` に依存する唯一のペイント実装クレートで、`app-core` 以外のローカル依存を持たない
-- `panel-html-experiment` はローカル依存を持たず、Blitz / taffy / vello / wgpu に閉じた HTML パネルエンジンである
+- `panel-html` はローカル依存を持たず、Blitz / taffy / vello / wgpu に閉じた HTML パネルエンジンである
 - `panel-runtime` が現在の panel runtime 統合点であり、`BuiltinPanelPlugin`（HTML+Wasm）・host sync・hit 収集を持つ
-- `ui-shell` は `panel-runtime` に依存する presentation crate である
+- `ui-shell` は presentation 専用 crate で、ローカル依存は `app-core` / `panel-api` / `render-types` のみ。
+  runtime のパネル一覧は `reconcile_panels(panel_ids)` の引数として desktop 側から受け取る（ADR 016 で panel-runtime 依存を切断）
 - `plugin-host` は `panel-runtime` の内側で使われ、`apps/desktop` は直接依存していない
 - `plugin-sdk` は plugin author 向け表面 API であり、macro と DOM mutation API を含む唯一の作者向け入口である
 - 各パネル crate（`crates/builtin-panels/*`）は `plugin-sdk` のみに依存する。ローダ umbrella の `builtin-panels` は `panel-runtime` に依存する
@@ -143,8 +141,8 @@ graph TD
   desktop --> canvas[canvas]
   desktop --> gpucanvas[gpu-canvas]
   desktop --> uishell[ui-shell]
-  uishell --> panelruntime[panel-runtime]
-  panelruntime --> phtml[panel-html-experiment]
+  desktop --> panelruntime[panel-runtime]
+  panelruntime --> phtml[panel-html]
   panelruntime --> phost[plugin-host]
   panels[crates/builtin-panels/*] --> pluginsdk[plugin-sdk]
 ```
@@ -168,9 +166,10 @@ graph TD
 
 - `Document` / `Work` / `Page` / `Panel` / `RasterLayer` などのドメインモデル
 - `Command` による状態変更入口
-- `CommandHistory`（undo/redo）
+- `CommandHistory`（undo/redo、`BitmapPatch` / `GpuBitmapPatch` スナップショット方式）
 - キャンバス編集、レイヤー操作、表示変換、色、ペンプリセット状態
 - `WorkspaceLayout` とパネル可視性の保存対象モデル
+- `WorkspaceUiState` / `PluginConfigs`（project / session 共有の UI 永続化 DTO、ADR 016 で統合）
 
 主要モジュール:
 
@@ -231,7 +230,7 @@ graph TD
 
 依存の特徴:
 
-- ローカル依存は `app-core` のみ。`wgpu` 依存はこのクレートと `panel-html-experiment` / `apps/desktop` に限られる
+- ローカル依存は `app-core` のみ。`wgpu` 依存はこのクレートと `panel-html` / `apps/desktop` に限られる
 - Phase 9A で feature gate を撤廃し、`apps/desktop` の必須依存になった
 
 ### `render-types`（Phase 9B 追加）
@@ -240,7 +239,7 @@ graph TD
 
 - 純データ DTO 専用クレート（wgpu / fontdb / panel-api 非依存、`app-core` のみ依存）
 - `PixelRect` / `TextureQuad` / `CanvasScene` / `prepare_canvas_scene`
-- `FramePlan` / `CanvasPlan` / `PanelPlan` / `LayerGroupDirtyPlan`
+- `FramePlan` / `CanvasPlan` / `LayerGroupDirtyPlan`（`PanelPlan` / `PanelSurfaceSource` は ADR 016 で削除）
 - `CanvasOverlayState` / `PanelNavigatorOverlay` / `PanelNavigatorEntry`
 - dirty rect の union 計算、ブラシ preview dirty / 露出背景 / 座標変換などの純粋計算
 
@@ -320,7 +319,7 @@ graph TD
 - 現時点では panel runtime 専用であり、一般的 plugin host 全体にはまだ広がっていない
 - ローカル依存は `panel-schema` のみ。`blitz-dom` / `blitz-html` に外部依存する
 
-### `panel-html-experiment`
+### `panel-html`
 
 担当:
 
@@ -333,7 +332,7 @@ graph TD
 依存の特徴:
 
 - workspace ローカル依存なし
-- 名前は experiment のままだが、Phase 9E 以降パネル描画の唯一の正式経路である
+- Phase 9E 以降パネル描画の唯一の正式経路（旧名 `panel-html-experiment`、ADR 016 で正式名称化）
 
 ### `panel-runtime`
 
@@ -369,26 +368,15 @@ graph TD
 - panel presentation の中心
 - workspace layout（4 隅アンカー、move / visibility / resize）
 - HTML panel hit-test（`html_panel_hit_at` / `panel_resize_hit_at` / move handle）
-- focus 管理
-- panel surface の構築（`render_panel_surface`）
-- scroll offset 管理
+- focus 管理（`focus_panel_node` / `focus_next` / `focus_previous`）
 
 実装上の特徴:
 
 - runtime（Wasm 実行・host sync）は持たない。`panel-runtime` が runtime 側の正本である
-- DSL 時代の `tree_query.rs` / `TextInputEditorState` / winit IME 編集経路は Phase 12 で削除済み
-
-### `workspace-persistence`
-
-担当:
-
-- `WorkspaceUiState`（`workspace_layout` + `plugin_configs`）
-- `PluginConfigs`（`BTreeMap<String, Value>`）
-
-意味:
-
-- project 保存と session 保存で共有する UI 永続化 DTO
-- ownership は `storage` / `desktop-support` に残したまま、重複したシリアライズ形だけを共通化する
+- panel-runtime へのコンパイル依存も持たない。登録パネル一覧は
+  `reconcile_panels(panel_ids: Vec<&'static str>)` の引数として受け取る（ADR 016）
+- DSL 時代の `tree_query.rs` / `TextInputEditorState` / winit IME 編集経路は Phase 12 で、
+  CPU 合成時代の `PanelSurface` / scroll offset / no-op スタブ群は ADR 016 で削除済み
 
 ### `storage`
 
@@ -510,7 +498,7 @@ crates/gpu-canvas/src/lib.rs
 crates/builtin-panels/<name>/{panel.html, panel.css, panel.meta.json, *.wasm}
   -> builtin-panels::register_builtin_panels
   -> panel-runtime::BuiltinPanelPlugin
-     -> panel-html-experiment::HtmlPanelEngine (Blitz + vello)
+     -> panel-html::HtmlPanelEngine (Blitz + vello)
      -> plugin-host::WasmPanelRuntime (wasmtime + dom_api)
   -> panel-schema DTO
   -> panel-api::PanelEvent / HostAction
@@ -519,7 +507,7 @@ crates/builtin-panels/<name>/{panel.html, panel.css, panel.meta.json, *.wasm}
 役割分担:
 
 - `builtin-panels`: パネル資産の発見と一括登録
-- `panel-html-experiment`: HTML/CSS のレイアウト解決・GPU 描画・hit 矩形収集
+- `panel-html`: HTML/CSS のレイアウト解決・GPU 描画・hit 矩形収集
 - `plugin-host`: Wasm handler 呼び出しと DOM mutation host functions
 - `panel-runtime`: state と host snapshot を渡し、結果を `HostAction` と DOM 更新に変換
 
@@ -630,8 +618,9 @@ project file と session file は役割が異なる。
 実装を読んだ結果、次は整理候補になる。
 
 1. `execute_paint_input`（`services/project_io.rs`）内の CPU 差分計算と GPU dispatch の分離
-2. `panel-html-experiment` の正式名称化（experiment ではなく正式経路である）
-3. `panel-api` が `app-core::Command` を直接知っている点の再評価
-4. tool 実行 plugin と host runtime の安定境界の確立
+2. `panel-api` が `app-core::Command` を直接知っている点の再評価
+3. tool 実行 plugin と host runtime の安定境界の確立
+
+（旧候補「`panel-html-experiment` の正式名称化」は ADR 016 で完了済み）
 
 ただし、これらは**今そうなっている**という意味ではない。現時点の正本は、上記 compile-time 依存と runtime flow である。

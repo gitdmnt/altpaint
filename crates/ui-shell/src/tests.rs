@@ -1,40 +1,10 @@
 use super::*;
-use panel_api::PanelPlugin;
-use panel_runtime::PanelRuntime;
 
-struct MockPanel {
-    id: &'static str,
-    title: &'static str,
-}
-
-impl PanelPlugin for MockPanel {
-    /// ID を計算して返す。
-    fn id(&self) -> &'static str {
-        self.id
-    }
-
-    /// title を計算して返す。
-    fn title(&self) -> &'static str {
-        self.title
-    }
-}
-
-/// 現在の値を runtime へ変換する。
-fn mock_runtime() -> PanelRuntime {
-    let mut runtime = PanelRuntime::new();
-    runtime.register_panel(Box::new(MockPanel {
-        id: "builtin.mock",
-        title: "Mock",
-    }));
-    runtime
-}
-
-/// `reconcile_runtime_panels` が登録パネル全件 + workspace 自身を workspace_layout の panels に追加する。
+/// `reconcile_panels` が登録パネル全件 + workspace 自身を workspace_layout の panels に追加する。
 #[test]
 fn workspace_panel_entries_include_all_registered_panels() {
-    let runtime = mock_runtime();
     let mut presentation = PanelPresentation::new();
-    presentation.reconcile_runtime_panels(&runtime);
+    presentation.reconcile_panels(vec!["builtin.mock"]);
 
     let layout = presentation.workspace_layout();
     assert!(
@@ -180,13 +150,8 @@ fn remove_html_panel_hits_clears_hits_for_panel() {
 /// `is_panel_visible` で可視判定が外部 crate からも取得できる必要がある。
 #[test]
 fn html_panel_visibility_can_be_toggled_and_queried() {
-    let mut runtime = PanelRuntime::new();
-    runtime.register_panel(Box::new(MockPanel {
-        id: "builtin.mock.html",
-        title: "Mock HTML",
-    }));
     let mut presentation = PanelPresentation::new();
-    presentation.reconcile_runtime_panels(&runtime);
+    presentation.reconcile_panels(vec!["builtin.mock.html"]);
 
     assert!(presentation.is_panel_visible("builtin.mock.html"));
 
@@ -198,17 +163,12 @@ fn html_panel_visibility_can_be_toggled_and_queried() {
     assert!(presentation.is_panel_visible("builtin.mock.html"));
 }
 
-/// Phase 1: HTML パネル相当 (`PanelTree` を経由せず登録した) も `reconcile_runtime_panels` で
+/// Phase 1: HTML パネル相当 (`PanelTree` を経由せず登録した) も `reconcile_panels` で
 /// workspace_layout のエントリを取得する。これが visibility / move のための前提となる。
 #[test]
 fn html_panel_with_empty_tree_gets_workspace_entry_after_reconcile() {
-    let mut runtime = PanelRuntime::new();
-    runtime.register_panel(Box::new(MockPanel {
-        id: "builtin.mock.html",
-        title: "Mock HTML",
-    }));
     let mut presentation = PanelPresentation::new();
-    presentation.reconcile_runtime_panels(&runtime);
+    presentation.reconcile_panels(vec!["builtin.mock.html"]);
 
     let layout = presentation.workspace_layout();
     let entry = layout

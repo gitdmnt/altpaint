@@ -43,7 +43,7 @@ impl DesktopApp {
         );
         self.panel_runtime.replace_persistent_panel_configs(configs);
         self.panel_presentation
-            .reconcile_runtime_panels(&self.panel_runtime);
+            .reconcile_panels(self.panel_runtime.panel_static_ids());
     }
 
     /// 現在の値を ワークスペース presets へ変換する。
@@ -84,7 +84,7 @@ impl DesktopApp {
         self.active_workspace_preset_id = selected_workspace;
         self.panel_runtime.replace_persistent_panel_configs(configs);
         self.panel_presentation
-            .reconcile_runtime_panels(&self.panel_runtime);
+            .reconcile_panels(self.panel_runtime.panel_static_ids());
     }
 
     /// 再読込 ワークスペース presets を計算して返す。
@@ -94,7 +94,7 @@ impl DesktopApp {
         self.workspace_presets =
             load_workspace_preset_catalog(&self.io_state.workspace_preset_path);
         self.refresh_workspace_presets();
-        self.mark_panel_surface_dirty();
+        self.request_panel_reconcile();
         self.mark_status_dirty();
         self.persist_session_state();
         true

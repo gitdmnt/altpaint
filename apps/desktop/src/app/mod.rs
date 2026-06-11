@@ -32,7 +32,7 @@ use desktop_support::{
     DesktopDialogs, NativeDesktopDialogs, WorkspacePresetCatalog, default_workspace_preset_path,
 };
 use panel_runtime::PanelRuntime;
-use ui_shell::{PanelPresentation, PanelSurface};
+use ui_shell::PanelPresentation;
 
 pub(crate) use self::canvas_frame::CanvasFrame;
 use self::io_state::DesktopIoState;
@@ -86,7 +86,6 @@ pub(crate) struct DesktopApp {
     active_workspace_preset_id: String,
     paint_runtime: drawing::CanvasRuntime,
     canvas_input: CanvasInputState,
-    pub(crate) panel_surface: Option<PanelSurface>,
     pub(crate) layout: Option<DesktopLayout>,
     canvas_frame: Option<CanvasFrame>,
     /// Phase 9E-4: ステータスバー (HtmlPanelEngine GPU 描画)。
@@ -103,7 +102,8 @@ pub(crate) struct DesktopApp {
     pending_stroke: Option<PendingStroke>,
     deferred_view_panel_sync: bool,
     deferred_status_refresh: bool,
-    needs_panel_surface_refresh: bool,
+    /// presentation の workspace layout を runtime のパネル一覧と再整合させる必要があるか。
+    needs_panel_reconcile: bool,
     needs_status_refresh: bool,
     needs_full_present_rebuild: bool,
     /// GPU レイヤーテクスチャプール。
@@ -168,7 +168,6 @@ impl DesktopApp {
             active_workspace_preset_id: bootstrap.active_workspace_preset_id,
             paint_runtime: drawing::CanvasRuntime::default(),
             canvas_input: CanvasInputState::default(),
-            panel_surface: None,
             layout: None,
             canvas_frame: None,
             status_panel: crate::frame::status_panel::StatusPanel::new(),
@@ -184,7 +183,7 @@ impl DesktopApp {
             pending_stroke: None,
             deferred_view_panel_sync: false,
             deferred_status_refresh: false,
-            needs_panel_surface_refresh: true,
+            needs_panel_reconcile: true,
             needs_status_refresh: false,
             needs_full_present_rebuild: true,
             gpu_canvas_pool: None,

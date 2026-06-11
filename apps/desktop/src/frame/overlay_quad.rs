@@ -296,18 +296,17 @@ fn push_panel_navigator(
 mod tests {
     use super::*;
     use app_core::{CanvasPoint, CanvasViewTransform, PanelBounds};
-    use render_types::{CanvasCompositeSource, PanelNavigatorEntry, PanelSurfaceSource, PixelRect};
+    use render_types::{CanvasCompositeSource, PanelNavigatorEntry, PixelRect};
 
     fn pixels_for(width: usize, height: usize) -> Vec<u8> {
         vec![0; width * height * 4]
     }
 
-    fn make_plan<'a>(
-        canvas_pixels: &'a [u8],
+    fn make_plan(
+        canvas_pixels: &[u8],
         canvas_width: usize,
         canvas_height: usize,
-        panel_pixels: &'a [u8],
-    ) -> FramePlan<'a> {
+    ) -> FramePlan<'_> {
         FramePlan::new(
             canvas_width,
             canvas_height,
@@ -316,13 +315,6 @@ mod tests {
                 y: 0,
                 width: canvas_width,
                 height: canvas_height,
-            },
-            PanelSurfaceSource {
-                x: 0,
-                y: 0,
-                width: 1,
-                height: 1,
-                pixels: panel_pixels,
             },
             CanvasCompositeSource {
                 width: canvas_width,
@@ -337,8 +329,7 @@ mod tests {
     #[test]
     fn empty_overlay_returns_no_quads() {
         let canvas = pixels_for(64, 64);
-        let panel = pixels_for(1, 1);
-        let plan = make_plan(&canvas, 64, 64, &panel);
+        let plan = make_plan(&canvas, 64, 64);
         let overlay = CanvasOverlayState::default();
         assert!(build_overlay_solid_quads(&plan, &overlay).is_empty());
         assert!(build_overlay_circle_quads(&plan, &overlay).is_empty());
@@ -348,8 +339,7 @@ mod tests {
     #[test]
     fn active_panel_mask_emits_inside_fill_and_four_borders() {
         let canvas = pixels_for(64, 64);
-        let panel = pixels_for(1, 1);
-        let plan = make_plan(&canvas, 64, 64, &panel);
+        let plan = make_plan(&canvas, 64, 64);
         let overlay = CanvasOverlayState {
             active_panel_bounds: Some(PanelBounds {
                 x: 0,
@@ -375,8 +365,7 @@ mod tests {
     #[test]
     fn brush_preview_emits_single_circle_quad_with_expected_radius() {
         let canvas = pixels_for(64, 64);
-        let panel = pixels_for(1, 1);
-        let plan = make_plan(&canvas, 64, 64, &panel);
+        let plan = make_plan(&canvas, 64, 64);
         let overlay = CanvasOverlayState {
             brush_preview: Some(CanvasPoint::new(32, 32)),
             brush_size: Some(10),
@@ -394,8 +383,7 @@ mod tests {
     #[test]
     fn lasso_three_points_produce_two_segments() {
         let canvas = pixels_for(64, 64);
-        let panel = pixels_for(1, 1);
-        let plan = make_plan(&canvas, 64, 64, &panel);
+        let plan = make_plan(&canvas, 64, 64);
         let overlay = CanvasOverlayState {
             lasso_points: vec![
                 CanvasPoint::new(8, 8),
@@ -415,8 +403,7 @@ mod tests {
     #[test]
     fn panel_navigator_emits_background_and_per_panel_quads() {
         let canvas = pixels_for(120, 120);
-        let panel = pixels_for(1, 1);
-        let plan = make_plan(&canvas, 120, 120, &panel);
+        let plan = make_plan(&canvas, 120, 120);
         let overlay = CanvasOverlayState {
             panel_navigator: Some(PanelNavigatorOverlay {
                 page_width: 100,
@@ -473,8 +460,7 @@ mod tests {
     #[test]
     fn panel_creation_preview_emits_fill_and_border() {
         let canvas = pixels_for(64, 64);
-        let panel = pixels_for(1, 1);
-        let plan = make_plan(&canvas, 64, 64, &panel);
+        let plan = make_plan(&canvas, 64, 64);
         let overlay = CanvasOverlayState {
             panel_creation_preview: Some(PanelBounds {
                 x: 8,

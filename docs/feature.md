@@ -111,9 +111,9 @@
   - パネルエッジ / コーナーのヒットテスト追加（`ui-shell::presentation`）
   - リサイズドラッグのジェスチャー状態管理
   - `WorkspaceLayout` / `WorkspaceUiState` にパネルサイズのオーバーライドを追加（アンカー位置は変えず幅・高さのみ上書き）
-  - `workspace-persistence` でサイズを永続化
+  - `app-core`（`workspace.rs` の `WorkspaceUiState`）でサイズを永続化
 - **完了条件**: 1つのパネルを端ドラッグで横幅変更でき、アプリ再起動後もサイズが保持される
-- **主な変更箇所**: `crates/ui-shell/`, `crates/workspace-persistence/`
+- **主な変更箇所**: `crates/ui-shell/`, `crates/app-core/`（`workspace.rs`）
 
 ### [feature] 描画エンジン: 回転の完全無段階化
 

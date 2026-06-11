@@ -14,14 +14,13 @@ canvas = { path = "../../crates/canvas" }
 desktop-support = { path = "../../crates/desktop-support" }
 panel-api = { path = "../../crates/panel-api" }
 panel-runtime = { path = "../../crates/panel-runtime" }
-panel-html-experiment = { path = "../../crates/panel-html-experiment" }
+panel-html = { path = "../../crates/panel-html" }
 keyboard-types = "0.7"
 pollster.workspace = true
 render-types = { path = "../../crates/render-types" }
 serde_json.workspace = true
 storage = { path = "../../crates/storage" }
 ui-shell = { path = "../../crates/ui-shell" }
-workspace-persistence = { path = "../../crates/workspace-persistence" }
 wgpu.workspace = true
 winit.workspace = true
 

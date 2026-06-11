@@ -15,7 +15,7 @@ use desktop_support::{
 };
 use panel_api::{HostAction, PanelEvent};
 use serde_json::json;
-use workspace_persistence::WorkspaceUiState;
+use app_core::WorkspaceUiState;
 
 use super::{
     TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_workspace_preset_path,
@@ -139,11 +139,10 @@ fn keyboard_panel_focus_can_activate_app_action() {
     let mut profiler = DesktopProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
 
-    assert!(app.panel_presentation.focus_panel_node(
-        &app.panel_runtime,
-        "builtin.app-actions",
-        "app.save"
-    ));
+    assert!(
+        app.panel_presentation
+            .focus_panel_node("builtin.app-actions", "app.save")
+    );
     // app.save は emit_service 経由で保存を実行するため Command::Noop が返る。
     // pending_jobs でジョブがキューされていることを確認する。
     assert_eq!(

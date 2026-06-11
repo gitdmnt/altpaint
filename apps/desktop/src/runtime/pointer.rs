@@ -212,11 +212,9 @@ impl DesktopRuntime {
         let (delta_x_lines, delta_y_lines) = Self::wheel_delta_lines(delta);
 
         if on_panel {
-            let delta_lines = -(delta_y_lines.round() as i32);
-            if delta_lines == 0 {
-                return false;
-            }
-            return self.app.scroll_panel_surface(delta_lines);
+            // パネルスクロールは Engine 内部で完結するため、ここでは
+            // キャンバスへのフォールスルーだけを防ぐ。
+            return false;
         }
 
         if !on_canvas {
@@ -324,7 +322,7 @@ impl DesktopRuntime {
         else {
             return false;
         };
-        use panel_html_experiment::blitz_traits::events::{
+        use panel_html::blitz_traits::events::{
             BlitzPointerEvent, BlitzPointerId, MouseEventButton, MouseEventButtons,
             PointerCoords, PointerDetails, UiEvent,
         };

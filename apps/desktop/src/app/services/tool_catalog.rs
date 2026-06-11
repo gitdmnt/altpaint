@@ -144,7 +144,7 @@ impl DesktopApp {
         object.insert("last_import_issues".to_string(), json!(issues));
         self.panel_runtime.replace_persistent_panel_configs(configs);
         self.panel_presentation
-            .reconcile_runtime_panels(&self.panel_runtime);
+            .reconcile_panels(self.panel_runtime.panel_static_ids());
     }
 
     /// 再読込 ペン presets を計算して返す。

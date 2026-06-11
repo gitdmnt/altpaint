@@ -64,7 +64,7 @@ altpaint の描画責務を完全に GPU へ寄せ、CPU 合成・CPU ラスタ�
 
 `render` の責務を 3 種に分解する。
 
-1. **純データ型** (`PixelRect` / `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan` / `LayerGroupDirtyPlan` / `union_dirty_rect` / `brush_preview_dirty_rect` 他) — 移動先が必要、削除はしない
+1. **純データ型** (`PixelRect` / `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan` / `LayerGroupDirtyPlan` / `union_dirty_rect` / `brush_preview_dirty_rect` 他) — 移動先が必要、削除はしない（注: `PanelPlan` はその後、依存最小化リアーキテクト (ADR 016) で削除済み）
 2. **CPU 合成** (`compose_*` / `blit_*` / `fill_rgba_block` / `scroll_canvas_region`) — Phase 8 でキャンバスは GPU 化済み。残る装飾レイヤーを GPU 化すれば消せる
 3. **CPU ラスタライザ** (`rasterize_panel_layer` / `draw_text_rgba` / `measure_panel_size` / `wrap_text_lines`) — DSL パネルとテキストの GPU 化が必要。Phase 9 の最大の山
 

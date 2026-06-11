@@ -3,7 +3,7 @@
 //! `CommandHistory` は操作記録（`HistoryEntry`）のスタックを管理する。
 //! undo 方式はビットマップ前後スナップショット（`BitmapPatch`）の保存・復元方式。
 
-use crate::{BitmapEditRecord, CanvasBitmap, CanvasDirtyRect, PanelId};
+use crate::{CanvasBitmap, CanvasDirtyRect, PanelId};
 
 /// 履歴スタックのデフォルト容量。
 pub const DEFAULT_HISTORY_CAPACITY: usize = 50;
@@ -27,8 +27,6 @@ impl std::fmt::Debug for OpaqueGpuData {
 /// enum として定義する。
 #[derive(Debug, Clone)]
 pub enum HistoryEntry {
-    /// レガシー replay 方式（後方互換用）。
-    BitmapOp(BitmapEditRecord),
     /// ビットマップ前後スナップショット方式。
     BitmapPatch {
         panel_id: PanelId,
@@ -117,11 +115,6 @@ impl CommandHistory {
         self.past.clear();
         self.future.clear();
     }
-
-    /// 過去スタックの全エントリへの参照を返す（replay 用）。
-    pub fn past_entries(&self) -> &[HistoryEntry] {
-        &self.past
-    }
 }
 
 impl Default for CommandHistory {
@@ -133,24 +126,19 @@ impl Default for CommandHistory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{BitmapEditOperation, BitmapEditRecord, ColorRgba8, PanelId, PanelLocalPoint};
 
-    fn make_record(x: usize) -> BitmapEditRecord {
-        BitmapEditRecord {
+    fn make_patch(x: usize) -> HistoryEntry {
+        HistoryEntry::BitmapPatch {
             panel_id: PanelId(1),
             layer_index: 0,
-            operation: BitmapEditOperation::Stamp {
-                at: PanelLocalPoint { x, y: 0 },
-                pressure: 1.0,
+            dirty: CanvasDirtyRect {
+                x,
+                y: 0,
+                width: 1,
+                height: 1,
             },
-            pen_snapshot: crate::PenPreset::default(),
-            color_snapshot: ColorRgba8 {
-                r: 0,
-                g: 0,
-                b: 0,
-                a: 255,
-            },
-            tool_id: "pen".to_string(),
+            before: CanvasBitmap::transparent(1, 1),
+            after: CanvasBitmap::transparent(1, 1),
         }
     }
 
@@ -158,7 +146,7 @@ mod tests {
     #[test]
     fn push_and_undo_round_trip() {
         let mut history = CommandHistory::new();
-        history.push(HistoryEntry::BitmapOp(make_record(1)));
+        history.push(make_patch(1));
         assert!(history.can_undo());
         let entry = history.undo();
         assert!(entry.is_some());
@@ -169,7 +157,7 @@ mod tests {
     #[test]
     fn undo_then_redo() {
         let mut history = CommandHistory::new();
-        history.push(HistoryEntry::BitmapOp(make_record(1)));
+        history.push(make_patch(1));
         history.undo();
         assert!(history.can_redo());
         history.redo();
@@ -181,10 +169,10 @@ mod tests {
     #[test]
     fn push_clears_future() {
         let mut history = CommandHistory::new();
-        history.push(HistoryEntry::BitmapOp(make_record(1)));
+        history.push(make_patch(1));
         history.undo();
         assert!(history.can_redo());
-        history.push(HistoryEntry::BitmapOp(make_record(2)));
+        history.push(make_patch(2));
         assert!(!history.can_redo());
     }
 
@@ -192,23 +180,22 @@ mod tests {
     #[test]
     fn capacity_evicts_oldest() {
         let mut history = CommandHistory::with_capacity(2);
-        history.push(HistoryEntry::BitmapOp(make_record(1)));
-        history.push(HistoryEntry::BitmapOp(make_record(2)));
-        history.push(HistoryEntry::BitmapOp(make_record(3)));
+        history.push(make_patch(1));
+        history.push(make_patch(2));
+        history.push(make_patch(3));
         assert_eq!(history.past.len(), 2);
         // 最新の 2 つが残っていることを確認する
-        if let HistoryEntry::BitmapOp(r) = &history.past[0] {
-            if let BitmapEditOperation::Stamp { at, .. } = r.operation {
-                assert_eq!(at.x, 2);
-            }
-        }
+        let HistoryEntry::BitmapPatch { dirty, .. } = &history.past[0] else {
+            panic!("BitmapPatch expected");
+        };
+        assert_eq!(dirty.x, 2);
     }
 
     /// clear で past/future が空になることを確認する。
     #[test]
     fn clear_empties_stacks() {
         let mut history = CommandHistory::new();
-        history.push(HistoryEntry::BitmapOp(make_record(1)));
+        history.push(make_patch(1));
         history.clear();
         assert!(!history.can_undo());
         assert!(!history.can_redo());

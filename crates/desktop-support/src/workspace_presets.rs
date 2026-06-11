@@ -5,7 +5,7 @@ use app_core::{
     WorkspacePanelState,
 };
 use serde::{Deserialize, Serialize};
-use workspace_persistence::WorkspaceUiState;
+use app_core::WorkspaceUiState;
 
 const CURRENT_WORKSPACE_PRESET_FORMAT_VERSION: u32 = 1;
 

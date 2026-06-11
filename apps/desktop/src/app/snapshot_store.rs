@@ -50,11 +50,6 @@ impl SnapshotStore {
     pub(crate) fn len(&self) -> usize {
         self.entries.len()
     }
-
-    /// 保持しているスナップショットの一覧を返す（ID・ラベルのみ）。
-    pub(crate) fn entries(&self) -> &[SnapshotEntry] {
-        &self.entries
-    }
 }
 
 #[cfg(test)]

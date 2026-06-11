@@ -12,7 +12,7 @@ mod workspace_layout;
 use app_core::{Command, Document, HistoryEntry};
 use desktop_support::DEFAULT_PROJECT_PATH;
 use panel_api::{ServiceRequest, services::names};
-use workspace_persistence::WorkspaceUiState;
+use app_core::WorkspaceUiState;
 
 use super::DesktopApp;
 
@@ -133,11 +133,6 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 true
             }
-            Some(HistoryEntry::BitmapOp(_)) => {
-                // レガシーエントリは何もしない
-                self.sync_ui_from_document();
-                true
-            }
             None => false,
         }
     }
@@ -201,11 +196,6 @@ impl DesktopApp {
                     self.append_canvas_dirty_rect(dirty);
                     self.recomposite_panel(panel_id, Some(dirty));
                 }
-                self.sync_ui_from_document();
-                true
-            }
-            Some(HistoryEntry::BitmapOp(_)) => {
-                // レガシーエントリは何もしない
                 self.sync_ui_from_document();
                 true
             }

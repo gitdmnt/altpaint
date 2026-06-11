@@ -12,14 +12,6 @@ use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::DesktopApp;
 use crate::app::canvas_frame::build_canvas_frame;
 
-/// 矩形 within パネル サーフェス を計算して返す。
-fn rect_within_panel_surface(rect: crate::frame::Rect, surface: &ui_shell::PanelSurface) -> bool {
-    rect.x >= surface.x
-        && rect.y >= surface.y
-        && rect.x + rect.width <= surface.x + surface.width
-        && rect.y + rect.height <= surface.y + surface.height
-}
-
 /// キャンバス position maps ビュー center into ビットマップ 範囲 が期待どおりに動作することを検証する。
 #[test]
 fn canvas_position_maps_view_center_into_bitmap_bounds() {
@@ -160,17 +152,6 @@ fn panel_rect_tool_creates_panel_from_dragged_page_rect() {
     assert_eq!(app.document.active_panel_index(), 1);
 }
 
-/// パネル スクロール requests サーフェス オフセット change が期待どおりに動作することを検証する。
-#[test]
-fn panel_scroll_requests_surface_offset_change() {
-    let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
-    let _ = app.prepare_present_frame(1280, 120, &mut profiler);
-
-    assert!(!app.scroll_panel_surface(6));
-    assert_eq!(app.panel_presentation.panel_scroll_offset(), 0);
-}
-
 /// パネル 色 ホイール updates ドキュメント 色 が期待どおりに動作することを検証する。
 #[test]
 fn panel_color_wheel_updates_document_color() {
@@ -219,7 +200,7 @@ fn overlapping_panel_button_press_takes_priority_over_canvas_input() {
         layout.window_rect.width,
         layout.window_rect.height,
     ));
-    app.mark_panel_surface_dirty();
+    app.request_panel_reconcile();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
     // 実 hit テーブルから消しゴムボタンの screen 座標を解決する
@@ -281,7 +262,7 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
         layout.window_rect.width,
         layout.window_rect.height,
     ));
-    app.mark_panel_surface_dirty();
+    app.request_panel_reconcile();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
     // 実 move handle (タイトルバー chrome) は prepare_present_frame が更新済み
@@ -334,29 +315,10 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
 // `PanelDragState::Control` ベースのドラッグソース追跡機構は Phase 9F で撤去済み。
 // HTML パネル側のレイヤー再配置は `dispatch_panel_event(DragValue { ... })` を
 // 直接 layers-panel Wasm handler が消費する経路に統一されている。
-/// スクロール refresh does not trigger ui 更新 が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
-#[test]
-fn scroll_refresh_does_not_trigger_ui_update() {
-    let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
-    let _ = app.prepare_present_frame(1280, 120, &mut profiler);
-    profiler.stats.clear();
-
-    assert!(!app.scroll_panel_surface(6));
-    let update = app.prepare_present_frame(1280, 120, &mut profiler);
-
-    assert!(!profiler.stats.contains_key("ui_update"));
-    assert!(!profiler.stats.contains_key("compose_full_frame"));
-    assert_eq!(update.background_dirty_rect, None);
-    assert_eq!(update.temp_overlay_dirty_rect, None);
-    assert!(!update.canvas_updated);
-    assert_eq!(
-        profiler.stats.get("panel_surface").map(|stat| stat.calls),
-        None
-    );
-}
+// 削除: scroll_refresh_does_not_trigger_ui_update (依存最小化リアーキテクト)
+// パネル上ホイールの `scroll_panel_surface` 経路は常に no-op のスタブだったため
+// 撤去された。パネル上ホイールは pointer.rs がキャンバスへのフォールスルーを
+// 防ぐだけの経路に統一されている。
 
 // 削除: panel_move_recomposes_without_rerasterizing_panel_content (Phase 9E-5)
 // CPU panel rasterize / panel_surface_rasterized_panels / panel_surface_composited_panels
@@ -384,7 +346,7 @@ fn workspace_manager_panel_can_be_moved() {
         layout.window_rect.width,
         layout.window_rect.height,
     ));
-    app.mark_panel_surface_dirty();
+    app.request_panel_reconcile();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
 
     let after = app
@@ -585,7 +547,7 @@ fn profile_panel_drag_for_ten_seconds() {
             layout.window_rect.height,
         );
         if changed {
-            app.mark_panel_surface_dirty();
+            app.request_panel_reconcile();
         }
 
         let update = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
@@ -796,19 +758,13 @@ fn focus_refresh_does_not_trigger_ui_update() {
 
     assert!(app.focus_next_panel_control());
     let update = app.prepare_present_frame(1280, 200, &mut profiler);
-    let surface = app.panel_surface.clone().expect("panel surface exists");
 
     // フォーカス移動はキャンバス再描画も full recompose も起こしてはならない。
     assert!(!profiler.stats.contains_key("ui_update"));
     assert!(!profiler.stats.contains_key("compose_full_frame"));
     assert_eq!(update.background_dirty_rect, None);
     assert!(!update.canvas_updated);
-
-    // 9E-5: L4 dummy 化により `ui_panel_dirty_rect` は通常 None。値があれば
-    // panel surface 範囲内に収まることだけ確認する (将来 GPU dirty 経路で意味を持つ)。
-    if let Some(panel_dirty) = update.ui_panel_dirty_rect {
-        assert!(rect_within_panel_surface(panel_dirty, &surface));
-    }
+    assert_eq!(update.ui_panel_dirty_rect, None);
 }
 
 /// ツール change updates ステータス without full recompose が期待どおりに動作することを検証する。
@@ -831,10 +787,7 @@ fn tool_change_updates_status_without_full_recompose() {
     // ピクセル比較は不要。ツール変更で full recompose にならず canvas が更新されないことだけ検証する。
     assert!(!profiler.stats.contains_key("compose_full_frame"));
     assert!(!update.canvas_updated);
-    let surface = app.panel_surface.clone().expect("panel surface exists");
-    if let Some(panel_dirty) = update.ui_panel_dirty_rect {
-        assert!(rect_within_panel_surface(panel_dirty, &surface));
-    }
+    assert_eq!(update.ui_panel_dirty_rect, None);
 }
 
 /// パネル release without matching press does not activate 保存 が期待どおりに動作することを検証する。
@@ -960,11 +913,11 @@ fn emit_panel_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterat
         iterations as f64 / elapsed
     );
     eprintln!(
-        "[{label}] prepare_frame avg={:.3}ms max={:.3}ms | panel_surface avg={:.3}ms max={:.3}ms | compose_dirty_panel avg={:.3}ms max={:.3}ms",
+        "[{label}] prepare_frame avg={:.3}ms max={:.3}ms | panel_reconcile avg={:.3}ms max={:.3}ms | compose_dirty_panel avg={:.3}ms max={:.3}ms",
         avg_stage_ms(profiler, "prepare_frame"),
         max_stage_ms(profiler, "prepare_frame"),
-        avg_stage_ms(profiler, "panel_surface"),
-        max_stage_ms(profiler, "panel_surface"),
+        avg_stage_ms(profiler, "panel_reconcile"),
+        max_stage_ms(profiler, "panel_reconcile"),
         avg_stage_ms(profiler, "compose_dirty_panel"),
         max_stage_ms(profiler, "compose_dirty_panel"),
     );
@@ -999,13 +952,13 @@ fn emit_view_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterati
         iterations as f64 / elapsed
     );
     eprintln!(
-        "[view-perf] case={label} prepare_frame avg={:.3}ms max={:.3}ms | prepare_canvas_scene avg={:.3}ms max={:.3}ms | panel_surface avg={:.3}ms max={:.3}ms",
+        "[view-perf] case={label} prepare_frame avg={:.3}ms max={:.3}ms | prepare_canvas_scene avg={:.3}ms max={:.3}ms | panel_reconcile avg={:.3}ms max={:.3}ms",
         avg_stage_ms(profiler, "prepare_frame"),
         max_stage_ms(profiler, "prepare_frame"),
         avg_stage_ms(profiler, "prepare_canvas_scene"),
         max_stage_ms(profiler, "prepare_canvas_scene"),
-        avg_stage_ms(profiler, "panel_surface"),
-        max_stage_ms(profiler, "panel_surface"),
+        avg_stage_ms(profiler, "panel_reconcile"),
+        max_stage_ms(profiler, "panel_reconcile"),
     );
     eprintln!(
         "[view-perf] case={label} ui_update avg={:.3}ms max={:.3}ms | overlay upload avg={:.2}% ({:.0}px)",
@@ -1097,7 +1050,7 @@ fn pan_view_updates_canvas_without_status_recompose() {
     assert!(!profiler.stats.contains_key("compose_dirty_status"));
     assert!(profiler.stats.contains_key("prepare_canvas_scene"));
     assert!(!profiler.stats.contains_key("compose_dirty_panel"));
-    assert!(!profiler.stats.contains_key("panel_surface"));
+    assert!(!profiler.stats.contains_key("panel_reconcile"));
     // 9C-1: L1 背景は GPU の solid quad パイプラインで毎フレーム描画されるため
     // パン操作時に CPU の compose_dirty_canvas_base は呼ばれない。
     assert!(!profiler.stats.contains_key("compose_dirty_canvas_base"));

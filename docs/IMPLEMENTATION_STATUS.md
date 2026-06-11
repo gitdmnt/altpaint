@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、2026-06-11 時点の `altpaint` が**実際にどこまで実装されているか**を短く把握するための現況整理である。
+この文書は、2026-06-12 時点の `altpaint` が**実際にどこまで実装されているか**を短く把握するための現況整理である。
 
 この文書は理想図ではなく現況の要約であり、次と役割を分ける。
 
@@ -35,9 +35,9 @@
 - layer bitmap の chunk 保存と current panel snapshot 永続化
 - session save/load
 - profiler と実行時間計測
-- **Undo/Redo 基盤 (フェーズ7-0〜7-2b)**: replay 方式 `CommandHistory`・`BitmapEditRecord`・
-  `CanvasRuntime::replay_paint_record`・`execute_undo()`/`execute_redo()` サービスハンドラ・
-  host snapshot への `can_undo`/`can_redo` 反映・app-actions パネルの undo/redo ボタン
+- **Undo/Redo 基盤 (フェーズ7-0〜7-2b、Phase 14 で BitmapPatch 方式に一本化)**: `CommandHistory`・
+  `execute_undo()`/`execute_redo()` サービスハンドラ・host snapshot への `can_undo`/`can_redo` 反映・
+  app-actions パネルの undo/redo ボタン (replay 方式の `BitmapEditRecord` 系は ADR 016 で削除)
 - **テキスト描画基盤 (フェーズ7-5b〜7-6)**: `TextRenderer` trait・`Font8x8Renderer`・`render_text_to_bitmap_edit` canvas op・`text_render.render_to_layer` service・`plugins/text-flow` panel plugin・host handler
 - **レンダー層分離 (2026-03-15)**: overlay 単層を L3 TempOverlay（canvas ブラシ/lasso）と L4 UiPanel（フローティング UI）に分割。`compose_temp_overlay_frame` / `compose_ui_panel_frame` / `LayerGroupDirtyPlan` 導入。各層が独立した dirty rect で更新され、不要な CPU 合成を削減。
 - **起動時間改善 (2026-03-16)**: `plugin-host` の `WasmPanelRuntime::load` が Panel 毎に `Engine::default()` を生成し wasmtime JIT が 11 回フルコンパイルして起動に 4+ 秒かかっていた問題を修正。wasmtime `cache` feature を有効化し `Config::cache_config_load_default()` を使うことでコンパイル済みモジュールをディスクキャッシュし、2 回目以降の起動を大幅短縮。
@@ -53,6 +53,7 @@
 - **Phase 9G 完了 (2026-05-02)**: `html-panel` feature gate を完全撤去。Phase 9E で CPU パネルラスタライザを撤去した結果、`HtmlPanelEngine` 経路がパネル描画の唯一の手段となっていたが、`apps/desktop` の `html-panel` feature が default OFF のまま放置されており、`cargo run -p desktop` (feature 指定なし) では `panel_quads = &[]` / `status_quad = None` となり全パネル＋ステータスバーが画面から消える状態だった。`apps/desktop/Cargo.toml` と `crates/panel-runtime/Cargo.toml` から `[features]` テーブル削除、`panel-html-experiment` / `keyboard-types` を必須依存へ昇格、`apps/desktop` 内 14 箇所と `panel-runtime` 内 23 箇所の `cfg(feature = "html-panel")` / `cfg(not(feature = "html-panel"))` 分岐を完全撤去。clippy 警告 83 → 70 件 (13 件減)。あわせて `crates/panel-runtime/src/dsl_to_html.rs` の `PanelNode::Section` 翻訳を `<details><summary>` から `<div class="alt-section">` へ切り替え (Blitz/stylo がネストした `<details>` の primary style 解決に失敗して panic する潜在バグ回避)。詳細: `docs/adr/011-html-panel-feature-removal.md`。
 - **Phase 12 完了 (2026-05-15)**: ADR 014 — `PanelTree` / `PanelNode` / `PanelView` 型と `PanelPlugin::panel_tree()` / `view()` trait method を完全撤去 (ADR 012 で宣言済みだったが残置されていた DSL 時代の中間表現 / dead code を一括清算)。並行して、唯一 Rust ネイティブ実装で残っていた `builtin.workspace-layout` (パネル表示/非表示管理 UI) を 12 番目の HTML+CSS+Wasm パネルとして再実装し、HTML 経路へ完全統一。新規サービス `workspace_layout.set_panel_visibility` と新規 host snapshot field `workspace.panels_json` を追加し、Wasm パネル handler がチェック切替で可視性を制御する経路を整備。同時に DSL 時代の `tree_query.rs` / `focus.rs` の dropdown / text_input 走査 / `TextInputEditorState` / winit IME 編集経路を撤去 (HTML パネル内部完結に統一)。約 800 行縮小、clippy 警告 84 → 76 件 (8 件減)、テスト 139 passed / 5 failed (failure はベースライン e6f84f6 と完全一致、新規 failure ゼロ)。詳細: `docs/adr/014-paneltree-removal-and-workspace-layout-html.md`。
 - **Phase 13 完了 (2026-06-11)**: ADR 015 — HTML パネルのキーボード ABI 配線 + hit テーブル GPU 非依存化。ADR 014 が follow-up としていたキーボード系 5 テスト失敗を解消しテスト失敗ゼロ化 (desktop 144 passed / 0 failed / 6 ignored、並列 2 回連続で安定)。(1) `BuiltinPanelPlugin` に `PanelEvent::Keyboard` → Wasm `panel_handle_keyboard` 転送と `handles_keyboard_event()` (load 時 export 検出) を配線。(2) `HtmlPanelEngine::resolve_action_rects` / `PanelRuntime::collect_panel_hits` を新設し、hit / move handle / full rect テーブル更新を GPU ループから `prepare_present_frame` (CPU 側) へ移動 — headless テストでフォーカス巡回・hit-test が実経路で検証可能になり、GPU ループ (runtime.rs) は quad 組み立て専属に約 120 行縮小。`PanelGpuFrame::hit_regions` / `rendered_this_frame` dead code 削除。(3) Phase 10 の DSL 撤去で喪失していた初期 state デフォルト (app-actions: `Ctrl+N`/`Ctrl+S`/`Ctrl+Shift+S`/`Ctrl+O`、tool-palette: `P`/`E`/`G`/`Shift+G`/`K`) を各パネル `init()` に復元し Wasm 再ビルド。(4) stylo (Blitz resolve) のグローバル rayon プールが複数ドキュメント並行 resolve で atomic_refcell panic するレースを `STYLE_RESOLVE_LOCK` で直列化 (プロダクションは単一 UI スレッドのため実コストゼロ、8 スレッド並行の回帰ストレステスト付き)。(5) テストが実ユーザーの session / workspace preset ファイルを共有・汚染していた問題を、project / session / preset 全パスのテスト毎一意化で解消。詳細: `docs/adr/015-html-panel-keyboard-abi-and-headless-hit-tables.md`。
+- **Phase 14 完了 (2026-06-12)**: ADR 016 — クレート依存構造の最小化リアーキテクト。(1) replay 方式 undo の残骸を全削除 (`HistoryEntry::BitmapOp` / `BitmapEditRecord` / `BitmapEditOperation` / `CanvasRuntime::replay_paint_record` / `PaintResult` / `canvas::edit_record`。`execute_paint_input` は `Option<Vec<BitmapEdit>>` を返す)。(2) ui-shell の Phase 9E 互換スタブ群 (1×1 ダミー `PanelSurface`・常時 no-op の scroll / dirty マーク・定数スタブ・`PresentationEventResult`) を削除し、`reconcile_panels(panel_ids)` 化で **ui-shell → panel-runtime 依存を切断**。render-types の `PanelPlan` / `PanelSurfaceSource`、desktop の `panel_surface` フィールドとダミープロファイラ計測も撤去 (`needs_panel_reconcile` / `request_panel_reconcile` に改名、新計測キー `panel_reconcile`)。(3) **`workspace-persistence` クレートを削除**し `WorkspaceUiState` / `PluginConfigs` を `app-core::workspace` へ統合 (workspace メンバー 29 → 28、クレート間エッジ 47 → 42)。(4) **`panel-html-experiment` を `panel-html` に正式名称化**。(5) 未使用依存 7 件 (gpu-canvas/storage の anyhow、tool-palette の serde、panel-html の anyrender/serde/tracing、ルートの ab_glyph)・小物 dead code (`SnapshotStore::entries` / `StatusPanel::last_snapshot`・`measured_size` / `collect_text` / `past_entries`)・`tools/experimental/phase6-sample`・stale な `apps/desktop/ARCH_GREP.md` を削除。検証: workspace テスト 412 passed / 0 failed / 8 ignored (ベースライン 415 との差分 3 件は削除した dead 機能のテスト)、clippy 警告 84 → 79、cargo machete クリーン、アプリ起動スモーク確認 (12 秒、クラッシュなし)。詳細: `docs/adr/016-dependency-minimization.md`。
 
 ## 現在の workspace 構成
 
@@ -60,18 +61,18 @@
 
 - `app-core`
 - `canvas`
+- `gpu-canvas`
 - `render-types`
 - `storage`
 - `desktop-support`
 - `panel-api`
 - `panel-runtime`
 - `ui-shell`
-- `workspace-persistence`
 - `plugin-host`
 - `panel-schema`
 - `plugin-macros`
 - `plugin-sdk`
-- `panel-html-experiment`
+- `panel-html`
 - `builtin-panels`
 - `apps/desktop`
 
@@ -92,7 +93,7 @@
 
 補足:
 
-- `tools/experimental/phase6-sample` へ DSL/WAT sample を移し、既定 `plugins/` 探索対象から外した。
+- 旧 DSL/WAT sample (`tools/experimental/phase6-sample`) は参照ゼロのため Phase 14 (ADR 016) で削除した。
 
 ## 実装済みの主要領域
 
@@ -177,10 +178,10 @@
 - `plugin-sdk`: plugin 作者向け SDK、typed service request builder、macro 再 export、`dom` モジュール (DOM mutation API)
 - `plugin-macros`: `plugin-sdk` が再 export する proc-macro 実装
 - `plugin-host`: `wasmtime` ベース runtime + `dom` host functions (Blitz `DocumentMutator` を Wasm に公開)
-- `panel-html-experiment`: `HtmlPanelEngine` (Blitz HTML/CSS + parley + vello)
+- `panel-html`: `HtmlPanelEngine` (Blitz HTML/CSS + parley + vello、旧名 panel-html-experiment)
 - `panel-runtime`: `BuiltinPanelPlugin` / panel registry / host snapshot sync / persistent config
 - `builtin-panels`: 同梱 12 パネル定義 (HTML+CSS+Wasm) と `register_builtin_panels` orchestration
-- `ui-shell`: panel presentation / workspace layout / focus / hit-test / surface render
+- `ui-shell`: panel presentation / workspace layout / focus / hit-test
 
 ### 5. 永続化
 
@@ -205,10 +206,10 @@
 - canvas template 読込
 - workspace preset catalog の読込 / 保存
 
-`workspace-persistence` には次がある。
+`app-core::workspace` には次がある (Phase 14 / ADR 016 で旧 `workspace-persistence` から統合)。
 
 - project / session で共有する `WorkspaceUiState`
-- `plugin_configs`
+- `plugin_configs` (`PluginConfigs`)
 
 ### 6. built-in panel 群
 

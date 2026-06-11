@@ -3,7 +3,7 @@ use crate::config::{collect_persistent_panel_configs, restore_persistent_panel_c
 use crate::host_sync::EMPTY_WORKSPACE_PANELS_JSON;
 use app_core::Document;
 use panel_api::{HostAction, PanelEvent, PanelPlugin};
-use panel_html_experiment::{vello, wgpu, HtmlPanelEngine, PanelSizeConstraints, RenderedPanelHit};
+use panel_html::{vello, wgpu, HtmlPanelEngine, PanelSizeConstraints, RenderedPanelHit};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -193,7 +193,7 @@ impl PanelRuntime {
     pub fn forward_panel_input(
         &mut self,
         panel_id: &str,
-        event: panel_html_experiment::blitz_traits::events::UiEvent,
+        event: panel_html::blitz_traits::events::UiEvent,
     ) -> bool {
         for panel in &mut self.panels {
             if panel.id() != panel_id {

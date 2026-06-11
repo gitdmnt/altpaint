@@ -27,8 +27,6 @@ pub(crate) type TextureQuad = render_types::TextureQuad;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DesktopLayout {
     pub(crate) window_rect: Rect,
-    pub(crate) panel_host_rect: Rect,
-    pub(crate) panel_surface_rect: Rect,
     pub(crate) canvas_host_rect: Rect,
     pub(crate) canvas_display_rect: Rect,
 }
@@ -47,9 +45,6 @@ impl DesktopLayout {
             width: window_width.max(1),
             height: window_height.max(1),
         };
-        let panel_host_rect = window_rect;
-        let panel_surface_rect = window_rect;
-
         let canvas_host_rect = Rect {
             x: WINDOW_PADDING,
             y: WINDOW_PADDING + HEADER_HEIGHT + WINDOW_PADDING,
@@ -65,8 +60,6 @@ impl DesktopLayout {
 
         Self {
             window_rect,
-            panel_host_rect,
-            panel_surface_rect,
             canvas_host_rect,
             canvas_display_rect,
         }

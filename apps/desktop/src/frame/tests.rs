@@ -53,10 +53,3 @@ fn desktop_layout_letterboxes_canvas_inside_host_rect() {
     ));
 }
 
-/// パネル サーフェス fills パネル ホスト 矩形 が期待どおりに動作することを検証する。
-#[test]
-fn panel_surface_fills_panel_host_rect() {
-    let layout = DesktopLayout::new(1280, 800, 64, 64);
-
-    assert_eq!(layout.panel_surface_rect, layout.panel_host_rect);
-}

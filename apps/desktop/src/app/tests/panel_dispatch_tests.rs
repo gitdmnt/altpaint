@@ -13,11 +13,10 @@ fn panel_dispatch_keyboard_path_activates_save_action() {
     let mut profiler = DesktopProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
 
-    assert!(app.panel_presentation.focus_panel_node(
-        &app.panel_runtime,
-        "builtin.app-actions",
-        "app.save"
-    ));
+    assert!(
+        app.panel_presentation
+            .focus_panel_node("builtin.app-actions", "app.save")
+    );
     // app.save は emit_service 経由で保存を実行するため Command::Noop が返る。
     // pending_jobs でジョブがキューされていることを確認する。
     assert_eq!(

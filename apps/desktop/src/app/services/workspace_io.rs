@@ -102,7 +102,7 @@ impl DesktopApp {
         }
 
         self.refresh_workspace_presets();
-        self.mark_panel_surface_dirty();
+        self.request_panel_reconcile();
         self.mark_status_dirty();
         self.persist_session_state();
         true
@@ -166,7 +166,7 @@ impl DesktopApp {
 
         self.active_workspace_preset_id = preset_id.to_string();
         self.refresh_workspace_presets();
-        self.mark_panel_surface_dirty();
+        self.request_panel_reconcile();
         self.mark_status_dirty();
         true
     }

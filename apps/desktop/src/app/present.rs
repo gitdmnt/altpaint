@@ -27,7 +27,7 @@ impl DesktopApp {
 
         if self.layout.as_ref() != Some(&next_layout) {
             self.layout = Some(next_layout.clone());
-            self.mark_panel_surface_dirty();
+            self.request_panel_reconcile();
             self.rebuild_present_frame();
         }
 
@@ -54,11 +54,10 @@ impl DesktopApp {
             profiler.record("ui_sync_panels", sync_t.elapsed());
             let reconcile_t = Instant::now();
             self.panel_presentation
-                .reconcile_runtime_panels(&self.panel_runtime);
+                .reconcile_panels(self.panel_runtime.panel_static_ids());
             profiler.record("ui_reconcile", reconcile_t.elapsed());
             if !changed.is_empty() {
-                self.panel_presentation.mark_runtime_panels_dirty(&changed);
-                self.mark_panel_surface_dirty();
+                self.request_panel_reconcile();
             }
         }
 
@@ -70,53 +69,12 @@ impl DesktopApp {
             self.refresh_html_panel_hit_tables(window_width, window_height);
         });
 
-        let mut panel_surface_refreshed = false;
-        if self.needs_panel_surface_refresh {
-            let panel_surface_size = self
-                .layout
-                .as_ref()
-                .map(|layout| (layout.window_rect.width, layout.window_rect.height))
-                .unwrap_or((1, 1));
-            let panel_surface = profiler.measure("panel_surface", || {
-                self.panel_presentation.render_panel_surface(
-                    &self.panel_runtime,
-                    panel_surface_size.0,
-                    panel_surface_size.1,
-                )
+        if self.needs_panel_reconcile {
+            profiler.measure("panel_reconcile", || {
+                self.panel_presentation
+                    .reconcile_panels(self.panel_runtime.panel_static_ids());
             });
-            let window_area = (window_width.max(1) * window_height.max(1)) as f64;
-            profiler.record_value(
-                "panel_surface_buffer_area_px",
-                (panel_surface.width * panel_surface.height) as f64,
-            );
-            profiler.record_value("panel_surface_buffer_width_px", panel_surface.width as f64);
-            profiler.record_value(
-                "panel_surface_buffer_height_px",
-                panel_surface.height as f64,
-            );
-            profiler.record_value(
-                "panel_surface_window_coverage_pct",
-                ((panel_surface.width * panel_surface.height) as f64 / window_area) * 100.0,
-            );
-            profiler.record_value(
-                "panel_surface_rasterized_panels",
-                self.panel_presentation.last_panel_rasterized_panels() as f64,
-            );
-            profiler.record_value(
-                "panel_surface_composited_panels",
-                self.panel_presentation.last_panel_composited_panels() as f64,
-            );
-            profiler.record_value(
-                "panel_surface_raster_ms",
-                self.panel_presentation.last_panel_raster_duration_ms(),
-            );
-            profiler.record_value(
-                "panel_surface_compose_ms",
-                self.panel_presentation.last_panel_compose_duration_ms(),
-            );
-            self.panel_surface = Some(panel_surface);
-            self.needs_panel_surface_refresh = false;
-            panel_surface_refreshed = true;
+            self.needs_panel_reconcile = false;
         }
 
         if self.needs_full_present_rebuild {
@@ -149,15 +107,6 @@ impl DesktopApp {
         }
 
         let mut layer_dirty = render_types::LayerGroupDirtyPlan::default();
-
-        // パネルサーフェス更新 — Phase 9E-3 で GPU 経路に移行済み。dirty rect は
-        // GPU panel_quads の再描画範囲監視に使う。
-        if panel_surface_refreshed {
-            let panel_dirty_rect = self.panel_presentation.last_panel_surface_dirty_rect();
-            if let Some(panel_dirty_rect) = panel_dirty_rect {
-                layer_dirty.mark_ui_panel(panel_dirty_rect);
-            }
-        }
 
         // ステータス更新 — HtmlPanelEngine 化されたため、毎フレーム
         // status_panel.update() を呼んで snapshot を engine に流す（差分なら no-op）。

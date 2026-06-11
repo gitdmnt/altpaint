@@ -14,7 +14,7 @@ use std::path::Path;
 
 use app_core::{Command, Document};
 use panel_api::{HostAction, PanelEvent, PanelPlugin, ServiceRequest};
-use panel_html_experiment::{
+use panel_html::{
     ActionDescriptor, HtmlPanelEngine, blitz_dom::LocalName, blitz_dom::node::NodeData,
     parse_data_action,
 };

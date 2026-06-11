@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use thiserror::Error;
-use workspace_persistence::{PluginConfigs, WorkspaceUiState};
+use app_core::{PluginConfigs, WorkspaceUiState};
 
 use crate::project_sqlite::{
     DEFAULT_PROJECT_CHUNK_SIZE, PersistedPanelSnapshot, PersistedPanelSnapshotSummary,

@@ -917,17 +917,4 @@ mod tests {
         }
     }
 
-    fn collect_text(doc: &BaseDocument, node_id: usize, out: &mut String) {
-        let Some(node) = doc.get_node(node_id) else {
-            return;
-        };
-        match &node.data {
-            NodeData::Text(text) => out.push_str(&text.content),
-            _ => {
-                for child_id in &node.children {
-                    collect_text(doc, *child_id, out);
-                }
-            }
-        }
-    }
 }

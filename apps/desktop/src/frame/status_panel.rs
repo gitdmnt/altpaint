@@ -7,7 +7,7 @@
 //! - スケール: 1.0 固定（HiDPI はスコープ外）
 //! - フォント: `system-ui` フォールバック
 
-use panel_html_experiment::{
+use panel_html::{
     vello, wgpu, HtmlPanelEngine, PanelGpuTarget, RenderOutcome,
 };
 
@@ -120,24 +120,14 @@ impl StatusPanel {
     }
 
     /// 直近 render 後の GPU テクスチャ。
+    #[cfg(test)]
     pub(crate) fn gpu_target(&self) -> Option<&PanelGpuTarget> {
         self.engine.gpu_target()
-    }
-
-    /// engine が把握している権威サイズ。
-    #[allow(dead_code)]
-    pub(crate) fn measured_size(&self) -> (u32, u32) {
-        self.engine.measured_size()
     }
 
     #[cfg(test)]
     pub(crate) fn engine_mut(&mut self) -> &mut HtmlPanelEngine {
         &mut self.engine
-    }
-
-    #[cfg(test)]
-    pub(crate) fn last_snapshot(&self) -> Option<&StatusSnapshot> {
-        self.last_snapshot.as_ref()
     }
 }
 
@@ -148,7 +138,7 @@ mod tests {
 
     /// 複数 GPU テストが同時に wgpu Adapter / Device を要求すると Windows 環境で
     /// 不安定になるため、本モジュール内の GPU テストを直列化する。
-    /// (panel-runtime / panel-html-experiment と同じパターン)
+    /// (panel-runtime / panel-html と同じパターン)
     fn gpu_test_lock() -> MutexGuard<'static, ()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| Mutex::new(()))

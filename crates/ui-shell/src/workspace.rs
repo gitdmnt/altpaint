@@ -239,8 +239,6 @@ impl PanelPresentation {
         };
 
         self.workspace_layout.panels.swap(index, target_index);
-        self.mark_all_panel_content_dirty();
-        // 9E-3: panel_layout_dirty 廃止 (CPU bitmap キャッシュ撤去)
         true
     }
 
@@ -274,8 +272,6 @@ impl PanelPresentation {
         {
             self.focused_target = None;
         }
-        self.mark_all_panel_content_dirty();
-        // 9E-3: panel_layout_dirty 廃止 (CPU bitmap キャッシュ撤去)
         true
     }
 

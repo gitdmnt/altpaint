@@ -10,5 +10,4 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 plugin-sdk = { path = "../../plugin-sdk" }
-serde = { workspace = true }
 serde_json = { workspace = true }

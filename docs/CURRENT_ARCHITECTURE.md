@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、2026-06-11 時点の `altpaint` が**コード上で実際にどう分割され、どこに責務が集中しているか**を整理するための現況文書である。
+この文書は、2026-06-12 時点の `altpaint` が**コード上で実際にどう分割され、どこに責務が集中しているか**を整理するための現況文書である。
 
 この文書は理想図ではない。現状の事実をまとめる。
 
@@ -22,13 +22,13 @@
 3. `panel-runtime::PanelRuntime`
    - panel registry / `BuiltinPanelPlugin`（HTML+CSS+Wasm）/ host snapshot sync / panel config / hit 収集の中心
 4. `ui-shell::PanelPresentation`
-   - panel workspace layout / focus / hit-test / panel surface の中心
+   - panel workspace layout / focus / hit-test の中心
 
-描画は Phase 8〜9 で GPU 化が完了している。キャンバスは `gpu-canvas` の compute shader、装飾・overlay は `wgpu_canvas.rs` の専用 quad パイプライン、パネルとステータスバーは `panel-html-experiment::HtmlPanelEngine`（Blitz + vello）による GPU 直描画で、CPU ラスタライザ経路は存在しない。
+描画は Phase 8〜9 で GPU 化が完了している。キャンバスは `gpu-canvas` の compute shader、装飾・overlay は `wgpu_canvas.rs` の専用 quad パイプライン、パネルとステータスバーは `panel-html::HtmlPanelEngine`（Blitz + vello）による GPU 直描画で、CPU ラスタライザ経路は存在しない。
 
 パネルは Phase 10〜13 で `.altp-panel` DSL を撤去し、`crates/builtin-panels/<name>/`（`panel.html` + `panel.css` + `panel.meta.json` + Rust→Wasm）の HTML 経路に全 12 パネルが統一されている。`crates/render` / `crates/panel-dsl` は物理削除済みで存在しない。
 
-workspace は 29 メンバー（ライブラリ 16、ビルトインパネル 12、デスクトップアプリ 1）。
+workspace は 28 メンバー（ライブラリ 15、ビルトインパネル 12、デスクトップアプリ 1）。
 
 ## 現在のプロジェクト構造と責務
 
@@ -91,6 +91,7 @@ workspace は 29 メンバー（ライブラリ 16、ビルトインパネル 12
 - `CanvasViewTransform`
 - `PenPreset` / `ToolDefinition`
 - `WorkspaceLayout`
+- `WorkspaceUiState` / `PluginConfigs`（project 保存と session 保存で共有する UI 永続化 DTO。旧 `workspace-persistence` クレートから `src/workspace.rs` へ統合）
 - `BitmapEdit` / `PaintInput` / compositor などの共有 paint primitive
 
 主なモジュール:
@@ -106,7 +107,7 @@ workspace は 29 メンバー（ライブラリ 16、ビルトインパネル 12
 
 補足:
 
-- workspace ローカル依存を持たない最下層クレート。`winit` / `wgpu` / `wasmtime` 非依存。
+- workspace ローカル依存を持たない最下層クレート。`winit` / `wgpu` / `wasmtime` 非依存。外部依存は `serde` / `serde_json` / `thiserror`（`serde_json` は `PluginConfigs` の統合に伴い追加）。
 - `Document` が tool catalog や pen runtime state を広く持つ状態は継続している。
 
 ### 3. `crates/canvas`
@@ -134,7 +135,6 @@ workspace は 29 メンバー（ライブラリ 16、ビルトインパネル 12
 - `src/gesture.rs`
 - `src/render_bridge.rs`
 - `src/plugins/builtin_bitmap.rs`
-- `src/edit_record.rs`
 - `src/ops/`（stamp / stroke / flood_fill / lasso_fill / composite / text）
 - `src/tests/`
 
@@ -171,7 +171,7 @@ Phase 8 で新設された GPU キャンバスペイント層。wgpu compute sha
 
 純データ DTO 専用の描画計画ライブラリ。依存は `app-core` のみで、`wgpu` / `panel-api` 非依存。
 
-- `CanvasScene` / `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan`
+- `CanvasScene` / `FramePlan` / `CanvasPlan` / `OverlayPlan`
 - `PixelRect` / `TextureQuad` / `LayerGroup` / `LayerGroupDirtyPlan`
 - `CanvasOverlayState` / `PanelNavigatorOverlay` / `PanelNavigatorEntry`
 - canvas quad / UV / dirty rect 写像、画面座標 <-> canvas 座標変換
@@ -180,7 +180,7 @@ Phase 8 で新設された GPU キャンバスペイント層。wgpu compute sha
 主なモジュール:
 
 - `src/frame_plan.rs` / `src/canvas_plan.rs` / `src/canvas_scene.rs`
-- `src/overlay_plan.rs` / `src/panel_plan.rs`
+- `src/overlay_plan.rs`
 - `src/dirty.rs` / `src/brush_preview.rs` / `src/layer_group.rs`
 - `src/test_support.rs` / `src/tests/`
 
@@ -212,12 +212,12 @@ Phase 8 で新設された GPU キャンバスペイント層。wgpu compute sha
 
 補足:
 
-- 依存は `app-core` / `panel-api` / `panel-schema` / `plugin-host` / `panel-html-experiment`。
+- 依存は `app-core` / `panel-api` / `panel-schema` / `plugin-host` / `panel-html`。
 - DSL 時代の `dsl_loader.rs` / `dsl_panel.rs` / `dsl_to_html.rs` は Phase 10〜12 で削除済み。
 
-### 7. `crates/panel-html-experiment`
+### 7. `crates/panel-html`
 
-HTML パネル描画エンジン。名前は experiment のままだが、Phase 9E 以降パネル描画の唯一の経路である。
+HTML パネル描画エンジン（旧名 `panel-html-experiment`、依存最小化リアーキテクトでリネーム）。Phase 9E 以降パネル描画の唯一の経路である。
 
 - `HtmlPanelEngine`（Blitz による HTML/CSS パース・レイアウト、vello による GPU 直描画）
 - `resolve_action_rects`（GPU 非依存のレイアウト解決と hit 矩形収集 — Phase 13）
@@ -233,23 +233,20 @@ HTML パネル描画エンジン。名前は experiment のままだが、Phase 
 
 補足:
 
-- workspace ローカル依存なし。外部依存は `blitz-dom` / `blitz-html` / `blitz-paint` / `blitz-traits`、`taffy`、`anyrender` / `anyrender_vello`、`vello`、`wgpu`、`keyboard-types`。
+- workspace ローカル依存なし。外部依存は `blitz-dom` / `blitz-html` / `blitz-paint` / `blitz-traits`、`taffy`、`anyrender_vello`、`vello`、`wgpu`。
 
 ### 8. `crates/ui-shell`
 
 現在の panel presentation 層であり、次を担う。
 
 - workspace layout 管理（4 隅アンカー基準の panel 配置、move / visibility / resize）
-- focus 管理（`focused_target` / panel フォーカス巡回）
+- focus 管理（`focused_target` / panel フォーカス巡回、`focus_panel_node(panel_id, node_id)` / `focus_next()` / `focus_previous()`）
 - HTML panel hit-test（`html_panel_hit_at` / `panel_resize_hit_at` / move handle）
-- panel surface の構築（`render_panel_surface`）
-- scroll offset 管理
+- 登録済みパネル ID と workspace layout の整合（`reconcile_panels(panel_ids: Vec<&'static str>)` — desktop 側が `panel_runtime.panel_static_ids()` を渡す）
 
 主なモジュール:
 
-- `src/lib.rs`
-- `src/presentation.rs`（`PanelPresentation` / `PanelSurface` / `PresentationEventResult`）
-- `src/surface_render.rs`
+- `src/lib.rs`（`PanelPresentation`、hit テーブル、リサイズハンドル判定）
 - `src/workspace.rs`
 - `src/focus.rs`
 - `src/tests.rs`
@@ -257,7 +254,8 @@ HTML パネル描画エンジン。名前は experiment のままだが、Phase 
 補足:
 
 - DSL 時代の `tree_query.rs` と dropdown / text_input 走査・`TextInputEditorState`・winit IME 編集経路は Phase 12 で削除済み（HTML パネル内部完結に統一）。
-- 依存は `app-core` / `panel-api` / `panel-runtime` / `render-types`。
+- 9E 時代の互換スタブ（`PanelSurface` / `render_panel_surface` / scroll 系 no-op / `handle_panel_event` / `PresentationEventResult` 等）は依存最小化リアーキテクトで削除済み。
+- 依存は `app-core` / `panel-api` / `render-types` のみ（`panel-runtime` 非依存）。
 
 ### 9. `crates/panel-api`
 
@@ -350,13 +348,6 @@ desktop 固有 I/O と補助機能を担う。
 - canvas template 読込（`templates.rs`）
 - workspace preset catalog の読込/保存（`workspace_presets.rs`）
 
-### 16. `crates/workspace-persistence`
-
-project 保存と session 保存で共有する UI 永続化 DTO を持つ（`src/lib.rs` 単一ファイル）。
-
-- `WorkspaceUiState`（`workspace_layout` + `plugin_configs`）
-- `PluginConfigs`（`BTreeMap<String, Value>`）
-
 ## 現在の runtime flow
 
 ### 1. 起動
@@ -401,7 +392,7 @@ project 保存と session 保存で共有する UI 永続化 DTO を持つ（`sr
 - session save/load と desktop path 管理は `io_state.rs` 経由で `desktop-support`
 - workspace preset は `desktop-support::workspace_presets` + `services/workspace_io.rs`
 - panel persistent config は `panel-runtime::config`
-- 共通 UI 永続化 DTO は `workspace-persistence`
+- 共通 UI 永続化 DTO（`WorkspaceUiState` / `PluginConfigs`）は `app-core::workspace`
 - orchestration の中心は依然として `DesktopApp`
 
 ## 現在の集中責務
@@ -462,21 +453,20 @@ project 保存と session 保存で共有する UI 永続化 DTO を持つ（`sr
 現在は次のように分担する。
 
 - `PanelRuntime`: panel registry、`BuiltinPanelPlugin`（HTML/Wasm runtime）、host snapshot sync、persistent config、GPU frame、hit 収集
-- `PanelPresentation`: workspace layout、focus、hit-test 結果の保持、panel surface 生成
+- `PanelPresentation`: workspace layout、focus、hit-test 結果の保持
 
 集中箇所（ファイル単位）:
 
 - `crates/panel-runtime/src/registry.rs`: registry、dirty panel sync、event dispatch、`collect_panel_hits`、GPU frame 管理
 - `crates/panel-runtime/src/builtin_plugin.rs`: `HtmlPanelEngine` + Wasm bridge、keyboard 転送、state patch 適用
 - `crates/ui-shell/src/workspace.rs`: workspace layout、panel move / visibility / resize
-- `crates/ui-shell/src/presentation.rs`: hit-test、focus、panel surface
+- `crates/ui-shell/src/lib.rs`: `PanelPresentation`、hit-test、focus
 
 ## 今後の境界
 
 ### 命名と実態のズレ
 
 - `ui-shell`: 名前は shell だが、実態は panel presentation crate である
-- `panel-html-experiment`: 名前は experiment だが、パネル描画の唯一の正式経路である
 - `plugin-host`: 一般 plugin host ではなく panel Wasm runtime 専用である
 - `DesktopApp`: 単なる app state ではなく desktop host orchestration service に近い
 
@@ -498,8 +488,8 @@ project 保存と session 保存で共有する UI 永続化 DTO を持つ（`sr
 
 - `gpu-canvas`（GPU ペイント実装）
 - `render-types`（描画計画 DTO）
-- `panel-html-experiment`（HTML パネルエンジン）
+- `panel-html`（HTML パネルエンジン）
 - `plugin-host` / `plugin-sdk`（Wasm 境界）
-- `storage` / `desktop-support` / `workspace-persistence`（永続化）
+- `storage` / `desktop-support`（永続化）
 
 へ切り出しが進んだ状態である。今後のリファクタリングでは、`execute_paint_input` の GPU dispatch 分離と tool 実行境界の確立が主なギャップになる。

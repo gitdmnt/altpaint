@@ -1,35 +1,24 @@
 //! `ui-shell` は panel presentation と workspace 上の panel UI 制御を提供する。
 
 mod focus;
-mod presentation;
-mod surface_render;
 mod workspace;
 
 #[cfg(test)]
 mod tests;
 
-// 9E-4: render::text 経路は撤去。ui-shell は GPU 直描画 (HtmlPanelEngine) に統一済み。
-
 use app_core::{WorkspaceLayout, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState};
-use panel_api::{HostAction, PanelEvent};
-use panel_runtime::PanelRuntime;
-pub use presentation::PanelSurface;
-use presentation::FocusTarget;
+use focus::FocusTarget;
 use std::collections::BTreeMap;
-use surface_render::PANEL_SCROLL_PIXELS_PER_LINE;
 
 /// パネルの presentation 状態を保持する。
 ///
-/// Phase 9E-3 で CPU bitmap キャッシュ群 (`panel_content_cache` / `panel_bitmap_cache` /
-/// `panel_measured_size_cache` / `panel_content_dirty` 系フラグ) は撤去された。
-/// すべての DSL/HTML パネルは GPU 直描画 (`PanelRuntime::render_panels`) に移行した。
+/// すべてのパネルは GPU 直描画 (`PanelRuntime::render_panels`) で提示され、
+/// ui-shell は workspace layout・focus・hit table の管理だけを担う。
 pub struct PanelPresentation {
     /// panel 並び順と表示状態。
     workspace_layout: WorkspaceLayout,
     /// 直近描画で使った実効パネル矩形。
     rendered_panel_rects: BTreeMap<String, render_types::PixelRect>,
-    /// 現在の縦スクロール量。
-    panel_scroll_offset: usize,
     /// 現在 focus 中の node。
     focused_target: Option<FocusTarget>,
     /// HTML パネル (GPU 直描画) の hit 情報。`update_html_panel_hits` で毎フレーム更新する。
@@ -62,7 +51,6 @@ impl PanelPresentation {
         Self {
             workspace_layout: WorkspaceLayout::default(),
             rendered_panel_rects: BTreeMap::new(),
-            panel_scroll_offset: 0,
             focused_target: None,
             html_panel_hits: BTreeMap::new(),
             html_panel_move_handles: BTreeMap::new(),
@@ -220,23 +208,13 @@ impl PanelPresentation {
     pub fn replace_workspace_layout(&mut self, workspace_layout: WorkspaceLayout) {
         self.workspace_layout = workspace_layout;
         self.ensure_workspace_manager_entry();
-        // 9E-3: パネル CPU bitmap キャッシュは廃止。GPU 経路は次フレームの
-        // `render_panels` 呼び出しで自然に再描画されるため dirty フラグ管理不要。
     }
 
-    /// 既存データを走査して reconcile runtime panels を組み立てる。
-    pub fn reconcile_runtime_panels(&mut self, runtime: &PanelRuntime) {
-        let panel_ids = runtime.panel_static_ids();
-        self.reconcile_workspace_layout(panel_ids);
-    }
-
-    /// Runtime panels 差分 を更新する。
+    /// 登録済みパネル ID 一覧と workspace layout を整合させる。
     ///
-    /// 9E-3 以降は no-op。Engine 内部の dirty (render_dirty) が GPU 経路の再描画を判定する。
-    pub fn mark_runtime_panels_dirty(
-        &mut self,
-        _changed_panel_ids: &std::collections::BTreeSet<String>,
-    ) {
+    /// 未知のパネルにはエントリと既定位置を補い、不可視パネルから focus を外す。
+    pub fn reconcile_panels(&mut self, panel_ids: Vec<&'static str>) {
+        self.reconcile_workspace_layout(panel_ids);
     }
 
     /// 既存データを走査して focused target を組み立てる。
@@ -247,75 +225,6 @@ impl PanelPresentation {
             .as_ref()
             .map(|target| (target.panel_id.as_str(), target.node_id.as_str()))
     }
-
-    /// 9E-3 以降は CPU rasterize が無いため常に 0。プロファイラ互換のため残置。
-    pub fn last_panel_rasterized_panels(&self) -> usize {
-        0
-    }
-
-    /// 9E-3 以降は CPU compose が無いため常に 0。
-    pub fn last_panel_composited_panels(&self) -> usize {
-        0
-    }
-
-    /// 9E-3 以降は CPU rasterize が無いため常に 0。
-    pub fn last_panel_raster_duration_ms(&self) -> f64 {
-        0.0
-    }
-
-    /// 9E-3 以降は CPU compose が無いため常に 0。
-    pub fn last_panel_compose_duration_ms(&self) -> f64 {
-        0.0
-    }
-
-    /// 9E-3 以降は CPU 合成 dirty rect が存在しない。常に `None`。
-    pub fn last_panel_surface_dirty_rect(&self) -> Option<render_types::PixelRect> {
-        None
-    }
-
-    /// パネル スクロール オフセット を計算して返す。
-    pub fn panel_scroll_offset(&self) -> usize {
-        self.panel_scroll_offset
-    }
-
-    /// スクロール panels に必要な描画内容を組み立てる。
-    pub fn scroll_panels(&mut self, delta_lines: i32, viewport_height: usize) -> bool {
-        let delta_pixels = delta_lines.saturating_mul(PANEL_SCROLL_PIXELS_PER_LINE);
-        let max_offset = self.max_panel_scroll_offset(viewport_height) as i32;
-        let next_offset =
-            (self.panel_scroll_offset as i32 + delta_pixels).clamp(0, max_offset) as usize;
-        if next_offset == self.panel_scroll_offset {
-            return false;
-        }
-        self.panel_scroll_offset = next_offset;
-        true
-    }
-
-    /// 入力や種別に応じて処理を振り分ける。
-    ///
-    /// HTML パネル (Phase 12 完了) のみが残り、tree 走査による dropdown / workspace 特殊分岐は撤去済み。
-    /// 受け取った event は常にランタイムへ転送する。focus は呼び出し側が
-    /// `focus_panel_node` を介して直接設定する。
-    pub fn handle_panel_event(
-        &mut self,
-        runtime: &PanelRuntime,
-        event: &PanelEvent,
-    ) -> PresentationEventResult {
-        if let PanelEvent::Activate { panel_id, node_id } = event {
-            self.focus_panel_node(runtime, panel_id, node_id);
-        }
-        PresentationEventResult {
-            forward_to_runtime: true,
-            actions: Vec::new(),
-            changed: false,
-        }
-    }
-
-    /// 9E-3 以降は no-op (CPU bitmap キャッシュ廃止)。focus.rs 等の既存呼び出し互換のため残置。
-    pub(crate) fn mark_all_panel_content_dirty(&mut self) {}
-
-    /// 9E-3 以降は no-op (CPU bitmap キャッシュ廃止)。focus.rs 等の既存呼び出し互換のため残置。
-    pub(crate) fn mark_panel_content_dirty(&mut self, _panel_id: &str) {}
 }
 
 impl Default for PanelPresentation {
@@ -323,13 +232,6 @@ impl Default for PanelPresentation {
     fn default() -> Self {
         Self::new()
     }
-}
-
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct PresentationEventResult {
-    pub forward_to_runtime: bool,
-    pub actions: Vec<HostAction>,
-    pub changed: bool,
 }
 
 /// Phase 11: リサイズハンドル hit zone の厚み (px)。

@@ -1,4 +1,4 @@
-//! `panel-html-experiment` — Blitz HTML/CSS パネル描画（GPU 直描画版）。
+//! `panel-html` — Blitz HTML/CSS パネル描画（GPU 直描画版）。
 //!
 //! altpaint の既存パネル UI（`.altp-panel` DSL + Wasm）を置き換えずに、HTML/CSS で 1 パネルを
 //! GPU 直描画する。`vello::Renderer::render_to_texture` で altpaint 所有の `wgpu::Texture` に
