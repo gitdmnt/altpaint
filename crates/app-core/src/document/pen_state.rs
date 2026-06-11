@@ -71,12 +71,6 @@ impl Document {
         }
     }
 
-    /// アクティブな 描画 サイズ を返す。
-    #[allow(dead_code)]
-    pub(super) fn active_draw_size(&self) -> u32 {
-        self.active_draw_size_with_pressure(1.0)
-    }
-
     /// アクティブな 描画 サイズ with pressure を返す。
     pub(super) fn active_draw_size_with_pressure(&self, pressure: f32) -> u32 {
         let clamped_pressure = pressure.clamp(0.0, 1.0);

@@ -47,7 +47,7 @@ fn eraser_uses_runtime_composite_to_clear_pixels() {
             pressure: 1.0,
         },
     );
-    let _ = document.apply_command(&Command::SetActiveTool {
+    document.apply_command(&Command::SetActiveTool {
         tool: ToolKind::Eraser,
     });
     let _ = apply_input(

@@ -90,7 +90,7 @@ impl DesktopApp {
     /// 必要に応じて dirty 状態も更新します。
     pub(super) fn execute_document_command(&mut self, command: Command) -> bool {
         let previous_transform = self.document.view_transform;
-        let _dirty = self.document.apply_command(&command);
+        self.document.apply_command(&command);
         match command {
             Command::SetActiveTool { .. }
             | Command::SelectTool { .. }

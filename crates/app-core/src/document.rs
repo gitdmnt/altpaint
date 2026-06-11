@@ -1296,55 +1296,47 @@ impl Document {
         self.active_panel_index = self.active_panel_index();
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
+    /// コマンドをドキュメント状態へ適用する。
     ///
-    /// 値を生成できない場合は `None` を返します。
-    pub fn apply_command(&mut self, command: &Command) -> Option<crate::CanvasDirtyRect> {
+    /// I/O を伴うコマンド (保存・読込・preset 入出力・undo/redo) はホスト側で
+    /// 処理されるため、ここでは何もしない。
+    pub fn apply_command(&mut self, command: &Command) {
         match command {
-            Command::Noop => None,
+            Command::Noop => {}
             Command::SelectTool { tool_id } => {
                 let _ = self.set_active_tool_by_id(tool_id);
-                None
             }
             Command::SelectChildTool { child_id } => {
                 if let Some(parent) = self.active_tool_definition()
-                    && parent.children.iter().any(|c| c.id == *child_id) {
-                        self.active_child_tool_id = child_id.clone();
-                    }
-                None
+                    && parent.children.iter().any(|c| c.id == *child_id)
+                {
+                    self.active_child_tool_id = child_id.clone();
+                }
             }
             Command::SetActiveTool { tool } => {
                 self.set_active_tool(*tool);
-                None
             }
             Command::SetActivePenSize { size } => {
                 self.set_active_pen_size(*size);
-                None
             }
             Command::SetActivePenPressureEnabled { enabled } => {
                 self.set_active_pen_pressure_enabled(*enabled);
-                None
             }
             Command::SetActivePenAntialias { enabled } => {
                 self.set_active_pen_antialias(*enabled);
-                None
             }
             Command::SetActivePenStabilization { amount } => {
                 self.set_active_pen_stabilization(*amount);
-                None
             }
             Command::SelectNextPenPreset => {
                 self.select_next_pen_preset();
-                None
             }
             Command::SelectPreviousPenPreset => {
                 self.select_previous_pen_preset();
-                None
             }
-            Command::ReloadPenPresets => None,
+            Command::ReloadPenPresets => {}
             Command::SetActiveColor { color } => {
                 self.set_active_color(*color);
-                None
             }
             Command::CreatePanel {
                 x,
@@ -1358,121 +1350,94 @@ impl Document {
                     width: *width,
                     height: *height,
                 });
-                None
             }
             Command::SetViewZoom { zoom } => {
                 self.view_transform.zoom = zoom.clamp(0.25, 16.0);
-                None
             }
             Command::PanView { delta_x, delta_y } => {
                 self.view_transform.pan_x += delta_x;
                 self.view_transform.pan_y += delta_y;
-                None
             }
             Command::SetViewPan { pan_x, pan_y } => {
                 self.view_transform.pan_x = *pan_x;
                 self.view_transform.pan_y = *pan_y;
-                None
             }
             Command::RotateView { quarter_turns } => {
                 self.view_transform.rotation_degrees = (self.view_transform.rotation_degrees
                     + (*quarter_turns as f32 * 90.0))
                     .rem_euclid(360.0);
-                None
             }
             Command::SetViewRotation { rotation_degrees } => {
                 self.view_transform.rotation_degrees = rotation_degrees.rem_euclid(360.0);
-                None
             }
             Command::FlipViewHorizontally => {
                 self.view_transform.flip_x = !self.view_transform.flip_x;
-                None
             }
             Command::FlipViewVertically => {
                 self.view_transform.flip_y = !self.view_transform.flip_y;
-                None
             }
             Command::ResetView => {
                 self.view_transform = CanvasViewTransform::default();
-                None
             }
             Command::AddRasterLayer => {
                 self.add_raster_layer();
-                None
             }
             Command::RemoveActiveLayer => {
                 self.remove_active_layer();
-                None
             }
             Command::SelectLayer { index } => {
                 self.select_layer(*index);
-                None
             }
             Command::RenameActiveLayer { name } => {
                 self.rename_active_layer(name);
-                None
             }
             Command::MoveLayer {
                 from_index,
                 to_index,
             } => {
                 self.move_layer(*from_index, *to_index);
-                None
             }
             Command::SelectNextLayer => {
                 self.select_next_layer();
-                None
             }
             Command::CycleActiveLayerBlendMode => {
                 self.cycle_active_layer_blend_mode();
-                None
             }
             Command::SetActiveLayerBlendMode { mode } => {
                 self.set_active_layer_blend_mode(mode.clone());
-                None
             }
             Command::ToggleActiveLayerVisibility => {
                 self.toggle_active_layer_visibility();
-                None
             }
             Command::ToggleActiveLayerMask => {
                 self.toggle_active_layer_mask();
-                None
             }
             Command::AddPanel => {
                 self.add_panel();
-                None
             }
             Command::RemoveActivePanel => {
                 self.remove_active_panel();
-                None
             }
             Command::SelectPanel { index } => {
                 self.select_panel(*index);
                 self.focus_active_panel_view();
-                None
             }
             Command::SelectNextPanel => {
                 self.select_next_panel();
                 self.focus_active_panel_view();
-                None
             }
             Command::SelectPreviousPanel => {
                 self.select_previous_panel();
                 self.focus_active_panel_view();
-                None
             }
             Command::FocusActivePanel => {
                 self.focus_active_panel_view();
-                None
             }
             Command::NewDocument => {
                 *self = Document::default();
-                None
             }
             Command::NewDocumentSized { width, height } => {
                 *self = Document::new(*width, *height);
-                None
             }
             Command::SaveProject
             | Command::SaveProjectAs
@@ -1487,7 +1452,7 @@ impl Document {
             | Command::ImportPenPresets
             | Command::ImportPenPresetsFromPath { .. }
             | Command::Undo
-            | Command::Redo => None,
+            | Command::Redo => {}
         }
     }
 }
