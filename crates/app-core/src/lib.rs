@@ -6,7 +6,6 @@
 pub mod command;
 pub mod coordinates;
 pub mod document;
-pub mod error;
 pub mod history;
 pub mod paint_params;
 pub mod painting;
@@ -24,7 +23,6 @@ pub use document::{
     PanelBounds, PanelId, PenPreset, PenRuntimeEngine, PenTipBitmap, RasterLayer, ToolDefinition,
     ToolKind, ToolSettingControl, ToolSettingDefinition, Work, WorkId,
 };
-pub use error::CoreError;
 pub use history::{CommandHistory, DEFAULT_HISTORY_CAPACITY, HistoryEntry, OpaqueGpuData};
 pub use painting::{
     BitmapComposite, BitmapCompositor, BitmapEdit, PaintInput, PaintPlugin, PaintPluginContext,
