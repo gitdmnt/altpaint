@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use panel_api::{ServiceRequest, services::names};
+use panel_runtime::{ServiceRequest, services::names};
 
 use super::DesktopApp;
 

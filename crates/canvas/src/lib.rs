@@ -6,8 +6,6 @@ mod gesture;
 mod input_state;
 pub mod ops;
 pub mod plugins;
-mod registry;
-mod render_bridge;
 mod runtime;
 #[cfg(test)]
 mod tests;
@@ -15,10 +13,9 @@ mod view_mapping;
 
 pub use context::ResolvedPaintContext;
 pub use context_builder::{build_paint_context, resolved_size_for_input};
-pub use ops::compute_stamp_positions;
 pub use gesture::{CanvasGestureUpdate, CanvasPointerAction, advance_pointer_gesture};
-pub use input_state::CanvasInputState;
-pub use registry::{PaintPluginRegistry, STANDARD_BITMAP_PLUGIN_ID, default_paint_plugins};
-pub use render_bridge::panel_creation_preview_bounds;
+pub use input_state::{CanvasInputState, panel_creation_preview_bounds};
+pub use ops::compute_stamp_positions;
+pub use plugins::{PaintPluginRegistry, STANDARD_BITMAP_PLUGIN_ID, default_paint_plugins};
 pub use runtime::CanvasRuntime;
 pub use view_mapping::{CanvasPointerEvent, map_view_to_canvas_with_transform};

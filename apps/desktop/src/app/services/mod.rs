@@ -11,7 +11,7 @@ mod workspace_layout;
 
 use app_core::{Command, Document, HistoryEntry};
 use desktop_support::DEFAULT_PROJECT_PATH;
-use panel_api::{ServiceRequest, services::names};
+use panel_runtime::{ServiceRequest, services::names};
 use app_core::WorkspaceUiState;
 
 use super::DesktopApp;
@@ -91,7 +91,7 @@ impl DesktopApp {
                 ) {
                     self.append_canvas_dirty_rect(page_dirty);
                     // GPU パス: dirty 領域だけを GPU へ同期（全レイヤー転送は不要）
-                    if let Some(pool) = self.gpu_canvas_pool.as_ref()
+                    if let Some(pool) = self.gpu_canvas_pool()
                         && let Some(region) =
                             self.document
                                 .capture_panel_layer_region(panel_id, layer_index, page_dirty)
@@ -99,10 +99,7 @@ impl DesktopApp {
                         pool.upload_region(
                             &panel_id.0.to_string(),
                             layer_index,
-                            page_dirty.x as u32,
-                            page_dirty.y as u32,
-                            page_dirty.width as u32,
-                            page_dirty.height as u32,
+                            page_dirty,
                             &region.pixels,
                         );
                     }
@@ -117,14 +114,13 @@ impl DesktopApp {
                 gpu_data,
             }) => {
                 if let (Some(pool), Some(snap)) = (
-                    self.gpu_canvas_pool.as_ref(),
+                    self.gpu_canvas_pool(),
                     (*gpu_data.0).downcast_ref::<project_io::GpuPatchSnapshot>(),
                 ) {
                     pool.restore_region(
                         &panel_id.0.to_string(),
                         layer_index,
-                        dirty.x as u32,
-                        dirty.y as u32,
+                        app_core::PanelLocalPoint::new(dirty.x, dirty.y),
                         &snap.before,
                     );
                     self.append_canvas_dirty_rect(dirty);
@@ -157,7 +153,7 @@ impl DesktopApp {
                     &after,
                 ) {
                     self.append_canvas_dirty_rect(page_dirty);
-                    if let Some(pool) = self.gpu_canvas_pool.as_ref()
+                    if let Some(pool) = self.gpu_canvas_pool()
                         && let Some(region) =
                             self.document
                                 .capture_panel_layer_region(panel_id, layer_index, page_dirty)
@@ -165,10 +161,7 @@ impl DesktopApp {
                         pool.upload_region(
                             &panel_id.0.to_string(),
                             layer_index,
-                            page_dirty.x as u32,
-                            page_dirty.y as u32,
-                            page_dirty.width as u32,
-                            page_dirty.height as u32,
+                            page_dirty,
                             &region.pixels,
                         );
                     }
@@ -183,14 +176,13 @@ impl DesktopApp {
                 gpu_data,
             }) => {
                 if let (Some(pool), Some(snap)) = (
-                    self.gpu_canvas_pool.as_ref(),
+                    self.gpu_canvas_pool(),
                     (*gpu_data.0).downcast_ref::<project_io::GpuPatchSnapshot>(),
                 ) {
                     pool.restore_region(
                         &panel_id.0.to_string(),
                         layer_index,
-                        dirty.x as u32,
-                        dirty.y as u32,
+                        app_core::PanelLocalPoint::new(dirty.x, dirty.y),
                         &snap.after,
                     );
                     self.append_canvas_dirty_rect(dirty);

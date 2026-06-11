@@ -7,9 +7,9 @@
 //! - スケール: 1.0 固定（HiDPI はスコープ外）
 //! - フォント: `system-ui` フォールバック
 
-use panel_html::{
-    vello, wgpu, HtmlPanelEngine, PanelGpuTarget, RenderOutcome,
-};
+use panel_runtime::html::{HtmlPanelEngine, RenderOutcome, vello, wgpu};
+#[cfg(test)]
+use panel_runtime::html::PanelGpuTarget;
 
 /// ステータスバーが表示する集約スナップショット。
 #[derive(Debug, Clone, PartialEq, Eq)]

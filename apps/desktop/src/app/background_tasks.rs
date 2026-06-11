@@ -46,7 +46,7 @@ impl DesktopApp {
             save_project_to_path(&path, &document, &workspace_layout, &plugin_configs)
                 .map_err(|error| error.to_string())
         });
-        self.io_state.pending_jobs.push(BackgroundJob {
+        self.background_jobs.push(BackgroundJob {
             kind: JobKind::Save,
             handle,
         });
@@ -62,7 +62,7 @@ impl DesktopApp {
             storage::export_active_panel_as_png(&document, &path)
                 .map_err(|error| error.to_string())
         });
-        self.io_state.pending_jobs.push(BackgroundJob {
+        self.background_jobs.push(BackgroundJob {
             kind: JobKind::Export { path_display },
             handle,
         });
@@ -77,7 +77,7 @@ impl DesktopApp {
         let mut remaining = Vec::new();
         let mut completed_any = false;
 
-        for job in self.io_state.pending_jobs.drain(..) {
+        for job in self.background_jobs.drain(..) {
             if job.handle.is_finished() {
                 completed_any = true;
                 let label = job.label();
@@ -103,14 +103,14 @@ impl DesktopApp {
         if completed_any {
             self.mark_status_dirty();
         }
-        self.io_state.pending_jobs = remaining;
+        self.background_jobs = remaining;
     }
 
     /// テスト用: 全ジョブが完了するまで同期的に待機する。
     #[cfg(test)]
     pub(crate) fn wait_for_pending_save_tasks(&mut self) {
         let mut remaining = Vec::new();
-        std::mem::swap(&mut remaining, &mut self.io_state.pending_jobs);
+        std::mem::swap(&mut remaining, &mut self.background_jobs);
         for job in remaining {
             match job.handle.join() {
                 Ok(Ok(())) => {}
@@ -123,6 +123,6 @@ impl DesktopApp {
     /// テスト用: 現在の pending ジョブ件数を返す。
     #[cfg(test)]
     pub(crate) fn pending_save_task_count(&self) -> usize {
-        self.io_state.pending_jobs.len()
+        self.background_jobs.len()
     }
 }

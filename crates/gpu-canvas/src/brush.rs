@@ -6,9 +6,19 @@
 use std::sync::Arc;
 
 use app_core::paint_params::MAX_STAMP_STEPS;
-use app_core::ToolKind;
+use app_core::{PanelLocalPoint, ToolKind};
 
 use crate::gpu::GpuLayerTexture;
+
+/// 1 ストローク分のブラシ描画パラメータ。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BrushStrokeParams {
+    pub color_rgba: [f32; 4],
+    pub radius: f32,
+    pub opacity: f32,
+    pub antialias: bool,
+    pub tool_kind: ToolKind,
+}
 
 /// BrushStrokeParams uniform buffer の固定バイトサイズ（48 bytes）。
 const BRUSH_STROKE_PARAMS_SIZE: u64 = 48;
@@ -77,20 +87,16 @@ impl GpuBrushDispatch {
         }
     }
 
-    /// 指定スタンプ位置群をレイヤーテクスチャへ描画する。
+    /// 指定スタンプ位置群（コマローカル座標）をレイヤーテクスチャへ描画する。
     ///
-    /// - `tool_kind == ToolKind::Eraser` なら消去シェーダーを使用する。
-    /// - `positions` は `canvas::compute_stamp_positions` の戻り値を `(x, y)` に変換して渡す。
+    /// - `params.tool_kind == ToolKind::Eraser` なら消去シェーダーを使用する。
+    /// - `positions` は `canvas::compute_stamp_positions` の戻り値をそのまま渡す。
     /// - `positions` が空の場合は何もしない。
     pub fn dispatch_stroke(
         &self,
         layer_texture: &GpuLayerTexture,
-        positions: &[(f32, f32)],
-        color_rgba: [f32; 4],
-        radius: f32,
-        opacity: f32,
-        antialias: bool,
-        tool_kind: ToolKind,
+        positions: &[PanelLocalPoint],
+        params: &BrushStrokeParams,
     ) {
         let stamp_count = positions.len().min(MAX_STAMP_STEPS + 1) as u32;
         if stamp_count == 0 {
@@ -98,10 +104,10 @@ impl GpuBrushDispatch {
         }
 
         let params_bytes = build_stroke_params_bytes(
-            color_rgba,
-            radius,
-            opacity,
-            antialias,
+            params.color_rgba,
+            params.radius,
+            params.opacity,
+            params.antialias,
             stamp_count,
             layer_texture.width,
             layer_texture.height,
@@ -150,13 +156,13 @@ impl GpuBrushDispatch {
             ],
         });
 
-        let pipeline = match tool_kind {
+        let pipeline = match params.tool_kind {
             ToolKind::Eraser => &self.erase_pipeline,
             _ => &self.stroke_pipeline,
         };
 
-        let wg_x = (layer_texture.width + 7) / 8;
-        let wg_y = (layer_texture.height + 7) / 8;
+        let wg_x = layer_texture.width.div_ceil(8);
+        let wg_y = layer_texture.height.div_ceil(8);
 
         let mut encoder = self
             .device
@@ -248,15 +254,15 @@ fn build_stroke_params_bytes(
     buf
 }
 
-/// スタンプ位置を `max_count` 個までフラットな f32 LE バイト列へ直列化する。
+/// スタンプ位置（コマローカル座標）を `max_count` 個までフラットな f32 LE バイト列へ直列化する。
 ///
 /// `STAMP_POSITIONS_SIZE` バイトの固定長バッファを返す。
-fn build_positions_bytes(positions: &[(f32, f32)], max_count: usize) -> Vec<u8> {
+fn build_positions_bytes(positions: &[PanelLocalPoint], max_count: usize) -> Vec<u8> {
     let mut buf = vec![0u8; max_count * 8];
-    for (i, &(x, y)) in positions.iter().take(max_count).enumerate() {
+    for (i, point) in positions.iter().take(max_count).enumerate() {
         let offset = i * 8;
-        buf[offset..offset + 4].copy_from_slice(&x.to_le_bytes());
-        buf[offset + 4..offset + 8].copy_from_slice(&y.to_le_bytes());
+        buf[offset..offset + 4].copy_from_slice(&(point.x as f32).to_le_bytes());
+        buf[offset + 4..offset + 8].copy_from_slice(&(point.y as f32).to_le_bytes());
     }
     buf
 }
@@ -292,7 +298,7 @@ mod tests {
 
     #[test]
     fn positions_bytes_layout_is_correct() {
-        let positions = vec![(1.0f32, 2.0f32), (3.0, 4.0)];
+        let positions = vec![PanelLocalPoint::new(1, 2), PanelLocalPoint::new(3, 4)];
         let bytes = build_positions_bytes(&positions, MAX_STAMP_STEPS + 1);
         assert_eq!(bytes.len(), (MAX_STAMP_STEPS + 1) * 8);
         assert_eq!(f32::from_le_bytes(bytes[0..4].try_into().unwrap()), 1.0);

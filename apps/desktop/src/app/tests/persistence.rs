@@ -10,7 +10,7 @@ use desktop_support::{
     DEFAULT_PROJECT_PATH, DesktopProfiler, WorkspacePreset, WorkspacePresetCatalog,
     save_workspace_preset_catalog,
 };
-use panel_api::{HostAction, PanelMoveDirection};
+use panel_runtime::{HostAction, PanelMoveDirection};
 use serde_json::json;
 use std::collections::BTreeMap;
 use storage::{load_project_from_path, save_project_to_path};

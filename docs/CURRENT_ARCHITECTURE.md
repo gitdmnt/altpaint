@@ -28,7 +28,7 @@
 
 パネルは Phase 10〜13 で `.altp-panel` DSL を撤去し、`crates/builtin-panels/<name>/`（`panel.html` + `panel.css` + `panel.meta.json` + Rust→Wasm）の HTML 経路に全 12 パネルが統一されている。`crates/render` / `crates/panel-dsl` は物理削除済みで存在しない。
 
-workspace は 28 メンバー（ライブラリ 15、ビルトインパネル 12、デスクトップアプリ 1）。
+workspace は 27 メンバー（ライブラリ 14、ビルトインパネル 12、デスクトップアプリ 1）。
 
 ## 現在のプロジェクト構造と責務
 
@@ -306,11 +306,11 @@ panel 作者向け authoring surface である。
 - runtime helper（`runtime.rs` / `state.rs` / `builder.rs`）
 - proc-macro の再 export（`plugin-macros`: `#[panel_init]` / `#[panel_handler]` / `#[panel_sync_host]`）
 
-### 13. `crates/builtin-panels`
+### 13. `crates/builtin-panels/`（パネル資産ディレクトリ）
 
-ビルトインパネルのローダと 12 パネル定義の置き場である。
+12 ビルトインパネル定義の置き場である。ローダ (`register_builtin_panels(runtime, assets_root) -> Vec<String>`
+と `BUILTIN_PANELS` 配列) は ADR 017 で `panel-runtime::loader` へ統合され、umbrella crate は削除済み。
 
-- umbrella crate: `register_builtin_panels(runtime, assets_root) -> Vec<String>`（診断）、`BUILTIN_PANELS` 配列（`src/loader.rs`）
 - 各パネルは `crates/builtin-panels/<name>/` に `panel.html`（必須）+ `panel.css`（任意）+ `panel.meta.json`（必須、`default_size` 必須）+ Rust→Wasm 実装（`cdylib` + `rlib`）+ コンパイル済み `builtin_panel_<name>.wasm` を同居させる
 
 workspace member のパネル crate（12 個）:
@@ -321,7 +321,7 @@ workspace member のパネル crate（12 個）:
 
 補足:
 
-- 各パネル crate の依存は `plugin-sdk` のみ。umbrella crate は `panel-runtime` に依存する。
+- 各パネル crate の依存は `plugin-sdk` のみ。
 - Wasm の再ビルドは `scripts/build-ui-wasm.ps1`（または `.sh`）。
 
 ### 14. `crates/storage`

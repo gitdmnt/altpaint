@@ -39,13 +39,13 @@ fn html_panel_move_handle_at_resolves_drag_handle_to_panel_id() {
 
     // ハンドル内
     assert_eq!(
-        presentation.html_panel_move_handle_at(120, 60),
+        presentation.html_panel_move_handle_at(app_core::WindowPoint::new(120, 60)),
         Some("html.test".to_string())
     );
     // ハンドル外 (右下)
-    assert_eq!(presentation.html_panel_move_handle_at(120, 80), None);
+    assert_eq!(presentation.html_panel_move_handle_at(app_core::WindowPoint::new(120, 80)), None);
     // ハンドル外 (上端より上)
-    assert_eq!(presentation.html_panel_move_handle_at(120, 49), None);
+    assert_eq!(presentation.html_panel_move_handle_at(app_core::WindowPoint::new(120, 49)), None);
 }
 
 /// Phase 4: `remove_html_panel_move_handle` で個別削除できる。
@@ -61,10 +61,10 @@ fn remove_html_panel_move_handle_clears_handle() {
             height: 24,
         },
     );
-    assert!(presentation.html_panel_move_handle_at(50, 10).is_some());
+    assert!(presentation.html_panel_move_handle_at(app_core::WindowPoint::new(50, 10)).is_some());
 
     presentation.remove_html_panel_move_handle("html.test");
-    assert!(presentation.html_panel_move_handle_at(50, 10).is_none());
+    assert!(presentation.html_panel_move_handle_at(app_core::WindowPoint::new(50, 10)).is_none());
 }
 
 /// Phase 3: HTML パネル hit table を screen 座標で検索すると `(panel_id, node_id)` が返る。
@@ -100,22 +100,22 @@ fn html_panel_hit_at_resolves_screen_coordinates_to_panel_event() {
     presentation.update_html_panel_hits("html.test", screen_rect, hits);
 
     // panel-relative (10,20) → screen (110, 70)。範囲は (110..170, 70..100)
-    let inside_save = presentation.html_panel_hit_at(120, 80);
+    let inside_save = presentation.html_panel_hit_at(app_core::WindowPoint::new(120, 80));
     assert_eq!(
         inside_save,
         Some(("html.test".to_string(), "save_btn".to_string()))
     );
 
-    let inside_undo = presentation.html_panel_hit_at(190, 85);
+    let inside_undo = presentation.html_panel_hit_at(app_core::WindowPoint::new(190, 85));
     assert_eq!(
         inside_undo,
         Some(("html.test".to_string(), "undo_btn".to_string()))
     );
 
     // パネル矩形外
-    assert_eq!(presentation.html_panel_hit_at(50, 50), None);
+    assert_eq!(presentation.html_panel_hit_at(app_core::WindowPoint::new(50, 50)), None);
     // パネル矩形内だが action 矩形外
-    assert_eq!(presentation.html_panel_hit_at(110, 200), None);
+    assert_eq!(presentation.html_panel_hit_at(app_core::WindowPoint::new(110, 200)), None);
 }
 
 /// Phase 3: `remove_html_panel_hits` で hit 情報を消すと、その後の検索は None。
@@ -140,10 +140,10 @@ fn remove_html_panel_hits_clears_hits_for_panel() {
             },
         )],
     );
-    assert!(presentation.html_panel_hit_at(20, 20).is_some());
+    assert!(presentation.html_panel_hit_at(app_core::WindowPoint::new(20, 20)).is_some());
 
     presentation.remove_html_panel_hits("html.test");
-    assert!(presentation.html_panel_hit_at(20, 20).is_none());
+    assert!(presentation.html_panel_hit_at(app_core::WindowPoint::new(20, 20)).is_none());
 }
 
 /// Phase 2: HTML パネル相当の workspace エントリは `set_panel_visibility` で切り替えられ、

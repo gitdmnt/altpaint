@@ -13,7 +13,7 @@ use desktop_support::{
     DesktopProfiler, WorkspacePreset, WorkspacePresetCatalog, parse_document_size,
     save_workspace_preset_catalog,
 };
-use panel_api::{HostAction, PanelEvent};
+use panel_runtime::{HostAction, PanelEvent};
 use serde_json::json;
 use app_core::WorkspaceUiState;
 
@@ -149,7 +149,7 @@ fn keyboard_panel_focus_can_activate_app_action() {
         app.activate_focused_panel_control(),
         Some(Command::Noop)
     );
-    assert_eq!(app.io_state.pending_jobs.len(), 1);
+    assert_eq!(app.background_jobs.len(), 1);
 }
 
 /// 解析 ドキュメント サイズ accepts common formats が期待どおりに動作することを検証する。

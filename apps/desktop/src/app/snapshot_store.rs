@@ -5,13 +5,11 @@ use app_core::Document;
 /// スナップショットの最大保持件数。
 pub(crate) const MAX_SNAPSHOTS: usize = 20;
 
-/// 名前付きドキュメントスナップショット。
+/// ドキュメントスナップショット 1 件。
 #[derive(Debug, Clone)]
 pub(crate) struct SnapshotEntry {
     /// スナップショットの一意 ID（単調増加の整数文字列）。
     pub(crate) id: String,
-    /// ユーザー定義のラベル。
-    pub(crate) label: String,
     /// 採取時点の Document クローン。
     pub(crate) document: Document,
 }
@@ -27,7 +25,7 @@ impl SnapshotStore {
     /// スナップショットを追加する。
     ///
     /// `MAX_SNAPSHOTS` を超えた場合は最も古いエントリを破棄する。
-    pub(crate) fn push(&mut self, label: impl Into<String>, document: Document) -> String {
+    pub(crate) fn push(&mut self, document: Document) -> String {
         let id = self.next_id.to_string();
         self.next_id += 1;
         if self.entries.len() >= MAX_SNAPSHOTS {
@@ -35,7 +33,6 @@ impl SnapshotStore {
         }
         self.entries.push(SnapshotEntry {
             id: id.clone(),
-            label: label.into(),
             document,
         });
         id
@@ -66,19 +63,18 @@ mod tests {
     #[test]
     fn push_and_get() {
         let mut store = SnapshotStore::default();
-        let id = store.push("test", make_doc());
+        let id = store.push(make_doc());
         assert_eq!(store.len(), 1);
-        let entry = store.get(&id).expect("should find entry");
-        assert_eq!(entry.label, "test");
+        assert!(store.get(&id).is_some());
     }
 
     /// MAX_SNAPSHOTS 超過時に最古エントリが破棄されることを確認する。
     #[test]
     fn evicts_oldest_when_full() {
         let mut store = SnapshotStore::default();
-        let first_id = store.push("first", make_doc());
-        for i in 0..MAX_SNAPSHOTS {
-            store.push(format!("snap{i}"), make_doc());
+        let first_id = store.push(make_doc());
+        for _ in 0..MAX_SNAPSHOTS {
+            store.push(make_doc());
         }
         assert_eq!(store.len(), MAX_SNAPSHOTS);
         assert!(store.get(&first_id).is_none());

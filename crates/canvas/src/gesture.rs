@@ -76,7 +76,7 @@ where
         ToolKind::LassoBucket => {
             state.is_drawing = true;
             state.last_position = Some(point);
-            state.last_smoothed_position = Some((point.x as f32, point.y as f32));
+            state.last_smoothed_position = Some(point.into());
             state.lasso_points.clear();
             state.lasso_points.push(point);
             CanvasGestureUpdate::LassoPreviewChanged
@@ -90,7 +90,7 @@ where
         ToolKind::Pen | ToolKind::Eraser => {
             state.is_drawing = true;
             state.last_position = Some(point);
-            state.last_smoothed_position = Some((point.x as f32, point.y as f32));
+            state.last_smoothed_position = Some(point.into());
             let _ = stabilization;
             to_panel_local(point)
                 .map(|at| CanvasGestureUpdate::Paint(PaintInput::Stamp { at, pressure }))
@@ -216,26 +216,14 @@ fn stabilized_canvas_position(
     active_tool: ToolKind,
     stabilization: u8,
 ) -> CanvasPoint {
-    if active_tool != ToolKind::Pen {
-        state.last_smoothed_position = Some((point.x as f32, point.y as f32));
-        return point;
-    }
-    if stabilization == 0 {
-        state.last_smoothed_position = Some((point.x as f32, point.y as f32));
+    if active_tool != ToolKind::Pen || stabilization == 0 {
+        state.last_smoothed_position = Some(point.into());
         return point;
     }
 
     let blend = (1.0 / (1.0 + stabilization as f32 / 12.0)).clamp(0.05, 1.0);
-    let previous = state
-        .last_smoothed_position
-        .unwrap_or((point.x as f32, point.y as f32));
-    let next = (
-        previous.0 + (point.x as f32 - previous.0) * blend,
-        previous.1 + (point.y as f32 - previous.1) * blend,
-    );
+    let previous = state.last_smoothed_position.unwrap_or(point.into());
+    let next = previous.lerp_toward(point.into(), blend);
     state.last_smoothed_position = Some(next);
-    CanvasPoint::new(
-        next.0.round().max(0.0) as usize,
-        next.1.round().max(0.0) as usize,
-    )
+    next.to_canvas_point()
 }

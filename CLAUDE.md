@@ -63,7 +63,7 @@ bash scripts/build-ui-wasm.sh          # Linux / WSL2
 
 ## アーキテクチャ概要
 
-altpaint はデスクトップ向けデジタルペイントアプリ。Rust 2024-edition Cargo workspace（28 メンバー: ライブラリ 15、ビルトインパネル 12、デスクトップアプリ 1）。
+altpaint はデスクトップ向けデジタルペイントアプリ。Rust 2024-edition Cargo workspace（27 メンバー: ライブラリ 14、ビルトインパネル 12、デスクトップアプリ 1）。
 
 ### Runtime Flow
 
@@ -82,7 +82,7 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 | `crates/canvas`                       | `CanvasRuntime`、ジェスチャーステートマシン、ビットマップ操作                             |
 | `crates/gpu-canvas`                   | GPU レイヤーテクスチャプール、ブラシ/塗りつぶし/レイヤー合成の compute shader dispatch    |
 | `crates/render-types`                 | `FramePlan`/`CanvasPlan`、`PixelRect`/`CanvasScene`/`CanvasOverlayState` 等の純データ DTO |
-| `crates/panel-runtime`                | パネルレジストリ（`BuiltinPanelPlugin`）、Wasm ブリッジ、ホストスナップショット同期、永続設定 |
+| `crates/panel-runtime`                | パネルサブシステム facade。`PanelRuntime`/`BuiltinPanelPlugin`、Wasm ブリッジ、ホストスナップショット同期、永続設定、同梱パネル loader、panel-api/panel-html の再公開 |
 | `crates/panel-html`                   | `HtmlPanelEngine`（Blitz HTML/CSS + parley + vello GPU 直描画、hit 矩形収集）             |
 | `crates/ui-shell`                     | パネルワークスペースレイアウト、フォーカス、ヒットテスト                                  |
 | `crates/panel-api`                    | パネル/ホスト間コントラクト（`PanelPlugin`、`PanelEvent`、`HostAction`）                  |

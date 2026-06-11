@@ -41,7 +41,7 @@ impl DesktopApp {
             profiler.record_value("ui_update_panels", self.panel_runtime.dirty_panel_count() as f64);
             let can_undo = self.history.can_undo();
             let can_redo = self.history.can_redo();
-            let active_jobs = self.io_state.pending_jobs.len();
+            let active_jobs = self.background_jobs.len();
             let snapshot_count = self.snapshots.len();
             let sync_t = Instant::now();
             let changed = self.panel_runtime.sync_dirty_panels(
@@ -69,21 +69,21 @@ impl DesktopApp {
             self.refresh_html_panel_hit_tables(window_width, window_height);
         });
 
-        if self.needs_panel_reconcile {
+        if self.invalidation.needs_panel_reconcile {
             profiler.measure("panel_reconcile", || {
                 self.panel_presentation
                     .reconcile_panels(self.panel_runtime.panel_static_ids());
             });
-            self.needs_panel_reconcile = false;
+            self.invalidation.needs_panel_reconcile = false;
         }
 
-        if self.needs_full_present_rebuild {
-            self.pending_canvas_dirty_rect = None;
-            self.pending_temp_overlay_dirty_rect = None;
-            self.pending_ui_panel_dirty_rect = None;
-            self.pending_canvas_transform_update = false;
-            self.needs_status_refresh = false;
-            self.needs_full_present_rebuild = false;
+        if self.invalidation.needs_full_present_rebuild {
+            self.invalidation.canvas_dirty_rect = None;
+            self.invalidation.temp_overlay_dirty_rect = None;
+            self.invalidation.ui_panel_dirty_rect = None;
+            self.invalidation.canvas_transform_update = false;
+            self.invalidation.needs_status_refresh = false;
+            self.invalidation.needs_full_present_rebuild = false;
             let bitmap = self.canvas_frame.as_ref();
             let window_rect = render_types::PixelRect {
                 x: 0,
@@ -111,12 +111,12 @@ impl DesktopApp {
         // ステータス更新 — HtmlPanelEngine 化されたため、毎フレーム
         // status_panel.update() を呼んで snapshot を engine に流す（差分なら no-op）。
         // 実際の GPU 描画は runtime.rs の RedrawRequested で行う。
-        if self.needs_status_refresh {
-            self.needs_status_refresh = false;
+        if self.invalidation.needs_status_refresh {
+            self.invalidation.needs_status_refresh = false;
         }
 
         // 一時オーバーレイは GPU quad で毎フレーム描画されるため CPU 合成は不要。
-        if let Some(dirty_rect) = self.pending_temp_overlay_dirty_rect.take()
+        if let Some(dirty_rect) = self.invalidation.temp_overlay_dirty_rect.take()
             && dirty_rect.width > 0
             && dirty_rect.height > 0
         {
@@ -124,15 +124,15 @@ impl DesktopApp {
         }
 
         // UIパネル dirty
-        if let Some(dirty_rect) = self.pending_ui_panel_dirty_rect.take()
+        if let Some(dirty_rect) = self.invalidation.ui_panel_dirty_rect.take()
             && dirty_rect.width > 0
             && dirty_rect.height > 0
         {
             layer_dirty.mark_ui_panel(dirty_rect);
         }
 
-        let canvas_dirty_rect = self.pending_canvas_dirty_rect.take();
-        let canvas_transform_changed = std::mem::take(&mut self.pending_canvas_transform_update);
+        let canvas_dirty_rect = self.invalidation.canvas_dirty_rect.take();
+        let canvas_transform_changed = std::mem::take(&mut self.invalidation.canvas_transform_update);
         if let Some(canvas_dirty_rect) = canvas_dirty_rect {
             use app_core::ClampToCanvasBounds;
             let dirty = canvas_dirty_rect.clamp_to_canvas_bounds(canvas_width, canvas_height);

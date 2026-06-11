@@ -1,6 +1,5 @@
 [workspace]
 members = [
-  "crates/builtin-panels",
   "crates/builtin-panels/view-controls",
   "crates/builtin-panels/job-progress",
   "crates/builtin-panels/panel-list",

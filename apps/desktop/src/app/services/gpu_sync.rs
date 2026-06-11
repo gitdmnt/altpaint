@@ -10,9 +10,10 @@ impl DesktopApp {
     ///
     /// 保存時にのみ呼び出す（readback コストが大きいため）。
     pub(crate) fn sync_gpu_bitmaps_to_cpu(&mut self) {
-        let Some(pool) = self.gpu_canvas_pool.as_ref() else {
+        let Some(gpu) = self.gpu.as_ref() else {
             return;
         };
+        let pool = &gpu.pool;
         let layer_keys: Vec<(app_core::PanelId, String, usize)> = self
             .document
             .work

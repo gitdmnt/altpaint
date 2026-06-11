@@ -116,26 +116,26 @@ mod gpu_tests {
     fn gpu_brush_dispatch_modifies_layer_texture() {
         let outcome = std::panic::catch_unwind(|| {
             pollster::block_on(async {
-                let Some((device, queue, adapter)) = try_init_device().await else {
-                    return None;
-                };
+                let (device, queue, adapter) = try_init_device().await?;
                 if !crate::format_check::supports_rgba8unorm_storage(&adapter) {
                     return None;
                 }
 
                 let ctx = crate::GpuCanvasContext::new(device.clone(), queue.clone());
                 let texture = crate::GpuLayerTexture::create(&ctx, 4, 4);
-                texture.upload_pixels(&ctx, &vec![0u8; 4 * 4 * 4]);
+                texture.upload_pixels(&ctx, &[0u8; 4 * 4 * 4]);
 
                 let brush = GpuBrushDispatch::new(device.clone(), queue.clone());
                 brush.dispatch_stroke(
                     &texture,
-                    &[(2.0_f32, 2.0_f32)],
-                    [1.0, 0.0, 0.0, 1.0],
-                    2.0,
-                    1.0,
-                    false,
-                    app_core::ToolKind::Pen,
+                    &[app_core::PanelLocalPoint::new(2, 2)],
+                    &crate::BrushStrokeParams {
+                        color_rgba: [1.0, 0.0, 0.0, 1.0],
+                        radius: 2.0,
+                        opacity: 1.0,
+                        antialias: false,
+                        tool_kind: app_core::ToolKind::Pen,
+                    },
                 );
 
                 let buf_size = (4 * 4 * 4) as wgpu::BufferAddress;
@@ -177,7 +177,7 @@ mod gpu_tests {
                 slice.map_async(wgpu::MapMode::Read, move |r| {
                     tx.send(r).unwrap();
                 });
-                device.poll(wgpu::PollType::Wait {
+                let _ = device.poll(wgpu::PollType::Wait {
                     submission_index: None,
                     timeout: None,
                 });
@@ -209,20 +209,22 @@ mod gpu_tests {
             let mut pool = GpuCanvasPool::new(device, queue);
             pool.create_layer_texture("p", 0, 4, 4);
             let mut pixels = vec![0u8; 4 * 4 * 4];
-            for i in 0..pixels.len() {
-                pixels[i] = (i % 251) as u8;
+            for (i, px) in pixels.iter_mut().enumerate() {
+                *px = (i % 251) as u8;
             }
             pool.upload_cpu_bitmap("p", 0, &pixels);
 
             // dirty 領域 (1,1)-(2x2) をスナップショット
-            let snap = pool.snapshot_region("p", 0, 1, 1, 2, 2).expect("snapshot");
+            let snap = pool
+                .snapshot_region("p", 0, app_core::CanvasDirtyRect::new(1, 1, 2, 2))
+                .expect("snapshot");
 
             // レイヤーを別のピクセルで上書き
             let zeros = vec![0u8; 4 * 4 * 4];
             pool.upload_cpu_bitmap("p", 0, &zeros);
 
             // snap を元の位置へ復元
-            pool.restore_region("p", 0, 1, 1, &snap);
+            pool.restore_region("p", 0, app_core::PanelLocalPoint::new(1, 1), &snap);
 
             let (w, h, out) = pool.read_back_full("p", 0).expect("readback");
             assert_eq!((w, h), (4, 4));
@@ -250,10 +252,10 @@ mod gpu_tests {
             };
             let mut pool = GpuCanvasPool::new(device, queue);
             pool.create_layer_texture("p", 0, 4, 4);
-            pool.upload_cpu_bitmap("p", 0, &vec![0u8; 4 * 4 * 4]);
+            pool.upload_cpu_bitmap("p", 0, &[0u8; 4 * 4 * 4]);
 
             let region = vec![255u8; 2 * 2 * 4];
-            pool.upload_region("p", 0, 1, 1, 2, 2, &region);
+            pool.upload_region("p", 0, app_core::CanvasDirtyRect::new(1, 1, 2, 2), &region);
 
             let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
             for y in 0..4 {
@@ -278,11 +280,11 @@ mod gpu_tests {
             };
             let mut pool = GpuCanvasPool::new(device, queue);
             pool.create_layer_texture("p", 0, 4, 4);
-            pool.upload_cpu_bitmap("p", 0, &vec![0u8; 4 * 4 * 4]);
+            pool.upload_cpu_bitmap("p", 0, &[0u8; 4 * 4 * 4]);
 
             let region = vec![128u8; 2 * 2 * 4];
             let tex = pool.create_and_upload(2, 2, &region);
-            pool.restore_region("p", 0, 1, 1, &tex);
+            pool.restore_region("p", 0, app_core::PanelLocalPoint::new(1, 1), &tex);
 
             let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
             for y in 0..4 {
@@ -318,9 +320,7 @@ mod gpu_tests {
     fn gpu_flood_fill_fills_connected_region_only() {
         let outcome = std::panic::catch_unwind(|| {
             pollster::block_on(async {
-                let Some((device, queue, adapter)) = try_init_device().await else {
-                    return None;
-                };
+                let (device, queue, adapter) = try_init_device().await?;
                 if !crate::format_check::supports_rgba8unorm_storage(&adapter) {
                     return None;
                 }
@@ -370,9 +370,7 @@ mod gpu_tests {
     fn gpu_lasso_fill_triangle_paints_interior() {
         let outcome = std::panic::catch_unwind(|| {
             pollster::block_on(async {
-                let Some((device, queue, adapter)) = try_init_device().await else {
-                    return None;
-                };
+                let (device, queue, adapter) = try_init_device().await?;
                 if !crate::format_check::supports_rgba8unorm_storage(&adapter) {
                     return None;
                 }
@@ -394,7 +392,7 @@ mod gpu_tests {
 
                 let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
                 // (1,1) は内部 → 緑。(6,6) は外部 → 変更なし。
-                let idx_in = (1 * 8 + 1) * 4;
+                let idx_in = (8 + 1) * 4;
                 assert_eq!(out[idx_in + 1], 255, "interior green channel");
                 let idx_out = (6 * 8 + 6) * 4;
                 assert_eq!(out[idx_out + 3], 0, "exterior alpha unchanged");
@@ -410,9 +408,7 @@ mod gpu_tests {
     fn gpu_layer_compositor_single_layer_passthrough() {
         let outcome = std::panic::catch_unwind(|| {
             pollster::block_on(async {
-                let Some((device, queue, adapter)) = try_init_device().await else {
-                    return None;
-                };
+                let (device, queue, adapter) = try_init_device().await?;
                 if !crate::format_check::supports_rgba8unorm_storage(&adapter) {
                     return None;
                 }
@@ -446,7 +442,7 @@ mod gpu_tests {
                 );
 
                 let (_, _, out) = pool.read_back_composite("p").expect("readback");
-                let idx = (1 * 4 + 1) * 4;
+                let idx = (4 + 1) * 4;
                 assert_eq!(out[idx], 100);
                 assert_eq!(out[idx + 1], 150);
                 assert_eq!(out[idx + 2], 200);
@@ -463,9 +459,7 @@ mod gpu_tests {
     fn gpu_layer_compositor_invisible_layer_is_skipped() {
         let outcome = std::panic::catch_unwind(|| {
             pollster::block_on(async {
-                let Some((device, queue, adapter)) = try_init_device().await else {
-                    return None;
-                };
+                let (device, queue, adapter) = try_init_device().await?;
                 if !crate::format_check::supports_rgba8unorm_storage(&adapter) {
                     return None;
                 }

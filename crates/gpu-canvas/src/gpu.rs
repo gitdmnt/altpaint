@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use app_core::{PenPreset, PenTipBitmap};
+use app_core::{CanvasDirtyRect, PanelLocalPoint, PenPreset, PenTipBitmap};
 
 /// wgpu デバイスとキューを共有するコンテキスト。
 ///
@@ -153,18 +153,17 @@ impl GpuCanvasPool {
             .map(|t| t.create_srgb_view())
     }
 
-    /// レイヤーテクスチャの指定矩形を GPU-to-GPU でコピーして返す。
+    /// レイヤーテクスチャの指定矩形（コマローカル座標）を GPU-to-GPU でコピーして返す。
     ///
     /// ストローク前/後スナップショット作成用。返却テクスチャは `COPY_SRC | COPY_DST` を持つ。
     pub fn snapshot_region(
         &self,
         panel_id: &str,
         layer_index: usize,
-        x: u32,
-        y: u32,
-        w: u32,
-        h: u32,
+        region: CanvasDirtyRect,
     ) -> Option<wgpu::Texture> {
+        let (x, y) = (region.x as u32, region.y as u32);
+        let (w, h) = (region.width as u32, region.height as u32);
         let src = self.get(panel_id, layer_index)?;
         let dst = self.ctx.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("gpu-canvas-snapshot"),
@@ -209,17 +208,17 @@ impl GpuCanvasPool {
         Some(dst)
     }
 
-    /// スナップショットテクスチャを GPU-to-GPU でレイヤーの指定位置へ復元する。
+    /// スナップショットテクスチャを GPU-to-GPU でレイヤーの指定位置（コマローカル座標）へ復元する。
     ///
     /// Undo/Redo 用。`src` の `width/height` 全体をレイヤーへコピーする。
     pub fn restore_region(
         &self,
         panel_id: &str,
         layer_index: usize,
-        x: u32,
-        y: u32,
+        origin: PanelLocalPoint,
         src: &wgpu::Texture,
     ) {
+        let (x, y) = (origin.x as u32, origin.y as u32);
         let Some(dst) = self.get(panel_id, layer_index) else {
             return;
         };
@@ -253,19 +252,18 @@ impl GpuCanvasPool {
         self.ctx.queue.submit(std::iter::once(encoder.finish()));
     }
 
-    /// CPU ピクセルをレイヤーテクスチャの指定矩形へ書き込む（RGBA8、行優先）。
+    /// CPU ピクセルをレイヤーテクスチャの指定矩形（コマローカル座標）へ書き込む（RGBA8、行優先）。
     ///
     /// テクスチャが存在しない場合は何もしない。
     pub fn upload_region(
         &self,
         panel_id: &str,
         layer_index: usize,
-        x: u32,
-        y: u32,
-        w: u32,
-        h: u32,
+        region: CanvasDirtyRect,
         pixels: &[u8],
     ) {
+        let (x, y) = (region.x as u32, region.y as u32);
+        let (w, h) = (region.width as u32, region.height as u32);
         let Some(dst) = self.get(panel_id, layer_index) else {
             return;
         };

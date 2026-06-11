@@ -6,9 +6,15 @@ mod workspace;
 #[cfg(test)]
 mod tests;
 
-use app_core::{WorkspaceLayout, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState};
+use app_core::{
+    PanelSurfacePoint, WindowPoint, WorkspaceLayout, WorkspacePanelPosition, WorkspacePanelSize,
+    WorkspacePanelState,
+};
 use focus::FocusTarget;
 use std::collections::BTreeMap;
+
+// hit-test API の戻り値型。利用側が panel-api へ直接依存しなくて済むよう再公開する。
+pub use panel_api::ResizeEdge;
 
 /// パネルの presentation 状態を保持する。
 ///
@@ -78,14 +84,12 @@ impl PanelPresentation {
         self.html_panel_move_handles.clear();
     }
 
-    /// screen 座標 `(x, y)` の HTML パネル move handle を検索し、panel_id を返す。
-    pub fn html_panel_move_handle_at(&self, x: usize, y: usize) -> Option<String> {
-        for (panel_id, r) in &self.html_panel_move_handles {
-            if x >= r.x && y >= r.y && x < r.x + r.width && y < r.y + r.height {
-                return Some(panel_id.clone());
-            }
-        }
-        None
+    /// window 座標の点にある HTML パネル move handle を検索し、panel_id を返す。
+    pub fn html_panel_move_handle_at(&self, point: WindowPoint) -> Option<String> {
+        self.html_panel_move_handles
+            .iter()
+            .find(|(_, rect)| rect.contains(point))
+            .map(|(panel_id, _)| panel_id.clone())
     }
 
     /// HTML パネルの hit 情報を更新する。`hits` は (HTML 要素 id, panel-relative 矩形) の列。
@@ -121,20 +125,15 @@ impl PanelPresentation {
         self.html_panel_hits.clear();
     }
 
-    /// screen 座標 `(x, y)` が HTML パネル領域 (body 部分) のいずれかに入っていれば
-    /// `(panel_id, local_x, local_y)` を返す。chrome 領域は除く（move handle 経路用）。
+    /// window 座標の点が HTML パネル領域 (body 部分) のいずれかに入っていれば
+    /// `(panel_id, パネル原点基準のローカル座標)` を返す。chrome 領域は除く（move handle 経路用）。
     /// `:hover` / `<details>` 開閉などの動的レイアウト追従のための入力転送に使う。
-    pub fn html_panel_at(&self, x: usize, y: usize) -> Option<(String, u32, u32)> {
-        for (panel_id, map) in &self.html_panel_hits {
-            let r = map.screen_rect;
-            if x < r.x || y < r.y || x >= r.x + r.width || y >= r.y + r.height {
-                continue;
-            }
-            let local_x = (x - r.x) as u32;
-            let local_y = (y - r.y) as u32;
-            return Some((panel_id.clone(), local_x, local_y));
-        }
-        None
+    pub fn html_panel_at(&self, point: WindowPoint) -> Option<(String, PanelSurfacePoint)> {
+        self.html_panel_hits.iter().find_map(|(panel_id, map)| {
+            map.screen_rect
+                .to_local_point(point)
+                .map(|local| (panel_id.clone(), local))
+        })
     }
 
     /// Phase 11: HTML パネル全体 (chrome + body) の screen 座標矩形を更新する。
@@ -164,39 +163,29 @@ impl PanelPresentation {
         self.html_panel_full_rects.clear();
     }
 
-    /// Phase 11: screen 座標 `(x, y)` のリサイズハンドル hit を検索し、
+    /// Phase 11: window 座標の点のリサイズハンドル hit を検索し、
     /// `(panel_id, ResizeEdge)` を返す。角優先、辺は厚 6px、角は 12x12。
     /// パネル内側はリサイズ対象外なので `None`。
-    pub fn panel_resize_hit_at(&self, x: usize, y: usize) -> Option<(String, panel_api::ResizeEdge)> {
-        for (panel_id, rect) in &self.html_panel_full_rects {
-            if let Some(edge) = resize_hit_in_rect(x, y, *rect) {
-                return Some((panel_id.clone(), edge));
-            }
-        }
-        None
+    pub fn panel_resize_hit_at(
+        &self,
+        point: WindowPoint,
+    ) -> Option<(String, panel_api::ResizeEdge)> {
+        self.html_panel_full_rects
+            .iter()
+            .find_map(|(panel_id, rect)| {
+                resize_hit_in_rect(point, *rect).map(|edge| (panel_id.clone(), edge))
+            })
     }
 
-    /// screen 座標 `(x, y)` の HTML パネル hit を検索し、`(panel_id, node_id)` を返す。
-    pub fn html_panel_hit_at(&self, x: usize, y: usize) -> Option<(String, String)> {
-        for (panel_id, map) in &self.html_panel_hits {
-            let r = map.screen_rect;
-            if x < r.x || y < r.y || x >= r.x + r.width || y >= r.y + r.height {
-                continue;
-            }
-            let local_x = x - r.x;
-            let local_y = y - r.y;
-            for hit in &map.hits {
-                let h = hit.rect_in_panel;
-                if local_x >= h.x
-                    && local_y >= h.y
-                    && local_x < h.x + h.width
-                    && local_y < h.y + h.height
-                {
-                    return Some((panel_id.clone(), hit.node_id.clone()));
-                }
-            }
-        }
-        None
+    /// window 座標の点の HTML パネル hit を検索し、`(panel_id, node_id)` を返す。
+    pub fn html_panel_hit_at(&self, point: WindowPoint) -> Option<(String, String)> {
+        self.html_panel_hits.iter().find_map(|(panel_id, map)| {
+            let local = map.screen_rect.to_local_point(point)?;
+            map.hits
+                .iter()
+                .find(|hit| hit.rect_in_panel.contains_local(local))
+                .map(|hit| (panel_id.clone(), hit.node_id.clone()))
+        })
     }
 
     /// 現在の ワークスペース レイアウト を返す。
@@ -239,11 +228,10 @@ impl Default for PanelPresentation {
 const RESIZE_HANDLE_EDGE_PX: usize = 6;
 const RESIZE_HANDLE_CORNER_PX: usize = 12;
 
-/// `(x, y)` がパネル矩形 `rect` のリサイズハンドルに当たるかを判定する純粋関数。
+/// window 座標の点がパネル矩形 `rect` のリサイズハンドルに当たるかを判定する純粋関数。
 /// 角優先 → 辺 → 内側 (None) の順で評価する。
 fn resize_hit_in_rect(
-    x: usize,
-    y: usize,
+    point: WindowPoint,
     rect: render_types::PixelRect,
 ) -> Option<panel_api::ResizeEdge> {
     use panel_api::ResizeEdge;
@@ -252,9 +240,10 @@ fn resize_hit_in_rect(
         return None;
     }
     // パネル矩形外
-    if x < rect.x || y < rect.y || x >= rect.x + rect.width || y >= rect.y + rect.height {
+    if !rect.contains(point) {
         return None;
     }
+    let (x, y) = (point.x as usize, point.y as usize);
 
     let left = rect.x;
     let top = rect.y;
@@ -322,8 +311,8 @@ mod resize_hit_tests {
     #[test]
     fn outside_returns_none() {
         let r = rect(100, 100, 200, 150);
-        assert_eq!(resize_hit_in_rect(50, 50, r), None);
-        assert_eq!(resize_hit_in_rect(500, 500, r), None);
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(50, 50), r), None);
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(500, 500), r), None);
     }
 
     #[test]
@@ -331,22 +320,22 @@ mod resize_hit_tests {
         let r = rect(100, 100, 200, 150);
         // NW
         assert_eq!(
-            resize_hit_in_rect(105, 105, r),
+            resize_hit_in_rect(WindowPoint::new(105, 105), r),
             Some(ResizeEdge::NorthWest)
         );
         // NE (右上角の内側)
         assert_eq!(
-            resize_hit_in_rect(295, 105, r),
+            resize_hit_in_rect(WindowPoint::new(295, 105), r),
             Some(ResizeEdge::NorthEast)
         );
         // SE (右下)
         assert_eq!(
-            resize_hit_in_rect(295, 245, r),
+            resize_hit_in_rect(WindowPoint::new(295, 245), r),
             Some(ResizeEdge::SouthEast)
         );
         // SW
         assert_eq!(
-            resize_hit_in_rect(105, 245, r),
+            resize_hit_in_rect(WindowPoint::new(105, 245), r),
             Some(ResizeEdge::SouthWest)
         );
     }
@@ -355,20 +344,20 @@ mod resize_hit_tests {
     fn edges_return_edge_directions() {
         let r = rect(100, 100, 200, 150);
         // 上辺中央
-        assert_eq!(resize_hit_in_rect(200, 102, r), Some(ResizeEdge::North));
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(200, 102), r), Some(ResizeEdge::North));
         // 右辺中央
-        assert_eq!(resize_hit_in_rect(298, 175, r), Some(ResizeEdge::East));
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(298, 175), r), Some(ResizeEdge::East));
         // 下辺中央
-        assert_eq!(resize_hit_in_rect(200, 248, r), Some(ResizeEdge::South));
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(200, 248), r), Some(ResizeEdge::South));
         // 左辺中央
-        assert_eq!(resize_hit_in_rect(102, 175, r), Some(ResizeEdge::West));
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(102, 175), r), Some(ResizeEdge::West));
     }
 
     #[test]
     fn inside_returns_none() {
         let r = rect(100, 100, 200, 150);
         // パネル中央付近 (角・辺どちらでもない)
-        assert_eq!(resize_hit_in_rect(200, 175, r), None);
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(200, 175), r), None);
     }
 
     #[test]
@@ -376,22 +365,22 @@ mod resize_hit_tests {
         let r = rect(100, 100, 200, 150);
         // パネル上端 6px の範囲 (タイトルバーと重なる領域も N edge を返す)
         // ただし角の 12px は除く
-        assert_eq!(resize_hit_in_rect(150, 100, r), Some(ResizeEdge::North));
-        assert_eq!(resize_hit_in_rect(150, 105, r), Some(ResizeEdge::North));
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(150, 100), r), Some(ResizeEdge::North));
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(150, 105), r), Some(ResizeEdge::North));
         // 7px 目以降は N edge ではない
-        assert_eq!(resize_hit_in_rect(150, 107, r), None);
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(150, 107), r), None);
     }
 
     #[test]
     fn corner_takes_priority_over_edge() {
         let r = rect(100, 100, 200, 150);
         // 左上角 12x12 内 = NW (上辺の 6px とも重なるが角優先)
-        assert_eq!(resize_hit_in_rect(102, 102, r), Some(ResizeEdge::NorthWest));
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(102, 102), r), Some(ResizeEdge::NorthWest));
     }
 
     #[test]
     fn zero_size_rect_returns_none() {
         let r = rect(100, 100, 0, 0);
-        assert_eq!(resize_hit_in_rect(100, 100, r), None);
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(100, 100), r), None);
     }
 }

@@ -49,7 +49,7 @@ fn canvas_input_point(
 
     for y in start_y..end_y {
         for x in start_x..end_x {
-            if !runtime.app.panel_is_hovered(x, y) {
+            if !runtime.app.panel_is_hovered(app_core::WindowPoint::new(x, y)) {
                 return (x, y);
             }
         }

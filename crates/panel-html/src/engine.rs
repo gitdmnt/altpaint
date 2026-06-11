@@ -524,11 +524,10 @@ fn root_panel_node_id(document: &BaseDocument) -> Option<usize> {
     let body_id = document.query_selector("body").ok().flatten()?;
     let body = document.get_node(body_id)?;
     for child_id in &body.children {
-        if let Some(child) = document.get_node(*child_id) {
-            if matches!(child.data, NodeData::Element(_)) {
+        if let Some(child) = document.get_node(*child_id)
+            && matches!(child.data, NodeData::Element(_)) {
                 return Some(*child_id);
             }
-        }
     }
     None
 }

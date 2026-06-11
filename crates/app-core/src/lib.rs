@@ -14,9 +14,9 @@ pub mod workspace;
 
 pub use command::Command;
 pub use coordinates::{
-    CanvasDirtyRect, CanvasDisplayPoint, CanvasPoint, CanvasViewportPoint, ClampToCanvasBounds,
-    MergeInSpace, PanelLocalPoint, PanelSurfaceDirtyRect, PanelSurfacePoint, PanelSurfaceRect,
-    WindowDirtyRect, WindowPoint, WindowRect,
+    CanvasDirtyRect, CanvasDisplayPoint, CanvasPoint, CanvasPointF, CanvasViewportPoint,
+    ClampToCanvasBounds, MergeInSpace, PanelLocalPoint, PanelSurfaceDirtyRect, PanelSurfacePoint,
+    PanelSurfaceRect, WindowDirtyRect, WindowPoint, WindowRect,
 };
 pub use document::{
     BlendMode, CanvasBitmap, CanvasViewTransform, ColorRgba8, DEFAULT_DOCUMENT_HEIGHT,

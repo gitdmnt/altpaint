@@ -23,7 +23,7 @@ fn panel_dispatch_keyboard_path_activates_save_action() {
         app.activate_focused_panel_control(),
         Some(Command::Noop)
     );
-    assert_eq!(app.io_state.pending_jobs.len(), 1);
+    assert_eq!(app.background_jobs.len(), 1);
 }
 
 /// パネルを drag で移動したとき canvas ホスト領域が dirty になることを検証する。
@@ -48,11 +48,10 @@ fn drag_panel_move_marks_canvas_host_dirty() {
     // パネルをグラブした状態にする
     app.panel_interaction.active_panel_drag = Some(PanelDragState {
         panel_id: panel_id.clone(),
-        grab_offset_x: 10,
-        grab_offset_y: 10,
+        grab_offset: app_core::PanelSurfacePoint::new(10, 10),
     });
     // pending_ui_panel_dirty_rect をリセット
-    app.pending_ui_panel_dirty_rect = None;
+    app.invalidation.ui_panel_dirty_rect = None;
 
     // パネルを別の場所へドラッグ
     let target_x = (rect.x + 200).min(1000) as i32;
@@ -60,7 +59,7 @@ fn drag_panel_move_marks_canvas_host_dirty() {
     let _ = app.drag_panel_interaction(WindowPoint::new(target_x, target_y));
 
     assert!(
-        app.pending_ui_panel_dirty_rect.is_some(),
+        app.invalidation.ui_panel_dirty_rect.is_some(),
         "パネル移動後に canvas ホスト dirty rect が設定されるべき"
     );
 }

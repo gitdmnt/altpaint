@@ -1,13 +1,14 @@
 //! 同梱パネルの登録ロジック。
 //!
-//! Phase 10 着地後、本クレートが `crates/builtin-panels/<name>/` 以下の
+//! `crates/builtin-panels/<name>/` 以下の
 //! `panel.html` / `panel.css` / `panel.meta.json` / `<wasm>` を順に読み、
 //! `BuiltinPanelPlugin` として `PanelRuntime` に登録する。
+//! (旧 `builtin-panels` umbrella クレートから Phase 15 で統合)
 
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-use panel_runtime::{BuiltinPanelPlugin, PanelRuntime};
+use crate::{BuiltinPanelPlugin, PanelRuntime};
 
 #[derive(Debug, Error)]
 pub enum BuiltinPanelLoadError {

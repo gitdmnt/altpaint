@@ -139,6 +139,47 @@ impl CanvasPoint {
     }
 }
 
+/// ページ / キャンバス上のサブピクセル座標を表す。
+///
+/// `CanvasPoint` の浮動小数版。手ぶれ補正のようにピクセル格子の間を
+/// 扱う計算で使い、確定時に `to_canvas_point()` で丸める。
+/// 表示座標 (スケール・回転適用済み) は `CanvasDisplayPoint` が担い、本型とは区別する。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CanvasPointF {
+    pub x: f32,
+    pub y: f32,
+}
+
+impl CanvasPointF {
+    /// 入力値を束ねた新しいインスタンスを生成する。
+    pub const fn new(x: f32, y: f32) -> Self {
+        Self { x, y }
+    }
+
+    /// 最近傍ピクセルへ丸めた `CanvasPoint` を返す (負値は 0 へクランプ)。
+    pub fn to_canvas_point(self) -> CanvasPoint {
+        CanvasPoint::new(
+            self.x.round().max(0.0) as usize,
+            self.y.round().max(0.0) as usize,
+        )
+    }
+
+    /// `other` へ係数 `t` (0.0..=1.0) だけ近づけた点を返す。
+    pub fn lerp_toward(self, other: CanvasPointF, t: f32) -> Self {
+        Self {
+            x: self.x + (other.x - self.x) * t,
+            y: self.y + (other.y - self.y) * t,
+        }
+    }
+}
+
+impl From<CanvasPoint> for CanvasPointF {
+    /// 別形式の値から現在の型へ変換する。
+    fn from(value: CanvasPoint) -> Self {
+        Self::new(value.x as f32, value.y as f32)
+    }
+}
+
 /// アクティブコマローカルの編集座標を表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PanelLocalPoint {
@@ -427,5 +468,28 @@ mod tests {
         let right = CanvasDirtyRect::from_inclusive_points(6, 1, 7, 4);
 
         assert_eq!(left.merge(right), CanvasDirtyRect::new(2, 1, 6, 5));
+    }
+
+    /// CanvasPointF の丸めが最近傍ピクセルへ向かい、負値が 0 にクランプされることを検証する。
+    #[test]
+    fn canvas_point_f_rounds_to_nearest_and_clamps_negative() {
+        assert_eq!(
+            CanvasPointF::new(2.6, 3.4).to_canvas_point(),
+            CanvasPoint::new(3, 3)
+        );
+        assert_eq!(
+            CanvasPointF::new(-1.5, 0.5).to_canvas_point(),
+            CanvasPoint::new(0, 1)
+        );
+    }
+
+    /// CanvasPointF::lerp_toward が係数どおりに補間することを検証する。
+    #[test]
+    fn canvas_point_f_lerp_toward_blends_by_factor() {
+        let from = CanvasPointF::new(0.0, 10.0);
+        let to = CanvasPointF::new(10.0, 20.0);
+
+        assert_eq!(from.lerp_toward(to, 0.5), CanvasPointF::new(5.0, 15.0));
+        assert_eq!(from.lerp_toward(to, 1.0), to);
     }
 }

@@ -1,6 +1,6 @@
 //! スナップショット service request のハンドラ。
 
-use panel_api::{ServiceRequest, services::names};
+use panel_runtime::{ServiceRequest, services::names};
 
 use super::DesktopApp;
 
@@ -11,12 +11,7 @@ impl DesktopApp {
         request: &ServiceRequest,
     ) -> Option<bool> {
         let changed = match request.name.as_str() {
-            names::SNAPSHOT_CREATE => self.snapshot_create(
-                request
-                    .string("label")
-                    .unwrap_or("Snapshot")
-                    .to_string(),
-            ),
+            names::SNAPSHOT_CREATE => self.snapshot_create(),
             names::SNAPSHOT_RESTORE => {
                 let id = request.string("snapshot_id")?;
                 self.snapshot_restore(id.to_string())
@@ -27,9 +22,9 @@ impl DesktopApp {
     }
 
     /// 現在の Document クローンをスナップショットとして保存する。
-    fn snapshot_create(&mut self, label: String) -> bool {
+    fn snapshot_create(&mut self) -> bool {
         let document = self.document.clone();
-        let id = self.snapshots.push(label, document);
+        let id = self.snapshots.push(document);
         eprintln!("snapshot created: id={id}");
         true
     }
@@ -70,7 +65,7 @@ mod tests {
     fn snapshot_create_increments_count() {
         let mut app = make_app();
         assert_eq!(app.snapshots.len(), 0);
-        let changed = app.snapshot_create("my snap".to_string());
+        let changed = app.snapshot_create();
         assert!(changed);
         assert_eq!(app.snapshots.len(), 1);
     }
@@ -79,7 +74,7 @@ mod tests {
     #[test]
     fn snapshot_restore_succeeds() {
         let mut app = make_app();
-        let id = app.snapshots.push("test", app.document.clone());
+        let id = app.snapshots.push(app.document.clone());
         let changed = app.snapshot_restore(id);
         assert!(changed);
     }

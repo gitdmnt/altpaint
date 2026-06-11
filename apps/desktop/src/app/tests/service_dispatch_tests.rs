@@ -1,7 +1,7 @@
 //! service request から desktop host service handler へ届く経路を検証する。
 
 use desktop_support::{WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog};
-use panel_api::{HostAction, ServiceRequest, services::names};
+use panel_runtime::{HostAction, ServiceRequest, services::names};
 use app_core::WorkspaceUiState;
 
 use super::{
@@ -37,7 +37,7 @@ fn request_service_save_project_enqueues_background_task() {
         )))
     );
 
-    assert_eq!(app.io_state.pending_jobs.len(), 1);
+    assert_eq!(app.background_jobs.len(), 1);
 }
 
 /// 要求 サービス 保存 ワークスペース preset persists カタログ が期待どおりに動作することを検証する。
@@ -90,7 +90,7 @@ fn snapshot_create_service_increases_snapshot_count() {
 #[test]
 fn snapshot_restore_service_restores_document() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let id = app.snapshots.push("baseline", app.document.clone());
+    let id = app.snapshots.push(app.document.clone());
 
     assert!(
         app.execute_host_action(HostAction::RequestService(

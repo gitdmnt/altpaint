@@ -207,8 +207,9 @@ impl DesktopRuntime {
         let Some(layout) = self.app.layout.as_ref() else {
             return false;
         };
-        let on_panel = self.app.panel_is_hovered(x, y);
-        let on_canvas = layout.canvas_host_rect.contains(x, y);
+        let point = app_core::WindowPoint::new(x, y);
+        let on_panel = self.app.panel_is_hovered(point);
+        let on_canvas = layout.canvas_host_rect.contains(point);
         let (delta_x_lines, delta_y_lines) = Self::wheel_delta_lines(delta);
 
         if on_panel {
@@ -312,27 +313,24 @@ impl DesktopRuntime {
         y: i32,
         kind: HtmlPointerKind,
     ) -> bool {
-        if x < 0 || y < 0 {
-            return false;
-        }
-        let Some((panel_id, local_x, local_y)) = self
+        let Some((panel_id, local)) = self
             .app
             .panel_presentation
-            .html_panel_at(x as usize, y as usize)
+            .html_panel_at(app_core::WindowPoint::new(x, y))
         else {
             return false;
         };
-        use panel_html::blitz_traits::events::{
+        use panel_runtime::html::blitz_traits::events::{
             BlitzPointerEvent, BlitzPointerId, MouseEventButton, MouseEventButtons,
             PointerCoords, PointerDetails, UiEvent,
         };
-        // local_x/y は chrome を含む panel 全体原点（screen_rect 基準）なので
+        // local は chrome を含む panel 全体原点（screen_rect 基準）なので
         // body オフセット（chrome_height）を Engine 側で扱う。Blitz には panel-local 座標を渡す。
         let coords = PointerCoords {
-            page_x: local_x as f32,
-            page_y: local_y as f32,
-            client_x: local_x as f32,
-            client_y: local_y as f32,
+            page_x: local.x as f32,
+            page_y: local.y as f32,
+            client_x: local.x as f32,
+            client_y: local.y as f32,
             screen_x: x as f32,
             screen_y: y as f32,
         };

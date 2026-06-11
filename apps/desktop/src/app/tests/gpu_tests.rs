@@ -58,9 +58,7 @@ fn install_gpu_resources_sets_all_gpu_fields_to_some() {
         };
         let mut app = make_test_app();
         app.install_gpu_resources(device, queue);
-        assert!(app.gpu_canvas_pool.is_some());
-        assert!(app.gpu_pen_tip_cache.is_some());
-        assert!(app.gpu_brush.is_some());
+        assert!(app.gpu.is_some());
     });
 }
 
@@ -78,7 +76,7 @@ fn sync_all_layers_to_gpu_creates_textures_for_all_layers() {
         app.execute_document_command(Command::AddRasterLayer);
 
         // pool が全レイヤーのテクスチャを持つことを確認
-        let pool = app.gpu_canvas_pool.as_ref().unwrap();
+        let pool = app.gpu_canvas_pool().unwrap();
         for page in &app.document.work.pages {
             for panel in &page.panels {
                 let panel_id_str = panel.id.0.to_string();

@@ -9,8 +9,7 @@ use desktop_support::{
     default_workspace_preset_catalog, load_session_state, load_workspace_preset_catalog,
     save_canvas_templates, save_workspace_preset_catalog,
 };
-use builtin_panels::register_builtin_panels;
-use panel_runtime::PanelRuntime;
+use panel_runtime::{PanelRuntime, register_builtin_panels};
 use ui_shell::PanelPresentation;
 use app_core::WorkspaceUiState;
 

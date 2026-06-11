@@ -9,7 +9,7 @@
 //! - 右上 / 左下角: `NeswResize`
 //! - リサイズハンドル外: `Default`
 
-use panel_api::ResizeEdge;
+use panel_runtime::ResizeEdge;
 use winit::window::CursorIcon;
 
 /// 与えられた edge (None = リサイズハンドル外) に対応する OS カーソルアイコンを返す。

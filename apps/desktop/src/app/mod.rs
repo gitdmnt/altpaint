@@ -7,9 +7,7 @@ mod background_tasks;
 mod bootstrap;
 pub(crate) mod canvas_frame;
 mod command_router;
-mod commands;
 pub(crate) mod cursor;
-mod drawing;
 mod input;
 mod io_state;
 mod panel_config_sync;
@@ -17,8 +15,8 @@ mod panel_dispatch;
 mod present;
 mod present_state;
 mod services;
+mod canvas_state;
 mod snapshot_store;
-mod state;
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -84,38 +82,41 @@ pub(crate) struct DesktopApp {
     pub(crate) io_state: DesktopIoState,
     workspace_presets: WorkspacePresetCatalog,
     active_workspace_preset_id: String,
-    paint_runtime: drawing::CanvasRuntime,
+    paint_runtime: canvas::CanvasRuntime,
     canvas_input: CanvasInputState,
     pub(crate) layout: Option<DesktopLayout>,
     canvas_frame: Option<CanvasFrame>,
     /// Phase 9E-4: ステータスバー (HtmlPanelEngine GPU 描画)。
     pub(crate) status_panel: crate::frame::status_panel::StatusPanel,
-    pending_canvas_dirty_rect: Option<app_core::CanvasDirtyRect>,
-    pending_temp_overlay_dirty_rect: Option<crate::frame::Rect>,
-    pending_ui_panel_dirty_rect: Option<crate::frame::Rect>,
-    pending_canvas_transform_update: bool,
+    /// 次フレームで消化される提示無効化状態 (保留 dirty rect・再構築フラグ)。
+    pub(crate) invalidation: present_state::PresentInvalidation,
     cached_canvas_scene: Option<CachedCanvasScene>,
     pub(crate) history: CommandHistory,
     pub(crate) snapshots: SnapshotStore,
     pub(crate) panel_interaction: PanelInteractionState,
     hover_canvas_position: Option<CanvasPoint>,
     pending_stroke: Option<PendingStroke>,
-    deferred_view_panel_sync: bool,
-    deferred_status_refresh: bool,
-    /// presentation の workspace layout を runtime のパネル一覧と再整合させる必要があるか。
-    needs_panel_reconcile: bool,
-    needs_status_refresh: bool,
-    needs_full_present_rebuild: bool,
+    /// 進行中のバックグラウンドジョブ (project save 等)。
+    pub(crate) background_jobs: Vec<background_tasks::BackgroundJob>,
+    /// GPU ペイントリソース一式。`install_gpu_resources` で一括構築される。
+    pub(crate) gpu: Option<GpuPaintEngine>,
+}
+
+/// GPU ペイントリソース一式。
+///
+/// `install_gpu_resources` で全フィールドを同時に構築する (all-or-nothing)。
+/// 部分的な初期化状態は存在しないため、各リソースは Option で包まない。
+pub(crate) struct GpuPaintEngine {
     /// GPU レイヤーテクスチャプール。
-    pub(crate) gpu_canvas_pool: Option<gpu_canvas::GpuCanvasPool>,
+    pub(crate) pool: gpu_canvas::GpuCanvasPool,
     /// GPU ペン先テクスチャキャッシュ。
-    pub(crate) gpu_pen_tip_cache: Option<gpu_canvas::GpuPenTipCache>,
+    pub(crate) pen_tips: gpu_canvas::GpuPenTipCache,
     /// GPU ブラシ計算シェーダーディスパッチャ。
-    pub(crate) gpu_brush: Option<gpu_canvas::GpuBrushDispatch>,
+    pub(crate) brush: gpu_canvas::GpuBrushDispatch,
     /// GPU 塗りつぶしディスパッチャ。
-    pub(crate) gpu_fill: Option<gpu_canvas::GpuFillDispatch>,
+    pub(crate) fill: gpu_canvas::GpuFillDispatch,
     /// GPU レイヤー合成ディスパッチャ。
-    pub(crate) gpu_compositor: Option<gpu_canvas::GpuLayerCompositor>,
+    pub(crate) compositor: gpu_canvas::GpuLayerCompositor,
 }
 
 impl DesktopApp {
@@ -166,31 +167,20 @@ impl DesktopApp {
             ),
             workspace_presets: bootstrap.workspace_presets,
             active_workspace_preset_id: bootstrap.active_workspace_preset_id,
-            paint_runtime: drawing::CanvasRuntime::default(),
+            paint_runtime: canvas::CanvasRuntime::default(),
             canvas_input: CanvasInputState::default(),
             layout: None,
             canvas_frame: None,
             status_panel: crate::frame::status_panel::StatusPanel::new(),
-            pending_canvas_dirty_rect: None,
-            pending_temp_overlay_dirty_rect: None,
-            pending_ui_panel_dirty_rect: None,
-            pending_canvas_transform_update: false,
+            invalidation: present_state::PresentInvalidation::at_startup(),
             cached_canvas_scene: None,
             history: CommandHistory::new(),
             snapshots: SnapshotStore::default(),
             panel_interaction: PanelInteractionState::default(),
             hover_canvas_position: None,
             pending_stroke: None,
-            deferred_view_panel_sync: false,
-            deferred_status_refresh: false,
-            needs_panel_reconcile: true,
-            needs_status_refresh: false,
-            needs_full_present_rebuild: true,
-            gpu_canvas_pool: None,
-            gpu_pen_tip_cache: None,
-            gpu_brush: None,
-            gpu_fill: None,
-            gpu_compositor: None,
+            background_jobs: Vec::new(),
+            gpu: None,
         };
         app.refresh_canvas_frame();
         app.ensure_workspace_presets_file(&app.io_state.workspace_preset_path);
@@ -211,23 +201,13 @@ impl DesktopApp {
         device: std::sync::Arc<wgpu::Device>,
         queue: std::sync::Arc<wgpu::Queue>,
     ) {
-        self.gpu_canvas_pool = Some(gpu_canvas::GpuCanvasPool::new(
-            device.clone(),
-            queue.clone(),
-        ));
-        self.gpu_pen_tip_cache = Some(gpu_canvas::GpuPenTipCache::new(
-            device.clone(),
-            queue.clone(),
-        ));
-        self.gpu_brush = Some(gpu_canvas::GpuBrushDispatch::new(
-            device.clone(),
-            queue.clone(),
-        ));
-        self.gpu_fill = Some(gpu_canvas::GpuFillDispatch::new(
-            device.clone(),
-            queue.clone(),
-        ));
-        self.gpu_compositor = Some(gpu_canvas::GpuLayerCompositor::new(device, queue));
+        self.gpu = Some(GpuPaintEngine {
+            pool: gpu_canvas::GpuCanvasPool::new(device.clone(), queue.clone()),
+            pen_tips: gpu_canvas::GpuPenTipCache::new(device.clone(), queue.clone()),
+            brush: gpu_canvas::GpuBrushDispatch::new(device.clone(), queue.clone()),
+            fill: gpu_canvas::GpuFillDispatch::new(device.clone(), queue.clone()),
+            compositor: gpu_canvas::GpuLayerCompositor::new(device, queue),
+        });
         self.sync_all_layers_to_gpu();
         self.upload_active_pen_tip_to_gpu_cache();
         self.recomposite_all_panels();
@@ -239,7 +219,7 @@ impl DesktopApp {
     /// レイヤー追加/削除/並べ替えで古いエントリがずれるのを防ぐため、
     /// 各パネルのレイヤー/マスクエントリを先にクリアしてから再登録する。
     pub(crate) fn sync_all_layers_to_gpu(&mut self) {
-        if self.gpu_canvas_pool.is_none() {
+        if self.gpu.is_none() {
             return;
         }
         let panel_ids: Vec<String> = self
@@ -249,9 +229,9 @@ impl DesktopApp {
             .iter()
             .flat_map(|page| page.panels.iter().map(|p| p.id.0.to_string()))
             .collect();
-        if let Some(pool) = self.gpu_canvas_pool.as_mut() {
+        if let Some(gpu) = self.gpu.as_mut() {
             for pid in &panel_ids {
-                pool.clear_layers_for_panel(pid);
+                gpu.pool.clear_layers_for_panel(pid);
             }
         }
         #[derive(Clone)]
@@ -287,7 +267,7 @@ impl DesktopApp {
                 }
             }
         }
-        let pool = self.gpu_canvas_pool.as_mut().unwrap();
+        let pool = &mut self.gpu.as_mut().unwrap().pool;
         for entry in entries {
             pool.ensure_composite_texture(&entry.panel_id, entry.panel_w, entry.panel_h);
             pool.create_layer_texture(&entry.panel_id, entry.layer_index, entry.w, entry.h);
@@ -319,7 +299,7 @@ impl DesktopApp {
     /// - 複数レイヤー: `Composite` → `CanvasLayerSource::GpuComposite`
     /// - GPU 非対応: `None`
     pub(crate) fn canvas_layer_source_kind(&self) -> Option<GpuCanvasSourceKind> {
-        let pool = self.gpu_canvas_pool.as_ref()?;
+        let pool = &self.gpu.as_ref()?.pool;
         let panel = self.document.active_panel()?;
         let pid = panel.id.0.to_string();
         if panel.layers.len() == 1 {
@@ -337,7 +317,7 @@ impl DesktopApp {
 
     /// GPU レイヤーテクスチャプールへの参照を返す。
     pub(crate) fn gpu_canvas_pool(&self) -> Option<&gpu_canvas::GpuCanvasPool> {
-        self.gpu_canvas_pool.as_ref()
+        self.gpu.as_ref().map(|gpu| &gpu.pool)
     }
 
     /// 指定パネルに対し、現在のレイヤー構成を composite テクスチャへ再合成する。
@@ -348,10 +328,7 @@ impl DesktopApp {
         panel_id: PanelId,
         dirty: Option<CanvasDirtyRect>,
     ) {
-        let Some(pool) = self.gpu_canvas_pool.as_ref() else {
-            return;
-        };
-        let Some(compositor) = self.gpu_compositor.as_ref() else {
+        let Some(gpu) = self.gpu.as_ref() else {
             return;
         };
         let pid_str = panel_id.0.to_string();
@@ -365,7 +342,7 @@ impl DesktopApp {
         else {
             return;
         };
-        let Some(composite) = pool.get_composite(&pid_str) else {
+        let Some(composite) = gpu.pool.get_composite(&pid_str) else {
             return;
         };
         let (pw, ph) = (panel.bitmap.width as u32, panel.bitmap.height as u32);
@@ -388,8 +365,8 @@ impl DesktopApp {
             .iter()
             .enumerate()
             .filter_map(|(idx, layer)| {
-                let color = pool.get(&pid_str, idx)?;
-                let mask = pool.get_mask(&pid_str, idx);
+                let color = gpu.pool.get(&pid_str, idx)?;
+                let mask = gpu.pool.get_mask(&pid_str, idx);
                 Some(gpu_canvas::CompositeLayerEntry {
                     color,
                     mask,
@@ -399,7 +376,7 @@ impl DesktopApp {
             })
             .collect();
 
-        compositor.recomposite(composite, &entries, (x0, y0, x1, y1));
+        gpu.compositor.recomposite(composite, &entries, (x0, y0, x1, y1));
     }
 
     /// 全パネルの composite テクスチャを再合成する。`install_gpu_resources` や

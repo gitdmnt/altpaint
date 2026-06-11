@@ -497,7 +497,7 @@ impl PanelBounds {
     }
 
     /// 対象 が範囲内に含まれるか判定する。
-    pub fn contains(self, x: usize, y: usize) -> bool {
+    fn contains(self, x: usize, y: usize) -> bool {
         x >= self.x
             && y >= self.y
             && x < self.x.saturating_add(self.width)
@@ -1313,11 +1313,10 @@ impl Document {
                 None
             }
             Command::SelectChildTool { child_id } => {
-                if let Some(parent) = self.active_tool_definition() {
-                    if parent.children.iter().any(|c| c.id == *child_id) {
+                if let Some(parent) = self.active_tool_definition()
+                    && parent.children.iter().any(|c| c.id == *child_id) {
                         self.active_child_tool_id = child_id.clone();
                     }
-                }
                 None
             }
             Command::SetActiveTool { tool } => {

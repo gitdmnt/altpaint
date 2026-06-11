@@ -1,10 +1,63 @@
-use app_core::{CanvasDirtyRect, CanvasPoint, CanvasViewTransform, CanvasViewportPoint};
+use app_core::{
+    CanvasDirtyRect, CanvasPoint, CanvasViewTransform, CanvasViewportPoint, PanelSurfacePoint,
+    WindowPoint,
+};
 
 use crate::{
     PixelRect, brush_preview_dirty_rect, canvas_texture_quad, exposed_canvas_background_rect,
     map_canvas_dirty_to_display_with_transform, map_canvas_point_to_display,
     map_view_to_canvas_with_transform, prepare_canvas_scene,
 };
+
+/// PixelRect::contains が window 座標点の内外を正しく判定することを検証する。
+#[test]
+fn pixel_rect_contains_judges_window_point() {
+    let rect = PixelRect {
+        x: 100,
+        y: 50,
+        width: 30,
+        height: 20,
+    };
+
+    assert!(rect.contains(WindowPoint::new(100, 50)));
+    assert!(rect.contains(WindowPoint::new(129, 69)));
+    assert!(!rect.contains(WindowPoint::new(130, 50)));
+    assert!(!rect.contains(WindowPoint::new(99, 50)));
+    assert!(!rect.contains(WindowPoint::new(-1, -1)));
+}
+
+/// PixelRect::to_local_point が矩形原点基準のローカル座標へ変換することを検証する。
+#[test]
+fn pixel_rect_to_local_point_offsets_by_origin() {
+    let rect = PixelRect {
+        x: 100,
+        y: 50,
+        width: 30,
+        height: 20,
+    };
+
+    assert_eq!(
+        rect.to_local_point(WindowPoint::new(112, 58)),
+        Some(PanelSurfacePoint::new(12, 8))
+    );
+    assert_eq!(rect.to_local_point(WindowPoint::new(99, 58)), None);
+}
+
+/// PixelRect::contains_local がローカル座標系の点を判定することを検証する。
+#[test]
+fn pixel_rect_contains_local_judges_same_space_point() {
+    let rect = PixelRect {
+        x: 4,
+        y: 4,
+        width: 8,
+        height: 8,
+    };
+
+    assert!(rect.contains_local(PanelSurfacePoint::new(4, 4)));
+    assert!(rect.contains_local(PanelSurfacePoint::new(11, 11)));
+    assert!(!rect.contains_local(PanelSurfacePoint::new(12, 4)));
+    assert!(!rect.contains_local(PanelSurfacePoint::new(3, 4)));
+}
 
 #[test]
 fn brush_preview_dirty_rect_unions_previous_and_current_preview() {

@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use panel_api::{ServiceRequest, services::names};
+use panel_runtime::{ServiceRequest, services::names};
 use serde_json::json;
 
 use super::DesktopApp;

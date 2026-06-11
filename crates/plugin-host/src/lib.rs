@@ -68,7 +68,7 @@ impl WasmPanelRuntime {
             path: path.clone(),
             message: error.to_string(),
         })?;
-        let mut linker = Linker::new(&engine);
+        let mut linker = Linker::new(engine);
         linker
             .func_wrap(
                 "host",
@@ -692,7 +692,7 @@ impl WasmPanelRuntime {
             }
         })?;
 
-        let mut store = Store::new(&engine, RuntimeCollector::default());
+        let mut store = Store::new(engine, RuntimeCollector::default());
         let instance = linker.instantiate(&mut store, &module).map_err(|error| {
             PluginHostError::Instantiate {
                 path: path.clone(),

@@ -1,4 +1,7 @@
-//! `DesktopApp` のキャンバスフレーム状態と overlay 補助を定義する。
+//! `DesktopApp` のキャンバスフレーム状態 (寸法・ブラシプレビュー・overlay 構築) を集約する。
+//!
+//! present 系 (`present.rs` / `present_state.rs`) と入力系 (`input.rs`) の両方から参照される
+//! 読み取り中心の補助メソッド群。
 
 use super::DesktopApp;
 use super::canvas_frame::build_canvas_frame;

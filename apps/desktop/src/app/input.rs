@@ -261,7 +261,7 @@ impl DesktopApp {
     /// 値を生成できない場合は `None` を返します。
     fn canvas_position_from_window(&self, point: WindowPoint) -> Option<CanvasPoint> {
         let layout = self.layout.as_ref()?;
-        if !layout.canvas_host_rect.contains(point.x, point.y) {
+        if !layout.canvas_host_rect.contains(point) {
             return None;
         }
 
@@ -272,7 +272,7 @@ impl DesktopApp {
     fn canvas_display_contains_window(&self, point: WindowPoint) -> bool {
         self.layout
             .as_ref()
-            .is_some_and(|layout| layout.canvas_display_rect.contains(point.x, point.y))
+            .is_some_and(|layout| layout.canvas_display_rect.contains(point))
     }
 
     /// 入力や種別に応じて処理を振り分ける。

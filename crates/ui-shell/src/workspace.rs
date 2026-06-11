@@ -130,6 +130,7 @@ impl PanelPresentation {
     /// 1. 最終 rect を viewport 内にクランプ
     /// 2. `set_panel_size` で workspace 上の size を確定
     /// 3. `set_position_from_absolute` で anchor を再計算しつつ position を確定
+    ///
     /// 戻り値: 反映に成功した場合 `Some(applied_rect)` (なお `set_position_from_absolute`
     /// 内部で再度クランプされた結果を返す)。該当パネルが workspace に存在しない場合 `None`。
     pub fn resize_panel_keeping_anchor(

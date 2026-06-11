@@ -9,7 +9,7 @@ pub mod composite;
 pub mod fill;
 mod gpu;
 
-pub use brush::GpuBrushDispatch;
+pub use brush::{BrushStrokeParams, GpuBrushDispatch};
 pub use composite::{CompositeLayerEntry, GpuLayerCompositor};
 pub use fill::{FloodFillOutcome, GpuFillDispatch};
 pub use gpu::{GpuCanvasContext, GpuCanvasPool, GpuLayerTexture, GpuPenTipCache};

@@ -1,21 +1,21 @@
 //! `Command` の分類と `DesktopApp` への適用経路を整理する。
 
 use app_core::{CanvasDirtyRect, Command};
-use panel_api::{ServiceRequest, services::names};
+use panel_runtime::{ServiceRequest, services::names};
 
 use super::DesktopApp;
 
 impl DesktopApp {
     /// アクティブペンのペン先テクスチャを GPU キャッシュへアップロードする。
     ///
-    /// `gpu_pen_tip_cache` が None の場合（GPU 未初期化時）は何もしない。
+    /// GPU 未初期化時 (`gpu` が None) は何もしない。
     pub(super) fn upload_active_pen_tip_to_gpu_cache(&mut self) {
-        let Some(cache) = &mut self.gpu_pen_tip_cache else {
+        let Some(gpu) = &mut self.gpu else {
             return;
         };
         if let Some(pen) = self.document.active_pen_preset() {
             let preset_id = pen.id.clone();
-            cache.upload_from_preset(&preset_id, pen);
+            gpu.pen_tips.upload_from_preset(&preset_id, pen);
         }
     }
 }

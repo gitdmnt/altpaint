@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use app_core::{CanvasDirtyRect, Command, HistoryEntry, MergeInSpace, PaintInput};
 use desktop_support::normalize_project_path;
-use panel_api::{ServiceRequest, services::names};
+use panel_runtime::{ServiceRequest, services::names};
 use storage::load_project_from_path;
 
 use super::super::PendingStroke;
@@ -71,7 +71,7 @@ impl DesktopApp {
                 let layer_index = self.document.active_panel().map(|p| p.active_layer_index);
                 if let (Some(panel_id), Some(layer_index)) = (panel_id, layer_index) {
                     // GPU パスでは CPU bitmap を書き換えないため before_layer 保存は不要
-                    let before_layer = if self.gpu_canvas_pool.is_some() {
+                    let before_layer = if self.gpu.is_some() {
                         None
                     } else {
                         self.document.clone_panel_layer_bitmap(panel_id, layer_index)
@@ -105,55 +105,45 @@ impl DesktopApp {
             // GPU dispatch (Phase 8B): CPU と並行して GPU レイヤーテクスチャへ描画する
             {
                 use canvas::{build_paint_context, compute_stamp_positions};
-                if let Some(resolved) = build_paint_context(&self.document, &input) {
+                // resolved は self.document を借用するため、必要な値だけ取り出してスコープを閉じる
+                let stroke_dispatch = build_paint_context(&self.document, &input).map(|resolved| {
                     let color = resolved.context.color;
-                    let color_rgba = [
-                        color.r as f32 / 255.0,
-                        color.g as f32 / 255.0,
-                        color.b as f32 / 255.0,
-                        color.a as f32 / 255.0,
-                    ];
-                    let radius = resolved.context.resolved_size as f32 * 0.5;
-                    let opacity = resolved.context.pen.opacity;
-                    let antialias = resolved.context.pen.antialias;
-                    let tool_kind = resolved.context.tool;
-                    let positions: Vec<(f32, f32)> = match &input {
-                        PaintInput::Stamp { at, .. } => vec![(at.x as f32, at.y as f32)],
+                    let params = gpu_canvas::BrushStrokeParams {
+                        color_rgba: [
+                            color.r as f32 / 255.0,
+                            color.g as f32 / 255.0,
+                            color.b as f32 / 255.0,
+                            color.a as f32 / 255.0,
+                        ],
+                        radius: resolved.context.resolved_size as f32 * 0.5,
+                        opacity: resolved.context.pen.opacity,
+                        antialias: resolved.context.pen.antialias,
+                        tool_kind: resolved.context.tool,
+                    };
+                    let positions = match &input {
+                        PaintInput::Stamp { at, .. } => vec![*at],
                         PaintInput::StrokeSegment { from, to, pressure } => {
                             compute_stamp_positions(*from, *to, *pressure, &resolved.context)
-                                .into_iter()
-                                .map(|p| (p.x as f32, p.y as f32))
-                                .collect()
                         }
                         _ => vec![],
                     };
-                    let panel_id = self.document.active_panel().map(|p| p.id);
-                    let layer_index = self.document.active_panel().map(|p| p.active_layer_index);
-                    drop(resolved);
-                    if let (Some(panel_id), Some(layer_index)) = (panel_id, layer_index) {
-                        let panel_id_str = panel_id.0.to_string();
-                        if let (Some(pool), Some(brush)) = (
-                            self.gpu_canvas_pool.as_ref(),
-                            self.gpu_brush.as_ref(),
-                        ) {
-                            if let Some(texture) = pool.get(&panel_id_str, layer_index) {
-                                brush.dispatch_stroke(
-                                    texture,
-                                    &positions,
-                                    color_rgba,
-                                    radius,
-                                    opacity,
-                                    antialias,
-                                    tool_kind,
-                                );
-                            }
-                        }
+                    (params, positions)
+                });
+                if let Some((params, positions)) = stroke_dispatch
+                    && let Some(panel) = self.document.active_panel()
+                {
+                    let panel_id_str = panel.id.0.to_string();
+                    let layer_index = panel.active_layer_index;
+                    if let Some(gpu) = self.gpu.as_ref()
+                        && let Some(texture) = gpu.pool.get(&panel_id_str, layer_index)
+                    {
+                        gpu.brush.dispatch_stroke(texture, &positions, &params);
                     }
                 }
             }
 
             // GPU パス: compute shader が GPU テクスチャへ直接書き込むため CPU 書き込みは不要
-            if self.gpu_canvas_pool.is_some() {
+            if self.gpu.is_some() {
                 let edit_dirty = edits.iter().fold(None::<CanvasDirtyRect>, |acc, edit| {
                     Some(match acc {
                         Some(existing) => existing.merge(edit.dirty_rect),
@@ -175,7 +165,7 @@ impl DesktopApp {
             let panel_id = self.document.active_panel().map(|p| p.id);
             let layer_index = self.document.active_panel().map(|p| p.active_layer_index);
 
-            if self.gpu_canvas_pool.is_some()
+            if self.gpu.is_some()
                 && let (Some(panel_id), Some(layer_index)) = (panel_id, layer_index)
                 && self.execute_gpu_fill(panel_id, layer_index, &input, &edits)
             {
@@ -240,17 +230,19 @@ impl DesktopApp {
         };
 
         let pid = panel_id.0.to_string();
-        let Some(resolved) = build_paint_context(&self.document, input) else {
-            return false;
+        // resolved は self.document を借用するため、色だけ取り出してスコープを閉じる
+        let fill_rgba = match build_paint_context(&self.document, input) {
+            Some(resolved) => {
+                let color = resolved.context.color;
+                [
+                    color.r as f32 / 255.0,
+                    color.g as f32 / 255.0,
+                    color.b as f32 / 255.0,
+                    color.a as f32 / 255.0,
+                ]
+            }
+            None => return false,
         };
-        let color = resolved.context.color;
-        let fill_rgba = [
-            color.r as f32 / 255.0,
-            color.g as f32 / 255.0,
-            color.b as f32 / 255.0,
-            color.a as f32 / 255.0,
-        ];
-        drop(resolved);
 
         // before スナップショットを CPU bitmap から作る（ストローク前の状態が
         // panel.bitmap / layer.bitmap に残っているのは GPU パスでも同じ — Paint
@@ -262,12 +254,10 @@ impl DesktopApp {
             return false;
         };
 
-        let Some(pool) = self.gpu_canvas_pool.as_ref() else {
+        let Some(gpu) = self.gpu.as_ref() else {
             return false;
         };
-        let Some(fill) = self.gpu_fill.as_ref() else {
-            return false;
-        };
+        let (pool, fill) = (&gpu.pool, &gpu.fill);
         let Some(target) = pool.get(&pid, layer_index) else {
             return false;
         };
@@ -310,14 +300,7 @@ impl DesktopApp {
         }
 
         // after スナップショット: GPU-to-GPU コピー
-        let after_tex = pool.snapshot_region(
-            &pid,
-            layer_index,
-            dirty.x as u32,
-            dirty.y as u32,
-            dirty.width as u32,
-            dirty.height as u32,
-        );
+        let after_tex = pool.snapshot_region(&pid, layer_index, dirty);
         let Some(after_tex) = after_tex else {
             // スナップショット失敗時も描画自体は成功しているので dirty rect を push
             self.append_canvas_dirty_rect(dirty);
@@ -355,19 +338,12 @@ impl DesktopApp {
         // GPU パス: CPU bitmap は書き換えていないため、現在の CPU bitmap から dirty 領域を
         // 取り出すと「ストローク前」ピクセルになる。それを GPU テクスチャへ 1 回アップロードして
         // `before` スナップショットを作り、`after` は GPU-to-GPU コピーで取得する。
-        if let Some(pool) = self.gpu_canvas_pool.as_ref() {
+        if let Some(pool) = self.gpu_canvas_pool() {
             let pid = stroke.panel_id.0.to_string();
             let before_pixels =
                 self.document
                     .capture_panel_layer_region(stroke.panel_id, stroke.layer_index, dirty);
-            let after_tex = pool.snapshot_region(
-                &pid,
-                stroke.layer_index,
-                dirty.x as u32,
-                dirty.y as u32,
-                dirty.width as u32,
-                dirty.height as u32,
-            );
+            let after_tex = pool.snapshot_region(&pid, stroke.layer_index, dirty);
             if let (Some(bp), Some(after_tex)) = (before_pixels, after_tex) {
                 let before_tex = pool.create_and_upload(
                     dirty.width as u32,

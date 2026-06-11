@@ -8,13 +8,10 @@ authors.workspace = true
 [dependencies]
 anyhow.workspace = true
 app-core = { path = "../../crates/app-core" }
-builtin-panels = { path = "../../crates/builtin-panels" }
 gpu-canvas = { path = "../../crates/gpu-canvas" }
 canvas = { path = "../../crates/canvas" }
 desktop-support = { path = "../../crates/desktop-support" }
-panel-api = { path = "../../crates/panel-api" }
 panel-runtime = { path = "../../crates/panel-runtime" }
-panel-html = { path = "../../crates/panel-html" }
 keyboard-types = "0.7"
 pollster.workspace = true
 render-types = { path = "../../crates/render-types" }

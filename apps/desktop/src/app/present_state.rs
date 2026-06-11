@@ -16,20 +16,66 @@ pub(crate) struct PresentFrameUpdate {
     pub(crate) canvas_updated: bool,
 }
 
+/// 次フレームの提示で消化される無効化状態 (保留 dirty rect・再構築/再同期フラグ) を集約する。
+///
+/// `prepare_present_frame` が消化するまで蓄積され、消化後にクリアされる。
+#[derive(Debug, Default)]
+pub(crate) struct PresentInvalidation {
+    /// L2 キャンバス層の保留 dirty rect (キャンバス座標)。
+    pub(crate) canvas_dirty_rect: Option<CanvasDirtyRect>,
+    /// L3 一時オーバーレイ層の保留 dirty rect (window 座標)。
+    pub(crate) temp_overlay_dirty_rect: Option<Rect>,
+    /// L4 UI パネル層の保留 dirty rect (window 座標)。
+    pub(crate) ui_panel_dirty_rect: Option<Rect>,
+    /// ビュー変換 (pan/zoom/rotation) が変化したか。
+    pub(crate) canvas_transform_update: bool,
+    /// view-controls パネルの再同期をフレーム後段へ遅延しているか。
+    pub(crate) deferred_view_panel_sync: bool,
+    /// ステータスバー更新をフレーム後段へ遅延しているか。
+    pub(crate) deferred_status_refresh: bool,
+    /// presentation の workspace layout を runtime のパネル一覧と再整合させる必要があるか。
+    pub(crate) needs_panel_reconcile: bool,
+    /// ステータスバーの再構築が必要か。
+    pub(crate) needs_status_refresh: bool,
+    /// フレーム全体の再構築が必要か。
+    pub(crate) needs_full_present_rebuild: bool,
+}
+
+impl PresentInvalidation {
+    /// 起動直後の状態。初回フレームで全構築とパネル再整合を要求する。
+    pub(crate) fn at_startup() -> Self {
+        Self {
+            needs_panel_reconcile: true,
+            needs_full_present_rebuild: true,
+            ..Self::default()
+        }
+    }
+
+    /// アクティブな操作に紐づく保留中の差分・遅延フラグを破棄する (needs_* は維持)。
+    pub(crate) fn clear_pending(&mut self) {
+        self.canvas_dirty_rect = None;
+        self.temp_overlay_dirty_rect = None;
+        self.ui_panel_dirty_rect = None;
+        self.canvas_transform_update = false;
+        self.deferred_view_panel_sync = false;
+        self.deferred_status_refresh = false;
+    }
+}
+
 impl DesktopApp {
     /// presentation と runtime のパネル一覧の再整合を予約する。
     pub(super) fn request_panel_reconcile(&mut self) {
-        self.needs_panel_reconcile = true;
+        self.invalidation.needs_panel_reconcile = true;
     }
 
     /// ステータス 差分 を更新し、必要な dirty 状態も記録する。
     pub(super) fn mark_status_dirty(&mut self) {
-        self.needs_status_refresh = true;
+        self.invalidation.needs_status_refresh = true;
     }
 
     /// ステータス refresh を後段の処理へ遅延させる。
     pub(super) fn defer_status_refresh(&mut self) {
-        self.deferred_status_refresh = true;
+        self.invalidation.deferred_status_refresh = true;
     }
 
     /// 全パネルを dirty としてマークし、ドキュメント同期をスケジュールする。
@@ -51,46 +97,39 @@ impl DesktopApp {
 
     /// ビュー パネル 同期 を後段の処理へ遅延させる。
     pub(super) fn defer_view_panel_sync(&mut self) {
-        self.deferred_view_panel_sync = true;
+        self.invalidation.deferred_view_panel_sync = true;
     }
 
     /// 保留中の deferred ビュー パネル 同期 を反映する。
     pub(crate) fn flush_deferred_view_panel_sync(&mut self) -> bool {
-        if !self.deferred_view_panel_sync {
+        if !self.invalidation.deferred_view_panel_sync {
             return false;
         }
-        self.deferred_view_panel_sync = false;
+        self.invalidation.deferred_view_panel_sync = false;
         self.sync_ui_from_document_panels(&["builtin.view-controls"]);
         true
     }
 
     /// 保留中の deferred ステータス refresh を反映する。
     pub(crate) fn flush_deferred_status_refresh(&mut self) -> bool {
-        if !self.deferred_status_refresh {
+        if !self.invalidation.deferred_status_refresh {
             return false;
         }
-        self.deferred_status_refresh = false;
+        self.invalidation.deferred_status_refresh = false;
         self.mark_status_dirty();
         true
     }
 
     /// 提示 フレーム を再構築する。
     pub(super) fn rebuild_present_frame(&mut self) {
-        self.needs_full_present_rebuild = true;
+        self.invalidation.needs_full_present_rebuild = true;
     }
 
     /// 初期化 アクティブ interactions に必要な差分領域だけを描画または合成する。
     pub(super) fn reset_active_interactions(&mut self) {
         self.canvas_input.reset();
-        self.pending_canvas_dirty_rect = None;
-        self.pending_temp_overlay_dirty_rect = None;
-        self.pending_ui_panel_dirty_rect = None;
-        self.pending_canvas_transform_update = false;
-        self.deferred_view_panel_sync = false;
-        self.deferred_status_refresh = false;
-        self.panel_interaction.active_panel_drag = None;
-        self.panel_interaction.active_panel_resize = None;
-        self.panel_interaction.pending_panel_press = None;
+        self.invalidation.clear_pending();
+        self.panel_interaction = super::panel_dispatch::PanelInteractionState::default();
         self.hover_canvas_position = None;
     }
 
@@ -104,8 +143,8 @@ impl DesktopApp {
 
     /// Append キャンバス 差分 矩形 に必要な差分領域だけを描画または合成する。
     pub(super) fn append_canvas_dirty_rect(&mut self, dirty: CanvasDirtyRect) -> bool {
-        self.pending_canvas_dirty_rect = Some(
-            self.pending_canvas_dirty_rect
+        self.invalidation.canvas_dirty_rect = Some(
+            self.invalidation.canvas_dirty_rect
                 .map_or(dirty, |existing| existing.merge(dirty)),
         );
         true
@@ -120,8 +159,8 @@ impl DesktopApp {
 
     /// Append temp オーバーレイ 差分 矩形（L3）に必要な差分領域だけを描画または合成する。
     pub(super) fn append_temp_overlay_dirty_rect(&mut self, dirty: Rect) -> bool {
-        self.pending_temp_overlay_dirty_rect = Some(
-            self.pending_temp_overlay_dirty_rect
+        self.invalidation.temp_overlay_dirty_rect = Some(
+            self.invalidation.temp_overlay_dirty_rect
                 .map_or(dirty, |existing| existing.union(dirty)),
         );
         true
@@ -129,8 +168,8 @@ impl DesktopApp {
 
     /// Append UI パネル 差分 矩形（L4）に必要な差分領域だけを描画または合成する。
     pub(super) fn append_ui_panel_dirty_rect(&mut self, dirty: Rect) -> bool {
-        self.pending_ui_panel_dirty_rect = Some(
-            self.pending_ui_panel_dirty_rect
+        self.invalidation.ui_panel_dirty_rect = Some(
+            self.invalidation.ui_panel_dirty_rect
                 .map_or(dirty, |existing| existing.union(dirty)),
         );
         true
@@ -141,7 +180,7 @@ impl DesktopApp {
         &mut self,
         previous_transform: app_core::CanvasViewTransform,
     ) -> bool {
-        self.pending_canvas_transform_update = true;
+        self.invalidation.canvas_transform_update = true;
         if let Some(canvas_viewport_rect) =
             self.layout.as_ref().map(|layout| layout.canvas_host_rect)
         {

@@ -6,10 +6,7 @@ mod solid_quad;
 pub(crate) mod status_panel;
 use desktop_support::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
 
-#[allow(unused_imports)]
-pub(crate) use geometry::{
-    fit_rect, map_window_to_panel_surface, map_window_to_panel_surface_clamped,
-};
+pub(crate) use geometry::fit_rect;
 #[allow(unused_imports)]
 pub(crate) use overlay_quad::{
     CircleQuad, LineQuad, build_overlay_circle_quads, build_overlay_line_quads,

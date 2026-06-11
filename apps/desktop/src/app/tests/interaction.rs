@@ -156,7 +156,7 @@ fn panel_rect_tool_creates_panel_from_dragged_page_rect() {
 #[test]
 fn panel_color_wheel_updates_document_color() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    assert!(app.dispatch_panel_event(panel_api::PanelEvent::SetText {
+    assert!(app.dispatch_panel_event(panel_runtime::PanelEvent::SetText {
         panel_id: "builtin.color-palette".to_string(),
         node_id: "color.wheel".to_string(),
         value: "120,100,100".to_string(),
@@ -436,7 +436,7 @@ fn profile_color_wheel_events_for_ten_seconds() {
     while started.elapsed() < duration {
         let saturation = 40 + (hue % 61);
         let value = 40 + ((hue * 3) % 61);
-        assert!(app.dispatch_panel_event(panel_api::PanelEvent::SetText {
+        assert!(app.dispatch_panel_event(panel_runtime::PanelEvent::SetText {
             panel_id: "builtin.color-palette".to_string(),
             node_id: "color.wheel".to_string(),
             value: format!("{hue},{saturation},{value}"),
@@ -1016,7 +1016,10 @@ fn control_points_from_surface(
     let mut points = Vec::new();
     for y in 0..layout.window_rect.height {
         for x in 0..layout.window_rect.width {
-            let Some((panel_id, node_id)) = app.panel_presentation.html_panel_hit_at(x, y) else {
+            let Some((panel_id, node_id)) = app
+                .panel_presentation
+                .html_panel_hit_at(app_core::WindowPoint::new(x as i32, y as i32))
+            else {
                 continue;
             };
             if panel_id == target_panel_id && node_id == target_node_id {
@@ -1154,15 +1157,15 @@ fn brush_preview_dirty_rect_grows_with_pen_size() {
     let _ = app.execute_command(Command::SetActivePenSize { size: 4 });
     assert!(app.update_canvas_hover(center_x, center_y));
     let small_dirty = app
-        .pending_temp_overlay_dirty_rect
+        .invalidation.temp_overlay_dirty_rect
         .expect("small preview dirty exists");
 
-    app.pending_temp_overlay_dirty_rect = None;
+    app.invalidation.temp_overlay_dirty_rect = None;
     app.hover_canvas_position = None;
     let _ = app.execute_command(Command::SetActivePenSize { size: 96 });
     assert!(app.update_canvas_hover(center_x, center_y));
     let large_dirty = app
-        .pending_temp_overlay_dirty_rect
+        .invalidation.temp_overlay_dirty_rect
         .expect("large preview dirty exists");
 
     assert!(large_dirty.width > small_dirty.width);
@@ -1186,13 +1189,13 @@ fn lasso_preview_drag_marks_temp_overlay_dirty() {
     // handle_canvas_pointer を直接呼んでパネルインタラクションをバイパス
     // down でラッソ開始 → LassoPreviewChanged
     app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
-    app.pending_temp_overlay_dirty_rect = None;
+    app.invalidation.temp_overlay_dirty_rect = None;
 
     // drag でラッソ点を追加 → LassoPreviewChanged → temp overlay dirty になる
     let dragged = app.handle_canvas_pointer("drag", WindowPoint::new(center_x + 20, center_y + 10), 1.0);
     assert!(dragged, "lasso drag should request redraw");
     assert!(
-        app.pending_temp_overlay_dirty_rect.is_some(),
+        app.invalidation.temp_overlay_dirty_rect.is_some(),
         "lasso drag should set temp overlay dirty rect"
     );
 }
@@ -1205,17 +1208,17 @@ fn toggle_layer_visibility_sets_canvas_dirty_rect_not_full_rebuild() {
     // canvas_frame を初期化しておく
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     // 初期化後のフラグをリセット
-    app.needs_full_present_rebuild = false;
-    app.pending_canvas_dirty_rect = None;
+    app.invalidation.needs_full_present_rebuild = false;
+    app.invalidation.canvas_dirty_rect = None;
 
     let _ = app.execute_command(Command::ToggleActiveLayerVisibility);
 
     assert!(
-        app.pending_canvas_dirty_rect.is_some(),
+        app.invalidation.canvas_dirty_rect.is_some(),
         "ToggleActiveLayerVisibility should set canvas dirty rect"
     );
     assert!(
-        !app.needs_full_present_rebuild,
+        !app.invalidation.needs_full_present_rebuild,
         "ToggleActiveLayerVisibility should not trigger full present rebuild"
     );
 }

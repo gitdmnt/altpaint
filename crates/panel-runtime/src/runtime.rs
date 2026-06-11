@@ -152,11 +152,10 @@ impl PanelRuntime {
         let mut ids = Vec::new();
         for panel in &mut self.panels {
             let panel_id = panel.id().to_string();
-            if let Some(any) = panel.as_any_mut() {
-                if any.downcast_mut::<BuiltinPanelPlugin>().is_some() {
+            if let Some(any) = panel.as_any_mut()
+                && any.downcast_mut::<BuiltinPanelPlugin>().is_some() {
                     ids.push(panel_id);
                 }
-            }
         }
         ids
     }

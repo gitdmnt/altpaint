@@ -22,11 +22,11 @@
 
 1. `app-core` がドメインの中心である
 2. `apps/desktop` がデスクトップ実行ホストである
-3. パネル系は `panel-api` / `panel-schema` / `plugin-host` / `plugin-sdk` / `panel-html` / `panel-runtime` / `builtin-panels` / `ui-shell` に分散している
+3. パネル系は `panel-api` / `panel-schema` / `plugin-host` / `plugin-sdk` / `panel-html` / `panel-runtime` / `ui-shell` に分散しているが、desktop からの入口は `panel-runtime` (facade) と `ui-shell` (presentation) の 2 系統に集約されている (ADR 017)
 
 ## workspace パッケージ一覧
 
-2026-06-12 時点の workspace package は次の通り（計 28 メンバー）。
+2026-06-12 時点の workspace package は次の通り（計 27 メンバー）。
 
 ### 中核クレート
 
@@ -44,7 +44,6 @@
 - `plugin-sdk`
 - `panel-html`
 - `panel-runtime`
-- `builtin-panels`（ローダ umbrella crate）
 - `apps/desktop`
 
 補足:
@@ -82,10 +81,7 @@ graph TD
     desktop --> gpucanvas[gpu-canvas]
     desktop --> rendertypes[render-types]
     desktop --> panelruntime[panel-runtime]
-    desktop --> phtml[panel-html]
     desktop --> uishell[ui-shell]
-    desktop --> panelapi[panel-api]
-    desktop --> builtinpanels[builtin-panels]
     desktop --> storage[storage]
     desktop --> dsupport[desktop-support]
 
@@ -95,7 +91,7 @@ graph TD
     rendertypes --> appcore
     storage --> appcore
     dsupport --> appcore
-    panelapi --> appcore
+    panelapi[panel-api] --> appcore
 
     uishell --> appcore
     uishell --> panelapi
@@ -105,9 +101,7 @@ graph TD
     panelruntime --> panelapi
     panelruntime --> pschema[panel-schema]
     panelruntime --> phost[plugin-host]
-    panelruntime --> phtml
-
-    builtinpanels --> panelruntime
+    panelruntime --> phtml[panel-html]
 
     phost --> pschema
     pluginsdk[plugin-sdk] --> pmacros[plugin-macros]
@@ -124,12 +118,16 @@ graph TD
 - `canvas` は `render-types` の view mapping API を使うが、project I/O や panel runtime へは依存しない
 - `gpu-canvas` は `wgpu` に依存する唯一のペイント実装クレートで、`app-core` 以外のローカル依存を持たない
 - `panel-html` はローカル依存を持たず、Blitz / taffy / vello / wgpu に閉じた HTML パネルエンジンである
-- `panel-runtime` が現在の panel runtime 統合点であり、`BuiltinPanelPlugin`（HTML+Wasm）・host sync・hit 収集を持つ
+- `panel-runtime` は panel サブシステムの facade であり、`PanelRuntime`・`BuiltinPanelPlugin`
+  （HTML+Wasm）・host sync・hit 収集・同梱パネル loader を持ち、`panel-api` の host 向け型と
+  `panel-html`（`panel_runtime::html`）を再公開する。desktop は panel-api / panel-html へ直接依存しない（ADR 017）
 - `ui-shell` は presentation 専用 crate で、ローカル依存は `app-core` / `panel-api` / `render-types` のみ。
-  runtime のパネル一覧は `reconcile_panels(panel_ids)` の引数として desktop 側から受け取る（ADR 016 で panel-runtime 依存を切断）
+  runtime のパネル一覧は `reconcile_panels(panel_ids)` の引数として desktop 側から受け取り（ADR 016）、
+  hit-test API の戻り値型 `ResizeEdge` を再公開する（ADR 017）
 - `plugin-host` は `panel-runtime` の内側で使われ、`apps/desktop` は直接依存していない
 - `plugin-sdk` は plugin author 向け表面 API であり、macro と DOM mutation API を含む唯一の作者向け入口である
-- 各パネル crate（`crates/builtin-panels/*`）は `plugin-sdk` のみに依存する。ローダ umbrella の `builtin-panels` は `panel-runtime` に依存する
+- 各パネル crate（`crates/builtin-panels/*`）は `plugin-sdk` のみに依存する。旧 `builtin-panels`
+  umbrella crate は ADR 017 で `panel-runtime::loader` に統合し削除した
 
 ## 将来の配置判断用メモ
 
@@ -338,27 +336,21 @@ graph TD
 
 担当:
 
-- `PanelRuntime`: panel registry、dirty panel 管理、event / keyboard dispatch、GPU frame 管理、`collect_panel_hits`
+- `PanelRuntime`（`runtime.rs`）: panel registry、dirty panel 管理、event / keyboard dispatch、GPU frame 管理、`collect_panel_hits`
 - `BuiltinPanelPlugin`: `HtmlPanelEngine` + `WasmPanelRuntime` を束ねる唯一のパネル実装
+- `loader.rs`: `register_builtin_panels(runtime, assets_root)` による同梱 12 パネルの一括登録
+  （各パネルディレクトリ `panel.html` + `panel.css` + `panel.meta.json` + `.wasm` の読込。
+  旧 `builtin-panels` umbrella crate を ADR 017 で統合）
 - `host_sync.rs`: `HostSnapshotCache` による差分シリアライズと host snapshot 同期
 - `config.rs`: panel persistent config の収集 / 復元
 - `meta.rs`: `panel.meta.json`（`default_size` 必須）のパース
+- facade 再公開: `panel-api` の host 向け型（`HostAction` / `PanelEvent` / `ServiceRequest` 等）と
+  `panel-html`（`panel_runtime::html`）
 
 実装上の特徴:
 
 - DSL 時代の `dsl_loader.rs` / `dsl_panel.rs` / `dsl_to_html.rs` は Phase 10〜12 で削除済み
 - hit / move handle / full rect テーブルの収集は GPU 非依存で、headless テストでも実経路で検証できる（Phase 13）
-
-### `builtin-panels`
-
-担当:
-
-- `register_builtin_panels(runtime, assets_root)` による 12 パネルの一括登録（`loader.rs`）
-- 各パネルディレクトリ（`panel.html` + `panel.css` + `panel.meta.json` + `.wasm`）の読込
-
-依存ルール:
-
-- umbrella crate は `panel-runtime` に依存する
 - 各パネル crate は compile-time では `plugin-sdk` にのみ依存し、host の内部型へ直接依存しない
 
 ### `ui-shell`
@@ -367,7 +359,8 @@ graph TD
 
 - panel presentation の中心
 - workspace layout（4 隅アンカー、move / visibility / resize）
-- HTML panel hit-test（`html_panel_hit_at` / `panel_resize_hit_at` / move handle）
+- HTML panel hit-test（`html_panel_hit_at` / `panel_resize_hit_at` / move handle。
+  すべて `WindowPoint` を受け、ローカル座標は `PanelSurfacePoint` で返す — ADR 017）
 - focus 管理（`focus_panel_node` / `focus_next` / `focus_previous`）
 
 実装上の特徴:
@@ -375,6 +368,7 @@ graph TD
 - runtime（Wasm 実行・host sync）は持たない。`panel-runtime` が runtime 側の正本である
 - panel-runtime へのコンパイル依存も持たない。登録パネル一覧は
   `reconcile_panels(panel_ids: Vec<&'static str>)` の引数として受け取る（ADR 016）
+- hit-test API の戻り値型 `ResizeEdge` を再公開する（ADR 017）
 - DSL 時代の `tree_query.rs` / `TextInputEditorState` / winit IME 編集経路は Phase 12 で、
   CPU 合成時代の `PanelSurface` / scroll offset / no-op スタブ群は ADR 016 で削除済み
 
@@ -496,20 +490,20 @@ crates/gpu-canvas/src/lib.rs
 
 ```text
 crates/builtin-panels/<name>/{panel.html, panel.css, panel.meta.json, *.wasm}
-  -> builtin-panels::register_builtin_panels
+  -> panel-runtime::register_builtin_panels (loader.rs)
   -> panel-runtime::BuiltinPanelPlugin
      -> panel-html::HtmlPanelEngine (Blitz + vello)
      -> plugin-host::WasmPanelRuntime (wasmtime + dom_api)
   -> panel-schema DTO
-  -> panel-api::PanelEvent / HostAction
+  -> panel-api::PanelEvent / HostAction (desktop へは panel-runtime が再公開)
 ```
 
 役割分担:
 
-- `builtin-panels`: パネル資産の発見と一括登録
 - `panel-html`: HTML/CSS のレイアウト解決・GPU 描画・hit 矩形収集
 - `plugin-host`: Wasm handler 呼び出しと DOM mutation host functions
-- `panel-runtime`: state と host snapshot を渡し、結果を `HostAction` と DOM 更新に変換
+- `panel-runtime`: パネル資産の発見と一括登録、state と host snapshot の受け渡し、
+  結果の `HostAction` / DOM 更新への変換
 
 ### 3. 永続化側
 
@@ -618,9 +612,10 @@ project file と session file は役割が異なる。
 実装を読んだ結果、次は整理候補になる。
 
 1. `execute_paint_input`（`services/project_io.rs`）内の CPU 差分計算と GPU dispatch の分離
-2. `panel-api` が `app-core::Command` を直接知っている点の再評価
+2. `panel-api` が `app-core::Command` を直接知っている点の再評価 (ADR 017 で検討し、HostAction 境界の再設計を伴うため見送り)
 3. tool 実行 plugin と host runtime の安定境界の確立
+4. `app_core::Panel` (コマ) と UI パネルの命名衝突の解消 (ADR 017 スコープ外、将来候補)
 
-（旧候補「`panel-html-experiment` の正式名称化」は ADR 016 で完了済み）
+（旧候補「`panel-html-experiment` の正式名称化」は ADR 016 で、desktop の依存集中・座標系の生タプルは ADR 017 で完了済み）
 
 ただし、これらは**今そうなっている**という意味ではない。現時点の正本は、上記 compile-time 依存と runtime flow である。
