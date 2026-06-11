@@ -37,16 +37,8 @@
 
 ## ファイル形式
 
-### ver.1 互換形式
-
-```json
-{
-  "format_version": 1,
-  "id": "builtin.round-pen",
-  "name": "Round Pen",
-  "size": 4,
-}
-```
+ver.1 形式の受理は廃止済み (alpha 方針で後方互換を持たない)。
+`format_version: 2` のみ読み込める。
 
 ### ver.2 正規化形式
 
@@ -88,17 +80,6 @@
 ```
 
 ## フィールド
-
-### ver.1
-
-- `format_version`
-  - 現在は `1` 固定
-- `id`
-  - 一意なプリセット ID
-- `name`
-  - UI 表示名
-- `size`
-  - 初期幅
 
 ### ver.2
 
@@ -152,7 +133,7 @@
 ## 現在の parse/export module
 
 - `storage::parse_altpaint_pen_json(...)`
-  - `ver.1` / `ver.2` の `*.altp-pen.json` を読む
+  - `ver.2` の `*.altp-pen.json` を読む (crate 内部 API。`parse_pen_file` 経由で利用)
 - `storage::parse_photoshop_abr_bytes(...)`
   - Photoshop `ABR` を正規化 `AltPaintPen` 群へ落とす
 - `storage::parse_clip_studio_sut(...)`

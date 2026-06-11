@@ -158,12 +158,12 @@ mod tests {
         std::fs::write(
             nested.join("round.altp-pen.json"),
             r#"{
-  "format_version": 1,
+  "format_version": 2,
   "id": "round",
   "name": "Round",
-  "size": 7,
-  "min_size": 1,
-  "max_size": 32
+  "base_size": 7.0,
+  "min_size": 1.0,
+  "max_size": 32.0
 }"#,
         )
         .expect("write preset");

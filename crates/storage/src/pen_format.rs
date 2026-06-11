@@ -165,7 +165,7 @@ pub struct AltPaintPen {
     pub plugin_id: String,
     #[serde(default)]
     pub engine: PenEngine,
-    #[serde(default = "default_base_size", alias = "size")]
+    #[serde(default = "default_base_size")]
     pub base_size: f32,
     #[serde(default = "default_min_size")]
     pub min_size: f32,
@@ -325,81 +325,14 @@ impl AltPaintPen {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct LegacyAltPaintPen {
-    #[serde(default = "legacy_format_version")]
-    format_version: u32,
-    id: String,
-    name: String,
-    #[serde(default = "legacy_size")]
-    size: u32,
-    #[serde(default = "legacy_min_size")]
-    min_size: u32,
-    #[serde(default = "legacy_max_size")]
-    max_size: u32,
-    #[serde(default = "default_pen_pressure_enabled")]
-    pressure_enabled: bool,
-    #[serde(default = "default_pen_antialias")]
-    antialias: bool,
-    #[serde(default)]
-    stabilization: u8,
-}
-
-impl TryFrom<LegacyAltPaintPen> for AltPaintPen {
-    type Error = PenExchangeError;
-
-    /// Try from 用の表示文字列を組み立てる。
-    ///
-    /// 失敗時はエラーを返します。
-    fn try_from(value: LegacyAltPaintPen) -> Result<Self, Self::Error> {
-        if value.format_version != 1 {
-            return Err(PenExchangeError::UnsupportedFormat(format!(
-                "unsupported legacy altpaint pen format version: {}",
-                value.format_version
-            )));
-        }
-        let pen = AltPaintPen {
-            format_version: CURRENT_PEN_FORMAT_VERSION,
-            id: value.id,
-            name: value.name,
-            plugin_id: default_plugin_id(),
-            base_size: value.size.max(1) as f32,
-            min_size: value.min_size.max(1) as f32,
-            max_size: value.max_size.max(value.min_size.max(1)) as f32,
-            pressure_enabled: value.pressure_enabled,
-            antialias: value.antialias,
-            stabilization: value.stabilization,
-            ..AltPaintPen::default()
-        };
-        pen.validate()?;
-        Ok(pen)
-    }
-}
-
 /// 入力を解析して altpaint ペン JSON に変換し、失敗時はエラーを返す。
 ///
+/// `format_version` は現行版 (`CURRENT_PEN_FORMAT_VERSION`) のみ受理する。
 /// 失敗時はエラーを返します。
 pub fn parse_altpaint_pen_json(text: &str) -> Result<AltPaintPen, PenExchangeError> {
-    let value: Value = serde_json::from_str(text)?;
-    let format_version = value
-        .get("format_version")
-        .and_then(Value::as_u64)
-        .unwrap_or(1) as u32;
-
-    match format_version {
-        1 => {
-            let legacy = serde_json::from_value::<LegacyAltPaintPen>(value)?;
-            AltPaintPen::try_from(legacy)
-        }
-        CURRENT_PEN_FORMAT_VERSION => {
-            let pen = serde_json::from_value::<AltPaintPen>(value)?;
-            pen.validate()?;
-            Ok(pen)
-        }
-        version => Err(PenExchangeError::UnsupportedFormat(format!(
-            "unsupported altpaint pen format version: {version}"
-        ))),
-    }
+    let pen: AltPaintPen = serde_json::from_str(text)?;
+    pen.validate()?;
+    Ok(pen)
 }
 
 /// 現在 ペン 形式 version を計算して返す。
@@ -410,11 +343,6 @@ fn current_pen_format_version() -> u32 {
 /// 既定の プラグイン ID を返す。
 fn default_plugin_id() -> String {
     "builtin.bitmap".to_string()
-}
-
-/// legacy 形式 version を計算して返す。
-fn legacy_format_version() -> u32 {
-    1
 }
 
 /// 入力や種別に応じて処理を振り分ける。
@@ -472,29 +400,14 @@ fn default_base_size() -> f32 {
     4.0
 }
 
-/// 現在の legacy サイズ を返す。
-fn legacy_size() -> u32 {
-    4
-}
-
 /// 既定の min サイズ を返す。
 fn default_min_size() -> f32 {
     1.0
 }
 
-/// 現在の legacy min サイズ を返す。
-fn legacy_min_size() -> u32 {
-    1
-}
-
 /// 既定の max サイズ を返す。
 fn default_max_size() -> f32 {
     64.0
-}
-
-/// 現在の legacy max サイズ を返す。
-fn legacy_max_size() -> u32 {
-    64
 }
 
 /// 既定の spacing percent を返す。
@@ -526,26 +439,33 @@ fn default_pen_antialias() -> bool {
 mod tests {
     use super::*;
 
-    /// parses legacy ペン JSON as v2 ペン が期待どおりに動作することを検証する。
+    /// レガシー v1 ペン JSON を拒否することを検証する (旧版受理の全廃)。
     #[test]
-    fn parses_legacy_pen_json_as_v2_pen() {
+    fn rejects_legacy_v1_pen_json() {
         let json = r#"{
   "format_version": 1,
   "id": "legacy.round",
   "name": "Legacy Round",
-  "size": 7,
-  "pressure_enabled": true,
-  "antialias": false,
-  "stabilization": 13
+  "size": 7
 }"#;
 
-        let pen = parse_altpaint_pen_json(json).expect("legacy pen parses");
+        let error = parse_altpaint_pen_json(json).expect_err("v1 pen should be rejected");
+        assert!(matches!(error, PenExchangeError::UnsupportedFormat(_)));
+    }
+
+    /// format_version 省略時は現行版として解析されることを検証する。
+    #[test]
+    fn parses_pen_json_without_format_version_as_current() {
+        let json = r#"{
+  "id": "pen.modern",
+  "name": "Modern Pen",
+  "base_size": 6.0
+}"#;
+
+        let pen = parse_altpaint_pen_json(json).expect("current pen parses");
 
         assert_eq!(pen.format_version, CURRENT_PEN_FORMAT_VERSION);
-        assert_eq!(pen.id, "legacy.round");
-        assert_eq!(pen.base_size, 7.0);
-        assert!(!pen.antialias);
-        assert_eq!(pen.stabilization, 13);
+        assert_eq!(pen.base_size, 6.0);
     }
 
     /// runtime conversion clamps サイズ が期待どおりに動作することを検証する。
