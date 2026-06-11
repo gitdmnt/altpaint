@@ -438,17 +438,6 @@ pub(crate) fn load_page_from_sqlite_path(
     load_page(&connection, page_id)
 }
 
-/// パネル from sqlite パス を読み込み、必要に応じて整形して返す。
-pub(crate) fn load_panel_from_sqlite_path(
-    path: impl AsRef<Path>,
-    page_id: PageId,
-    panel_id: PanelId,
-) -> Result<Panel, StorageError> {
-    let connection = open_read_only(path.as_ref())?;
-    validate_format_version(&connection)?;
-    load_panel(&connection, page_id, panel_id)
-}
-
 /// パネル スナップショット from sqlite パス を読み込み、必要に応じて整形して返す。
 pub(crate) fn load_panel_snapshot_from_sqlite_path(
     path: impl AsRef<Path>,

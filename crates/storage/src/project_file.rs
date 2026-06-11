@@ -1,14 +1,14 @@
 use std::path::Path;
 
-use app_core::{Document, Page, PageId, Panel, PanelId, WorkspaceLayout};
+use app_core::{Document, Page, PageId, WorkspaceLayout};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use thiserror::Error;
-use app_core::{PluginConfigs, WorkspaceUiState};
+use app_core::WorkspaceUiState;
 
 use crate::project_sqlite::{
     PersistedPanelSnapshot, ProjectIndex, ProjectSaveOptions, is_sqlite_project_path,
-    load_page_from_sqlite_path, load_panel_from_sqlite_path, load_panel_snapshot_from_sqlite_path,
+    load_page_from_sqlite_path, load_panel_snapshot_from_sqlite_path,
     load_project_from_sqlite_path, load_project_index_from_sqlite_path,
     save_project_to_sqlite_path,
 };
@@ -19,18 +19,6 @@ pub const CURRENT_FORMAT_VERSION: u32 = 7;
 pub struct LoadedProject {
     pub document: Document,
     pub ui_state: WorkspaceUiState,
-}
-
-impl LoadedProject {
-    /// ワークスペース レイアウト を計算して返す。
-    pub fn workspace_layout(&self) -> &WorkspaceLayout {
-        &self.ui_state.workspace_layout
-    }
-
-    /// プラグイン configs を計算して返す。
-    pub fn plugin_configs(&self) -> &PluginConfigs {
-        &self.ui_state.plugin_configs
-    }
 }
 
 #[derive(Debug, Error)]
@@ -70,19 +58,6 @@ fn ensure_sqlite_project(path: &Path) -> Result<(), StorageError> {
     )))
 }
 
-/// ドキュメント to パス を保存先へ書き出す。
-pub fn save_document_to_path(
-    path: impl AsRef<Path>,
-    document: &Document,
-) -> Result<(), StorageError> {
-    save_project_to_path(
-        path,
-        document,
-        &WorkspaceLayout::default(),
-        &BTreeMap::new(),
-    )
-}
-
 /// プロジェクト to パス を保存先へ書き出す。
 pub fn save_project_to_path(
     path: impl AsRef<Path>,
@@ -100,7 +75,7 @@ pub fn save_project_to_path(
 }
 
 /// プロジェクト to パス with オプション を保存先へ書き出す。
-pub fn save_project_to_path_with_options(
+pub(crate) fn save_project_to_path_with_options(
     path: impl AsRef<Path>,
     document: &Document,
     workspace_layout: &WorkspaceLayout,
@@ -109,11 +84,6 @@ pub fn save_project_to_path_with_options(
 ) -> Result<(), StorageError> {
     let path = path.as_ref();
     save_project_to_sqlite_path(path, document, workspace_layout, plugin_configs, options)
-}
-
-/// ドキュメント from パス を読み込み、必要に応じて整形して返す。
-pub fn load_document_from_path(path: impl AsRef<Path>) -> Result<Document, StorageError> {
-    load_project_from_path(path).map(|project| project.document)
 }
 
 /// プロジェクト from パス を読み込み、必要に応じて整形して返す。
@@ -141,17 +111,6 @@ pub fn load_page_from_path(path: impl AsRef<Path>, page_id: PageId) -> Result<Pa
     let path = path.as_ref();
     ensure_sqlite_project(path)?;
     load_page_from_sqlite_path(path, page_id)
-}
-
-/// パネル from パス を読み込み、必要に応じて整形して返す。
-pub fn load_panel_from_path(
-    path: impl AsRef<Path>,
-    page_id: PageId,
-    panel_id: PanelId,
-) -> Result<Panel, StorageError> {
-    let path = path.as_ref();
-    ensure_sqlite_project(path)?;
-    load_panel_from_sqlite_path(path, page_id, panel_id)
 }
 
 /// パネル スナップショット from パス を読み込み、必要に応じて整形して返す。
@@ -252,8 +211,16 @@ mod tests {
         document.set_active_color(ColorRgba8::new(0x8e, 0x24, 0xaa, 0xff));
         draw_test_point(&mut document, 5, 6);
 
-        save_document_to_path(&path, &document).expect("save should succeed");
-        let loaded = load_document_from_path(&path).expect("load should succeed");
+        save_project_to_path(
+            &path,
+            &document,
+            &WorkspaceLayout::default(),
+            &BTreeMap::new(),
+        )
+        .expect("save should succeed");
+        let loaded = load_project_from_path(&path)
+            .expect("load should succeed")
+            .document;
 
         assert_eq!(loaded.work.title, document.work.title);
         assert_eq!(loaded.active_color, document.active_color);

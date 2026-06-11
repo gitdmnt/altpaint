@@ -132,13 +132,15 @@ ver.1 形式の受理は廃止済み (alpha 方針で後方互換を持たない
 
 ## 現在の parse/export module
 
-- `storage::parse_altpaint_pen_json(...)`
-  - `ver.2` の `*.altp-pen.json` を読む (crate 内部 API。`parse_pen_file` 経由で利用)
-- `storage::parse_photoshop_abr_bytes(...)`
+- `storage::parse_pen_file(...)`
+  - 拡張子/内容から形式を判定して読み込む唯一の公開入口
+- `parse_altpaint_pen_json(...)` (crate 内部)
+  - `ver.2` の `*.altp-pen.json` を読む
+- `parse_photoshop_abr_bytes(...)` (crate 内部)
   - Photoshop `ABR` を正規化 `AltPaintPen` 群へ落とす
-- `storage::parse_clip_studio_sut(...)`
+- `parse_clip_studio_sut(...)` (crate 内部)
   - Clip Studio Paint `SUT` を read-only で調査し、正規化 metadata を返す
-- `storage::parse_gimp_gbr_bytes(...)`
+- `parse_gimp_gbr_bytes(...)` (crate 内部)
   - `GIMP GBR` を読む
 - `storage::export_altpaint_pen_json(...)`
   - 正規化 `AltPaintPen` を `*.altp-pen.json` として書き出す
