@@ -1,6 +1,6 @@
 //! panel_dispatch の回帰テストをまとめる。
 
-use app_core::{Command, WindowPoint};
+use app_core::WindowPoint;
 use desktop_support::FrameProfiler;
 use panel_runtime::HostAction;
 
@@ -17,12 +17,10 @@ fn panel_dispatch_keyboard_path_activates_save_action() {
         app.panel_workspace
             .focus_panel_node("builtin.app-actions", "app.save")
     );
-    // app.save は emit_service 経由で保存を実行するため Command::Noop が返る。
+    // app.save は emit_service 経由で保存サービスを発行するため、HostAction が
+    // 生成され activate_focused_panel_control は true を返す。
     // pending_jobs でジョブがキューされていることを確認する。
-    assert_eq!(
-        app.activate_focused_panel_control(),
-        Some(Command::Noop)
-    );
+    assert!(app.activate_focused_panel_control());
     assert_eq!(app.background_jobs.len(), 1);
 }
 

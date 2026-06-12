@@ -12,13 +12,13 @@
 use std::any::Any;
 use std::path::Path;
 
-use app_core::{Command, Document};
+use app_core::{Document, DocumentCommand};
 use panel_api::{HostAction, PanelEvent, PanelPlugin, ServiceRequest};
 use panel_html::{
     ActionDescriptor, HtmlPanelView, blitz_dom::LocalName, blitz_dom::node::NodeData,
     parse_data_action,
 };
-use crate::request_translation::command_from_descriptor;
+use crate::request_translation::{TranslatedRequest, translate_descriptor};
 use crate::host_state::{
     EMPTY_WORKSPACE_PANELS_JSON, HostStateCache, build_host_state,
 };
@@ -176,16 +176,20 @@ fn panel_host_request(
 fn request_descriptor_to_host_action(
     descriptor: panel_protocol::RequestDescriptor,
 ) -> Option<HostAction> {
-    // 1. 命令名が Command enum に翻訳できれば DispatchCommand
-    if let Ok(command) = command_from_descriptor(&descriptor) {
-        return Some(HostAction::DispatchCommand(command));
+    match translate_descriptor(&descriptor) {
+        Ok(TranslatedRequest::Document(command)) => {
+            Some(HostAction::DispatchDocumentCommand(command))
+        }
+        Ok(TranslatedRequest::Session(command)) => {
+            Some(HostAction::DispatchSessionCommand(command))
+        }
+        Ok(TranslatedRequest::Service(request)) => Some(HostAction::RequestService(request)),
+        Err(diagnostic) => {
+            // 黙殺禁止 (BL-061): 翻訳失敗は診断ログへ流す。
+            eprintln!("request translation failed for {}: {diagnostic}", descriptor.name);
+            None
+        }
     }
-    // 2. 翻訳できなければ ServiceRequest として扱う (services::*)
-    let mut request = ServiceRequest::new(descriptor.name);
-    for (k, v) in descriptor.payload {
-        request = request.with_value(k, v);
-    }
-    Some(HostAction::RequestService(request))
 }
 
 impl PanelPlugin for HtmlWasmPanel {
@@ -353,7 +357,7 @@ impl HtmlWasmPanel {
 
 fn command_id_to_host_action(command_id: &str) -> Option<HostAction> {
     match command_id {
-        "noop" => Some(HostAction::DispatchCommand(Command::Noop)),
+        "noop" => Some(HostAction::DispatchDocumentCommand(DocumentCommand::Noop)),
         _ => None,
     }
 }

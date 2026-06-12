@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{Command, KomaLocalPoint};
+use crate::{DocumentCommand, KomaLocalPoint, SessionCommand};
 
 mod bitmap;
 mod layer_ops;
@@ -1206,49 +1206,14 @@ impl Document {
         self.active_koma_index = self.active_koma_index();
     }
 
-    /// コマンドをドキュメント状態へ適用する。
+    /// 純粋なドキュメント変異コマンドをドキュメント状態へ適用する。
     ///
-    /// I/O を伴うコマンド (保存・読込・preset 入出力・undo/redo) はホスト側で
-    /// 処理されるため、ここでは何もしない。
-    pub fn apply_command(&mut self, command: &Command) {
+    /// レイヤー・コマ・ドキュメント差し替えなど作品データのみを書き換える。
+    /// ツール/色/ペン/ビューの変更は [`Document::apply_session_command`] が担う。
+    pub fn apply(&mut self, command: &DocumentCommand) {
         match command {
-            Command::Noop => {}
-            Command::SelectTool { tool_id } => {
-                let _ = self.set_active_tool_by_id(tool_id);
-            }
-            Command::SelectChildTool { child_id } => {
-                if let Some(parent) = self.active_tool_definition()
-                    && parent.children.iter().any(|c| c.id == *child_id)
-                {
-                    self.active_child_tool_id = child_id.clone();
-                }
-            }
-            Command::SetActiveTool { tool } => {
-                self.set_active_tool(*tool);
-            }
-            Command::SetActivePenSize { size } => {
-                self.set_active_pen_size(*size);
-            }
-            Command::SetActivePenPressureEnabled { enabled } => {
-                self.set_active_pen_pressure_enabled(*enabled);
-            }
-            Command::SetActivePenAntialias { enabled } => {
-                self.set_active_pen_antialias(*enabled);
-            }
-            Command::SetActivePenStabilization { amount } => {
-                self.set_active_pen_stabilization(*amount);
-            }
-            Command::SelectNextPenPreset => {
-                self.select_next_pen_preset();
-            }
-            Command::SelectPreviousPenPreset => {
-                self.select_previous_pen_preset();
-            }
-            Command::ReloadPenPresets => {}
-            Command::SetActiveColor { color } => {
-                self.set_active_color(*color);
-            }
-            Command::CreateKoma {
+            DocumentCommand::Noop => {}
+            DocumentCommand::CreateKoma {
                 x,
                 y,
                 width,
@@ -1261,105 +1226,131 @@ impl Document {
                     height: *height,
                 });
             }
-            Command::SetViewZoom { zoom } => {
-                self.view_transform.zoom = zoom.clamp(0.25, 16.0);
-            }
-            Command::PanView { delta_x, delta_y } => {
-                self.view_transform.pan_x += delta_x;
-                self.view_transform.pan_y += delta_y;
-            }
-            Command::SetViewPan { pan_x, pan_y } => {
-                self.view_transform.pan_x = *pan_x;
-                self.view_transform.pan_y = *pan_y;
-            }
-            Command::RotateView { quarter_turns } => {
-                self.view_transform.rotation_degrees = (self.view_transform.rotation_degrees
-                    + (*quarter_turns as f32 * 90.0))
-                    .rem_euclid(360.0);
-            }
-            Command::SetViewRotation { rotation_degrees } => {
-                self.view_transform.rotation_degrees = rotation_degrees.rem_euclid(360.0);
-            }
-            Command::FlipViewHorizontally => {
-                self.view_transform.flip_x = !self.view_transform.flip_x;
-            }
-            Command::FlipViewVertically => {
-                self.view_transform.flip_y = !self.view_transform.flip_y;
-            }
-            Command::ResetView => {
-                self.view_transform = CanvasViewTransform::default();
-            }
-            Command::AddRasterLayer => {
+            DocumentCommand::AddRasterLayer => {
                 self.add_raster_layer();
             }
-            Command::RemoveActiveLayer => {
+            DocumentCommand::RemoveActiveLayer => {
                 self.remove_active_layer();
             }
-            Command::SelectLayer { index } => {
+            DocumentCommand::SelectLayer { index } => {
                 self.select_layer(*index);
             }
-            Command::RenameActiveLayer { name } => {
+            DocumentCommand::RenameActiveLayer { name } => {
                 self.rename_active_layer(name);
             }
-            Command::MoveLayer {
+            DocumentCommand::MoveLayer {
                 from_index,
                 to_index,
             } => {
                 self.move_layer(*from_index, *to_index);
             }
-            Command::SelectNextLayer => {
+            DocumentCommand::SelectNextLayer => {
                 self.select_next_layer();
             }
-            Command::CycleActiveLayerBlendMode => {
+            DocumentCommand::CycleActiveLayerBlendMode => {
                 self.cycle_active_layer_blend_mode();
             }
-            Command::SetActiveLayerBlendMode { mode } => {
+            DocumentCommand::SetActiveLayerBlendMode { mode } => {
                 self.set_active_layer_blend_mode(mode.clone());
             }
-            Command::ToggleActiveLayerVisibility => {
+            DocumentCommand::ToggleActiveLayerVisibility => {
                 self.toggle_active_layer_visibility();
             }
-            Command::AddKoma => {
+            DocumentCommand::AddKoma => {
                 self.add_koma();
             }
-            Command::RemoveActiveKoma => {
+            DocumentCommand::RemoveActiveKoma => {
                 self.remove_active_koma();
             }
-            Command::SelectKoma { index } => {
+            DocumentCommand::SelectKoma { index } => {
                 self.select_koma(*index);
                 self.focus_active_koma_view();
             }
-            Command::SelectNextKoma => {
+            DocumentCommand::SelectNextKoma => {
                 self.select_next_koma();
                 self.focus_active_koma_view();
             }
-            Command::SelectPreviousKoma => {
+            DocumentCommand::SelectPreviousKoma => {
                 self.select_previous_koma();
                 self.focus_active_koma_view();
             }
-            Command::FocusActiveKoma => {
+            DocumentCommand::FocusActiveKoma => {
                 self.focus_active_koma_view();
             }
-            Command::NewDocument => {
-                *self = Document::default();
-            }
-            Command::NewDocumentSized { width, height } => {
+            DocumentCommand::NewDocumentSized { width, height } => {
                 *self = Document::new(*width, *height);
             }
-            Command::SaveProject
-            | Command::SaveProjectAs
-            | Command::SaveProjectToPath { .. }
-            | Command::LoadProject
-            | Command::LoadProjectFromPath { .. }
-            | Command::ReloadWorkspacePresets
-            | Command::ApplyWorkspacePreset { .. }
-            | Command::SaveWorkspacePreset { .. }
-            | Command::ExportWorkspacePreset { .. }
-            | Command::ExportWorkspacePresetToPath { .. }
-            | Command::ImportPenPresets
-            | Command::ImportPenPresetsFromPath { .. }
-            | Command::Undo
-            | Command::Redo => {}
+        }
+    }
+
+    /// エディタセッションコマンド (ツール/色/ペン/ビュー) を適用する。
+    ///
+    /// 作品データには触れず、`Document` 上のセッション状態のみを更新する。
+    /// B5 (BL-073) で `editor-state` へ移設予定。
+    pub fn apply_session_command(&mut self, command: &SessionCommand) {
+        match command {
+            SessionCommand::SelectTool { tool_id } => {
+                let _ = self.set_active_tool_by_id(tool_id);
+            }
+            SessionCommand::SelectChildTool { child_id } => {
+                if let Some(parent) = self.active_tool_definition()
+                    && parent.children.iter().any(|c| c.id == *child_id)
+                {
+                    self.active_child_tool_id = child_id.clone();
+                }
+            }
+            SessionCommand::SetActiveTool { tool } => {
+                self.set_active_tool(*tool);
+            }
+            SessionCommand::SetActivePenSize { size } => {
+                self.set_active_pen_size(*size);
+            }
+            SessionCommand::SetActivePenPressureEnabled { enabled } => {
+                self.set_active_pen_pressure_enabled(*enabled);
+            }
+            SessionCommand::SetActivePenAntialias { enabled } => {
+                self.set_active_pen_antialias(*enabled);
+            }
+            SessionCommand::SetActivePenStabilization { amount } => {
+                self.set_active_pen_stabilization(*amount);
+            }
+            SessionCommand::SelectNextPenPreset => {
+                self.select_next_pen_preset();
+            }
+            SessionCommand::SelectPreviousPenPreset => {
+                self.select_previous_pen_preset();
+            }
+            SessionCommand::SetActiveColor { color } => {
+                self.set_active_color(*color);
+            }
+            SessionCommand::SetViewZoom { zoom } => {
+                self.view_transform.zoom = zoom.clamp(0.25, 16.0);
+            }
+            SessionCommand::PanView { delta_x, delta_y } => {
+                self.view_transform.pan_x += delta_x;
+                self.view_transform.pan_y += delta_y;
+            }
+            SessionCommand::SetViewPan { pan_x, pan_y } => {
+                self.view_transform.pan_x = *pan_x;
+                self.view_transform.pan_y = *pan_y;
+            }
+            SessionCommand::RotateView { quarter_turns } => {
+                self.view_transform.rotation_degrees = (self.view_transform.rotation_degrees
+                    + (*quarter_turns as f32 * 90.0))
+                    .rem_euclid(360.0);
+            }
+            SessionCommand::SetViewRotation { rotation_degrees } => {
+                self.view_transform.rotation_degrees = rotation_degrees.rem_euclid(360.0);
+            }
+            SessionCommand::FlipViewHorizontally => {
+                self.view_transform.flip_x = !self.view_transform.flip_x;
+            }
+            SessionCommand::FlipViewVertically => {
+                self.view_transform.flip_y = !self.view_transform.flip_y;
+            }
+            SessionCommand::ResetView => {
+                self.view_transform = CanvasViewTransform::default();
+            }
         }
     }
 }

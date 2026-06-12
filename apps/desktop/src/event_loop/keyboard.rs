@@ -4,7 +4,7 @@
 //! panel-workspace 側のテキスト editor state はすべて撤去済み。
 //! ここではアプリ全体のグローバルショートカットだけを扱う。
 
-use app_core::Command;
+use panel_runtime::{ServiceRequest, services::names};
 use winit::event::{ElementState, Ime, KeyEvent};
 use winit::keyboard::{Key, NamedKey};
 
@@ -39,38 +39,45 @@ impl DesktopEventLoop {
                     && self.modifiers.shift_key()
                     && text.eq_ignore_ascii_case("s") =>
             {
-                self.app.execute_command(Command::SaveProjectAs)
+                self.app
+                    .execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_AS))
             }
             Key::Character(text)
                 if self.modifiers.control_key() && text.eq_ignore_ascii_case("s") =>
             {
-                self.app.execute_command(Command::SaveProject)
+                self.app
+                    .execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_CURRENT))
             }
             Key::Character(text)
                 if self.modifiers.control_key() && text.eq_ignore_ascii_case("o") =>
             {
-                self.app.execute_command(Command::LoadProject)
+                self.app
+                    .execute_service_request(ServiceRequest::new(names::PROJECT_LOAD_DIALOG))
             }
             Key::Character(text)
                 if self.modifiers.control_key() && text.eq_ignore_ascii_case("n") =>
             {
-                self.app.execute_command(Command::NewDocument)
+                self.app
+                    .execute_service_request(ServiceRequest::new(names::PROJECT_NEW_DOCUMENT))
             }
             Key::Named(NamedKey::Tab) if self.modifiers.shift_key() => {
                 self.app.focus_previous_panel_control()
             }
             Key::Named(NamedKey::Tab) => self.app.focus_next_panel_control(),
             Key::Named(NamedKey::PageUp) if self.modifiers.alt_key() => {
-                self.app.execute_command(Command::SelectPreviousKoma)
+                self.app
+                    .execute_service_request(ServiceRequest::new(names::KOMA_NAV_SELECT_PREVIOUS))
             }
             Key::Named(NamedKey::PageDown) if self.modifiers.alt_key() => {
-                self.app.execute_command(Command::SelectNextKoma)
+                self.app
+                    .execute_service_request(ServiceRequest::new(names::KOMA_NAV_SELECT_NEXT))
             }
             Key::Named(NamedKey::Home) if self.modifiers.alt_key() => {
-                self.app.execute_command(Command::FocusActiveKoma)
+                self.app
+                    .execute_service_request(ServiceRequest::new(names::KOMA_NAV_FOCUS_ACTIVE))
             }
             Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
-                self.app.activate_focused_panel_control().is_some()
+                self.app.activate_focused_panel_control()
             }
             _ => false,
         }

@@ -1,7 +1,8 @@
 //! `app-core` は `altpaint` のドメインモデルを保持するクレート。
 //!
 //! 作品・ページ・コマ・レイヤーのドメイン構造に加え、変更経路の入口になる
-//! `Command` 型、座標系、Undo/Redo 履歴、ペイント基本型、ワークスペース UI 状態を定義する。
+//! `DocumentCommand` / `SessionCommand` 型、座標系、Undo/Redo 履歴、
+//! ペイント基本型、ワークスペース UI 状態を定義する。
 
 pub mod blend;
 pub mod command;
@@ -12,7 +13,7 @@ pub mod paint_params;
 pub mod painting;
 pub mod workspace;
 
-pub use command::Command;
+pub use command::{DocumentCommand, SessionCommand};
 pub use coordinates::{
     PageDirtyRect, CanvasDisplayPoint, PagePoint, PagePointF, CanvasViewportPoint,
     ClampToCanvasBounds, MergeInSpace, KomaLocalPoint, PanelSurfaceDirtyRect, PanelSurfacePoint,

@@ -2,7 +2,6 @@
 
 use std::path::PathBuf;
 
-use app_core::Command;
 use app_core::{
     WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState,
 };
@@ -10,7 +9,7 @@ use desktop_support::{
     DEFAULT_PROJECT_FILE_NAME, FrameProfiler, WorkspacePreset, WorkspacePresetCatalog,
     save_workspace_preset_catalog,
 };
-use panel_runtime::{HostAction, PanelMoveDirection};
+use panel_runtime::{HostAction, PanelMoveDirection, ServiceRequest, services::names};
 use serde_json::json;
 use std::collections::BTreeMap;
 use storage::{load_project_from_path, save_project_to_path};
@@ -39,7 +38,7 @@ fn execute_command_load_project_uses_native_dialog_path() {
     .expect("project save should succeed");
 
     let mut app = test_app_with_dialogs(TestDialogs::with_open_path(path.clone()));
-    assert!(app.execute_command(Command::LoadProject));
+    assert!(app.execute_service_request(ServiceRequest::new(names::PROJECT_LOAD_DIALOG)));
     app.wait_for_pending_save_tasks();
     assert_eq!(app.io_state.project_path, path);
     assert!(
@@ -60,7 +59,7 @@ fn save_project_as_updates_project_path_and_persists_workspace_layout() {
         panel_id: "builtin.tool-palette".to_string(),
         visible: false,
     }));
-    assert!(app.execute_command(Command::SaveProjectAs));
+    assert!(app.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_AS)));
     assert_eq!(app.pending_save_task_count(), 1);
     app.wait_for_pending_save_tasks();
 
@@ -85,7 +84,7 @@ fn save_and_load_restore_plugin_shortcut_configs() {
     assert!(source_app.activate_panel_control("builtin.app-actions", "app.shortcuts"));
     assert!(source_app.activate_panel_control("builtin.app-actions", "app.shortcut.new"));
     assert!(source_app.dispatch_keyboard_shortcut("Ctrl+Alt+N", "N", false));
-    assert!(source_app.execute_command(Command::SaveProjectAs));
+    assert!(source_app.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_AS)));
     source_app.wait_for_pending_save_tasks();
 
     let loaded = load_project_from_path(&path).expect("saved project should load");
@@ -113,7 +112,7 @@ fn save_and_load_restore_plugin_shortcut_configs() {
     );
 
     let mut app = test_app_with_dialogs(TestDialogs::with_open_path(path.clone()));
-    assert!(app.execute_command(Command::LoadProject));
+    assert!(app.execute_service_request(ServiceRequest::new(names::PROJECT_LOAD_DIALOG)));
     assert_eq!(
         app.panel_runtime
             .persistent_panel_configs()
@@ -169,9 +168,10 @@ fn load_project_restores_workspace_layout() {
     .expect("project save should succeed");
 
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    assert!(app.execute_command(Command::LoadProjectFromPath {
-        path: path.to_string_lossy().to_string(),
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::PROJECT_LOAD_FROM_PATH)
+            .with_value("path", path.to_string_lossy().to_string()),
+    ));
 
     assert!(
         !app.panel_workspace
@@ -402,7 +402,7 @@ fn startup_restores_last_opened_project_from_session() {
     );
     source_app.document.work.title = "Recovered Project".to_string();
 
-    assert!(source_app.execute_command(Command::SaveProjectAs));
+    assert!(source_app.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_AS)));
     source_app.wait_for_pending_save_tasks();
 
     let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
@@ -494,9 +494,9 @@ fn startup_preserves_last_selected_workspace_preset_id() {
         unique_test_path("selected-preset-session-source"),
         preset_path.clone(),
     );
-    assert!(source_app.execute_command(Command::ApplyWorkspacePreset {
-        preset_id: "review".to_string(),
-    }));
+    assert!(source_app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_APPLY_PRESET).with_value("preset_id", "review"),
+    ));
 
     let restarted = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
         PathBuf::from("/tmp/altpaint-test.altp.json"),

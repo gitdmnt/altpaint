@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use app_core::{
-    ColorRgba8, Command, ToolKind,
+    ColorRgba8, DocumentCommand, SessionCommand, ToolKind,
     WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
     WorkspacePanelState,
 };
@@ -13,7 +13,7 @@ use desktop_support::{
     FrameProfiler, WorkspacePreset, WorkspacePresetCatalog,
     save_workspace_preset_catalog,
 };
-use panel_runtime::{HostAction, PanelEvent};
+use panel_runtime::{HostAction, PanelEvent, ServiceRequest, services::names};
 use serde_json::json;
 use app_core::WorkspaceUiState;
 
@@ -36,7 +36,7 @@ fn unique_workspace_preset_path(name: &str) -> PathBuf {
 fn execute_command_updates_document_tool() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
 
-    let _ = app.execute_command(Command::SetActiveTool {
+    let _ = app.apply_session_command(&SessionCommand::SetActiveTool {
         tool: ToolKind::Eraser,
     });
 
@@ -47,7 +47,7 @@ fn execute_command_updates_document_tool() {
 fn execute_command_select_tool_updates_document_tool_id() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
 
-    let _ = app.execute_command(Command::SelectTool {
+    let _ = app.apply_session_command(&SessionCommand::SelectTool {
         tool_id: "builtin.eraser".to_string(),
     });
 
@@ -59,7 +59,7 @@ fn execute_command_select_tool_updates_document_tool_id() {
 fn execute_command_select_child_tool_updates_active_child_tool_id() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
     // Pen tool must be loaded so we can select one of its children
-    let _ = app.execute_command(Command::SelectTool {
+    let _ = app.apply_session_command(&SessionCommand::SelectTool {
         tool_id: "builtin.pen".to_string(),
     });
     // Inject a child tool definition into the tool catalog
@@ -80,7 +80,7 @@ fn execute_command_select_child_tool_updates_active_child_tool_id() {
         });
     }
 
-    let _ = app.execute_command(Command::SelectChildTool {
+    let _ = app.apply_session_command(&SessionCommand::SelectChildTool {
         child_id: "builtin.pen.test".to_string(),
     });
 
@@ -91,7 +91,7 @@ fn execute_command_select_child_tool_updates_active_child_tool_id() {
 fn execute_command_updates_document_color() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
 
-    let _ = app.execute_command(Command::SetActiveColor {
+    let _ = app.apply_session_command(&SessionCommand::SetActiveColor {
         color: ColorRgba8::new(0x1e, 0x88, 0xe5, 0xff),
     });
 
@@ -106,7 +106,7 @@ fn execute_command_new_document_resets_tool_to_default() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
     app.document.set_active_tool(ToolKind::Eraser);
 
-    let _ = app.execute_command(Command::NewDocumentSized {
+    let _ = app.apply_document_command(&DocumentCommand::NewDocumentSized {
         width: 64,
         height: 64,
     });
@@ -118,9 +118,11 @@ fn execute_command_new_document_resets_tool_to_default() {
 fn host_action_dispatches_tool_switch_command() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
 
-    let _ = app.execute_host_action(HostAction::DispatchCommand(Command::SetActiveTool {
-        tool: ToolKind::Eraser,
-    }));
+    let _ = app.execute_host_action(HostAction::DispatchSessionCommand(
+        SessionCommand::SetActiveTool {
+            tool: ToolKind::Eraser,
+        },
+    ));
 
     assert_eq!(app.document.active_tool, ToolKind::Eraser);
 }
@@ -135,12 +137,10 @@ fn keyboard_panel_focus_can_activate_app_action() {
         app.panel_workspace
             .focus_panel_node("builtin.app-actions", "app.save")
     );
-    // app.save は emit_service 経由で保存を実行するため Command::Noop が返る。
+    // app.save は emit_service 経由で保存サービスを発行するため、HostAction が
+    // 生成され activate_focused_panel_control は true を返す。
     // pending_jobs でジョブがキューされていることを確認する。
-    assert_eq!(
-        app.activate_focused_panel_control(),
-        Some(Command::Noop)
-    );
+    assert!(app.activate_focused_panel_control());
     assert_eq!(app.background_jobs.len(), 1);
 }
 
@@ -148,7 +148,7 @@ fn keyboard_panel_focus_can_activate_app_action() {
 fn execute_command_new_document_opens_inline_form() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
 
-    assert!(app.execute_command(Command::NewDocument));
+    assert!(app.execute_service_request(ServiceRequest::new(names::PROJECT_NEW_DOCUMENT)));
 }
 
 #[test]
@@ -194,7 +194,7 @@ fn unmatched_keyboard_shortcut_is_not_consumed() {
 fn execute_command_new_document_sized_replaces_bitmap() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
 
-    assert!(app.execute_command(Command::NewDocumentSized {
+    assert!(app.apply_document_command(&DocumentCommand::NewDocumentSized {
         width: 320,
         height: 240,
     }));
@@ -234,7 +234,9 @@ fn builtin_panels_are_registered() {
 fn reload_pen_presets_reads_default_pen_directory() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
 
-    assert!(app.execute_command(Command::ReloadPenPresets));
+    assert!(app.execute_service_request(ServiceRequest::new(
+        names::TOOL_CATALOG_RELOAD_PEN_PRESETS
+    )));
     assert!(app.document.pen_presets.len() >= 3);
 }
 
@@ -308,9 +310,10 @@ fn execute_command_applies_selected_workspace_preset() {
         preset_path.clone(),
     );
 
-    assert!(app.execute_command(Command::ApplyWorkspacePreset {
-        preset_id: "illustration".to_string(),
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_APPLY_PRESET)
+            .with_value("preset_id", "illustration"),
+    ));
 
     let layout_entry = app
         .panel_workspace
@@ -463,7 +466,7 @@ fn execute_command_reloads_workspace_presets_into_workspace_panel_config() {
     )
     .expect("updated preset catalog should save");
 
-    assert!(app.execute_command(Command::ReloadWorkspacePresets));
+    assert!(app.execute_service_request(ServiceRequest::new(names::WORKSPACE_RELOAD_PRESETS)));
 
     let config = app
         .panel_runtime
@@ -505,10 +508,11 @@ fn execute_command_saves_current_workspace_preset_into_catalog() {
         panel_id: "builtin.tool-palette".to_string(),
         visible: false,
     }));
-    assert!(app.execute_command(Command::SaveWorkspacePreset {
-        preset_id: "review".to_string(),
-        label: "Review".to_string(),
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_SAVE_PRESET)
+            .with_value("preset_id", "review")
+            .with_value("label", "Review"),
+    ));
 
     let saved = desktop_support::load_workspace_preset_catalog(&preset_path);
     let preset = saved
@@ -533,10 +537,11 @@ fn execute_command_exports_workspace_preset_to_dialog_path() {
     let export_path = unique_workspace_preset_path("workspace-preset-export");
     let mut app = test_app_with_dialogs(TestDialogs::with_workspace_save_path(export_path.clone()));
 
-    assert!(app.execute_command(Command::ExportWorkspacePreset {
-        preset_id: "exported".to_string(),
-        label: "Exported".to_string(),
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_EXPORT_PRESET)
+            .with_value("preset_id", "exported")
+            .with_value("label", "Exported"),
+    ));
 
     let exported = desktop_support::load_workspace_preset_catalog(&export_path);
     assert_eq!(exported.default_preset_id, "exported");
@@ -570,7 +575,9 @@ fn execute_command_imports_pen_file_and_records_report() {
     .expect("pen file written");
     let mut app = test_app_with_dialogs(TestDialogs::with_pen_open_path(path.clone()));
 
-    assert!(app.execute_command(Command::ImportPenPresets));
+    assert!(app.execute_service_request(ServiceRequest::new(
+        names::TOOL_CATALOG_IMPORT_PEN_PRESETS
+    )));
     assert!(
         app.document
             .pen_presets

@@ -7,7 +7,7 @@ mod meta;
 mod runtime;
 
 pub use html_wasm_panel::{HtmlWasmPanelError, HtmlWasmPanel};
-pub use request_translation::command_from_descriptor;
+pub use request_translation::{TranslatedRequest, translate_descriptor};
 pub use host_state::{
     EMPTY_WORKSPACE_PANELS_JSON, HostStateCache, build_host_state,
 };

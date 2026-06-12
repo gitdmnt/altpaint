@@ -3,7 +3,7 @@
 //! OS 由来の生イベントをドキュメント編集やパネル操作へ変換し、
 //! ランタイム側が UI 詳細を知らずに済むようにする。
 
-use app_core::{PagePoint, Command, ToolKind, WindowPoint, WindowRect};
+use app_core::{DocumentCommand, PagePoint, ToolKind, WindowPoint, WindowRect};
 use paint_engine::{
     CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, advance_pointer_gesture,
 };
@@ -231,7 +231,7 @@ impl DesktopApp {
                     paint_engine::koma_creation_preview_bounds(&preview_state, page_width, page_height)
                         .filter(|bounds| bounds.width >= 8 && bounds.height >= 8)
                         .is_some_and(|bounds| {
-                            self.execute_command(Command::CreateKoma {
+                            self.apply_document_command(&DocumentCommand::CreateKoma {
                                 x: bounds.x,
                                 y: bounds.y,
                                 width: bounds.width,

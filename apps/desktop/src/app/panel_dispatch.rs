@@ -215,8 +215,12 @@ impl DesktopApp {
     }
 
     pub(crate) fn execute_host_action(&mut self, action: HostAction) -> bool {
+        self.poll_background_tasks();
         match action {
-            HostAction::DispatchCommand(command) => self.execute_command(command),
+            HostAction::DispatchDocumentCommand(command) => {
+                self.apply_document_command(&command)
+            }
+            HostAction::DispatchSessionCommand(command) => self.apply_session_command(&command),
             HostAction::RequestService(request) => self.execute_service_request(request),
             HostAction::MovePanel {
                 panel_id,
@@ -253,18 +257,18 @@ impl DesktopApp {
     }
 
     pub(super) fn dispatch_panel_event(&mut self, event: PanelEvent) -> bool {
-        self.dispatch_panel_event_with_command(event).0
+        self.dispatch_panel_event_tracking_actions(event).0
     }
 
-    fn dispatch_panel_event_with_command(
-        &mut self,
-        event: PanelEvent,
-    ) -> (bool, Option<app_core::Command>) {
+    /// パネルイベントを dispatch し、`(changed, produced_action)` を返す。
+    /// `produced_action` は何らかの `HostAction` が発行されたかを示す
+    /// (`activate_focused_panel_control` の戻り値判定に使う)。
+    fn dispatch_panel_event_tracking_actions(&mut self, event: PanelEvent) -> (bool, bool) {
         let mut changed = false;
         let previous_configs = self.panel_runtime.persistent_panel_configs();
 
         let mut needs_redraw = true;
-        let mut first_command = None;
+        let mut produced_action = false;
         // Activate は focus を更新したうえで常にランタイムへ転送する。
         if let PanelEvent::Activate { panel_id, node_id } = &event {
             self.panel_workspace.focus_panel_node(panel_id, node_id);
@@ -280,17 +284,7 @@ impl DesktopApp {
         let actions = runtime.actions;
 
         for action in actions {
-            if first_command.is_none() {
-                match &action {
-                    HostAction::DispatchCommand(command) => {
-                        first_command = Some(command.clone());
-                    }
-                    HostAction::RequestService(_) => {
-                        first_command = Some(app_core::Command::Noop);
-                    }
-                    HostAction::MovePanel { .. } | HostAction::SetPanelVisibility { .. } => {}
-                }
-            }
+            produced_action = true;
             needs_redraw |= self.execute_host_action(action);
         }
 
@@ -302,7 +296,7 @@ impl DesktopApp {
         if changed {
             self.request_panel_reconcile();
         }
-        (changed, first_command)
+        (changed, produced_action)
     }
 
     pub(super) fn handle_panel_pointer(&mut self, point: WindowPoint) -> bool {
@@ -337,9 +331,12 @@ impl DesktopApp {
         self.request_panel_reconcile_if_changed(changed)
     }
 
-    pub(crate) fn activate_focused_panel_control(&mut self) -> Option<app_core::Command> {
-        let event = self.panel_workspace.activate_focused()?;
-        self.dispatch_panel_event_with_command(event).1
+    /// フォーカス中のパネルコントロールを起動し、`HostAction` が発行されたら `true` を返す。
+    pub(crate) fn activate_focused_panel_control(&mut self) -> bool {
+        let Some(event) = self.panel_workspace.activate_focused() else {
+            return false;
+        };
+        self.dispatch_panel_event_tracking_actions(event).1
     }
 
     /// HTML パネル hit テーブルだけを参照する。Phase 9F で DSL surface 側の hit-test 経路は

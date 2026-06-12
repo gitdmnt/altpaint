@@ -2,7 +2,7 @@
 
 pub mod services;
 
-use app_core::{Command, Document};
+use app_core::{Document, DocumentCommand, SessionCommand};
 use serde_json::Value;
 
 pub use services::ServiceRequest;
@@ -92,7 +92,12 @@ mod resize_edge_tests {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostAction {
-    DispatchCommand(Command),
+    /// 純粋なドキュメント変異コマンドを適用する。
+    /// B4〜B6 の中間状態では `DocumentCommand` のみを搬送する (設計書 §4 B4 手順 (5))。
+    DispatchDocumentCommand(DocumentCommand),
+    /// エディタセッション (ツール/色/ペン/ビュー) を変更する。
+    /// translator が namespace から振り分けるセッション経路。
+    DispatchSessionCommand(SessionCommand),
     RequestService(ServiceRequest),
     MovePanel {
         panel_id: String,

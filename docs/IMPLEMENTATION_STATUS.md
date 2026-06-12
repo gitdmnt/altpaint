@@ -156,7 +156,13 @@
 - `WorkspaceLayout`
 - `BitmapEdit` / `PaintInput` / compositor などの共有 paint primitive
 
-現状の状態変更の中心は `Document::apply_command(...)` である。
+現状の状態変更の中心は `Document::apply(&DocumentCommand)` (純粋なドキュメント変異) と
+`Document::apply_session_command(&SessionCommand)` (ツール/色/ペン/ビューのセッション変更) である。
+B4 (BL-060) で旧 `Command` enum を 2 分割し、I/O 系 variant (保存・読込・preset 入出力・
+新規作成・undo/redo) は enum から削除して `ServiceRequest` 経路 (`execute_service_request`) に
+一本化した。desktop 側では `apply_document_command` / `apply_session_command` が
+ドキュメント/セッション適用と UI 同期を担い、旧 `execute_command` の二重ディスパッチ
+(apply_command no-op → command_router 再変換) は解消済み。
 
 補足:
 
@@ -750,7 +756,7 @@
 - **BitmapPatch Undo/Redo**: `execute_undo()` / `execute_redo()` を replay 方式 (`HistoryEntry::BitmapOp`) で実装。`BitmapEditRecord` を記録し、`CanvasRuntime::default()` で再生することで正しく元に戻せるようにした。
 - **パネルボタン 2 回目クリック**: `pen-settings` パネルの `||` DSL 演算子対応（`panel-dsl` のパーサー修正）。
 - **lasso bucket の `point_in_polygon`**: 外積判定の符号バグを修正。
-- **app.save のコマンド戻り値**: `app.save` ボタンは `emit_service` 経由で保存するため `dispatch_panel_event_with_command` は `Some(Command::Noop)` を返す。テストの期待値を `SaveProject` → `Noop` に修正し、`pending_jobs.len() == 1` で保存ジョブのキューを検証するよう変更した（`commands.rs` / `panel_dispatch_tests.rs`）。
+- **app.save のコマンド戻り値**: `app.save` ボタンは `emit_service` 経由で保存サービスを発行する。B4 (BL-060) で `dispatch_panel_event_with_command` は `dispatch_panel_event_tracking_actions` に置換され、`activate_focused_panel_control` は `HostAction` が発行されたかを示す `bool` を返すようになった。テストは `app.activate_focused_panel_control()` が `true` を返すこと + `pending_jobs.len() == 1` で保存ジョブのキューを検証する（`commands.rs` / `panel_dispatch_tests.rs`）。
 - **workspace preset テストの競合**: `/tmp/altpaint-test.altp.json` を複数テストが共有していたため、キーボードテストが書き込んだプロジェクト状態が workspace preset テストに干渉していた。`unique_test_path("preset-project")` / `unique_test_path("preset-session")` で競合を解消した（`persistence.rs`）。
 - **layers-panel DSL 回帰**: `plugins/layers-panel/panel.altp-panel` から `<text>{state.title}</text>` が誤って削除されており、`desktop_app_replaces_builtin_panels_with_phase7_dsl_variants` が失敗していた。行を復元した。
 

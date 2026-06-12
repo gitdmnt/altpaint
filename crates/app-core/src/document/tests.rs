@@ -193,7 +193,7 @@ fn canvas_defaults_to_white_background() {
 fn apply_command_switches_active_tool() {
     let mut document = Document::default();
 
-    document.apply_command(&Command::SetActiveTool {
+    document.apply_session_command(&SessionCommand::SetActiveTool {
         tool: ToolKind::Pen,
     });
 
@@ -204,7 +204,7 @@ fn apply_command_switches_active_tool() {
 fn apply_command_selects_registered_tool_by_id() {
     let mut document = Document::default();
 
-    document.apply_command(&Command::SelectTool {
+    document.apply_session_command(&SessionCommand::SelectTool {
         tool_id: "builtin.eraser".to_string(),
     });
 
@@ -232,7 +232,7 @@ fn active_tool_definition_uses_registered_tool_metadata() {
 fn apply_command_updates_pen_size() {
     let mut document = Document::default();
 
-    document.apply_command(&Command::SetActivePenSize { size: 12 });
+    document.apply_session_command(&SessionCommand::SetActivePenSize { size: 12 });
 
     assert_eq!(document.active_pen_size, 12);
 }
@@ -241,7 +241,7 @@ fn apply_command_updates_pen_size() {
 fn apply_command_switches_active_color() {
     let mut document = Document::default();
 
-    document.apply_command(&Command::SetActiveColor {
+    document.apply_session_command(&SessionCommand::SetActiveColor {
         color: ColorRgba8::new(0x43, 0xa0, 0x47, 0xff),
     });
 
@@ -254,7 +254,7 @@ fn apply_command_switches_active_color() {
 #[test]
 fn bitmap_edit_style_stroke_returns_dirty_rect() {
     let mut document = Document::default();
-    document.apply_command(&Command::SetActivePenSize { size: 1 });
+    document.apply_session_command(&SessionCommand::SetActivePenSize { size: 1 });
 
     let dirty = draw_stroke(&mut document, 1, 1, 3, 1);
 
@@ -270,10 +270,10 @@ fn bitmap_edit_style_stroke_returns_dirty_rect() {
 #[test]
 fn pen_draws_wider_than_single_pixel_default_stroke() {
     let mut document = Document::default();
-    document.apply_command(&Command::SetActiveTool {
+    document.apply_session_command(&SessionCommand::SetActiveTool {
         tool: ToolKind::Pen,
     });
-    document.apply_command(&Command::SetActivePenSize { size: 5 });
+    document.apply_session_command(&SessionCommand::SetActivePenSize { size: 5 });
 
     let dirty = draw_point(&mut document, 10, 10).expect("koma should exist");
 
@@ -289,10 +289,10 @@ fn pen_draws_wider_than_single_pixel_default_stroke() {
 #[test]
 fn wide_stroke_keeps_segment_core_filled() {
     let mut document = Document::new(128, 128);
-    document.apply_command(&Command::SetActiveTool {
+    document.apply_session_command(&SessionCommand::SetActiveTool {
         tool: ToolKind::Pen,
     });
-    document.apply_command(&Command::SetActivePenSize { size: 24 });
+    document.apply_session_command(&SessionCommand::SetActivePenSize { size: 24 });
 
     let dirty = draw_stroke(&mut document, 20, 64, 108, 64).expect("koma should exist");
 
@@ -308,10 +308,10 @@ fn wide_stroke_keeps_segment_core_filled() {
 #[test]
 fn wide_diagonal_stroke_marks_midpoint_pixels() {
     let mut document = Document::new(128, 128);
-    document.apply_command(&Command::SetActiveTool {
+    document.apply_session_command(&SessionCommand::SetActiveTool {
         tool: ToolKind::Pen,
     });
-    document.apply_command(&Command::SetActivePenSize { size: 18 });
+    document.apply_session_command(&SessionCommand::SetActivePenSize { size: 18 });
 
     let dirty = draw_stroke(&mut document, 16, 16, 112, 112).expect("koma should exist");
 
@@ -366,7 +366,7 @@ fn document_new_uses_requested_canvas_size() {
 fn apply_command_new_document_sized_replaces_bitmap_dimensions() {
     let mut document = Document::default();
 
-    document.apply_command(&Command::NewDocumentSized {
+    document.apply(&DocumentCommand::NewDocumentSized {
         width: 512,
         height: 384,
     });
@@ -416,7 +416,7 @@ fn document_stores_canvas_view_transform() {
 fn add_raster_layer_selects_new_layer() {
     let mut document = Document::default();
 
-    document.apply_command(&Command::AddRasterLayer);
+    document.apply(&DocumentCommand::AddRasterLayer);
 
     let koma = &document.work.pages[0].komas[0];
     assert_eq!(koma.layers.len(), 2);
@@ -427,11 +427,11 @@ fn add_raster_layer_selects_new_layer() {
 #[test]
 fn add_raster_layer_uses_created_layer_counter_for_names() {
     let mut document = Document::default();
-    document.apply_command(&Command::AddRasterLayer);
-    document.apply_command(&Command::AddRasterLayer);
-    document.apply_command(&Command::RemoveActiveLayer);
+    document.apply(&DocumentCommand::AddRasterLayer);
+    document.apply(&DocumentCommand::AddRasterLayer);
+    document.apply(&DocumentCommand::RemoveActiveLayer);
 
-    document.apply_command(&Command::AddRasterLayer);
+    document.apply(&DocumentCommand::AddRasterLayer);
 
     let koma = &document.work.pages[0].komas[0];
     let names = koma
@@ -447,7 +447,7 @@ fn add_raster_layer_uses_created_layer_counter_for_names() {
 fn remove_active_layer_keeps_at_least_one_layer() {
     let mut document = Document::default();
 
-    document.apply_command(&Command::RemoveActiveLayer);
+    document.apply(&DocumentCommand::RemoveActiveLayer);
 
     let koma = &document.work.pages[0].komas[0];
     assert_eq!(koma.layers.len(), 1);
@@ -457,10 +457,10 @@ fn remove_active_layer_keeps_at_least_one_layer() {
 #[test]
 fn remove_active_layer_selects_remaining_layer() {
     let mut document = Document::default();
-    document.apply_command(&Command::AddRasterLayer);
-    document.apply_command(&Command::AddRasterLayer);
+    document.apply(&DocumentCommand::AddRasterLayer);
+    document.apply(&DocumentCommand::AddRasterLayer);
 
-    document.apply_command(&Command::RemoveActiveLayer);
+    document.apply(&DocumentCommand::RemoveActiveLayer);
 
     let koma = &document.work.pages[0].komas[0];
     assert_eq!(koma.layers.len(), 2);
@@ -471,10 +471,10 @@ fn remove_active_layer_selects_remaining_layer() {
 #[test]
 fn move_layer_reorders_layers_and_tracks_active_selection() {
     let mut document = Document::default();
-    document.apply_command(&Command::AddRasterLayer);
-    document.apply_command(&Command::AddRasterLayer);
+    document.apply(&DocumentCommand::AddRasterLayer);
+    document.apply(&DocumentCommand::AddRasterLayer);
 
-    document.apply_command(&Command::MoveLayer {
+    document.apply(&DocumentCommand::MoveLayer {
         from_index: 2,
         to_index: 0,
     });
@@ -492,9 +492,9 @@ fn move_layer_reorders_layers_and_tracks_active_selection() {
 #[test]
 fn rename_active_layer_updates_selected_layer_name() {
     let mut document = Document::default();
-    document.apply_command(&Command::AddRasterLayer);
+    document.apply(&DocumentCommand::AddRasterLayer);
 
-    document.apply_command(&Command::RenameActiveLayer {
+    document.apply(&DocumentCommand::RenameActiveLayer {
         name: "Ink".to_string(),
     });
 
@@ -505,7 +505,7 @@ fn rename_active_layer_updates_selected_layer_name() {
 #[test]
 fn set_active_layer_blend_mode_sets_requested_mode() {
     let mut document = Document::default();
-    document.apply_command(&Command::SetActiveLayerBlendMode {
+    document.apply(&DocumentCommand::SetActiveLayerBlendMode {
         mode: BlendMode::Screen,
     });
 
@@ -525,11 +525,11 @@ fn parse_name_falls_back_to_normal_for_unknown_strings() {
 #[test]
 fn toggle_active_layer_visibility_reveals_underlying_layer() {
     let mut document = Document::default();
-    document.apply_command(&Command::AddRasterLayer);
+    document.apply(&DocumentCommand::AddRasterLayer);
     let _ = draw_point(&mut document, 5, 5);
 
     let visible_bitmap = document.active_bitmap().expect("bitmap exists").clone();
-    document.apply_command(&Command::ToggleActiveLayerVisibility);
+    document.apply(&DocumentCommand::ToggleActiveLayerVisibility);
     let hidden_bitmap = document.active_bitmap().expect("bitmap exists");
 
     let index = (5 * visible_bitmap.width + 5) * 4;
@@ -544,7 +544,7 @@ fn toggle_active_layer_visibility_reveals_underlying_layer() {
 fn create_koma_command_adds_rectangular_koma_without_relayout() {
     let mut document = Document::new(320, 240);
 
-    document.apply_command(&Command::CreateKoma {
+    document.apply(&DocumentCommand::CreateKoma {
         x: 40,
         y: 32,
         width: 120,
@@ -568,7 +568,7 @@ fn create_koma_command_adds_rectangular_koma_without_relayout() {
 #[test]
 fn koma_local_draw_returns_page_space_dirty_rect() {
     let mut document = Document::new(320, 240);
-    document.apply_command(&Command::CreateKoma {
+    document.apply(&DocumentCommand::CreateKoma {
         x: 40,
         y: 32,
         width: 120,
@@ -588,7 +588,7 @@ fn koma_local_draw_returns_page_space_dirty_rect() {
 fn add_koma_selects_new_active_koma() {
     let mut document = Document::new(320, 240);
 
-    document.apply_command(&Command::AddKoma);
+    document.apply(&DocumentCommand::AddKoma);
 
     assert_eq!(document.active_page_koma_count(), 2);
     assert_eq!(document.active_koma_index(), 1);
@@ -600,8 +600,8 @@ fn add_koma_selects_new_active_koma() {
 #[test]
 fn koma_selection_switches_edit_target() {
     let mut document = Document::new(128, 128);
-    document.apply_command(&Command::AddKoma);
-    document.apply_command(&Command::SelectKoma { index: 1 });
+    document.apply(&DocumentCommand::AddKoma);
+    document.apply(&DocumentCommand::SelectKoma { index: 1 });
     document.set_active_pen_size(1);
 
     let _ = draw_point(&mut document, 2, 3);
@@ -623,10 +623,10 @@ fn koma_selection_switches_edit_target() {
 #[test]
 fn select_previous_koma_wraps_to_last_koma() {
     let mut document = Document::new(256, 256);
-    document.apply_command(&Command::AddKoma);
-    document.apply_command(&Command::SelectKoma { index: 0 });
+    document.apply(&DocumentCommand::AddKoma);
+    document.apply(&DocumentCommand::SelectKoma { index: 0 });
 
-    document.apply_command(&Command::SelectPreviousKoma);
+    document.apply(&DocumentCommand::SelectPreviousKoma);
 
     assert_eq!(document.active_koma_index(), 1);
 }
@@ -634,12 +634,12 @@ fn select_previous_koma_wraps_to_last_koma() {
 #[test]
 fn remove_active_koma_keeps_single_koma_minimum() {
     let mut document = Document::new(256, 256);
-    document.apply_command(&Command::RemoveActiveKoma);
+    document.apply(&DocumentCommand::RemoveActiveKoma);
 
     assert_eq!(document.active_page_koma_count(), 1);
 
-    document.apply_command(&Command::AddKoma);
-    document.apply_command(&Command::RemoveActiveKoma);
+    document.apply(&DocumentCommand::AddKoma);
+    document.apply(&DocumentCommand::RemoveActiveKoma);
 
     assert_eq!(document.active_page_koma_count(), 1);
     assert_eq!(document.active_koma_index(), 0);
@@ -657,7 +657,7 @@ fn focus_active_koma_resets_view_transform() {
         flip_y: false,
     });
 
-    document.apply_command(&Command::FocusActiveKoma);
+    document.apply(&DocumentCommand::FocusActiveKoma);
 
     assert_eq!(document.view_transform, CanvasViewTransform::default());
 }

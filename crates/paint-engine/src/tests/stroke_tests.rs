@@ -1,4 +1,4 @@
-use app_core::{Command, Document, PaintInput, KomaLocalPoint, ToolKind};
+use app_core::{Document, PaintInput, KomaLocalPoint, SessionCommand, ToolKind};
 
 use crate::PaintEngine;
 
@@ -43,7 +43,7 @@ fn eraser_uses_engine_composite_to_clear_pixels() {
             pressure: 1.0,
         },
     );
-    document.apply_command(&Command::SetActiveTool {
+    document.apply_session_command(&SessionCommand::SetActiveTool {
         tool: ToolKind::Eraser,
     });
     let _ = apply_input(

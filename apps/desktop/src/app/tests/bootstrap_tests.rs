@@ -2,8 +2,8 @@
 
 use std::path::PathBuf;
 
-use app_core::Command;
 use desktop_support::DEFAULT_PROJECT_FILE_NAME;
+use panel_runtime::{ServiceRequest, services::names};
 use storage::load_project_from_path;
 
 use super::{
@@ -18,9 +18,7 @@ fn startup_restores_last_project_from_session_path() {
     let mut source_app =
         test_app_with_dialogs_and_session_path(TestDialogs::default(), session_path.clone());
     source_app.document.work.title = "Recovered Project".to_string();
-    assert!(source_app.execute_command(Command::SaveProjectToPath {
-        path: project_path.to_string_lossy().to_string(),
-    }));
+    assert!(source_app.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_TO_PATH).with_value("path", project_path.to_string_lossy().to_string())));
     source_app.wait_for_pending_save_tasks();
     let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
         PathBuf::from(DEFAULT_PROJECT_FILE_NAME),
@@ -41,9 +39,7 @@ fn bootstrap_saved_project_can_be_loaded_again() {
     let project_path = unique_test_path("bootstrap-roundtrip-project");
     let mut source_app = test_app_with_dialogs(TestDialogs::default());
     source_app.document.work.title = "Roundtrip".to_string();
-    assert!(source_app.execute_command(Command::SaveProjectToPath {
-        path: project_path.to_string_lossy().to_string(),
-    }));
+    assert!(source_app.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_TO_PATH).with_value("path", project_path.to_string_lossy().to_string())));
     source_app.wait_for_pending_save_tasks();
 
     let loaded = load_project_from_path(&project_path).expect("saved project should load");

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use app_core::Command;
+use app_core::DocumentCommand;
 
 use super::{TestDialogs, unique_test_path};
 use super::super::DesktopApp;
@@ -73,7 +73,7 @@ fn sync_all_layers_to_gpu_creates_textures_for_all_layers() {
         app.install_gpu_resources(device, queue);
 
         // 2 番目のレイヤーを追加
-        app.execute_document_command(Command::AddRasterLayer);
+        app.apply_document_command(&DocumentCommand::AddRasterLayer);
 
         // pool が全レイヤーのテクスチャを持つことを確認
         let pool = app.layer_texture_store().unwrap();
@@ -122,7 +122,7 @@ fn should_use_gpu_canvas_source_true_for_multi_layer_via_composite() {
         app.install_gpu_resources(device.clone(), queue.clone());
         assert!(app.should_use_gpu_canvas_source());
 
-        app.execute_document_command(Command::AddRasterLayer);
+        app.apply_document_command(&DocumentCommand::AddRasterLayer);
         assert!(
             app.should_use_gpu_canvas_source(),
             "multi-layer should fall back to composite GPU source"
@@ -145,7 +145,7 @@ fn layer_count_change_switches_gpu_source_kind() {
             Some(GpuCanvasSourceKind::Single)
         );
 
-        app.execute_document_command(Command::AddRasterLayer);
+        app.apply_document_command(&DocumentCommand::AddRasterLayer);
         assert_eq!(
             app.canvas_surface_source_kind(),
             Some(GpuCanvasSourceKind::Composite),

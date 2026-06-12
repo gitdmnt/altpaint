@@ -3,7 +3,8 @@
 use std::time::{Duration, Instant};
 
 use app_core::{
-    PagePoint, CanvasViewportPoint, ColorRgba8, Command, ToolKind, WindowPoint, WindowRect,
+    PagePoint, CanvasViewportPoint, ColorRgba8, DocumentCommand, SessionCommand, ToolKind,
+    WindowPoint, WindowRect,
 };
 use desktop_support::{FrameProfiler, StageStats, ValueStats};
 
@@ -35,7 +36,7 @@ fn eraser_drag_clears_existing_pixels() {
 
     app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
     app.handle_canvas_pointer("up", WindowPoint::new(center_x, center_y), 1.0);
-    let _ = app.execute_command(Command::SetActiveTool {
+    let _ = app.apply_session_command(&SessionCommand::SetActiveTool {
         tool: ToolKind::Eraser,
     });
     app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
@@ -79,7 +80,7 @@ fn canvas_drag_draws_using_selected_color() {
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    let _ = app.execute_command(Command::SetActiveColor {
+    let _ = app.apply_session_command(&SessionCommand::SetActiveColor {
         color: ColorRgba8::new(0x43, 0xa0, 0x47, 0xff),
     });
     app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
@@ -99,7 +100,7 @@ fn koma_rect_tool_creates_koma_from_dragged_page_rect() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
     let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
-    assert!(app.execute_command(Command::SetActiveTool {
+    assert!(app.apply_session_command(&SessionCommand::SetActiveTool {
         tool: ToolKind::KomaRect,
     }));
 
@@ -541,7 +542,7 @@ fn profile_view_transform_for_ten_seconds() {
         per_case_duration,
         |app, iteration| {
             let direction = if iteration % 2 == 0 { 18.0 } else { -18.0 };
-            app.execute_command(Command::PanView {
+            app.apply_session_command(&SessionCommand::PanView {
                 delta_x: direction,
                 delta_y: direction * 0.5,
             })
@@ -557,7 +558,7 @@ fn profile_view_transform_for_ten_seconds() {
         |app, iteration| {
             let zoom = if iteration % 2 == 0 { 1.08 } else { 0.92 };
             let next = (app.document.view_transform.zoom * zoom).clamp(0.25, 16.0);
-            app.execute_command(Command::SetViewZoom { zoom: next })
+            app.apply_session_command(&SessionCommand::SetViewZoom { zoom: next })
         },
     );
 
@@ -570,7 +571,7 @@ fn profile_view_transform_for_ten_seconds() {
         |app, iteration| {
             let delta = if iteration % 2 == 0 { 7.5 } else { -7.5 };
             let next = app.document.view_transform.rotation_degrees + delta;
-            app.execute_command(Command::SetViewRotation {
+            app.apply_session_command(&SessionCommand::SetViewRotation {
                 rotation_degrees: next,
             })
         },
@@ -590,7 +591,7 @@ fn zoom_perf_meets_240fps_target() {
     for i in 0..iterations {
         let zoom = if i % 2 == 0 { 1.08_f32 } else { 0.92_f32 };
         let next = (app.document.view_transform.zoom * zoom).clamp(0.25, 16.0);
-        app.execute_command(Command::SetViewZoom { zoom: next });
+        app.apply_session_command(&SessionCommand::SetViewZoom { zoom: next });
         let start = std::time::Instant::now();
         let _ = app.prepare_present_frame(1280, 800, &mut profiler);
         times_us.push(start.elapsed().as_micros());
@@ -638,8 +639,8 @@ fn profile_canvas_brush_sizes_for_ten_seconds() {
     let per_case_duration = Duration::from_secs_f64(per_case_seconds);
 
     for (tool, size) in combinations {
-        assert!(app.execute_command(Command::SetActiveTool { tool }));
-        assert!(app.execute_command(Command::SetActivePenSize { size }));
+        assert!(app.apply_session_command(&SessionCommand::SetActiveTool { tool }));
+        assert!(app.apply_session_command(&SessionCommand::SetActivePenSize { size }));
         let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
         profiler.stats.clear();
         profiler.value_stats.clear();
@@ -731,7 +732,7 @@ fn tool_change_updates_status_without_full_recompose() {
     profiler.stats.clear();
     let _layout = app.layout.clone().expect("layout exists");
 
-    assert!(app.execute_command(Command::SetActiveTool {
+    assert!(app.apply_session_command(&SessionCommand::SetActiveTool {
         tool: ToolKind::Eraser,
     }));
     let update = app.prepare_present_frame(1280, 200, &mut profiler);
@@ -974,7 +975,7 @@ fn pan_view_updates_canvas_without_status_recompose() {
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();
 
-    assert!(app.execute_command(Command::PanView {
+    assert!(app.apply_session_command(&SessionCommand::PanView {
         delta_x: 32.0,
         delta_y: 0.0,
     }));
@@ -1004,7 +1005,7 @@ fn pan_view_updates_canvas_quad_without_bitmap_reupload() {
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let original_quad = app.canvas_texture_quad().expect("canvas quad exists");
 
-    assert!(app.execute_command(Command::PanView {
+    assert!(app.apply_session_command(&SessionCommand::PanView {
         delta_x: 0.0,
         delta_y: -32.0,
     }));
@@ -1023,7 +1024,7 @@ fn pan_can_expand_canvas_quad_into_host_margin() {
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
 
-    assert!(app.execute_command(Command::PanView {
+    assert!(app.apply_session_command(&SessionCommand::PanView {
         delta_x: -96.0,
         delta_y: 0.0,
     }));
@@ -1047,7 +1048,7 @@ fn new_document_sized_resets_active_interactions() {
     assert!(app.canvas_input.is_drawing);
     assert!(app.hover_canvas_position.is_some());
 
-    assert!(app.execute_command(Command::NewDocumentSized {
+    assert!(app.apply_document_command(&DocumentCommand::NewDocumentSized {
         width: 48,
         height: 32,
     }));
@@ -1075,8 +1076,8 @@ fn brush_preview_dirty_rect_grows_with_pen_size() {
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    let _ = app.execute_command(Command::SetViewZoom { zoom: 8.0 });
-    let _ = app.execute_command(Command::SetActivePenSize { size: 4 });
+    let _ = app.apply_session_command(&SessionCommand::SetViewZoom { zoom: 8.0 });
+    let _ = app.apply_session_command(&SessionCommand::SetActivePenSize { size: 4 });
     assert!(app.update_canvas_hover(center_x, center_y));
     let small_dirty = app
         .invalidation.temp_overlay_dirty_rect
@@ -1084,7 +1085,7 @@ fn brush_preview_dirty_rect_grows_with_pen_size() {
 
     app.invalidation.temp_overlay_dirty_rect = None;
     app.hover_canvas_position = None;
-    let _ = app.execute_command(Command::SetActivePenSize { size: 96 });
+    let _ = app.apply_session_command(&SessionCommand::SetActivePenSize { size: 96 });
     assert!(app.update_canvas_hover(center_x, center_y));
     let large_dirty = app
         .invalidation.temp_overlay_dirty_rect
@@ -1104,7 +1105,7 @@ fn lasso_preview_drag_marks_temp_overlay_dirty() {
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    let _ = app.execute_command(Command::SetActiveTool {
+    let _ = app.apply_session_command(&SessionCommand::SetActiveTool {
         tool: app_core::ToolKind::LassoBucket,
     });
 
@@ -1133,7 +1134,7 @@ fn toggle_layer_visibility_sets_canvas_dirty_rect_not_full_rebuild() {
     app.invalidation.needs_full_present_rebuild = false;
     app.invalidation.canvas_dirty_rect = None;
 
-    let _ = app.execute_command(Command::ToggleActiveLayerVisibility);
+    let _ = app.apply_document_command(&DocumentCommand::ToggleActiveLayerVisibility);
 
     assert!(
         app.invalidation.canvas_dirty_rect.is_some(),

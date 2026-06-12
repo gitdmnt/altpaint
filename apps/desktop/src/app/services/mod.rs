@@ -9,7 +9,7 @@ mod tool_catalog;
 mod workspace_io;
 mod workspace_layout;
 
-use app_core::{Command, Document, HistoryEntry};
+use app_core::{Document, DocumentCommand, HistoryEntry, SessionCommand};
 use desktop_support::DEFAULT_PROJECT_FILE_NAME;
 use panel_runtime::{ServiceRequest, services::names};
 use app_core::WorkspaceUiState;
@@ -195,21 +195,25 @@ impl DesktopApp {
 
     fn handle_view_service_request(&mut self, request: &ServiceRequest) -> Option<bool> {
         let changed = match request.name.as_str() {
-            names::VIEW_SET_ZOOM => self.execute_document_command(Command::SetViewZoom {
+            names::VIEW_SET_ZOOM => self.apply_session_command(&SessionCommand::SetViewZoom {
                 zoom: request.f64("zoom")? as f32,
             }),
-            names::VIEW_SET_PAN => self.execute_document_command(Command::SetViewPan {
+            names::VIEW_SET_PAN => self.apply_session_command(&SessionCommand::SetViewPan {
                 pan_x: request.f64("pan_x")? as f32,
                 pan_y: request.f64("pan_y")? as f32,
             }),
-            names::VIEW_SET_ROTATION => self.execute_document_command(Command::SetViewRotation {
-                rotation_degrees: request.f64("rotation_degrees")? as f32,
-            }),
-            names::VIEW_FLIP_HORIZONTAL => {
-                self.execute_document_command(Command::FlipViewHorizontally)
+            names::VIEW_SET_ROTATION => {
+                self.apply_session_command(&SessionCommand::SetViewRotation {
+                    rotation_degrees: request.f64("rotation_degrees")? as f32,
+                })
             }
-            names::VIEW_FLIP_VERTICAL => self.execute_document_command(Command::FlipViewVertically),
-            names::VIEW_RESET => self.execute_document_command(Command::ResetView),
+            names::VIEW_FLIP_HORIZONTAL => {
+                self.apply_session_command(&SessionCommand::FlipViewHorizontally)
+            }
+            names::VIEW_FLIP_VERTICAL => {
+                self.apply_session_command(&SessionCommand::FlipViewVertically)
+            }
+            names::VIEW_RESET => self.apply_session_command(&SessionCommand::ResetView),
             _ => return None,
         };
         Some(changed)
@@ -220,17 +224,21 @@ impl DesktopApp {
         request: &ServiceRequest,
     ) -> Option<bool> {
         let changed = match request.name.as_str() {
-            names::KOMA_NAV_ADD => self.execute_document_command(Command::AddKoma),
-            names::KOMA_NAV_REMOVE => self.execute_document_command(Command::RemoveActiveKoma),
-            names::KOMA_NAV_SELECT => self.execute_document_command(Command::SelectKoma {
+            names::KOMA_NAV_ADD => self.apply_document_command(&DocumentCommand::AddKoma),
+            names::KOMA_NAV_REMOVE => {
+                self.apply_document_command(&DocumentCommand::RemoveActiveKoma)
+            }
+            names::KOMA_NAV_SELECT => self.apply_document_command(&DocumentCommand::SelectKoma {
                 index: request.u64("index")? as usize,
             }),
-            names::KOMA_NAV_SELECT_NEXT => self.execute_document_command(Command::SelectNextKoma),
+            names::KOMA_NAV_SELECT_NEXT => {
+                self.apply_document_command(&DocumentCommand::SelectNextKoma)
+            }
             names::KOMA_NAV_SELECT_PREVIOUS => {
-                self.execute_document_command(Command::SelectPreviousKoma)
+                self.apply_document_command(&DocumentCommand::SelectPreviousKoma)
             }
             names::KOMA_NAV_FOCUS_ACTIVE => {
-                self.execute_document_command(Command::FocusActiveKoma)
+                self.apply_document_command(&DocumentCommand::FocusActiveKoma)
             }
             _ => return None,
         };

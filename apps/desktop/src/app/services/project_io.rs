@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use app_core::{
-    PageDirtyRect, Command, HistoryEntry, MergeInSpace, PaintInput, PaintPluginContext,
+    PageDirtyRect, DocumentCommand, HistoryEntry, MergeInSpace, PaintInput, PaintPluginContext,
 };
 use desktop_support::normalize_project_path;
 use panel_runtime::{ServiceRequest, services::names};
@@ -57,9 +57,13 @@ impl DesktopApp {
         request: &ServiceRequest,
     ) -> Option<bool> {
         let changed = match request.name.as_str() {
-            names::PROJECT_NEW_DOCUMENT => self.execute_command(Command::NewDocument),
+            names::PROJECT_NEW_DOCUMENT => {
+                // 新規ドキュメントは app-actions パネルのインラインフォームを開く
+                // (BL-063 で直接サービスルーティングへ修正予定)。
+                self.activate_panel_control("builtin.app-actions", "app.new")
+            }
             names::PROJECT_NEW_DOCUMENT_SIZED => {
-                self.execute_document_command(Command::NewDocumentSized {
+                self.apply_document_command(&DocumentCommand::NewDocumentSized {
                     width: request.u64("width")? as usize,
                     height: request.u64("height")? as usize,
                 })

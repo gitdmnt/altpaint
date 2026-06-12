@@ -5,7 +5,7 @@
 
 use std::time::Instant;
 
-use app_core::Command;
+use app_core::SessionCommand;
 use winit::event::{ElementState, Force, MouseScrollDelta, TouchPhase};
 
 use super::DesktopEventLoop;
@@ -168,7 +168,7 @@ impl DesktopEventLoop {
         let mut changed = false;
         if pan_x.abs() > f32::EPSILON || pan_y.abs() > f32::EPSILON {
             let t = Instant::now();
-            changed |= self.app.execute_command(Command::PanView {
+            changed |= self.app.apply_session_command(&SessionCommand::PanView {
                 delta_x: pan_x,
                 delta_y: pan_y,
             });
@@ -182,7 +182,7 @@ impl DesktopEventLoop {
                 let t = Instant::now();
                 changed |= self
                     .app
-                    .execute_command(Command::SetViewZoom { zoom: next_zoom });
+                    .apply_session_command(&SessionCommand::SetViewZoom { zoom: next_zoom });
                 self.profiler.record("zoom_step", t.elapsed());
             } else {
                 self.pending_wheel_zoom_lines = 0.0;
