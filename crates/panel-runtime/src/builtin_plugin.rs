@@ -135,7 +135,6 @@ impl BuiltinPanelPlugin {
     fn dispatch_to_wasm(
         &mut self,
         handler_name: &str,
-        event_kind: &str,
         event_payload: Value,
     ) -> Result<Vec<HostAction>, PluginHostError> {
         if !self.wasm.has_handler(handler_name) {
@@ -143,7 +142,6 @@ impl BuiltinPanelPlugin {
         }
         let request = panel_host_request(
             handler_name,
-            event_kind,
             event_payload,
             &self.state,
             &self.last_host_snapshot,
@@ -163,14 +161,12 @@ impl BuiltinPanelPlugin {
 
 fn panel_host_request(
     handler_name: &str,
-    event_kind: &str,
     event_payload: Value,
     state_snapshot: &Value,
     host_snapshot: &Value,
 ) -> panel_schema::PanelEventRequest {
     panel_schema::PanelEventRequest {
         handler_name: handler_name.to_string(),
-        event_kind: event_kind.to_string(),
         event_payload,
         state_snapshot: state_snapshot.clone(),
         host_snapshot: host_snapshot.clone(),
@@ -303,13 +299,12 @@ impl PanelPlugin for BuiltinPanelPlugin {
             } if panel_id == self.id => self
                 .dispatch_to_wasm(
                     "keyboard",
-                    "keyboard",
                     json!({ "shortcut": shortcut, "key": key, "repeat": repeat }),
                 )
                 .unwrap_or_default(),
             PanelEvent::Activate { panel_id, node_id } if panel_id == self.id => {
                 let descriptor = self.lookup_action_descriptor(node_id);
-                self.descriptor_to_actions(descriptor, "activate", json!({}))
+                self.descriptor_to_actions(descriptor, json!({}))
             }
             PanelEvent::SetValue {
                 panel_id,
@@ -317,7 +312,7 @@ impl PanelPlugin for BuiltinPanelPlugin {
                 value,
             } if panel_id == self.id => {
                 let descriptor = self.lookup_action_descriptor(node_id);
-                self.descriptor_to_actions(descriptor, "set_value", json!({ "value": value }))
+                self.descriptor_to_actions(descriptor, json!({ "value": value }))
             }
             PanelEvent::DragValue {
                 panel_id,
@@ -328,7 +323,6 @@ impl PanelPlugin for BuiltinPanelPlugin {
                 let descriptor = self.lookup_action_descriptor(node_id);
                 self.descriptor_to_actions(
                     descriptor,
-                    "drag_value",
                     json!({ "from": from, "to": to, "value": to }),
                 )
             }
@@ -338,11 +332,7 @@ impl PanelPlugin for BuiltinPanelPlugin {
                 value,
             } if panel_id == self.id => {
                 let descriptor = self.lookup_action_descriptor(node_id);
-                self.descriptor_to_actions(
-                    descriptor,
-                    "set_text",
-                    json!({ "value": value.clone() }),
-                )
+                self.descriptor_to_actions(descriptor, json!({ "value": value.clone() }))
             }
             _ => Vec::new(),
         }
@@ -366,7 +356,6 @@ impl BuiltinPanelPlugin {
     fn descriptor_to_actions(
         &mut self,
         descriptor: Option<ActionDescriptor>,
-        event_kind: &str,
         extra_payload: Value,
     ) -> Vec<HostAction> {
         match descriptor {
@@ -392,7 +381,7 @@ impl BuiltinPanelPlugin {
                     }
                 }
                 let event_payload = Value::Object(payload);
-                self.dispatch_to_wasm(&handler, event_kind, event_payload)
+                self.dispatch_to_wasm(&handler, event_payload)
                     .unwrap_or_default()
             }
             None => Vec::new(),

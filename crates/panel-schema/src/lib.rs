@@ -4,7 +4,6 @@ use serde_json::{Map, Value};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PanelEventRequest {
     pub handler_name: String,
-    pub event_kind: String,
     #[serde(default)]
     pub event_payload: Value,
     #[serde(default)]

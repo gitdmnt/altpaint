@@ -192,7 +192,6 @@ Wasm は Rust 等からコンパイルする処理モジュールである。
 | フィールド       | 型       | 説明                               |
 | ---------------- | -------- | ---------------------------------- |
 | `handler_name`   | `string` | UI DSL 側で bind された handler 名 |
-| `event_kind`     | `string` | `click` / `change` など            |
 | `event_payload`  | object   | イベント固有 payload               |
 | `state_snapshot` | object   | 現在の panel local state           |
 | `host_snapshot`  | object   | host が渡す読み取り専用 snapshot   |

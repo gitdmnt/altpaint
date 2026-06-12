@@ -710,7 +710,6 @@ impl WasmPanelRuntime {
         self.store.data_mut().clear();
         self.store.data_mut().current_request = Some(PanelEventRequest {
             handler_name: "sync_host".to_string(),
-            event_kind: "sync_host".to_string(),
             event_payload: Value::Object(Map::new()),
             state_snapshot: state_snapshot.clone(),
             host_snapshot: host_snapshot.clone(),
@@ -992,9 +991,7 @@ mod tests {
 
         let toggled = runtime
             .handle_event(&PanelEventRequest {
-                handler_name: "toggle-expanded".to_string(),
-                event_kind: "change".to_string(),
-                event_payload: json!({}),
+                handler_name: "toggle-expanded".to_string(),                event_payload: json!({}),
                 state_snapshot: initial_state.clone(),
                 host_snapshot: json!({}),
             })
@@ -1003,9 +1000,7 @@ mod tests {
 
         let saved = runtime
             .handle_event(&PanelEventRequest {
-                handler_name: "save_project".to_string(),
-                event_kind: "click".to_string(),
-                event_payload: json!({}),
+                handler_name: "save_project".to_string(),                event_payload: json!({}),
                 state_snapshot: initial_state.clone(),
                 host_snapshot: json!({}),
             })
@@ -1014,9 +1009,7 @@ mod tests {
 
         let pen = runtime
             .handle_event(&PanelEventRequest {
-                handler_name: "activate_pen".to_string(),
-                event_kind: "click".to_string(),
-                event_payload: json!({}),
+                handler_name: "activate_pen".to_string(),                event_payload: json!({}),
                 state_snapshot: initial_state,
                 host_snapshot: json!({}),
             })
@@ -1029,9 +1022,7 @@ mod tests {
 
         let string_len = runtime
             .handle_event(&PanelEventRequest {
-                handler_name: "save_path_len".to_string(),
-                event_kind: "click".to_string(),
-                event_payload: json!({}),
+                handler_name: "save_path_len".to_string(),                event_payload: json!({}),
                 state_snapshot: json!({"save_path": "project.altp.json"}),
                 host_snapshot: json!({}),
             })
@@ -1040,9 +1031,7 @@ mod tests {
 
         let moved = runtime
             .handle_event(&PanelEventRequest {
-                handler_name: "move_layer".to_string(),
-                event_kind: "change".to_string(),
-                event_payload: json!({}),
+                handler_name: "move_layer".to_string(),                event_payload: json!({}),
                 state_snapshot: json!({}),
                 host_snapshot: json!({}),
             })
@@ -1058,9 +1047,7 @@ mod tests {
 
         let batched = runtime
             .handle_event(&PanelEventRequest {
-                handler_name: "apply_batch".to_string(),
-                event_kind: "change".to_string(),
-                event_payload: json!({}),
+                handler_name: "apply_batch".to_string(),                event_payload: json!({}),
                 state_snapshot: json!({}),
                 host_snapshot: json!({}),
             })
