@@ -56,7 +56,7 @@ struct CachedCanvasScene {
 
 /// ストローク中のビットマップ差分追跡状態。
 struct PendingStroke {
-    panel_id: KomaId,
+    koma_id: KomaId,
     layer_index: usize,
     /// ストローク開始前のレイヤービットマップ全体。
     ///
@@ -188,7 +188,7 @@ impl DesktopApp {
             compositor: gpu_canvas::GpuLayerCompositor::new(device, queue),
         });
         self.sync_all_layers_to_gpu();
-        self.recomposite_all_panels();
+        self.recomposite_all_komas();
     }
 
     /// 全ページ・全パネル・全レイヤーの CPU ビットマップを GPU テクスチャへ同期する。
@@ -301,7 +301,7 @@ impl DesktopApp {
     /// 指定コマに対し、現在のレイヤー構成を composite テクスチャへ再合成する。
     ///
     /// `dirty` はコマローカル座標系の矩形。None の場合はコマ全体。
-    pub(crate) fn recomposite_panel(
+    pub(crate) fn recomposite_koma(
         &self,
         koma_id: KomaId,
         dirty: Option<CanvasDirtyRect>,
@@ -359,7 +359,7 @@ impl DesktopApp {
 
     /// 全コマの composite テクスチャを再合成する。`install_gpu_resources` や
     /// `sync_all_layers_to_gpu` 後に呼ぶ。
-    pub(crate) fn recomposite_all_panels(&self) {
+    pub(crate) fn recomposite_all_komas(&self) {
         let ids: Vec<KomaId> = self
             .document
             .work
@@ -368,7 +368,7 @@ impl DesktopApp {
             .flat_map(|page| page.komas.iter().map(|p| p.id))
             .collect();
         for id in ids {
-            self.recomposite_panel(id, None);
+            self.recomposite_koma(id, None);
         }
     }
 }

@@ -44,7 +44,7 @@ impl DesktopApp {
             };
             let _ = self
                 .document
-                .restore_panel_layer_region(koma_id, layer_index, 0, 0, &bitmap);
+                .restore_koma_layer_region(koma_id, layer_index, 0, 0, &bitmap);
         }
     }
 }

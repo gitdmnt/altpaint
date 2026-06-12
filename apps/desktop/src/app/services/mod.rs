@@ -74,14 +74,14 @@ impl DesktopApp {
     pub(crate) fn execute_undo(&mut self) -> bool {
         match self.history.undo() {
             Some(HistoryEntry::BitmapPatch {
-                panel_id,
+                koma_id,
                 layer_index,
                 dirty,
                 before,
                 ..
             }) => {
-                if let Some(page_dirty) = self.document.restore_panel_layer_region(
-                    panel_id,
+                if let Some(page_dirty) = self.document.restore_koma_layer_region(
+                    koma_id,
                     layer_index,
                     dirty.x,
                     dirty.y,
@@ -92,10 +92,10 @@ impl DesktopApp {
                     if let Some(pool) = self.gpu_canvas_pool()
                         && let Some(region) =
                             self.document
-                                .capture_panel_layer_region(panel_id, layer_index, page_dirty)
+                                .capture_koma_layer_region(koma_id, layer_index, page_dirty)
                     {
                         pool.upload_region(
-                            &panel_id.0.to_string(),
+                            &koma_id.0.to_string(),
                             layer_index,
                             page_dirty,
                             &region.pixels,
@@ -106,7 +106,7 @@ impl DesktopApp {
                 true
             }
             Some(HistoryEntry::GpuBitmapPatch {
-                panel_id,
+                koma_id,
                 layer_index,
                 dirty,
                 gpu_data,
@@ -116,13 +116,13 @@ impl DesktopApp {
                     (*gpu_data.0).downcast_ref::<project_io::GpuPatchSnapshot>(),
                 ) {
                     pool.restore_region(
-                        &panel_id.0.to_string(),
+                        &koma_id.0.to_string(),
                         layer_index,
                         app_core::KomaLocalPoint::new(dirty.x, dirty.y),
                         &snap.before,
                     );
                     self.append_canvas_dirty_rect(dirty);
-                    self.recomposite_panel(panel_id, Some(dirty));
+                    self.recomposite_koma(koma_id, Some(dirty));
                 }
                 self.sync_ui_from_document();
                 true
@@ -137,14 +137,14 @@ impl DesktopApp {
     pub(crate) fn execute_redo(&mut self) -> bool {
         match self.history.redo() {
             Some(HistoryEntry::BitmapPatch {
-                panel_id,
+                koma_id,
                 layer_index,
                 dirty,
                 after,
                 ..
             }) => {
-                if let Some(page_dirty) = self.document.restore_panel_layer_region(
-                    panel_id,
+                if let Some(page_dirty) = self.document.restore_koma_layer_region(
+                    koma_id,
                     layer_index,
                     dirty.x,
                     dirty.y,
@@ -154,10 +154,10 @@ impl DesktopApp {
                     if let Some(pool) = self.gpu_canvas_pool()
                         && let Some(region) =
                             self.document
-                                .capture_panel_layer_region(panel_id, layer_index, page_dirty)
+                                .capture_koma_layer_region(koma_id, layer_index, page_dirty)
                     {
                         pool.upload_region(
-                            &panel_id.0.to_string(),
+                            &koma_id.0.to_string(),
                             layer_index,
                             page_dirty,
                             &region.pixels,
@@ -168,7 +168,7 @@ impl DesktopApp {
                 true
             }
             Some(HistoryEntry::GpuBitmapPatch {
-                panel_id,
+                koma_id,
                 layer_index,
                 dirty,
                 gpu_data,
@@ -178,13 +178,13 @@ impl DesktopApp {
                     (*gpu_data.0).downcast_ref::<project_io::GpuPatchSnapshot>(),
                 ) {
                     pool.restore_region(
-                        &panel_id.0.to_string(),
+                        &koma_id.0.to_string(),
                         layer_index,
                         app_core::KomaLocalPoint::new(dirty.x, dirty.y),
                         &snap.after,
                     );
                     self.append_canvas_dirty_rect(dirty);
-                    self.recomposite_panel(panel_id, Some(dirty));
+                    self.recomposite_koma(koma_id, Some(dirty));
                 }
                 self.sync_ui_from_document();
                 true
@@ -281,7 +281,7 @@ impl DesktopApp {
             .filter(|entry| !entry.visible)
             .count();
         format!(
-            "file={} / tool={:?} / pen={} {}px / color={} / zoom={:.2}x / page={} / panel={}/{} / pages={} / panels={} / hidden={}",
+            "file={} / tool={:?} / pen={} {}px / color={} / zoom={:.2}x / page={} / koma={}/{} / pages={} / komas={} / hidden={}",
             file_name,
             self.document.active_tool,
             self.document

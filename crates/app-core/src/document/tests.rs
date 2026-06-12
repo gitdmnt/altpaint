@@ -8,13 +8,13 @@ fn apply_layer_brush(
     let koma_bounds = document.active_koma_bounds()?;
     let (page_width, page_height) = document.active_page_dimensions();
     let koma = document.active_koma_mut()?;
-    super::layer_ops::ensure_panel_layers(koma);
+    super::layer_ops::ensure_koma_layers(koma);
     let is_background = koma.active_layer_index == 0;
     let local_dirty = {
         let layer = &mut koma.layers[koma.active_layer_index];
         paint(&mut layer.bitmap, is_background)
     };
-    koma.bitmap = super::layer_ops::composite_panel_bitmap(koma);
+    koma.bitmap = super::layer_ops::composite_koma_bitmap(koma);
     Some(
         CanvasDirtyRect {
             x: local_dirty.x.saturating_add(koma_bounds.x),
@@ -72,7 +72,7 @@ fn erase_point(document: &mut Document, x: usize, y: usize) -> Option<CanvasDirt
 }
 
 #[test]
-fn default_document_has_single_page_single_panel_single_layer() {
+fn default_document_has_single_page_single_koma_single_layer() {
     let document = Document::default();
 
     assert_eq!(document.work.title, "Untitled");
@@ -550,7 +550,7 @@ fn toggle_active_layer_visibility_reveals_underlying_layer() {
 }
 
 #[test]
-fn create_panel_command_adds_rectangular_panel_without_relayout() {
+fn create_koma_command_adds_rectangular_koma_without_relayout() {
     let mut document = Document::new(320, 240);
 
     document.apply_command(&Command::CreateKoma {
@@ -575,7 +575,7 @@ fn create_panel_command_adds_rectangular_panel_without_relayout() {
 }
 
 #[test]
-fn panel_local_draw_returns_page_space_dirty_rect() {
+fn koma_local_draw_returns_page_space_dirty_rect() {
     let mut document = Document::new(320, 240);
     document.apply_command(&Command::CreateKoma {
         x: 40,
@@ -594,7 +594,7 @@ fn panel_local_draw_returns_page_space_dirty_rect() {
 }
 
 #[test]
-fn add_panel_selects_new_active_panel() {
+fn add_koma_selects_new_active_koma() {
     let mut document = Document::new(320, 240);
 
     document.apply_command(&Command::AddKoma);
@@ -607,7 +607,7 @@ fn add_panel_selects_new_active_panel() {
 }
 
 #[test]
-fn panel_selection_switches_edit_target() {
+fn koma_selection_switches_edit_target() {
     let mut document = Document::new(128, 128);
     document.apply_command(&Command::AddKoma);
     document.apply_command(&Command::SelectKoma { index: 1 });
@@ -630,7 +630,7 @@ fn panel_selection_switches_edit_target() {
 }
 
 #[test]
-fn select_previous_panel_wraps_to_last_panel() {
+fn select_previous_koma_wraps_to_last_koma() {
     let mut document = Document::new(256, 256);
     document.apply_command(&Command::AddKoma);
     document.apply_command(&Command::SelectKoma { index: 0 });

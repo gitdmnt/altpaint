@@ -73,11 +73,11 @@ impl DesktopApp {
                     let before_layer = if self.gpu.is_some() {
                         None
                     } else {
-                        self.document.clone_panel_layer_bitmap(koma_id, layer_index)
+                        self.document.clone_koma_layer_bitmap(koma_id, layer_index)
                     };
 
                     self.pending_stroke = Some(PendingStroke {
-                        panel_id: koma_id,
+                        koma_id,
                         layer_index,
                         before_layer,
                         dirty: None,
@@ -152,7 +152,7 @@ impl DesktopApp {
                 if let Some(dirty) = edit_dirty {
                     self.append_canvas_dirty_rect(dirty);
                     if let Some(koma_id) = self.document.active_koma().map(|p| p.id) {
-                        self.recomposite_panel(koma_id, Some(dirty));
+                        self.recomposite_koma(koma_id, Some(dirty));
                     }
                 }
                 return true;
@@ -180,16 +180,16 @@ impl DesktopApp {
                 });
                 let before = edit_dirty.and_then(|dirty| {
                     self.document
-                        .capture_panel_layer_region(koma_id, layer_index, dirty)
+                        .capture_koma_layer_region(koma_id, layer_index, dirty)
                 });
                 let changed = self.apply_bitmap_edits(edits);
                 if let (Some(dirty), Some(before)) = (edit_dirty, before)
                     && let Some(after) =
                         self.document
-                            .capture_panel_layer_region(koma_id, layer_index, dirty)
+                            .capture_koma_layer_region(koma_id, layer_index, dirty)
                 {
                     self.history.push(HistoryEntry::BitmapPatch {
-                        panel_id: koma_id,
+                        koma_id,
                         layer_index,
                         dirty,
                         before,
@@ -209,7 +209,7 @@ impl DesktopApp {
     /// が無い・入力が不適）は `false` を返して呼び出し元が CPU にフォールバックする。
     ///
     /// Undo スナップショットは `snapshot_region` (after) と
-    /// `capture_panel_layer_region` → `create_and_upload` (before) で構築する。
+    /// `capture_koma_layer_region` → `create_and_upload` (before) で構築する。
     fn execute_gpu_fill(
         &mut self,
         koma_id: app_core::KomaId,
@@ -248,7 +248,7 @@ impl DesktopApp {
         // Runtime は CPU bitmap を変更しない）。
         let Some(before_region) =
             self.document
-                .capture_panel_layer_region(koma_id, layer_index, dirty)
+                .capture_koma_layer_region(koma_id, layer_index, dirty)
         else {
             return false;
         };
@@ -303,7 +303,7 @@ impl DesktopApp {
         let Some(after_tex) = after_tex else {
             // スナップショット失敗時も描画自体は成功しているので dirty rect を push
             self.append_canvas_dirty_rect(dirty);
-            self.recomposite_panel(koma_id, Some(dirty));
+            self.recomposite_koma(koma_id, Some(dirty));
             return true;
         };
         let before_tex = pool.create_and_upload(
@@ -312,7 +312,7 @@ impl DesktopApp {
             &before_region.pixels,
         );
         self.history.push(HistoryEntry::GpuBitmapPatch {
-            panel_id: koma_id,
+            koma_id,
             layer_index,
             dirty,
             gpu_data: app_core::OpaqueGpuData(std::sync::Arc::new(GpuPatchSnapshot {
@@ -321,7 +321,7 @@ impl DesktopApp {
             })),
         });
         self.append_canvas_dirty_rect(dirty);
-        self.recomposite_panel(koma_id, Some(dirty));
+        self.recomposite_koma(koma_id, Some(dirty));
         true
     }
 
@@ -338,10 +338,10 @@ impl DesktopApp {
         // 取り出すと「ストローク前」ピクセルになる。それを GPU テクスチャへ 1 回アップロードして
         // `before` スナップショットを作り、`after` は GPU-to-GPU コピーで取得する。
         if let Some(pool) = self.gpu_canvas_pool() {
-            let pid = stroke.panel_id.0.to_string();
+            let pid = stroke.koma_id.0.to_string();
             let before_pixels =
                 self.document
-                    .capture_panel_layer_region(stroke.panel_id, stroke.layer_index, dirty);
+                    .capture_koma_layer_region(stroke.koma_id, stroke.layer_index, dirty);
             let after_tex = pool.snapshot_region(&pid, stroke.layer_index, dirty);
             if let (Some(bp), Some(after_tex)) = (before_pixels, after_tex) {
                 let before_tex = pool.create_and_upload(
@@ -354,7 +354,7 @@ impl DesktopApp {
                     after: after_tex,
                 };
                 self.history.push(HistoryEntry::GpuBitmapPatch {
-                    panel_id: stroke.panel_id,
+                    koma_id: stroke.koma_id,
                     layer_index: stroke.layer_index,
                     dirty,
                     gpu_data: app_core::OpaqueGpuData(std::sync::Arc::new(snapshot)),
@@ -363,7 +363,7 @@ impl DesktopApp {
                 eprintln!(
                     "commit_stroke_to_history: GPU snapshot skipped (before/after unavailable) \
                      koma={koma_id:?} layer={layer} dirty={dirty:?}",
-                    koma_id = stroke.panel_id,
+                    koma_id = stroke.koma_id,
                     layer = stroke.layer_index,
                 );
             }
@@ -382,12 +382,12 @@ impl DesktopApp {
         };
         let Some(after) =
             self.document
-                .capture_panel_layer_region(stroke.panel_id, stroke.layer_index, dirty)
+                .capture_koma_layer_region(stroke.koma_id, stroke.layer_index, dirty)
         else {
             return;
         };
         self.history.push(HistoryEntry::BitmapPatch {
-            panel_id: stroke.panel_id,
+            koma_id: stroke.koma_id,
             layer_index: stroke.layer_index,
             dirty,
             before,

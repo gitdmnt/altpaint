@@ -33,9 +33,9 @@ impl Document {
         let koma_bounds = self.active_koma_bounds()?;
         let (page_width, page_height) = self.active_page_dimensions();
         if let Some(koma) = self.active_koma_mut() {
-            ensure_panel_layers(koma);
+            ensure_koma_layers(koma);
             let dirty = apply_bitmap_edits(koma, edits)?;
-            composite_panel_bitmap_region(koma, dirty);
+            composite_koma_bitmap_region(koma, dirty);
             return Some(local_dirty_to_page_dirty(
                 dirty,
                 koma_bounds,
@@ -48,7 +48,7 @@ impl Document {
     }
 
     /// 指定 `KomaId` のページ・コマインデックスを返す。
-    pub fn find_panel_location(&self, koma_id: KomaId) -> Option<(usize, usize)> {
+    pub fn find_koma_location(&self, koma_id: KomaId) -> Option<(usize, usize)> {
         for (page_index, page) in self.work.pages.iter().enumerate() {
             for (koma_index, koma) in page.komas.iter().enumerate() {
                 if koma.id == koma_id {
@@ -60,24 +60,24 @@ impl Document {
     }
 
     /// 指定 koma/layer のビットマップ全体を複製して返す。
-    pub fn clone_panel_layer_bitmap(
+    pub fn clone_koma_layer_bitmap(
         &self,
         koma_id: KomaId,
         layer_index: usize,
     ) -> Option<CanvasBitmap> {
-        let (page_idx, koma_idx) = self.find_panel_location(koma_id)?;
+        let (page_idx, koma_idx) = self.find_koma_location(koma_id)?;
         let koma = &self.work.pages[page_idx].komas[koma_idx];
         koma.layers.get(layer_index).map(|layer| layer.bitmap.clone())
     }
 
     /// 指定 koma/layer の指定領域を複製して返す（コマローカル座標系）。
-    pub fn capture_panel_layer_region(
+    pub fn capture_koma_layer_region(
         &self,
         koma_id: KomaId,
         layer_index: usize,
         dirty: CanvasDirtyRect,
     ) -> Option<CanvasBitmap> {
-        let (page_idx, koma_idx) = self.find_panel_location(koma_id)?;
+        let (page_idx, koma_idx) = self.find_koma_location(koma_id)?;
         let koma = &self.work.pages[page_idx].komas[koma_idx];
         let layer = koma.layers.get(layer_index)?;
         extract_bitmap_region(&layer.bitmap, dirty.x, dirty.y, dirty.width, dirty.height)
@@ -86,7 +86,7 @@ impl Document {
     /// 指定 koma/layer の指定位置にビットマップを復元し、コマ合成も更新する。
     ///
     /// 返値はページ座標系の dirty rect。
-    pub fn restore_panel_layer_region(
+    pub fn restore_koma_layer_region(
         &mut self,
         koma_id: KomaId,
         layer_index: usize,
@@ -94,7 +94,7 @@ impl Document {
         y: usize,
         bitmap: &CanvasBitmap,
     ) -> Option<CanvasDirtyRect> {
-        let (page_idx, koma_idx) = self.find_panel_location(koma_id)?;
+        let (page_idx, koma_idx) = self.find_koma_location(koma_id)?;
         let koma_bounds = self.work.pages[page_idx].komas[koma_idx].bounds;
         let (page_width, page_height) = {
             let page = &self.work.pages[page_idx];
@@ -110,7 +110,7 @@ impl Document {
             width: bitmap.width,
             height: bitmap.height,
         };
-        composite_panel_bitmap_region(koma, dirty);
+        composite_koma_bitmap_region(koma, dirty);
         Some(local_dirty_to_page_dirty(
             dirty,
             koma_bounds,
@@ -120,8 +120,8 @@ impl Document {
     }
 
     /// 指定 koma の指定 layer をビットマップを透明にリセットし、コマ合成も更新する。
-    pub fn reset_panel_layer_to_transparent(&mut self, koma_id: KomaId, layer_index: usize) {
-        let Some((page_idx, koma_idx)) = self.find_panel_location(koma_id) else {
+    pub fn reset_koma_layer_to_transparent(&mut self, koma_id: KomaId, layer_index: usize) {
+        let Some((page_idx, koma_idx)) = self.find_koma_location(koma_id) else {
             return;
         };
         let koma = &mut self.work.pages[page_idx].komas[koma_idx];
@@ -129,12 +129,12 @@ impl Document {
             let (w, h) = (layer.bitmap.width, layer.bitmap.height);
             layer.bitmap = CanvasBitmap::transparent(w, h);
         }
-        let new_bitmap = composite_panel_bitmap(&self.work.pages[page_idx].komas[koma_idx]);
+        let new_bitmap = composite_koma_bitmap(&self.work.pages[page_idx].komas[koma_idx]);
         self.work.pages[page_idx].komas[koma_idx].bitmap = new_bitmap;
     }
 
     /// 指定 koma の指定 layer に `BitmapEdit` を適用し、コマ合成も更新する。
-    pub fn apply_bitmap_edits_to_panel_layer(
+    pub fn apply_bitmap_edits_to_koma_layer(
         &mut self,
         koma_id: KomaId,
         layer_index: usize,
@@ -143,7 +143,7 @@ impl Document {
         if edits.is_empty() {
             return None;
         }
-        let (page_idx, koma_idx) = self.find_panel_location(koma_id)?;
+        let (page_idx, koma_idx) = self.find_koma_location(koma_id)?;
         let koma_bounds = self.work.pages[page_idx].komas[koma_idx].bounds;
         let (page_width, page_height) = {
             let page = &self.work.pages[page_idx];
@@ -155,7 +155,7 @@ impl Document {
         koma.active_layer_index = layer_index.min(koma.layers.len().saturating_sub(1));
         let dirty = apply_bitmap_edits(koma, edits);
         if let Some(dirty) = dirty {
-            composite_panel_bitmap_region(koma, dirty);
+            composite_koma_bitmap_region(koma, dirty);
         }
         koma.active_layer_index = saved_index;
         let dirty = dirty?;
@@ -164,7 +164,7 @@ impl Document {
 
     pub fn add_raster_layer(&mut self) {
         if let Some(koma) = self.active_koma_mut() {
-            ensure_panel_layers(koma);
+            ensure_koma_layers(koma);
             koma.created_layer_count = koma.created_layer_count.saturating_add(1);
             let next_index = koma.created_layer_count;
             let (width, height) = (koma.bitmap.width, koma.bitmap.height);
@@ -180,7 +180,7 @@ impl Document {
 
     pub fn remove_active_layer(&mut self) {
         if let Some(koma) = self.active_koma_mut() {
-            ensure_panel_layers(koma);
+            ensure_koma_layers(koma);
             if koma.layers.len() <= 1 {
                 return;
             }
@@ -188,20 +188,20 @@ impl Document {
             koma.active_layer_index = koma
                 .active_layer_index
                 .min(koma.layers.len().saturating_sub(1));
-            koma.bitmap = composite_panel_bitmap(koma);
+            koma.bitmap = composite_koma_bitmap(koma);
         }
     }
 
     pub fn select_layer(&mut self, index: usize) {
         if let Some(koma) = self.active_koma_mut() {
-            ensure_panel_layers(koma);
+            ensure_koma_layers(koma);
             koma.active_layer_index = index.min(koma.layers.len().saturating_sub(1));
         }
     }
 
     pub fn rename_active_layer(&mut self, name: &str) {
         if let Some(koma) = self.active_koma_mut() {
-            ensure_panel_layers(koma);
+            ensure_koma_layers(koma);
             if let Some(layer) = koma.layers.get_mut(koma.active_layer_index) {
                 layer.name = name.to_string();
             }
@@ -210,7 +210,7 @@ impl Document {
 
     pub fn move_layer(&mut self, from_index: usize, to_index: usize) {
         if let Some(koma) = self.active_koma_mut() {
-            ensure_panel_layers(koma);
+            ensure_koma_layers(koma);
             if koma.layers.len() <= 1 {
                 return;
             }
@@ -232,50 +232,50 @@ impl Document {
                 index => index,
             };
 
-            koma.bitmap = composite_panel_bitmap(koma);
+            koma.bitmap = composite_koma_bitmap(koma);
         }
     }
 
     pub fn select_next_layer(&mut self) {
         if let Some(koma) = self.active_koma_mut() {
-            ensure_panel_layers(koma);
+            ensure_koma_layers(koma);
             koma.active_layer_index = (koma.active_layer_index + 1) % koma.layers.len().max(1);
         }
     }
 
     pub fn cycle_active_layer_blend_mode(&mut self) {
         if let Some(koma) = self.active_koma_mut() {
-            ensure_panel_layers(koma);
+            ensure_koma_layers(koma);
             if let Some(layer) = koma.layers.get_mut(koma.active_layer_index) {
                 layer.blend_mode = layer.blend_mode.next();
-                koma.bitmap = composite_panel_bitmap(koma);
+                koma.bitmap = composite_koma_bitmap(koma);
             }
         }
     }
 
     pub fn set_active_layer_blend_mode(&mut self, mode: BlendMode) {
         if let Some(koma) = self.active_koma_mut() {
-            ensure_panel_layers(koma);
+            ensure_koma_layers(koma);
             if let Some(layer) = koma.layers.get_mut(koma.active_layer_index) {
                 layer.blend_mode = mode;
-                koma.bitmap = composite_panel_bitmap(koma);
+                koma.bitmap = composite_koma_bitmap(koma);
             }
         }
     }
 
     pub fn toggle_active_layer_visibility(&mut self) {
         if let Some(koma) = self.active_koma_mut() {
-            ensure_panel_layers(koma);
+            ensure_koma_layers(koma);
             if let Some(layer) = koma.layers.get_mut(koma.active_layer_index) {
                 layer.visible = !layer.visible;
-                koma.bitmap = composite_panel_bitmap(koma);
+                koma.bitmap = composite_koma_bitmap(koma);
             }
         }
     }
 
 }
 
-pub(super) fn ensure_panel_layers(koma: &mut Koma) {
+pub(super) fn ensure_koma_layers(koma: &mut Koma) {
     let mut repaired = false;
     if koma.layers.is_empty() {
         koma.layers.push(RasterLayer::background(
@@ -297,7 +297,7 @@ pub(super) fn ensure_panel_layers(koma: &mut Koma) {
         .active_layer_index
         .min(koma.layers.len().saturating_sub(1));
     if repaired {
-        koma.bitmap = composite_panel_bitmap(koma);
+        koma.bitmap = composite_koma_bitmap(koma);
     }
 }
 
@@ -386,7 +386,7 @@ fn write_bitmap_region(
     }
 }
 
-pub(super) fn composite_panel_bitmap(koma: &Koma) -> CanvasBitmap {
+pub(super) fn composite_koma_bitmap(koma: &Koma) -> CanvasBitmap {
     let width = koma
         .layers
         .first()
@@ -416,7 +416,7 @@ pub(super) fn composite_panel_bitmap(koma: &Koma) -> CanvasBitmap {
     result
 }
 
-fn composite_panel_bitmap_region(koma: &mut Koma, dirty: CanvasDirtyRect) {
+fn composite_koma_bitmap_region(koma: &mut Koma, dirty: CanvasDirtyRect) {
     let dirty = dirty.clamp_to_canvas_bounds(koma.bitmap.width.max(1), koma.bitmap.height.max(1));
     if let Some(layer_index) = single_passthrough_layer_index(koma) {
         copy_bitmap_region(&koma.layers[layer_index].bitmap, &mut koma.bitmap, dirty);

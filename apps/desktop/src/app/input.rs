@@ -188,7 +188,7 @@ impl DesktopApp {
             pressure,
             stabilization,
             |canvas_point| {
-                active_koma_bounds.and_then(|bounds| bounds.canvas_to_panel_local(canvas_point))
+                active_koma_bounds.and_then(|bounds| bounds.canvas_to_koma_local(canvas_point))
             },
         );
 

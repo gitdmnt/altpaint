@@ -129,7 +129,7 @@ impl DesktopApp {
                     self.rebuild_present_frame();
                 }
                 if let Some((koma_id, _page_dirty, local_dirty)) = koma_info {
-                    self.recomposite_panel(koma_id, Some(local_dirty));
+                    self.recomposite_koma(koma_id, Some(local_dirty));
                 }
                 self.sync_ui_from_document();
                 self.mark_status_dirty();
@@ -147,7 +147,7 @@ impl DesktopApp {
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
                 self.sync_all_layers_to_gpu();
-                self.recomposite_all_panels();
+                self.recomposite_all_komas();
                 true
             }
             Command::AddKoma
@@ -162,7 +162,7 @@ impl DesktopApp {
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
                 self.sync_all_layers_to_gpu();
-                self.recomposite_all_panels();
+                self.recomposite_all_komas();
                 true
             }
             Command::NewDocumentSized { .. } => {
@@ -174,7 +174,7 @@ impl DesktopApp {
                 self.mark_status_dirty();
                 self.rebuild_present_frame();
                 self.sync_all_layers_to_gpu();
-                self.recomposite_all_panels();
+                self.recomposite_all_komas();
                 true
             }
             Command::Noop

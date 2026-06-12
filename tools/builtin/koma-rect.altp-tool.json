@@ -1,0 +1,8 @@
+{
+  "id": "builtin.koma-rect",
+  "name": "Koma Rect",
+  "kind": "KomaRect",
+  "provider_plugin_id": "plugins/default-koma-tools-plugin",
+  "drawing_plugin_id": "builtin.bitmap",
+  "settings": []
+}
