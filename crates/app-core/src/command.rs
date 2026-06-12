@@ -32,7 +32,7 @@ pub enum Command {
     /// 現在のブラシ色を切り替える。
     SetActiveColor { color: ColorRgba8 },
     /// 指定矩形のコマを現在ページへ追加する。
-    CreatePanel {
+    CreateKoma {
         x: usize,
         y: usize,
         width: usize,
@@ -73,17 +73,17 @@ pub enum Command {
     /// アクティブレイヤーの表示状態を切り替える。
     ToggleActiveLayerVisibility,
     /// 新しいコマを現在ページへ追加する。
-    AddPanel,
+    AddKoma,
     /// 現在のアクティブコマを削除する。
-    RemoveActivePanel,
+    RemoveActiveKoma,
     /// アクティブコマを指定 index に切り替える。
-    SelectPanel { index: usize },
+    SelectKoma { index: usize },
     /// 次のコマをアクティブにする。
-    SelectNextPanel,
+    SelectNextKoma,
     /// 前のコマをアクティブにする。
-    SelectPreviousPanel,
+    SelectPreviousKoma,
     /// アクティブコマ中心の表示へ戻す。
-    FocusActivePanel,
+    FocusActiveKoma,
     /// 新規ドキュメントを作成する。
     NewDocument,
     /// 指定サイズで新規ドキュメントを作成する。

@@ -150,13 +150,13 @@ impl DesktopApp {
                 self.recomposite_all_panels();
                 true
             }
-            Command::AddPanel
-            | Command::CreatePanel { .. }
-            | Command::RemoveActivePanel
-            | Command::SelectPanel { .. }
-            | Command::SelectNextPanel
-            | Command::SelectPreviousPanel
-            | Command::FocusActivePanel => {
+            Command::AddKoma
+            | Command::CreateKoma { .. }
+            | Command::RemoveActiveKoma
+            | Command::SelectKoma { .. }
+            | Command::SelectNextKoma
+            | Command::SelectPreviousKoma
+            | Command::FocusActiveKoma => {
                 self.refresh_canvas_frame();
                 self.sync_ui_from_document();
                 self.mark_status_dirty();

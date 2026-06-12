@@ -232,7 +232,7 @@ impl DesktopApp {
                     canvas::koma_creation_preview_bounds(&preview_state, page_width, page_height)
                         .filter(|bounds| bounds.width >= 8 && bounds.height >= 8)
                         .is_some_and(|bounds| {
-                            self.execute_command(Command::CreatePanel {
+                            self.execute_command(Command::CreateKoma {
                                 x: bounds.x,
                                 y: bounds.y,
                                 width: bounds.width,

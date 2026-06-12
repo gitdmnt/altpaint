@@ -220,17 +220,17 @@ impl DesktopApp {
         request: &ServiceRequest,
     ) -> Option<bool> {
         let changed = match request.name.as_str() {
-            names::PANEL_NAV_ADD => self.execute_document_command(Command::AddPanel),
-            names::PANEL_NAV_REMOVE => self.execute_document_command(Command::RemoveActivePanel),
-            names::PANEL_NAV_SELECT => self.execute_document_command(Command::SelectPanel {
+            names::PANEL_NAV_ADD => self.execute_document_command(Command::AddKoma),
+            names::PANEL_NAV_REMOVE => self.execute_document_command(Command::RemoveActiveKoma),
+            names::PANEL_NAV_SELECT => self.execute_document_command(Command::SelectKoma {
                 index: request.u64("index")? as usize,
             }),
-            names::PANEL_NAV_SELECT_NEXT => self.execute_document_command(Command::SelectNextPanel),
+            names::PANEL_NAV_SELECT_NEXT => self.execute_document_command(Command::SelectNextKoma),
             names::PANEL_NAV_SELECT_PREVIOUS => {
-                self.execute_document_command(Command::SelectPreviousPanel)
+                self.execute_document_command(Command::SelectPreviousKoma)
             }
             names::PANEL_NAV_FOCUS_ACTIVE => {
-                self.execute_document_command(Command::FocusActivePanel)
+                self.execute_document_command(Command::FocusActiveKoma)
             }
             _ => return None,
         };

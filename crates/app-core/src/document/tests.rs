@@ -553,7 +553,7 @@ fn toggle_active_layer_visibility_reveals_underlying_layer() {
 fn create_panel_command_adds_rectangular_panel_without_relayout() {
     let mut document = Document::new(320, 240);
 
-    document.apply_command(&Command::CreatePanel {
+    document.apply_command(&Command::CreateKoma {
         x: 40,
         y: 32,
         width: 120,
@@ -577,7 +577,7 @@ fn create_panel_command_adds_rectangular_panel_without_relayout() {
 #[test]
 fn panel_local_draw_returns_page_space_dirty_rect() {
     let mut document = Document::new(320, 240);
-    document.apply_command(&Command::CreatePanel {
+    document.apply_command(&Command::CreateKoma {
         x: 40,
         y: 32,
         width: 120,
@@ -597,7 +597,7 @@ fn panel_local_draw_returns_page_space_dirty_rect() {
 fn add_panel_selects_new_active_panel() {
     let mut document = Document::new(320, 240);
 
-    document.apply_command(&Command::AddPanel);
+    document.apply_command(&Command::AddKoma);
 
     assert_eq!(document.active_page_panel_count(), 2);
     assert_eq!(document.active_panel_index(), 1);
@@ -609,8 +609,8 @@ fn add_panel_selects_new_active_panel() {
 #[test]
 fn panel_selection_switches_edit_target() {
     let mut document = Document::new(128, 128);
-    document.apply_command(&Command::AddPanel);
-    document.apply_command(&Command::SelectPanel { index: 1 });
+    document.apply_command(&Command::AddKoma);
+    document.apply_command(&Command::SelectKoma { index: 1 });
     document.set_active_pen_size(1);
 
     let _ = draw_point(&mut document, 2, 3);
@@ -632,10 +632,10 @@ fn panel_selection_switches_edit_target() {
 #[test]
 fn select_previous_panel_wraps_to_last_panel() {
     let mut document = Document::new(256, 256);
-    document.apply_command(&Command::AddPanel);
-    document.apply_command(&Command::SelectPanel { index: 0 });
+    document.apply_command(&Command::AddKoma);
+    document.apply_command(&Command::SelectKoma { index: 0 });
 
-    document.apply_command(&Command::SelectPreviousPanel);
+    document.apply_command(&Command::SelectPreviousKoma);
 
     assert_eq!(document.active_panel_index(), 1);
 }
@@ -643,12 +643,12 @@ fn select_previous_panel_wraps_to_last_panel() {
 #[test]
 fn remove_active_panel_keeps_single_panel_minimum() {
     let mut document = Document::new(256, 256);
-    document.apply_command(&Command::RemoveActivePanel);
+    document.apply_command(&Command::RemoveActiveKoma);
 
     assert_eq!(document.active_page_panel_count(), 1);
 
-    document.apply_command(&Command::AddPanel);
-    document.apply_command(&Command::RemoveActivePanel);
+    document.apply_command(&Command::AddKoma);
+    document.apply_command(&Command::RemoveActiveKoma);
 
     assert_eq!(document.active_page_panel_count(), 1);
     assert_eq!(document.active_panel_index(), 0);
@@ -666,7 +666,7 @@ fn focus_active_panel_resets_view_transform() {
         flip_y: false,
     });
 
-    document.apply_command(&Command::FocusActivePanel);
+    document.apply_command(&Command::FocusActiveKoma);
 
     assert_eq!(document.view_transform, CanvasViewTransform::default());
 }

@@ -61,13 +61,13 @@ impl DesktopRuntime {
             }
             Key::Named(NamedKey::Tab) => self.app.focus_next_panel_control(),
             Key::Named(NamedKey::PageUp) if self.modifiers.alt_key() => {
-                self.app.execute_command(Command::SelectPreviousPanel)
+                self.app.execute_command(Command::SelectPreviousKoma)
             }
             Key::Named(NamedKey::PageDown) if self.modifiers.alt_key() => {
-                self.app.execute_command(Command::SelectNextPanel)
+                self.app.execute_command(Command::SelectNextKoma)
             }
             Key::Named(NamedKey::Home) if self.modifiers.alt_key() => {
-                self.app.execute_command(Command::FocusActivePanel)
+                self.app.execute_command(Command::FocusActiveKoma)
             }
             Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space) => {
                 self.app.activate_focused_panel_control().is_some()

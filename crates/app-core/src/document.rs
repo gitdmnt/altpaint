@@ -1190,7 +1190,7 @@ impl Document {
             Command::SetActiveColor { color } => {
                 self.set_active_color(*color);
             }
-            Command::CreatePanel {
+            Command::CreateKoma {
                 x,
                 y,
                 width,
@@ -1261,25 +1261,25 @@ impl Document {
             Command::ToggleActiveLayerVisibility => {
                 self.toggle_active_layer_visibility();
             }
-            Command::AddPanel => {
+            Command::AddKoma => {
                 self.add_panel();
             }
-            Command::RemoveActivePanel => {
+            Command::RemoveActiveKoma => {
                 self.remove_active_panel();
             }
-            Command::SelectPanel { index } => {
+            Command::SelectKoma { index } => {
                 self.select_panel(*index);
                 self.focus_active_panel_view();
             }
-            Command::SelectNextPanel => {
+            Command::SelectNextKoma => {
                 self.select_next_panel();
                 self.focus_active_panel_view();
             }
-            Command::SelectPreviousPanel => {
+            Command::SelectPreviousKoma => {
                 self.select_previous_panel();
                 self.focus_active_panel_view();
             }
-            Command::FocusActivePanel => {
+            Command::FocusActiveKoma => {
                 self.focus_active_panel_view();
             }
             Command::NewDocument => {
