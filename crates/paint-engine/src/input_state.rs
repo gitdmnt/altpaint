@@ -1,4 +1,5 @@
-use app_core::{PagePoint, PagePointF, KomaBounds};
+use app_core::KomaBounds;
+use geometry::{PagePoint, PagePointF};
 
 /// キャンバス入力中の最小状態を表す。
 #[derive(Debug, Clone, Default, PartialEq)]

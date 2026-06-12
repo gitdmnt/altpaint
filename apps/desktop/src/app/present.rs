@@ -84,7 +84,7 @@ impl DesktopApp {
             self.invalidation.needs_status_refresh = false;
             self.invalidation.needs_full_present_rebuild = false;
             let bitmap = self.cpu_canvas_snapshot.as_ref();
-            let window_rect = app_core::WindowRect {
+            let window_rect = geometry::WindowRect {
                 x: 0,
                 y: 0,
                 width: window_width,
@@ -94,7 +94,7 @@ impl DesktopApp {
                 background_dirty_rect: Some(window_rect),
                 temp_overlay_dirty_rect: Some(window_rect),
                 ui_panel_dirty_rect: Some(window_rect),
-                canvas_dirty_rect: bitmap.map(|bitmap| app_core::PageDirtyRect {
+                canvas_dirty_rect: bitmap.map(|bitmap| geometry::PageDirtyRect {
                     x: 0,
                     y: 0,
                     width: bitmap.width,
@@ -133,7 +133,7 @@ impl DesktopApp {
         let canvas_dirty_rect = self.invalidation.canvas_dirty_rect.take();
         let canvas_transform_changed = std::mem::take(&mut self.invalidation.canvas_transform_update);
         if let Some(canvas_dirty_rect) = canvas_dirty_rect {
-            use app_core::ClampToCanvasBounds;
+            use geometry::ClampToCanvasBounds;
             let dirty = canvas_dirty_rect.clamp_to_canvas_bounds(canvas_width, canvas_height);
             let canvas_area = (canvas_width.max(1) * canvas_height.max(1)) as f64;
             profiler.record_value("canvas_upload_area_px", (dirty.width * dirty.height) as f64);
@@ -204,7 +204,7 @@ impl DesktopApp {
         let chrome_h = super::PANEL_CHROME_HEIGHT as usize;
         let measured = self.panel_runtime.panel_sizes();
         let mut sized: Vec<(String, u32, u32)> = Vec::with_capacity(panel_ids.len());
-        let mut panel_rects: Vec<app_core::WindowRect> = Vec::with_capacity(panel_ids.len());
+        let mut panel_rects: Vec<geometry::WindowRect> = Vec::with_capacity(panel_ids.len());
         for id in &panel_ids {
             let (mw, mh) = measured
                 .iter()
@@ -215,13 +215,13 @@ impl DesktopApp {
             let position_rect = self
                 .panel_workspace
                 .panel_rect(id, window_width, window_height)
-                .unwrap_or(app_core::WindowRect {
+                .unwrap_or(geometry::WindowRect {
                     x: 0,
                     y: 0,
                     width: mw as usize,
                     height: mh as usize,
                 });
-            panel_rects.push(app_core::WindowRect {
+            panel_rects.push(geometry::WindowRect {
                 x: position_rect.x,
                 y: position_rect.y,
                 width: mw as usize,
@@ -241,25 +241,25 @@ impl DesktopApp {
                 continue;
             };
             let panel_rect = panel_rects[index];
-            let body_screen_rect = app_core::WindowRect {
+            let body_screen_rect = geometry::WindowRect {
                 x: panel_rect.x,
                 y: panel_rect.y + chrome_h,
                 width: panel_rect.width,
                 height: panel_rect.height.saturating_sub(chrome_h),
             };
-            let chrome_screen_rect = app_core::WindowRect {
+            let chrome_screen_rect = geometry::WindowRect {
                 x: panel_rect.x,
                 y: panel_rect.y,
                 width: panel_rect.width,
                 height: chrome_h,
             };
-            let hit_rects: Vec<(String, app_core::WindowRect)> = hits
+            let hit_rects: Vec<(String, geometry::WindowRect)> = hits
                 .into_iter()
                 .filter_map(|hit| {
                     let element_id = hit.element_id?;
                     Some((
                         element_id,
-                        app_core::WindowRect {
+                        geometry::WindowRect {
                             x: hit.rect.x as usize,
                             y: hit.rect.y as usize,
                             width: hit.rect.width as usize,

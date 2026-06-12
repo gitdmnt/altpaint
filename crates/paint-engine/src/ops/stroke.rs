@@ -1,7 +1,5 @@
-use app_core::{
-    BitmapEdit, CanvasBitmap, PageDirtyRect, PaintPluginContext, KomaLocalPoint,
-    paint_params::MAX_STAMP_STEPS,
-};
+use app_core::{BitmapEdit, CanvasBitmap, PaintPluginContext, paint_params::MAX_STAMP_STEPS};
+use geometry::{KomaLocalPoint, PageDirtyRect};
 
 use super::{composite, stamp};
 

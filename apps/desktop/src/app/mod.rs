@@ -25,7 +25,8 @@ use std::path::PathBuf;
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use app_core::{CanvasBitmap, EditHistory, PageDirtyRect, PagePoint, Document, KomaId};
+use app_core::{CanvasBitmap, Document, EditHistory, KomaId};
+use geometry::{PageDirtyRect, PagePoint};
 use desktop_support::{
     DesktopDialogs, NativeDesktopDialogs, WorkspacePresetCatalog, default_workspace_preset_path,
 };
@@ -47,7 +48,7 @@ static TEST_SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// canvas_view_geometry のキャッシュエントリ。入力が同じなら再計算を省略するために使う。
 struct CachedCanvasViewGeometry {
-    viewport: app_core::WindowRect,
+    viewport: geometry::WindowRect,
     canvas_width: usize,
     canvas_height: usize,
     transform: app_core::CanvasViewTransform,

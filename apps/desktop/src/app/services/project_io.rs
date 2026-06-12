@@ -1,8 +1,7 @@
 use std::path::PathBuf;
 
-use app_core::{
-    PageDirtyRect, DocumentCommand, HistoryEntry, MergeInSpace, PaintInput, PaintPluginContext,
-};
+use app_core::{DocumentCommand, HistoryEntry, PaintInput, PaintPluginContext};
+use geometry::{MergeInSpace, PageDirtyRect};
 use desktop_support::normalize_project_path;
 use panel_runtime::{ServiceRequest, services::names};
 use storage::load_project_from_path;
@@ -462,7 +461,8 @@ impl DesktopApp {
 
 #[cfg(test)]
 mod tests {
-    use app_core::{Document, KomaLocalPoint, PaintInput};
+    use app_core::{Document, PaintInput};
+    use geometry::KomaLocalPoint;
     use paint_engine::{PaintEngine, build_paint_context};
 
     use super::brush_stroke_params;

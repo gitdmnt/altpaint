@@ -1,6 +1,6 @@
 //! panel_dispatch の回帰テストをまとめる。
 
-use app_core::WindowPoint;
+use geometry::WindowPoint;
 use desktop_support::FrameProfiler;
 use panel_runtime::{ServiceRequest, services::names};
 
@@ -46,7 +46,7 @@ fn drag_panel_move_marks_canvas_host_dirty() {
     // パネルをグラブした状態にする
     app.panel_interaction.active_panel_drag = Some(PanelDragState {
         panel_id: panel_id.clone(),
-        grab_offset: app_core::PanelSurfacePoint::new(10, 10),
+        grab_offset: geometry::PanelSurfacePoint::new(10, 10),
     });
     // pending_ui_panel_dirty_rect をリセット
     app.invalidation.ui_panel_dirty_rect = None;

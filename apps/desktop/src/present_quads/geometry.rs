@@ -1,6 +1,6 @@
 //! `frame` 用の固定レイアウト計算をまとめる。
 
-use app_core::WindowRect;
+use ::geometry::WindowRect;
 
 pub(crate) fn fit_rect(source_width: usize, source_height: usize, target: WindowRect) -> WindowRect {
     if source_width == 0 || source_height == 0 || target.width == 0 || target.height == 0 {

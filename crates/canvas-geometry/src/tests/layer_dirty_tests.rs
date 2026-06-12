@@ -1,4 +1,4 @@
-use app_core::WindowRect;
+use geometry::WindowRect;
 
 use crate::layer_dirty::LayerDirtyAccumulator;
 

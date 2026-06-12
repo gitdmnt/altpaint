@@ -1,6 +1,6 @@
 //! `frame` モジュールの desktop 固有レイアウトテストをまとめる。
 
-use app_core::WindowPoint;
+use ::geometry::WindowPoint;
 
 use super::*;
 

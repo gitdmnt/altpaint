@@ -1,4 +1,5 @@
-use app_core::{BitmapEdit, CanvasBitmap, PaintPluginContext, KomaLocalPoint, PenTipBitmap};
+use app_core::{BitmapEdit, CanvasBitmap, PaintPluginContext, PenTipBitmap};
+use geometry::KomaLocalPoint;
 
 use super::{composite, stroke};
 

@@ -1,4 +1,5 @@
-use app_core::{ColorRgba8, Document, PaintInput, KomaLocalPoint};
+use app_core::{ColorRgba8, Document, PaintInput};
+use geometry::KomaLocalPoint;
 
 use crate::PaintEngine;
 

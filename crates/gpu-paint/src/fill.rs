@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use app_core::{KomaLocalPoint, PageDirtyRect};
+use geometry::{KomaLocalPoint, PageDirtyRect};
 
 use crate::gpu::{GpuCanvasContext, GpuRgbaTexture};
 use crate::pipeline::build_compute_pipeline;

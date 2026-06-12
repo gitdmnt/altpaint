@@ -1,4 +1,5 @@
-use app_core::{Document, PaintInput, KomaLocalPoint, SessionCommand, ToolKind};
+use app_core::{Document, PaintInput, SessionCommand, ToolKind};
+use geometry::KomaLocalPoint;
 
 use crate::PaintEngine;
 

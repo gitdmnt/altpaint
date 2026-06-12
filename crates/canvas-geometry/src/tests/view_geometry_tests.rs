@@ -1,6 +1,5 @@
-use app_core::{
-    PageDirtyRect, PagePoint, CanvasViewTransform, CanvasViewportPoint, WindowRect,
-};
+use app_core::CanvasViewTransform;
+use geometry::{CanvasViewportPoint, PageDirtyRect, PagePoint, WindowRect};
 
 use crate::{
     CanvasViewGeometry, brush_preview_dirty_rect, canvas_texture_quad,

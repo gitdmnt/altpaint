@@ -75,7 +75,7 @@ impl DesktopEventLoop {
             .map(|s| s.handle);
         let handle = active_handle.or_else(|| {
             self.app
-                .panel_resize_hit_from_window(app_core::WindowPoint::new(x, y))
+                .panel_resize_hit_from_window(geometry::WindowPoint::new(x, y))
                 .map(|(_, handle)| handle)
         });
         let icon = cursor_icon_for_resize_handle(handle);
@@ -205,7 +205,7 @@ impl DesktopEventLoop {
         let Some(layout) = self.app.layout.as_ref() else {
             return false;
         };
-        let point = app_core::WindowPoint::new(x, y);
+        let point = geometry::WindowPoint::new(x, y);
         let on_panel = self.app.panel_is_hovered(point);
         let on_canvas = layout.canvas_host_rect.contains(point);
         let (delta_x_lines, delta_y_lines) = Self::wheel_delta_lines(delta);
@@ -315,7 +315,7 @@ impl DesktopEventLoop {
         let Some((panel_id, local)) = self
             .app
             .panel_workspace
-            .panel_at(app_core::WindowPoint::new(x, y))
+            .panel_at(geometry::WindowPoint::new(x, y))
         else {
             return false;
         };

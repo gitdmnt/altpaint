@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
-use app_core::WindowRect;
+use geometry::WindowRect;
 use crate::present_quads::{CircleQuad, LineQuad, SolidQuad, TextureQuad, pixel_rect_to_ndc};
 
 /// CPU 側のピクセルデータへの参照を保持する軽量ビュー。
@@ -136,7 +136,7 @@ pub struct PresentFrame<'a> {
 pub struct GpuPanelQuad<'a> {
     pub panel_id: &'a str,
     pub texture: &'a wgpu::Texture,
-    pub screen_rect: app_core::WindowRect,
+    pub screen_rect: geometry::WindowRect,
 }
 
 /// WGSL（WebGPU Shading Language）で書かれた描画シェーダ。

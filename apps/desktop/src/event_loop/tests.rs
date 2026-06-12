@@ -47,7 +47,7 @@ fn canvas_input_point(
 
     for y in start_y..end_y {
         for x in start_x..end_x {
-            if !event_loop.app.panel_is_hovered(app_core::WindowPoint::new(x, y)) {
+            if !event_loop.app.panel_is_hovered(geometry::WindowPoint::new(x, y)) {
                 return (x, y);
             }
         }
@@ -228,7 +228,7 @@ fn builtin_shortcut_can_move_focus_backward() {
     // ADR 014 以降、focus は HTML hit table を辿るため事前に hit を 1 件 inject する。
     event_loop.app.panel_workspace.update_panel_hits(
         "builtin.app-actions",
-        app_core::WindowRect {
+        geometry::WindowRect {
             x: 100,
             y: 50,
             width: 200,
@@ -236,7 +236,7 @@ fn builtin_shortcut_can_move_focus_backward() {
         },
         vec![(
             "app.save".to_string(),
-            app_core::WindowRect {
+            geometry::WindowRect {
                 x: 8,
                 y: 4,
                 width: 80,

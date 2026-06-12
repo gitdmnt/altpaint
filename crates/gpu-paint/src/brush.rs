@@ -6,7 +6,8 @@
 use std::sync::Arc;
 
 use app_core::paint_params::MAX_STAMP_STEPS;
-use app_core::{KomaLocalPoint, ToolKind};
+use app_core::ToolKind;
+use geometry::KomaLocalPoint;
 
 use crate::gpu::{GpuCanvasContext, GpuRgbaTexture};
 use crate::pipeline::build_compute_pipeline_with_layout;

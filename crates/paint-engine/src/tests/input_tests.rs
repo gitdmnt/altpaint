@@ -1,4 +1,5 @@
-use app_core::{PagePoint, KomaLocalPoint, ToolKind};
+use app_core::ToolKind;
+use geometry::{KomaLocalPoint, PagePoint};
 
 use crate::{
     CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, advance_pointer_gesture,

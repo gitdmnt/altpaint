@@ -7,4 +7,5 @@ authors.workspace = true
 
 [dependencies]
 app-core = { path = "../app-core" }
+geometry = { path = "../geometry" }
 panel-api = { path = "../panel-api" }

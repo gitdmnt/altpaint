@@ -9,7 +9,7 @@ use desktop_support::{
     CANVAS_FRAME_BORDER,
 };
 
-use app_core::WindowRect;
+use ::geometry::WindowRect;
 
 /// 1px 線幅の枠線分解で使用する固定線幅。
 const BORDER_THICKNESS: usize = 1;

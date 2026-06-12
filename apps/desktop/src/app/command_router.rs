@@ -4,7 +4,8 @@
 //! `ServiceRequest` 経路 (`execute_service_request`) に一本化されており、
 //! ここではドキュメント変異とエディタセッション変更のみを扱う。
 
-use app_core::{DocumentCommand, PageDirtyRect, SessionCommand};
+use app_core::{DocumentCommand, SessionCommand};
+use geometry::PageDirtyRect;
 
 use super::DesktopApp;
 

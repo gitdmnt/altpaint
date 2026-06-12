@@ -9,7 +9,7 @@
 //!   ここには置かず、各クレート (panel-html 等) のテスト側で
 //!   `scene.encoding().resources` を直接参照する形を取る。
 
-use app_core::WindowRect;
+use geometry::WindowRect;
 
 /// RGBA8 ピクセル列のうち暗色 (R+G+B が `threshold` 以下) を数える。
 ///

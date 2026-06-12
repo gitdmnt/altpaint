@@ -86,7 +86,7 @@ mod gpu_tests {
                 let brush = BrushPipeline::new(&ctx);
                 brush.dispatch_stroke(
                     &texture,
-                    &[app_core::KomaLocalPoint::new(2, 2)],
+                    &[geometry::KomaLocalPoint::new(2, 2)],
                     &crate::BrushStrokeParams {
                         color_rgba: [1.0, 0.0, 0.0, 1.0],
                         radius: 2.0,
@@ -174,7 +174,7 @@ mod gpu_tests {
 
             // dirty 領域 (1,1)-(2x2) をスナップショット
             let snap = pool
-                .snapshot_region("p", 0, app_core::PageDirtyRect::new(1, 1, 2, 2))
+                .snapshot_region("p", 0, geometry::PageDirtyRect::new(1, 1, 2, 2))
                 .expect("snapshot");
 
             // レイヤーを別のピクセルで上書き
@@ -182,7 +182,7 @@ mod gpu_tests {
             pool.upload_cpu_bitmap("p", 0, &zeros);
 
             // snap を元の位置へ復元
-            pool.restore_region("p", 0, app_core::KomaLocalPoint::new(1, 1), &snap);
+            pool.restore_region("p", 0, geometry::KomaLocalPoint::new(1, 1), &snap);
 
             let (w, h, out) = pool.read_back_full("p", 0).expect("readback");
             assert_eq!((w, h), (4, 4));
@@ -213,7 +213,7 @@ mod gpu_tests {
             pool.upload_cpu_bitmap("p", 0, &[0u8; 4 * 4 * 4]);
 
             let region = vec![255u8; 2 * 2 * 4];
-            pool.upload_region("p", 0, app_core::PageDirtyRect::new(1, 1, 2, 2), &region);
+            pool.upload_region("p", 0, geometry::PageDirtyRect::new(1, 1, 2, 2), &region);
 
             let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
             for y in 0..4 {
@@ -242,7 +242,7 @@ mod gpu_tests {
 
             let region = vec![128u8; 2 * 2 * 4];
             let tex = pool.create_snapshot_texture(2, 2, &region);
-            pool.restore_region("p", 0, app_core::KomaLocalPoint::new(1, 1), &tex);
+            pool.restore_region("p", 0, geometry::KomaLocalPoint::new(1, 1), &tex);
 
             let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
             for y in 0..4 {
@@ -305,7 +305,7 @@ mod gpu_tests {
                 fill.dispatch_flood_fill(
                     target,
                     target,
-                    app_core::KomaLocalPoint::new(0, 0),
+                    geometry::KomaLocalPoint::new(0, 0),
                     [1.0, 0.0, 0.0, 1.0],
                 );
 
@@ -352,7 +352,7 @@ mod gpu_tests {
                 fill.dispatch_lasso_fill(
                     target,
                     &polygon,
-                    app_core::PageDirtyRect::new(0, 0, 8, 8),
+                    geometry::PageDirtyRect::new(0, 0, 8, 8),
                     [0.0, 1.0, 0.0, 1.0],
                 );
 
@@ -405,7 +405,7 @@ mod gpu_tests {
                         blend_code: 0,
                         visible: true,
                     }],
-                    app_core::PageDirtyRect::new(0, 0, 4, 4),
+                    geometry::PageDirtyRect::new(0, 0, 4, 4),
                 );
 
                 let (_, _, out) = pool.read_back_composite("p").expect("readback");
@@ -449,7 +449,7 @@ mod gpu_tests {
                         blend_code: 0,
                         visible: false,
                     }],
-                    app_core::PageDirtyRect::new(0, 0, 4, 4),
+                    geometry::PageDirtyRect::new(0, 0, 4, 4),
                 );
 
                 let (_, _, out) = pool.read_back_composite("p").expect("readback");

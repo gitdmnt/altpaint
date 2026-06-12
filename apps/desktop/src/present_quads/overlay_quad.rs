@@ -5,7 +5,7 @@
 //! ブラシプレビュー円リング、`LineQuad` はラッソ線分カプセル。各々
 //! `WgpuPresenter` の専用パイプラインへ渡される。
 
-use app_core::{PageDirtyRect, WindowRect};
+use ::geometry::{PageDirtyRect, WindowRect};
 use desktop_support::{
     ACTIVE_KOMA_BORDER, ACTIVE_KOMA_FILL, ACTIVE_KOMA_MASK, BRUSH_PREVIEW_RING, LASSO_LINE,
     KOMA_NAVIGATOR_ACTIVE, KOMA_NAVIGATOR_BACKGROUND, KOMA_NAVIGATOR_BORDER,
@@ -291,7 +291,8 @@ fn push_koma_navigator(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::{PagePoint, CanvasViewTransform, KomaBounds, WindowRect};
+    use app_core::{CanvasViewTransform, KomaBounds};
+    use ::geometry::{PagePoint, WindowRect};
     use canvas_geometry::KomaNavigatorEntry;
 
     fn make_plan(canvas_width: usize, canvas_height: usize) -> CanvasPlan {

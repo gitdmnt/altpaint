@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use app_core::{PageDirtyRect, KomaLocalPoint};
+use geometry::{KomaLocalPoint, PageDirtyRect};
 
 /// wgpu デバイスとキューを共有するコンテキスト。
 ///

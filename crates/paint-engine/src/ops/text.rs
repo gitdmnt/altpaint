@@ -3,7 +3,8 @@
 //! `TextRenderer` trait により実装を差し替え可能にする。
 //! 既定実装 `Font8x8Renderer` は `font8x8` クレートを使ったビットマップフォントレンダラ。
 
-use app_core::{BitmapComposite, BitmapEdit, CanvasBitmap, PageDirtyRect};
+use app_core::{BitmapComposite, BitmapEdit, CanvasBitmap};
+use geometry::PageDirtyRect;
 
 // ─── 公開 trait ──────────────────────────────────────────────────────────────
 

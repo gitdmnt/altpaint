@@ -1,6 +1,7 @@
-use app_core::{
-    CanvasDisplayPoint, CanvasViewTransform, CanvasViewportPoint, ClampToCanvasBounds,
-    PageDirtyRect, PagePoint, WindowRect,
+use app_core::CanvasViewTransform;
+use geometry::{
+    CanvasDisplayPoint, CanvasViewportPoint, ClampToCanvasBounds, PageDirtyRect, PagePoint,
+    WindowRect,
 };
 
 /// GPU 上で提示するテクスチャ付き矩形を表す。

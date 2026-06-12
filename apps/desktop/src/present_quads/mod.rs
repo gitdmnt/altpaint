@@ -4,7 +4,7 @@ mod geometry;
 mod overlay_quad;
 mod solid_quad;
 pub(crate) mod status_panel;
-use app_core::WindowRect;
+use ::geometry::WindowRect;
 use desktop_support::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
 
 pub(crate) use geometry::fit_rect;

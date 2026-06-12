@@ -1,4 +1,4 @@
-use app_core::{PagePoint, WindowRect};
+use geometry::{PagePoint, WindowRect};
 
 use crate::{CanvasViewGeometry, union_optional_rect};
 

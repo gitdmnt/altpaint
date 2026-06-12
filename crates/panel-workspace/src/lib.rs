@@ -7,9 +7,9 @@ mod workspace;
 mod tests;
 
 use app_core::{
-    PanelSurfacePoint, WindowPoint, WorkspaceLayout, WorkspacePanelPosition, WorkspacePanelSize,
-    WorkspacePanelState,
+    WorkspaceLayout, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState,
 };
+use geometry::{PanelSurfacePoint, WindowPoint};
 use focus::FocusTarget;
 use std::collections::BTreeMap;
 
@@ -262,8 +262,8 @@ fn resize_hit_in_rect(
 #[cfg(test)]
 mod resize_hit_tests {
     use super::*;
+    use geometry::WindowRect;
     use panel_api::ResizeHandle;
-    use app_core::WindowRect;
 
     fn rect(x: usize, y: usize, w: usize, h: usize) -> WindowRect {
         WindowRect {

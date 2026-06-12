@@ -4,7 +4,8 @@ mod input_tests;
 mod stamp_tests;
 mod stroke_tests;
 
-use app_core::{PageDirtyRect, Document, PaintInput};
+use app_core::{Document, PaintInput};
+use geometry::PageDirtyRect;
 
 use crate::PaintEngine;
 

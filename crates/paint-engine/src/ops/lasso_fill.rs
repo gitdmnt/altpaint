@@ -1,4 +1,5 @@
-use app_core::{BitmapEdit, PaintPluginContext, KomaLocalPoint};
+use app_core::{BitmapEdit, PaintPluginContext};
+use geometry::KomaLocalPoint;
 
 use super::{bitmap_from_points, composite, point_in_polygon};
 

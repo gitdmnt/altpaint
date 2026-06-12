@@ -7,7 +7,8 @@ pub mod text;
 
 pub use stroke::compute_stamp_positions;
 
-use app_core::{BitmapEdit, CanvasBitmap, PageDirtyRect, PaintPluginContext, KomaLocalPoint};
+use app_core::{BitmapEdit, CanvasBitmap, PaintPluginContext};
+use geometry::{KomaLocalPoint, PageDirtyRect};
 
 pub(crate) fn bitmap_from_points(
     points: Vec<(usize, usize)>,

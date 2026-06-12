@@ -1,6 +1,6 @@
 //! パネル入力中継とホストアクション適用を集約する。
 
-use app_core::{PanelSurfacePoint, WindowPoint, WindowRect};
+use geometry::{PanelSurfacePoint, WindowPoint, WindowRect};
 use panel_runtime::{
     HostAction, PanelEvent, PanelMoveDirection, ResizeHandle, ServiceRequest, services::names,
 };

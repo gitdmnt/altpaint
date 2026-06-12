@@ -2,10 +2,8 @@
 
 use std::time::{Duration, Instant};
 
-use app_core::{
-    PagePoint, CanvasViewportPoint, ColorRgba8, DocumentCommand, SessionCommand, ToolKind,
-    WindowPoint, WindowRect,
-};
+use app_core::{ColorRgba8, DocumentCommand, SessionCommand, ToolKind};
+use geometry::{CanvasViewportPoint, PagePoint, WindowPoint, WindowRect};
 use desktop_support::{FrameProfiler, StageStats, ValueStats};
 
 use super::{TestDialogs, test_app_with_dialogs};
@@ -696,7 +694,7 @@ fn focus_refresh_does_not_trigger_ui_update() {
     // テストでは事前に hit を 1 件 inject して focus 対象を用意する。
     app.panel_workspace.update_panel_hits(
         "builtin.app-actions",
-        app_core::WindowRect {
+        geometry::WindowRect {
             x: 100,
             y: 50,
             width: 200,
@@ -704,7 +702,7 @@ fn focus_refresh_does_not_trigger_ui_update() {
         },
         vec![(
             "app.save".to_string(),
-            app_core::WindowRect {
+            geometry::WindowRect {
                 x: 8,
                 y: 4,
                 width: 80,
@@ -752,13 +750,13 @@ fn panel_release_without_matching_press_does_not_activate_save() {
     let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
-    let panel_screen_rect = app_core::WindowRect {
+    let panel_screen_rect = geometry::WindowRect {
         x: 100,
         y: 100,
         width: 200,
         height: 60,
     };
-    let save_button_rect = app_core::WindowRect {
+    let save_button_rect = geometry::WindowRect {
         x: 8,
         y: 8,
         width: 64,
@@ -953,7 +951,7 @@ fn control_points_from_surface(
         for x in 0..layout.window_rect.width {
             let Some((panel_id, node_id)) = app
                 .panel_workspace
-                .panel_hit_at(app_core::WindowPoint::new(x as i32, y as i32))
+                .panel_hit_at(geometry::WindowPoint::new(x as i32, y as i32))
             else {
                 continue;
             };

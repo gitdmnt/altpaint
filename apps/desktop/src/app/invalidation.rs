@@ -1,6 +1,7 @@
 //! present 向け dirty 状態と更新指示を扱う。
 
-use app_core::{BitmapEdit, MergeInSpace, PageDirtyRect, WindowRect};
+use app_core::BitmapEdit;
+use geometry::{MergeInSpace, PageDirtyRect, WindowRect};
 
 use super::DesktopApp;
 
@@ -187,7 +188,7 @@ impl DesktopApp {
             self.layout.as_ref().map(|layout| layout.canvas_host_rect)
         {
             let (canvas_width, canvas_height) = self.canvas_dimensions();
-            let viewport = app_core::WindowRect {
+            let viewport = geometry::WindowRect {
                 x: canvas_viewport_rect.x,
                 y: canvas_viewport_rect.y,
                 width: canvas_viewport_rect.width,
@@ -286,7 +287,7 @@ impl DesktopApp {
     pub(crate) fn canvas_view_geometry(&mut self) -> Option<canvas_geometry::CanvasViewGeometry> {
         let layout = self.layout.as_ref()?;
         let bitmap = self.cpu_canvas_snapshot()?;
-        let viewport = app_core::WindowRect {
+        let viewport = geometry::WindowRect {
             x: layout.canvas_host_rect.x,
             y: layout.canvas_host_rect.y,
             width: layout.canvas_host_rect.width,

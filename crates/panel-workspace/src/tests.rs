@@ -220,7 +220,7 @@ fn resize_panel_keeping_anchor_top_right_keeps_right_edge_fixed() {
         WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
         WorkspacePanelState,
     };
-    use app_core::WindowRect;
+    use geometry::WindowRect;
 
     let mut panel_workspace = PanelWorkspace::new();
     panel_workspace.replace_workspace_layout(WorkspaceLayout {

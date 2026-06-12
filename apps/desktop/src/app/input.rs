@@ -3,7 +3,8 @@
 //! OS 由来の生イベントをドキュメント編集やパネル操作へ変換し、
 //! ランタイム側が UI 詳細を知らずに済むようにする。
 
-use app_core::{DocumentCommand, PagePoint, ToolKind, WindowPoint, WindowRect};
+use app_core::{DocumentCommand, ToolKind};
+use geometry::{PagePoint, WindowPoint, WindowRect};
 use paint_engine::{
     CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, advance_pointer_gesture,
 };
@@ -277,7 +278,7 @@ impl DesktopApp {
         point: WindowPoint,
     ) -> Option<PagePoint> {
         let layout = self.layout.as_ref()?;
-        let window_rect = app_core::WindowRect::new(
+        let window_rect = geometry::WindowRect::new(
             layout.canvas_host_rect.x,
             layout.canvas_host_rect.y,
             layout.canvas_host_rect.width,
