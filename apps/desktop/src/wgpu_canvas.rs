@@ -19,7 +19,7 @@ use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
 use canvas_geometry::PixelRect;
-use crate::frame::{CircleQuad, LineQuad, SolidQuad, TextureQuad, pixel_rect_to_ndc};
+use crate::present_quads::{CircleQuad, LineQuad, SolidQuad, TextureQuad, pixel_rect_to_ndc};
 
 /// CPU 側のピクセルデータへの参照を保持する軽量ビュー。
 /// GPU へアップロードする直前にこの形で渡す。

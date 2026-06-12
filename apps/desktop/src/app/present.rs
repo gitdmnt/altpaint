@@ -9,7 +9,7 @@ use std::time::Instant;
 use desktop_support::FrameProfiler;
 
 use super::{DesktopApp, PresentFrameUpdate};
-use crate::frame::DesktopLayout;
+use crate::present_quads::DesktopLayout;
 
 impl DesktopApp {
     pub(crate) fn prepare_present_frame(

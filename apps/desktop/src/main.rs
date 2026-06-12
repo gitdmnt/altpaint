@@ -4,7 +4,7 @@
 //! このファイルは起動順序の宣言だけを担う。
 
 mod app;
-mod frame;
+mod present_quads;
 mod runtime;
 mod wgpu_canvas;
 

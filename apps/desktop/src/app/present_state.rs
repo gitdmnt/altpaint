@@ -208,11 +208,11 @@ impl DesktopApp {
     }
 
     /// L0 背景 solid quads (ウィンドウ背景・キャンバス枠 fill・ホスト枠線) を組み立てる。
-    pub(crate) fn background_solid_quads(&self) -> Vec<crate::frame::SolidQuad> {
+    pub(crate) fn background_solid_quads(&self) -> Vec<crate::present_quads::SolidQuad> {
         let Some(layout) = self.layout.as_ref() else {
             return Vec::new();
         };
-        crate::frame::build_background_solid_quads(
+        crate::present_quads::build_background_solid_quads(
             layout.window_rect,
             layout.canvas_host_rect,
             layout.canvas_display_rect,
@@ -220,12 +220,12 @@ impl DesktopApp {
     }
 
     /// L6 前景 solid quads (アクティブ UI パネル枠線) を組み立てる。
-    pub(crate) fn foreground_solid_quads(&self) -> Vec<crate::frame::SolidQuad> {
+    pub(crate) fn foreground_solid_quads(&self) -> Vec<crate::present_quads::SolidQuad> {
         let active_rect = self
             .panel_workspace
             .focused_target()
             .and_then(|(panel_id, _)| self.panel_workspace.panel_rect(panel_id));
-        crate::frame::build_foreground_solid_quads(active_rect)
+        crate::present_quads::build_foreground_solid_quads(active_rect)
     }
 
     /// L3 一時オーバーレイ用 quad を組み立てる。毎フレーム呼ぶ前提の純関数経路。
@@ -233,9 +233,9 @@ impl DesktopApp {
     pub(crate) fn overlay_quads(
         &self,
     ) -> (
-        Vec<crate::frame::SolidQuad>,
-        Vec<crate::frame::CircleQuad>,
-        Vec<crate::frame::LineQuad>,
+        Vec<crate::present_quads::SolidQuad>,
+        Vec<crate::present_quads::CircleQuad>,
+        Vec<crate::present_quads::LineQuad>,
     ) {
         let Some(layout) = self.layout.as_ref() else {
             return (Vec::new(), Vec::new(), Vec::new());
@@ -260,9 +260,9 @@ impl DesktopApp {
                 .and_then(|(panel_id, _)| self.panel_workspace.panel_rect(panel_id)),
         };
         (
-            crate::frame::build_overlay_solid_quads(&canvas_plan, &overlay_state),
-            crate::frame::build_overlay_circle_quads(&canvas_plan, &overlay_state),
-            crate::frame::build_overlay_line_quads(&canvas_plan, &overlay_state),
+            crate::present_quads::build_overlay_solid_quads(&canvas_plan, &overlay_state),
+            crate::present_quads::build_overlay_circle_quads(&canvas_plan, &overlay_state),
+            crate::present_quads::build_overlay_line_quads(&canvas_plan, &overlay_state),
         )
     }
 
