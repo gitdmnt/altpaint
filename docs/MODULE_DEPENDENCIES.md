@@ -171,6 +171,7 @@ graph TD
 
 主要モジュール:
 
+- `blend.rs`（ピクセルブレンドの単一実装。BlendMode→GPU code 対応表の単一定義。将来の raster クレート予定地）
 - `command.rs`
 - `document.rs`（+ `document/{bitmap,layer_ops,tool_state}.rs`）
 - `history.rs`
