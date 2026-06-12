@@ -114,11 +114,6 @@ pub fn set_state_json(path: impl Into<String>, value: impl Into<serde_json::Valu
     apply_state_patches(&[StatePatch::set(path.into(), value.into())]);
 }
 
-/// 状態 JSON を置き換える。
-pub fn replace_state_json(path: impl Into<String>, value: impl Into<serde_json::Value>) {
-    apply_state_patches(&[StatePatch::replace(path.into(), value.into())]);
-}
-
 /// 現在の値を 状態 patches へ変換する。
 #[cfg(target_arch = "wasm32")]
 pub fn apply_state_patches(patches: &[StatePatch]) {
@@ -175,11 +170,6 @@ impl StatePatchBuffer {
     /// JSON を設定する。
     pub fn set_json(&mut self, path: impl Into<String>, value: impl Into<serde_json::Value>) {
         self.push(StatePatch::set(path.into(), value.into()));
-    }
-
-    /// JSON を置き換える。
-    pub fn replace_json(&mut self, path: impl Into<String>, value: impl Into<serde_json::Value>) {
-        self.push(StatePatch::replace(path.into(), value.into()));
     }
 
     /// 切替 に必要な処理を行う。

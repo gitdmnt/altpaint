@@ -349,13 +349,11 @@ plugin 作者には host 内部 crate を直接依存させない。
 
 重要なのは、plugin 作者が `.altp-panel` から `host.*` を直接読むのではなく、Wasm handler 内で `plugin_sdk::host::*` を使って取得し、その値を local state へ mirror することだ。
 
-escape hatch としては、必要に応じて従来の `command("...")` builder も残してよい。
+escape hatch としては、必要に応じて `CommandDescriptor::new("...")` を直接構築してもよい。
 
 ビルトイン移植後に必要な helper は、少なくとも次を含む。
 
-- `.bool("value", true)`
-- `.color("color", "#1E88E5")`
-- `StatePatch::replace("selected_id", "layer-1")`
+- `StatePatch::set("selected_id", "layer-1")`
 
 ### SDK サンプル
 

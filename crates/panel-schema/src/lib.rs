@@ -28,7 +28,6 @@ pub struct HandlerResult {
 pub enum StatePatchOp {
     Set,
     Toggle,
-    Replace,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -55,15 +54,6 @@ impl StatePatch {
             op: StatePatchOp::Toggle,
             path: path.into(),
             value: None,
-        }
-    }
-
-    /// 入力値を束ねた新しいインスタンスを生成する。
-    pub fn replace(path: impl Into<String>, value: impl Into<Value>) -> Self {
-        Self {
-            op: StatePatchOp::Replace,
-            path: path.into(),
-            value: Some(value.into()),
         }
     }
 }

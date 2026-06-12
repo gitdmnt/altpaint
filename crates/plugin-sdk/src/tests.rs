@@ -235,7 +235,6 @@ fn native_runtime_helpers_are_safe_noops() {
     runtime::set_state_i32("count", 3);
     runtime::set_state_string("name", "demo");
     runtime::set_state_json("config", json!({"enabled": true}));
-    runtime::replace_state_json("config", json!({"enabled": false}));
     runtime::emit_command(&CommandDescriptor::new("project.save"));
     runtime::emit_command_descriptor(&CommandDescriptor::new("project.load"));
     runtime::emit_service(&services::project_io::save_current());
@@ -259,7 +258,7 @@ fn state_patch_buffer_collects_expected_patch_sequence() {
     batch.set_bool("show", true);
     batch.set_i32("count", 7);
     batch.set_string("name", "demo");
-    batch.replace_json("config", json!({"mode": "advanced"}));
+    batch.set_json("config", json!({"mode": "advanced"}));
     batch.toggle("expanded");
 
     assert_eq!(
@@ -268,7 +267,7 @@ fn state_patch_buffer_collects_expected_patch_sequence() {
             panel_schema::StatePatch::set("show", true),
             panel_schema::StatePatch::set("count", 7),
             panel_schema::StatePatch::set("name", "demo"),
-            panel_schema::StatePatch::replace("config", json!({"mode": "advanced"})),
+            panel_schema::StatePatch::set("config", json!({"mode": "advanced"})),
             panel_schema::StatePatch::toggle("expanded"),
         ]
     );

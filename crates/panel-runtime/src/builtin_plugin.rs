@@ -194,7 +194,7 @@ fn apply_state_patches(state: &mut Value, patches: &[panel_schema::StatePatch]) 
             let object = current.as_object_mut().expect("object ensured");
             if is_last {
                 match patch.op {
-                    StatePatchOp::Set | StatePatchOp::Replace => {
+                    StatePatchOp::Set => {
                         object.insert(
                             segment.to_string(),
                             patch.value.clone().unwrap_or(Value::Null),
