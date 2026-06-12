@@ -72,7 +72,7 @@ pub(super) const TOOL_PALETTE_PANEL_ID: &str = "builtin.tool-palette";
 
 /// HTML パネル上端のホスト描画タイトルバー (chrome) の高さ (px)。
 /// hit テーブル更新 (`present.rs`) と GPU 描画 (`runtime.rs`) で共有する。
-pub(crate) const HTML_PANEL_CHROME_HEIGHT: u32 = 24;
+pub(crate) const PANEL_CHROME_HEIGHT: u32 = 24;
 
 /// ランタイムから利用されるデスクトップアプリ本体を表す。
 pub(crate) struct DesktopApp {

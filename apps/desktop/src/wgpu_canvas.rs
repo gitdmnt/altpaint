@@ -582,7 +582,7 @@ pub struct WgpuPresenter {
     canvas_gpu_bind_group_cache: Option<GpuBindGroupCache>,
     /// HTML パネル毎の bind_group キャッシュ。panel_id をキーにし、
     /// 紐づくテクスチャの `global_id` が変わった or サイズ変化で再生成する。
-    html_panel_bind_groups: HashMap<String, HtmlPanelBindEntry>,
+    panel_bind_groups: HashMap<String, PanelBindEntry>,
     /// 単色矩形 (背景・キャンバス枠・アクティブパネル枠・L3 overlay AABB) 用 GPU パイプライン。
     solid_quad_pipeline: SolidQuadPipeline,
     /// L3 ブラシプレビュー円リング用 GPU パイプライン (SDF)。
@@ -594,7 +594,7 @@ pub struct WgpuPresenter {
 /// HTML パネル quad 用の bind_group 一式。
 /// テクスチャは panel-runtime 側所有。サイズ一致なら同じテクスチャ実体（panel-runtime が
 /// `PanelGpuTarget::create` で resize 時のみ作り直す契約）。よってサイズキーで再生成判定する。
-struct HtmlPanelBindEntry {
+struct PanelBindEntry {
     bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
     width: u32,
@@ -1301,7 +1301,7 @@ impl WgpuPresenter {
             bind_group_layout,
             canvas_layer: None, // 初回フレームで ensure_layer_texture が生成する
             canvas_gpu_bind_group_cache: None,
-            html_panel_bind_groups: HashMap::new(),
+            panel_bind_groups: HashMap::new(),
             solid_quad_pipeline,
             overlay_circle_pipeline,
             overlay_line_pipeline,
@@ -1471,7 +1471,7 @@ impl WgpuPresenter {
             let w = quad.texture.width();
             let h = quad.texture.height();
             let needs_rebuild = self
-                .html_panel_bind_groups
+                .panel_bind_groups
                 .get(quad.panel_id)
                 .map(|e| e.width != w || e.height != h)
                 .unwrap_or(true);
@@ -1506,9 +1506,9 @@ impl WgpuPresenter {
                         },
                     ],
                 });
-                self.html_panel_bind_groups.insert(
+                self.panel_bind_groups.insert(
                     quad.panel_id.to_string(),
-                    HtmlPanelBindEntry {
+                    PanelBindEntry {
                         bind_group,
                         uniform_buffer,
                         width: w,
@@ -1518,7 +1518,7 @@ impl WgpuPresenter {
             }
             // uniform 更新（位置 + サイズ）
             let entry = self
-                .html_panel_bind_groups
+                .panel_bind_groups
                 .get(quad.panel_id)
                 .expect("just inserted");
             let texture_quad = canvas_geometry::TextureQuad {
@@ -1545,7 +1545,7 @@ impl WgpuPresenter {
         if let Some(status) = scene.status_quad.as_ref() {
             live_ids.insert(status.panel_id);
         }
-        self.html_panel_bind_groups
+        self.panel_bind_groups
             .retain(|id, _| live_ids.contains(id.as_str()));
 
         // solid quad の uniform を準備（背景 + L3 overlay AABB + 前景 を 1 本の Vec に連結）
@@ -1657,7 +1657,7 @@ impl WgpuPresenter {
 
             // L3: HTML パネル群（GPU 直描画）
             for quad in scene.panel_quads {
-                if let Some(entry) = self.html_panel_bind_groups.get(quad.panel_id) {
+                if let Some(entry) = self.panel_bind_groups.get(quad.panel_id) {
                     pass.set_bind_group(0, &entry.bind_group, &[]);
                     pass.draw(0..6, 0..1);
                 }
@@ -1682,7 +1682,7 @@ impl WgpuPresenter {
 
             // L5: ステータスバー (HtmlPanelView GPU 描画) を最前面に配置
             if let Some(status) = scene.status_quad.as_ref()
-                && let Some(entry) = self.html_panel_bind_groups.get(status.panel_id)
+                && let Some(entry) = self.panel_bind_groups.get(status.panel_id)
             {
                 pass.set_pipeline(&self.pipeline);
                 pass.set_bind_group(0, &entry.bind_group, &[]);

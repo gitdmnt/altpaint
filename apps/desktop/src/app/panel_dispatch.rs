@@ -350,7 +350,7 @@ impl DesktopApp {
     /// HTML パネル hit テーブルだけを参照する。Phase 9F で DSL surface 側の hit-test 経路は
     /// 削除済みのため、ここに来るのは HTML パネルのみ。
     pub(super) fn panel_event_from_window(&self, point: WindowPoint) -> Option<PanelEvent> {
-        let (panel_id, node_id) = self.panel_workspace.html_panel_hit_at(point)?;
+        let (panel_id, node_id) = self.panel_workspace.panel_hit_at(point)?;
         Some(PanelEvent::Activate { panel_id, node_id })
     }
 
@@ -361,7 +361,7 @@ impl DesktopApp {
 
     /// HTML パネルの move handle (タイトルバー) のみを確認する。
     pub(super) fn panel_move_hit_from_window(&self, point: WindowPoint) -> Option<String> {
-        self.panel_workspace.html_panel_move_handle_at(point)
+        self.panel_workspace.panel_move_handle_at(point)
     }
 
     /// Phase 11: パネルリサイズハンドル hit from ウィンドウ。

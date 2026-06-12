@@ -6,7 +6,7 @@
 //! - `data-args` が JSON オブジェクトなら payload として添付。不正なら無視。
 //!
 //! 本 crate は `panel-api` に依存しないため、`HostAction` への最終変換は
-//! `panel-runtime::html_panel` 側で行う。
+//! `panel-runtime::html_wasm_panel` 側で行う。
 
 use serde_json::{Map, Value};
 

@@ -198,13 +198,13 @@ fn overlapping_panel_button_press_takes_priority_over_canvas_input() {
     // 実 hit テーブルから消しゴムボタンの screen 座標を解決する
     let full_rect = app
         .panel_workspace
-        .html_panel_full_rect("builtin.tool-palette")
+        .panel_full_rect("builtin.tool-palette")
         .expect("tool-palette full rect exists");
-    let chrome_h = crate::app::HTML_PANEL_CHROME_HEIGHT as usize;
+    let chrome_h = crate::app::PANEL_CHROME_HEIGHT as usize;
     let hits = app.panel_runtime.collect_panel_hits(
         &[("builtin.tool-palette".to_string(), 1280, 800)],
         1.0,
-        crate::app::HTML_PANEL_CHROME_HEIGHT,
+        crate::app::PANEL_CHROME_HEIGHT,
     );
     let eraser_rect = hits
         .iter()
@@ -258,7 +258,7 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
     // 実 move handle (タイトルバー chrome) は prepare_present_frame が更新済み
     let full_rect = app
         .panel_workspace
-        .html_panel_full_rect("builtin.layers")
+        .panel_full_rect("builtin.layers")
         .expect("layers panel full rect exists");
 
     let before_position = app
@@ -706,7 +706,7 @@ fn focus_refresh_does_not_trigger_ui_update() {
 
     // ADR 014 以降、focus は HTML hit table を辿る経路に統一されたため、
     // テストでは事前に hit を 1 件 inject して focus 対象を用意する。
-    app.panel_workspace.update_html_panel_hits(
+    app.panel_workspace.update_panel_hits(
         "builtin.app-actions",
         canvas_geometry::PixelRect {
             x: 100,
@@ -756,7 +756,7 @@ fn tool_change_updates_status_without_full_recompose() {
     assert_eq!(update.ui_panel_dirty_rect, None);
 }
 
-/// Phase 9F 以降は HTML panel hit-table を `update_html_panel_hits` で synthetic に
+/// Phase 9F 以降は HTML panel hit-table を `update_panel_hits` で synthetic に
 /// 構築してテストする。
 #[test]
 fn panel_release_without_matching_press_does_not_activate_save() {
@@ -776,7 +776,7 @@ fn panel_release_without_matching_press_does_not_activate_save() {
         width: 64,
         height: 24,
     };
-    app.panel_workspace.update_html_panel_hits(
+    app.panel_workspace.update_panel_hits(
         "builtin.app-actions",
         panel_screen_rect,
         vec![("app.save".to_string(), save_button_rect)],
@@ -951,7 +951,7 @@ fn profile_view_perf_case(
     emit_view_perf(label, profiler, started.elapsed().as_secs_f64(), iterations);
 }
 
-/// Phase 9F 以降、HTML パネル hit-test (`html_panel_hit_at`) で (panel_id, node_id) を
+/// Phase 9F 以降、HTML パネル hit-test (`panel_hit_at`) で (panel_id, node_id) を
 /// 解決する。slider / color-wheel 等の細かいサブ領域分割は DSL surface 経路と一緒に
 /// 撤去されたため、ここでは hit する全ピクセルを stride サンプリングで返す。
 fn control_points_from_surface(
@@ -965,7 +965,7 @@ fn control_points_from_surface(
         for x in 0..layout.window_rect.width {
             let Some((panel_id, node_id)) = app
                 .panel_workspace
-                .html_panel_hit_at(app_core::WindowPoint::new(x as i32, y as i32))
+                .panel_hit_at(app_core::WindowPoint::new(x as i32, y as i32))
             else {
                 continue;
             };

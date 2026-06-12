@@ -250,7 +250,7 @@ impl ApplicationHandler for DesktopRuntime {
                 }
                 let html_quad_entries: Vec<HtmlQuadEntry> = {
                     // hit / move handle / full rect テーブルは prepare_present_frame
-                    // (refresh_html_panel_hit_tables) が CPU 側で更新済み。
+                    // (refresh_panel_hit_tables) が CPU 側で更新済み。
                     // ここでは GPU テクスチャの描画と quad 配置のみを担う。
                     let panel_ids: Vec<String> = self
                         .app
@@ -270,7 +270,7 @@ impl ApplicationHandler for DesktopRuntime {
                         let textures = self.app.panel_runtime.render_panels(
                             &sized,
                             1.0,
-                            crate::app::HTML_PANEL_CHROME_HEIGHT,
+                            crate::app::PANEL_CHROME_HEIGHT,
                         );
                         // quad の screen rect は hit テーブルと同じ full rect を共有する
                         // (textures は &mut panel_runtime に紐付くため、この間 panel_runtime は再借用しない)
@@ -291,7 +291,7 @@ impl ApplicationHandler for DesktopRuntime {
                                 let screen_rect = self
                                     .app
                                     .panel_workspace
-                                    .html_panel_full_rect(&panel_id)
+                                    .panel_full_rect(&panel_id)
                                     .unwrap_or(canvas_geometry::PixelRect {
                                         x: 0,
                                         y: 0,
@@ -382,7 +382,7 @@ impl ApplicationHandler for DesktopRuntime {
                 // SAFETY: texture_ptr は self.app.panel_runtime 所有の Box<HtmlWasmPanel>::target.texture
                 // を指す。Box は heap に固定されており、本フレームの間 panel_runtime に変更を加えないため
                 // 寿命が保たれる。html_quad_entries 自体は本ブロックスコープで保持されている。
-                let html_panel_quads_owned: Vec<crate::wgpu_canvas::GpuPanelQuad<'_>> =
+                let panel_quads_owned: Vec<crate::wgpu_canvas::GpuPanelQuad<'_>> =
                     html_quad_entries
                         .iter()
                         .map(|e| crate::wgpu_canvas::GpuPanelQuad {
@@ -391,8 +391,8 @@ impl ApplicationHandler for DesktopRuntime {
                             screen_rect: e.screen_rect,
                         })
                         .collect();
-                let html_panel_quads_slice: &[crate::wgpu_canvas::GpuPanelQuad<'_>] =
-                    &html_panel_quads_owned;
+                let panel_quads_slice: &[crate::wgpu_canvas::GpuPanelQuad<'_>] =
+                    &panel_quads_owned;
 
                 let background_solid_quads = self.app.background_solid_quads();
                 let foreground_solid_quads = self.app.foreground_solid_quads();
@@ -456,7 +456,7 @@ impl ApplicationHandler for DesktopRuntime {
                         overlay_solid_quads: &overlay_solid_quads,
                         overlay_circle_quads: &overlay_circle_quads,
                         overlay_line_quads: &overlay_line_quads,
-                        panel_quads: html_panel_quads_slice,
+                        panel_quads: panel_quads_slice,
                         foreground_quads: &foreground_solid_quads,
                         status_quad,
                     },

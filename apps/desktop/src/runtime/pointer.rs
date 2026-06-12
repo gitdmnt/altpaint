@@ -307,7 +307,7 @@ impl DesktopRuntime {
         let Some((panel_id, local)) = self
             .app
             .panel_workspace
-            .html_panel_at(app_core::WindowPoint::new(x, y))
+            .panel_at(app_core::WindowPoint::new(x, y))
         else {
             return false;
         };

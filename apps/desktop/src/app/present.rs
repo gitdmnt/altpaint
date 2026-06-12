@@ -64,8 +64,8 @@ impl DesktopApp {
         // レイアウト解決は GPU 非依存 (`collect_panel_hits`) のため、GPU 提示の有無
         // (headless テスト含む) にかかわらずフォーカス巡回・キーボード操作・
         // pointer hit が機能する。GPU ループ (runtime.rs) は quad 組み立てのみを担う。
-        profiler.measure("html_panel_hits", || {
-            self.refresh_html_panel_hit_tables(window_width, window_height);
+        profiler.measure("panel_hits", || {
+            self.refresh_panel_hit_tables(window_width, window_height);
         });
 
         if self.invalidation.needs_panel_reconcile {
@@ -186,22 +186,22 @@ impl DesktopApp {
     /// パネル位置は workspace_layout、サイズは View の `panel_size` が権威。
     /// hit 矩形は `collect_panel_hits` が GPU 描画と同一のクランプ規則で
     /// レイアウト解決して返すため、実描画と常に一致する。
-    fn refresh_html_panel_hit_tables(&mut self, window_width: usize, window_height: usize) {
+    fn refresh_panel_hit_tables(&mut self, window_width: usize, window_height: usize) {
         let all_panel_ids = self.panel_runtime.panel_ids_with_gpu();
         let (panel_ids, hidden_ids): (Vec<String>, Vec<String>) = all_panel_ids
             .into_iter()
             .partition(|id| self.panel_workspace.is_panel_visible(id));
         // 不可視パネルの hit / move handle / full rect は掃除する
         for id in &hidden_ids {
-            self.panel_workspace.remove_html_panel_hits(id);
-            self.panel_workspace.remove_html_panel_move_handle(id);
-            self.panel_workspace.remove_html_panel_full_rect(id);
+            self.panel_workspace.remove_panel_hits(id);
+            self.panel_workspace.remove_panel_move_handle(id);
+            self.panel_workspace.remove_panel_full_rect(id);
         }
         if panel_ids.is_empty() {
             return;
         }
 
-        let chrome_h = super::HTML_PANEL_CHROME_HEIGHT as usize;
+        let chrome_h = super::PANEL_CHROME_HEIGHT as usize;
         let measured = self.panel_runtime.panel_sizes();
         let mut sized: Vec<(String, u32, u32)> = Vec::with_capacity(panel_ids.len());
         let mut panel_rects: Vec<canvas_geometry::PixelRect> = Vec::with_capacity(panel_ids.len());
@@ -234,7 +234,7 @@ impl DesktopApp {
         let hits_by_panel = self.panel_runtime.collect_panel_hits(
             &sized,
             1.0,
-            super::HTML_PANEL_CHROME_HEIGHT,
+            super::PANEL_CHROME_HEIGHT,
         );
         for (panel_id, hits) in hits_by_panel {
             let Some(index) = panel_ids.iter().position(|id| id == &panel_id) else {
@@ -269,11 +269,11 @@ impl DesktopApp {
                 })
                 .collect();
             self.panel_workspace
-                .update_html_panel_hits(&panel_id, body_screen_rect, hit_rects);
+                .update_panel_hits(&panel_id, body_screen_rect, hit_rects);
             self.panel_workspace
-                .update_html_panel_move_handle(&panel_id, chrome_screen_rect);
+                .update_panel_move_handle(&panel_id, chrome_screen_rect);
             self.panel_workspace
-                .update_html_panel_full_rect(&panel_id, panel_rect);
+                .update_panel_full_rect(&panel_id, panel_rect);
         }
     }
 }
