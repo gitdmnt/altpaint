@@ -29,17 +29,6 @@ mod imports {
     #[link(wasm_import_module = "dom")]
     unsafe extern "C" {
         pub fn query_selector(ptr: *const u8, len: i32) -> i64;
-        pub fn query_selector_all(ptr: *const u8, len: i32) -> i64;
-        pub fn iter_next(handle: i64) -> i64;
-        pub fn iter_drop(handle: i64);
-        pub fn get_attribute_len(node: i64, name_ptr: *const u8, name_len: i32) -> i32;
-        pub fn get_attribute_copy(
-            node: i64,
-            name_ptr: *const u8,
-            name_len: i32,
-            buf_ptr: *mut u8,
-            buf_cap: i32,
-        ) -> i32;
         pub fn set_attribute(
             node: i64,
             name_ptr: *const u8,
@@ -48,9 +37,6 @@ mod imports {
             value_len: i32,
         );
         pub fn clear_attribute(node: i64, name_ptr: *const u8, name_len: i32);
-        pub fn create_text_node(text_ptr: *const u8, text_len: i32) -> i64;
-        pub fn append_children(parent: i64, children_ptr: *const u8, count: i32);
-        pub fn remove_and_drop_all_children(node: i64);
         pub fn set_inner_html(node: i64, html_ptr: *const u8, html_len: i32);
     }
 }
@@ -59,36 +45,6 @@ mod imports {
 ///
 /// 内部表現は host 側 NodeId+1 (0 は None を意味するため避ける)。
 pub type NodeId = i64;
-
-/// `query_selector` の結果に対応する iterator handle (内部用)。
-pub struct QueryAllIter(i64);
-
-impl Drop for QueryAllIter {
-    fn drop(&mut self) {
-        if self.0 != 0 {
-            #[cfg(target_arch = "wasm32")]
-            unsafe {
-                imports::iter_drop(self.0);
-            }
-        }
-    }
-}
-
-impl Iterator for QueryAllIter {
-    type Item = NodeId;
-    fn next(&mut self) -> Option<NodeId> {
-        if self.0 == 0 {
-            return None;
-        }
-        #[cfg(target_arch = "wasm32")]
-        unsafe {
-            let next = imports::iter_next(self.0);
-            if next == 0 { None } else { Some(next) }
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        None
-    }
-}
 
 /// CSS セレクタにマッチする最初の要素を返す。マッチなしなら `None`。
 pub fn query_selector(selector: &str) -> Option<NodeId> {
@@ -101,46 +57,6 @@ pub fn query_selector(selector: &str) -> Option<NodeId> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = bytes;
-        None
-    }
-}
-
-/// CSS セレクタにマッチする全要素のイテレータを返す。
-pub fn query_selector_all(selector: &str) -> QueryAllIter {
-    let bytes = selector.as_bytes();
-    #[cfg(target_arch = "wasm32")]
-    unsafe {
-        let handle = imports::query_selector_all(bytes.as_ptr(), bytes.len() as i32);
-        QueryAllIter(handle)
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let _ = bytes;
-        QueryAllIter(0)
-    }
-}
-
-/// 属性値を返す。属性が存在しない場合は `None`。
-pub fn get_attribute(node: NodeId, name: &str) -> Option<String> {
-    let name_bytes = name.as_bytes();
-    #[cfg(target_arch = "wasm32")]
-    unsafe {
-        let len = imports::get_attribute_len(node, name_bytes.as_ptr(), name_bytes.len() as i32);
-        if len < 0 {
-            return None;
-        }
-        let len = len as usize;
-        let mut buf = vec![0u8; len];
-        let written =
-            imports::get_attribute_copy(node, name_bytes.as_ptr(), name_bytes.len() as i32, buf.as_mut_ptr(), len as i32);
-        if written < 0 {
-            return None;
-        }
-        String::from_utf8(buf).ok()
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let _ = (node, name_bytes);
         None
     }
 }
@@ -175,48 +91,6 @@ pub fn clear_attribute(node: NodeId, name: &str) {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = (node, nb);
-    }
-}
-
-/// テキストノードを作成し、その NodeId を返す。
-pub fn create_text_node(text: &str) -> NodeId {
-    let tb = text.as_bytes();
-    #[cfg(target_arch = "wasm32")]
-    unsafe {
-        imports::create_text_node(tb.as_ptr(), tb.len() as i32)
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let _ = tb;
-        0
-    }
-}
-
-/// 子ノードを末尾に追加する。
-pub fn append_children(parent: NodeId, children: &[NodeId]) {
-    #[cfg(target_arch = "wasm32")]
-    unsafe {
-        imports::append_children(
-            parent,
-            children.as_ptr() as *const u8,
-            children.len() as i32,
-        );
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let _ = (parent, children);
-    }
-}
-
-/// 全子ノードを削除する。
-pub fn remove_and_drop_all_children(node: NodeId) {
-    #[cfg(target_arch = "wasm32")]
-    unsafe {
-        imports::remove_and_drop_all_children(node);
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let _ = node;
     }
 }
 

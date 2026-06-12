@@ -772,7 +772,7 @@ impl WasmPanelRuntime {
     /// DOM context をスコープに設定して f を実行する。
     ///
     /// f の中で呼ばれる Wasm 関数は dom 系 host function を介して `document` を mutate できる。
-    /// f が抜けたら dom_ctx は必ず None に戻り、iter handle もクリアされる。
+    /// f が抜けたら dom_ctx は必ず None に戻る。
     ///
     /// SAFETY: 渡された `&mut HtmlDocument` の参照は f が return するまで生存している必要がある。
     pub fn call_with_dom<R>(
@@ -781,14 +781,9 @@ impl WasmPanelRuntime {
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         let ptr = NonNull::from(document);
-        {
-            let dom_ctx = &mut self.store.data_mut().dom_ctx;
-            dom_ctx.document = Some(ptr);
-            dom_ctx.iters.clear();
-        }
+        self.store.data_mut().dom_ctx.document = Some(ptr);
         let result = f(self);
-        let dom_ctx = &mut self.store.data_mut().dom_ctx;
-        dom_ctx.clear();
+        self.store.data_mut().dom_ctx.clear();
         result
     }
 
