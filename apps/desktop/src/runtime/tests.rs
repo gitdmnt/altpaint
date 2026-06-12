@@ -11,7 +11,6 @@ use crate::app::canvas_frame::build_canvas_frame;
 use super::DesktopRuntime;
 use super::keyboard::normalized_key_name;
 
-/// test runtime を計算して返す。
 fn test_runtime() -> DesktopRuntime {
     DesktopRuntime {
         app: DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
@@ -33,7 +32,6 @@ fn test_runtime() -> DesktopRuntime {
     }
 }
 
-/// キャンバス 入力 点 に必要な処理を行う。
 fn canvas_input_point(
     runtime: &DesktopRuntime,
     min_right_space: i32,
@@ -58,7 +56,6 @@ fn canvas_input_point(
     panic!("expected an uncovered canvas point");
 }
 
-/// touch started and moved draws black pixels が期待どおりに動作することを検証する。
 #[test]
 fn touch_started_and_moved_draws_black_pixels() {
     let mut runtime = test_runtime();
@@ -79,7 +76,6 @@ fn touch_started_and_moved_draws_black_pixels() {
     );
 }
 
-/// touch cancelled stops アクティブ touch tracking が期待どおりに動作することを検証する。
 #[test]
 fn touch_cancelled_stops_active_touch_tracking() {
     let mut runtime = test_runtime();
@@ -94,7 +90,6 @@ fn touch_cancelled_stops_active_touch_tracking() {
     assert_eq!(runtime.active_touch_id, None);
 }
 
-/// raw mouse motion draws between cursor events が期待どおりに動作することを検証する。
 #[test]
 fn raw_mouse_motion_draws_between_cursor_events() {
     let mut runtime = test_runtime();
@@ -117,7 +112,6 @@ fn raw_mouse_motion_draws_between_cursor_events() {
     );
 }
 
-/// ピクセル ホイール pan accepts sub line delta が期待どおりに動作することを検証する。
 #[test]
 fn pixel_wheel_pan_accepts_sub_line_delta() {
     let mut runtime = test_runtime();
@@ -133,7 +127,6 @@ fn pixel_wheel_pan_accepts_sub_line_delta() {
     assert!(runtime.app.document.view_transform.pan_y > before);
 }
 
-/// ホイール pan animation continues after initial イベント が期待どおりに動作することを検証する。
 #[test]
 fn wheel_pan_animation_continues_after_initial_event() {
     let mut runtime = test_runtime();
@@ -154,7 +147,6 @@ fn wheel_pan_animation_continues_after_initial_event() {
     assert_ne!(runtime.app.document.view_transform.pan_y, after_first);
 }
 
-/// shift ホイール converts vertical スクロール into horizontal pan が期待どおりに動作することを検証する。
 #[test]
 fn shift_wheel_converts_vertical_scroll_into_horizontal_pan() {
     let mut runtime = test_runtime();
@@ -169,7 +161,6 @@ fn shift_wheel_converts_vertical_scroll_into_horizontal_pan() {
     assert!(runtime.app.document.view_transform.pan_x > before);
 }
 
-/// control ホイール changes ズーム が期待どおりに動作することを検証する。
 #[test]
 fn control_wheel_changes_zoom() {
     let mut runtime = test_runtime();
@@ -184,7 +175,6 @@ fn control_wheel_changes_zoom() {
     assert!(runtime.app.document.view_transform.zoom > before);
 }
 
-/// mouse button without cursor position is ignored が期待どおりに動作することを検証する。
 #[test]
 fn mouse_button_without_cursor_position_is_ignored() {
     let mut runtime = test_runtime();
@@ -192,7 +182,6 @@ fn mouse_button_without_cursor_position_is_ignored() {
     assert!(!runtime.handle_mouse_button(winit::event::ElementState::Pressed));
 }
 
-/// normalized key 名前 uppercases character keys が期待どおりに動作することを検証する。
 #[test]
 fn normalized_key_name_uppercases_character_keys() {
     assert_eq!(
@@ -206,7 +195,6 @@ fn normalized_key_name_uppercases_character_keys() {
     assert_eq!(normalized_key_name(&Key::Named(NamedKey::Shift)), None);
 }
 
-/// normalized ショートカット includes アクティブ modifiers が期待どおりに動作することを検証する。
 #[test]
 fn normalized_shortcut_includes_active_modifiers() {
     let mut runtime = test_runtime();
@@ -218,7 +206,6 @@ fn normalized_shortcut_includes_active_modifiers() {
     );
 }
 
-/// builtin ショートカット dispatches 保存 プロジェクト が期待どおりに動作することを検証する。
 #[test]
 fn builtin_shortcut_dispatches_save_project() {
     let mut runtime = test_runtime();
@@ -233,7 +220,6 @@ fn builtin_shortcut_dispatches_save_project() {
     runtime.app.wait_for_pending_save_tasks();
 }
 
-/// builtin ショートカット can move フォーカス backward が期待どおりに動作することを検証する。
 #[test]
 fn builtin_shortcut_can_move_focus_backward() {
     let mut runtime = test_runtime();

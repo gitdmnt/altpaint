@@ -18,24 +18,20 @@ pub struct ColorRgba8 {
 }
 
 impl ColorRgba8 {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self { r, g, b, a }
     }
 
-    /// 現在の値を rgba8 形式へ変換する。
     pub const fn to_rgba8(self) -> [u8; 4] {
         [self.r, self.g, self.b, self.a]
     }
 
-    /// 現在の値を RGB 形式へ変換する。
     pub fn hex_rgb(self) -> String {
         format!("#{:02X}{:02X}{:02X}", self.r, self.g, self.b)
     }
 }
 
 impl Default for ColorRgba8 {
-    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self::new(0, 0, 0, 255)
     }
@@ -73,7 +69,6 @@ pub struct ToolSettingDefinition {
 }
 
 impl ToolSettingDefinition {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn slider(key: impl Into<String>, label: impl Into<String>, min: i32, max: i32) -> Self {
         Self {
             key: key.into(),
@@ -84,7 +79,6 @@ impl ToolSettingDefinition {
         }
     }
 
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn checkbox(key: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             key: key.into(),
@@ -112,7 +106,6 @@ pub struct ToolDefinition {
 }
 
 impl ToolDefinition {
-    /// Supports setting かどうかを返す。
     pub fn supports_setting(&self, key: &str) -> bool {
         self.settings.iter().any(|setting| setting.key == key)
     }
@@ -151,7 +144,6 @@ pub struct PenPreset {
 }
 
 impl PenPreset {
-    /// 現在の 補正 サイズ を返す。
     pub fn clamp_size(&self, size: u32) -> u32 {
         size.clamp(
             1, 10000, // 将来の拡大に備えて大きな上限を許す
@@ -160,7 +152,6 @@ impl PenPreset {
 }
 
 impl Default for PenPreset {
-    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self {
             id: "builtin.round-pen".to_string(),
@@ -209,7 +200,6 @@ pub enum PenTipBitmap {
 }
 
 impl PenTipBitmap {
-    /// 現在の 幅 を返す。
     pub fn width(&self) -> u32 {
         match self {
             Self::AlphaMask8 { width, .. }
@@ -218,7 +208,6 @@ impl PenTipBitmap {
         }
     }
 
-    /// 現在の 高さ を返す。
     pub fn height(&self) -> u32 {
         match self {
             Self::AlphaMask8 { height, .. }
@@ -228,62 +217,50 @@ impl PenTipBitmap {
     }
 }
 
-/// 既定の ペン サイズ を返す。
 fn default_pen_size() -> u32 {
     4
 }
 
-/// 既定の ペン プラグイン ID を返す。
 fn default_pen_plugin_id() -> String {
     "builtin.bitmap".to_string()
 }
 
-/// 既定の ビットマップ プラグイン ID を返す。
 fn default_bitmap_plugin_id() -> String {
     "builtin.bitmap".to_string()
 }
 
-/// 既定の ペン pressure enabled を返す。
 fn default_pen_pressure_enabled() -> bool {
     true
 }
 
-/// 既定の ペン アンチエイリアス を返す。
 fn default_pen_antialias() -> bool {
     true
 }
 
-/// 既定の spacing percent を返す。
 fn default_spacing_percent() -> f32 {
     25.0
 }
 
-/// 既定の ペン 不透明度 を返す。
 fn default_pen_opacity() -> f32 {
     1.0
 }
 
-/// 既定の ペン flow を返す。
 fn default_pen_flow() -> f32 {
     1.0
 }
 
-/// 既定の ペン presets を返す。
 fn default_pen_presets() -> Vec<PenPreset> {
     vec![PenPreset::default()]
 }
 
-/// 既定の アクティブ ペン preset ID を返す。
 fn default_active_pen_preset_id() -> String {
     PenPreset::default().id
 }
 
-/// 既定の アクティブ ページ インデックス を返す。
 fn default_active_page_index() -> usize {
     0
 }
 
-/// 既定の ツール カタログ を返す。
 fn default_tool_catalog() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
@@ -343,7 +320,6 @@ fn default_tool_catalog() -> Vec<ToolDefinition> {
     ]
 }
 
-/// 既定の アクティブ ツール ID を返す。
 fn default_active_tool_id() -> String {
     default_tool_catalog()
         .first()
@@ -351,17 +327,14 @@ fn default_active_tool_id() -> String {
         .unwrap_or_else(|| "builtin.pen".to_string())
 }
 
-/// 既定の アクティブ パネル インデックス を返す。
 fn default_active_panel_index() -> usize {
     0
 }
 
-/// 既定の ページ 幅 を返す。
 fn default_page_width() -> usize {
     DEFAULT_DOCUMENT_WIDTH
 }
 
-/// 既定の ページ 高さ を返す。
 fn default_page_height() -> usize {
     DEFAULT_DOCUMENT_HEIGHT
 }
@@ -434,7 +407,6 @@ pub struct Work {
 }
 
 impl Default for Work {
-    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self {
             id: WorkId(1),
@@ -460,7 +432,6 @@ pub struct Page {
 }
 
 impl Default for Page {
-    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self {
             id: PageId(1),
@@ -481,7 +452,6 @@ pub struct PanelBounds {
 }
 
 impl PanelBounds {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn full_page(width: usize, height: usize) -> Self {
         Self {
             x: 0,
@@ -491,12 +461,10 @@ impl PanelBounds {
         }
     }
 
-    /// Is empty かどうかを返す。
     fn is_empty(self) -> bool {
         self.width == 0 || self.height == 0
     }
 
-    /// 対象 が範囲内に含まれるか判定する。
     fn contains(self, x: usize, y: usize) -> bool {
         x >= self.x
             && y >= self.y
@@ -504,12 +472,10 @@ impl PanelBounds {
             && y < self.y.saturating_add(self.height)
     }
 
-    /// キャンバス 点 が範囲内に含まれるか判定する。
     pub fn contains_canvas_point(self, point: crate::CanvasPoint) -> bool {
         self.contains(point.x, point.y)
     }
 
-    /// キャンバス to パネル local に必要な処理を行う。
     pub fn canvas_to_panel_local(
         self,
         point: crate::CanvasPoint,
@@ -521,9 +487,6 @@ impl PanelBounds {
             ))
     }
 
-    /// 補正 キャンバス 点 を有効範囲へ補正して返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn clamp_canvas_point(self, point: crate::CanvasPoint) -> Option<crate::CanvasPoint> {
         if self.is_empty() {
             return None;
@@ -537,7 +500,6 @@ impl PanelBounds {
         ))
     }
 
-    /// パネル local to キャンバス に必要な処理を行う。
     pub fn panel_local_to_canvas(
         self,
         point: crate::PanelLocalPoint,
@@ -550,7 +512,6 @@ impl PanelBounds {
 }
 
 impl Default for PanelBounds {
-    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self::full_page(DEFAULT_DOCUMENT_WIDTH, DEFAULT_DOCUMENT_HEIGHT)
     }
@@ -578,14 +539,12 @@ pub struct Panel {
 }
 
 impl Default for Panel {
-    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self::new_blank(PanelId(1), DEFAULT_DOCUMENT_WIDTH, DEFAULT_DOCUMENT_HEIGHT)
     }
 }
 
 impl Panel {
-    /// 既定値を使って新しいインスタンスを生成する。
     pub fn new_blank(id: PanelId, width: usize, height: usize) -> Self {
         let background = RasterLayer::background(
             LayerNodeId(1),
@@ -604,7 +563,6 @@ impl Panel {
     }
 }
 
-/// 既定の created レイヤー 件数 を返す。
 const fn default_created_layer_count() -> u64 {
     1
 }
@@ -619,7 +577,6 @@ pub enum BlendMode {
 }
 
 impl BlendMode {
-    /// 現在の値を str 形式へ変換する。
     pub fn as_str(&self) -> &str {
         match self {
             Self::Normal => "normal",
@@ -629,8 +586,6 @@ impl BlendMode {
         }
     }
 
-    /// 入力を解析して 名前 に変換する。
-    ///
     /// 空文字列は `None` を返す。未知の文字列は後方互換として `Normal` にフォールバック
     /// する（旧 `Custom(String)` variant の保存値はここで破棄される）。
     pub fn parse_name(value: &str) -> Option<Self> {
@@ -660,7 +615,6 @@ impl BlendMode {
         }
     }
 
-    /// 入力値を束ねた新しいインスタンスを生成する。
     fn next(&self) -> Self {
         match self {
             Self::Normal => Self::Multiply,
@@ -679,7 +633,6 @@ pub struct LayerMask {
 }
 
 impl LayerMask {
-    /// 指定位置の アルファ を計算して返す。
     fn alpha_at(&self, x: usize, y: usize) -> u8 {
         if x >= self.width || y >= self.height {
             return 0;
@@ -701,13 +654,11 @@ pub struct RasterLayer {
     pub mask: Option<LayerMask>,
 }
 
-/// 既定の レイヤー 表示状態 を返す。
 fn default_layer_visible() -> bool {
     true
 }
 
 impl RasterLayer {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     fn background(id: LayerNodeId, name: String, width: usize, height: usize) -> Self {
         Self {
             id,
@@ -719,7 +670,6 @@ impl RasterLayer {
         }
     }
 
-    /// 入力値を束ねた新しいインスタンスを生成する。
     fn transparent(id: LayerNodeId, name: String, width: usize, height: usize) -> Self {
         Self {
             id,
@@ -744,7 +694,6 @@ pub struct CanvasViewTransform {
 }
 
 impl Default for CanvasViewTransform {
-    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self {
             zoom: 1.0,
@@ -771,14 +720,12 @@ pub struct CanvasBitmap {
 }
 
 impl Default for Document {
-    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self::new(DEFAULT_DOCUMENT_WIDTH, DEFAULT_DOCUMENT_HEIGHT)
     }
 }
 
 impl Document {
-    /// 既定値を使って新しいインスタンスを生成する。
     pub fn new(width: usize, height: usize) -> Self {
         let width = width.max(1);
         let height = height.max(1);
@@ -821,13 +768,11 @@ impl Document {
         }
     }
 
-    /// アクティブな ページ インデックス を返す。
     pub fn active_page_index(&self) -> usize {
         self.active_page_index
             .min(self.work.pages.len().saturating_sub(1))
     }
 
-    /// アクティブな パネル インデックス を返す。
     pub fn active_panel_index(&self) -> usize {
         self.active_page()
             .map(|page| {
@@ -837,16 +782,10 @@ impl Document {
             .unwrap_or(0)
     }
 
-    /// アクティブな ページ を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn active_page(&self) -> Option<&Page> {
         self.work.pages.get(self.active_page_index())
     }
 
-    /// アクティブな ページ への可変参照を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn active_page_mut(&mut self) -> Option<&mut Page> {
         let index = self
             .active_page_index
@@ -854,18 +793,12 @@ impl Document {
         self.work.pages.get_mut(index)
     }
 
-    /// アクティブな パネル を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn active_panel(&self) -> Option<&Panel> {
         let panel_index = self.active_panel_index();
         self.active_page()
             .and_then(|page| page.panels.get(panel_index))
     }
 
-    /// アクティブな パネル への可変参照を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn active_panel_mut(&mut self) -> Option<&mut Panel> {
         let page_index = self
             .active_page_index
@@ -877,16 +810,10 @@ impl Document {
         })
     }
 
-    /// アクティブな ビットマップ を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn active_bitmap(&self) -> Option<&CanvasBitmap> {
         self.active_panel().map(|panel| &panel.bitmap)
     }
 
-    /// アクティブな レイヤー ビットマップ を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn active_layer_bitmap(&self) -> Option<&CanvasBitmap> {
         let panel = self.active_panel()?;
         panel
@@ -899,28 +826,22 @@ impl Document {
             .map(|layer| &layer.bitmap)
     }
 
-    /// アクティブな レイヤー is 背景 を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn active_layer_is_background(&self) -> Option<bool> {
         let panel = self.active_panel()?;
         Some(panel.active_layer_index == 0)
     }
 
-    /// アクティブな パネル contains キャンバス 点 を返す。
     pub fn active_panel_contains_canvas_point(&self, point: crate::CanvasPoint) -> bool {
         self.active_panel_bounds()
             .is_some_and(|bounds| bounds.contains_canvas_point(point))
     }
 
-    /// アクティブな パネル contains local 点 を返す。
     pub fn active_panel_contains_local_point(&self, point: PanelLocalPoint) -> bool {
         self.active_panel_bounds()
             .and_then(|bounds| bounds.panel_local_to_canvas(point))
             .is_some()
     }
 
-    /// アクティブ パネル キャンバス to local に必要な処理を行う。
     pub fn active_panel_canvas_to_local(
         &self,
         point: crate::CanvasPoint,
@@ -929,7 +850,6 @@ impl Document {
             .and_then(|bounds| bounds.canvas_to_panel_local(point))
     }
 
-    /// アクティブ パネル local to キャンバス に必要な処理を行う。
     pub fn active_panel_local_to_canvas(
         &self,
         point: PanelLocalPoint,
@@ -938,16 +858,10 @@ impl Document {
             .and_then(|bounds| bounds.panel_local_to_canvas(point))
     }
 
-    /// 既存データを走査して ツール definition を組み立てる。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn tool_definition(&self, tool_id: &str) -> Option<&ToolDefinition> {
         self.tool_catalog.iter().find(|tool| tool.id == tool_id)
     }
 
-    /// アクティブな ツール definition を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn active_tool_definition(&self) -> Option<&ToolDefinition> {
         self.tool_definition(&self.active_tool_id)
             .or_else(|| {
@@ -959,8 +873,6 @@ impl Document {
     }
 
     /// アクティブな子ツール definition を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn active_child_tool_definition(&self) -> Option<&ToolDefinition> {
         let parent = self.active_tool_definition()?;
         if self.active_child_tool_id.is_empty() {
@@ -970,58 +882,43 @@ impl Document {
     }
 
     /// 指定された親・子 ID の子ツール definition を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn child_tool_definition(&self, parent_id: &str, child_id: &str) -> Option<&ToolDefinition> {
         let parent = self.tool_definition(parent_id)?;
         parent.children.iter().find(|c| c.id == child_id)
     }
 
-    /// アクティブな ツール provider プラグイン ID を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn active_tool_provider_plugin_id(&self) -> Option<&str> {
         self.active_tool_definition()
             .map(|tool| tool.provider_plugin_id.as_str())
     }
 
-    /// アクティブな ツール 描画 プラグイン ID を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn active_tool_drawing_plugin_id(&self) -> Option<&str> {
         self.active_tool_definition()
             .map(|tool| tool.drawing_plugin_id.as_str())
     }
 
-    /// アクティブな ツール 設定 を返す。
     pub fn active_tool_settings(&self) -> &[ToolSettingDefinition] {
         self.active_tool_definition()
             .map(|tool| tool.settings.as_slice())
             .unwrap_or(&[])
     }
 
-    /// アクティブな パネル 範囲 を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn active_panel_bounds(&self) -> Option<PanelBounds> {
         self.active_panel().map(|panel| panel.bounds)
     }
 
-    /// アクティブな ページ パネル 件数 を返す。
     pub fn active_page_panel_count(&self) -> usize {
         self.active_page()
             .map(|page| page.panels.len())
             .unwrap_or(0)
     }
 
-    /// アクティブな ページ dimensions を返す。
     pub fn active_page_dimensions(&self) -> (usize, usize) {
         self.active_page()
             .map(|page| (page.width.max(1), page.height.max(1)))
             .unwrap_or((1, 1))
     }
 
-    /// パネル を選択状態へ更新する。
     pub fn select_panel(&mut self, index: usize) {
         let page_index = self.active_page_index();
         if let Some(page) = self.work.pages.get(page_index) {
@@ -1029,7 +926,6 @@ impl Document {
         }
     }
 
-    /// 次 パネル を選択状態へ更新する。
     pub fn select_next_panel(&mut self) {
         if let Some(page) = self.active_page() {
             let panel_count = page.panels.len().max(1);
@@ -1037,7 +933,6 @@ impl Document {
         }
     }
 
-    /// 前 パネル を選択状態へ更新する。
     pub fn select_previous_panel(&mut self) {
         if let Some(page) = self.active_page() {
             let panel_count = page.panels.len().max(1);
@@ -1045,7 +940,6 @@ impl Document {
         }
     }
 
-    /// パネル を追加する。
     pub fn add_panel(&mut self) {
         let next_id = next_panel_id(&self.work.pages);
         let page_index = self.active_page_index();
@@ -1067,7 +961,6 @@ impl Document {
         self.focus_active_panel_view();
     }
 
-    /// パネル を構築する。
     pub fn create_panel(&mut self, bounds: PanelBounds) {
         let next_id = next_panel_id(&self.work.pages);
         let page_index = self.active_page_index();
@@ -1085,7 +978,6 @@ impl Document {
         self.focus_active_panel_view();
     }
 
-    /// アクティブ パネル を削除する。
     pub fn remove_active_panel(&mut self) {
         let page_index = self.active_page_index();
         let active_panel_index = self.active_panel_index();
@@ -1101,17 +993,14 @@ impl Document {
         self.focus_active_panel_view();
     }
 
-    /// アクティブ パネル ビュー へフォーカスを移す。
     pub fn focus_active_panel_view(&mut self) {
         self.view_transform = CanvasViewTransform::default();
     }
 
-    /// ビュー 変換 を設定する。
     pub fn set_view_transform(&mut self, transform: CanvasViewTransform) {
         self.view_transform = transform;
     }
 
-    /// アクティブ ツール を設定する。
     pub fn set_active_tool(&mut self, tool: ToolKind) {
         self.active_tool = tool;
         if let Some(tool_definition) = self.tool_catalog.iter().find(|entry| entry.kind == tool) {
@@ -1120,7 +1009,6 @@ impl Document {
         self.active_child_tool_id = String::new();
     }
 
-    /// アクティブ ツール by ID を設定する。
     pub fn set_active_tool_by_id(&mut self, tool_id: &str) -> bool {
         let Some(tool_definition) = self.tool_definition(tool_id).cloned() else {
             return false;
@@ -1131,7 +1019,6 @@ impl Document {
         true
     }
 
-    /// アクティブ ペン サイズ を設定する。
     pub fn set_active_pen_size(&mut self, size: u32) {
         let size = self
             .active_pen_preset()
@@ -1140,33 +1027,28 @@ impl Document {
         self.active_pen_size = size;
     }
 
-    /// アクティブ ペン pressure enabled を設定する。
     pub fn set_active_pen_pressure_enabled(&mut self, enabled: bool) {
         if let Some(preset) = self.active_pen_preset_mut() {
             preset.pressure_enabled = enabled;
         }
     }
 
-    /// アクティブ ペン アンチエイリアス を設定する。
     pub fn set_active_pen_antialias(&mut self, enabled: bool) {
         if let Some(preset) = self.active_pen_preset_mut() {
             preset.antialias = enabled;
         }
     }
 
-    /// アクティブ ペン stabilization を設定する。
     pub fn set_active_pen_stabilization(&mut self, amount: u8) {
         if let Some(preset) = self.active_pen_preset_mut() {
             preset.stabilization = amount.min(100);
         }
     }
 
-    /// アクティブ 色 を設定する。
     pub fn set_active_color(&mut self, color: ColorRgba8) {
         self.active_color = color;
     }
 
-    /// ペン presets を置き換える。
     pub fn replace_pen_presets(&mut self, pen_presets: Vec<PenPreset>) {
         self.pen_presets = if pen_presets.is_empty() {
             default_pen_presets()
@@ -1176,7 +1058,6 @@ impl Document {
         self.ensure_pen_state();
     }
 
-    /// ツール カタログ を置き換える。
     pub fn replace_tool_catalog(&mut self, tool_catalog: Vec<ToolDefinition>) {
         self.tool_catalog = if tool_catalog.is_empty() {
             default_tool_catalog()
@@ -1186,7 +1067,6 @@ impl Document {
         self.ensure_tool_state();
     }
 
-    /// ペン presets を統合する。
     pub fn merge_pen_presets(&mut self, pen_presets: Vec<PenPreset>) -> usize {
         if pen_presets.is_empty() {
             return 0;
@@ -1210,19 +1090,14 @@ impl Document {
         merged
     }
 
-    /// 次 ペン preset を選択状態へ更新する。
     pub fn select_next_pen_preset(&mut self) {
         self.cycle_pen_preset(1);
     }
 
-    /// 前 ペン preset を選択状態へ更新する。
     pub fn select_previous_pen_preset(&mut self) {
         self.cycle_pen_preset(-1);
     }
 
-    /// アクティブな ペン preset を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn active_pen_preset(&self) -> Option<&PenPreset> {
         self.pen_presets
             .iter()
@@ -1230,15 +1105,11 @@ impl Document {
             .or_else(|| self.pen_presets.first())
     }
 
-    /// アクティブな ペン preset への可変参照を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn active_pen_preset_mut(&mut self) -> Option<&mut PenPreset> {
         let index = self.active_pen_index();
         self.pen_presets.get_mut(index)
     }
 
-    /// アクティブな ペン インデックス を返す。
     pub fn active_pen_index(&self) -> usize {
         self.pen_presets
             .iter()
@@ -1246,12 +1117,10 @@ impl Document {
             .unwrap_or(0)
     }
 
-    /// 解決済みの paint サイズ with pressure を返す。
     pub fn resolved_paint_size_with_pressure(&self, pressure: f32) -> u32 {
         self.active_draw_size_with_pressure(pressure)
     }
 
-    /// 既存データを走査して normalize phase9 状態 を組み立てる。
     pub fn normalize_phase9_state(&mut self) {
         self.ensure_tool_state();
         if self.work.pages.is_empty() {
@@ -1437,7 +1306,6 @@ impl Document {
     }
 }
 
-/// パネル ID をひとつ先へ切り替える。
 fn next_panel_id(pages: &[Page]) -> PanelId {
     let next = pages
         .iter()
@@ -1449,7 +1317,6 @@ fn next_panel_id(pages: &[Page]) -> PanelId {
     PanelId(next)
 }
 
-/// 既定の パネル grid 範囲 を返す。
 fn default_panel_grid_bounds(
     page_width: usize,
     page_height: usize,
@@ -1491,7 +1358,6 @@ fn default_panel_grid_bounds(
         .collect()
 }
 
-/// ページ panels を再配置する。
 fn relayout_page_panels(page: &mut Page) {
     let bounds = default_panel_grid_bounds(page.width, page.height, page.panels.len());
     for (panel, next_bounds) in page.panels.iter_mut().zip(bounds.into_iter()) {
@@ -1500,7 +1366,6 @@ fn relayout_page_panels(page: &mut Page) {
     }
 }
 
-/// 現在の 補正 パネル 範囲 を返す。
 fn clamp_panel_bounds(
     bounds: PanelBounds,
     page_width: usize,
@@ -1522,7 +1387,6 @@ fn clamp_panel_bounds(
     })
 }
 
-/// 現在の リサイズ パネル to 範囲 を返す。
 fn resize_panel_to_bounds(panel: &mut Panel, width: usize, height: usize) {
     let width = width.max(1);
     let height = height.max(1);
@@ -1540,7 +1404,6 @@ fn resize_panel_to_bounds(panel: &mut Panel, width: usize, height: usize) {
     panel.bitmap = composite_panel_bitmap(panel);
 }
 
-/// ピクセル走査を行い、リサイズ ビットマップ nearest 用のビットマップ結果を生成する。
 fn resize_bitmap_nearest(bitmap: &CanvasBitmap, width: usize, height: usize) -> CanvasBitmap {
     let width = width.max(1);
     let height = height.max(1);
@@ -1564,7 +1427,6 @@ fn resize_bitmap_nearest(bitmap: &CanvasBitmap, width: usize, height: usize) -> 
     resized
 }
 
-/// リサイズ マスク nearest を計算して返す。
 fn resize_mask_nearest(mask: &LayerMask, width: usize, height: usize) -> LayerMask {
     let width = width.max(1);
     let height = height.max(1);

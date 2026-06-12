@@ -21,7 +21,6 @@ use super::{
     TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_workspace_preset_path,
 };
 
-/// 現在の unique ワークスペース preset パス を返す。
 fn unique_workspace_preset_path(name: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -33,7 +32,6 @@ fn unique_workspace_preset_path(name: &str) -> PathBuf {
     ))
 }
 
-/// execute コマンド updates ドキュメント ツール が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_updates_document_tool() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -45,7 +43,6 @@ fn execute_command_updates_document_tool() {
     assert_eq!(app.document.active_tool, ToolKind::Eraser);
 }
 
-/// execute コマンド 選択 ツール updates ドキュメント ツール ID が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_select_tool_updates_document_tool_id() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -58,7 +55,6 @@ fn execute_command_select_tool_updates_document_tool_id() {
     assert_eq!(app.document.active_tool_id, "builtin.eraser");
 }
 
-/// execute コマンド SelectChildTool sets active_child_tool_id が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_select_child_tool_updates_active_child_tool_id() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -91,7 +87,6 @@ fn execute_command_select_child_tool_updates_active_child_tool_id() {
     assert_eq!(app.document.active_child_tool_id, "builtin.pen.test");
 }
 
-/// execute コマンド updates ドキュメント 色 が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_updates_document_color() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -106,7 +101,6 @@ fn execute_command_updates_document_color() {
     );
 }
 
-/// execute コマンド 新規 ドキュメント resets ツール to 既定 が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_new_document_resets_tool_to_default() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -120,7 +114,6 @@ fn execute_command_new_document_resets_tool_to_default() {
     assert_eq!(app.document.active_tool, ToolKind::Pen);
 }
 
-/// ホスト action dispatches ツール switch コマンド が期待どおりに動作することを検証する。
 #[test]
 fn host_action_dispatches_tool_switch_command() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -132,7 +125,6 @@ fn host_action_dispatches_tool_switch_command() {
     assert_eq!(app.document.active_tool, ToolKind::Eraser);
 }
 
-/// キーボード パネル フォーカス can activate アプリ action が期待どおりに動作することを検証する。
 #[test]
 fn keyboard_panel_focus_can_activate_app_action() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -152,7 +144,6 @@ fn keyboard_panel_focus_can_activate_app_action() {
     assert_eq!(app.background_jobs.len(), 1);
 }
 
-/// 解析 ドキュメント サイズ accepts common formats が期待どおりに動作することを検証する。
 #[test]
 fn parse_document_size_accepts_common_formats() {
     assert_eq!(parse_document_size("64x64"), Some((64, 64)));
@@ -165,7 +156,6 @@ fn parse_document_size_accepts_common_formats() {
     assert_eq!(parse_document_size("0x600"), None);
 }
 
-/// execute コマンド 新規 ドキュメント opens inline form が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_new_document_opens_inline_form() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -173,7 +163,6 @@ fn execute_command_new_document_opens_inline_form() {
     assert!(app.execute_command(Command::NewDocument));
 }
 
-/// プラグイン キーボード ショートカット can switch ツール が期待どおりに動作することを検証する。
 #[test]
 fn plugin_keyboard_shortcut_can_switch_tool() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -184,7 +173,6 @@ fn plugin_keyboard_shortcut_can_switch_tool() {
     assert_eq!(app.document.active_tool, ToolKind::Pen);
 }
 
-/// プラグイン キーボード 取得 updates persistent 設定 が期待どおりに動作することを検証する。
 #[test]
 fn plugin_keyboard_capture_updates_persistent_config() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -207,7 +195,6 @@ fn plugin_keyboard_capture_updates_persistent_config() {
     );
 }
 
-/// unmatched キーボード ショートカット is not consumed が期待どおりに動作することを検証する。
 #[test]
 fn unmatched_keyboard_shortcut_is_not_consumed() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -215,7 +202,6 @@ fn unmatched_keyboard_shortcut_is_not_consumed() {
     assert!(!app.dispatch_keyboard_shortcut("Tab", "Tab", false));
 }
 
-/// execute コマンド 新規 ドキュメント sized replaces ビットマップ が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_new_document_sized_replaces_bitmap() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -256,7 +242,6 @@ fn builtin_panels_are_registered() {
     }
 }
 
-/// 再読込 ペン presets reads 既定 ペン directory が期待どおりに動作することを検証する。
 #[test]
 fn reload_pen_presets_reads_default_pen_directory() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -265,7 +250,6 @@ fn reload_pen_presets_reads_default_pen_directory() {
     assert!(app.document.pen_presets.len() >= 3);
 }
 
-/// startup loads ツール カタログ from 既定 ツール directory が期待どおりに動作することを検証する。
 #[test]
 fn startup_loads_tool_catalog_from_default_tool_directory() {
     let app = test_app_with_dialogs(TestDialogs::default());
@@ -280,7 +264,6 @@ fn startup_loads_tool_catalog_from_default_tool_directory() {
     );
 }
 
-/// execute コマンド applies 選択中 ワークスペース preset が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_applies_selected_workspace_preset() {
     let preset_path = unique_workspace_preset_path("workspace-preset-apply");
@@ -365,7 +348,6 @@ fn execute_command_applies_selected_workspace_preset() {
     let _ = std::fs::remove_file(preset_path);
 }
 
-/// ワークスペース preset dropdown selection auto applies and persists 既定 が期待どおりに動作することを検証する。
 #[test]
 fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
     let preset_path = unique_workspace_preset_path("workspace-preset-dropdown-apply");
@@ -451,7 +433,6 @@ fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
     let _ = std::fs::remove_file(preset_path);
 }
 
-/// execute コマンド reloads ワークスペース presets into ワークスペース パネル 設定 が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_reloads_workspace_presets_into_workspace_panel_config() {
     let preset_path = unique_workspace_preset_path("workspace-preset-reload");
@@ -524,7 +505,6 @@ fn execute_command_reloads_workspace_presets_into_workspace_panel_config() {
     let _ = std::fs::remove_file(preset_path);
 }
 
-/// execute コマンド saves 現在 ワークスペース preset into カタログ が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_saves_current_workspace_preset_into_catalog() {
     let preset_path = unique_workspace_preset_path("workspace-preset-save");
@@ -560,7 +540,6 @@ fn execute_command_saves_current_workspace_preset_into_catalog() {
     let _ = std::fs::remove_file(preset_path);
 }
 
-/// execute コマンド exports ワークスペース preset to ダイアログ パス が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_exports_workspace_preset_to_dialog_path() {
     let export_path = unique_workspace_preset_path("workspace-preset-export");
@@ -579,7 +558,6 @@ fn execute_command_exports_workspace_preset_to_dialog_path() {
     let _ = std::fs::remove_file(export_path);
 }
 
-/// execute コマンド imports ペン file and records report が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_imports_pen_file_and_records_report() {
     let path = unique_workspace_preset_path("import-pen").with_extension("altp-pen.json");

@@ -8,7 +8,6 @@ use super::DesktopApp;
 const TOOL_PANEL_IDS: &[&str] = &["builtin.pen-settings", "builtin.tool-palette"];
 const COLOR_PANEL_IDS: &[&str] = &["builtin.color-palette"];
 impl DesktopApp {
-    /// 入力や種別に応じて処理を振り分ける。
     pub(crate) fn execute_command(&mut self, command: Command) -> bool {
         self.poll_background_tasks();
         match command {
@@ -70,9 +69,6 @@ impl DesktopApp {
         }
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn execute_document_command(&mut self, command: Command) -> bool {
         let previous_transform = self.document.view_transform;
         self.document.apply_command(&command);

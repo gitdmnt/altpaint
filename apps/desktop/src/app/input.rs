@@ -12,9 +12,6 @@ use canvas::{
 use super::DesktopApp;
 
 impl DesktopApp {
-    /// キャンバス hover を更新し、必要な dirty 状態も記録する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn update_canvas_hover(&mut self, x: i32, y: i32) -> bool {
         let previous = self.hover_canvas_position;
         let next = self.hover_canvas_position_from_window(WindowPoint::new(x, y));
@@ -57,13 +54,11 @@ impl DesktopApp {
         true
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
     #[allow(dead_code)]
     pub(crate) fn handle_pointer_pressed(&mut self, x: i32, y: i32) -> bool {
         self.handle_pointer_pressed_with_pressure(x, y, 1.0)
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
     pub(crate) fn handle_pointer_pressed_with_pressure(
         &mut self,
         x: i32,
@@ -86,13 +81,11 @@ impl DesktopApp {
         false
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
     #[allow(dead_code)]
     pub(crate) fn handle_pointer_released(&mut self, x: i32, y: i32) -> bool {
         self.handle_pointer_released_with_pressure(x, y, 1.0)
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
     pub(crate) fn handle_pointer_released_with_pressure(
         &mut self,
         x: i32,
@@ -116,12 +109,10 @@ impl DesktopApp {
         self.handle_panel_pointer(point)
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
     pub(crate) fn handle_pointer_dragged(&mut self, x: i32, y: i32) -> bool {
         self.handle_pointer_dragged_with_pressure(x, y, 1.0)
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
     pub(crate) fn handle_pointer_dragged_with_pressure(
         &mut self,
         x: i32,
@@ -142,7 +133,6 @@ impl DesktopApp {
         false
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
     pub(crate) fn handle_canvas_pointer(
         &mut self,
         action: &str,
@@ -256,9 +246,6 @@ impl DesktopApp {
         }
     }
 
-    /// キャンバス position from ウィンドウ を計算して返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn canvas_position_from_window(&self, point: WindowPoint) -> Option<CanvasPoint> {
         let layout = self.layout.as_ref()?;
         if !layout.canvas_host_rect.contains(point) {
@@ -268,16 +255,12 @@ impl DesktopApp {
         self.canvas_position_from_window_clamped(point)
     }
 
-    /// キャンバス 表示 contains ウィンドウ を計算して返す。
     fn canvas_display_contains_window(&self, point: WindowPoint) -> bool {
         self.layout
             .as_ref()
             .is_some_and(|layout| layout.canvas_display_rect.contains(point))
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn hover_canvas_position_from_window(&self, point: WindowPoint) -> Option<CanvasPoint> {
         let position = self.canvas_position_from_window(point)?;
         match self.document.active_tool {
@@ -288,7 +271,6 @@ impl DesktopApp {
         }
     }
 
-    /// キャンバス position from ウィンドウ clamped に必要な描画内容を組み立てる。
     pub(crate) fn canvas_position_from_window_clamped(
         &self,
         point: WindowPoint,
@@ -314,18 +296,12 @@ impl DesktopApp {
         )
     }
 
-    /// ページ position in アクティブ パネル を計算して返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn page_position_in_active_panel(&self, point: CanvasPoint) -> Option<CanvasPoint> {
         let bounds = self.document.active_panel_bounds()?;
         bounds.contains_canvas_point(point).then_some(point)
     }
 }
 
-/// 入力や種別に応じて処理を振り分ける。
-///
-/// 値を生成できない場合は `None` を返します。
 fn pointer_action(action: &str) -> Option<CanvasPointerAction> {
     match action {
         "down" => Some(CanvasPointerAction::Down),

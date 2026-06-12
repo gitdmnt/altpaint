@@ -15,7 +15,6 @@ pub(crate) struct FocusTarget {
 }
 
 impl PanelPresentation {
-    /// パネル node へフォーカスを移す。
     pub fn focus_panel_node(&mut self, panel_id: &str, node_id: &str) -> bool {
         let exists = self
             .focusable_targets()
@@ -37,19 +36,14 @@ impl PanelPresentation {
         true
     }
 
-    /// 次 へフォーカスを移す。
     pub fn focus_next(&mut self) -> bool {
         self.move_focus(1)
     }
 
-    /// 前 へフォーカスを移す。
     pub fn focus_previous(&mut self) -> bool {
         self.move_focus(-1)
     }
 
-    /// Focused をアクティブ化する。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn activate_focused(&mut self) -> Option<PanelEvent> {
         let target = self.focused_target.clone()?;
         Some(PanelEvent::Activate {
@@ -72,7 +66,6 @@ impl PanelPresentation {
         targets
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
     fn move_focus(&mut self, step: isize) -> bool {
         let targets = self.focusable_targets();
         if targets.is_empty() {

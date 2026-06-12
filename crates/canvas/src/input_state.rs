@@ -12,13 +12,11 @@ pub struct CanvasInputState {
 }
 
 impl CanvasInputState {
-    /// 初期化 に必要な処理を行う。
     pub fn reset(&mut self) {
         *self = Self::default();
     }
 }
 
-/// 現在の パネル 生成 プレビュー 範囲 を返す。
 pub fn panel_creation_preview_bounds(
     state: &CanvasInputState,
     page_width: usize,

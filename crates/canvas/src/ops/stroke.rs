@@ -39,7 +39,6 @@ pub fn compute_stamp_positions(
     points
 }
 
-/// ストローク segment 編集 に必要な描画内容を組み立てる。
 pub(crate) fn stroke_segment_edit(
     from: PanelLocalPoint,
     to: PanelLocalPoint,
@@ -50,9 +49,6 @@ pub(crate) fn stroke_segment_edit(
     stroke_like_edit(&points, pressure, context)
 }
 
-/// ストローク like 編集 に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
 pub(crate) fn stroke_like_edit(
     points: &[PanelLocalPoint],
     pressure: f32,
@@ -105,7 +101,6 @@ pub(crate) fn stroke_like_edit(
     ))
 }
 
-/// 実効的な spacing を返す。
 fn effective_spacing(context: &PaintPluginContext<'_>, size: u32) -> f32 {
     (size as f32 * (context.pen.spacing_percent / 100.0)).clamp(1.0, size.max(1) as f32)
 }

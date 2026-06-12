@@ -21,7 +21,6 @@ pub enum CanvasGestureUpdate {
     },
 }
 
-/// Pointer ジェスチャ を進行させる。
 pub fn advance_pointer_gesture<F>(
     state: &mut CanvasInputState,
     action: CanvasPointerAction,
@@ -57,7 +56,6 @@ where
     }
 }
 
-/// 入力や種別に応じて処理を振り分ける。
 fn handle_pointer_down<F>(
     state: &mut CanvasInputState,
     point: CanvasPoint,
@@ -99,7 +97,6 @@ where
     }
 }
 
-/// 入力や種別に応じて処理を振り分ける。
 fn handle_pointer_drag<F>(
     state: &mut CanvasInputState,
     point: CanvasPoint,
@@ -151,7 +148,6 @@ where
     }
 }
 
-/// 入力や種別に応じて処理を振り分ける。
 fn handle_pointer_up<F>(
     state: &mut CanvasInputState,
     point: CanvasPoint,
@@ -209,7 +205,6 @@ where
     }
 }
 
-/// Stabilized キャンバス position を有効範囲へ補正して返す。
 fn stabilized_canvas_position(
     state: &mut CanvasInputState,
     point: CanvasPoint,

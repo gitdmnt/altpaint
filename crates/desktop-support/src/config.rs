@@ -61,7 +61,6 @@ pub const INPUT_SAMPLING_TARGET_HZ: f64 = 120.0;
 const MAX_DOCUMENT_DIMENSION: usize = 8192;
 const MAX_DOCUMENT_PIXELS: usize = 16_777_216;
 
-/// 既定の パネル dir (Phase 10 で `crates/builtin-panels/`) を返す。
 pub fn default_panel_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -70,7 +69,6 @@ pub fn default_panel_dir() -> PathBuf {
         .join("builtin-panels")
 }
 
-/// 既定の ペン dir を返す。
 pub fn default_pen_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -78,7 +76,6 @@ pub fn default_pen_dir() -> PathBuf {
         .join("pens")
 }
 
-/// 既定の ツール dir を返す。
 pub fn default_tool_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -86,9 +83,6 @@ pub fn default_tool_dir() -> PathBuf {
         .join("tools")
 }
 
-/// 入力を解析して ドキュメント サイズ に変換する。
-///
-/// 値を生成できない場合は `None` を返します。
 pub fn parse_document_size(input: &str) -> Option<(usize, usize)> {
     let normalized = input.replace(['×', ',', ';'], "x");
     let parts = normalized
@@ -117,7 +111,6 @@ pub fn parse_document_size(input: &str) -> Option<(usize, usize)> {
 mod tests {
     use super::*;
 
-    /// 解析 ドキュメント サイズ accepts common formats が期待どおりに動作することを検証する。
     #[test]
     fn parse_document_size_accepts_common_formats() {
         assert_eq!(parse_document_size("64x64"), Some((64, 64)));
@@ -126,7 +119,6 @@ mod tests {
         assert_eq!(parse_document_size("800,600"), Some((800, 600)));
     }
 
-    /// 解析 ドキュメント サイズ rejects invalid dimensions が期待どおりに動作することを検証する。
     #[test]
     fn parse_document_size_rejects_invalid_dimensions() {
         assert_eq!(parse_document_size("0x600"), None);

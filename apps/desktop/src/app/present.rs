@@ -12,7 +12,6 @@ use super::{DesktopApp, PresentFrameUpdate};
 use crate::frame::DesktopLayout;
 
 impl DesktopApp {
-    /// Prepare 提示 フレーム に必要な差分領域だけを描画または合成する。
     pub(crate) fn prepare_present_frame(
         &mut self,
         window_width: usize,

@@ -41,7 +41,6 @@ pub(crate) struct PanelInteractionState {
 }
 
 impl DesktopApp {
-    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn begin_panel_interaction(&mut self, point: WindowPoint) -> bool {
         self.panel_interaction.pending_panel_press = None;
 
@@ -111,7 +110,6 @@ impl DesktopApp {
         true
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn drag_panel_interaction(&mut self, point: WindowPoint) -> bool {
         // Phase 11: リサイズが active なら先に処理する。
         if let Some(resize_state) = self.panel_interaction.active_panel_resize.clone() {
@@ -195,7 +193,6 @@ impl DesktopApp {
         true
     }
 
-    /// パネル control をアクティブ化する。
     pub(super) fn activate_panel_control(&mut self, panel_id: &str, node_id: &str) -> bool {
         self.dispatch_panel_event(PanelEvent::Activate {
             panel_id: panel_id.to_string(),
@@ -203,9 +200,6 @@ impl DesktopApp {
         })
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn dispatch_keyboard_shortcut(
         &mut self,
         shortcut: &str,
@@ -225,9 +219,6 @@ impl DesktopApp {
         self.request_panel_reconcile_if_changed(changed)
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn execute_host_action(&mut self, action: HostAction) -> bool {
         match action {
             HostAction::DispatchCommand(command) => self.execute_command(command),
@@ -266,14 +257,10 @@ impl DesktopApp {
         }
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn dispatch_panel_event(&mut self, event: PanelEvent) -> bool {
         self.dispatch_panel_event_with_command(event).0
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     fn dispatch_panel_event_with_command(
         &mut self,
         event: PanelEvent,
@@ -323,7 +310,6 @@ impl DesktopApp {
         (changed, first_command)
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_panel_pointer(&mut self, point: WindowPoint) -> bool {
         let Some(event) = self.panel_event_from_window(point) else {
             self.panel_interaction.pending_panel_press = None;
@@ -346,46 +332,34 @@ impl DesktopApp {
         self.dispatch_panel_event(event)
     }
 
-    /// 次 パネル control へフォーカスを移す。
     pub(crate) fn focus_next_panel_control(&mut self) -> bool {
         let changed = self.panel_presentation.focus_next();
         self.request_panel_reconcile_if_changed(changed)
     }
 
-    /// 前 パネル control へフォーカスを移す。
     pub(crate) fn focus_previous_panel_control(&mut self) -> bool {
         let changed = self.panel_presentation.focus_previous();
         self.request_panel_reconcile_if_changed(changed)
     }
 
-    /// Focused パネル control をアクティブ化する。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub(crate) fn activate_focused_panel_control(&mut self) -> Option<app_core::Command> {
         let event = self.panel_presentation.activate_focused()?;
         self.dispatch_panel_event_with_command(event).1
     }
 
-    /// パネル イベント from ウィンドウ を計算して返す。
-    ///
     /// HTML パネル hit テーブルだけを参照する。Phase 9F で DSL surface 側の hit-test 経路は
     /// 削除済みのため、ここに来るのは HTML パネルのみ。
-    /// 値を生成できない場合は `None` を返します。
     pub(super) fn panel_event_from_window(&self, point: WindowPoint) -> Option<PanelEvent> {
         let (panel_id, node_id) = self.panel_presentation.html_panel_hit_at(point)?;
         Some(PanelEvent::Activate { panel_id, node_id })
     }
 
-    /// パネル is hovered を計算して返す。
     pub(crate) fn panel_is_hovered(&self, point: WindowPoint) -> bool {
         self.panel_move_hit_from_window(point).is_some()
             || self.panel_event_from_window(point).is_some()
     }
 
-    /// パネル move hit from ウィンドウ を計算して返す。
-    ///
     /// HTML パネルの move handle (タイトルバー) のみを確認する。
-    /// 値を生成できない場合は `None` を返します。
     pub(super) fn panel_move_hit_from_window(&self, point: WindowPoint) -> Option<String> {
         self.panel_presentation.html_panel_move_handle_at(point)
     }

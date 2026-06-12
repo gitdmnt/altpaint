@@ -4,9 +4,6 @@ use crate::CanvasRuntime;
 
 use super::apply_input;
 
-/// スタンプ 入力 paints 選択中 色 が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn stamp_input_paints_selected_color() {
     let mut document = Document {

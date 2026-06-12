@@ -32,7 +32,6 @@ pub(crate) struct TestDialogs {
 }
 
 impl TestDialogs {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     fn with_open_path(path: PathBuf) -> Self {
         Self {
             open_paths: RefCell::new(vec![path]),
@@ -43,7 +42,6 @@ impl TestDialogs {
         }
     }
 
-    /// 入力値を束ねた新しいインスタンスを生成する。
     fn with_save_path(path: PathBuf) -> Self {
         Self {
             open_paths: RefCell::new(Vec::new()),
@@ -54,7 +52,6 @@ impl TestDialogs {
         }
     }
 
-    /// 入力値を束ねた新しいインスタンスを生成する。
     fn with_workspace_save_path(path: PathBuf) -> Self {
         Self {
             open_paths: RefCell::new(Vec::new()),
@@ -65,7 +62,6 @@ impl TestDialogs {
         }
     }
 
-    /// 入力値を束ねた新しいインスタンスを生成する。
     fn with_pen_open_path(path: PathBuf) -> Self {
         Self {
             open_paths: RefCell::new(Vec::new()),
@@ -78,35 +74,22 @@ impl TestDialogs {
 }
 
 impl DesktopDialogs for TestDialogs {
-    /// 現在の pick 開く プロジェクト パス を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn pick_open_project_path(&self, _current_path: &Path) -> Option<PathBuf> {
         self.open_paths.borrow_mut().pop()
     }
 
-    /// 現在の pick 保存 プロジェクト パス を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn pick_save_project_path(&self, _current_path: &Path) -> Option<PathBuf> {
         self.save_paths.borrow_mut().pop()
     }
 
-    /// 現在の pick 保存 ワークスペース preset パス を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn pick_save_workspace_preset_path(&self, _current_path: &Path) -> Option<PathBuf> {
         self.workspace_save_paths.borrow_mut().pop()
     }
 
-    /// 現在の pick 開く ペン パス を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn pick_open_pen_path(&self, _current_path: &Path) -> Option<PathBuf> {
         self.pen_open_paths.borrow_mut().pop()
     }
 
-    /// エラー を表示できるよう状態を更新する。
     fn show_error(&self, title: &str, message: &str) {
         self.errors
             .borrow_mut()
@@ -114,8 +97,6 @@ impl DesktopDialogs for TestDialogs {
     }
 }
 
-/// test アプリ with dialogs を計算して返す。
-///
 /// project / session / workspace preset の全パスをテストごとに一意化する。
 /// 共有パスは並列テスト間の状態汚染 (一方の persist を他方の bootstrap が読む) を
 /// 引き起こすため使用しない (ADR 015)。
@@ -128,7 +109,6 @@ fn test_app_with_dialogs(dialogs: TestDialogs) -> DesktopApp {
     )
 }
 
-/// 現在の test アプリ with dialogs and セッション パス を返す。
 fn test_app_with_dialogs_and_session_path(
     dialogs: TestDialogs,
     session_path: PathBuf,
@@ -141,7 +121,6 @@ fn test_app_with_dialogs_and_session_path(
     )
 }
 
-/// 現在の test アプリ with dialogs and ワークスペース preset パス を返す。
 fn test_app_with_dialogs_and_workspace_preset_path(
     dialogs: TestDialogs,
     workspace_preset_path: PathBuf,
@@ -154,7 +133,6 @@ fn test_app_with_dialogs_and_workspace_preset_path(
     )
 }
 
-/// 現在の unique test パス を返す。
 pub(crate) fn unique_test_path(name: &str) -> PathBuf {
     let id = TEST_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!("altpaint-{name}-{}-{id}.json", std::process::id()))

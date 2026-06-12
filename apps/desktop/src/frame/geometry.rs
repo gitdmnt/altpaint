@@ -2,7 +2,6 @@
 
 use super::Rect;
 
-/// 矩形 が収まるように矩形を計算する。
 pub(crate) fn fit_rect(source_width: usize, source_height: usize, target: Rect) -> Rect {
     if source_width == 0 || source_height == 0 || target.width == 0 || target.height == 0 {
         return Rect {

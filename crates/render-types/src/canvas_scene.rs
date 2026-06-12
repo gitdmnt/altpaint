@@ -41,7 +41,6 @@ impl PixelRect {
             && point.y < self.y + self.height
     }
 
-    /// union を計算して返す。
     pub fn union(&self, other: PixelRect) -> PixelRect {
         let left = self.x.min(other.x);
         let top = self.y.min(other.y);
@@ -56,9 +55,6 @@ impl PixelRect {
         }
     }
 
-    /// intersect を計算して返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn intersect(&self, other: PixelRect) -> Option<PixelRect> {
         let left = self.x.max(other.x);
         let top = self.y.max(other.y);
@@ -110,7 +106,6 @@ pub struct CanvasScene {
 }
 
 impl CanvasScene {
-    /// UV 変換 を計算して返す。
     fn uv_transform(&self) -> UvTransform {
         UvTransform {
             source_width: self.source_width as f32,
@@ -124,21 +119,14 @@ impl CanvasScene {
         }
     }
 
-    /// texture quad を計算して返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn texture_quad(&self) -> Option<TextureQuad> {
         self.texture_quad
     }
 
-    /// 拡大率 を計算して返す。
     pub fn scale(&self) -> f32 {
         self.scale
     }
 
-    /// キャンバス 差分 矩形 を別座標系へ変換する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub fn map_canvas_dirty_rect(&self, dirty: CanvasDirtyRect) -> PixelRect {
         self.map_source_rect_to_display(dirty)
             .and_then(|rect| rect.intersect(self.viewport))
@@ -150,7 +138,6 @@ impl CanvasScene {
             })
     }
 
-    /// ブラシ プレビュー 矩形 for diameter に必要な処理を行う。
     pub fn brush_preview_rect_for_diameter(
         &self,
         canvas_position: CanvasPoint,
@@ -183,7 +170,6 @@ impl CanvasScene {
         })
     }
 
-    /// キャンバス 点 to 表示 を別座標系へ変換する。
     pub fn map_canvas_point_to_display(
         &self,
         canvas_position: CanvasPoint,
@@ -191,9 +177,6 @@ impl CanvasScene {
         self.map_source_point_to_display(canvas_position)
     }
 
-    /// ビュー to キャンバス を別座標系へ変換する。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn map_view_to_canvas(&self, point: CanvasViewportPoint) -> Option<CanvasPoint> {
         let drawn_width = self.bbox_width * self.scale;
         let drawn_height = self.bbox_height * self.scale;
@@ -220,9 +203,6 @@ impl CanvasScene {
         ))
     }
 
-    /// ソース 矩形 to 表示 を別座標系へ変換する。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn map_source_rect_to_display(&self, dirty: CanvasDirtyRect) -> Option<PixelRect> {
         let dirty = dirty.clamp_to_canvas_bounds(self.source_width, self.source_height);
         let corners = [
@@ -266,7 +246,6 @@ impl CanvasScene {
         })
     }
 
-    /// ソース 点 to 表示 を別座標系へ変換する。
     fn map_source_point_to_display(
         &self,
         canvas_position: CanvasPoint,
@@ -286,7 +265,6 @@ impl CanvasScene {
     }
 }
 
-/// prepare キャンバス シーン に必要な処理を行う。
 pub fn prepare_canvas_scene(
     viewport: PixelRect,
     source_width: usize,
@@ -369,12 +347,10 @@ pub fn prepare_canvas_scene(
     })
 }
 
-/// normalized 回転 degrees を計算して返す。
 fn normalized_rotation_degrees(rotation_degrees: f32) -> f32 {
     rotation_degrees.rem_euclid(360.0)
 }
 
-/// rotated bounding box を計算して返す。
 fn rotated_bounding_box(width: f32, height: f32, cos_theta: f32, sin_theta: f32) -> (f32, f32) {
     let cos = cos_theta.abs();
     let sin = sin_theta.abs();
@@ -410,7 +386,6 @@ struct RotatedUv {
     v: f32,
 }
 
-/// ソース to rotated UV を計算して返す。
 fn source_to_rotated_uv(source: SourceUv, uv_transform: UvTransform) -> RotatedUv {
     let centered_x = source.u * uv_transform.source_width - uv_transform.source_width * 0.5;
     let centered_y = source.v * uv_transform.source_height - uv_transform.source_height * 0.5;
@@ -428,7 +403,6 @@ fn source_to_rotated_uv(source: SourceUv, uv_transform: UvTransform) -> RotatedU
     }
 }
 
-/// rotated to ソース UV を計算して返す。
 fn rotated_to_source_uv(rotated: RotatedUv, uv_transform: UvTransform) -> SourceUv {
     let mut rotated_x = rotated.u * uv_transform.bbox_width - uv_transform.bbox_width * 0.5;
     let mut rotated_y = rotated.v * uv_transform.bbox_height - uv_transform.bbox_height * 0.5;
@@ -446,9 +420,6 @@ fn rotated_to_source_uv(rotated: RotatedUv, uv_transform: UvTransform) -> Source
     }
 }
 
-/// キャンバス 差分 to 表示 with 変換 を別座標系へ変換する。
-///
-/// 必要に応じて dirty 状態も更新します。
 pub fn map_canvas_dirty_to_display_with_transform(
     dirty: CanvasDirtyRect,
     viewport: PixelRect,
@@ -466,7 +437,6 @@ pub fn map_canvas_dirty_to_display_with_transform(
         })
 }
 
-/// ブラシ プレビュー 矩形 for diameter に必要な処理を行う。
 pub fn brush_preview_rect_for_diameter(
     viewport: PixelRect,
     source_width: usize,
@@ -479,7 +449,6 @@ pub fn brush_preview_rect_for_diameter(
         .and_then(|scene| scene.brush_preview_rect_for_diameter(canvas_position, brush_diameter))
 }
 
-/// キャンバス 点 to 表示 を別座標系へ変換する。
 pub fn map_canvas_point_to_display(
     viewport: PixelRect,
     source_width: usize,
@@ -491,7 +460,6 @@ pub fn map_canvas_point_to_display(
         .and_then(|scene| scene.map_canvas_point_to_display(canvas_position))
 }
 
-/// キャンバス texture quad に必要な処理を行う。
 pub fn canvas_texture_quad(
     viewport: PixelRect,
     source_width: usize,
@@ -502,7 +470,6 @@ pub fn canvas_texture_quad(
         .and_then(|scene| scene.texture_quad())
 }
 
-/// ビュー to キャンバス with 変換 を別座標系へ変換する。
 pub fn map_view_to_canvas_with_transform(
     viewport: PixelRect,
     source_width: usize,

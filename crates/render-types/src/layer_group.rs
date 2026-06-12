@@ -13,17 +13,14 @@ pub struct LayerGroupDirtyPlan {
 }
 
 impl LayerGroupDirtyPlan {
-    /// Background を更新し、必要な dirty 状態も記録する。
     pub fn mark_background(&mut self, rect: PixelRect) {
         union_dirty_rect(&mut self.background, rect);
     }
 
-    /// TempOverlay を更新し、必要な dirty 状態も記録する。
     pub fn mark_temp_overlay(&mut self, rect: PixelRect) {
         union_dirty_rect(&mut self.temp_overlay, rect);
     }
 
-    /// UiPanel を更新し、必要な dirty 状態も記録する。
     pub fn mark_ui_panel(&mut self, rect: PixelRect) {
         union_dirty_rect(&mut self.ui_panel, rect);
     }

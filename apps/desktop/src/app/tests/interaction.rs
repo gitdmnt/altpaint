@@ -12,7 +12,6 @@ use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::DesktopApp;
 use crate::app::canvas_frame::build_canvas_frame;
 
-/// キャンバス position maps ビュー center into ビットマップ 範囲 が期待どおりに動作することを検証する。
 #[test]
 fn canvas_position_maps_view_center_into_bitmap_bounds() {
     let position = map_view_to_canvas_with_transform(
@@ -29,7 +28,6 @@ fn canvas_position_maps_view_center_into_bitmap_bounds() {
     assert_eq!(position, Some(CanvasPoint::new(32, 32)));
 }
 
-/// 消しゴム drag clears existing pixels が期待どおりに動作することを検証する。
 #[test]
 fn eraser_drag_clears_existing_pixels() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -54,7 +52,6 @@ fn eraser_drag_clears_existing_pixels() {
     assert_eq!(&frame.pixels[index..index + 4], &[255, 255, 255, 255]);
 }
 
-/// キャンバス drag draws black pixels が期待どおりに動作することを検証する。
 #[test]
 fn canvas_drag_draws_black_pixels() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -77,7 +74,6 @@ fn canvas_drag_draws_black_pixels() {
     );
 }
 
-/// キャンバス drag draws using 選択中 色 が期待どおりに動作することを検証する。
 #[test]
 fn canvas_drag_draws_using_selected_color() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -102,7 +98,6 @@ fn canvas_drag_draws_using_selected_color() {
     );
 }
 
-/// パネル 矩形 ツール creates パネル from dragged ページ 矩形 が期待どおりに動作することを検証する。
 #[test]
 fn panel_rect_tool_creates_panel_from_dragged_page_rect() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -152,7 +147,6 @@ fn panel_rect_tool_creates_panel_from_dragged_page_rect() {
     assert_eq!(app.document.active_panel_index(), 1);
 }
 
-/// パネル 色 ホイール updates ドキュメント 色 が期待どおりに動作することを検証する。
 #[test]
 fn panel_color_wheel_updates_document_color() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -169,8 +163,6 @@ fn panel_color_wheel_updates_document_color() {
 // 撤去された。color wheel への入力は `panel_color_wheel_updates_document_color`
 // (`dispatch_panel_event` 直叩き) で代替検証されている。
 
-/// overlapping パネル button press takes priority over キャンバス 入力 が期待どおりに動作することを検証する。
-///
 /// Phase 13 (ADR 015) 以降、hit-table は `prepare_present_frame` が実レイアウトから
 /// GPU 非依存で更新するため、synthetic 注入ではなく実 hit テーブルで検証する。
 #[test]
@@ -235,8 +227,6 @@ fn overlapping_panel_button_press_takes_priority_over_canvas_input() {
     assert_eq!(app.document.active_tool, ToolKind::Eraser);
 }
 
-/// overlapping パネル drag takes priority over キャンバス 入力 が期待どおりに動作することを検証する。
-///
 /// Phase 13 (ADR 015) 以降、move handle (タイトルバー chrome) は
 /// `prepare_present_frame` が実レイアウトから GPU 非依存で更新するため、
 /// synthetic 注入ではなく実 move handle で検証する。
@@ -325,9 +315,6 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
 // 計測は 9E-3 で削除済み。代替検証は workspace_manager_panel_can_be_moved (パネル位置変更
 // が反映されること) で十分カバー済みのため、本テストは削除する。
 
-/// ワークスペース manager パネル can be moved が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn workspace_manager_panel_can_be_moved() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -366,9 +353,6 @@ fn workspace_manager_panel_can_be_moved() {
 // 同上。`ui_panel_dirty_rect` 検証経路が dummy 化されたため、Phase 9F で
 // L3/L5 を統合した dirty rect 検証として書き直す。
 
-/// profile 色 ホイール drag for ten seconds が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 #[ignore = "manual performance profiling"]
 fn profile_color_wheel_drag_for_ten_seconds() {
@@ -415,9 +399,6 @@ fn profile_color_wheel_drag_for_ten_seconds() {
     );
 }
 
-/// profile 色 ホイール events for ten seconds が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 #[ignore = "manual performance profiling"]
 fn profile_color_wheel_events_for_ten_seconds() {
@@ -457,9 +438,6 @@ fn profile_color_wheel_events_for_ten_seconds() {
     );
 }
 
-/// profile slider drag for ten seconds が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 #[ignore = "manual performance profiling"]
 fn profile_slider_drag_for_ten_seconds() {
@@ -506,9 +484,6 @@ fn profile_slider_drag_for_ten_seconds() {
     );
 }
 
-/// profile パネル drag for ten seconds が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 #[ignore = "manual performance profiling"]
 fn profile_panel_drag_for_ten_seconds() {
@@ -560,7 +535,6 @@ fn profile_panel_drag_for_ten_seconds() {
     emit_panel_perf("panel-perf", &profiler, elapsed, iterations);
 }
 
-/// profile ビュー 変換 for ten seconds が期待どおりに動作することを検証する。
 #[test]
 #[ignore = "manual performance profiling"]
 fn profile_view_transform_for_ten_seconds() {
@@ -648,7 +622,6 @@ fn zoom_perf_meets_240fps_target() {
     );
 }
 
-/// profile キャンバス ブラシ sizes for ten seconds が期待どおりに動作することを検証する。
 #[test]
 #[ignore = "manual performance profiling"]
 fn profile_canvas_brush_sizes_for_ten_seconds() {
@@ -721,10 +694,6 @@ fn profile_canvas_brush_sizes_for_ten_seconds() {
     }
 }
 
-/// フォーカス refresh does not trigger ui 更新 が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
-///
 /// Phase 9E-5: L4 ui_panel_layer は dummy 化されたため `ui_panel_dirty_rect` ではなく
 /// 「フルリコンポーズ / canvas 更新が起きない」という弱検証に書き換えた。
 /// パネル本体の dirty 検証は 9F で `panel_quads` 経路に対応する形で再導入する。
@@ -767,9 +736,6 @@ fn focus_refresh_does_not_trigger_ui_update() {
     assert_eq!(update.ui_panel_dirty_rect, None);
 }
 
-/// ツール change updates ステータス without full recompose が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn tool_change_updates_status_without_full_recompose() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -790,8 +756,6 @@ fn tool_change_updates_status_without_full_recompose() {
     assert_eq!(update.ui_panel_dirty_rect, None);
 }
 
-/// パネル release without matching press does not activate 保存 が期待どおりに動作することを検証する。
-///
 /// Phase 9F 以降は HTML panel hit-table を `update_html_panel_hits` で synthetic に
 /// 構築してテストする。
 #[test]
@@ -824,12 +788,10 @@ fn panel_release_without_matching_press_does_not_activate_save() {
     assert_eq!(app.pending_save_task_count(), 0);
 }
 
-/// avg stage ms を計算して返す。
 fn avg_stage_ms(profiler: &DesktopProfiler, label: &'static str) -> f64 {
     profiler.stats.get(label).map_or(0.0, avg_stage_stat_ms)
 }
 
-/// avg stage stat ms を計算して返す。
 fn avg_stage_stat_ms(stat: &StageStats) -> f64 {
     if stat.calls == 0 {
         0.0
@@ -838,7 +800,6 @@ fn avg_stage_stat_ms(stat: &StageStats) -> f64 {
     }
 }
 
-/// max stage ms を計算して返す。
 fn max_stage_ms(profiler: &DesktopProfiler, label: &'static str) -> f64 {
     profiler
         .stats
@@ -846,12 +807,10 @@ fn max_stage_ms(profiler: &DesktopProfiler, label: &'static str) -> f64 {
         .map_or(0.0, |stat| stat.max.as_secs_f64() * 1000.0)
 }
 
-/// avg 値 を計算して返す。
 fn avg_value(profiler: &DesktopProfiler, label: &'static str) -> f64 {
     profiler.value_stats.get(label).map_or(0.0, avg_value_stat)
 }
 
-/// avg 値 stat を計算して返す。
 fn avg_value_stat(stat: &ValueStats) -> f64 {
     if stat.samples == 0 {
         0.0
@@ -860,7 +819,6 @@ fn avg_value_stat(stat: &ValueStats) -> f64 {
     }
 }
 
-/// 入力を解析して duration に変換する。
 fn perf_duration() -> Duration {
     std::env::var("ALTPAINT_PANEL_PERF_DURATION_SECS")
         .ok()
@@ -869,7 +827,6 @@ fn perf_duration() -> Duration {
         .unwrap_or_else(|| Duration::from_secs(10))
 }
 
-/// 入力や種別に応じて処理を振り分ける。
 fn emit_canvas_perf(
     tool: ToolKind,
     size: u32,
@@ -904,9 +861,6 @@ fn emit_canvas_perf(
     );
 }
 
-/// Emit パネル perf に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
 fn emit_panel_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterations: u64) {
     eprintln!(
         "[{label}] duration={elapsed:.2}s iterations={iterations} rate={:.1}Hz",
@@ -945,7 +899,6 @@ fn emit_panel_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterat
     // Phase 9F: base_upload_* / panel_surface_hit_regions は record 側を撤去済み。
 }
 
-/// Emit ビュー perf に必要な描画内容を組み立てる。
 fn emit_view_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterations: u64) {
     eprintln!(
         "[view-perf] case={label} duration={elapsed:.2}s iterations={iterations} rate={:.1}Hz",
@@ -969,9 +922,6 @@ fn emit_view_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterati
     );
 }
 
-/// Profile ビュー perf case に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
 fn profile_view_perf_case(
     label: &str,
     app: &mut DesktopApp,
@@ -1001,8 +951,6 @@ fn profile_view_perf_case(
     emit_view_perf(label, profiler, started.elapsed().as_secs_f64(), iterations);
 }
 
-/// 既存データを走査して control points from パネル を組み立てる。
-///
 /// Phase 9F 以降、HTML パネル hit-test (`html_panel_hit_at`) で (panel_id, node_id) を
 /// 解決する。slider / color-wheel 等の細かいサブ領域分割は DSL surface 経路と一緒に
 /// 撤去されたため、ここでは hit する全ピクセルを stride サンプリングで返す。
@@ -1033,9 +981,6 @@ fn control_points_from_surface(
     points.into_iter().step_by(stride).take(32).collect()
 }
 
-/// pan ビュー updates キャンバス without ステータス recompose が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn pan_view_updates_canvas_without_status_recompose() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -1066,9 +1011,6 @@ fn pan_view_updates_canvas_without_status_recompose() {
     assert_eq!(update.temp_overlay_dirty_rect, None);
 }
 
-/// pan ビュー updates キャンバス quad without ビットマップ reupload が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn pan_view_updates_canvas_quad_without_bitmap_reupload() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -1088,7 +1030,6 @@ fn pan_view_updates_canvas_quad_without_bitmap_reupload() {
     assert_ne!(original_quad.destination, moved_quad.destination);
 }
 
-/// pan can expand キャンバス quad into ホスト margin が期待どおりに動作することを検証する。
 #[test]
 fn pan_can_expand_canvas_quad_into_host_margin() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -1106,7 +1047,6 @@ fn pan_can_expand_canvas_quad_into_host_margin() {
     assert!(moved_quad.destination.x < layout.canvas_display_rect.x);
 }
 
-/// 新規 ドキュメント sized resets アクティブ interactions が期待どおりに動作することを検証する。
 #[test]
 fn new_document_sized_resets_active_interactions() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -1130,7 +1070,6 @@ fn new_document_sized_resets_active_interactions() {
     assert!(app.hover_canvas_position.is_none());
 }
 
-/// test ダイアログ アプリ can prepare フレーム が期待どおりに動作することを検証する。
 #[test]
 fn test_dialog_app_can_prepare_frame() {
     let mut app = super::test_app_with_dialogs(TestDialogs::default());
@@ -1141,9 +1080,6 @@ fn test_dialog_app_can_prepare_frame() {
     assert!(update.canvas_updated);
 }
 
-/// ブラシ プレビュー 差分 矩形 grows with ペン サイズ が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn brush_preview_dirty_rect_grows_with_pen_size() {
     let mut app = test_app_with_dialogs(TestDialogs::default());

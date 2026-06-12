@@ -118,7 +118,6 @@ pub(crate) struct GpuPaintEngine {
 }
 
 impl DesktopApp {
-    /// 既定値を使って新しいインスタンスを生成する。
     pub(crate) fn new(project_path: PathBuf) -> Self {
         Self::new_with_dialogs_session_path_and_workspace_preset_path(
             project_path,
@@ -128,7 +127,6 @@ impl DesktopApp {
         )
     }
 
-    /// 既定値を使って新しいインスタンスを生成する。
     #[allow(dead_code)]
     pub(crate) fn new_with_dialogs(
         project_path: PathBuf,
@@ -142,9 +140,6 @@ impl DesktopApp {
         )
     }
 
-    /// 既定値を使って新しいインスタンスを生成する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn new_with_dialogs_session_path_and_workspace_preset_path(
         project_path: PathBuf,
         dialogs: Box<dyn DesktopDialogs>,
@@ -398,7 +393,6 @@ pub(crate) enum GpuCanvasSourceKind {
     Composite,
 }
 
-/// 既定の desktop セッション パス を返す。
 fn default_desktop_session_path() -> PathBuf {
     #[cfg(test)]
     {

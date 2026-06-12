@@ -148,7 +148,6 @@ pub fn render_text_to_bitmap_edit_with(
 mod tests {
     use super::*;
 
-    /// Font8x8Renderer は空でない出力を生成する が期待どおりに動作することを検証する。
     #[test]
     fn font8x8_renderer_produces_nonempty_output() {
         let renderer = Font8x8Renderer;
@@ -158,7 +157,6 @@ mod tests {
         assert_eq!(out.pixels.len(), 8 * 8 * 4);
     }
 
-    /// スケール 2 では幅が 2 倍 が期待どおりに動作することを検証する。
     #[test]
     fn font8x8_renderer_scales_with_font_size() {
         let renderer = Font8x8Renderer;
@@ -167,7 +165,6 @@ mod tests {
         assert_eq!(out.height, 16);  // 8px × scale(2)
     }
 
-    /// render_text_to_bitmap_edit は有効テキストで Some を返す が期待どおりに動作することを検証する。
     #[test]
     fn render_text_to_bitmap_edit_returns_some_for_valid_text() {
         let edit = render_text_to_bitmap_edit("Hello", 8, [0, 0, 0, 255], 10, 20);
@@ -178,14 +175,12 @@ mod tests {
         assert_eq!(edit.dirty_rect.height, 8);
     }
 
-    /// 空テキストは None を返す が期待どおりに動作することを検証する。
     #[test]
     fn render_text_to_bitmap_edit_returns_none_for_empty_text() {
         assert!(render_text_to_bitmap_edit("", 8, [0, 0, 0, 255], 0, 0).is_none());
         assert!(render_text_to_bitmap_edit("   ", 8, [0, 0, 0, 255], 0, 0).is_none());
     }
 
-    /// カスタム renderer の差し替えが可能 が期待どおりに動作することを検証する。
     #[test]
     fn render_text_with_custom_renderer() {
         struct StubRenderer;

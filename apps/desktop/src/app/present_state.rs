@@ -68,12 +68,10 @@ impl DesktopApp {
         self.invalidation.needs_panel_reconcile = true;
     }
 
-    /// ステータス 差分 を更新し、必要な dirty 状態も記録する。
     pub(super) fn mark_status_dirty(&mut self) {
         self.invalidation.needs_status_refresh = true;
     }
 
-    /// ステータス refresh を後段の処理へ遅延させる。
     pub(super) fn defer_status_refresh(&mut self) {
         self.invalidation.deferred_status_refresh = true;
     }
@@ -95,12 +93,10 @@ impl DesktopApp {
         self.request_panel_reconcile();
     }
 
-    /// ビュー パネル 同期 を後段の処理へ遅延させる。
     pub(super) fn defer_view_panel_sync(&mut self) {
         self.invalidation.deferred_view_panel_sync = true;
     }
 
-    /// 保留中の deferred ビュー パネル 同期 を反映する。
     pub(crate) fn flush_deferred_view_panel_sync(&mut self) -> bool {
         if !self.invalidation.deferred_view_panel_sync {
             return false;
@@ -110,7 +106,6 @@ impl DesktopApp {
         true
     }
 
-    /// 保留中の deferred ステータス refresh を反映する。
     pub(crate) fn flush_deferred_status_refresh(&mut self) -> bool {
         if !self.invalidation.deferred_status_refresh {
             return false;
@@ -120,12 +115,10 @@ impl DesktopApp {
         true
     }
 
-    /// 提示 フレーム を再構築する。
     pub(super) fn rebuild_present_frame(&mut self) {
         self.invalidation.needs_full_present_rebuild = true;
     }
 
-    /// 初期化 アクティブ interactions に必要な差分領域だけを描画または合成する。
     pub(super) fn reset_active_interactions(&mut self) {
         self.canvas_input.reset();
         self.invalidation.clear_pending();
@@ -141,7 +134,6 @@ impl DesktopApp {
         changed
     }
 
-    /// Append キャンバス 差分 矩形 に必要な差分領域だけを描画または合成する。
     pub(super) fn append_canvas_dirty_rect(&mut self, dirty: CanvasDirtyRect) -> bool {
         self.invalidation.canvas_dirty_rect = Some(
             self.invalidation.canvas_dirty_rect
@@ -150,14 +142,13 @@ impl DesktopApp {
         true
     }
 
-    /// ビットマップ edits を更新し、必要な dirty 状態も記録する。
     pub(super) fn apply_bitmap_edits(&mut self, edits: Vec<BitmapEdit>) -> bool {
         self.document
             .apply_bitmap_edits_to_active_layer(&edits)
             .is_some_and(|dirty| self.append_canvas_dirty_rect(dirty))
     }
 
-    /// Append temp オーバーレイ 差分 矩形（L3）に必要な差分領域だけを描画または合成する。
+    /// temp オーバーレイ (L3) の dirty rect を蓄積する。
     pub(super) fn append_temp_overlay_dirty_rect(&mut self, dirty: Rect) -> bool {
         self.invalidation.temp_overlay_dirty_rect = Some(
             self.invalidation.temp_overlay_dirty_rect
@@ -166,7 +157,7 @@ impl DesktopApp {
         true
     }
 
-    /// Append UI パネル 差分 矩形（L4）に必要な差分領域だけを描画または合成する。
+    /// UI パネル (L4) の dirty rect を蓄積する。
     pub(super) fn append_ui_panel_dirty_rect(&mut self, dirty: Rect) -> bool {
         self.invalidation.ui_panel_dirty_rect = Some(
             self.invalidation.ui_panel_dirty_rect
@@ -175,7 +166,6 @@ impl DesktopApp {
         true
     }
 
-    /// キャンバス 変換 差分 を更新し、必要な dirty 状態も記録する。
     pub(super) fn mark_canvas_transform_dirty(
         &mut self,
         previous_transform: app_core::CanvasViewTransform,
@@ -276,12 +266,11 @@ impl DesktopApp {
         )
     }
 
-    /// キャンバス texture quad を計算して返す。
     pub(crate) fn canvas_texture_quad(&mut self) -> Option<render_types::TextureQuad> {
         self.canvas_scene().and_then(|scene| scene.texture_quad())
     }
 
-    /// キャンバス シーン を計算して返す。入力が変わらない限りキャッシュした結果を再利用する。
+    /// 入力が変わらない限りキャッシュした結果を再利用する。
     pub(crate) fn canvas_scene(&mut self) -> Option<render_types::CanvasScene> {
         let layout = self.layout.as_ref()?;
         let bitmap = self.canvas_frame()?;
@@ -314,7 +303,6 @@ impl DesktopApp {
         scene
     }
 
-    /// キャンバス フレーム を返す。
     pub(crate) fn canvas_frame(&self) -> Option<&super::canvas_frame::CanvasFrame> {
         self.canvas_frame.as_ref()
     }

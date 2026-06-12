@@ -51,7 +51,6 @@ fn normalize_image_path(path: PathBuf) -> PathBuf {
 mod tests {
     use super::*;
 
-    /// normalize image パス adds png extension が期待どおりに動作することを検証する。
     #[test]
     fn normalize_image_path_adds_png_extension() {
         assert_eq!(
@@ -60,7 +59,6 @@ mod tests {
         );
     }
 
-    /// normalize image パス preserves existing extension が期待どおりに動作することを検証する。
     #[test]
     fn normalize_image_path_preserves_existing_extension() {
         assert_eq!(

@@ -58,7 +58,6 @@ fn ensure_sqlite_project(path: &Path) -> Result<(), StorageError> {
     )))
 }
 
-/// プロジェクト to パス を保存先へ書き出す。
 pub fn save_project_to_path(
     path: impl AsRef<Path>,
     document: &Document,
@@ -74,7 +73,6 @@ pub fn save_project_to_path(
     )
 }
 
-/// プロジェクト to パス with オプション を保存先へ書き出す。
 pub(crate) fn save_project_to_path_with_options(
     path: impl AsRef<Path>,
     document: &Document,
@@ -86,34 +84,24 @@ pub(crate) fn save_project_to_path_with_options(
     save_project_to_sqlite_path(path, document, workspace_layout, plugin_configs, options)
 }
 
-/// プロジェクト from パス を読み込み、必要に応じて整形して返す。
-///
-/// 失敗時はエラーを返します。
 pub fn load_project_from_path(path: impl AsRef<Path>) -> Result<LoadedProject, StorageError> {
     let path = path.as_ref();
     ensure_sqlite_project(path)?;
     load_project_from_sqlite_path(path)
 }
 
-/// プロジェクト インデックス from パス を読み込み、必要に応じて整形して返す。
-///
-/// 失敗時はエラーを返します。
 pub fn load_project_index_from_path(path: impl AsRef<Path>) -> Result<ProjectIndex, StorageError> {
     let path = path.as_ref();
     ensure_sqlite_project(path)?;
     load_project_index_from_sqlite_path(path)
 }
 
-/// ページ from パス を読み込み、必要に応じて整形して返す。
-///
-/// 失敗時はエラーを返します。
 pub fn load_page_from_path(path: impl AsRef<Path>, page_id: PageId) -> Result<Page, StorageError> {
     let path = path.as_ref();
     ensure_sqlite_project(path)?;
     load_page_from_sqlite_path(path, page_id)
 }
 
-/// パネル スナップショット from パス を読み込み、必要に応じて整形して返す。
 pub fn load_panel_snapshot_from_path(
     path: impl AsRef<Path>,
     snapshot_id: &str,
@@ -131,12 +119,10 @@ mod tests {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    /// small ドキュメント を計算して返す。
     fn small_document() -> Document {
         Document::new(64, 64)
     }
 
-    /// 描画 test 点 に必要な描画内容を組み立てる。
     fn draw_test_point(document: &mut Document, x: usize, y: usize) {
         let color = document.active_color.to_rgba8();
         if let Some(panel) = document.active_panel_mut() {
@@ -147,7 +133,6 @@ mod tests {
         }
     }
 
-    /// 現在の temp パス を返す。
     fn temp_path(name: &str) -> std::path::PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -156,7 +141,6 @@ mod tests {
         std::env::temp_dir().join(format!("altpaint-{name}-{unique}.altp"))
     }
 
-    /// 現在の値を ページ ドキュメント へ変換する。
     fn multi_page_document() -> Document {
         let mut document = Document::new(16, 16);
         document.work.title = "Phase 11 test".to_string();
@@ -203,7 +187,6 @@ mod tests {
         document
     }
 
-    /// 保存 and 読込 roundtrip preserves ドキュメント が期待どおりに動作することを検証する。
     #[test]
     fn save_and_load_roundtrip_preserves_document() {
         let path = temp_path("roundtrip");
@@ -283,7 +266,6 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
-    /// 保存 and 読込 roundtrip preserves ワークスペース レイアウト が期待どおりに動作することを検証する。
     #[test]
     fn save_and_load_roundtrip_preserves_workspace_layout() {
         let path = temp_path("workspace");
@@ -316,7 +298,6 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
-    /// 保存 and 読込 roundtrip preserves プラグイン configs が期待どおりに動作することを検証する。
     #[test]
     fn save_and_load_roundtrip_preserves_plugin_configs() {
         let path = temp_path("plugin-configs");
@@ -341,7 +322,6 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
-    /// 保存 プロジェクト writes sqlite header and チャンク tables が期待どおりに動作することを検証する。
     #[test]
     fn save_project_writes_sqlite_header_and_chunk_tables() {
         let path = temp_path("sqlite-format");
@@ -370,7 +350,6 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
-    /// 読込 プロジェクト インデックス reports pages panels and snapshots が期待どおりに動作することを検証する。
     #[test]
     fn load_project_index_reports_pages_panels_and_snapshots() {
         let path = temp_path("project-index");
@@ -403,7 +382,6 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
-    /// 読込 ページ from sqlite returns requested ページ only が期待どおりに動作することを検証する。
     #[test]
     fn load_page_from_sqlite_returns_requested_page_only() {
         let path = temp_path("partial-page");
@@ -430,7 +408,6 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
-    /// 読込 パネル スナップショット restores 現在 composited ビットマップ が期待どおりに動作することを検証する。
     #[test]
     fn load_panel_snapshot_restores_current_composited_bitmap() {
         let path = temp_path("snapshot");

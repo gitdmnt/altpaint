@@ -50,7 +50,6 @@ struct HtmlPanelHitItem {
 }
 
 impl PanelPresentation {
-    /// 既定値を使って新しいインスタンスを生成する。
     pub fn new() -> Self {
         Self {
             workspace_layout: WorkspaceLayout::default(),
@@ -71,7 +70,6 @@ impl PanelPresentation {
             .insert(panel_id.to_string(), screen_rect);
     }
 
-    /// 指定 panel_id の HTML パネル move handle を削除する。
     pub fn remove_html_panel_move_handle(&mut self, panel_id: &str) {
         self.html_panel_move_handles.remove(panel_id);
     }
@@ -140,7 +138,6 @@ impl PanelPresentation {
         self.html_panel_full_rects.get(panel_id).copied()
     }
 
-    /// 指定 panel_id の HTML パネル full rect を削除する。
     pub fn remove_html_panel_full_rect(&mut self, panel_id: &str) {
         self.html_panel_full_rects.remove(panel_id);
     }
@@ -170,12 +167,10 @@ impl PanelPresentation {
         })
     }
 
-    /// 現在の ワークスペース レイアウト を返す。
     pub fn workspace_layout(&self) -> WorkspaceLayout {
         self.workspace_layout.clone()
     }
 
-    /// ワークスペース レイアウト を置き換える。
     pub fn replace_workspace_layout(&mut self, workspace_layout: WorkspaceLayout) {
         self.workspace_layout = workspace_layout;
         self.ensure_workspace_manager_entry();
@@ -188,9 +183,6 @@ impl PanelPresentation {
         self.reconcile_workspace_layout(panel_ids);
     }
 
-    /// 既存データを走査して focused target を組み立てる。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn focused_target(&self) -> Option<(&str, &str)> {
         self.focused_target
             .as_ref()
@@ -199,7 +191,6 @@ impl PanelPresentation {
 }
 
 impl Default for PanelPresentation {
-    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self::new()
     }

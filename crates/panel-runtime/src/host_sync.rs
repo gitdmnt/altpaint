@@ -36,7 +36,6 @@ pub struct HostSnapshotCache {
 /// 未設定時は空配列を返す。
 pub const EMPTY_WORKSPACE_PANELS_JSON: &str = "[]";
 
-/// アクティブな ツール 名前 を返す。
 pub(crate) fn active_tool_name(tool: ToolKind) -> &'static str {
     match tool {
         ToolKind::Pen => "pen",

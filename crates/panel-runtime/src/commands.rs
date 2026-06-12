@@ -18,9 +18,6 @@ fn parse_hex_color(input: &str) -> Option<app_core::ColorRgba8> {
     Some(app_core::ColorRgba8::new(r, g, b, 0xff))
 }
 
-/// 現在の値を from 記述子 へ変換する。
-///
-/// 失敗時はエラーを返します。
 pub fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, String> {
     match descriptor.name.as_str() {
         "tool.set_active" => {
@@ -174,9 +171,6 @@ pub fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command
     }
 }
 
-/// 入力を解析して u64 に変換する。
-///
-/// 値を生成できない場合は `None` を返します。
 fn payload_u64(value: &Value) -> Option<u64> {
     value
         .as_u64()

@@ -140,13 +140,10 @@ pub enum PanelEvent {
 /// HTML パネル経路 (`BuiltinPanelPlugin`) の DOM mutation に統一した。
 /// ここでは識別子・表示名・ドキュメント同期・イベント受理・persistent 設定の保存だけを契約する。
 pub trait PanelPlugin {
-    /// ID を計算して返す。
     fn id(&self) -> &'static str;
 
-    /// title を計算して返す。
     fn title(&self) -> &'static str;
 
-    /// 更新 に必要な処理を行う。
     fn update(
         &mut self,
         _document: &Document,
@@ -163,22 +160,16 @@ pub trait PanelPlugin {
         None
     }
 
-    /// handles キーボード イベント を計算して返す。
     fn handles_keyboard_event(&self) -> bool {
         false
     }
 
-    /// 現在の persistent 設定 を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn persistent_config(&self) -> Option<Value> {
         None
     }
 
-    /// Persistent 設定 を更新する。
     fn restore_persistent_config(&mut self, _config: &Value) {}
 
-    /// 入力や種別に応じて処理を振り分ける。
     /// 既定実装は何も発行しない (DSL 時代の tree walker は撤去済み)。
     /// HTML パネル経路は `BuiltinPanelPlugin::handle_event` で
     /// data-action を直接見る経路を持つ。

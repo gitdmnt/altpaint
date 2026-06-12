@@ -9,7 +9,6 @@ use super::{
     unique_test_path,
 };
 
-/// 要求 サービス 新規 ドキュメント sized updates ビットマップ が期待どおりに動作することを検証する。
 #[test]
 fn request_service_new_document_sized_updates_bitmap() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -26,7 +25,6 @@ fn request_service_new_document_sized_updates_bitmap() {
     assert_eq!((bitmap.width, bitmap.height), (128, 96));
 }
 
-/// 要求 サービス 保存 プロジェクト enqueues 背景 task が期待どおりに動作することを検証する。
 #[test]
 fn request_service_save_project_enqueues_background_task() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -40,7 +38,6 @@ fn request_service_save_project_enqueues_background_task() {
     assert_eq!(app.background_jobs.len(), 1);
 }
 
-/// 要求 サービス 保存 ワークスペース preset persists カタログ が期待どおりに動作することを検証する。
 #[test]
 fn request_service_save_workspace_preset_persists_catalog() {
     let preset_path = unique_test_path("service-workspace-presets");
@@ -71,7 +68,6 @@ fn request_service_save_workspace_preset_persists_catalog() {
     assert!(reloaded.presets.iter().any(|preset| preset.id == "review"));
 }
 
-/// スナップショット 作成 サービス request increases スナップショット 件数 が期待どおりに動作することを検証する。
 #[test]
 fn snapshot_create_service_increases_snapshot_count() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -86,7 +82,6 @@ fn snapshot_create_service_increases_snapshot_count() {
     assert_eq!(app.snapshots.len(), 1);
 }
 
-/// スナップショット 復元 サービス request restores ドキュメント が期待どおりに動作することを検証する。
 #[test]
 fn snapshot_restore_service_restores_document() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -124,7 +119,6 @@ fn request_service_workspace_layout_set_panel_visibility_toggles_visibility() {
     );
 }
 
-/// 要求 サービス 再読込 ペン presets refreshes ドキュメント 状態 が期待どおりに動作することを検証する。
 #[test]
 fn request_service_reload_pen_presets_refreshes_document_state() {
     let mut app = test_app_with_dialogs(TestDialogs::default());

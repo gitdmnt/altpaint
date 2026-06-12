@@ -11,7 +11,6 @@ struct HandlerArgs {
 }
 
 impl Parse for HandlerArgs {
-    /// 解析 を計算して返す。
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         if input.is_empty() {
             return Ok(Self { export_name: None });
@@ -32,7 +31,6 @@ impl Parse for HandlerArgs {
     }
 }
 
-/// パネル 初期化 を計算して返す。
 #[proc_macro_attribute]
 pub fn panel_init(attr: TokenStream, item: TokenStream) -> TokenStream {
     if !attr.is_empty() {
@@ -48,7 +46,6 @@ pub fn panel_init(attr: TokenStream, item: TokenStream) -> TokenStream {
     expand_panel_export(function, "panel_init", true, None)
 }
 
-/// パネル ハンドラ を計算して返す。
 #[proc_macro_attribute]
 pub fn panel_handler(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as HandlerArgs);
@@ -56,7 +53,6 @@ pub fn panel_handler(attr: TokenStream, item: TokenStream) -> TokenStream {
     expand_panel_export(function, "panel_handle", false, args.export_name)
 }
 
-/// パネル 同期 ホスト を計算して返す。
 #[proc_macro_attribute]
 pub fn panel_sync_host(attr: TokenStream, item: TokenStream) -> TokenStream {
     if !attr.is_empty() {
@@ -80,7 +76,6 @@ pub fn panel_sync_host(attr: TokenStream, item: TokenStream) -> TokenStream {
     )
 }
 
-/// Expand パネル 書き出し 用の表示文字列を組み立てる。
 fn expand_panel_export(
     function: ItemFn,
     export_prefix: &str,
@@ -124,9 +119,6 @@ fn expand_panel_export(
     .into()
 }
 
-/// 入力や種別に応じて処理を振り分ける。
-///
-/// 失敗時はエラーを返します。
 fn validate_signature(signature: &syn::Signature, is_init: bool) -> syn::Result<()> {
     if signature.constness.is_some() {
         return Err(syn::Error::new(
@@ -193,7 +185,6 @@ fn validate_signature(signature: &syn::Signature, is_init: bool) -> syn::Result<
     Ok(())
 }
 
-/// 入力や種別に応じて処理を振り分ける。
 fn matches_i32(ty: &Type) -> bool {
     match ty {
         Type::Path(path) => path
@@ -205,7 +196,6 @@ fn matches_i32(ty: &Type) -> bool {
     }
 }
 
-/// 入力や種別に応じて処理を振り分ける。
 fn call_argument_for_input(argument: &FnArg) -> proc_macro2::TokenStream {
     match argument {
         FnArg::Typed(argument) => match &*argument.pat {

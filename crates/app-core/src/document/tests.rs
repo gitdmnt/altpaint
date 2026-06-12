@@ -1,9 +1,6 @@
 use super::*;
 use crate::{CanvasDirtyRect, ClampToCanvasBounds, MergeInSpace};
 
-/// レイヤー ブラシ を更新し、必要な dirty 状態も記録する。
-///
-/// 必要に応じて dirty 状態も更新します。
 fn apply_layer_brush(
     document: &mut Document,
     paint: impl FnOnce(&mut CanvasBitmap, bool) -> CanvasDirtyRect,
@@ -29,9 +26,6 @@ fn apply_layer_brush(
     )
 }
 
-/// 描画 点 に必要な差分領域だけを描画または合成する。
-///
-/// 値を生成できない場合は `None` を返します。
 fn draw_point(document: &mut Document, x: usize, y: usize) -> Option<CanvasDirtyRect> {
     let color = document.active_color.to_rgba8();
     let size = document.resolved_paint_size_with_pressure(1.0);
@@ -44,9 +38,6 @@ fn draw_point(document: &mut Document, x: usize, y: usize) -> Option<CanvasDirty
     })
 }
 
-/// 描画 ストローク に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
 fn draw_stroke(
     document: &mut Document,
     from_x: usize,
@@ -65,9 +56,6 @@ fn draw_stroke(
     })
 }
 
-/// Erase 点 に必要な差分領域だけを描画または合成する。
-///
-/// 値を生成できない場合は `None` を返します。
 fn erase_point(document: &mut Document, x: usize, y: usize) -> Option<CanvasDirtyRect> {
     let size = document.resolved_paint_size_with_pressure(1.0);
     let antialias = document
@@ -83,7 +71,6 @@ fn erase_point(document: &mut Document, x: usize, y: usize) -> Option<CanvasDirt
     })
 }
 
-/// 既定 ドキュメント has single ページ single パネル single レイヤー が期待どおりに動作することを検証する。
 #[test]
 fn default_document_has_single_page_single_panel_single_layer() {
     let document = Document::default();
@@ -102,9 +89,6 @@ fn default_document_has_single_page_single_panel_single_layer() {
     );
 }
 
-/// 描画 点 marks target ピクセル black が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn draw_point_marks_target_pixel_black() {
     let mut document = Document::default();
@@ -118,9 +102,6 @@ fn draw_point_marks_target_pixel_black() {
     assert_eq!(dirty, CanvasDirtyRect::from_inclusive_points(3, 4, 3, 4));
 }
 
-/// 描画 ストローク draws continuous line が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn draw_stroke_draws_continuous_line() {
     let mut document = Document::default();
@@ -136,9 +117,6 @@ fn draw_stroke_draws_continuous_line() {
     assert_eq!(dirty, CanvasDirtyRect::from_inclusive_points(2, 2, 6, 2));
 }
 
-/// erase 点 marks target ピクセル white が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn erase_point_marks_target_pixel_white() {
     let mut document = Document::default();
@@ -153,7 +131,6 @@ fn erase_point_marks_target_pixel_white() {
     assert_eq!(dirty, CanvasDirtyRect::from_inclusive_points(3, 4, 3, 4));
 }
 
-/// アクティブ ツール defaults to ペン が期待どおりに動作することを検証する。
 #[test]
 fn active_tool_defaults_to_pen() {
     let document = Document::default();
@@ -161,7 +138,6 @@ fn active_tool_defaults_to_pen() {
     assert_eq!(document.active_tool, ToolKind::Pen);
 }
 
-/// アクティブ 色 defaults to black が期待どおりに動作することを検証する。
 #[test]
 fn active_color_defaults_to_black() {
     let document = Document::default();
@@ -169,7 +145,6 @@ fn active_color_defaults_to_black() {
     assert_eq!(document.active_color, ColorRgba8::new(0, 0, 0, 255));
 }
 
-/// 既定 ドキュメント has round ペン preset が期待どおりに動作することを検証する。
 #[test]
 fn default_document_has_round_pen_preset() {
     let document = Document::default();
@@ -179,7 +154,6 @@ fn default_document_has_round_pen_preset() {
     assert_eq!(document.active_pen_size, 4);
 }
 
-/// 描画 点 uses アクティブ 色 が期待どおりに動作することを検証する。
 #[test]
 fn draw_point_uses_active_color() {
     let mut document = Document::default();
@@ -192,9 +166,6 @@ fn draw_point_uses_active_color() {
     assert_eq!(&bitmap.pixels[index..index + 4], &[0xe5, 0x39, 0x35, 0xff]);
 }
 
-/// 差分 矩形 union merges 範囲 が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn dirty_rect_union_merges_bounds() {
     let left = CanvasDirtyRect::from_inclusive_points(2, 3, 4, 5);
@@ -211,7 +182,6 @@ fn dirty_rect_union_merges_bounds() {
     );
 }
 
-/// キャンバス defaults to white 背景 が期待どおりに動作することを検証する。
 #[test]
 fn canvas_defaults_to_white_background() {
     let bitmap = CanvasBitmap::default();
@@ -219,9 +189,6 @@ fn canvas_defaults_to_white_background() {
     assert_eq!(&bitmap.pixels[0..4], &[255, 255, 255, 255]);
 }
 
-/// 適用 コマンド switches アクティブ ツール が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn apply_command_switches_active_tool() {
     let mut document = Document::default();
@@ -233,9 +200,6 @@ fn apply_command_switches_active_tool() {
     assert_eq!(document.active_tool, ToolKind::Pen);
 }
 
-/// 適用 コマンド selects registered ツール by ID が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn apply_command_selects_registered_tool_by_id() {
     let mut document = Document::default();
@@ -248,7 +212,6 @@ fn apply_command_selects_registered_tool_by_id() {
     assert_eq!(document.active_tool_id, "builtin.eraser");
 }
 
-/// アクティブ ツール definition uses registered ツール metadata が期待どおりに動作することを検証する。
 #[test]
 fn active_tool_definition_uses_registered_tool_metadata() {
     let mut document = Document::default();
@@ -265,9 +228,6 @@ fn active_tool_definition_uses_registered_tool_metadata() {
     assert!(tool.settings.iter().any(|setting| setting.key == "size"));
 }
 
-/// 適用 コマンド updates ペン サイズ が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn apply_command_updates_pen_size() {
     let mut document = Document::default();
@@ -277,9 +237,6 @@ fn apply_command_updates_pen_size() {
     assert_eq!(document.active_pen_size, 12);
 }
 
-/// 適用 コマンド switches アクティブ 色 が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn apply_command_switches_active_color() {
     let mut document = Document::default();
@@ -294,9 +251,6 @@ fn apply_command_switches_active_color() {
     );
 }
 
-/// ビットマップ 編集 style ストローク returns 差分 矩形 が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn bitmap_edit_style_stroke_returns_dirty_rect() {
     let mut document = Document::default();
@@ -313,9 +267,6 @@ fn bitmap_edit_style_stroke_returns_dirty_rect() {
     assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
 }
 
-/// ペン draws wider than single ピクセル 既定 ストローク が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn pen_draws_wider_than_single_pixel_default_stroke() {
     let mut document = Document::default();
@@ -335,9 +286,6 @@ fn pen_draws_wider_than_single_pixel_default_stroke() {
     assert_eq!(&bitmap.pixels[edge..edge + 4], &[0, 0, 0, 255]);
 }
 
-/// wide ストローク keeps segment core filled が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn wide_stroke_keeps_segment_core_filled() {
     let mut document = Document::new(128, 128);
@@ -357,9 +305,6 @@ fn wide_stroke_keeps_segment_core_filled() {
     }
 }
 
-/// wide diagonal ストローク marks midpoint pixels が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn wide_diagonal_stroke_marks_midpoint_pixels() {
     let mut document = Document::new(128, 128);
@@ -379,7 +324,6 @@ fn wide_diagonal_stroke_marks_midpoint_pixels() {
     }
 }
 
-/// cycling ペン presets updates アクティブ サイズ が期待どおりに動作することを検証する。
 #[test]
 fn cycling_pen_presets_updates_active_size() {
     let mut document = Document::default();
@@ -410,7 +354,6 @@ fn cycling_pen_presets_updates_active_size() {
     assert_eq!(document.active_pen_size, 9);
 }
 
-/// ドキュメント 新規 uses requested キャンバス サイズ が期待どおりに動作することを検証する。
 #[test]
 fn document_new_uses_requested_canvas_size() {
     let document = Document::new(320, 240);
@@ -419,9 +362,6 @@ fn document_new_uses_requested_canvas_size() {
     assert_eq!((bitmap.width, bitmap.height), (320, 240));
 }
 
-/// 適用 コマンド 新規 ドキュメント sized replaces ビットマップ dimensions が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn apply_command_new_document_sized_replaces_bitmap_dimensions() {
     let mut document = Document::default();
@@ -435,9 +375,6 @@ fn apply_command_new_document_sized_replaces_bitmap_dimensions() {
     assert_eq!((bitmap.width, bitmap.height), (512, 384));
 }
 
-/// 差分 矩形 clamps to ビットマップ 範囲 が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn dirty_rect_clamps_to_bitmap_bounds() {
     let rect = CanvasDirtyRect {
@@ -458,7 +395,6 @@ fn dirty_rect_clamps_to_bitmap_bounds() {
     );
 }
 
-/// ドキュメント stores キャンバス ビュー 変換 が期待どおりに動作することを検証する。
 #[test]
 fn document_stores_canvas_view_transform() {
     let mut document = Document::default();
@@ -476,7 +412,6 @@ fn document_stores_canvas_view_transform() {
     assert_eq!(document.view_transform, transform);
 }
 
-/// 追加 raster レイヤー selects 新規 レイヤー が期待どおりに動作することを検証する。
 #[test]
 fn add_raster_layer_selects_new_layer() {
     let mut document = Document::default();
@@ -489,7 +424,6 @@ fn add_raster_layer_selects_new_layer() {
     assert_eq!(panel.layers[1].name, "Layer 2");
 }
 
-/// 追加 raster レイヤー uses created レイヤー counter for names が期待どおりに動作することを検証する。
 #[test]
 fn add_raster_layer_uses_created_layer_counter_for_names() {
     let mut document = Document::default();
@@ -509,7 +443,6 @@ fn add_raster_layer_uses_created_layer_counter_for_names() {
     assert_eq!(panel.created_layer_count, 4);
 }
 
-/// 削除 アクティブ レイヤー keeps at least one レイヤー が期待どおりに動作することを検証する。
 #[test]
 fn remove_active_layer_keeps_at_least_one_layer() {
     let mut document = Document::default();
@@ -521,7 +454,6 @@ fn remove_active_layer_keeps_at_least_one_layer() {
     assert_eq!(panel.active_layer_index, 0);
 }
 
-/// 削除 アクティブ レイヤー selects remaining レイヤー が期待どおりに動作することを検証する。
 #[test]
 fn remove_active_layer_selects_remaining_layer() {
     let mut document = Document::default();
@@ -536,7 +468,6 @@ fn remove_active_layer_selects_remaining_layer() {
     assert_eq!(panel.layers[1].name, "Layer 2");
 }
 
-/// move レイヤー reorders layers and tracks アクティブ selection が期待どおりに動作することを検証する。
 #[test]
 fn move_layer_reorders_layers_and_tracks_active_selection() {
     let mut document = Document::default();
@@ -558,7 +489,6 @@ fn move_layer_reorders_layers_and_tracks_active_selection() {
     assert_eq!(panel.active_layer_index, 0);
 }
 
-/// rename アクティブ レイヤー updates 選択中 レイヤー 名前 が期待どおりに動作することを検証する。
 #[test]
 fn rename_active_layer_updates_selected_layer_name() {
     let mut document = Document::default();
@@ -572,7 +502,6 @@ fn rename_active_layer_updates_selected_layer_name() {
     assert_eq!(panel.layers[1].name, "Ink");
 }
 
-/// 設定 アクティブ レイヤー ブレンド モード sets requested モード が期待どおりに動作することを検証する。
 #[test]
 fn set_active_layer_blend_mode_sets_requested_mode() {
     let mut document = Document::default();
@@ -602,7 +531,6 @@ fn gpu_code_matches_shader_switch_codes() {
     assert_eq!(BlendMode::Add.gpu_code(), 3);
 }
 
-/// 切替 アクティブ レイヤー visibility reveals underlying レイヤー が期待どおりに動作することを検証する。
 #[test]
 fn toggle_active_layer_visibility_reveals_underlying_layer() {
     let mut document = Document::default();
@@ -621,7 +549,6 @@ fn toggle_active_layer_visibility_reveals_underlying_layer() {
     );
 }
 
-/// 生成 パネル コマンド adds rectangular パネル without relayout が期待どおりに動作することを検証する。
 #[test]
 fn create_panel_command_adds_rectangular_panel_without_relayout() {
     let mut document = Document::new(320, 240);
@@ -647,9 +574,6 @@ fn create_panel_command_adds_rectangular_panel_without_relayout() {
     assert_eq!((panel.bitmap.width, panel.bitmap.height), (120, 80));
 }
 
-/// パネル local 描画 returns ページ space 差分 矩形 が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn panel_local_draw_returns_page_space_dirty_rect() {
     let mut document = Document::new(320, 240);
@@ -669,7 +593,6 @@ fn panel_local_draw_returns_page_space_dirty_rect() {
     );
 }
 
-/// 追加 パネル selects 新規 アクティブ パネル が期待どおりに動作することを検証する。
 #[test]
 fn add_panel_selects_new_active_panel() {
     let mut document = Document::new(320, 240);
@@ -683,7 +606,6 @@ fn add_panel_selects_new_active_panel() {
     assert!(active_panel.bounds.height > 0);
 }
 
-/// パネル selection switches 編集 target が期待どおりに動作することを検証する。
 #[test]
 fn panel_selection_switches_edit_target() {
     let mut document = Document::new(128, 128);
@@ -707,7 +629,6 @@ fn panel_selection_switches_edit_target() {
     );
 }
 
-/// 選択 前 パネル wraps to last パネル が期待どおりに動作することを検証する。
 #[test]
 fn select_previous_panel_wraps_to_last_panel() {
     let mut document = Document::new(256, 256);
@@ -719,7 +640,6 @@ fn select_previous_panel_wraps_to_last_panel() {
     assert_eq!(document.active_panel_index(), 1);
 }
 
-/// 削除 アクティブ パネル keeps single パネル minimum が期待どおりに動作することを検証する。
 #[test]
 fn remove_active_panel_keeps_single_panel_minimum() {
     let mut document = Document::new(256, 256);
@@ -734,7 +654,6 @@ fn remove_active_panel_keeps_single_panel_minimum() {
     assert_eq!(document.active_panel_index(), 0);
 }
 
-/// フォーカス アクティブ パネル resets ビュー 変換 が期待どおりに動作することを検証する。
 #[test]
 fn focus_active_panel_resets_view_transform() {
     let mut document = Document::new(256, 256);

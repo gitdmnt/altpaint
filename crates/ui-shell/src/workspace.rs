@@ -11,8 +11,6 @@ use panel_api::PanelMoveDirection;
 pub(super) const WORKSPACE_PANEL_ID: &str = "builtin.workspace-layout";
 const HIDDEN_BY_DEFAULT_PANEL_IDS: &[&str] = &["builtin.panel-list"];
 
-/// 既定の パネル 状態 を返す。
-///
 /// Phase 11: `size` は `None` で挿入し、bootstrap 経路で panel.meta.json の
 /// `default_size` を流し込む。`WorkspacePanelSize::default()` には頼らない。
 pub(super) fn default_panel_state(panel_id: &str, index: usize) -> WorkspacePanelState {
@@ -27,7 +25,6 @@ pub(super) fn default_panel_state(panel_id: &str, index: usize) -> WorkspacePane
 }
 
 impl PanelPresentation {
-    /// ワークスペース manager entry が満たされるよう整える。
     pub(super) fn ensure_workspace_manager_entry(&mut self) {
         if self
             .workspace_layout
@@ -43,9 +40,6 @@ impl PanelPresentation {
             .insert(0, default_panel_state(WORKSPACE_PANEL_ID, 0));
     }
 
-    /// 既存データを走査して move パネル to を組み立てる。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub fn move_panel_to(
         &mut self,
         panel_id: &str,
@@ -89,9 +83,6 @@ impl PanelPresentation {
         true
     }
 
-    /// 既存データを走査して パネル 矩形 を組み立てる。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn panel_rect(&self, panel_id: &str) -> Option<render_types::PixelRect> {
         let entry = self
             .workspace_layout
@@ -202,9 +193,6 @@ impl PanelPresentation {
         })
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub fn move_panel(&mut self, panel_id: &str, direction: PanelMoveDirection) -> bool {
         let Some(index) = self
             .workspace_layout
@@ -225,9 +213,6 @@ impl PanelPresentation {
         true
     }
 
-    /// パネル visibility を設定する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub fn set_panel_visibility(&mut self, panel_id: &str, visible: bool) -> bool {
         if panel_id == WORKSPACE_PANEL_ID {
             return false;
@@ -258,7 +243,6 @@ impl PanelPresentation {
         true
     }
 
-    /// ワークスペース パネル entry が満たされるよう整える。
     pub(super) fn ensure_workspace_panel_entry(&mut self, panel_id: &str) {
         if self
             .workspace_layout
@@ -275,7 +259,6 @@ impl PanelPresentation {
         ));
     }
 
-    /// reconcile ワークスペース レイアウト に必要な処理を行う。
     pub(super) fn reconcile_workspace_layout(&mut self, panel_ids: Vec<&'static str>) {
         self.ensure_workspace_manager_entry();
 
@@ -307,7 +290,6 @@ impl PanelPresentation {
         self.panel_is_visible(panel_id)
     }
 
-    /// 既存データを走査して パネル is 表示状態 を組み立てる。
     pub(super) fn panel_is_visible(&self, panel_id: &str) -> bool {
         if panel_id == WORKSPACE_PANEL_ID {
             return true;
@@ -322,7 +304,6 @@ impl PanelPresentation {
     }
 }
 
-/// 既定の パネル anchor and position を返す。
 fn default_panel_anchor_and_position(
     panel_id: &str,
     index: usize,
@@ -358,7 +339,6 @@ fn default_panel_anchor_and_position(
     }
 }
 
-/// 既定の パネル position を返す。
 fn default_panel_position(panel_id: &str, index: usize) -> WorkspacePanelPosition {
     default_panel_anchor_and_position(panel_id, index).1
 }

@@ -2,13 +2,11 @@ use serde::{Deserialize, Serialize};
 
 /// 同一座標空間の値同士を統合する操作を表す。
 pub trait MergeInSpace: Sized {
-    /// merge を計算して返す。
     fn merge(self, other: Self) -> Self;
 }
 
 /// キャンバス境界へクランプする操作を表す。
 pub trait ClampToCanvasBounds: Sized {
-    /// 現在の 補正 to キャンバス 範囲 を返す。
     fn clamp_to_canvas_bounds(self, width: usize, height: usize) -> Self;
 }
 
@@ -20,7 +18,6 @@ pub struct WindowPoint {
 }
 
 impl WindowPoint {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub const fn new(x: i32, y: i32) -> Self {
         Self { x, y }
     }
@@ -36,7 +33,6 @@ pub struct WindowRect {
 }
 
 impl WindowRect {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub const fn new(x: usize, y: usize, width: usize, height: usize) -> Self {
         Self {
             x,
@@ -46,7 +42,6 @@ impl WindowRect {
         }
     }
 
-    /// 対象 が範囲内に含まれるか判定する。
     pub fn contains(self, point: WindowPoint) -> bool {
         point.x >= self.x as i32
             && point.y >= self.y as i32
@@ -54,9 +49,6 @@ impl WindowRect {
             && point.y < (self.y + self.height) as i32
     }
 
-    /// 補正 点 を有効範囲へ補正して返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn clamp_point(self, point: WindowPoint) -> Option<WindowPoint> {
         if self.width == 0 || self.height == 0 {
             return None;
@@ -74,9 +66,6 @@ impl WindowRect {
         })
     }
 
-    /// 現在の値を キャンバス viewport 点 形式へ変換する。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn to_canvas_viewport_point(self, point: WindowPoint) -> Option<CanvasViewportPoint> {
         self.contains(point).then_some(CanvasViewportPoint::new(
             point.x - self.x as i32,
@@ -84,17 +73,11 @@ impl WindowRect {
         ))
     }
 
-    /// 補正 to キャンバス viewport 点 を計算して返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn clamp_to_canvas_viewport_point(self, point: WindowPoint) -> Option<CanvasViewportPoint> {
         let point = self.clamp_point(point)?;
         self.to_canvas_viewport_point(point)
     }
 
-    /// 現在の値を パネル サーフェス 点 形式へ変換する。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn to_panel_surface_point(self, point: WindowPoint) -> Option<PanelSurfacePoint> {
         self.contains(point).then_some(PanelSurfacePoint::new(
             (point.x - self.x as i32) as usize,
@@ -102,9 +85,6 @@ impl WindowRect {
         ))
     }
 
-    /// 補正 to パネル サーフェス 点 を計算して返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn clamp_to_panel_surface_point(self, point: WindowPoint) -> Option<PanelSurfacePoint> {
         let point = self.clamp_point(point)?;
         self.to_panel_surface_point(point)
@@ -119,7 +99,6 @@ pub struct CanvasViewportPoint {
 }
 
 impl CanvasViewportPoint {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub const fn new(x: i32, y: i32) -> Self {
         Self { x, y }
     }
@@ -133,7 +112,6 @@ pub struct CanvasPoint {
 }
 
 impl CanvasPoint {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub const fn new(x: usize, y: usize) -> Self {
         Self { x, y }
     }
@@ -151,7 +129,6 @@ pub struct CanvasPointF {
 }
 
 impl CanvasPointF {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub const fn new(x: f32, y: f32) -> Self {
         Self { x, y }
     }
@@ -174,7 +151,6 @@ impl CanvasPointF {
 }
 
 impl From<CanvasPoint> for CanvasPointF {
-    /// 別形式の値から現在の型へ変換する。
     fn from(value: CanvasPoint) -> Self {
         Self::new(value.x as f32, value.y as f32)
     }
@@ -188,7 +164,6 @@ pub struct PanelLocalPoint {
 }
 
 impl PanelLocalPoint {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub const fn new(x: usize, y: usize) -> Self {
         Self { x, y }
     }
@@ -202,7 +177,6 @@ pub struct PanelSurfacePoint {
 }
 
 impl PanelSurfacePoint {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub const fn new(x: usize, y: usize) -> Self {
         Self { x, y }
     }
@@ -218,7 +192,6 @@ pub struct PanelSurfaceRect {
 }
 
 impl PanelSurfaceRect {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub const fn new(x: usize, y: usize, width: usize, height: usize) -> Self {
         Self {
             x,
@@ -228,21 +201,14 @@ impl PanelSurfaceRect {
         }
     }
 
-    /// 現在の値を ウィンドウ 矩形 形式へ変換する。
     pub const fn as_window_rect(self) -> WindowRect {
         WindowRect::new(self.x, self.y, self.width, self.height)
     }
 
-    /// 現在の値を サーフェス 点 形式へ変換する。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn to_surface_point(self, point: WindowPoint) -> Option<PanelSurfacePoint> {
         self.as_window_rect().to_panel_surface_point(point)
     }
 
-    /// 補正 to サーフェス 点 を計算して返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn clamp_to_surface_point(self, point: WindowPoint) -> Option<PanelSurfacePoint> {
         self.as_window_rect().clamp_to_panel_surface_point(point)
     }
@@ -256,7 +222,6 @@ pub struct CanvasDisplayPoint {
 }
 
 impl CanvasDisplayPoint {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub const fn new(x: f32, y: f32) -> Self {
         Self { x, y }
     }
@@ -272,7 +237,6 @@ pub struct CanvasDirtyRect {
 }
 
 impl CanvasDirtyRect {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub const fn new(x: usize, y: usize, width: usize, height: usize) -> Self {
         Self {
             x,
@@ -282,7 +246,6 @@ impl CanvasDirtyRect {
         }
     }
 
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn from_inclusive_points(from_x: usize, from_y: usize, to_x: usize, to_y: usize) -> Self {
         let min_x = from_x.min(to_x);
         let min_y = from_y.min(to_y);
@@ -299,7 +262,6 @@ impl CanvasDirtyRect {
 }
 
 impl MergeInSpace for CanvasDirtyRect {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     fn merge(self, other: Self) -> Self {
         let left = self.x.min(other.x);
         let top = self.y.min(other.y);
@@ -316,7 +278,6 @@ impl MergeInSpace for CanvasDirtyRect {
 }
 
 impl ClampToCanvasBounds for CanvasDirtyRect {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     fn clamp_to_canvas_bounds(self, width: usize, height: usize) -> Self {
         if width == 0 || height == 0 {
             return Self {
@@ -354,7 +315,6 @@ pub struct WindowDirtyRect {
 }
 
 impl WindowDirtyRect {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub const fn new(x: usize, y: usize, width: usize, height: usize) -> Self {
         Self {
             x,
@@ -364,14 +324,12 @@ impl WindowDirtyRect {
         }
     }
 
-    /// 現在の値を ウィンドウ 矩形 形式へ変換する。
     pub const fn as_window_rect(self) -> WindowRect {
         WindowRect::new(self.x, self.y, self.width, self.height)
     }
 }
 
 impl MergeInSpace for WindowDirtyRect {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     fn merge(self, other: Self) -> Self {
         let left = self.x.min(other.x);
         let top = self.y.min(other.y);
@@ -388,7 +346,6 @@ impl MergeInSpace for WindowDirtyRect {
 }
 
 impl From<WindowRect> for WindowDirtyRect {
-    /// 別形式の値から現在の型へ変換する。
     fn from(value: WindowRect) -> Self {
         Self::new(value.x, value.y, value.width, value.height)
     }
@@ -404,7 +361,6 @@ pub struct PanelSurfaceDirtyRect {
 }
 
 impl PanelSurfaceDirtyRect {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub const fn new(x: usize, y: usize, width: usize, height: usize) -> Self {
         Self {
             x,
@@ -416,7 +372,6 @@ impl PanelSurfaceDirtyRect {
 }
 
 impl MergeInSpace for PanelSurfaceDirtyRect {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     fn merge(self, other: Self) -> Self {
         let left = self.x.min(other.x);
         let top = self.y.min(other.y);
@@ -436,7 +391,6 @@ impl MergeInSpace for PanelSurfaceDirtyRect {
 mod tests {
     use super::*;
 
-    /// ウィンドウ 矩形 maps ウィンドウ 点 to キャンバス viewport 点 が期待どおりに動作することを検証する。
     #[test]
     fn window_rect_maps_window_point_to_canvas_viewport_point() {
         let rect = WindowRect::new(100, 80, 320, 240);
@@ -448,7 +402,6 @@ mod tests {
         );
     }
 
-    /// パネル サーフェス 矩形 clamps ウィンドウ 点 into サーフェス space が期待どおりに動作することを検証する。
     #[test]
     fn panel_surface_rect_clamps_window_point_into_surface_space() {
         let rect = PanelSurfaceRect::new(120, 80, 8, 6);
@@ -459,9 +412,6 @@ mod tests {
         );
     }
 
-    /// キャンバス 差分 矩形 merge combines 範囲 が期待どおりに動作することを検証する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     #[test]
     fn canvas_dirty_rect_merge_combines_bounds() {
         let left = CanvasDirtyRect::from_inclusive_points(2, 3, 4, 5);

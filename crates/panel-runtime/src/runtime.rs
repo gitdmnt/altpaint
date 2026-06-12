@@ -64,14 +64,12 @@ pub struct PanelRuntime {
 }
 
 impl Default for PanelRuntime {
-    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl PanelRuntime {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn new() -> Self {
         Self {
             panels: Vec::new(),
@@ -330,7 +328,6 @@ impl PanelRuntime {
         out
     }
 
-    /// 現在の値を パネル へ変換する。
     pub fn register_panel(&mut self, mut panel: Box<dyn PanelPlugin>) {
         if let Some(config) = self.persistent_panel_configs.get(panel.id()) {
             panel.restore_persistent_config(config);
@@ -385,7 +382,6 @@ impl PanelRuntime {
         self.sync_document_subset(document, Some(&dirty), can_undo, can_redo, active_jobs, snapshot_count)
     }
 
-    /// 現在の パネル 件数 を返す。
     pub fn panel_count(&self) -> usize {
         self.panels.len()
     }
@@ -405,12 +401,10 @@ impl PanelRuntime {
         self.panels.iter().map(|panel| panel.id()).collect()
     }
 
-    /// persistent パネル configs を計算して返す。
     pub fn persistent_panel_configs(&self) -> BTreeMap<String, Value> {
         collect_persistent_panel_configs(&self.panels)
     }
 
-    /// Persistent パネル configs を置き換える。
     pub fn replace_persistent_panel_configs(&mut self, configs: BTreeMap<String, Value>) {
         self.persistent_panel_configs = configs;
         restore_persistent_panel_configs(&mut self.panels, &self.persistent_panel_configs);
@@ -515,7 +509,6 @@ impl PanelRuntime {
     }
 }
 
-/// イベント パネル ID を計算して返す。
 fn event_panel_id(event: &PanelEvent) -> &str {
     match event {
         PanelEvent::Activate { panel_id, .. }

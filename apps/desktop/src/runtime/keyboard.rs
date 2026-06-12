@@ -16,7 +16,6 @@ impl DesktopRuntime {
         false
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_keyboard_input(&mut self, event: &KeyEvent) -> bool {
         if event.state != ElementState::Pressed || event.repeat {
             return false;
@@ -33,7 +32,6 @@ impl DesktopRuntime {
         self.handle_builtin_shortcut(&event.logical_key)
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_builtin_shortcut(&mut self, key: &Key) -> bool {
         match key {
             Key::Character(text)
@@ -78,9 +76,6 @@ impl DesktopRuntime {
         }
     }
 
-    /// 現在の値を ショートカット へ変換する。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub(super) fn normalized_shortcut(&self, key: &Key) -> Option<(String, String)> {
         let key_name = normalized_key_name(key)?;
         let mut parts = Vec::new();
@@ -101,9 +96,6 @@ impl DesktopRuntime {
     }
 }
 
-/// 現在の値を key 名前 へ変換する。
-///
-/// 値を生成できない場合は `None` を返します。
 pub(super) fn normalized_key_name(key: &Key) -> Option<String> {
     match key {
         Key::Character(text) => {

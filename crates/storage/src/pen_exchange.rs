@@ -67,9 +67,6 @@ pub enum PenFileKind {
     GimpGbr,
 }
 
-/// 入力を解析して ペン file に変換する。
-///
-/// 失敗時はエラーを返します。
 pub fn parse_pen_file(path: impl AsRef<Path>) -> Result<ImportedPenSet, PenExchangeError> {
     let path = path.as_ref();
     let kind = detect_pen_file_kind(path)?;
@@ -118,17 +115,11 @@ pub fn parse_pen_file(path: impl AsRef<Path>) -> Result<ImportedPenSet, PenExcha
     }
 }
 
-/// 現在の値を altpaint ペン JSON へ変換する。
-///
-/// 失敗時はエラーを返します。
 pub fn export_altpaint_pen_json(pen: &AltPaintPen) -> Result<String, PenExchangeError> {
     pen.validate()?;
     serde_json::to_string_pretty(pen).map_err(Into::into)
 }
 
-/// 現在の値を gimp gbr へ変換する。
-///
-/// 失敗時はエラーを返します。
 pub fn export_gimp_gbr(pen: &AltPaintPen) -> Result<Vec<u8>, PenExchangeError> {
     pen.validate()?;
     let tip = pen.tip.as_ref().ok_or_else(|| {
@@ -177,7 +168,6 @@ pub fn export_gimp_gbr(pen: &AltPaintPen) -> Result<Vec<u8>, PenExchangeError> {
     Ok(out)
 }
 
-/// 入力を解析して gimp gbr bytes に変換し、失敗時はエラーを返す。
 pub fn parse_gimp_gbr_bytes(
     bytes: &[u8],
     file_name: &str,
@@ -298,7 +288,6 @@ pub fn parse_gimp_gbr_bytes(
     Ok(pen)
 }
 
-/// 入力を解析して photoshop abr bytes に変換し、失敗時はエラーを返す。
 pub fn parse_photoshop_abr_bytes(
     bytes: &[u8],
     file_name: &str,
@@ -356,9 +345,6 @@ pub fn parse_photoshop_abr_bytes(
     Ok(ImportedPenSet { pens, report })
 }
 
-/// 入力を解析して clip studio sut に変換し、失敗時はエラーを返す。
-///
-/// 失敗時はエラーを返します。
 pub fn parse_clip_studio_sut(path: impl AsRef<Path>) -> Result<ImportedPenSet, PenExchangeError> {
     let path = path.as_ref();
     let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI;
@@ -474,9 +460,6 @@ pub fn parse_clip_studio_sut(path: impl AsRef<Path>) -> Result<ImportedPenSet, P
     Ok(ImportedPenSet { pens, report })
 }
 
-/// 現在の値を ペン file kind へ変換する。
-///
-/// 失敗時はエラーを返します。
 fn detect_pen_file_kind(path: &Path) -> Result<PenFileKind, PenExchangeError> {
     let name = path
         .file_name()
@@ -503,7 +486,6 @@ fn detect_pen_file_kind(path: &Path) -> Result<PenFileKind, PenExchangeError> {
     }
 }
 
-/// 入力を解析して abr v12 ブラシ に変換し、失敗時はエラーを返す。
 fn parse_abr_v12_brush(
     bytes: &[u8],
     cursor: &mut Cursor<&[u8]>,
@@ -613,7 +595,6 @@ fn parse_abr_v12_brush(
     }
 }
 
-/// 入力を解析して abr v6 に変換し、失敗時はエラーを返す。
 fn parse_abr_v6(
     bytes: &[u8],
     subversion: u16,
@@ -667,7 +648,6 @@ fn parse_abr_v6(
     Ok(pens)
 }
 
-/// 入力を解析して abr v6 sample に変換する。
 fn parse_abr_v6_sample(
     brush_blob: &[u8],
     subversion: u16,
@@ -743,9 +723,6 @@ fn parse_abr_v6_sample(
     Ok(None)
 }
 
-/// 入力や種別に応じて処理を振り分ける。
-///
-/// 値を生成できない場合は `None` を返します。
 fn validate_v6_layout(blob: &[u8], skip: usize) -> Option<(u32, u32, u16, u8, usize)> {
     let header_end = skip.checked_add(4 * 4 + 2 + 1)?;
     if header_end > blob.len() {
@@ -779,7 +756,6 @@ fn validate_v6_layout(blob: &[u8], skip: usize) -> Option<(u32, u32, u16, u8, us
     }
 }
 
-/// 入力や種別に応じて処理を振り分ける。
 fn read_abr_tip(
     cursor: &mut Cursor<&[u8]>,
     width: u32,
@@ -829,7 +805,6 @@ fn read_abr_tip(
     Ok(PenTip::from_alpha_mask(width, height, &alpha))
 }
 
-/// decode packbits rows に必要な処理を行う。
 fn decode_packbits_rows(
     cursor: &mut Cursor<&[u8]>,
     row_stride: usize,
@@ -850,9 +825,6 @@ fn decode_packbits_rows(
     Ok(output)
 }
 
-/// 現在の値を packbits stream へ変換する。
-///
-/// 失敗時はエラーを返します。
 fn decode_packbits_stream(data: &[u8], expected_len: usize) -> Result<Vec<u8>, PenExchangeError> {
     let mut cursor = 0_usize;
     let mut out = Vec::with_capacity(expected_len);
@@ -910,9 +882,6 @@ struct SutVariantData {
     raw_fields: Map<String, Value>,
 }
 
-/// 一覧 sqlite tables を計算して返す。
-///
-/// 失敗時はエラーを返します。
 fn list_sqlite_tables(connection: &Connection) -> Result<Vec<String>, PenExchangeError> {
     let mut statement =
         connection.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")?;
@@ -924,9 +893,6 @@ fn list_sqlite_tables(connection: &Connection) -> Result<Vec<String>, PenExchang
     Ok(tables)
 }
 
-/// Sut nodes を読み込み、必要に応じて整形して返す。
-///
-/// 失敗時はエラーを返します。
 fn load_sut_nodes(connection: &Connection) -> Result<Vec<SutNode>, PenExchangeError> {
     let mut statement = connection.prepare(
         "SELECT NodeName, NodeVariantId, NodeInitVariantId FROM Node WHERE trim(COALESCE(NodeName, '')) <> '' ORDER BY rowid",
@@ -943,7 +909,6 @@ fn load_sut_nodes(connection: &Connection) -> Result<Vec<SutNode>, PenExchangeEr
     Ok(nodes)
 }
 
-/// 現在の値を variant row へ変換する。
 fn load_variant_row(
     connection: &Connection,
     variant_id: i64,
@@ -1037,7 +1002,6 @@ fn load_variant_row(
     Ok(data)
 }
 
-/// Sqlite table columns 用の表示文字列を組み立てる。
 fn sqlite_table_columns(
     connection: &Connection,
     table: &str,
@@ -1052,7 +1016,6 @@ fn sqlite_table_columns(
     Ok(columns)
 }
 
-/// 現在の値を material PNG metadata へ変換する。
 fn load_material_png_metadata(
     connection: &Connection,
 ) -> Result<Vec<Map<String, Value>>, PenExchangeError> {
@@ -1126,7 +1089,6 @@ fn load_material_png_metadata(
     Ok(result)
 }
 
-/// Numeric field を別座標系へ変換する。
 fn map_numeric_field(name: &str, value: f64, data: &mut SutVariantData) {
     if data.base_size.is_none()
         && matches_any(
@@ -1177,12 +1139,10 @@ fn map_numeric_field(name: &str, value: f64, data: &mut SutVariantData) {
     }
 }
 
-/// 既存データを走査して matches any を組み立てる。
 fn matches_any(name: &str, patterns: &[&str]) -> bool {
     patterns.iter().any(|pattern| name.contains(pattern))
 }
 
-/// Normalize ratio を有効範囲へ補正して返す。
 fn normalize_ratio(value: f64) -> f32 {
     if value > 1.0 {
         (value / 100.0).clamp(0.0, 1.0) as f32
@@ -1191,9 +1151,6 @@ fn normalize_ratio(value: f64) -> f32 {
     }
 }
 
-/// 入力を解析して csp pressure graph に変換する。
-///
-/// 値を生成できない場合は `None` を返します。
 fn parse_csp_pressure_graph(blob: &[u8]) -> Option<PenPressureCurve> {
     if blob.len() < 28 || !(blob.len() - 28).is_multiple_of(8) {
         return None;
@@ -1225,7 +1182,6 @@ fn parse_csp_pressure_graph(blob: &[u8]) -> Option<PenPressureCurve> {
     })
 }
 
-/// 既存データを走査して extract utf16le strings を組み立てる。
 fn extract_utf16le_strings(blob: &[u8]) -> Vec<String> {
     let mut strings = BTreeMap::<String, ()>::new();
     let mut cursor = 0_usize;
@@ -1253,7 +1209,6 @@ fn extract_utf16le_strings(blob: &[u8]) -> Vec<String> {
     strings.into_keys().collect()
 }
 
-/// 現在の値を PNG blobs へ変換する。
 fn extract_png_blobs(blob: &[u8]) -> Vec<Vec<u8>> {
     const PNG_SIG: &[u8; 8] = b"\x89PNG\r\n\x1A\n";
     const PNG_END: &[u8; 8] = b"\x00\x00\x00\x00IEND";
@@ -1276,9 +1231,6 @@ fn extract_png_blobs(blob: &[u8]) -> Vec<Vec<u8>> {
     result
 }
 
-/// PNG dimensions を計算して返す。
-///
-/// 値を生成できない場合は `None` を返します。
 fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
     const PNG_SIG: &[u8; 8] = b"\x89PNG\r\n\x1A\n";
     if bytes.len() < 24 || &bytes[..8] != PNG_SIG || &bytes[12..16] != b"IHDR" {
@@ -1289,14 +1241,12 @@ fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
     Some((width, height))
 }
 
-/// Sha256 16進文字列 用の表示文字列を組み立てる。
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("{:x}", hasher.finalize())
 }
 
-/// ペン ID を構築する。
 fn build_pen_id(prefix: &str, file_name: &str, index: usize) -> String {
     format!(
         "{}.{}.{}",
@@ -1306,7 +1256,6 @@ fn build_pen_id(prefix: &str, file_name: &str, index: usize) -> String {
     )
 }
 
-/// 現在の値を identifier へ変換する。
 fn sanitize_identifier(value: &str) -> String {
     let mut result = String::with_capacity(value.len());
     for ch in value.chars() {
@@ -1321,7 +1270,6 @@ fn sanitize_identifier(value: &str) -> String {
     result.trim_matches('-').to_string()
 }
 
-/// パス stem を計算して返す。
 fn path_stem(file_name: &str) -> &str {
     Path::new(file_name)
         .file_stem()
@@ -1329,7 +1277,6 @@ fn path_stem(file_name: &str) -> &str {
         .unwrap_or(file_name)
 }
 
-/// 入力や種別に応じて処理を振り分ける。
 fn trim_trailing_nul(bytes: &[u8]) -> &[u8] {
     match bytes.iter().position(|value| *value == 0) {
         Some(index) => &bytes[..index],
@@ -1337,14 +1284,10 @@ fn trim_trailing_nul(bytes: &[u8]) -> &[u8] {
     }
 }
 
-/// Quote identifier 用の表示文字列を組み立てる。
 fn quote_identifier(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
 
-/// Positive 寸法 用の表示文字列を組み立てる。
-///
-/// 失敗時はエラーを返します。
 fn positive_dimension(value: i32, label: &str) -> Result<u32, PenExchangeError> {
     if value <= 0 {
         return Err(PenExchangeError::InvalidData(format!(
@@ -1354,68 +1297,46 @@ fn positive_dimension(value: i32, label: &str) -> Result<u32, PenExchangeError> 
     Ok(value as u32)
 }
 
-/// align4 を計算して返す。
 fn align4(value: usize) -> usize {
     (value + 3) & !3
 }
 
-/// find subslice を計算して返す。
-///
-/// 値を生成できない場合は `None` を返します。
 fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack
         .windows(needle.len())
         .position(|window| window == needle)
 }
 
-/// Cursor u8 を読み込み、必要に応じて整形して返す。
-///
-/// 失敗時はエラーを返します。
 fn read_cursor_u8(cursor: &mut Cursor<&[u8]>) -> Result<u8, PenExchangeError> {
     let mut byte = [0_u8; 1];
     cursor.read_exact(&mut byte)?;
     Ok(byte[0])
 }
 
-/// Cursor u16 be を読み込み、必要に応じて整形して返す。
-///
-/// 失敗時はエラーを返します。
 fn read_cursor_u16_be(cursor: &mut Cursor<&[u8]>) -> Result<u16, PenExchangeError> {
     let mut bytes = [0_u8; 2];
     cursor.read_exact(&mut bytes)?;
     Ok(u16::from_be_bytes(bytes))
 }
 
-/// Cursor i16 be を読み込み、必要に応じて整形して返す。
-///
-/// 失敗時はエラーを返します。
 fn read_cursor_i16_be(cursor: &mut Cursor<&[u8]>) -> Result<i16, PenExchangeError> {
     let mut bytes = [0_u8; 2];
     cursor.read_exact(&mut bytes)?;
     Ok(i16::from_be_bytes(bytes))
 }
 
-/// Cursor u32 be を読み込み、必要に応じて整形して返す。
-///
-/// 失敗時はエラーを返します。
 fn read_cursor_u32_be(cursor: &mut Cursor<&[u8]>) -> Result<u32, PenExchangeError> {
     let mut bytes = [0_u8; 4];
     cursor.read_exact(&mut bytes)?;
     Ok(u32::from_be_bytes(bytes))
 }
 
-/// Cursor i32 be を読み込み、必要に応じて整形して返す。
-///
-/// 失敗時はエラーを返します。
 fn read_cursor_i32_be(cursor: &mut Cursor<&[u8]>) -> Result<i32, PenExchangeError> {
     let mut bytes = [0_u8; 4];
     cursor.read_exact(&mut bytes)?;
     Ok(i32::from_be_bytes(bytes))
 }
 
-/// 現在の値を u32 be へ変換する。
-///
-/// 失敗時はエラーを返します。
 fn read_u32_be(bytes: &[u8], offset: usize) -> Result<u32, PenExchangeError> {
     let slice = bytes.get(offset..offset + 4).ok_or_else(|| {
         PenExchangeError::InvalidData("unexpected end of data while reading u32".to_string())
@@ -1425,9 +1346,6 @@ fn read_u32_be(bytes: &[u8], offset: usize) -> Result<u32, PenExchangeError> {
     ))
 }
 
-/// 現在の値を u16 be へ変換する。
-///
-/// 失敗時はエラーを返します。
 fn read_u16_be(bytes: &[u8], offset: usize) -> Result<u16, PenExchangeError> {
     let slice = bytes.get(offset..offset + 2).ok_or_else(|| {
         PenExchangeError::InvalidData("unexpected end of data while reading u16".to_string())
@@ -1437,9 +1355,6 @@ fn read_u16_be(bytes: &[u8], offset: usize) -> Result<u16, PenExchangeError> {
     ))
 }
 
-/// 現在の値を i32 be へ変換する。
-///
-/// 失敗時はエラーを返します。
 fn read_i32_be(bytes: &[u8], offset: usize) -> Result<i32, PenExchangeError> {
     let slice = bytes.get(offset..offset + 4).ok_or_else(|| {
         PenExchangeError::InvalidData("unexpected end of data while reading i32".to_string())
@@ -1449,9 +1364,6 @@ fn read_i32_be(bytes: &[u8], offset: usize) -> Result<i32, PenExchangeError> {
     ))
 }
 
-/// 現在の値を photoshop unicode string へ変換する。
-///
-/// 失敗時はエラーを返します。
 fn read_photoshop_unicode_string(cursor: &mut Cursor<&[u8]>) -> Result<String, PenExchangeError> {
     let char_count = read_cursor_u32_be(cursor)? as usize;
     let byte_len = char_count.checked_mul(2).ok_or_else(|| {
@@ -1467,7 +1379,6 @@ fn read_photoshop_unicode_string(cursor: &mut Cursor<&[u8]>) -> Result<String, P
     Ok(String::from_utf16_lossy(&units))
 }
 
-/// U32 be を保存先へ書き出す。
 fn write_u32_be(out: &mut Vec<u8>, value: u32) {
     out.extend_from_slice(&value.to_be_bytes());
 }
@@ -1479,7 +1390,6 @@ mod tests {
 
     use rusqlite::params;
 
-    /// 現在の unique temp パス を返す。
     fn unique_temp_path(name: &str, extension: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
             "altpaint-{}-{}-{}.{}",
@@ -1493,7 +1403,6 @@ mod tests {
         ))
     }
 
-    /// 現在の ワークスペース ペン パス を返す。
     fn workspace_pen_path(relative: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
@@ -1501,7 +1410,6 @@ mod tests {
             .join(relative)
     }
 
-    /// gbr round trip preserves 先端形状 dimensions が期待どおりに動作することを検証する。
     #[test]
     fn gbr_round_trip_preserves_tip_dimensions() {
         let pen = AltPaintPen {
@@ -1524,7 +1432,6 @@ mod tests {
         assert_eq!(parsed.tip.as_ref().expect("tip").height(), 2);
     }
 
-    /// parses minimal abr v2 sampled ブラシ が期待どおりに動作することを検証する。
     #[test]
     fn parses_minimal_abr_v2_sampled_brush() {
         let mut bytes = Vec::new();
@@ -1562,7 +1469,6 @@ mod tests {
         assert_eq!(pen.tip.as_ref().expect("tip").width(), 2);
     }
 
-    /// parses minimal abr v6 sampled ブラシ が期待どおりに動作することを検証する。
     #[test]
     fn parses_minimal_abr_v6_sampled_brush() {
         let mut sample = vec![0_u8; 47];
@@ -1595,7 +1501,6 @@ mod tests {
         );
     }
 
-    /// parses minimal sut metadata from sqlite が期待どおりに動作することを検証する。
     #[test]
     fn parses_minimal_sut_metadata_from_sqlite() {
         let path = unique_temp_path("sut", "sut");
@@ -1677,7 +1582,6 @@ mod tests {
         );
     }
 
-    /// parses ワークスペース abr file が期待どおりに動作することを検証する。
     #[test]
     fn parses_workspace_abr_file() {
         let path = workspace_pen_path("pens/abr/manga.abr");
@@ -1702,7 +1606,6 @@ mod tests {
         );
     }
 
-    /// parses ワークスペース sut file が期待どおりに動作することを検証する。
     #[test]
     fn parses_workspace_sut_file() {
         let path = workspace_pen_path("pens/sut/しげペン改[WEB用].sut");

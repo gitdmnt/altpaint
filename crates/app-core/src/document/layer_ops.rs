@@ -7,9 +7,6 @@ use crate::{BitmapEdit, CanvasDirtyRect, ClampToCanvasBounds, MergeInSpace, Pane
 
 use super::{BlendMode, CanvasBitmap, Document, LayerNodeId, Panel, RasterLayer};
 
-/// Local 差分 to ページ 差分 に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
 fn local_dirty_to_page_dirty(
     dirty: CanvasDirtyRect,
     panel_bounds: super::PanelBounds,
@@ -26,9 +23,6 @@ fn local_dirty_to_page_dirty(
 }
 
 impl Document {
-    /// ビットマップ edits to アクティブ レイヤー を更新し、必要な dirty 状態も記録する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub fn apply_bitmap_edits_to_active_layer(
         &mut self,
         edits: &[BitmapEdit],
@@ -54,8 +48,6 @@ impl Document {
     }
 
     /// 指定 `PanelId` のページ・パネルインデックスを返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn find_panel_location(&self, panel_id: PanelId) -> Option<(usize, usize)> {
         for (page_index, page) in self.work.pages.iter().enumerate() {
             for (panel_index, panel) in page.panels.iter().enumerate() {
@@ -68,8 +60,6 @@ impl Document {
     }
 
     /// 指定 panel/layer のビットマップ全体を複製して返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn clone_panel_layer_bitmap(
         &self,
         panel_id: PanelId,
@@ -81,8 +71,6 @@ impl Document {
     }
 
     /// 指定 panel/layer の指定領域を複製して返す（パネルローカル座標系）。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     pub fn capture_panel_layer_region(
         &self,
         panel_id: PanelId,
@@ -97,7 +85,7 @@ impl Document {
 
     /// 指定 panel/layer の指定位置にビットマップを復元し、パネル合成も更新する。
     ///
-    /// 必要に応じて dirty 状態も更新します。返値はページ座標系の dirty rect。
+    /// 返値はページ座標系の dirty rect。
     pub fn restore_panel_layer_region(
         &mut self,
         panel_id: PanelId,
@@ -174,7 +162,6 @@ impl Document {
         Some(local_dirty_to_page_dirty(dirty, panel_bounds, page_width, page_height))
     }
 
-    /// Raster レイヤー を追加する。
     pub fn add_raster_layer(&mut self) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -191,7 +178,6 @@ impl Document {
         }
     }
 
-    /// アクティブ レイヤー を削除する。
     pub fn remove_active_layer(&mut self) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -206,7 +192,6 @@ impl Document {
         }
     }
 
-    /// レイヤー を選択状態へ更新する。
     pub fn select_layer(&mut self, index: usize) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -214,7 +199,6 @@ impl Document {
         }
     }
 
-    /// 現在の値を アクティブ レイヤー へ変換する。
     pub fn rename_active_layer(&mut self, name: &str) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -224,7 +208,6 @@ impl Document {
         }
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
     pub fn move_layer(&mut self, from_index: usize, to_index: usize) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -253,7 +236,6 @@ impl Document {
         }
     }
 
-    /// 次 レイヤー を選択状態へ更新する。
     pub fn select_next_layer(&mut self) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -261,7 +243,6 @@ impl Document {
         }
     }
 
-    /// アクティブ レイヤー ブレンド モード を順送りで切り替える。
     pub fn cycle_active_layer_blend_mode(&mut self) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -272,7 +253,6 @@ impl Document {
         }
     }
 
-    /// アクティブ レイヤー ブレンド モード を設定する。
     pub fn set_active_layer_blend_mode(&mut self, mode: BlendMode) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -283,7 +263,6 @@ impl Document {
         }
     }
 
-    /// アクティブ レイヤー visibility の有効状態を切り替える。
     pub fn toggle_active_layer_visibility(&mut self) {
         if let Some(panel) = self.active_panel_mut() {
             ensure_panel_layers(panel);
@@ -296,7 +275,6 @@ impl Document {
 
 }
 
-/// パネル layers が満たされるよう整える。
 pub(super) fn ensure_panel_layers(panel: &mut Panel) {
     let mut repaired = false;
     if panel.layers.is_empty() {
@@ -324,9 +302,6 @@ pub(super) fn ensure_panel_layers(panel: &mut Panel) {
 }
 
 
-/// 入力や種別に応じて処理を振り分ける。
-///
-/// 値を生成できない場合は `None` を返します。
 fn apply_bitmap_edits(panel: &mut Panel, edits: &[BitmapEdit]) -> Option<CanvasDirtyRect> {
     let active_index = panel
         .active_layer_index
@@ -363,7 +338,6 @@ fn apply_bitmap_edits(panel: &mut Panel, edits: &[BitmapEdit]) -> Option<CanvasD
     dirty_union
 }
 
-/// Extract ビットマップ 領域 に対応するビットマップ処理を行う。
 fn extract_bitmap_region(
     bitmap: &CanvasBitmap,
     start_x: usize,
@@ -393,7 +367,6 @@ fn extract_bitmap_region(
     Some(region)
 }
 
-/// ビットマップ 領域 を保存先へ書き出す。
 fn write_bitmap_region(
     target: &mut CanvasBitmap,
     start_x: usize,
@@ -413,9 +386,6 @@ fn write_bitmap_region(
     }
 }
 
-/// Composite パネル ビットマップ に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
 pub(super) fn composite_panel_bitmap(panel: &Panel) -> CanvasBitmap {
     let width = panel
         .layers
@@ -446,9 +416,6 @@ pub(super) fn composite_panel_bitmap(panel: &Panel) -> CanvasBitmap {
     result
 }
 
-/// Composite パネル ビットマップ 領域 に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
 fn composite_panel_bitmap_region(panel: &mut Panel, dirty: CanvasDirtyRect) {
     let dirty = dirty.clamp_to_canvas_bounds(panel.bitmap.width.max(1), panel.bitmap.height.max(1));
     if let Some(layer_index) = single_passthrough_layer_index(panel) {
@@ -471,9 +438,6 @@ fn composite_panel_bitmap_region(panel: &mut Panel, dirty: CanvasDirtyRect) {
     }
 }
 
-/// 現在の single passthrough レイヤー インデックス を返す。
-///
-/// 値を生成できない場合は `None` を返します。
 fn single_passthrough_layer_index(panel: &Panel) -> Option<usize> {
     let mut visible_layers = panel
         .layers
@@ -493,9 +457,6 @@ fn single_passthrough_layer_index(panel: &Panel) -> Option<usize> {
     Some(index)
 }
 
-/// Copy ビットマップ 領域 に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
 fn copy_bitmap_region(source: &CanvasBitmap, target: &mut CanvasBitmap, dirty: CanvasDirtyRect) {
     let dirty = dirty.clamp_to_canvas_bounds(
         target.width.min(source.width),
@@ -511,9 +472,6 @@ fn copy_bitmap_region(source: &CanvasBitmap, target: &mut CanvasBitmap, dirty: C
     }
 }
 
-/// 入力や種別に応じて処理を振り分ける。
-///
-/// 必要に応じて dirty 状態も更新します。
 fn composite_layer_region_into(
     target: &mut CanvasBitmap,
     layer: &RasterLayer,
@@ -548,7 +506,6 @@ fn composite_layer_region_into(
     }
 }
 
-/// 入力や種別に応じて処理を振り分ける。
 fn blend_pixel(dst: [u8; 4], src: [u8; 4], mode: &BlendMode) -> [u8; 4] {
     let src_a = src[3] as f32 / 255.0;
     if src_a <= 0.0 {

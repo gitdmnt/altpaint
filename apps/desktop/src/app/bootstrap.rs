@@ -25,7 +25,6 @@ pub(super) struct BootstrapState {
 }
 
 impl DesktopApp {
-    /// 既存データを走査して bootstrap 状態 を組み立てる。
     pub(super) fn bootstrap_state(
         project_path: PathBuf,
         session_path: &Path,
@@ -74,7 +73,6 @@ impl DesktopApp {
         }
     }
 
-    /// パネル system を読み込み、必要に応じて整形して返す。
     fn load_panel_system(
         workspace_presets: &WorkspacePresetCatalog,
         project_ui_state: Option<&WorkspaceUiState>,
@@ -116,9 +114,6 @@ impl DesktopApp {
         (panel_runtime, panel_presentation)
     }
 
-    /// ワークスペース ui 状態 を更新し、必要な dirty 状態も記録する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn apply_workspace_ui_state(&mut self, ui_state: WorkspaceUiState) {
         let (workspace_layout, plugin_configs) = ui_state.into_parts();
         self.panel_presentation
@@ -136,7 +131,6 @@ impl DesktopApp {
         self.persist_session_state();
     }
 
-    /// キャンバス templates file が満たされるよう整える。
     pub(super) fn ensure_canvas_templates_file(&self) {
         let path = default_canvas_template_path();
         if path.exists() {
@@ -148,7 +142,6 @@ impl DesktopApp {
         }
     }
 
-    /// ワークスペース presets file が満たされるよう整える。
     pub(super) fn ensure_workspace_presets_file(&self, path: &Path) {
         if path.exists() {
             return;
@@ -160,7 +153,6 @@ impl DesktopApp {
         }
     }
 
-    /// ワークスペース preset カタログ を永続化する。
     pub(super) fn persist_workspace_preset_catalog(&self) {
         if let Err(error) = save_workspace_preset_catalog(
             &self.io_state.workspace_preset_path,
@@ -175,7 +167,6 @@ impl DesktopApp {
     }
 }
 
-/// 現在の resolve startup プロジェクト パス を返す。
 fn resolve_startup_project_path(
     project_path: PathBuf,
     session: Option<&DesktopSessionState>,
@@ -189,7 +180,6 @@ fn resolve_startup_project_path(
         .unwrap_or(project_path)
 }
 
-/// Ui 状態 to パネル system を現在の状態へ適用する。
 fn apply_ui_state_to_panel_system(
     panel_runtime: &mut PanelRuntime,
     panel_presentation: &mut PanelPresentation,

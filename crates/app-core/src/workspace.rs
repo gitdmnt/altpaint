@@ -18,7 +18,6 @@ pub struct WorkspaceUiState {
 }
 
 impl WorkspaceUiState {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn new(workspace_layout: WorkspaceLayout, plugin_configs: PluginConfigs) -> Self {
         Self {
             workspace_layout,
@@ -26,38 +25,31 @@ impl WorkspaceUiState {
         }
     }
 
-    /// 現在の値を parts 形式へ変換する。
     pub fn into_parts(self) -> (WorkspaceLayout, PluginConfigs) {
         (self.workspace_layout, self.plugin_configs)
     }
 
-    /// Is empty かどうかを返す。
     pub fn is_empty(&self) -> bool {
         self.workspace_layout.panels.is_empty() && self.plugin_configs.is_empty()
     }
 }
 
-/// Is 表示状態 by 既定 かどうかを返す。
 fn is_visible_by_default() -> bool {
     true
 }
 
-/// 既定の 表示状態 を返す。
 fn default_visible() -> bool {
     is_visible_by_default()
 }
 
-/// 既定の パネル 幅 を返す。
 fn default_panel_width() -> usize {
     300
 }
 
-/// 既定の パネル 高さ を返す。
 fn default_panel_height() -> usize {
     220
 }
 
-/// 既定の パネル anchor を返す。
 fn default_panel_anchor() -> WorkspacePanelAnchor {
     WorkspacePanelAnchor::TopLeft
 }
@@ -90,7 +82,6 @@ pub struct WorkspacePanelSize {
 }
 
 impl Default for WorkspacePanelSize {
-    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self {
             width: default_panel_width(),
@@ -121,7 +112,6 @@ pub struct WorkspacePanelState {
 }
 
 impl WorkspacePanelState {
-    /// 解決済みの position を返す。
     pub fn resolved_position(
         &self,
         viewport_width: usize,
@@ -167,7 +157,6 @@ impl WorkspacePanelState {
         }
     }
 
-    /// 解決済みの ウィンドウ position を返す。
     pub fn resolved_window_position(
         &self,
         viewport: WindowRect,
@@ -179,7 +168,6 @@ impl WorkspacePanelState {
         WindowPoint::new(position.x as i32, position.y as i32)
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
     pub fn set_position_from_absolute(
         &mut self,
         x: usize,
@@ -235,7 +223,6 @@ impl WorkspacePanelState {
         self.size = Some(panel_size);
     }
 
-    /// Position from ウィンドウ 点 を設定する。
     pub fn set_position_from_window_point(
         &mut self,
         point: WindowPoint,
@@ -252,7 +239,6 @@ impl WorkspacePanelState {
     }
 }
 
-/// nearest パネル anchor に必要な処理を行う。
 fn nearest_panel_anchor(
     x: usize,
     y: usize,
@@ -288,7 +274,6 @@ fn nearest_panel_anchor(
 mod tests {
     use super::*;
 
-    /// ワークスペース ui 状態 roundtrip preserves レイアウト and configs が期待どおりに動作することを検証する。
     #[test]
     fn workspace_ui_state_roundtrip_preserves_layout_and_configs() {
         let state = WorkspaceUiState {
@@ -314,7 +299,6 @@ mod tests {
         assert_eq!(restored, state);
     }
 
-    /// ワークスペース パネル visibility defaults to true when missing が期待どおりに動作することを検証する。
     #[test]
     fn workspace_panel_visibility_defaults_to_true_when_missing() {
         let panel: WorkspacePanelState = serde_json::from_str(r#"{"id":"builtin.tool-palette"}"#)
@@ -325,7 +309,6 @@ mod tests {
         assert_eq!(panel.size, None);
     }
 
-    /// ワークスペース レイアウト roundtrip preserves order and visibility が期待どおりに動作することを検証する。
     #[test]
     fn workspace_layout_roundtrip_preserves_order_and_visibility() {
         let layout = WorkspaceLayout {
@@ -360,7 +343,6 @@ mod tests {
         assert_eq!(restored, layout);
     }
 
-    /// ワークスペース パネル anchor defaults to top left when missing が期待どおりに動作することを検証する。
     #[test]
     fn workspace_panel_anchor_defaults_to_top_left_when_missing() {
         let panel: WorkspacePanelState =
@@ -370,7 +352,6 @@ mod tests {
         assert_eq!(panel.anchor, WorkspacePanelAnchor::TopLeft);
     }
 
-    /// resolved position uses anchor relative offsets が期待どおりに動作することを検証する。
     #[test]
     fn resolved_position_uses_anchor_relative_offsets() {
         let panel = WorkspacePanelState {
@@ -395,7 +376,6 @@ mod tests {
         );
     }
 
-    /// 設定 position from absolute picks nearest corner anchor が期待どおりに動作することを検証する。
     #[test]
     fn set_position_from_absolute_picks_nearest_corner_anchor() {
         let mut panel = WorkspacePanelState {

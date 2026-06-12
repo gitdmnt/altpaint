@@ -10,7 +10,6 @@ use desktop_support::{
 use super::{DesktopApp, WORKSPACE_PRESET_PANEL_ID};
 
 impl DesktopApp {
-    /// 現在の値を 新規 ドキュメント templates へ変換する。
     pub(crate) fn refresh_new_document_templates(&mut self) {
         let templates = load_canvas_templates(default_canvas_template_path());
         let default_template = templates
@@ -46,7 +45,6 @@ impl DesktopApp {
             .reconcile_panels(self.panel_runtime.panel_static_ids());
     }
 
-    /// 現在の値を ワークスペース presets へ変換する。
     pub(crate) fn refresh_workspace_presets(&mut self) {
         let options = self
             .workspace_presets
@@ -87,9 +85,6 @@ impl DesktopApp {
             .reconcile_panels(self.panel_runtime.panel_static_ids());
     }
 
-    /// 再読込 ワークスペース presets を計算して返す。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn reload_workspace_presets(&mut self) -> bool {
         self.workspace_presets =
             load_workspace_preset_catalog(&self.io_state.workspace_preset_path);
@@ -100,7 +95,6 @@ impl DesktopApp {
         true
     }
 
-    /// 選択中の ワークスペース preset ID を返す。
     fn selected_workspace_preset_id(&self) -> String {
         if self
             .workspace_presets
@@ -128,7 +122,6 @@ impl DesktopApp {
     }
 }
 
-/// 既存データを走査して 選択中 ワークスペース preset ID from configs を組み立てる。
 pub(super) fn selected_workspace_preset_id_from_configs(
     configs: &std::collections::BTreeMap<String, Value>,
 ) -> Option<String> {

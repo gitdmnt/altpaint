@@ -15,21 +15,16 @@ pub struct DesktopSessionState {
     pub ui_state: WorkspaceUiState,
 }
 
-/// 既定の セッション パス を返す。
 pub fn default_session_path() -> PathBuf {
     PathBuf::from("altpaint-session.json")
 }
 
-/// 入力を解析して セッション 状態 に変換する。
-///
-/// 値を生成できない場合は `None` を返します。
 pub fn load_session_state(path: impl AsRef<Path>) -> Option<DesktopSessionState> {
     let path = path.as_ref();
     let bytes = std::fs::read(path).ok()?;
     serde_json::from_slice(&bytes).ok()
 }
 
-/// 現在の値を セッション 状態 へ変換する。
 pub fn save_session_state(
     path: impl AsRef<Path>,
     state: &DesktopSessionState,
@@ -39,7 +34,6 @@ pub fn save_session_state(
     std::fs::write(path, serialized)
 }
 
-/// 現在の startup プロジェクト パス を返す。
 pub fn startup_project_path(default_project_path: impl Into<PathBuf>) -> PathBuf {
     load_session_state(default_session_path())
         .and_then(|state| state.last_project_path)
@@ -55,7 +49,6 @@ mod tests {
 
     static TEST_SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-    /// 現在の unique test パス を返す。
     fn unique_test_path(name: &str) -> PathBuf {
         let unique = TEST_SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
         std::env::temp_dir().join(format!(
@@ -64,7 +57,6 @@ mod tests {
         ))
     }
 
-    /// セッション roundtrip preserves last プロジェクト and レイアウト が期待どおりに動作することを検証する。
     #[test]
     fn session_roundtrip_preserves_last_project_and_layout() {
         let path = unique_test_path("session-roundtrip");

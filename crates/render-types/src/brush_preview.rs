@@ -2,7 +2,6 @@ use app_core::CanvasPoint;
 
 use crate::{CanvasScene, PixelRect, union_optional_rect};
 
-/// ブラシ プレビュー 差分 矩形 に必要な処理を行う。
 pub fn brush_preview_dirty_rect(
     previous_scene: Option<CanvasScene>,
     current_scene: Option<CanvasScene>,

@@ -7,29 +7,14 @@ use std::path::{Path, PathBuf};
 
 /// プロジェクトの開閉に必要なダイアログ操作を抽象化する。
 pub trait DesktopDialogs {
-    /// 現在の pick 開く プロジェクト パス を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn pick_open_project_path(&self, current_path: &Path) -> Option<PathBuf>;
-    /// 現在の pick 保存 プロジェクト パス を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn pick_save_project_path(&self, current_path: &Path) -> Option<PathBuf>;
-    /// 現在の pick 保存 ワークスペース preset パス を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn pick_save_workspace_preset_path(&self, current_path: &Path) -> Option<PathBuf>;
-    /// 現在の pick 開く ペン パス を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn pick_open_pen_path(&self, current_path: &Path) -> Option<PathBuf>;
     /// 画像書き出し先パスを選択するダイアログを表示する。
-    ///
-    /// 値を生成できない場合は None を返します。
     fn pick_save_image_path(&self, _current_path: &Path) -> Option<PathBuf> {
         None
     }
-    /// エラー を表示できるよう状態を更新する。
     fn show_error(&self, title: &str, message: &str);
 }
 
@@ -37,9 +22,6 @@ pub trait DesktopDialogs {
 pub struct NativeDesktopDialogs;
 
 impl DesktopDialogs for NativeDesktopDialogs {
-    /// 現在の pick 開く プロジェクト パス を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn pick_open_project_path(&self, current_path: &Path) -> Option<PathBuf> {
         tinyfiledialogs::open_file_dialog(
             "Open Project",
@@ -49,9 +31,6 @@ impl DesktopDialogs for NativeDesktopDialogs {
         .map(PathBuf::from)
     }
 
-    /// 現在の pick 保存 プロジェクト パス を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn pick_save_project_path(&self, current_path: &Path) -> Option<PathBuf> {
         tinyfiledialogs::save_file_dialog_with_filter(
             "Save Project",
@@ -62,9 +41,6 @@ impl DesktopDialogs for NativeDesktopDialogs {
         .map(PathBuf::from)
     }
 
-    /// 現在の pick 保存 ワークスペース preset パス を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn pick_save_workspace_preset_path(&self, current_path: &Path) -> Option<PathBuf> {
         tinyfiledialogs::save_file_dialog_with_filter(
             "Export Workspace Preset",
@@ -76,9 +52,6 @@ impl DesktopDialogs for NativeDesktopDialogs {
         .map(normalize_workspace_preset_path)
     }
 
-    /// 現在の pick 開く ペン パス を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn pick_open_pen_path(&self, current_path: &Path) -> Option<PathBuf> {
         tinyfiledialogs::open_file_dialog(
             "Import Pen Preset",
@@ -92,8 +65,6 @@ impl DesktopDialogs for NativeDesktopDialogs {
     }
 
     /// 画像書き出し先パスを選択するダイアログを表示する。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn pick_save_image_path(&self, current_path: &Path) -> Option<PathBuf> {
         tinyfiledialogs::save_file_dialog_with_filter(
             "Export Image",
@@ -104,13 +75,11 @@ impl DesktopDialogs for NativeDesktopDialogs {
         .map(PathBuf::from)
     }
 
-    /// エラー を表示できるよう状態を更新する。
     fn show_error(&self, title: &str, message: &str) {
         tinyfiledialogs::message_box_ok(title, message, tinyfiledialogs::MessageBoxIcon::Error);
     }
 }
 
-/// 現在の normalize プロジェクト パス を返す。
 pub fn normalize_project_path(path: PathBuf) -> PathBuf {
     if path.extension().is_some() {
         path
@@ -119,7 +88,6 @@ pub fn normalize_project_path(path: PathBuf) -> PathBuf {
     }
 }
 
-/// 現在の normalize ワークスペース preset パス を返す。
 pub fn normalize_workspace_preset_path(path: PathBuf) -> PathBuf {
     if path.extension().is_some() {
         path
@@ -132,7 +100,6 @@ pub fn normalize_workspace_preset_path(path: PathBuf) -> PathBuf {
 mod tests {
     use super::*;
 
-    /// normalize プロジェクト パス adds 既定 extension が期待どおりに動作することを検証する。
     #[test]
     fn normalize_project_path_adds_default_extension() {
         assert_eq!(
@@ -141,7 +108,6 @@ mod tests {
         );
     }
 
-    /// normalize プロジェクト パス preserves existing extension が期待どおりに動作することを検証する。
     #[test]
     fn normalize_project_path_preserves_existing_extension() {
         assert_eq!(
@@ -150,7 +116,6 @@ mod tests {
         );
     }
 
-    /// normalize ワークスペース preset パス adds 既定 extension が期待どおりに動作することを検証する。
     #[test]
     fn normalize_workspace_preset_path_adds_default_extension() {
         assert_eq!(

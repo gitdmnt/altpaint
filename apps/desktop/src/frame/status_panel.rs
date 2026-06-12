@@ -91,7 +91,6 @@ impl StatusPanel {
         }
     }
 
-    /// snapshot を engine に流し込み、変化があれば DOM を再構築する。
     pub(crate) fn update(&mut self, snapshot: &StatusSnapshot) {
         if self.last_snapshot.as_ref() == Some(snapshot) {
             return;

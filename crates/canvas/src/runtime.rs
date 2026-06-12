@@ -10,14 +10,12 @@ pub struct CanvasRuntime {
 }
 
 impl Default for CanvasRuntime {
-    /// 既定値を持つインスタンスを返す。
     fn default() -> Self {
         Self::new(default_paint_plugins())
     }
 }
 
 impl CanvasRuntime {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub fn new(registry: PaintPluginRegistry) -> Self {
         Self { registry }
     }

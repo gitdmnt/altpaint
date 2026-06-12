@@ -34,8 +34,6 @@ impl BackgroundJob {
 
 impl DesktopApp {
     /// プロジェクト保存ジョブをキューへ追加する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn enqueue_save_project(&mut self, path: PathBuf) -> bool {
         // GPU パスで描画した場合は CPU bitmap が古いため、保存前に読み戻して同期する
         self.sync_gpu_bitmaps_to_cpu();
@@ -71,8 +69,6 @@ impl DesktopApp {
     }
 
     /// 完了済みジョブを回収し、エラーがあればダイアログで通知する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(super) fn poll_background_tasks(&mut self) {
         let mut remaining = Vec::new();
         let mut completed_any = false;

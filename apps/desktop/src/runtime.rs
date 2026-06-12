@@ -46,7 +46,6 @@ impl DesktopRuntime {
     const WHEEL_PAN_MIN_STEP: f32 = 0.5;
     const WHEEL_ZOOM_MIN_STEP_LINES: f32 = 0.02;
 
-    /// 既定値を使って新しいインスタンスを生成する。
     pub(crate) fn new(project_path: PathBuf) -> Self {
         Self {
             app: DesktopApp::new(project_path),
@@ -63,9 +62,6 @@ impl DesktopRuntime {
         }
     }
 
-    /// イベントループを開始し、デスクトップ実行を継続する。
-    ///
-    /// 失敗時はエラーを返します。
     pub(crate) fn run(project_path: PathBuf) -> anyhow::Result<()> {
         let event_loop = EventLoop::new().context("failed to create event loop")?;
         let mut runtime = Self::new(project_path);
@@ -74,7 +70,6 @@ impl DesktopRuntime {
             .context("failed to run desktop runtime")
     }
 
-    /// 次のフレームで再描画が行われるよう要求する。
     /// ADR 014 でテキスト入力は HTML パネル内部完結に統一済みのため、IME 許可は常に false。
     fn request_redraw(&self) {
         if let Some(window) = &self.window {
@@ -83,16 +78,12 @@ impl DesktopRuntime {
         }
     }
 
-    /// アクティブな ウィンドウ ID を返す。
-    ///
-    /// 値を生成できない場合は `None` を返します。
     fn active_window_id(&self) -> Option<WindowId> {
         self.window.as_ref().map(|window| window.id())
     }
 }
 
 impl ApplicationHandler for DesktopRuntime {
-    /// 入力や種別に応じて処理を振り分ける。
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
@@ -141,7 +132,6 @@ impl ApplicationHandler for DesktopRuntime {
         self.request_redraw();
     }
 
-    /// device イベント に必要な処理を行う。
     fn device_event(
         &mut self,
         _event_loop: &ActiveEventLoop,
@@ -155,7 +145,6 @@ impl ApplicationHandler for DesktopRuntime {
         }
     }
 
-    /// 入力や種別に応じて処理を振り分ける。
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,

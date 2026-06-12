@@ -67,8 +67,6 @@ impl DesktopApp {
 }
 
 /// 16進文字列を RGBA へ変換する。
-///
-/// 値を生成できない場合は `None` を返します。
 fn parse_color_hex(hex: &str) -> Option<[u8; 4]> {
     let hex = hex.strip_prefix('#')?;
     if hex.len() != 6 {
@@ -97,7 +95,6 @@ mod tests {
         )
     }
 
-    /// テキスト描画 on empty text returns false が期待どおりに動作することを検証する。
     #[test]
     fn render_empty_text_returns_false() {
         let mut app = make_app();
@@ -111,7 +108,6 @@ mod tests {
         assert!(!changed);
     }
 
-    /// テキスト描画 with valid text returns true が期待どおりに動作することを検証する。
     #[test]
     fn render_valid_text_returns_true() {
         let mut app = make_app();

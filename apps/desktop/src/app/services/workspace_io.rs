@@ -6,7 +6,6 @@ use panel_runtime::{ServiceRequest, services::names};
 use super::DesktopApp;
 
 impl DesktopApp {
-    /// 入力や種別に応じて処理を振り分ける。
     pub(super) fn handle_workspace_service_request(
         &mut self,
         request: &ServiceRequest,
@@ -32,7 +31,6 @@ impl DesktopApp {
         Some(changed)
     }
 
-    /// ワークスペース preset を現在の状態へ適用する。
     pub(crate) fn apply_workspace_preset(&mut self, preset_id: &str) -> bool {
         let Some(preset) = self
             .workspace_presets
@@ -56,9 +54,6 @@ impl DesktopApp {
         true
     }
 
-    /// 現在の値を ワークスペース preset へ変換する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn save_workspace_preset(&mut self, preset_id: &str, label: &str) -> bool {
         let preset_id = preset_id.trim();
         let label = label.trim();
@@ -108,7 +103,6 @@ impl DesktopApp {
         true
     }
 
-    /// ワークスペース preset を保存先へ書き出す。
     pub(crate) fn export_workspace_preset(&mut self, preset_id: &str, label: &str) -> bool {
         let suggested = self
             .io_state
@@ -126,9 +120,6 @@ impl DesktopApp {
         self.export_workspace_preset_to_path(preset_id, label, path)
     }
 
-    /// 現在の値を ワークスペース preset to パス へ変換する。
-    ///
-    /// 必要に応じて dirty 状態も更新します。
     pub(crate) fn export_workspace_preset_to_path(
         &mut self,
         preset_id: &str,

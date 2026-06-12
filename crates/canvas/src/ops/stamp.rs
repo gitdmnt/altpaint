@@ -2,7 +2,6 @@ use app_core::{BitmapEdit, CanvasBitmap, PaintPluginContext, PanelLocalPoint, Pe
 
 use super::{composite, stroke};
 
-/// スタンプ 編集 に対応するビットマップ処理を行う。
 pub(crate) fn stamp_edit(
     at: PanelLocalPoint,
     pressure: f32,
@@ -11,9 +10,6 @@ pub(crate) fn stamp_edit(
     stroke::stroke_like_edit(&[at], pressure, context)
 }
 
-/// スタンプ を構築する。
-///
-/// 値を生成できない場合は `None` を返します。
 pub(crate) fn build_stamp(context: &PaintPluginContext<'_>, pressure: f32) -> Option<CanvasBitmap> {
     let size = effective_size(context, pressure).max(1) as usize;
     let opacity = (context.pen.opacity * context.pen.flow).clamp(0.0, 1.0);
@@ -55,7 +51,6 @@ pub(crate) fn build_stamp(context: &PaintPluginContext<'_>, pressure: f32) -> Op
     }
 }
 
-/// 実効的な サイズ を返す。
 pub(crate) fn effective_size(context: &PaintPluginContext<'_>, pressure: f32) -> u32 {
     match context.tool {
         app_core::ToolKind::Pen | app_core::ToolKind::Eraser => {
@@ -72,7 +67,6 @@ pub(crate) fn effective_size(context: &PaintPluginContext<'_>, pressure: f32) ->
     }
 }
 
-/// ピクセル走査を行い、generated round スタンプ 用のビットマップ結果を生成する。
 fn generated_round_stamp(
     size: usize,
     color: [u8; 4],
@@ -111,7 +105,6 @@ fn generated_round_stamp(
     bitmap
 }
 
-/// ピクセル走査を行い、resample アルファ 先端形状 用のビットマップ結果を生成する。
 fn resample_alpha_tip(
     source_width: usize,
     source_height: usize,
@@ -151,7 +144,6 @@ fn resample_alpha_tip(
     bitmap
 }
 
-/// ピクセル走査を行い、resample RGBA 先端形状 用のビットマップ結果を生成する。
 fn resample_rgba_tip(
     source_width: usize,
     source_height: usize,

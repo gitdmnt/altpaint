@@ -27,7 +27,6 @@ pub(crate) struct DesktopLayout {
 }
 
 impl DesktopLayout {
-    /// 入力値を束ねた新しいインスタンスを生成する。
     pub(crate) fn new(
         window_width: usize,
         window_height: usize,

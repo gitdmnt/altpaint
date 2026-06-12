@@ -6,7 +6,6 @@ use desktop_support::DesktopProfiler;
 use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::PanelDragState;
 
-/// パネル 振り分け キーボード パス activates 保存 action が期待どおりに動作することを検証する。
 #[test]
 fn panel_dispatch_keyboard_path_activates_save_action() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
