@@ -181,11 +181,12 @@ impl DesktopApp {
         device: std::sync::Arc<wgpu::Device>,
         queue: std::sync::Arc<wgpu::Queue>,
     ) {
+        let ctx = gpu_paint::GpuCanvasContext::new(device.clone(), queue.clone());
         self.gpu = Some(GpuPaintEngine {
-            pool: gpu_paint::LayerTextureStore::new(device.clone(), queue.clone()),
-            brush: gpu_paint::BrushPipeline::new(device.clone(), queue.clone()),
-            fill: gpu_paint::FillPipeline::new(device.clone(), queue.clone()),
-            compositor: gpu_paint::CompositePipeline::new(device, queue),
+            pool: gpu_paint::LayerTextureStore::new(device, queue),
+            brush: gpu_paint::BrushPipeline::new(&ctx),
+            fill: gpu_paint::FillPipeline::new(&ctx),
+            compositor: gpu_paint::CompositePipeline::new(&ctx),
         });
         self.sync_all_layers_to_gpu();
         self.recomposite_all_komas();

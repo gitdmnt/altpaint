@@ -7,7 +7,8 @@
 
 use std::sync::Arc;
 
-use crate::gpu::GpuRgbaTexture;
+use crate::gpu::{GpuCanvasContext, GpuRgbaTexture};
+use crate::pipeline::build_compute_pipeline;
 
 /// flood_fill_step の uniform バッファサイズ（32 bytes）。
 const FLOOD_FILL_PARAMS_SIZE: u64 = 32;
@@ -40,24 +41,26 @@ pub struct FillPipeline {
 
 impl FillPipeline {
     /// 計算パイプラインと BGL を初期化する。
-    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
+    pub fn new(ctx: &GpuCanvasContext) -> Self {
+        let device = ctx.device();
+        let queue = ctx.queue();
         let flood_step_bgl = create_flood_step_bgl(&device);
         let lasso_bgl = create_lasso_bgl(&device);
         let apply_bgl = create_apply_bgl(&device);
 
-        let flood_step_pipeline = build_pipeline(
+        let flood_step_pipeline = build_compute_pipeline(
             &device,
             &flood_step_bgl,
             include_str!("shaders/flood_fill_step.wgsl"),
             "flood_fill_step",
         );
-        let lasso_pipeline = build_pipeline(
+        let lasso_pipeline = build_compute_pipeline(
             &device,
             &lasso_bgl,
             include_str!("shaders/lasso_fill_mark.wgsl"),
             "lasso_fill_mark",
         );
-        let apply_pipeline = build_pipeline(
+        let apply_pipeline = build_compute_pipeline(
             &device,
             &apply_bgl,
             include_str!("shaders/fill_apply.wgsl"),
@@ -454,31 +457,6 @@ impl FillPipeline {
             ],
         })
     }
-}
-
-fn build_pipeline(
-    device: &wgpu::Device,
-    bgl: &wgpu::BindGroupLayout,
-    wgsl: &str,
-    label: &str,
-) -> wgpu::ComputePipeline {
-    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some(label),
-        source: wgpu::ShaderSource::Wgsl(wgsl.into()),
-    });
-    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some(label),
-        bind_group_layouts: &[bgl],
-        immediate_size: 0,
-    });
-    device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: Some(label),
-        layout: Some(&pipeline_layout),
-        module: &shader,
-        entry_point: Some("main"),
-        compilation_options: wgpu::PipelineCompilationOptions::default(),
-        cache: None,
-    })
 }
 
 fn create_flood_step_bgl(device: &wgpu::Device) -> wgpu::BindGroupLayout {

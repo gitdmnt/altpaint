@@ -8,6 +8,7 @@ pub mod brush;
 pub mod composite;
 pub mod fill;
 mod gpu;
+mod pipeline;
 
 pub use brush::{BrushStrokeParams, BrushPipeline};
 pub use composite::{CompositeLayerEntry, CompositePipeline};

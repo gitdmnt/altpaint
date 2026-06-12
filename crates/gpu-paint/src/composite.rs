@@ -7,7 +7,8 @@
 
 use std::sync::Arc;
 
-use crate::gpu::GpuRgbaTexture;
+use crate::gpu::{GpuCanvasContext, GpuRgbaTexture};
+use crate::pipeline::build_compute_pipeline;
 
 const CLEAR_PARAMS_SIZE: u64 = 32;
 const COMPOSITE_PARAMS_SIZE: u64 = 32;
@@ -33,16 +34,18 @@ pub struct CompositePipeline {
 
 impl CompositePipeline {
     /// 計算パイプラインと BGL を初期化する。
-    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
+    pub fn new(ctx: &GpuCanvasContext) -> Self {
+        let device = ctx.device();
+        let queue = ctx.queue();
         let clear_bgl = create_clear_bgl(&device);
         let composite_bgl = create_composite_bgl(&device);
-        let clear_pipeline = build_pipeline(
+        let clear_pipeline = build_compute_pipeline(
             &device,
             &clear_bgl,
             include_str!("shaders/composite_clear.wgsl"),
             "composite_clear",
         );
-        let composite_pipeline = build_pipeline(
+        let composite_pipeline = build_compute_pipeline(
             &device,
             &composite_bgl,
             include_str!("shaders/layer_composite.wgsl"),
@@ -233,31 +236,6 @@ fn create_dummy_mask(device: &wgpu::Device) -> wgpu::Texture {
     })
 }
 
-fn build_pipeline(
-    device: &wgpu::Device,
-    bgl: &wgpu::BindGroupLayout,
-    wgsl: &str,
-    label: &str,
-) -> wgpu::ComputePipeline {
-    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some(label),
-        source: wgpu::ShaderSource::Wgsl(wgsl.into()),
-    });
-    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some(label),
-        bind_group_layouts: &[bgl],
-        immediate_size: 0,
-    });
-    device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: Some(label),
-        layout: Some(&pipeline_layout),
-        module: &shader,
-        entry_point: Some("main"),
-        compilation_options: wgpu::PipelineCompilationOptions::default(),
-        cache: None,
-    })
-}
-
 fn create_clear_bgl(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("composite-clear-bgl"),
@@ -386,10 +364,18 @@ mod tests {
 
     #[test]
     fn composite_params_layout_matches_wgsl() {
-        let bytes = build_composite_params_bytes((0, 0, 64, 64), 128, 128, 2, 1);
+        // 全フィールドを相異なる非ゼロ値にし、各オフセットが取り違えなく
+        // 直列化されることを検証する (旧テストは dirty を 0 のまま放置し
+        // dirty_x0/y0/x1/y1 のオフセットを検証していなかった)。
+        let bytes = build_composite_params_bytes((11, 22, 33, 44), 55, 66, 3, 1);
         assert_eq!(bytes.len(), 32);
-        assert_eq!(u32::from_le_bytes(bytes[16..20].try_into().unwrap()), 128);
-        assert_eq!(u32::from_le_bytes(bytes[24..28].try_into().unwrap()), 2);
+        assert_eq!(u32::from_le_bytes(bytes[0..4].try_into().unwrap()), 11);
+        assert_eq!(u32::from_le_bytes(bytes[4..8].try_into().unwrap()), 22);
+        assert_eq!(u32::from_le_bytes(bytes[8..12].try_into().unwrap()), 33);
+        assert_eq!(u32::from_le_bytes(bytes[12..16].try_into().unwrap()), 44);
+        assert_eq!(u32::from_le_bytes(bytes[16..20].try_into().unwrap()), 55);
+        assert_eq!(u32::from_le_bytes(bytes[20..24].try_into().unwrap()), 66);
+        assert_eq!(u32::from_le_bytes(bytes[24..28].try_into().unwrap()), 3);
         assert_eq!(u32::from_le_bytes(bytes[28..32].try_into().unwrap()), 1);
     }
 }

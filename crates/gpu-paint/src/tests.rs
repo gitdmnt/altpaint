@@ -83,7 +83,7 @@ mod gpu_tests {
                 let texture = crate::GpuRgbaTexture::create(&ctx, 4, 4);
                 texture.upload_pixels(&ctx, &[0u8; 4 * 4 * 4]);
 
-                let brush = BrushPipeline::new(device.clone(), queue.clone());
+                let brush = BrushPipeline::new(&ctx);
                 brush.dispatch_stroke(
                     &texture,
                     &[app_core::KomaLocalPoint::new(2, 2)],
@@ -299,7 +299,8 @@ mod gpu_tests {
                 }
                 pool.upload_cpu_bitmap("p", 0, &pixels);
 
-                let fill = FillPipeline::new(device, queue);
+                let ctx = crate::GpuCanvasContext::new(device, queue);
+                let fill = FillPipeline::new(&ctx);
                 let target = pool.get("p", 0).unwrap();
                 fill.dispatch_flood_fill(target, target, (0, 0), [1.0, 0.0, 0.0, 1.0]);
 
@@ -337,7 +338,8 @@ mod gpu_tests {
                 let pixels = vec![0u8; 8 * 8 * 4];
                 pool.upload_cpu_bitmap("p", 0, &pixels);
 
-                let fill = FillPipeline::new(device, queue);
+                let ctx = crate::GpuCanvasContext::new(device, queue);
+                let fill = FillPipeline::new(&ctx);
                 let target = pool.get("p", 0).unwrap();
                 // 三角形 (0,0), (7,0), (0,7) — 左上半分が内側。
                 let polygon = vec![(0.0, 0.0), (7.0, 0.0), (0.0, 7.0)];
@@ -385,7 +387,8 @@ mod gpu_tests {
                 }
                 pool.upload_cpu_bitmap("p", 0, &pixels);
 
-                let compositor = CompositePipeline::new(device, queue);
+                let ctx = crate::GpuCanvasContext::new(device, queue);
+                let compositor = CompositePipeline::new(&ctx);
                 let composite = pool.get_composite("p").unwrap();
                 let layer = pool.get("p", 0).unwrap();
                 compositor.recomposite(
@@ -428,7 +431,8 @@ mod gpu_tests {
                 let pixels: Vec<u8> = (0..16).flat_map(|_| [255u8, 0, 0, 255]).collect();
                 pool.upload_cpu_bitmap("p", 0, &pixels);
 
-                let compositor = CompositePipeline::new(device, queue);
+                let ctx = crate::GpuCanvasContext::new(device, queue);
+                let compositor = CompositePipeline::new(&ctx);
                 let composite = pool.get_composite("p").unwrap();
                 let layer = pool.get("p", 0).unwrap();
                 compositor.recomposite(

@@ -8,7 +8,8 @@ use std::sync::Arc;
 use app_core::paint_params::MAX_STAMP_STEPS;
 use app_core::{KomaLocalPoint, ToolKind};
 
-use crate::gpu::GpuRgbaTexture;
+use crate::gpu::{GpuCanvasContext, GpuRgbaTexture};
+use crate::pipeline::build_compute_pipeline_with_layout;
 
 /// 1 ストローク分のブラシ描画パラメータ。
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -40,7 +41,9 @@ pub struct BrushPipeline {
 
 impl BrushPipeline {
     /// 計算パイプラインとバインドグループレイアウトを初期化する。
-    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
+    pub fn new(ctx: &GpuCanvasContext) -> Self {
+        let device = ctx.device();
+        let queue = ctx.queue();
         let bind_group_layout = Self::create_bind_group_layout(&device);
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("gpu-brush-pipeline-layout"),
@@ -48,35 +51,19 @@ impl BrushPipeline {
             immediate_size: 0,
         });
 
-        let stroke_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("brush_stroke"),
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("shaders/brush_stroke.wgsl").into(),
-            ),
-        });
-        let erase_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("erase_stamp"),
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("shaders/erase_stamp.wgsl").into(),
-            ),
-        });
-
-        let stroke_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("brush-stroke-pipeline"),
-            layout: Some(&pipeline_layout),
-            module: &stroke_shader,
-            entry_point: Some("main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
-        });
-        let erase_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("erase-stamp-pipeline"),
-            layout: Some(&pipeline_layout),
-            module: &erase_shader,
-            entry_point: Some("main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
-        });
+        // stroke / erase は同一レイアウトを共有するため共通ヘルパで生成する。
+        let stroke_pipeline = build_compute_pipeline_with_layout(
+            &device,
+            &pipeline_layout,
+            include_str!("shaders/brush_stroke.wgsl"),
+            "brush_stroke",
+        );
+        let erase_pipeline = build_compute_pipeline_with_layout(
+            &device,
+            &pipeline_layout,
+            include_str!("shaders/erase_stamp.wgsl"),
+            "erase_stamp",
+        );
 
         Self {
             device,
