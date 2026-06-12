@@ -344,15 +344,6 @@ fn workspace_manager_panel_can_be_moved() {
     assert!(after.x >= before.x + 80 || after.y >= before.y + 24);
 }
 
-// 削除: panel_move_dirty_rect_covers_previous_and_current_overlay_bounds (Phase 9E-5)
-// L4 ui_panel_layer は 9E-3 で dummy 化されたため `ui_panel_dirty_rect` は常に None。
-// パネル GPU 直描画後の dirty rect 監視は Phase 9F で `panel_quads` レイヤー再構成
-// (PresentFrame 改名) と一緒に書き直す。
-
-// 削除: overlapping_panel_and_canvas_overlay_updates_union_dirty_rects (Phase 9E-5)
-// 同上。`ui_panel_dirty_rect` 検証経路が dummy 化されたため、Phase 9F で
-// L3/L5 を統合した dirty rect 検証として書き直す。
-
 #[test]
 #[ignore = "manual performance profiling"]
 fn profile_color_wheel_drag_for_ten_seconds() {
