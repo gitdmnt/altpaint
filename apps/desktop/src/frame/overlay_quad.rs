@@ -75,13 +75,13 @@ pub(crate) fn build_overlay_circle_quads(
     let (Some(position), Some(brush_size)) = (overlay.brush_preview, overlay.brush_size) else {
         return Vec::new();
     };
-    let Some(scene) = plan.scene() else {
+    let Some(geometry) = plan.view_geometry() else {
         return Vec::new();
     };
-    let Some(center) = scene.map_canvas_point_to_display(position) else {
+    let Some(center) = geometry.map_canvas_point_to_display(position) else {
         return Vec::new();
     };
-    let radius = ((brush_size.max(1) as f32 * scene.scale()) * 0.5).max(4.0);
+    let radius = ((brush_size.max(1) as f32 * geometry.scale()) * 0.5).max(4.0);
     vec![CircleQuad {
         center_px: [center.x, center.y],
         radius,
@@ -98,14 +98,14 @@ pub(crate) fn build_overlay_line_quads(
     if overlay.lasso_points.len() < 2 {
         return Vec::new();
     }
-    let Some(scene) = plan.scene() else {
+    let Some(geometry) = plan.view_geometry() else {
         return Vec::new();
     };
     let mut quads = Vec::with_capacity(overlay.lasso_points.len().saturating_sub(1));
     for window in overlay.lasso_points.windows(2) {
         let (Some(start), Some(end)) = (
-            scene.map_canvas_point_to_display(window[0]),
-            scene.map_canvas_point_to_display(window[1]),
+            geometry.map_canvas_point_to_display(window[0]),
+            geometry.map_canvas_point_to_display(window[1]),
         ) else {
             continue;
         };
@@ -355,7 +355,7 @@ mod tests {
         assert_eq!(quads.len(), 1);
         assert_eq!(quads[0].color, BRUSH_PREVIEW_RING);
         assert_eq!(quads[0].thickness, BRUSH_RING_THICKNESS);
-        let scale = plan.scene().expect("scene").scale();
+        let scale = plan.view_geometry().expect("view geometry").scale();
         let expected_radius = ((10.0_f32 * scale) * 0.5).max(4.0);
         assert!((quads[0].radius - expected_radius).abs() < 0.001);
     }

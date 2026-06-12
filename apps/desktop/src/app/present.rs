@@ -166,8 +166,8 @@ impl DesktopApp {
             );
         }
         if canvas_dirty_rect.is_some() || canvas_transform_changed {
-            profiler.measure("prepare_canvas_scene", || {
-                let _ = self.canvas_scene();
+            profiler.measure("compute_canvas_view_geometry", || {
+                let _ = self.canvas_view_geometry();
             });
         }
 

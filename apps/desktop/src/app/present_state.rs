@@ -181,20 +181,20 @@ impl DesktopApp {
                 width: canvas_viewport_rect.width,
                 height: canvas_viewport_rect.height,
             };
-            // previous_scene は変更前の transform で計算するためキャッシュは使えない
-            let previous_scene = canvas_geometry::prepare_canvas_scene(
+            // previous_geometry は変更前の transform で計算するためキャッシュは使えない
+            let previous_geometry = canvas_geometry::CanvasViewGeometry::compute(
                 viewport,
                 canvas_width,
                 canvas_height,
                 previous_transform,
             );
-            // current_scene はキャッシュを使う（キャッシュが古ければ再計算して更新）
-            self.cached_canvas_scene = None;
-            let current_scene = self.canvas_scene();
+            // current_geometry はキャッシュを使う（キャッシュが古ければ再計算して更新）
+            self.cached_canvas_view_geometry = None;
+            let current_geometry = self.canvas_view_geometry();
             if let Some(dirty) = self.hover_canvas_position.and_then(|hover_position| {
                 canvas_geometry::brush_preview_dirty_rect(
-                    previous_scene,
-                    current_scene,
+                    previous_geometry,
+                    current_geometry,
                     hover_position,
                     self.brush_preview_size().unwrap_or(1) as f32,
                 )
@@ -267,11 +267,11 @@ impl DesktopApp {
     }
 
     pub(crate) fn canvas_texture_quad(&mut self) -> Option<canvas_geometry::TextureQuad> {
-        self.canvas_scene().and_then(|scene| scene.texture_quad())
+        self.canvas_view_geometry().and_then(|geometry| geometry.texture_quad())
     }
 
     /// 入力が変わらない限りキャッシュした結果を再利用する。
-    pub(crate) fn canvas_scene(&mut self) -> Option<canvas_geometry::CanvasScene> {
+    pub(crate) fn canvas_view_geometry(&mut self) -> Option<canvas_geometry::CanvasViewGeometry> {
         let layout = self.layout.as_ref()?;
         let bitmap = self.canvas_frame()?;
         let viewport = canvas_geometry::PixelRect {
@@ -284,23 +284,23 @@ impl DesktopApp {
         let canvas_height = bitmap.height;
         let transform = self.document.view_transform;
 
-        if let Some(ref cache) = self.cached_canvas_scene
+        if let Some(ref cache) = self.cached_canvas_view_geometry
             && cache.viewport == viewport
             && cache.canvas_width == canvas_width
             && cache.canvas_height == canvas_height
             && cache.transform == transform
         {
-            return cache.scene;
+            return cache.geometry;
         }
-        let scene = canvas_geometry::prepare_canvas_scene(viewport, canvas_width, canvas_height, transform);
-        self.cached_canvas_scene = Some(super::CachedCanvasScene {
+        let geometry = canvas_geometry::CanvasViewGeometry::compute(viewport, canvas_width, canvas_height, transform);
+        self.cached_canvas_view_geometry = Some(super::CachedCanvasViewGeometry {
             viewport,
             canvas_width,
             canvas_height,
             transform,
-            scene,
+            geometry,
         });
-        scene
+        geometry
     }
 
     pub(crate) fn canvas_frame(&self) -> Option<&super::canvas_frame::CanvasFrame> {

@@ -1,17 +1,17 @@
 use app_core::PagePoint;
 
-use crate::{CanvasScene, PixelRect, union_optional_rect};
+use crate::{CanvasViewGeometry, PixelRect, union_optional_rect};
 
 pub fn brush_preview_dirty_rect(
-    previous_scene: Option<CanvasScene>,
-    current_scene: Option<CanvasScene>,
+    previous_geometry: Option<CanvasViewGeometry>,
+    current_geometry: Option<CanvasViewGeometry>,
     canvas_position: PagePoint,
     brush_diameter: f32,
 ) -> Option<PixelRect> {
-    let previous = previous_scene
-        .and_then(|scene| scene.brush_preview_rect_for_diameter(canvas_position, brush_diameter));
-    let current = current_scene
-        .and_then(|scene| scene.brush_preview_rect_for_diameter(canvas_position, brush_diameter));
+    let previous = previous_geometry
+        .and_then(|geometry| geometry.brush_preview_rect_for_diameter(canvas_position, brush_diameter));
+    let current = current_geometry
+        .and_then(|geometry| geometry.brush_preview_rect_for_diameter(canvas_position, brush_diameter));
 
     union_optional_rect(previous, current)
 }

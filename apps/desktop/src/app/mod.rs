@@ -45,13 +45,13 @@ use paint_engine::CanvasInputState;
 #[cfg(test)]
 static TEST_SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-/// canvas_scene のキャッシュエントリ。入力が同じなら再計算を省略するために使う。
-struct CachedCanvasScene {
+/// canvas_view_geometry のキャッシュエントリ。入力が同じなら再計算を省略するために使う。
+struct CachedCanvasViewGeometry {
     viewport: canvas_geometry::PixelRect,
     canvas_width: usize,
     canvas_height: usize,
     transform: app_core::CanvasViewTransform,
-    scene: Option<canvas_geometry::CanvasScene>,
+    geometry: Option<canvas_geometry::CanvasViewGeometry>,
 }
 
 /// ストローク中のビットマップ差分追跡状態。
@@ -90,7 +90,7 @@ pub(crate) struct DesktopApp {
     pub(crate) status_panel: crate::frame::status_panel::StatusPanel,
     /// 次フレームで消化される提示無効化状態 (保留 dirty rect・再構築フラグ)。
     pub(crate) invalidation: present_state::PresentInvalidation,
-    cached_canvas_scene: Option<CachedCanvasScene>,
+    cached_canvas_view_geometry: Option<CachedCanvasViewGeometry>,
     pub(crate) history: CommandHistory,
     pub(crate) snapshots: DocumentSnapshotStore,
     pub(crate) panel_interaction: PanelInteractionState,
@@ -153,7 +153,7 @@ impl DesktopApp {
             canvas_frame: None,
             status_panel: crate::frame::status_panel::StatusPanel::new(),
             invalidation: present_state::PresentInvalidation::at_startup(),
-            cached_canvas_scene: None,
+            cached_canvas_view_geometry: None,
             history: CommandHistory::new(),
             snapshots: DocumentSnapshotStore::default(),
             panel_interaction: PanelInteractionState::default(),

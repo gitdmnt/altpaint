@@ -1,7 +1,7 @@
 use app_core::{PageDirtyRect, CanvasViewTransform};
 
 use crate::{
-    CanvasScene, PixelRect, map_canvas_dirty_to_display_with_transform, prepare_canvas_scene,
+    CanvasViewGeometry, PixelRect, map_canvas_dirty_to_display_with_transform,
 };
 
 /// `render` が扱うキャンバス表示計画を表す。
@@ -14,8 +14,8 @@ pub struct CanvasPlan {
 }
 
 impl CanvasPlan {
-    pub fn scene(&self) -> Option<CanvasScene> {
-        prepare_canvas_scene(
+    pub fn view_geometry(&self) -> Option<CanvasViewGeometry> {
+        CanvasViewGeometry::compute(
             self.host_rect,
             self.source_width,
             self.source_height,

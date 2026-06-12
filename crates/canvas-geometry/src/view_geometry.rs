@@ -1,6 +1,6 @@
 use app_core::{
-    PageDirtyRect, CanvasDisplayPoint, PagePoint, CanvasViewTransform, CanvasViewportPoint,
-    ClampToCanvasBounds, PanelSurfacePoint, WindowPoint,
+    CanvasDisplayPoint, CanvasViewTransform, CanvasViewportPoint, ClampToCanvasBounds,
+    PageDirtyRect, PagePoint, PanelSurfacePoint, WindowPoint,
 };
 
 /// 画面上のピクセル矩形を表す。
@@ -88,7 +88,7 @@ pub struct TextureQuad {
 
 /// `CanvasViewTransform` から導かれる表示用の幾何計画。
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct CanvasScene {
+pub struct CanvasViewGeometry {
     viewport: PixelRect,
     source_width: usize,
     source_height: usize,
@@ -105,7 +105,7 @@ pub struct CanvasScene {
     texture_quad: Option<TextureQuad>,
 }
 
-impl CanvasScene {
+impl CanvasViewGeometry {
     fn uv_transform(&self) -> UvTransform {
         UvTransform {
             source_width: self.source_width as f32,
@@ -263,88 +263,95 @@ impl CanvasScene {
             self.offset_y + rotated.v * self.bbox_height * self.scale,
         ))
     }
-}
 
-pub fn prepare_canvas_scene(
-    viewport: PixelRect,
-    source_width: usize,
-    source_height: usize,
-    transform: CanvasViewTransform,
-) -> Option<CanvasScene> {
-    if viewport.width == 0 || viewport.height == 0 || source_width == 0 || source_height == 0 {
-        return None;
-    }
+    /// viewport・ソース寸法・ビュー変換からキャンバス表示幾何を計算する。
+    ///
+    /// viewport またはソース寸法が 0 の場合は `None` を返す。
+    pub fn compute(
+        viewport: PixelRect,
+        source_width: usize,
+        source_height: usize,
+        transform: CanvasViewTransform,
+    ) -> Option<CanvasViewGeometry> {
+        if viewport.width == 0 || viewport.height == 0 || source_width == 0 || source_height == 0 {
+            return None;
+        }
 
-    let rotation_degrees = normalized_rotation_degrees(transform.rotation_degrees);
-    let radians = rotation_degrees.to_radians();
-    let cos_theta = radians.cos();
-    let sin_theta = radians.sin();
-    let (bbox_width, bbox_height) =
-        rotated_bounding_box(source_width as f32, source_height as f32, cos_theta, sin_theta);
+        let rotation_degrees = normalized_rotation_degrees(transform.rotation_degrees);
+        let radians = rotation_degrees.to_radians();
+        let cos_theta = radians.cos();
+        let sin_theta = radians.sin();
+        let (bbox_width, bbox_height) = rotated_bounding_box(
+            source_width as f32,
+            source_height as f32,
+            cos_theta,
+            sin_theta,
+        );
 
-    let fit_scale_x = viewport.width as f32 / (source_width as f32).max(f32::EPSILON);
-    let fit_scale_y = viewport.height as f32 / (source_height as f32).max(f32::EPSILON);
-    let scale = (fit_scale_x.min(fit_scale_y) * transform.zoom.max(0.25)).max(f32::EPSILON);
-    let drawn_width = bbox_width * scale;
-    let drawn_height = bbox_height * scale;
-    let offset_x =
-        viewport.x as f32 + (viewport.width as f32 - drawn_width) * 0.5 + transform.pan_x;
-    let offset_y =
-        viewport.y as f32 + (viewport.height as f32 - drawn_height) * 0.5 + transform.pan_y;
+        let fit_scale_x = viewport.width as f32 / (source_width as f32).max(f32::EPSILON);
+        let fit_scale_y = viewport.height as f32 / (source_height as f32).max(f32::EPSILON);
+        let scale = (fit_scale_x.min(fit_scale_y) * transform.zoom.max(0.25)).max(f32::EPSILON);
+        let drawn_width = bbox_width * scale;
+        let drawn_height = bbox_height * scale;
+        let offset_x =
+            viewport.x as f32 + (viewport.width as f32 - drawn_width) * 0.5 + transform.pan_x;
+        let offset_y =
+            viewport.y as f32 + (viewport.height as f32 - drawn_height) * 0.5 + transform.pan_y;
 
-    let left = offset_x.floor();
-    let top = offset_y.floor();
-    let right = (offset_x + drawn_width).ceil();
-    let bottom = (offset_y + drawn_height).ceil();
+        let left = offset_x.floor();
+        let top = offset_y.floor();
+        let right = (offset_x + drawn_width).ceil();
+        let bottom = (offset_y + drawn_height).ceil();
 
-    let clipped_left = left.max(viewport.x as f32);
-    let clipped_top = top.max(viewport.y as f32);
-    let clipped_right = right.min((viewport.x + viewport.width) as f32);
-    let clipped_bottom = bottom.min((viewport.y + viewport.height) as f32);
+        let clipped_left = left.max(viewport.x as f32);
+        let clipped_top = top.max(viewport.y as f32);
+        let clipped_right = right.min((viewport.x + viewport.width) as f32);
+        let clipped_bottom = bottom.min((viewport.y + viewport.height) as f32);
 
-    let drawn_rect =
-        (clipped_left < clipped_right && clipped_top < clipped_bottom).then_some(PixelRect {
-            x: clipped_left as usize,
-            y: clipped_top as usize,
-            width: (clipped_right - clipped_left) as usize,
-            height: (clipped_bottom - clipped_top) as usize,
+        let drawn_rect =
+            (clipped_left < clipped_right && clipped_top < clipped_bottom).then_some(PixelRect {
+                x: clipped_left as usize,
+                y: clipped_top as usize,
+                width: (clipped_right - clipped_left) as usize,
+                height: (clipped_bottom - clipped_top) as usize,
+            });
+
+        let texture_quad = drawn_rect.map(|drawn_rect| {
+            let left = ((drawn_rect.x as f32 - offset_x) / scale).clamp(0.0, bbox_width);
+            let top = ((drawn_rect.y as f32 - offset_y) / scale).clamp(0.0, bbox_height);
+            let right = (((drawn_rect.x + drawn_rect.width) as f32 - offset_x) / scale)
+                .clamp(0.0, bbox_width);
+            let bottom = (((drawn_rect.y + drawn_rect.height) as f32 - offset_y) / scale)
+                .clamp(0.0, bbox_height);
+
+            TextureQuad {
+                destination: drawn_rect,
+                uv_min: [left / bbox_width, top / bbox_height],
+                uv_max: [right / bbox_width, bottom / bbox_height],
+                rotation_degrees,
+                bbox_size: [bbox_width, bbox_height],
+                flip_x: transform.flip_x,
+                flip_y: transform.flip_y,
+            }
         });
 
-    let texture_quad = drawn_rect.map(|drawn_rect| {
-        let left = ((drawn_rect.x as f32 - offset_x) / scale).clamp(0.0, bbox_width);
-        let top = ((drawn_rect.y as f32 - offset_y) / scale).clamp(0.0, bbox_height);
-        let right =
-            (((drawn_rect.x + drawn_rect.width) as f32 - offset_x) / scale).clamp(0.0, bbox_width);
-        let bottom = (((drawn_rect.y + drawn_rect.height) as f32 - offset_y) / scale)
-            .clamp(0.0, bbox_height);
-
-        TextureQuad {
-            destination: drawn_rect,
-            uv_min: [left / bbox_width, top / bbox_height],
-            uv_max: [right / bbox_width, bottom / bbox_height],
+        Some(CanvasViewGeometry {
+            viewport,
+            source_width,
+            source_height,
+            bbox_width,
+            bbox_height,
+            scale,
+            offset_x,
+            offset_y,
             rotation_degrees,
-            bbox_size: [bbox_width, bbox_height],
+            cos_theta,
+            sin_theta,
             flip_x: transform.flip_x,
             flip_y: transform.flip_y,
-        }
-    });
-
-    Some(CanvasScene {
-        viewport,
-        source_width,
-        source_height,
-        bbox_width,
-        bbox_height,
-        scale,
-        offset_x,
-        offset_y,
-        rotation_degrees,
-        cos_theta,
-        sin_theta,
-        flip_x: transform.flip_x,
-        flip_y: transform.flip_y,
-        texture_quad,
-    })
+            texture_quad,
+        })
+    }
 }
 
 fn normalized_rotation_degrees(rotation_degrees: f32) -> f32 {
@@ -427,8 +434,8 @@ pub fn map_canvas_dirty_to_display_with_transform(
     source_height: usize,
     transform: CanvasViewTransform,
 ) -> PixelRect {
-    prepare_canvas_scene(viewport, source_width, source_height, transform)
-        .map(|scene| scene.map_canvas_dirty_rect(dirty))
+    CanvasViewGeometry::compute(viewport, source_width, source_height, transform)
+        .map(|geometry| geometry.map_canvas_dirty_rect(dirty))
         .unwrap_or(PixelRect {
             x: viewport.x,
             y: viewport.y,
@@ -445,8 +452,9 @@ pub fn brush_preview_rect_for_diameter(
     canvas_position: PagePoint,
     brush_diameter: f32,
 ) -> Option<PixelRect> {
-    prepare_canvas_scene(viewport, source_width, source_height, transform)
-        .and_then(|scene| scene.brush_preview_rect_for_diameter(canvas_position, brush_diameter))
+    CanvasViewGeometry::compute(viewport, source_width, source_height, transform).and_then(
+        |geometry| geometry.brush_preview_rect_for_diameter(canvas_position, brush_diameter),
+    )
 }
 
 pub fn map_canvas_point_to_display(
@@ -456,8 +464,8 @@ pub fn map_canvas_point_to_display(
     transform: CanvasViewTransform,
     canvas_position: PagePoint,
 ) -> Option<CanvasDisplayPoint> {
-    prepare_canvas_scene(viewport, source_width, source_height, transform)
-        .and_then(|scene| scene.map_canvas_point_to_display(canvas_position))
+    CanvasViewGeometry::compute(viewport, source_width, source_height, transform)
+        .and_then(|geometry| geometry.map_canvas_point_to_display(canvas_position))
 }
 
 pub fn canvas_texture_quad(
@@ -466,8 +474,8 @@ pub fn canvas_texture_quad(
     source_height: usize,
     transform: CanvasViewTransform,
 ) -> Option<TextureQuad> {
-    prepare_canvas_scene(viewport, source_width, source_height, transform)
-        .and_then(|scene| scene.texture_quad())
+    CanvasViewGeometry::compute(viewport, source_width, source_height, transform)
+        .and_then(|geometry| geometry.texture_quad())
 }
 
 pub fn map_view_to_canvas_with_transform(
@@ -477,6 +485,6 @@ pub fn map_view_to_canvas_with_transform(
     point: CanvasViewportPoint,
     transform: CanvasViewTransform,
 ) -> Option<PagePoint> {
-    prepare_canvas_scene(viewport, source_width, source_height, transform)
-        .and_then(|scene| scene.map_view_to_canvas(point))
+    CanvasViewGeometry::compute(viewport, source_width, source_height, transform)
+        .and_then(|geometry| geometry.map_view_to_canvas(point))
 }

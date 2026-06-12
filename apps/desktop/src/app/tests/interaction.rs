@@ -846,11 +846,11 @@ fn emit_canvas_perf(
         iterations as f64 / elapsed
     );
     eprintln!(
-        "[canvas-perf] tool={tool_name} size={size} prepare_frame avg={:.3}ms max={:.3}ms | prepare_canvas_scene avg={:.3}ms max={:.3}ms",
+        "[canvas-perf] tool={tool_name} size={size} prepare_frame avg={:.3}ms max={:.3}ms | compute_canvas_view_geometry avg={:.3}ms max={:.3}ms",
         avg_stage_ms(profiler, "prepare_frame"),
         max_stage_ms(profiler, "prepare_frame"),
-        avg_stage_ms(profiler, "prepare_canvas_scene"),
-        max_stage_ms(profiler, "prepare_canvas_scene"),
+        avg_stage_ms(profiler, "compute_canvas_view_geometry"),
+        max_stage_ms(profiler, "compute_canvas_view_geometry"),
     );
     eprintln!(
         "[canvas-perf] tool={tool_name} size={size} canvas upload avg={:.2}% ({:.0}px) | overlay upload avg={:.2}% ({:.0}px)",
@@ -905,11 +905,11 @@ fn emit_view_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterati
         iterations as f64 / elapsed
     );
     eprintln!(
-        "[view-perf] case={label} prepare_frame avg={:.3}ms max={:.3}ms | prepare_canvas_scene avg={:.3}ms max={:.3}ms | panel_reconcile avg={:.3}ms max={:.3}ms",
+        "[view-perf] case={label} prepare_frame avg={:.3}ms max={:.3}ms | compute_canvas_view_geometry avg={:.3}ms max={:.3}ms | panel_reconcile avg={:.3}ms max={:.3}ms",
         avg_stage_ms(profiler, "prepare_frame"),
         max_stage_ms(profiler, "prepare_frame"),
-        avg_stage_ms(profiler, "prepare_canvas_scene"),
-        max_stage_ms(profiler, "prepare_canvas_scene"),
+        avg_stage_ms(profiler, "compute_canvas_view_geometry"),
+        max_stage_ms(profiler, "compute_canvas_view_geometry"),
         avg_stage_ms(profiler, "panel_reconcile"),
         max_stage_ms(profiler, "panel_reconcile"),
     );
@@ -995,7 +995,7 @@ fn pan_view_updates_canvas_without_status_recompose() {
 
     assert!(!profiler.stats.contains_key("compose_full_frame"));
     assert!(!profiler.stats.contains_key("compose_dirty_status"));
-    assert!(profiler.stats.contains_key("prepare_canvas_scene"));
+    assert!(profiler.stats.contains_key("compute_canvas_view_geometry"));
     assert!(!profiler.stats.contains_key("compose_dirty_panel"));
     assert!(!profiler.stats.contains_key("panel_reconcile"));
     // 9C-1: L1 背景は GPU の solid quad パイプラインで毎フレーム描画されるため

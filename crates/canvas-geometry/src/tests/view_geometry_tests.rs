@@ -4,9 +4,9 @@ use app_core::{
 };
 
 use crate::{
-    PixelRect, brush_preview_dirty_rect, canvas_texture_quad,
+    CanvasViewGeometry, PixelRect, brush_preview_dirty_rect, canvas_texture_quad,
     map_canvas_dirty_to_display_with_transform, map_canvas_point_to_display,
-    map_view_to_canvas_with_transform, prepare_canvas_scene,
+    map_view_to_canvas_with_transform,
 };
 
 /// PixelRect::contains が window 座標点の内外を正しく判定することを検証する。
@@ -67,8 +67,8 @@ fn brush_preview_dirty_rect_unions_previous_and_current_preview() {
         width: 400,
         height: 300,
     };
-    let previous = prepare_canvas_scene(viewport, 64, 64, CanvasViewTransform::default());
-    let current = prepare_canvas_scene(
+    let previous = CanvasViewGeometry::compute(viewport, 64, 64, CanvasViewTransform::default());
+    let current = CanvasViewGeometry::compute(
         viewport,
         64,
         64,
@@ -147,7 +147,7 @@ fn canvas_texture_quad_clips_uv_when_panned_outside_display() {
 }
 
 #[test]
-fn map_view_to_canvas_tracks_shifted_scene() {
+fn map_view_to_canvas_tracks_shifted_view_geometry() {
     let mapped = map_view_to_canvas_with_transform(
         PixelRect {
             x: 0,
@@ -245,16 +245,16 @@ fn arbitrary_rotation_keeps_canvas_scale_stable() {
         ..base_transform
     };
 
-    let base_scene =
-        prepare_canvas_scene(viewport, 64, 32, base_transform).expect("base scene exists");
-    let rotated_scene =
-        prepare_canvas_scene(viewport, 64, 32, rotated_transform).expect("rotated scene exists");
+    let base_geometry =
+        CanvasViewGeometry::compute(viewport, 64, 32, base_transform).expect("base geometry exists");
+    let rotated_geometry =
+        CanvasViewGeometry::compute(viewport, 64, 32, rotated_transform).expect("rotated geometry exists");
 
-    assert!((base_scene.scale() - rotated_scene.scale()).abs() < 0.001);
+    assert!((base_geometry.scale() - rotated_geometry.scale()).abs() < 0.001);
 }
 
 #[test]
-fn map_view_to_canvas_tracks_rotated_scene() {
+fn map_view_to_canvas_tracks_rotated_geometry() {
     let mapped = map_view_to_canvas_with_transform(
         PixelRect {
             x: 0,

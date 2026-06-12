@@ -2,7 +2,7 @@
 //!
 //! Phase 9F で `render::RenderFrame` / `render::RenderContext` を撤去した際に
 //! `apps/desktop` 内へ移管した最小型。GPU キャンバスが標準経路だが、
-//! `canvas_frame` の (width, height) は依然 viewport / scene 計算で参照される。
+//! `canvas_frame` の (width, height) は依然 viewport / 表示幾何 (CanvasViewGeometry) 計算で参照される。
 
 use app_core::Document;
 
