@@ -5,21 +5,6 @@ use panel_runtime::{ServiceRequest, services::names};
 
 use super::DesktopApp;
 
-impl DesktopApp {
-    /// アクティブペンのペン先テクスチャを GPU キャッシュへアップロードする。
-    ///
-    /// GPU 未初期化時 (`gpu` が None) は何もしない。
-    pub(super) fn upload_active_pen_tip_to_gpu_cache(&mut self) {
-        let Some(gpu) = &mut self.gpu else {
-            return;
-        };
-        if let Some(pen) = self.document.active_pen_preset() {
-            let preset_id = pen.id.clone();
-            gpu.pen_tips.upload_from_preset(&preset_id, pen);
-        }
-    }
-}
-
 const TOOL_PANEL_IDS: &[&str] = &["builtin.pen-settings", "builtin.tool-palette"];
 const COLOR_PANEL_IDS: &[&str] = &["builtin.color-palette"];
 impl DesktopApp {
@@ -99,7 +84,6 @@ impl DesktopApp {
             | Command::SelectPreviousPenPreset => {
                 self.sync_ui_from_document_panels(TOOL_PANEL_IDS);
                 self.mark_status_dirty();
-                self.upload_active_pen_tip_to_gpu_cache();
                 true
             }
             Command::SetActivePenSize { .. }

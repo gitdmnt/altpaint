@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use app_core::{CanvasDirtyRect, PanelLocalPoint, PenPreset, PenTipBitmap};
+use app_core::{CanvasDirtyRect, PanelLocalPoint};
 
 /// wgpu デバイスとキューを共有するコンテキスト。
 ///
@@ -447,77 +447,6 @@ impl GpuCanvasPool {
         );
         texture
     }
-}
-
-/// ペン先テクスチャのキャッシュ。
-///
-/// 真円ペン (`tip: None`) はテクスチャ不要。ビットマップペン先は wgpu::Texture としてアップロードする。
-pub struct GpuPenTipCache {
-    ctx: GpuCanvasContext,
-    /// pen_preset_id → GpuLayerTexture
-    textures: HashMap<String, GpuLayerTexture>,
-}
-
-impl GpuPenTipCache {
-    /// 新しいキャッシュを生成する。
-    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
-        Self {
-            ctx: GpuCanvasContext::new(device, queue),
-            textures: HashMap::new(),
-        }
-    }
-
-    /// ペンプリセットからペン先テクスチャをアップロードする。
-    ///
-    /// `tip: None`（真円ペン）の場合は何もしない。
-    /// ビットマップがある場合はテクスチャを作成してアップロードする。
-    pub fn upload_from_preset(&mut self, preset_id: &str, pen: &PenPreset) {
-        let Some(tip) = &pen.tip else {
-            return;
-        };
-
-        match tip {
-            PenTipBitmap::AlphaMask8 {
-                width,
-                height,
-                data,
-            } => {
-                // AlphaMask8 はグレースケール 1 バイト/ピクセルなので RGBA に変換する。
-                let rgba = alpha_mask_to_rgba(data);
-                let texture = GpuLayerTexture::create(&self.ctx, *width, *height);
-                texture.upload_pixels(&self.ctx, &rgba);
-                self.textures.insert(preset_id.to_string(), texture);
-            }
-            PenTipBitmap::Rgba8 {
-                width,
-                height,
-                data,
-            } => {
-                let texture = GpuLayerTexture::create(&self.ctx, *width, *height);
-                texture.upload_pixels(&self.ctx, data);
-                self.textures.insert(preset_id.to_string(), texture);
-            }
-            PenTipBitmap::PngBlob { width, height, .. } => {
-                // PngBlob はデコードが必要だが Phase 8A では空テクスチャを確保するのみ。
-                let texture = GpuLayerTexture::create(&self.ctx, *width, *height);
-                self.textures.insert(preset_id.to_string(), texture);
-            }
-        }
-    }
-
-    /// キャッシュ済みペン先テクスチャを取得する。
-    pub fn get(&self, preset_id: &str) -> Option<&GpuLayerTexture> {
-        self.textures.get(preset_id)
-    }
-}
-
-/// AlphaMask8 (グレースケール 1 バイト/ピクセル) を RGBA 4 バイト/ピクセルへ変換する。
-///
-/// R=G=B=255 固定、A = alpha 値とする。
-fn alpha_mask_to_rgba(data: &[u8]) -> Vec<u8> {
-    data.iter()
-        .flat_map(|&alpha| [255u8, 255, 255, alpha])
-        .collect()
 }
 
 /// 任意の `wgpu::Texture`（Rgba8Unorm, COPY_SRC）全体を CPU RGBA8 Vec へ読み戻す。

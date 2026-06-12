@@ -109,8 +109,6 @@ pub(crate) struct DesktopApp {
 pub(crate) struct GpuPaintEngine {
     /// GPU レイヤーテクスチャプール。
     pub(crate) pool: gpu_canvas::GpuCanvasPool,
-    /// GPU ペン先テクスチャキャッシュ。
-    pub(crate) pen_tips: gpu_canvas::GpuPenTipCache,
     /// GPU ブラシ計算シェーダーディスパッチャ。
     pub(crate) brush: gpu_canvas::GpuBrushDispatch,
     /// GPU 塗りつぶしディスパッチャ。
@@ -203,13 +201,11 @@ impl DesktopApp {
     ) {
         self.gpu = Some(GpuPaintEngine {
             pool: gpu_canvas::GpuCanvasPool::new(device.clone(), queue.clone()),
-            pen_tips: gpu_canvas::GpuPenTipCache::new(device.clone(), queue.clone()),
             brush: gpu_canvas::GpuBrushDispatch::new(device.clone(), queue.clone()),
             fill: gpu_canvas::GpuFillDispatch::new(device.clone(), queue.clone()),
             compositor: gpu_canvas::GpuLayerCompositor::new(device, queue),
         });
         self.sync_all_layers_to_gpu();
-        self.upload_active_pen_tip_to_gpu_cache();
         self.recomposite_all_panels();
     }
 

@@ -1311,14 +1311,14 @@ impl WgpuPresenter {
     /// ウィンドウサイズ変更時にサーフェスを再設定する。
     /// Arc でラップされたデバイスへの参照を返す。
     ///
-    /// gpu-canvas クレートの `GpuCanvasPool` / `GpuPenTipCache` と共有するために使う。
+    /// gpu-canvas クレートの `GpuCanvasPool` と共有するために使う。
     pub fn device(&self) -> Arc<wgpu::Device> {
         Arc::clone(&self.device)
     }
 
     /// Arc でラップされたキューへの参照を返す。
     ///
-    /// gpu-canvas クレートの `GpuCanvasPool` / `GpuPenTipCache` と共有するために使う。
+    /// gpu-canvas クレートの `GpuCanvasPool` と共有するために使う。
     pub fn queue(&self) -> Arc<wgpu::Queue> {
         Arc::clone(&self.queue)
     }

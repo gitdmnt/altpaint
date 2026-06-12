@@ -1,29 +1,12 @@
 //! gpu-canvas クレートのテスト。
 
-/// CPU 単体テスト（GPU 不要）。
-mod cpu_tests {
-    /// alpha_mask_to_rgba 変換ロジックの単体テスト。
-    #[test]
-    fn alpha_mask_conversion_produces_correct_rgba() {
-        let mask = [0u8, 128, 255];
-        let rgba: Vec<u8> = mask
-            .iter()
-            .flat_map(|&alpha| [255u8, 255, 255, alpha])
-            .collect();
-        assert_eq!(
-            rgba,
-            [255u8, 255, 255, 0, 255, 255, 255, 128, 255, 255, 255, 255]
-        );
-    }
-}
-
 /// GPU ありテスト。
 mod gpu_tests {
     use std::sync::Arc;
 
     use crate::{
         CompositeLayerEntry, GpuBrushDispatch, GpuCanvasPool, GpuFillDispatch,
-        GpuLayerCompositor, GpuPenTipCache,
+        GpuLayerCompositor,
     };
 
     /// wgpu アダプターとデバイスを生成するヘルパー。GPU がない CI では `None` を返す。
@@ -67,31 +50,6 @@ mod gpu_tests {
             let pixels = vec![128u8; 4 * 4 * 4];
             pool.upload_cpu_bitmap("panel-1", 0, &pixels);
             assert!(pool.get("panel-1", 0).is_some());
-        });
-    }
-
-    /// GpuPenTipCache::upload_from_preset が panic なく完了することを確認する。
-    #[test]
-    fn gpu_pen_tip_cache_upload_smoke() {
-        pollster::block_on(async {
-            let Some((device, queue, _adapter)) = try_init_device().await else {
-                return;
-            };
-            let mut cache = GpuPenTipCache::new(device, queue);
-            let pen_no_tip = app_core::PenPreset::default();
-            cache.upload_from_preset("pen-no-tip", &pen_no_tip);
-            assert!(cache.get("pen-no-tip").is_none());
-
-            let pen_with_tip = app_core::PenPreset {
-                tip: Some(app_core::PenTipBitmap::AlphaMask8 {
-                    width: 4,
-                    height: 4,
-                    data: vec![255u8; 16],
-                }),
-                ..app_core::PenPreset::default()
-            };
-            cache.upload_from_preset("pen-with-tip", &pen_with_tip);
-            assert!(cache.get("pen-with-tip").is_some());
         });
     }
 
