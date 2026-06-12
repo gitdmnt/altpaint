@@ -1,5 +1,6 @@
 mod html_wasm_panel;
 mod request_translation;
+mod translator_registry;
 mod persistent_config;
 pub mod host_state;
 mod loader;
@@ -7,7 +8,10 @@ mod meta;
 mod runtime;
 
 pub use html_wasm_panel::{HtmlWasmPanelError, HtmlWasmPanel};
-pub use request_translation::{TranslatedRequest, translate_descriptor};
+pub use request_translation::{TranslatedRequest, register_default_translators};
+pub use translator_registry::{
+    TranslationDiagnostic, TranslatorFn, TranslatorRegistry,
+};
 pub use host_state::{
     EMPTY_WORKSPACE_PANELS_JSON, HostStateCache, build_host_state,
 };

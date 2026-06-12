@@ -351,7 +351,12 @@ graph TD
 - `host_state.rs`（旧 `host_sync.rs`）: `HostStateCache`（旧 `HostSnapshotCache`）による
   差分シリアライズと host state（旧 host snapshot）の構築・配信
 - `persistent_config.rs`（旧 `config.rs`）: panel persistent config の収集 / 復元
-- `request_translation.rs`（旧 `commands.rs`）: `RequestDescriptor` → `Command` / service の翻訳
+- `request_translation.rs`（旧 `commands.rs`）: 名前空間 prefix 単位の `RequestDescriptor` →
+  `DocumentCommand` / `SessionCommand` / `ServiceRequest` 変換器の定義と既定登録
+  （`register_default_translators`）。BL-061 で巨大 match を解体
+- `translator_registry.rs`: 名前空間 prefix → 変換クロージャの `TranslatorRegistry`。
+  未登録 prefix/name は黙殺せず `TranslationDiagnostic` を返す（BL-061）。
+  `PanelRuntime` が構築した共有 registry を `register_panel` で各 `HtmlWasmPanel` へ注入
 - `meta.rs`: `panel.meta.json`（`default_size` 必須）のパース
 - facade 再公開: `panel-api` の host 向け型（`HostAction` / `PanelEvent` / `ServiceRequest` 等）と
   `panel-html`（`panel_runtime::html`）

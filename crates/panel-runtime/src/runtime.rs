@@ -1,5 +1,7 @@
 use crate::html_wasm_panel::HtmlWasmPanel;
 use crate::persistent_config::{collect_persistent_panel_configs, restore_persistent_panel_configs};
+use crate::request_translation::register_default_translators;
+use crate::translator_registry::TranslatorRegistry;
 use crate::host_state::EMPTY_WORKSPACE_PANELS_JSON;
 use app_core::Document;
 use panel_api::{HostAction, PanelEvent, PanelPlugin};
@@ -61,6 +63,9 @@ pub struct PanelRuntime {
     /// `sync_document_subset` の前に各 `HtmlWasmPanel` へ注入され、
     /// host state の `workspace.panels_json` フィールドに反映される。
     workspace_panels_json: String,
+    /// `RequestDescriptor` → host 経路の翻訳に使う共有 registry (BL-061)。
+    /// 登録は一箇所 (`PanelRuntime::new`) で行い、登録した各パネルへ注入する。
+    translator_registry: Arc<TranslatorRegistry>,
 }
 
 impl Default for PanelRuntime {
@@ -71,13 +76,21 @@ impl Default for PanelRuntime {
 
 impl PanelRuntime {
     pub fn new() -> Self {
+        let mut translator_registry = TranslatorRegistry::new();
+        register_default_translators(&mut translator_registry);
         Self {
             panels: Vec::new(),
             persistent_panel_configs: BTreeMap::new(),
             dirty_panels: BTreeSet::new(),
             gpu_ctx: None,
             workspace_panels_json: EMPTY_WORKSPACE_PANELS_JSON.to_string(),
+            translator_registry: Arc::new(translator_registry),
         }
+    }
+
+    /// 共有 translator registry への参照を返す (起動時 assert / 診断用)。
+    pub fn translator_registry(&self) -> &Arc<TranslatorRegistry> {
+        &self.translator_registry
     }
 
     /// ワークスペース登録パネル一覧 JSON を更新する。
@@ -332,6 +345,12 @@ impl PanelRuntime {
         if let Some(config) = self.persistent_panel_configs.get(panel.id()) {
             panel.restore_persistent_config(config);
         }
+        // 共有 translator registry を注入する (BL-061)。
+        if let Some(any) = panel.as_any_mut()
+            && let Some(builtin) = any.downcast_mut::<HtmlWasmPanel>()
+        {
+            builtin.set_translator_registry(Arc::clone(&self.translator_registry));
+        }
         self.panels
             .retain(|registered| registered.id() != panel.id());
         self.dirty_panels.insert(panel.id().to_string());
@@ -581,5 +600,26 @@ mod tests {
 
         assert!(!result.handled);
         assert!(!result.config_changed);
+    }
+
+    /// register_panel が runtime 共有の translator registry を各パネルへ注入する (BL-061)。
+    #[test]
+    fn register_panel_injects_shared_translator_registry() {
+        let mut runtime = runtime_with_panel("registry-share", NO_KEYBOARD_WAT);
+        let runtime_ptr = Arc::as_ptr(runtime.translator_registry());
+        let panel = runtime
+            .panels
+            .iter_mut()
+            .find_map(|panel| {
+                panel
+                    .as_any_mut()
+                    .and_then(|any| any.downcast_ref::<HtmlWasmPanel>())
+            })
+            .expect("registered HtmlWasmPanel");
+        assert_eq!(
+            panel.translator_registry_ptr(),
+            runtime_ptr,
+            "panel should share the runtime translator registry instance"
+        );
     }
 }

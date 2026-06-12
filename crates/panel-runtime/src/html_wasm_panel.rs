@@ -11,6 +11,7 @@
 
 use std::any::Any;
 use std::path::Path;
+use std::sync::Arc;
 
 use app_core::{Document, DocumentCommand};
 use panel_api::{HostAction, PanelEvent, PanelPlugin, ServiceRequest};
@@ -18,7 +19,8 @@ use panel_html::{
     ActionDescriptor, HtmlPanelView, blitz_dom::LocalName, blitz_dom::node::NodeData,
     parse_data_action,
 };
-use crate::request_translation::{TranslatedRequest, translate_descriptor};
+use crate::request_translation::TranslatedRequest;
+use crate::translator_registry::TranslatorRegistry;
 use crate::host_state::{
     EMPTY_WORKSPACE_PANELS_JSON, HostStateCache, build_host_state,
 };
@@ -46,6 +48,10 @@ pub struct HtmlWasmPanel {
     /// `handles_keyboard_event` は `&self` のため、`PanelWasmInstance::has_handler`
     /// (`&mut self`) を毎回呼べずキャッシュする。
     has_keyboard_handler: bool,
+    /// `RequestDescriptor` → host 経路の翻訳に使う registry (BL-061)。
+    /// `PanelRuntime::register_panel` が共有 registry を注入する。注入前は
+    /// 既定の変換器を登録した単独 registry を使う (テスト等の単体 load 経路)。
+    translator_registry: Arc<TranslatorRegistry>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -106,7 +112,20 @@ impl HtmlWasmPanel {
             last_host_state: json!({}),
             workspace_panels_json: EMPTY_WORKSPACE_PANELS_JSON.to_string(),
             has_keyboard_handler,
+            translator_registry: Arc::new(default_translator_registry()),
         })
+    }
+
+    /// `PanelRuntime` が保持する共有 translator registry を注入する (BL-061)。
+    ///
+    /// 登録は一箇所 (runtime 構築時) で行い、各パネルは同じ registry を共有する。
+    pub(crate) fn set_translator_registry(&mut self, registry: Arc<TranslatorRegistry>) {
+        self.translator_registry = registry;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn translator_registry_ptr(&self) -> *const TranslatorRegistry {
+        Arc::as_ptr(&self.translator_registry)
     }
 
     /// ワークスペースに登録されたパネル一覧 JSON を更新する。
@@ -151,12 +170,23 @@ impl HtmlWasmPanel {
             .call_with_dom(self.view.document_mut(), |rt| rt.handle_event(&request))?;
         self.view.mark_mutated();
         panel_protocol::apply_patches(&mut self.state, &result.state_patch);
+        let registry = &self.translator_registry;
         Ok(result
             .commands
             .into_iter()
-            .filter_map(request_descriptor_to_host_action)
+            .filter_map(|descriptor| request_descriptor_to_host_action(registry, descriptor))
             .collect())
     }
+}
+
+/// 既定の変換器を登録した単独 registry を構築する。
+///
+/// `PanelRuntime` 注入前の単体 load 経路 (テスト等) で使う。本番では runtime が
+/// 構築した共有 registry が `set_translator_registry` で上書きする。
+fn default_translator_registry() -> TranslatorRegistry {
+    let mut registry = TranslatorRegistry::new();
+    crate::request_translation::register_default_translators(&mut registry);
+    registry
 }
 
 fn panel_host_request(
@@ -174,9 +204,10 @@ fn panel_host_request(
 }
 
 fn request_descriptor_to_host_action(
+    registry: &TranslatorRegistry,
     descriptor: panel_protocol::RequestDescriptor,
 ) -> Option<HostAction> {
-    match translate_descriptor(&descriptor) {
+    match registry.translate(&descriptor) {
         Ok(TranslatedRequest::Document(command)) => {
             Some(HostAction::DispatchDocumentCommand(command))
         }
@@ -185,8 +216,8 @@ fn request_descriptor_to_host_action(
         }
         Ok(TranslatedRequest::Service(request)) => Some(HostAction::RequestService(request)),
         Err(diagnostic) => {
-            // 黙殺禁止 (BL-061): 翻訳失敗は診断ログへ流す。
-            eprintln!("request translation failed for {}: {diagnostic}", descriptor.name);
+            // 黙殺禁止 (BL-061): 未登録名・翻訳失敗いずれも診断ログへ流す。
+            eprintln!("{diagnostic}");
             None
         }
     }
@@ -440,6 +471,45 @@ pub(crate) mod test_fixture {
 mod tests {
     use super::test_fixture::{KEYBOARD_WAT, NO_KEYBOARD_WAT, write_panel_fixture};
     use super::*;
+    use panel_protocol::RequestDescriptor;
+    use panel_protocol::names::{layer, tool};
+
+    /// 既知の command 名は registry 経由で HostAction へ翻訳される。
+    #[test]
+    fn known_command_translates_to_host_action() {
+        let registry = default_translator_registry();
+        let action =
+            request_descriptor_to_host_action(&registry, RequestDescriptor::new(layer::ADD));
+        assert!(matches!(
+            action,
+            Some(HostAction::DispatchDocumentCommand(
+                DocumentCommand::AddRasterLayer
+            ))
+        ));
+    }
+
+    /// 未登録名は黙殺せず None を返す (diagnostics は registry 側でテスト済み)。
+    #[test]
+    fn unregistered_name_yields_no_host_action() {
+        let registry = default_translator_registry();
+        let action = request_descriptor_to_host_action(
+            &registry,
+            RequestDescriptor::new("totally.unknown_request"),
+        );
+        assert!(action.is_none());
+    }
+
+    /// payload 欠落の翻訳失敗も None を返す (diagnostics へ流れる)。
+    #[test]
+    fn translation_failure_yields_no_host_action() {
+        let registry = default_translator_registry();
+        // tool.set_active without payload.tool は翻訳失敗。
+        let action = request_descriptor_to_host_action(
+            &registry,
+            RequestDescriptor::new(tool::SET_ACTIVE),
+        );
+        assert!(action.is_none());
+    }
 
     /// Wasm が panel_handle_keyboard を export していれば handles_keyboard_event は true。
     #[test]
