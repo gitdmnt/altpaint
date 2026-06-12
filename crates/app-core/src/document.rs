@@ -1324,11 +1324,19 @@ impl Document {
                 self.set_active_color(*color);
             }
             SessionCommand::SetViewZoom { zoom } => {
-                self.view_transform.zoom = zoom.clamp(0.25, 16.0);
+                self.view_transform.zoom = crate::view_policy::clamp_zoom(*zoom);
+            }
+            SessionCommand::ZoomViewBy { lines } => {
+                self.view_transform.zoom =
+                    crate::view_policy::zoom_after_lines(self.view_transform.zoom, *lines);
             }
             SessionCommand::PanView { delta_x, delta_y } => {
                 self.view_transform.pan_x += delta_x;
                 self.view_transform.pan_y += delta_y;
+            }
+            SessionCommand::PanViewByLines { x_lines, y_lines } => {
+                self.view_transform.pan_x += x_lines * crate::view_policy::PAN_PIXELS_PER_LINE;
+                self.view_transform.pan_y += y_lines * crate::view_policy::PAN_PIXELS_PER_LINE;
             }
             SessionCommand::SetViewPan { pan_x, pan_y } => {
                 self.view_transform.pan_x = *pan_x;

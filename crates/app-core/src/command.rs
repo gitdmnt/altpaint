@@ -79,8 +79,18 @@ pub enum SessionCommand {
     SetActiveColor { color: ColorRgba8 },
     /// キャンバス表示倍率を設定する。
     SetViewZoom { zoom: f32 },
-    /// キャンバス表示を平行移動する。
+    /// キャンバス表示倍率を相対的に変える (ホイール `lines` ノッチ)。
+    ///
+    /// 倍率 (`view_policy::ZOOM_LINE_BASE.powf(lines)`) と上下限クランプは
+    /// ドメイン側 (`view_policy`) が適用する (BL-064)。
+    ZoomViewBy { lines: f32 },
+    /// キャンバス表示をピクセル量で平行移動する。
     PanView { delta_x: f32, delta_y: f32 },
+    /// キャンバス表示を line 量で平行移動する。
+    ///
+    /// 1 line あたりのピクセル量 (`view_policy::PAN_PIXELS_PER_LINE`) は
+    /// ドメイン側が適用する (BL-064)。
+    PanViewByLines { x_lines: f32, y_lines: f32 },
     /// キャンバス表示のパン位置を絶対値で設定する。
     SetViewPan { pan_x: f32, pan_y: f32 },
     /// キャンバス表示を 90 度単位で回転する。

@@ -167,22 +167,28 @@ impl DesktopEventLoop {
 
         let mut changed = false;
         if pan_x.abs() > f32::EPSILON || pan_y.abs() > f32::EPSILON {
+            // BL-064: 入力層は相対量 (lines) のみを発行し、32px/line の換算は
+            // ドメイン側 (view_policy / apply_session_command) が行う。
             let t = Instant::now();
-            changed |= self.app.apply_session_command(&SessionCommand::PanView {
-                delta_x: pan_x,
-                delta_y: pan_y,
-            });
+            changed |= self
+                .app
+                .apply_session_command(&SessionCommand::PanViewByLines {
+                    x_lines: pan_x,
+                    y_lines: pan_y,
+                });
             self.profiler.record("pan_step", t.elapsed());
         }
 
         if zoom_lines.abs() > f32::EPSILON {
+            // BL-064: 倍率 (1.1^lines) と clamp はドメイン側が所有する。入力層は
+            // view_policy で飽和 (上下限到達) を検出して pending を打ち切るだけ。
             let current = self.app.document.view_transform.zoom;
-            let next_zoom = (current * 1.1_f32.powf(zoom_lines)).clamp(0.25, 16.0);
+            let next_zoom = app_core::view_policy::zoom_after_lines(current, zoom_lines);
             if (next_zoom - current).abs() > f32::EPSILON {
                 let t = Instant::now();
                 changed |= self
                     .app
-                    .apply_session_command(&SessionCommand::SetViewZoom { zoom: next_zoom });
+                    .apply_session_command(&SessionCommand::ZoomViewBy { lines: zoom_lines });
                 self.profiler.record("zoom_step", t.elapsed());
             } else {
                 self.pending_wheel_zoom_lines = 0.0;
@@ -225,18 +231,20 @@ impl DesktopEventLoop {
             return self.advance_wheel_animation();
         }
 
-        let mut delta_x = delta_x_lines * 32.0;
-        let mut delta_y = delta_y_lines * 32.0;
-        if self.modifiers.shift_key() && delta_x.abs() <= f32::EPSILON {
-            delta_x = delta_y;
-            delta_y = 0.0;
+        // BL-064: 入力層は line 単位の相対量だけを蓄積する。32px/line の換算は
+        // ドメイン側 (view_policy / apply_session_command) が行う。
+        let mut delta_x_lines = delta_x_lines;
+        let mut delta_y_lines = delta_y_lines;
+        if self.modifiers.shift_key() && delta_x_lines.abs() <= f32::EPSILON {
+            delta_x_lines = delta_y_lines;
+            delta_y_lines = 0.0;
         }
-        if delta_x.abs() <= f32::EPSILON && delta_y.abs() <= f32::EPSILON {
+        if delta_x_lines.abs() <= f32::EPSILON && delta_y_lines.abs() <= f32::EPSILON {
             return false;
         }
 
-        self.pending_wheel_pan.0 += delta_x;
-        self.pending_wheel_pan.1 += delta_y;
+        self.pending_wheel_pan.0 += delta_x_lines;
+        self.pending_wheel_pan.1 += delta_y_lines;
         self.advance_wheel_animation()
     }
 

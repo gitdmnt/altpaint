@@ -412,6 +412,59 @@ fn document_stores_canvas_view_transform() {
     assert_eq!(document.view_transform, transform);
 }
 
+/// BL-064: ホイール 1 ノッチ (lines=1) の相対ズームは従来の倍率 (1.1^lines) と一致する。
+#[test]
+fn zoom_view_by_lines_applies_one_point_one_base_multiplier() {
+    let mut document = Document::default();
+    document.set_view_transform(CanvasViewTransform {
+        zoom: 1.0,
+        ..CanvasViewTransform::default()
+    });
+
+    document.apply_session_command(&SessionCommand::ZoomViewBy { lines: 1.0 });
+    assert!((document.view_transform.zoom - 1.1).abs() < 1e-6);
+
+    document.apply_session_command(&SessionCommand::ZoomViewBy { lines: 2.0 });
+    // 1.1 * 1.1^2 = 1.1^3
+    assert!((document.view_transform.zoom - 1.1_f32.powf(3.0)).abs() < 1e-5);
+}
+
+/// BL-064: ズーム下限・上限のクランプ (0.25-16) がドメイン側で適用される。
+#[test]
+fn zoom_view_by_lines_clamps_to_view_policy_bounds() {
+    let mut document = Document::default();
+
+    document.set_view_transform(CanvasViewTransform {
+        zoom: 1.0,
+        ..CanvasViewTransform::default()
+    });
+    // 十分に大きく拡大しても上限 16 を超えない。
+    document.apply_session_command(&SessionCommand::ZoomViewBy { lines: 1000.0 });
+    assert_eq!(document.view_transform.zoom, 16.0);
+
+    // 十分に縮小しても下限 0.25 を下回らない。
+    document.apply_session_command(&SessionCommand::ZoomViewBy { lines: -1000.0 });
+    assert_eq!(document.view_transform.zoom, 0.25);
+}
+
+/// BL-064: line 単位のパンはドメイン側で 32px/line を適用する。
+#[test]
+fn pan_view_by_lines_uses_32px_per_line() {
+    let mut document = Document::default();
+    document.set_view_transform(CanvasViewTransform {
+        pan_x: 0.0,
+        pan_y: 0.0,
+        ..CanvasViewTransform::default()
+    });
+
+    document.apply_session_command(&SessionCommand::PanViewByLines {
+        x_lines: 1.0,
+        y_lines: -2.0,
+    });
+    assert_eq!(document.view_transform.pan_x, 32.0);
+    assert_eq!(document.view_transform.pan_y, -64.0);
+}
+
 #[test]
 fn add_raster_layer_selects_new_layer() {
     let mut document = Document::default();

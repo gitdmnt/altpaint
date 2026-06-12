@@ -96,7 +96,9 @@ impl DesktopApp {
                 self.mark_status_dirty();
                 true
             }
-            SessionCommand::SetViewZoom { .. } | SessionCommand::ResetView => {
+            SessionCommand::SetViewZoom { .. }
+            | SessionCommand::ZoomViewBy { .. }
+            | SessionCommand::ResetView => {
                 self.defer_view_panel_sync();
                 self.mark_canvas_transform_dirty(previous_transform);
                 self.defer_status_refresh();
@@ -110,7 +112,9 @@ impl DesktopApp {
                 self.mark_canvas_transform_dirty(previous_transform);
                 true
             }
-            SessionCommand::PanView { .. } | SessionCommand::SetViewPan { .. } => {
+            SessionCommand::PanView { .. }
+            | SessionCommand::PanViewByLines { .. }
+            | SessionCommand::SetViewPan { .. } => {
                 self.defer_view_panel_sync();
                 self.mark_canvas_transform_dirty(previous_transform)
             }

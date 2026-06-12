@@ -11,6 +11,7 @@ pub mod document;
 pub mod history;
 pub mod paint_params;
 pub mod painting;
+pub mod view_policy;
 pub mod workspace;
 
 pub use command::{DocumentCommand, SessionCommand};

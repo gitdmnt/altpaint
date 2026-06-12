@@ -43,7 +43,9 @@ pub(crate) struct DesktopEventLoop {
 
 impl DesktopEventLoop {
     const WHEEL_ANIMATION_BLEND: f32 = 0.45;
-    const WHEEL_PAN_MIN_STEP: f32 = 0.5;
+    /// BL-064: pan アニメーションの最小ステップ (line 単位)。
+    /// 従来の 0.5px を 32px/line で割った値 (挙動を維持する)。
+    const WHEEL_PAN_MIN_STEP: f32 = 0.5 / app_core::view_policy::PAN_PIXELS_PER_LINE;
     const WHEEL_ZOOM_MIN_STEP_LINES: f32 = 0.02;
 
     pub(crate) fn new(project_path: PathBuf) -> Self {
