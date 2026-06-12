@@ -14,8 +14,8 @@ pub enum CanvasGestureUpdate {
     None,
     Paint(PaintInput),
     LassoPreviewChanged,
-    PanelRectPreviewChanged,
-    PanelRectCommitted {
+    KomaRectPreviewChanged,
+    KomaRectCommitted {
         anchor: CanvasPoint,
         current: CanvasPoint,
     },
@@ -28,7 +28,7 @@ pub fn advance_pointer_gesture<F>(
     active_tool: ToolKind,
     pressure: f32,
     stabilization: u8,
-    mut to_panel_local: F,
+    mut to_koma_local: F,
 ) -> CanvasGestureUpdate
 where
     F: FnMut(CanvasPoint) -> Option<KomaLocalPoint>,
@@ -40,7 +40,7 @@ where
             active_tool,
             pressure,
             stabilization,
-            &mut to_panel_local,
+            &mut to_koma_local,
         ),
         CanvasPointerAction::Drag => handle_pointer_drag(
             state,
@@ -48,10 +48,10 @@ where
             active_tool,
             pressure,
             stabilization,
-            &mut to_panel_local,
+            &mut to_koma_local,
         ),
         CanvasPointerAction::Up => {
-            handle_pointer_up(state, point, active_tool, pressure, &mut to_panel_local)
+            handle_pointer_up(state, point, active_tool, pressure, &mut to_koma_local)
         }
     }
 }
@@ -62,13 +62,13 @@ fn handle_pointer_down<F>(
     active_tool: ToolKind,
     pressure: f32,
     stabilization: u8,
-    to_panel_local: &mut F,
+    to_koma_local: &mut F,
 ) -> CanvasGestureUpdate
 where
     F: FnMut(CanvasPoint) -> Option<KomaLocalPoint>,
 {
     match active_tool {
-        ToolKind::Bucket => to_panel_local(point)
+        ToolKind::Bucket => to_koma_local(point)
             .map(|at| CanvasGestureUpdate::Paint(PaintInput::FloodFill { at }))
             .unwrap_or(CanvasGestureUpdate::None),
         ToolKind::LassoBucket => {
@@ -83,14 +83,14 @@ where
             state.is_drawing = true;
             state.panel_rect_anchor = Some(point);
             state.last_position = Some(point);
-            CanvasGestureUpdate::PanelRectPreviewChanged
+            CanvasGestureUpdate::KomaRectPreviewChanged
         }
         ToolKind::Pen | ToolKind::Eraser => {
             state.is_drawing = true;
             state.last_position = Some(point);
             state.last_smoothed_position = Some(point.into());
             let _ = stabilization;
-            to_panel_local(point)
+            to_koma_local(point)
                 .map(|at| CanvasGestureUpdate::Paint(PaintInput::Stamp { at, pressure }))
                 .unwrap_or(CanvasGestureUpdate::None)
         }
@@ -103,7 +103,7 @@ fn handle_pointer_drag<F>(
     active_tool: ToolKind,
     pressure: f32,
     stabilization: u8,
-    to_panel_local: &mut F,
+    to_koma_local: &mut F,
 ) -> CanvasGestureUpdate
 where
     F: FnMut(CanvasPoint) -> Option<KomaLocalPoint>,
@@ -127,7 +127,7 @@ where
                 return CanvasGestureUpdate::None;
             }
             state.last_position = Some(point);
-            CanvasGestureUpdate::PanelRectPreviewChanged
+            CanvasGestureUpdate::KomaRectPreviewChanged
         }
         ToolKind::Pen | ToolKind::Eraser => {
             let next_position =
@@ -138,7 +138,7 @@ where
             }
             state.last_position = Some(next_position);
             previous
-                .and_then(|from| Some((to_panel_local(from)?, to_panel_local(next_position)?)))
+                .and_then(|from| Some((to_koma_local(from)?, to_koma_local(next_position)?)))
                 .map(|(from, to)| {
                     CanvasGestureUpdate::Paint(PaintInput::StrokeSegment { from, to, pressure })
                 })
@@ -153,7 +153,7 @@ fn handle_pointer_up<F>(
     point: CanvasPoint,
     active_tool: ToolKind,
     pressure: f32,
-    to_panel_local: &mut F,
+    to_koma_local: &mut F,
 ) -> CanvasGestureUpdate
 where
     F: FnMut(CanvasPoint) -> Option<KomaLocalPoint>,
@@ -165,7 +165,7 @@ where
                     .lasso_points
                     .iter()
                     .copied()
-                    .map(&mut *to_panel_local)
+                    .map(&mut *to_koma_local)
                     .collect::<Option<Vec<_>>>()
                     .map(|points| CanvasGestureUpdate::Paint(PaintInput::LassoFill { points }))
                     .unwrap_or(CanvasGestureUpdate::None)
@@ -181,7 +181,7 @@ where
             state.reset();
             match (anchor, current) {
                 (Some(anchor), Some(current)) => {
-                    CanvasGestureUpdate::PanelRectCommitted { anchor, current }
+                    CanvasGestureUpdate::KomaRectCommitted { anchor, current }
                 }
                 _ => CanvasGestureUpdate::None,
             }
@@ -190,7 +190,7 @@ where
             let previous = state.last_position;
             let update = if state.is_drawing && previous != Some(point) {
                 previous
-                    .and_then(|from| Some((to_panel_local(from)?, to_panel_local(point)?)))
+                    .and_then(|from| Some((to_koma_local(from)?, to_koma_local(point)?)))
                     .map(|(from, to)| {
                         CanvasGestureUpdate::Paint(PaintInput::StrokeSegment { from, to, pressure })
                     })

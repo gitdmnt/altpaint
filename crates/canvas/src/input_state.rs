@@ -17,7 +17,7 @@ impl CanvasInputState {
     }
 }
 
-pub fn panel_creation_preview_bounds(
+pub fn koma_creation_preview_bounds(
     state: &CanvasInputState,
     page_width: usize,
     page_height: usize,

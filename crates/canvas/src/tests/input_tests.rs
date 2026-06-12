@@ -2,7 +2,7 @@ use app_core::{CanvasPoint, CanvasViewTransform, CanvasViewportPoint, KomaLocalP
 
 use crate::{
     CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, CanvasPointerEvent,
-    advance_pointer_gesture, map_view_to_canvas_with_transform, panel_creation_preview_bounds,
+    advance_pointer_gesture, map_view_to_canvas_with_transform, koma_creation_preview_bounds,
 };
 
 const SAMPLE_CANVAS_WIDTH: usize = 64;
@@ -43,7 +43,7 @@ fn map_view_returns_none_outside_letterboxed_canvas() {
 #[test]
 fn lasso_gesture_collects_points_and_emits_fill_on_release() {
     let mut state = CanvasInputState::default();
-    let to_panel_local = |point: CanvasPoint| Some(KomaLocalPoint::new(point.x, point.y));
+    let to_koma_local = |point: CanvasPoint| Some(KomaLocalPoint::new(point.x, point.y));
 
     assert_eq!(
         advance_pointer_gesture(
@@ -53,12 +53,12 @@ fn lasso_gesture_collects_points_and_emits_fill_on_release() {
             ToolKind::LassoBucket,
             1.0,
             0,
-            to_panel_local,
+            to_koma_local,
         ),
         CanvasGestureUpdate::LassoPreviewChanged
     );
 
-    let to_panel_local = |point: CanvasPoint| Some(KomaLocalPoint::new(point.x, point.y));
+    let to_koma_local = |point: CanvasPoint| Some(KomaLocalPoint::new(point.x, point.y));
     let _ = advance_pointer_gesture(
         &mut state,
         CanvasPointerAction::Drag,
@@ -66,9 +66,9 @@ fn lasso_gesture_collects_points_and_emits_fill_on_release() {
         ToolKind::LassoBucket,
         1.0,
         0,
-        to_panel_local,
+        to_koma_local,
     );
-    let to_panel_local = |point: CanvasPoint| Some(KomaLocalPoint::new(point.x, point.y));
+    let to_koma_local = |point: CanvasPoint| Some(KomaLocalPoint::new(point.x, point.y));
     let _ = advance_pointer_gesture(
         &mut state,
         CanvasPointerAction::Drag,
@@ -76,9 +76,9 @@ fn lasso_gesture_collects_points_and_emits_fill_on_release() {
         ToolKind::LassoBucket,
         1.0,
         0,
-        to_panel_local,
+        to_koma_local,
     );
-    let to_panel_local = |point: CanvasPoint| Some(KomaLocalPoint::new(point.x, point.y));
+    let to_koma_local = |point: CanvasPoint| Some(KomaLocalPoint::new(point.x, point.y));
     let update = advance_pointer_gesture(
         &mut state,
         CanvasPointerAction::Up,
@@ -86,7 +86,7 @@ fn lasso_gesture_collects_points_and_emits_fill_on_release() {
         ToolKind::LassoBucket,
         1.0,
         0,
-        to_panel_local,
+        to_koma_local,
     );
 
     assert!(matches!(
@@ -97,14 +97,14 @@ fn lasso_gesture_collects_points_and_emits_fill_on_release() {
 }
 
 #[test]
-fn panel_rect_preview_bounds_are_derived_from_canvas_state() {
+fn koma_rect_preview_bounds_are_derived_from_canvas_state() {
     let state = CanvasInputState {
         panel_rect_anchor: Some(CanvasPoint::new(80, 50)),
         last_position: Some(CanvasPoint::new(20, 30)),
         ..CanvasInputState::default()
     };
 
-    let bounds = panel_creation_preview_bounds(&state, 200, 200).expect("preview bounds");
+    let bounds = koma_creation_preview_bounds(&state, 200, 200).expect("preview bounds");
 
     assert_eq!(bounds.x, 20);
     assert_eq!(bounds.y, 30);

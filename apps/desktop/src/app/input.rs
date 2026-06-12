@@ -213,13 +213,13 @@ impl DesktopApp {
                 }
                 true
             }
-            CanvasGestureUpdate::PanelRectPreviewChanged => {
+            CanvasGestureUpdate::KomaRectPreviewChanged => {
                 if let Some(layout) = self.layout.as_ref() {
                     self.append_temp_overlay_dirty_rect(layout.canvas_host_rect);
                 }
                 true
             }
-            CanvasGestureUpdate::PanelRectCommitted { anchor, current } => {
+            CanvasGestureUpdate::KomaRectCommitted { anchor, current } => {
                 let (page_width, page_height) = self.document.active_page_dimensions();
                 let preview_state = CanvasInputState {
                     is_drawing: false,
@@ -229,7 +229,7 @@ impl DesktopApp {
                     panel_rect_anchor: Some(anchor),
                 };
                 let created =
-                    canvas::panel_creation_preview_bounds(&preview_state, page_width, page_height)
+                    canvas::koma_creation_preview_bounds(&preview_state, page_width, page_height)
                         .filter(|bounds| bounds.width >= 8 && bounds.height >= 8)
                         .is_some_and(|bounds| {
                             self.execute_command(Command::CreatePanel {

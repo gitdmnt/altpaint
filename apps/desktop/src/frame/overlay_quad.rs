@@ -48,7 +48,7 @@ pub(crate) struct LineQuad {
 ///
 /// 内訳:
 /// - active panel mask (外側 4 矩形 fill + 内側 fill + 4 矩形分解枠線)
-/// - panel creation preview (fill + 4 矩形分解枠線)
+/// - koma creation preview (fill + 4 矩形分解枠線)
 /// - koma navigator (背景 fill + 外枠 + 内枠 + 各コマ fill + 各コマ枠線)
 pub(crate) fn build_overlay_solid_quads(
     plan: &CanvasPlan,
@@ -59,7 +59,7 @@ pub(crate) fn build_overlay_solid_quads(
         push_active_panel_mask(&mut quads, plan, bounds);
     }
     if let Some(bounds) = overlay.panel_creation_preview {
-        push_panel_creation_preview(&mut quads, plan, bounds);
+        push_koma_creation_preview(&mut quads, plan, bounds);
     }
     if let Some(navigator) = overlay.panel_navigator.as_ref() {
         push_koma_navigator(&mut quads, plan, navigator);
@@ -186,7 +186,7 @@ fn push_active_panel_mask(
     push_border_quads(out, panel_rect, ACTIVE_PANEL_BORDER);
 }
 
-fn push_panel_creation_preview(
+fn push_koma_creation_preview(
     out: &mut Vec<SolidQuad>,
     plan: &CanvasPlan,
     bounds: app_core::KomaBounds,
@@ -436,7 +436,7 @@ mod tests {
     }
 
     #[test]
-    fn panel_creation_preview_emits_fill_and_border() {
+    fn koma_creation_preview_emits_fill_and_border() {
         let plan = make_plan(64, 64);
         let overlay = CanvasOverlayState {
             panel_creation_preview: Some(KomaBounds {

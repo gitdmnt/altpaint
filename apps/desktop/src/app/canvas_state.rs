@@ -31,9 +31,9 @@ impl DesktopApp {
         .then_some(bounds)
     }
 
-    pub(super) fn panel_creation_preview_bounds(&self) -> Option<app_core::KomaBounds> {
+    pub(super) fn koma_creation_preview_bounds(&self) -> Option<app_core::KomaBounds> {
         let (page_width, page_height) = self.document.active_page_dimensions();
-        canvas::panel_creation_preview_bounds(&self.canvas_input, page_width, page_height)
+        canvas::koma_creation_preview_bounds(&self.canvas_input, page_width, page_height)
     }
 
     pub(super) fn koma_navigator_overlay(&self) -> Option<KomaNavigatorOverlay> {
