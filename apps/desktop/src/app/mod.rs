@@ -38,7 +38,7 @@ use self::io_state::DesktopIoState;
 pub(crate) use self::panel_dispatch::PanelDragState;
 use self::panel_dispatch::PanelInteractionState;
 use self::present_state::PresentFrameUpdate;
-use self::snapshot_store::SnapshotStore;
+use self::snapshot_store::DocumentSnapshotStore;
 use crate::frame::DesktopLayout;
 use canvas::CanvasInputState;
 
@@ -92,7 +92,7 @@ pub(crate) struct DesktopApp {
     pub(crate) invalidation: present_state::PresentInvalidation,
     cached_canvas_scene: Option<CachedCanvasScene>,
     pub(crate) history: CommandHistory,
-    pub(crate) snapshots: SnapshotStore,
+    pub(crate) snapshots: DocumentSnapshotStore,
     pub(crate) panel_interaction: PanelInteractionState,
     hover_canvas_position: Option<CanvasPoint>,
     pending_stroke: Option<PendingStroke>,
@@ -155,7 +155,7 @@ impl DesktopApp {
             invalidation: present_state::PresentInvalidation::at_startup(),
             cached_canvas_scene: None,
             history: CommandHistory::new(),
-            snapshots: SnapshotStore::default(),
+            snapshots: DocumentSnapshotStore::default(),
             panel_interaction: PanelInteractionState::default(),
             hover_canvas_position: None,
             pending_stroke: None,

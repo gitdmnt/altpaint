@@ -16,12 +16,12 @@ pub(crate) struct SnapshotEntry {
 
 /// スナップショット一覧と採番カウンタを保持する。
 #[derive(Debug, Default)]
-pub(crate) struct SnapshotStore {
+pub(crate) struct DocumentSnapshotStore {
     entries: Vec<SnapshotEntry>,
     next_id: u64,
 }
 
-impl SnapshotStore {
+impl DocumentSnapshotStore {
     /// スナップショットを追加する。
     ///
     /// `MAX_SNAPSHOTS` を超えた場合は最も古いエントリを破棄する。
@@ -62,7 +62,7 @@ mod tests {
     /// push したスナップショットを ID で取り出せることを確認する。
     #[test]
     fn push_and_get() {
-        let mut store = SnapshotStore::default();
+        let mut store = DocumentSnapshotStore::default();
         let id = store.push(make_doc());
         assert_eq!(store.len(), 1);
         assert!(store.get(&id).is_some());
@@ -71,7 +71,7 @@ mod tests {
     /// MAX_SNAPSHOTS 超過時に最古エントリが破棄されることを確認する。
     #[test]
     fn evicts_oldest_when_full() {
-        let mut store = SnapshotStore::default();
+        let mut store = DocumentSnapshotStore::default();
         let first_id = store.push(make_doc());
         for _ in 0..MAX_SNAPSHOTS {
             store.push(make_doc());
@@ -83,7 +83,7 @@ mod tests {
     /// 存在しない ID の場合 None を返すことを確認する。
     #[test]
     fn get_unknown_id_returns_none() {
-        let store = SnapshotStore::default();
+        let store = DocumentSnapshotStore::default();
         assert!(store.get("999").is_none());
     }
 }
