@@ -11,11 +11,11 @@ impl PaintPlugin for BuiltinBitmapPaintPlugin {
 
     fn process(&self, input: &PaintInput, context: &PaintPluginContext<'_>) -> Vec<BitmapEdit> {
         match input {
-            PaintInput::Stamp { at, pressure } => ops::stamp::stamp_edit(*at, *pressure, context)
+            PaintInput::Stamp { at, .. } => ops::stamp::stamp_edit(*at, context)
                 .into_iter()
                 .collect(),
-            PaintInput::StrokeSegment { from, to, pressure } => {
-                ops::stroke::stroke_segment_edit(*from, *to, *pressure, context)
+            PaintInput::StrokeSegment { from, to, .. } => {
+                ops::stroke::stroke_segment_edit(*from, *to, context)
                     .into_iter()
                     .collect()
             }

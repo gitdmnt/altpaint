@@ -4,14 +4,15 @@ use super::{composite, stroke};
 
 pub(crate) fn stamp_edit(
     at: KomaLocalPoint,
-    pressure: f32,
     context: &PaintPluginContext<'_>,
 ) -> Option<BitmapEdit> {
-    stroke::stroke_like_edit(&[at], pressure, context)
+    stroke::stroke_like_edit(&[at], context)
 }
 
-pub(crate) fn build_stamp(context: &PaintPluginContext<'_>, pressure: f32) -> Option<CanvasBitmap> {
-    let size = effective_size(context, pressure).max(1) as usize;
+/// スタンプ径は context 解決時に筆圧カーブ 1 回適用済みの `resolved_size` を
+/// そのまま使う (BL-030: ここでの再適用は二重適用バグ)。
+pub(crate) fn build_stamp(context: &PaintPluginContext<'_>) -> Option<CanvasBitmap> {
+    let size = context.resolved_size.max(1) as usize;
     let opacity = (context.pen.opacity * context.pen.flow).clamp(0.0, 1.0);
     let color = composite::stamp_color(context);
     match context.pen.tip.as_ref() {
@@ -48,22 +49,6 @@ pub(crate) fn build_stamp(context: &PaintPluginContext<'_>, pressure: f32) -> Op
             opacity,
             context.pen.antialias,
         )),
-    }
-}
-
-pub(crate) fn effective_size(context: &PaintPluginContext<'_>, pressure: f32) -> u32 {
-    match context.tool {
-        app_core::ToolKind::Pen | app_core::ToolKind::Eraser => {
-            let base = context.resolved_size.max(1);
-            if !context.pen.pressure_enabled || context.tool == app_core::ToolKind::Eraser {
-                return base;
-            }
-            let clamped = pressure.clamp(0.0, 1.0);
-            (base as f32 * (0.2 + clamped * 0.8)).round().max(1.0) as u32
-        }
-        app_core::ToolKind::Bucket
-        | app_core::ToolKind::LassoBucket
-        | app_core::ToolKind::KomaRect => 1,
     }
 }
 

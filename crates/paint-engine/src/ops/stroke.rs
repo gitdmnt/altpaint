@@ -7,16 +7,18 @@ use super::{composite, stamp};
 
 /// ストローク segment の始点・終点から補間スタンプ座標列を計算する。
 ///
+/// スタンプ間隔の基準サイズは context 解決時に筆圧カーブ 1 回適用済みの
+/// `resolved_size` を使う (BL-030)。
+///
 /// `apps/desktop` からクレート外で呼べるよう `pub` で公開する。
 /// Phase 8B〜8D の暫定措置として GPU ディスパッチ呼び出し側が使用する。
 /// Phase 8E（CPU bitmap 廃止）以降は `gpu-paint` が直接 dispatch を担うため削除予定。
 pub fn compute_stamp_positions(
     from: KomaLocalPoint,
     to: KomaLocalPoint,
-    pressure: f32,
     context: &PaintPluginContext<'_>,
 ) -> Vec<KomaLocalPoint> {
-    let size = stamp::effective_size(context, pressure).max(1);
+    let size = context.resolved_size.max(1);
     let spacing = effective_spacing(context, size);
     let dx = to.x as f32 - from.x as f32;
     let dy = to.y as f32 - from.y as f32;
@@ -42,22 +44,20 @@ pub fn compute_stamp_positions(
 pub(crate) fn stroke_segment_edit(
     from: KomaLocalPoint,
     to: KomaLocalPoint,
-    pressure: f32,
     context: &PaintPluginContext<'_>,
 ) -> Option<BitmapEdit> {
-    let points = compute_stamp_positions(from, to, pressure, context);
-    stroke_like_edit(&points, pressure, context)
+    let points = compute_stamp_positions(from, to, context);
+    stroke_like_edit(&points, context)
 }
 
 pub(crate) fn stroke_like_edit(
     points: &[KomaLocalPoint],
-    pressure: f32,
     context: &PaintPluginContext<'_>,
 ) -> Option<BitmapEdit> {
     if points.is_empty() {
         return None;
     }
-    let stamp_bitmap = stamp::build_stamp(context, pressure)?;
+    let stamp_bitmap = stamp::build_stamp(context)?;
     let half_w = stamp_bitmap.width as isize / 2;
     let half_h = stamp_bitmap.height as isize / 2;
     let mut left = usize::MAX;
@@ -138,7 +138,7 @@ mod tests {
         let from = KomaLocalPoint::new(0, 0);
         // 非常に長い距離（spacing=1px なら本来 10000 スタンプ）
         let to = KomaLocalPoint::new(999, 0);
-        let size = stamp::effective_size(&context, 1.0).max(1);
+        let size = context.resolved_size.max(1);
         let spacing = effective_spacing(&context, size);
         let distance = (to.x as f32 - from.x as f32).hypot(0.0);
         let raw_steps = (distance / spacing).ceil().max(1.0) as usize;
@@ -146,7 +146,7 @@ mod tests {
         assert!(raw_steps > MAX_STAMP_STEPS, "raw steps should exceed cap");
         assert_eq!(capped, MAX_STAMP_STEPS);
         // stroke_segment_edit 自体も正常に完了する
-        assert!(stroke_segment_edit(from, to, 1.0, &context).is_some());
+        assert!(stroke_segment_edit(from, to, &context).is_some());
     }
 
     /// compute_stamp_positions が MAX_STAMP_STEPS 以下の数の座標を返すことを確認する。
@@ -176,7 +176,7 @@ mod tests {
             layer_count: 1,
         };
         let positions =
-            compute_stamp_positions(KomaLocalPoint::new(0, 0), KomaLocalPoint::new(999, 0), 1.0, &context);
+            compute_stamp_positions(KomaLocalPoint::new(0, 0), KomaLocalPoint::new(999, 0), &context);
         assert!(!positions.is_empty());
         assert!(positions.len() <= MAX_STAMP_STEPS + 1);
     }

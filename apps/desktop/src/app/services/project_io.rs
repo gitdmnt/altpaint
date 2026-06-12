@@ -1,12 +1,34 @@
 use std::path::PathBuf;
 
-use app_core::{PageDirtyRect, Command, HistoryEntry, MergeInSpace, PaintInput};
+use app_core::{
+    PageDirtyRect, Command, HistoryEntry, MergeInSpace, PaintInput, PaintPluginContext,
+};
 use desktop_support::normalize_project_path;
 use panel_runtime::{ServiceRequest, services::names};
 use storage::load_project_from_path;
 
 use super::super::PendingStroke;
 use super::DesktopApp;
+
+/// 解決済みペイントコンテキストから GPU ブラシ描画パラメータを組み立てる。
+///
+/// 実効サイズは context 解決時 (`resolved_size`) に筆圧カーブ 1 回適用済みの値で、
+/// CPU 経路のスタンプ径と同一 (BL-030 回帰テストで検証)。
+pub(crate) fn brush_stroke_params(context: &PaintPluginContext<'_>) -> gpu_paint::BrushStrokeParams {
+    let color = context.color;
+    gpu_paint::BrushStrokeParams {
+        color_rgba: [
+            color.r as f32 / 255.0,
+            color.g as f32 / 255.0,
+            color.b as f32 / 255.0,
+            color.a as f32 / 255.0,
+        ],
+        radius: context.resolved_size as f32 * 0.5,
+        opacity: context.pen.opacity,
+        antialias: context.pen.antialias,
+        tool_kind: context.tool,
+    }
+}
 
 /// GPU テクスチャ方式 Undo/Redo スナップショット。
 ///
@@ -106,23 +128,11 @@ impl DesktopApp {
                 use paint_engine::{build_paint_context, compute_stamp_positions};
                 // resolved は self.document を借用するため、必要な値だけ取り出してスコープを閉じる
                 let stroke_dispatch = build_paint_context(&self.document, &input).map(|resolved| {
-                    let color = resolved.context.color;
-                    let params = gpu_paint::BrushStrokeParams {
-                        color_rgba: [
-                            color.r as f32 / 255.0,
-                            color.g as f32 / 255.0,
-                            color.b as f32 / 255.0,
-                            color.a as f32 / 255.0,
-                        ],
-                        radius: resolved.context.resolved_size as f32 * 0.5,
-                        opacity: resolved.context.pen.opacity,
-                        antialias: resolved.context.pen.antialias,
-                        tool_kind: resolved.context.tool,
-                    };
+                    let params = brush_stroke_params(&resolved.context);
                     let positions = match &input {
                         PaintInput::Stamp { at, .. } => vec![*at],
-                        PaintInput::StrokeSegment { from, to, pressure } => {
-                            compute_stamp_positions(*from, *to, *pressure, &resolved.context)
+                        PaintInput::StrokeSegment { from, to, .. } => {
+                            compute_stamp_positions(*from, *to, &resolved.context)
                         }
                         _ => vec![],
                     };
@@ -459,6 +469,42 @@ impl DesktopApp {
                 self.io_state.dialogs.show_error("Open failed", &message);
                 false
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use app_core::{Document, KomaLocalPoint, PaintInput};
+    use paint_engine::{PaintEngine, build_paint_context};
+
+    use super::brush_stroke_params;
+
+    /// BL-030 回帰: 同一 PaintInput に対し、CPU 経路のスタンプ半径
+    /// (dirty rect 幅 / 2) と GPU 経路の `BrushStrokeParams.radius` が一致する。
+    /// 筆圧カーブが片側で二重適用されると線幅が乖離する (GPU 実行は不要)。
+    #[test]
+    fn cpu_stamp_radius_matches_gpu_brush_radius() {
+        let mut document = Document::default();
+        document.set_active_pen_size(10);
+        let engine = PaintEngine::default();
+
+        for pressure in [0.0_f32, 0.25, 0.5, 0.75, 1.0] {
+            let input = PaintInput::Stamp {
+                at: KomaLocalPoint::new(64, 64),
+                pressure,
+            };
+            let resolved = build_paint_context(&document, &input).expect("paint context");
+            let gpu_radius = brush_stroke_params(&resolved.context).radius;
+            let edits = engine
+                .compute_paint_edits(&document, &input)
+                .expect("edits");
+            assert!(!edits.is_empty());
+            let cpu_radius = edits[0].dirty_rect.width as f32 * 0.5;
+            assert_eq!(
+                cpu_radius, gpu_radius,
+                "pressure={pressure}: CPU スタンプ半径と GPU BrushStrokeParams.radius が乖離"
+            );
         }
     }
 }
