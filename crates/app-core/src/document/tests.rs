@@ -670,3 +670,185 @@ fn focus_active_koma_resets_view_transform() {
 
     assert_eq!(document.view_transform, CanvasViewTransform::default());
 }
+
+// --- BL-032 ゴールデンテスト: CPU 合成の現挙動を固定する ---
+//
+// ブレンド実装の統合 (単一ブレンドモジュール化) の等価性確認に使う。
+// dst 側は opaque / 半透明 / 透明 / 高アルファの 4 画素を共通で用いる。
+
+/// ゴールデン共通の dst (下レイヤー) 画素列。
+const GOLDEN_DST_PIXELS: [[u8; 4]; 4] = [
+    [255, 0, 0, 255],
+    [0, 255, 0, 128],
+    [0, 0, 0, 0],
+    [100, 100, 100, 200],
+];
+
+fn golden_row_bitmap(pixels: &[[u8; 4]]) -> CanvasBitmap {
+    let mut bitmap = CanvasBitmap::transparent(pixels.len(), 1);
+    for (x, px) in pixels.iter().enumerate() {
+        let _ = bitmap.set_pixel_rgba(x, 0, *px);
+    }
+    bitmap
+}
+
+/// 下 (Normal) + 上 (指定 mode/mask) の 2 レイヤー koma を組み立てる。
+fn golden_two_layer_koma(
+    mode: BlendMode,
+    top_pixels: [[u8; 4]; 4],
+    mask: Option<LayerMask>,
+) -> Koma {
+    Koma {
+        id: KomaId(1),
+        bounds: KomaBounds::full_page(4, 1),
+        composite_cache: CanvasBitmap::transparent(4, 1),
+        layers: vec![
+            RasterLayer {
+                id: LayerNodeId(1),
+                name: "bottom".into(),
+                visible: true,
+                blend_mode: BlendMode::Normal,
+                bitmap: golden_row_bitmap(&GOLDEN_DST_PIXELS),
+                mask: None,
+            },
+            RasterLayer {
+                id: LayerNodeId(2),
+                name: "top".into(),
+                visible: true,
+                blend_mode: mode,
+                bitmap: golden_row_bitmap(&top_pixels),
+                mask,
+            },
+        ],
+        active_layer_index: 0,
+        created_layer_count: 2,
+    }
+}
+
+/// BL-032 ゴールデン: 代表 BlendMode × アルファ組合せのレイヤー合成結果を固定する。
+#[test]
+fn composite_golden_layer_blend_modes_with_semi_alpha_src() {
+    let semi_src = [[50u8, 80, 200, 128]; 4];
+    let cases: [(BlendMode, [u8; 16]); 4] = [
+        (
+            BlendMode::Normal,
+            [152, 40, 100, 255, 25, 104, 100, 192, 25, 40, 100, 128, 64, 79, 139, 228],
+        ),
+        (
+            BlendMode::Multiply,
+            [152, 0, 0, 255, 0, 84, 0, 192, 0, 0, 0, 128, 47, 51, 70, 228],
+        ),
+        (
+            BlendMode::Screen,
+            [255, 40, 100, 255, 25, 148, 100, 192, 25, 40, 100, 128, 95, 106, 148, 228],
+        ),
+        (
+            BlendMode::Add,
+            [255, 40, 100, 255, 25, 168, 100, 192, 25, 40, 100, 128, 103, 118, 167, 228],
+        ),
+    ];
+
+    for (mode, expected) in cases {
+        let koma = golden_two_layer_koma(mode.clone(), semi_src, None);
+        let composite = super::layer_ops::composite_koma_bitmap(&koma);
+        assert_eq!(composite.pixels, expected, "mode: {mode:?}");
+    }
+}
+
+/// BL-032 ゴールデン: 不透明 src は dst を完全に置換し、alpha 0 の src は dst を保持する。
+#[test]
+fn composite_golden_layer_normal_opaque_and_zero_alpha_src() {
+    let koma = golden_two_layer_koma(BlendMode::Normal, [[50, 80, 200, 255]; 4], None);
+    assert_eq!(
+        super::layer_ops::composite_koma_bitmap(&koma).pixels,
+        [50, 80, 200, 255, 50, 80, 200, 255, 50, 80, 200, 255, 50, 80, 200, 255],
+    );
+
+    // alpha 0 の src は no-op。透明地への半透明 dst 合成 (0,255,0,128 → 0,128,0,128) も固定する。
+    let koma = golden_two_layer_koma(BlendMode::Normal, [[1, 2, 3, 0]; 4], None);
+    assert_eq!(
+        super::layer_ops::composite_koma_bitmap(&koma).pixels,
+        [255, 0, 0, 255, 0, 128, 0, 128, 0, 0, 0, 0, 78, 78, 78, 200],
+    );
+}
+
+/// BL-032 ゴールデン: レイヤーマスク (alpha 128) は src alpha を整数演算で半減させる。
+#[test]
+fn composite_golden_layer_mask_halves_src_alpha() {
+    let koma = golden_two_layer_koma(
+        BlendMode::Multiply,
+        [[50, 80, 200, 128]; 4],
+        Some(LayerMask {
+            width: 4,
+            height: 1,
+            alpha: vec![128; 4],
+        }),
+    );
+    assert_eq!(
+        super::layer_ops::composite_koma_bitmap(&koma).pixels,
+        [204, 0, 0, 255, 0, 106, 0, 160, 0, 0, 0, 64, 62, 65, 74, 214],
+    );
+}
+
+/// BL-032 ゴールデン: ブラシ被覆ブレンド (AA ディスク) の結果を固定する。
+///
+/// 透明地では dst 色に引きずられず src 色が保持され (straight alpha)、
+/// 不透明地 (白) では被覆率に応じて補間されることを固定する。
+#[test]
+fn brush_blend_golden_on_transparent_and_opaque_bitmap() {
+    let mut transparent = CanvasBitmap::transparent(5, 5);
+    let _ = transparent.draw_point_sized_rgba(2, 2, [200, 40, 40, 128], 3, true);
+    assert_eq!(
+        transparent.pixels,
+        [
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //
+            0, 0, 0, 0, 200, 40, 40, 75, 200, 40, 40, 128, 200, 40, 40, 75, 0, 0, 0, 0, //
+            0, 0, 0, 0, 200, 40, 40, 128, 200, 40, 40, 128, 200, 40, 40, 128, 0, 0, 0, 0, //
+            0, 0, 0, 0, 200, 40, 40, 75, 200, 40, 40, 128, 200, 40, 40, 75, 0, 0, 0, 0, //
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+    );
+
+    let mut white = CanvasBitmap::new(5, 5);
+    let _ = white.draw_point_sized_rgba(2, 2, [200, 40, 40, 128], 3, true);
+    assert_eq!(
+        white.pixels,
+        [
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, //
+            255, 255, 255, 255, 239, 192, 192, 255, 227, 147, 147, 255, 239, 192, 192, 255, 255,
+            255, 255, 255, //
+            255, 255, 255, 255, 227, 147, 147, 255, 227, 147, 147, 255, 227, 147, 147, 255, 255,
+            255, 255, 255, //
+            255, 255, 255, 255, 239, 192, 192, 255, 227, 147, 147, 255, 239, 192, 192, 255, 255,
+            255, 255, 255, //
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255,
+        ],
+    );
+}
+
+/// BL-032 ゴールデン: `BitmapEdit` 合成 (`BitmapComposite`) の結果を固定する。
+#[test]
+fn bitmap_composite_golden_source_over_and_multiply() {
+    let incoming = golden_row_bitmap(&[
+        [50, 80, 200, 128],
+        [50, 80, 200, 255],
+        [1, 2, 3, 0],
+        [200, 200, 200, 128],
+    ]);
+    let previous = golden_row_bitmap(&GOLDEN_DST_PIXELS);
+
+    assert_eq!(
+        crate::BitmapComposite::SourceOver
+            .compose(&incoming, &previous)
+            .pixels,
+        [152, 40, 100, 255, 50, 80, 200, 255, 0, 0, 0, 0, 150, 150, 150, 228],
+    );
+    assert_eq!(
+        crate::BitmapComposite::Multiply
+            .compose(&incoming, &previous)
+            .pixels,
+        [152, 0, 0, 255, 0, 80, 0, 255, 0, 0, 0, 0, 89, 89, 89, 228],
+    );
+}

@@ -490,6 +490,57 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    /// BL-032 ゴールデン: composite を永続化しない保存からの読込が、
+    /// app-core のレイヤー合成と同一の composite を再計算することを検証する。
+    #[test]
+    fn load_recomputes_composite_equal_to_app_core_compositing() {
+        let path = temp_path("recompute-composite");
+        let mut document = Document::new(8, 8);
+        {
+            let koma = document.active_koma_mut().expect("koma should exist");
+            let _ = koma.layers[0].bitmap.set_pixel_rgba(1, 1, [255, 0, 0, 255]);
+            let _ = koma.layers[0].bitmap.set_pixel_rgba(2, 1, [0, 255, 0, 128]);
+        }
+        document.add_raster_layer();
+        {
+            let koma = document.active_koma_mut().expect("koma should exist");
+            let top = &mut koma.layers[1];
+            let _ = top.bitmap.set_pixel_rgba(1, 1, [50, 80, 200, 128]);
+            let _ = top.bitmap.set_pixel_rgba(2, 1, [50, 80, 200, 128]);
+            top.mask = Some(LayerMask {
+                width: 8,
+                height: 8,
+                alpha: vec![128; 64],
+            });
+        }
+        // set_active_layer_blend_mode が app-core 側の合成で composite_cache を再計算する。
+        document.set_active_layer_blend_mode(BlendMode::Multiply);
+
+        save_project_to_path_with_options(
+            &path,
+            &document,
+            &WorkspaceLayout::default(),
+            &BTreeMap::new(),
+            ProjectSaveOptions {
+                persist_current_composites: false,
+                ..ProjectSaveOptions::default()
+            },
+        )
+        .expect("save should succeed");
+        let loaded = load_project_from_path(&path)
+            .expect("load should succeed")
+            .document;
+
+        let expected = &document.work.pages[0].komas[0].composite_cache;
+        let recomputed = &loaded.work.pages[0].komas[0].composite_cache;
+        assert_eq!(recomputed.pixels, expected.pixels);
+        // 固定アンカー: Multiply + mask(128) の代表画素 (opaque dst / 半透明 dst)。
+        assert_eq!(recomputed.pixel_rgba(1, 1), Some([204, 0, 0, 255]));
+        assert_eq!(recomputed.pixel_rgba(2, 1), Some([0, 106, 0, 160]));
+
+        let _ = fs::remove_file(path);
+    }
+
     /// sqlite 形式でないレガシー JSON プロジェクトファイルを拒否することを検証する。
     #[test]
     fn load_rejects_legacy_json_project_file() {
