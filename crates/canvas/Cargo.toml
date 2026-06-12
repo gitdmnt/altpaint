@@ -7,5 +7,5 @@ authors.workspace = true
 
 [dependencies]
 app-core = { path = "../app-core" }
-render-types = { path = "../render-types" }
+canvas-geometry = { path = "../canvas-geometry" }
 font8x8 = { workspace = true }

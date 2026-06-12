@@ -83,7 +83,7 @@ impl PanelPresentation {
         true
     }
 
-    pub fn panel_rect(&self, panel_id: &str) -> Option<render_types::PixelRect> {
+    pub fn panel_rect(&self, panel_id: &str) -> Option<canvas_geometry::PixelRect> {
         let entry = self
             .workspace_layout
             .panels
@@ -96,7 +96,7 @@ impl PanelPresentation {
             size,
             default_panel_position(panel_id, 0),
         );
-        Some(render_types::PixelRect {
+        Some(canvas_geometry::PixelRect {
             x: position.x,
             y: position.y,
             width: size.width,
@@ -114,9 +114,9 @@ impl PanelPresentation {
     pub fn resize_panel_keeping_anchor(
         &mut self,
         panel_id: &str,
-        new_rect: render_types::PixelRect,
+        new_rect: canvas_geometry::PixelRect,
         viewport: (usize, usize),
-    ) -> Option<render_types::PixelRect> {
+    ) -> Option<canvas_geometry::PixelRect> {
         let (vw, vh) = viewport;
         let width = new_rect.width.clamp(1, vw.max(1));
         let height = new_rect.height.clamp(1, vh.max(1));
@@ -133,7 +133,7 @@ impl PanelPresentation {
         let next_size = WorkspacePanelSize { width, height };
         entry.size = Some(next_size);
         entry.set_position_from_absolute(x, y, vw, vh, next_size);
-        Some(render_types::PixelRect {
+        Some(canvas_geometry::PixelRect {
             x,
             y,
             width,
@@ -172,7 +172,7 @@ impl PanelPresentation {
         panel_id: &str,
         viewport_width: usize,
         viewport_height: usize,
-    ) -> Option<render_types::PixelRect> {
+    ) -> Option<canvas_geometry::PixelRect> {
         let entry = self
             .workspace_layout
             .panels
@@ -185,7 +185,7 @@ impl PanelPresentation {
             size,
             default_panel_position(panel_id, 0),
         );
-        Some(render_types::PixelRect {
+        Some(canvas_geometry::PixelRect {
             x: position.x,
             y: position.y,
             width: size.width,

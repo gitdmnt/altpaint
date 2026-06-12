@@ -84,7 +84,7 @@ impl DesktopApp {
             self.invalidation.needs_status_refresh = false;
             self.invalidation.needs_full_present_rebuild = false;
             let bitmap = self.canvas_frame.as_ref();
-            let window_rect = render_types::PixelRect {
+            let window_rect = canvas_geometry::PixelRect {
                 x: 0,
                 y: 0,
                 width: window_width,
@@ -105,7 +105,7 @@ impl DesktopApp {
             };
         }
 
-        let mut layer_dirty = render_types::LayerGroupDirtyPlan::default();
+        let mut layer_dirty = canvas_geometry::LayerGroupDirtyPlan::default();
 
         // ステータス更新 — HtmlPanelEngine 化されたため、毎フレーム
         // status_panel.update() を呼んで snapshot を engine に流す（差分なら no-op）。
@@ -204,7 +204,7 @@ impl DesktopApp {
         let chrome_h = super::HTML_PANEL_CHROME_HEIGHT as usize;
         let measured = self.panel_runtime.panel_measured_sizes();
         let mut sized: Vec<(String, u32, u32)> = Vec::with_capacity(panel_ids.len());
-        let mut panel_rects: Vec<render_types::PixelRect> = Vec::with_capacity(panel_ids.len());
+        let mut panel_rects: Vec<canvas_geometry::PixelRect> = Vec::with_capacity(panel_ids.len());
         for id in &panel_ids {
             let (mw, mh) = measured
                 .iter()
@@ -215,13 +215,13 @@ impl DesktopApp {
             let position_rect = self
                 .panel_presentation
                 .panel_rect_in_viewport(id, window_width, window_height)
-                .unwrap_or(render_types::PixelRect {
+                .unwrap_or(canvas_geometry::PixelRect {
                     x: 0,
                     y: 0,
                     width: mw as usize,
                     height: mh as usize,
                 });
-            panel_rects.push(render_types::PixelRect {
+            panel_rects.push(canvas_geometry::PixelRect {
                 x: position_rect.x,
                 y: position_rect.y,
                 width: mw as usize,
@@ -241,25 +241,25 @@ impl DesktopApp {
                 continue;
             };
             let panel_rect = panel_rects[index];
-            let body_screen_rect = render_types::PixelRect {
+            let body_screen_rect = canvas_geometry::PixelRect {
                 x: panel_rect.x,
                 y: panel_rect.y + chrome_h,
                 width: panel_rect.width,
                 height: panel_rect.height.saturating_sub(chrome_h),
             };
-            let chrome_screen_rect = render_types::PixelRect {
+            let chrome_screen_rect = canvas_geometry::PixelRect {
                 x: panel_rect.x,
                 y: panel_rect.y,
                 width: panel_rect.width,
                 height: chrome_h,
             };
-            let hit_rects: Vec<(String, render_types::PixelRect)> = hits
+            let hit_rects: Vec<(String, canvas_geometry::PixelRect)> = hits
                 .into_iter()
                 .filter_map(|hit| {
                     let element_id = hit.element_id?;
                     Some((
                         element_id,
-                        render_types::PixelRect {
+                        canvas_geometry::PixelRect {
                             x: hit.rect.x as usize,
                             y: hit.rect.y as usize,
                             width: hit.rect.width as usize,

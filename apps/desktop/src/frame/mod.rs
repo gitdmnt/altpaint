@@ -15,8 +15,8 @@ pub(crate) use solid_quad::{
     SolidQuad, build_background_solid_quads, build_foreground_solid_quads, pixel_rect_to_ndc,
 };
 
-pub(crate) type Rect = render_types::PixelRect;
-pub(crate) type TextureQuad = render_types::TextureQuad;
+pub(crate) type Rect = canvas_geometry::PixelRect;
+pub(crate) type TextureQuad = canvas_geometry::TextureQuad;
 
 /// デスクトップ UI の固定レイアウト情報。
 #[derive(Debug, Clone, PartialEq, Eq)]

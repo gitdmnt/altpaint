@@ -14,7 +14,7 @@ desktop-support = { path = "../../crates/desktop-support" }
 panel-runtime = { path = "../../crates/panel-runtime" }
 keyboard-types = "0.7"
 pollster.workspace = true
-render-types = { path = "../../crates/render-types" }
+canvas-geometry = { path = "../../crates/canvas-geometry" }
 serde_json.workspace = true
 storage = { path = "../../crates/storage" }
 ui-shell = { path = "../../crates/ui-shell" }

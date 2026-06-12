@@ -23,7 +23,7 @@ members = [
   "crates/panel-wasm-host",
   "crates/gpu-canvas",
   "crates/panel-html",
-  "crates/render-types",
+  "crates/canvas-geometry",
   "crates/storage",
   "crates/ui-shell",
   "apps/desktop",

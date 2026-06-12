@@ -11,7 +11,7 @@ use desktop_support::{
     KOMA_NAVIGATOR_ACTIVE, KOMA_NAVIGATOR_BACKGROUND, KOMA_NAVIGATOR_BORDER,
     KOMA_NAVIGATOR_KOMA, KOMA_PREVIEW_BORDER, KOMA_PREVIEW_FILL,
 };
-use render_types::{CanvasOverlayState, CanvasPlan, KomaNavigatorOverlay};
+use canvas_geometry::{CanvasOverlayState, CanvasPlan, KomaNavigatorOverlay};
 
 use super::Rect;
 use super::solid_quad::{SolidQuad, push_border_quads};
@@ -293,7 +293,7 @@ fn push_koma_navigator(
 mod tests {
     use super::*;
     use app_core::{CanvasPoint, CanvasViewTransform, KomaBounds};
-    use render_types::{KomaNavigatorEntry, PixelRect};
+    use canvas_geometry::{KomaNavigatorEntry, PixelRect};
 
     fn make_plan(canvas_width: usize, canvas_height: usize) -> CanvasPlan {
         CanvasPlan {

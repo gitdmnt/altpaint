@@ -5,7 +5,7 @@
 
 use super::DesktopApp;
 use super::canvas_frame::build_canvas_frame;
-use render_types::{KomaNavigatorEntry, KomaNavigatorOverlay};
+use canvas_geometry::{KomaNavigatorEntry, KomaNavigatorOverlay};
 
 impl DesktopApp {
     pub(super) fn brush_preview_size(&self) -> Option<u32> {

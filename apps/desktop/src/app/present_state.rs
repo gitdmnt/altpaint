@@ -175,14 +175,14 @@ impl DesktopApp {
             self.layout.as_ref().map(|layout| layout.canvas_host_rect)
         {
             let (canvas_width, canvas_height) = self.canvas_dimensions();
-            let viewport = render_types::PixelRect {
+            let viewport = canvas_geometry::PixelRect {
                 x: canvas_viewport_rect.x,
                 y: canvas_viewport_rect.y,
                 width: canvas_viewport_rect.width,
                 height: canvas_viewport_rect.height,
             };
             // previous_scene は変更前の transform で計算するためキャッシュは使えない
-            let previous_scene = render_types::prepare_canvas_scene(
+            let previous_scene = canvas_geometry::prepare_canvas_scene(
                 viewport,
                 canvas_width,
                 canvas_height,
@@ -192,7 +192,7 @@ impl DesktopApp {
             self.cached_canvas_scene = None;
             let current_scene = self.canvas_scene();
             if let Some(dirty) = self.hover_canvas_position.and_then(|hover_position| {
-                render_types::brush_preview_dirty_rect(
+                canvas_geometry::brush_preview_dirty_rect(
                     previous_scene,
                     current_scene,
                     hover_position,
@@ -241,13 +241,13 @@ impl DesktopApp {
             return (Vec::new(), Vec::new(), Vec::new());
         };
         let bitmap = self.canvas_frame.as_ref();
-        let canvas_plan = render_types::CanvasPlan {
+        let canvas_plan = canvas_geometry::CanvasPlan {
             host_rect: layout.canvas_host_rect,
             source_width: bitmap.map_or(1, |b| b.width),
             source_height: bitmap.map_or(1, |b| b.height),
             transform: self.document.view_transform,
         };
-        let overlay_state = render_types::CanvasOverlayState {
+        let overlay_state = canvas_geometry::CanvasOverlayState {
             brush_preview: self.hover_canvas_position,
             brush_size: self.brush_preview_size(),
             lasso_points: self.canvas_input.lasso_points.clone(),
@@ -266,15 +266,15 @@ impl DesktopApp {
         )
     }
 
-    pub(crate) fn canvas_texture_quad(&mut self) -> Option<render_types::TextureQuad> {
+    pub(crate) fn canvas_texture_quad(&mut self) -> Option<canvas_geometry::TextureQuad> {
         self.canvas_scene().and_then(|scene| scene.texture_quad())
     }
 
     /// 入力が変わらない限りキャッシュした結果を再利用する。
-    pub(crate) fn canvas_scene(&mut self) -> Option<render_types::CanvasScene> {
+    pub(crate) fn canvas_scene(&mut self) -> Option<canvas_geometry::CanvasScene> {
         let layout = self.layout.as_ref()?;
         let bitmap = self.canvas_frame()?;
-        let viewport = render_types::PixelRect {
+        let viewport = canvas_geometry::PixelRect {
             x: layout.canvas_host_rect.x,
             y: layout.canvas_host_rect.y,
             width: layout.canvas_host_rect.width,
@@ -292,7 +292,7 @@ impl DesktopApp {
         {
             return cache.scene;
         }
-        let scene = render_types::prepare_canvas_scene(viewport, canvas_width, canvas_height, transform);
+        let scene = canvas_geometry::prepare_canvas_scene(viewport, canvas_width, canvas_height, transform);
         self.cached_canvas_scene = Some(super::CachedCanvasScene {
             viewport,
             canvas_width,

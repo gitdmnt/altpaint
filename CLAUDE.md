@@ -81,7 +81,7 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 | `crates/app-core`                     | `Document`、ドメインモデル（Work→Page→Panel→RasterLayer）、`Command`、ペイント基本型、`WorkspaceUiState` |
 | `crates/canvas`                       | `CanvasRuntime`、ジェスチャーステートマシン、ビットマップ操作                             |
 | `crates/gpu-canvas`                   | GPU レイヤーテクスチャプール、ブラシ/塗りつぶし/レイヤー合成の compute shader dispatch    |
-| `crates/render-types`                 | `CanvasPlan`、`PixelRect`/`CanvasScene`/`CanvasOverlayState` 等の純データ DTO             |
+| `crates/canvas-geometry`              | `CanvasPlan`、`PixelRect`/`CanvasScene`/`CanvasOverlayState` 等の純データ DTO             |
 | `crates/panel-runtime`                | パネルサブシステム facade。`PanelRuntime`/`BuiltinPanelPlugin`、Wasm ブリッジ、ホストスナップショット同期、永続設定、同梱パネル loader、panel-api/panel-html の再公開 |
 | `crates/panel-html`                   | `HtmlPanelEngine`（Blitz HTML/CSS + parley + vello GPU 直描画、hit 矩形収集）             |
 | `crates/ui-shell`                     | パネルワークスペースレイアウト、フォーカス、ヒットテスト                                  |

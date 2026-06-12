@@ -8,4 +8,4 @@ authors.workspace = true
 [dependencies]
 app-core = { path = "../app-core" }
 panel-api = { path = "../panel-api" }
-render-types = { path = "../render-types" }
+canvas-geometry = { path = "../canvas-geometry" }

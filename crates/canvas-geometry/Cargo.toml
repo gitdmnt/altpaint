@@ -1,5 +1,5 @@
 [package]
-name = "render-types"
+name = "canvas-geometry"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

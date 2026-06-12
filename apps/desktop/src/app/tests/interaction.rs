@@ -708,7 +708,7 @@ fn focus_refresh_does_not_trigger_ui_update() {
     // テストでは事前に hit を 1 件 inject して focus 対象を用意する。
     app.panel_presentation.update_html_panel_hits(
         "builtin.app-actions",
-        render_types::PixelRect {
+        canvas_geometry::PixelRect {
             x: 100,
             y: 50,
             width: 200,
@@ -716,7 +716,7 @@ fn focus_refresh_does_not_trigger_ui_update() {
         },
         vec![(
             "app.save".to_string(),
-            render_types::PixelRect {
+            canvas_geometry::PixelRect {
                 x: 8,
                 y: 4,
                 width: 80,
@@ -764,13 +764,13 @@ fn panel_release_without_matching_press_does_not_activate_save() {
     let mut profiler = DesktopProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
-    let panel_screen_rect = render_types::PixelRect {
+    let panel_screen_rect = canvas_geometry::PixelRect {
         x: 100,
         y: 100,
         width: 200,
         height: 60,
     };
-    let save_button_rect = render_types::PixelRect {
+    let save_button_rect = canvas_geometry::PixelRect {
         x: 8,
         y: 8,
         width: 64,

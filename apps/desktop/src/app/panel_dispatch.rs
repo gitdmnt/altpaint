@@ -2,7 +2,7 @@
 
 use app_core::{PanelSurfacePoint, WindowPoint};
 use panel_runtime::{HostAction, PanelEvent, ResizeEdge};
-use render_types::PixelRect;
+use canvas_geometry::PixelRect;
 
 use super::DesktopApp;
 /// パネル移動ドラッグ中の被操作パネル情報を保持する。
