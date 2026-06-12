@@ -1,10 +1,10 @@
 use crate::document::ColorRgba8;
 use crate::document::ToolKind;
 
-/// アプリケーション状態を変更するための最小コマンド列挙型。
+/// アプリケーション状態を変更するためのコマンド列挙型。
 ///
-/// フェーズ0ではまだ実際の編集機能を持たないため、将来の変更経路を
-/// 先に固定するためのプレースホルダとして最小コマンドだけを定義する。
+/// ツール・ペン・ビュー・レイヤー・コマの各操作を表す。I/O を伴う variant
+/// (保存・読込・preset 入出力・undo/redo) はホスト側で処理される。
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     /// 状態を変更しないダミーコマンド。

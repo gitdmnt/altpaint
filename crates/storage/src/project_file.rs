@@ -220,7 +220,7 @@ mod tests {
     fn save_and_load_roundtrip_preserves_layer_structure() {
         let path = temp_path("layer-structure");
         let mut document = multi_page_document();
-        document.normalize_phase9_state();
+        document.normalize_after_load();
 
         save_project_to_path(
             &path,

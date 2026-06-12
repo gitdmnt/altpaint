@@ -357,7 +357,7 @@ pub struct LayerNodeId(pub u64);
 
 /// アプリケーションの永続状態全体を表すルートドキュメント。
 ///
-/// フェーズ0では単一の `Work` のみを保持する。
+/// 単一の `Work` と、ツール・ペン・表示変換などの編集状態を保持する。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
     /// 現在編集中の作品。
@@ -527,7 +527,7 @@ pub struct Koma {
     pub bounds: KomaBounds,
     /// フェーズ2の最小ラスタキャンバス。
     pub bitmap: CanvasBitmap,
-    /// フェーズ9の最小レイヤー列。
+    /// コマを構成するラスタレイヤー列。index 0 が最下層。
     #[serde(default)]
     pub layers: Vec<RasterLayer>,
     /// 現在描画対象として選択されているレイヤー index。
@@ -706,9 +706,9 @@ impl Default for CanvasViewTransform {
     }
 }
 
-/// フェーズ2で使う最小のラスタキャンバス。
+/// RGBA8 のラスタビットマップ。
 ///
-/// 白いキャンバス上に黒ピクセルを打つだけの単純なビットマップとして実装する。
+/// レイヤー画素・合成キャッシュ・履歴 patch が共有する汎用バッファ。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CanvasBitmap {
     /// 横幅ピクセル数。
@@ -1121,7 +1121,11 @@ impl Document {
         self.active_draw_size_with_pressure(pressure)
     }
 
-    pub fn normalize_phase9_state(&mut self) {
+    /// ロード後のドキュメント不変条件を修復する。
+    ///
+    /// ツール状態の整合、空のページ列・コマ列の補完、各 index の clamp、
+    /// 空 bounds コマの再レイアウト、レイヤー列の補完を行う。
+    pub fn normalize_after_load(&mut self) {
         self.ensure_tool_state();
         if self.work.pages.is_empty() {
             self.work.pages.push(Page::default());

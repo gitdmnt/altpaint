@@ -334,7 +334,7 @@ pub(crate) fn load_project_from_sqlite_path(
         view_transform: document_record.view_transform,
         active_child_tool_id: String::new(),
     };
-    document.normalize_phase9_state();
+    document.normalize_after_load();
 
     Ok(LoadedProject { document, ui_state })
 }
