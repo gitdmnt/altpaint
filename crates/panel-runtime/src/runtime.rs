@@ -396,7 +396,7 @@ impl PanelRuntime {
     }
 
     /// 登録されたパネル ID (登録順、`&'static str`) を返す。
-    /// reconcile_workspace_layout 用。
+    /// reconcile_panels 用。
     pub fn panel_static_ids(&self) -> Vec<&'static str> {
         self.panels.iter().map(|panel| panel.id()).collect()
     }

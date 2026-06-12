@@ -173,14 +173,7 @@ impl PanelWorkspace {
 
     pub fn replace_workspace_layout(&mut self, workspace_layout: WorkspaceLayout) {
         self.workspace_layout = workspace_layout;
-        self.ensure_workspace_manager_entry();
-    }
-
-    /// 登録済みパネル ID 一覧と workspace layout を整合させる。
-    ///
-    /// 未知のパネルにはエントリと既定位置を補い、不可視パネルから focus を外す。
-    pub fn reconcile_panels(&mut self, panel_ids: Vec<&'static str>) {
-        self.reconcile_workspace_layout(panel_ids);
+        self.ensure_workspace_layout_panel_entry();
     }
 
     pub fn focused_target(&self) -> Option<(&str, &str)> {

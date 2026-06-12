@@ -25,7 +25,7 @@ pub(super) fn default_panel_state(panel_id: &str, index: usize) -> WorkspacePane
 }
 
 impl PanelWorkspace {
-    pub(super) fn ensure_workspace_manager_entry(&mut self) {
+    pub(super) fn ensure_workspace_layout_panel_entry(&mut self) {
         if self
             .workspace_layout
             .panels
@@ -259,8 +259,11 @@ impl PanelWorkspace {
         ));
     }
 
-    pub(super) fn reconcile_workspace_layout(&mut self, panel_ids: Vec<&'static str>) {
-        self.ensure_workspace_manager_entry();
+    /// 登録済みパネル ID 一覧と workspace layout を整合させる。
+    ///
+    /// 未知のパネルにはエントリと既定位置を補い、不可視パネルから focus を外す。
+    pub fn reconcile_panels(&mut self, panel_ids: Vec<&'static str>) {
+        self.ensure_workspace_layout_panel_entry();
 
         for panel_id in panel_ids {
             self.ensure_workspace_panel_entry(panel_id);
@@ -277,7 +280,7 @@ impl PanelWorkspace {
         if self
             .focused_target
             .as_ref()
-            .is_some_and(|target| !self.panel_is_visible(&target.panel_id))
+            .is_some_and(|target| !self.is_panel_visible(&target.panel_id))
         {
             self.focused_target = None;
         }
@@ -287,10 +290,6 @@ impl PanelWorkspace {
     ///
     /// HTML パネルの GPU 描画スキップ判定など、panel-workspace 外部からも参照される。
     pub fn is_panel_visible(&self, panel_id: &str) -> bool {
-        self.panel_is_visible(panel_id)
-    }
-
-    pub(super) fn panel_is_visible(&self, panel_id: &str) -> bool {
         if panel_id == WORKSPACE_PANEL_ID {
             return true;
         }
