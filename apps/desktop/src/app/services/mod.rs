@@ -258,7 +258,7 @@ impl DesktopApp {
             app_core::ToolKind::Eraser => "Eraser",
             app_core::ToolKind::Bucket => "Bucket",
             app_core::ToolKind::LassoBucket => "LassoBucket",
-            app_core::ToolKind::PanelRect => "PanelRect",
+            app_core::ToolKind::KomaRect => "KomaRect",
         };
         let zoom_percent =
             (self.document.view_transform.zoom * 100.0).round().clamp(1.0, 100_000.0) as u32;

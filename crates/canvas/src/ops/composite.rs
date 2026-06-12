@@ -54,7 +54,7 @@ pub(crate) fn edit_composite(context: &PaintPluginContext<'_>) -> BitmapComposit
         ToolKind::Pen => BitmapComposite::source_over(),
         ToolKind::Eraser if context.active_layer_is_background => BitmapComposite::source_over(),
         ToolKind::Eraser => BitmapComposite::custom(EraseComposite),
-        ToolKind::Bucket | ToolKind::LassoBucket | ToolKind::PanelRect => {
+        ToolKind::Bucket | ToolKind::LassoBucket | ToolKind::KomaRect => {
             BitmapComposite::source_over()
         }
     }

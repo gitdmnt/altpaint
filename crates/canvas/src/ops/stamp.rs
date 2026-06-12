@@ -63,7 +63,7 @@ pub(crate) fn effective_size(context: &PaintPluginContext<'_>, pressure: f32) ->
         }
         app_core::ToolKind::Bucket
         | app_core::ToolKind::LassoBucket
-        | app_core::ToolKind::PanelRect => 1,
+        | app_core::ToolKind::KomaRect => 1,
     }
 }
 

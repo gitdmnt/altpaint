@@ -99,7 +99,7 @@ fn lasso_gesture_collects_points_and_emits_fill_on_release() {
 #[test]
 fn koma_rect_preview_bounds_are_derived_from_canvas_state() {
     let state = CanvasInputState {
-        panel_rect_anchor: Some(CanvasPoint::new(80, 50)),
+        koma_rect_anchor: Some(CanvasPoint::new(80, 50)),
         last_position: Some(CanvasPoint::new(20, 30)),
         ..CanvasInputState::default()
     };

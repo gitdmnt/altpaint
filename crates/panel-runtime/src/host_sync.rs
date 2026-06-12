@@ -42,7 +42,7 @@ pub(crate) fn active_tool_name(tool: ToolKind) -> &'static str {
         ToolKind::Eraser => "eraser",
         ToolKind::Bucket => "bucket",
         ToolKind::LassoBucket => "lasso_bucket",
-        ToolKind::PanelRect => "panel_rect",
+        ToolKind::KomaRect => "koma_rect",
     }
 }
 

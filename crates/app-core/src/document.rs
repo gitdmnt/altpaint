@@ -45,7 +45,7 @@ pub enum ToolKind {
     Eraser,
     Bucket,
     LassoBucket,
-    PanelRect,
+    KomaRect,
 }
 
 /// ツール設定 UI の入力種別。
@@ -311,7 +311,7 @@ fn default_tool_catalog() -> Vec<ToolDefinition> {
         ToolDefinition {
             id: "builtin.panel-rect".to_string(),
             name: "Panel Rect".to_string(),
-            kind: ToolKind::PanelRect,
+            kind: ToolKind::KomaRect,
             provider_plugin_id: "plugins/default-panel-tools-plugin".to_string(),
             drawing_plugin_id: default_bitmap_plugin_id(),
             settings: Vec::new(),

@@ -32,7 +32,7 @@ pub fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command
                 "eraser" => ToolKind::Eraser,
                 "bucket" => ToolKind::Bucket,
                 "lasso_bucket" => ToolKind::LassoBucket,
-                "panel_rect" => ToolKind::PanelRect,
+                "koma_rect" => ToolKind::KomaRect,
                 other => return Err(format!("unsupported tool kind: {other}")),
             };
             Ok(Command::SetActiveTool { tool })

@@ -20,7 +20,7 @@ const PEN_SHORTCUT: state::StringKey = state::string("config.pen_shortcut");
 const ERASER_SHORTCUT: state::StringKey = state::string("config.eraser_shortcut");
 const BUCKET_SHORTCUT: state::StringKey = state::string("config.bucket_shortcut");
 const LASSO_BUCKET_SHORTCUT: state::StringKey = state::string("config.lasso_bucket_shortcut");
-const PANEL_RECT_SHORTCUT: state::StringKey = state::string("config.panel_rect_shortcut");
+const KOMA_RECT_SHORTCUT: state::StringKey = state::string("config.koma_rect_shortcut");
 const SIZE_MEMORY: state::StringKey = state::string("config.size_memory");
 const LAST_IMPORT_SUMMARY: state::StringKey = state::string("config.last_import_summary");
 const LAST_IMPORT_PREVIEW: state::StringKey = state::string("config.last_import_preview");
@@ -86,7 +86,7 @@ fn render_dom() {
     set_button_active("#tool\\.eraser", active_tool == "eraser");
     set_button_active("#tool\\.bucket", active_tool == "bucket");
     set_button_active("#tool\\.lasso-bucket", active_tool == "lasso_bucket");
-    set_button_active("#tool\\.panel-rect", active_tool == "panel_rect");
+    set_button_active("#tool\\.koma-rect", active_tool == "koma_rect");
 
     set_visible("#shortcuts-section", show_shortcuts);
     set_button_active("#tool\\.shortcuts", show_shortcuts);
@@ -98,7 +98,7 @@ fn render_dom() {
     set_text("#eraser-shortcut", &state_string(ERASER_SHORTCUT));
     set_text("#bucket-shortcut", &state_string(BUCKET_SHORTCUT));
     set_text("#lasso-bucket-shortcut", &state_string(LASSO_BUCKET_SHORTCUT));
-    set_text("#panel-rect-shortcut", &state_string(PANEL_RECT_SHORTCUT));
+    set_text("#koma-rect-shortcut", &state_string(KOMA_RECT_SHORTCUT));
 
     let summary = state_string(LAST_IMPORT_SUMMARY);
     set_visible("#import-section", !summary.is_empty());
@@ -144,7 +144,7 @@ fn init() {
     defaults.set_string(ERASER_SHORTCUT.as_ref(), "E");
     defaults.set_string(BUCKET_SHORTCUT.as_ref(), "G");
     defaults.set_string(LASSO_BUCKET_SHORTCUT.as_ref(), "Shift+G");
-    defaults.set_string(PANEL_RECT_SHORTCUT.as_ref(), "K");
+    defaults.set_string(KOMA_RECT_SHORTCUT.as_ref(), "K");
     defaults.apply();
     render_dom();
 }
@@ -265,8 +265,8 @@ fn activate_lasso_bucket() {
 }
 
 #[plugin_sdk::panel_handler]
-fn activate_panel_rect() {
-    emit_command(&build_tool_command(Tool::PanelRect));
+fn activate_koma_rect() {
+    emit_command(&build_tool_command(Tool::KomaRect));
 }
 
 #[plugin_sdk::panel_handler]
@@ -351,8 +351,8 @@ fn keyboard() {
         activate_lasso_bucket();
         return;
     }
-    if shortcut_matches(&state_string(PANEL_RECT_SHORTCUT), &shortcut) {
-        activate_panel_rect();
+    if shortcut_matches(&state_string(KOMA_RECT_SHORTCUT), &shortcut) {
+        activate_koma_rect();
     }
 }
 
@@ -389,7 +389,7 @@ mod tests {
         activate_eraser();
         activate_bucket();
         activate_lasso_bucket();
-        activate_panel_rect();
+        activate_koma_rect();
         select_child_tool();
         previous_pen();
         next_pen();

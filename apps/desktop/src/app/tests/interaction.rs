@@ -99,12 +99,12 @@ fn canvas_drag_draws_using_selected_color() {
 }
 
 #[test]
-fn panel_rect_tool_creates_panel_from_dragged_page_rect() {
+fn koma_rect_tool_creates_koma_from_dragged_page_rect() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
     let mut profiler = DesktopProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     assert!(app.execute_command(Command::SetActiveTool {
-        tool: ToolKind::PanelRect,
+        tool: ToolKind::KomaRect,
     }));
 
     let layout = app.layout.clone().expect("layout exists");
@@ -839,7 +839,7 @@ fn emit_canvas_perf(
         ToolKind::Eraser => "eraser",
         ToolKind::Bucket => "bucket",
         ToolKind::LassoBucket => "lasso-bucket",
-        ToolKind::PanelRect => "panel-rect",
+        ToolKind::KomaRect => "koma-rect",
     };
     eprintln!(
         "[canvas-perf] tool={tool_name} size={size} duration={elapsed:.2}s iterations={iterations} rate={:.1}Hz",

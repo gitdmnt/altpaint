@@ -8,7 +8,7 @@ pub struct CanvasInputState {
     /// 手ぶれ補正で平滑化したサブピクセル位置 (キャンバス座標)。
     pub last_smoothed_position: Option<CanvasPointF>,
     pub lasso_points: Vec<CanvasPoint>,
-    pub panel_rect_anchor: Option<CanvasPoint>,
+    pub koma_rect_anchor: Option<CanvasPoint>,
 }
 
 impl CanvasInputState {
@@ -22,7 +22,7 @@ pub fn koma_creation_preview_bounds(
     page_width: usize,
     page_height: usize,
 ) -> Option<KomaBounds> {
-    let anchor = state.panel_rect_anchor?;
+    let anchor = state.koma_rect_anchor?;
     let current = state.last_position?;
     let left = anchor.x.min(current.x).min(page_width.saturating_sub(1));
     let top = anchor.y.min(current.y).min(page_height.saturating_sub(1));

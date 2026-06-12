@@ -83,7 +83,7 @@ impl Document {
                 let scaled = (base as f32 * (0.2 + clamped_pressure * 0.8)).round() as u32;
                 scaled.max(1)
             }
-            ToolKind::Bucket | ToolKind::LassoBucket | ToolKind::PanelRect => 1,
+            ToolKind::Bucket | ToolKind::LassoBucket | ToolKind::KomaRect => 1,
         }
     }
 }

@@ -168,7 +168,7 @@ impl DesktopApp {
         };
         let inside_active_panel =
             active_panel_bounds.is_some_and(|bounds| bounds.contains_canvas_point(page_point));
-        if active_tool != ToolKind::PanelRect && !inside_active_panel {
+        if active_tool != ToolKind::KomaRect && !inside_active_panel {
             if pointer_action == CanvasPointerAction::Up {
                 self.canvas_input.reset();
             }
@@ -226,7 +226,7 @@ impl DesktopApp {
                     last_position: Some(current),
                     last_smoothed_position: None,
                     lasso_points: Vec::new(),
-                    panel_rect_anchor: Some(anchor),
+                    koma_rect_anchor: Some(anchor),
                 };
                 let created =
                     canvas::koma_creation_preview_bounds(&preview_state, page_width, page_height)
@@ -266,7 +266,7 @@ impl DesktopApp {
     fn hover_canvas_position_from_window(&self, point: WindowPoint) -> Option<CanvasPoint> {
         let position = self.canvas_position_from_window(point)?;
         match self.document.active_tool {
-            ToolKind::PanelRect => Some(position),
+            ToolKind::KomaRect => Some(position),
             ToolKind::Pen | ToolKind::Eraser | ToolKind::Bucket | ToolKind::LassoBucket => self
                 .page_position_in_active_panel(position)
                 .map(|_| position),

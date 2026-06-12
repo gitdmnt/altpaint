@@ -7,7 +7,7 @@ pub enum Tool {
     Eraser,
     Bucket,
     LassoBucket,
-    PanelRect,
+    KomaRect,
 }
 
 impl Tool {
@@ -17,7 +17,7 @@ impl Tool {
             Self::Eraser => "eraser",
             Self::Bucket => "bucket",
             Self::LassoBucket => "lasso_bucket",
-            Self::PanelRect => "panel_rect",
+            Self::KomaRect => "koma_rect",
         }
     }
 }

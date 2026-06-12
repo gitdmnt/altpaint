@@ -79,9 +79,9 @@ where
             state.lasso_points.push(point);
             CanvasGestureUpdate::LassoPreviewChanged
         }
-        ToolKind::PanelRect => {
+        ToolKind::KomaRect => {
             state.is_drawing = true;
-            state.panel_rect_anchor = Some(point);
+            state.koma_rect_anchor = Some(point);
             state.last_position = Some(point);
             CanvasGestureUpdate::KomaRectPreviewChanged
         }
@@ -122,7 +122,7 @@ where
                 CanvasGestureUpdate::None
             }
         }
-        ToolKind::PanelRect => {
+        ToolKind::KomaRect => {
             if state.last_position == Some(point) {
                 return CanvasGestureUpdate::None;
             }
@@ -175,8 +175,8 @@ where
             state.reset();
             update
         }
-        ToolKind::PanelRect => {
-            let anchor = state.panel_rect_anchor;
+        ToolKind::KomaRect => {
+            let anchor = state.koma_rect_anchor;
             let current = state.last_position.or(Some(point));
             state.reset();
             match (anchor, current) {

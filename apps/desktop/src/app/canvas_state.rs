@@ -15,7 +15,7 @@ impl DesktopApp {
             }
             app_core::ToolKind::Bucket
             | app_core::ToolKind::LassoBucket
-            | app_core::ToolKind::PanelRect => None,
+            | app_core::ToolKind::KomaRect => None,
         }
     }
 

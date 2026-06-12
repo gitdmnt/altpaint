@@ -1,7 +1,7 @@
 {
   "id": "builtin.panel-rect",
   "name": "Panel Rect",
-  "kind": "PanelRect",
+  "kind": "KomaRect",
   "provider_plugin_id": "plugins/default-panel-tools-plugin",
   "drawing_plugin_id": "builtin.bitmap",
   "settings": []
