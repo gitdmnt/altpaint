@@ -3,7 +3,7 @@
 use std::time::{Duration, Instant};
 
 use app_core::{
-    CanvasPoint, CanvasViewportPoint, ColorRgba8, Command, ToolKind, WindowPoint,
+    PagePoint, CanvasViewportPoint, ColorRgba8, Command, ToolKind, WindowPoint,
 };
 use paint_engine::{CanvasPointerEvent, map_view_to_canvas_with_transform};
 use desktop_support::{DesktopProfiler, StageStats, ValueStats};
@@ -25,7 +25,7 @@ fn canvas_position_maps_view_center_into_bitmap_bounds() {
         app_core::CanvasViewTransform::default(),
     );
 
-    assert_eq!(position, Some(CanvasPoint::new(32, 32)));
+    assert_eq!(position, Some(PagePoint::new(32, 32)));
 }
 
 #[test]

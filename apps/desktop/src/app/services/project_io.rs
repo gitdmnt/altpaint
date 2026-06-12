@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use app_core::{CanvasDirtyRect, Command, HistoryEntry, MergeInSpace, PaintInput};
+use app_core::{PageDirtyRect, Command, HistoryEntry, MergeInSpace, PaintInput};
 use desktop_support::normalize_project_path;
 use panel_runtime::{ServiceRequest, services::names};
 use storage::load_project_from_path;
@@ -87,7 +87,7 @@ impl DesktopApp {
 
             // 前回のストローク状態があれば、今回の編集のdirty rectをマージして更新する
             if let Some(stroke) = &mut self.pending_stroke {
-                let edit_dirty = edits.iter().fold(None::<CanvasDirtyRect>, |acc, edit| {
+                let edit_dirty = edits.iter().fold(None::<PageDirtyRect>, |acc, edit| {
                     Some(match acc {
                         Some(existing) => existing.merge(edit.dirty_rect),
                         None => edit.dirty_rect,
@@ -143,7 +143,7 @@ impl DesktopApp {
 
             // GPU パス: compute shader が GPU テクスチャへ直接書き込むため CPU 書き込みは不要
             if self.gpu.is_some() {
-                let edit_dirty = edits.iter().fold(None::<CanvasDirtyRect>, |acc, edit| {
+                let edit_dirty = edits.iter().fold(None::<PageDirtyRect>, |acc, edit| {
                     Some(match acc {
                         Some(existing) => existing.merge(edit.dirty_rect),
                         None => edit.dirty_rect,
@@ -172,7 +172,7 @@ impl DesktopApp {
             }
 
             if let (Some(koma_id), Some(layer_index)) = (koma_id, layer_index) {
-                let edit_dirty = edits.iter().fold(None::<CanvasDirtyRect>, |acc, edit| {
+                let edit_dirty = edits.iter().fold(None::<PageDirtyRect>, |acc, edit| {
                     Some(match acc {
                         Some(existing) => existing.merge(edit.dirty_rect),
                         None => edit.dirty_rect,
@@ -218,7 +218,7 @@ impl DesktopApp {
         edits: &[app_core::BitmapEdit],
     ) -> bool {
         use paint_engine::build_paint_context;
-        let edit_dirty = edits.iter().fold(None::<CanvasDirtyRect>, |acc, edit| {
+        let edit_dirty = edits.iter().fold(None::<PageDirtyRect>, |acc, edit| {
             Some(match acc {
                 Some(existing) => existing.merge(edit.dirty_rect),
                 None => edit.dirty_rect,

@@ -3,7 +3,7 @@
 //! `CommandHistory` は操作記録（`HistoryEntry`）のスタックを管理する。
 //! undo 方式はビットマップ前後スナップショット（`BitmapPatch`）の保存・復元方式。
 
-use crate::{CanvasBitmap, CanvasDirtyRect, KomaId};
+use crate::{CanvasBitmap, PageDirtyRect, KomaId};
 
 /// 履歴スタックのデフォルト容量。
 pub const DEFAULT_HISTORY_CAPACITY: usize = 50;
@@ -32,7 +32,7 @@ pub enum HistoryEntry {
         koma_id: KomaId,
         layer_index: usize,
         /// コマローカル座標系の変更領域。
-        dirty: CanvasDirtyRect,
+        dirty: PageDirtyRect,
         /// 操作前のビットマップ領域。
         before: CanvasBitmap,
         /// 操作後のビットマップ領域。
@@ -43,7 +43,7 @@ pub enum HistoryEntry {
         koma_id: KomaId,
         layer_index: usize,
         /// コマローカル座標系の変更領域。
-        dirty: CanvasDirtyRect,
+        dirty: PageDirtyRect,
         /// desktop 層で定義した `GpuPatchSnapshot` を保持する型消去ラッパー。
         gpu_data: OpaqueGpuData,
     },
@@ -131,7 +131,7 @@ mod tests {
         HistoryEntry::BitmapPatch {
             koma_id: KomaId(1),
             layer_index: 0,
-            dirty: CanvasDirtyRect {
+            dirty: PageDirtyRect {
                 x,
                 y: 0,
                 width: 1,

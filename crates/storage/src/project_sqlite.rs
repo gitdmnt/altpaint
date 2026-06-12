@@ -5,7 +5,7 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use app_core::{
-    BlendMode, CanvasBitmap, CanvasDirtyRect, CanvasViewTransform, ClampToCanvasBounds, ColorRgba8,
+    BlendMode, CanvasBitmap, PageDirtyRect, CanvasViewTransform, ClampToCanvasBounds, ColorRgba8,
     Document, LayerMask, LayerNodeId, Page, PageId, Koma, KomaBounds, KomaId, PenPreset,
     RasterLayer, ToolKind, Work, WorkId, WorkspaceLayout,
 };
@@ -1037,7 +1037,7 @@ fn compose_koma_bitmap(width: usize, height: usize, layers: &[RasterLayer]) -> C
         composite_layer_region_into(
             &mut bitmap,
             layer,
-            CanvasDirtyRect {
+            PageDirtyRect {
                 x: 0,
                 y: 0,
                 width,
@@ -1051,7 +1051,7 @@ fn compose_koma_bitmap(width: usize, height: usize, layers: &[RasterLayer]) -> C
 fn composite_layer_region_into(
     target: &mut CanvasBitmap,
     layer: &RasterLayer,
-    dirty: CanvasDirtyRect,
+    dirty: PageDirtyRect,
 ) {
     let dirty = dirty.clamp_to_canvas_bounds(
         target.width.min(layer.bitmap.width).max(1),

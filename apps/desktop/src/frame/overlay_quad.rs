@@ -5,7 +5,7 @@
 //! ブラシプレビュー円リング、`LineQuad` はラッソ線分カプセル。各々
 //! `WgpuPresenter` の専用パイプラインへ渡される。
 
-use app_core::CanvasDirtyRect;
+use app_core::PageDirtyRect;
 use desktop_support::{
     ACTIVE_KOMA_BORDER, ACTIVE_KOMA_FILL, ACTIVE_KOMA_MASK, BRUSH_PREVIEW_RING, LASSO_LINE,
     KOMA_NAVIGATOR_ACTIVE, KOMA_NAVIGATOR_BACKGROUND, KOMA_NAVIGATOR_BORDER,
@@ -131,25 +131,25 @@ fn push_active_koma_mask(
     }
 
     let outside_regions = [
-        CanvasDirtyRect {
+        PageDirtyRect {
             x: 0,
             y: 0,
             width: source_width,
             height: bounds.y,
         },
-        CanvasDirtyRect {
+        PageDirtyRect {
             x: 0,
             y: bounds.y.saturating_add(bounds.height),
             width: source_width,
             height: source_height.saturating_sub(bounds.y.saturating_add(bounds.height)),
         },
-        CanvasDirtyRect {
+        PageDirtyRect {
             x: 0,
             y: bounds.y,
             width: bounds.x,
             height: bounds.height,
         },
-        CanvasDirtyRect {
+        PageDirtyRect {
             x: bounds.x.saturating_add(bounds.width),
             y: bounds.y,
             width: source_width.saturating_sub(bounds.x.saturating_add(bounds.width)),
@@ -170,7 +170,7 @@ fn push_active_koma_mask(
         });
     }
 
-    let koma_rect = plan.map_dirty_rect(CanvasDirtyRect {
+    let koma_rect = plan.map_dirty_rect(PageDirtyRect {
         x: bounds.x,
         y: bounds.y,
         width: bounds.width,
@@ -195,7 +195,7 @@ fn push_koma_creation_preview(
     {
         return;
     }
-    let rect = plan.map_dirty_rect(CanvasDirtyRect {
+    let rect = plan.map_dirty_rect(PageDirtyRect {
         x: bounds.x,
         y: bounds.y,
         width: bounds.width,
@@ -292,7 +292,7 @@ fn push_koma_navigator(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::{CanvasPoint, CanvasViewTransform, KomaBounds};
+    use app_core::{PagePoint, CanvasViewTransform, KomaBounds};
     use canvas_geometry::{KomaNavigatorEntry, PixelRect};
 
     fn make_plan(canvas_width: usize, canvas_height: usize) -> CanvasPlan {
@@ -347,7 +347,7 @@ mod tests {
     fn brush_preview_emits_single_circle_quad_with_expected_radius() {
         let plan = make_plan(64, 64);
         let overlay = CanvasOverlayState {
-            brush_preview: Some(CanvasPoint::new(32, 32)),
+            brush_preview: Some(PagePoint::new(32, 32)),
             brush_size: Some(10),
             ..CanvasOverlayState::default()
         };
@@ -365,9 +365,9 @@ mod tests {
         let plan = make_plan(64, 64);
         let overlay = CanvasOverlayState {
             lasso_points: vec![
-                CanvasPoint::new(8, 8),
-                CanvasPoint::new(40, 24),
-                CanvasPoint::new(56, 56),
+                PagePoint::new(8, 8),
+                PagePoint::new(40, 24),
+                PagePoint::new(56, 56),
             ],
             ..CanvasOverlayState::default()
         };

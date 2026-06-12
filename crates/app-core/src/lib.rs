@@ -13,7 +13,7 @@ pub mod workspace;
 
 pub use command::Command;
 pub use coordinates::{
-    CanvasDirtyRect, CanvasDisplayPoint, CanvasPoint, CanvasPointF, CanvasViewportPoint,
+    PageDirtyRect, CanvasDisplayPoint, PagePoint, PagePointF, CanvasViewportPoint,
     ClampToCanvasBounds, MergeInSpace, KomaLocalPoint, PanelSurfaceDirtyRect, PanelSurfacePoint,
     PanelSurfaceRect, WindowDirtyRect, WindowPoint, WindowRect,
 };

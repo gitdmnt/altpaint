@@ -1,5 +1,5 @@
 use app_core::{
-    BitmapEdit, CanvasBitmap, CanvasDirtyRect, PaintPluginContext, KomaLocalPoint,
+    BitmapEdit, CanvasBitmap, PageDirtyRect, PaintPluginContext, KomaLocalPoint,
     paint_params::MAX_STAMP_STEPS,
 };
 
@@ -76,7 +76,7 @@ pub(crate) fn stroke_like_edit(
         return None;
     }
 
-    let dirty_rect = CanvasDirtyRect {
+    let dirty_rect = PageDirtyRect {
         x: left,
         y: top,
         width: right - left,

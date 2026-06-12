@@ -1,4 +1,4 @@
-use app_core::{CanvasPoint, CanvasViewTransform, CanvasViewportPoint, KomaLocalPoint, ToolKind};
+use app_core::{PagePoint, CanvasViewTransform, CanvasViewportPoint, KomaLocalPoint, ToolKind};
 
 use crate::{
     CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, CanvasPointerEvent,
@@ -21,7 +21,7 @@ fn map_view_center_into_canvas_center() {
         CanvasViewTransform::default(),
     );
 
-    assert_eq!(mapped, Some(CanvasPoint::new(32, 32)));
+    assert_eq!(mapped, Some(PagePoint::new(32, 32)));
 }
 
 #[test]
@@ -43,13 +43,13 @@ fn map_view_returns_none_outside_letterboxed_canvas() {
 #[test]
 fn lasso_gesture_collects_points_and_emits_fill_on_release() {
     let mut state = CanvasInputState::default();
-    let to_koma_local = |point: CanvasPoint| Some(KomaLocalPoint::new(point.x, point.y));
+    let to_koma_local = |point: PagePoint| Some(KomaLocalPoint::new(point.x, point.y));
 
     assert_eq!(
         advance_pointer_gesture(
             &mut state,
             CanvasPointerAction::Down,
-            CanvasPoint::new(10, 10),
+            PagePoint::new(10, 10),
             ToolKind::LassoBucket,
             1.0,
             0,
@@ -58,31 +58,31 @@ fn lasso_gesture_collects_points_and_emits_fill_on_release() {
         CanvasGestureUpdate::LassoPreviewChanged
     );
 
-    let to_koma_local = |point: CanvasPoint| Some(KomaLocalPoint::new(point.x, point.y));
+    let to_koma_local = |point: PagePoint| Some(KomaLocalPoint::new(point.x, point.y));
     let _ = advance_pointer_gesture(
         &mut state,
         CanvasPointerAction::Drag,
-        CanvasPoint::new(20, 10),
+        PagePoint::new(20, 10),
         ToolKind::LassoBucket,
         1.0,
         0,
         to_koma_local,
     );
-    let to_koma_local = |point: CanvasPoint| Some(KomaLocalPoint::new(point.x, point.y));
+    let to_koma_local = |point: PagePoint| Some(KomaLocalPoint::new(point.x, point.y));
     let _ = advance_pointer_gesture(
         &mut state,
         CanvasPointerAction::Drag,
-        CanvasPoint::new(20, 20),
+        PagePoint::new(20, 20),
         ToolKind::LassoBucket,
         1.0,
         0,
         to_koma_local,
     );
-    let to_koma_local = |point: CanvasPoint| Some(KomaLocalPoint::new(point.x, point.y));
+    let to_koma_local = |point: PagePoint| Some(KomaLocalPoint::new(point.x, point.y));
     let update = advance_pointer_gesture(
         &mut state,
         CanvasPointerAction::Up,
-        CanvasPoint::new(10, 20),
+        PagePoint::new(10, 20),
         ToolKind::LassoBucket,
         1.0,
         0,
@@ -99,8 +99,8 @@ fn lasso_gesture_collects_points_and_emits_fill_on_release() {
 #[test]
 fn koma_rect_preview_bounds_are_derived_from_canvas_state() {
     let state = CanvasInputState {
-        koma_rect_anchor: Some(CanvasPoint::new(80, 50)),
-        last_position: Some(CanvasPoint::new(20, 30)),
+        koma_rect_anchor: Some(PagePoint::new(80, 50)),
+        last_position: Some(PagePoint::new(20, 30)),
         ..CanvasInputState::default()
     };
 

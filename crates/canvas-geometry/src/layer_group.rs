@@ -1,4 +1,4 @@
-use app_core::CanvasDirtyRect;
+use app_core::PageDirtyRect;
 
 use crate::{PixelRect, union_dirty_rect};
 
@@ -6,7 +6,7 @@ use crate::{PixelRect, union_dirty_rect};
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct LayerGroupDirtyPlan {
     pub background: Option<PixelRect>,
-    pub canvas: Option<CanvasDirtyRect>,
+    pub canvas: Option<PageDirtyRect>,
     pub canvas_transform_changed: bool,
     pub temp_overlay: Option<PixelRect>,
     pub ui_panel: Option<PixelRect>,

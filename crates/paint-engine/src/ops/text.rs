@@ -3,7 +3,7 @@
 //! `TextRenderer` trait により実装を差し替え可能にする。
 //! 既定実装 `Font8x8Renderer` は `font8x8` クレートを使ったビットマップフォントレンダラ。
 
-use app_core::{BitmapComposite, BitmapEdit, CanvasBitmap, CanvasDirtyRect};
+use app_core::{BitmapComposite, BitmapEdit, CanvasBitmap, PageDirtyRect};
 
 // ─── 公開 trait ──────────────────────────────────────────────────────────────
 
@@ -128,7 +128,7 @@ pub fn render_text_to_bitmap_edit_with(
     if output.width == 0 || output.height == 0 {
         return None;
     }
-    let dirty_rect = CanvasDirtyRect {
+    let dirty_rect = PageDirtyRect {
         x,
         y,
         width: output.width,

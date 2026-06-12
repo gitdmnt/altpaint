@@ -104,45 +104,45 @@ impl CanvasViewportPoint {
     }
 }
 
-/// ページ / キャンバス上のピクセル座標を表す。
+/// ページ (作品ピクセル空間) 上のピクセル座標を表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CanvasPoint {
+pub struct PagePoint {
     pub x: usize,
     pub y: usize,
 }
 
-impl CanvasPoint {
+impl PagePoint {
     pub const fn new(x: usize, y: usize) -> Self {
         Self { x, y }
     }
 }
 
-/// ページ / キャンバス上のサブピクセル座標を表す。
+/// ページ (作品ピクセル空間) 上のサブピクセル座標を表す。
 ///
-/// `CanvasPoint` の浮動小数版。手ぶれ補正のようにピクセル格子の間を
-/// 扱う計算で使い、確定時に `to_canvas_point()` で丸める。
+/// `PagePoint` の浮動小数版。手ぶれ補正のようにピクセル格子の間を
+/// 扱う計算で使い、確定時に `to_page_point()` で丸める。
 /// 表示座標 (スケール・回転適用済み) は `CanvasDisplayPoint` が担い、本型とは区別する。
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct CanvasPointF {
+pub struct PagePointF {
     pub x: f32,
     pub y: f32,
 }
 
-impl CanvasPointF {
+impl PagePointF {
     pub const fn new(x: f32, y: f32) -> Self {
         Self { x, y }
     }
 
-    /// 最近傍ピクセルへ丸めた `CanvasPoint` を返す (負値は 0 へクランプ)。
-    pub fn to_canvas_point(self) -> CanvasPoint {
-        CanvasPoint::new(
+    /// 最近傍ピクセルへ丸めた `PagePoint` を返す (負値は 0 へクランプ)。
+    pub fn to_page_point(self) -> PagePoint {
+        PagePoint::new(
             self.x.round().max(0.0) as usize,
             self.y.round().max(0.0) as usize,
         )
     }
 
     /// `other` へ係数 `t` (0.0..=1.0) だけ近づけた点を返す。
-    pub fn lerp_toward(self, other: CanvasPointF, t: f32) -> Self {
+    pub fn lerp_toward(self, other: PagePointF, t: f32) -> Self {
         Self {
             x: self.x + (other.x - self.x) * t,
             y: self.y + (other.y - self.y) * t,
@@ -150,8 +150,8 @@ impl CanvasPointF {
     }
 }
 
-impl From<CanvasPoint> for CanvasPointF {
-    fn from(value: CanvasPoint) -> Self {
+impl From<PagePoint> for PagePointF {
+    fn from(value: PagePoint) -> Self {
         Self::new(value.x as f32, value.y as f32)
     }
 }
@@ -227,16 +227,16 @@ impl CanvasDisplayPoint {
     }
 }
 
-/// キャンバス / ページ座標系の dirty rect を表す。
+/// ページ座標系の dirty rect を表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CanvasDirtyRect {
+pub struct PageDirtyRect {
     pub x: usize,
     pub y: usize,
     pub width: usize,
     pub height: usize,
 }
 
-impl CanvasDirtyRect {
+impl PageDirtyRect {
     pub const fn new(x: usize, y: usize, width: usize, height: usize) -> Self {
         Self {
             x,
@@ -261,7 +261,7 @@ impl CanvasDirtyRect {
     }
 }
 
-impl MergeInSpace for CanvasDirtyRect {
+impl MergeInSpace for PageDirtyRect {
     fn merge(self, other: Self) -> Self {
         let left = self.x.min(other.x);
         let top = self.y.min(other.y);
@@ -277,7 +277,7 @@ impl MergeInSpace for CanvasDirtyRect {
     }
 }
 
-impl ClampToCanvasBounds for CanvasDirtyRect {
+impl ClampToCanvasBounds for PageDirtyRect {
     fn clamp_to_canvas_bounds(self, width: usize, height: usize) -> Self {
         if width == 0 || height == 0 {
             return Self {
@@ -413,33 +413,33 @@ mod tests {
     }
 
     #[test]
-    fn canvas_dirty_rect_merge_combines_bounds() {
-        let left = CanvasDirtyRect::from_inclusive_points(2, 3, 4, 5);
-        let right = CanvasDirtyRect::from_inclusive_points(6, 1, 7, 4);
+    fn page_dirty_rect_merge_combines_bounds() {
+        let left = PageDirtyRect::from_inclusive_points(2, 3, 4, 5);
+        let right = PageDirtyRect::from_inclusive_points(6, 1, 7, 4);
 
-        assert_eq!(left.merge(right), CanvasDirtyRect::new(2, 1, 6, 5));
+        assert_eq!(left.merge(right), PageDirtyRect::new(2, 1, 6, 5));
     }
 
-    /// CanvasPointF の丸めが最近傍ピクセルへ向かい、負値が 0 にクランプされることを検証する。
+    /// PagePointF の丸めが最近傍ピクセルへ向かい、負値が 0 にクランプされることを検証する。
     #[test]
-    fn canvas_point_f_rounds_to_nearest_and_clamps_negative() {
+    fn page_point_f_rounds_to_nearest_and_clamps_negative() {
         assert_eq!(
-            CanvasPointF::new(2.6, 3.4).to_canvas_point(),
-            CanvasPoint::new(3, 3)
+            PagePointF::new(2.6, 3.4).to_page_point(),
+            PagePoint::new(3, 3)
         );
         assert_eq!(
-            CanvasPointF::new(-1.5, 0.5).to_canvas_point(),
-            CanvasPoint::new(0, 1)
+            PagePointF::new(-1.5, 0.5).to_page_point(),
+            PagePoint::new(0, 1)
         );
     }
 
-    /// CanvasPointF::lerp_toward が係数どおりに補間することを検証する。
+    /// PagePointF::lerp_toward が係数どおりに補間することを検証する。
     #[test]
-    fn canvas_point_f_lerp_toward_blends_by_factor() {
-        let from = CanvasPointF::new(0.0, 10.0);
-        let to = CanvasPointF::new(10.0, 20.0);
+    fn page_point_f_lerp_toward_blends_by_factor() {
+        let from = PagePointF::new(0.0, 10.0);
+        let to = PagePointF::new(10.0, 20.0);
 
-        assert_eq!(from.lerp_toward(to, 0.5), CanvasPointF::new(5.0, 15.0));
+        assert_eq!(from.lerp_toward(to, 0.5), PagePointF::new(5.0, 15.0));
         assert_eq!(from.lerp_toward(to, 1.0), to);
     }
 }

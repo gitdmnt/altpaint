@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use app_core::{CanvasDirtyRect, KomaLocalPoint};
+use app_core::{PageDirtyRect, KomaLocalPoint};
 
 /// wgpu デバイスとキューを共有するコンテキスト。
 ///
@@ -160,7 +160,7 @@ impl GpuCanvasPool {
         &self,
         koma_id: &str,
         layer_index: usize,
-        region: CanvasDirtyRect,
+        region: PageDirtyRect,
     ) -> Option<wgpu::Texture> {
         let (x, y) = (region.x as u32, region.y as u32);
         let (w, h) = (region.width as u32, region.height as u32);
@@ -259,7 +259,7 @@ impl GpuCanvasPool {
         &self,
         koma_id: &str,
         layer_index: usize,
-        region: CanvasDirtyRect,
+        region: PageDirtyRect,
         pixels: &[u8],
     ) {
         let (x, y) = (region.x as u32, region.y as u32);

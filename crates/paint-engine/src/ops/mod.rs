@@ -7,7 +7,7 @@ pub mod text;
 
 pub use stroke::compute_stamp_positions;
 
-use app_core::{BitmapEdit, CanvasBitmap, CanvasDirtyRect, PaintPluginContext, KomaLocalPoint};
+use app_core::{BitmapEdit, CanvasBitmap, PageDirtyRect, PaintPluginContext, KomaLocalPoint};
 
 pub(crate) fn bitmap_from_points(
     points: Vec<(usize, usize)>,
@@ -21,7 +21,7 @@ pub(crate) fn bitmap_from_points(
     if points.is_empty() || min_x == usize::MAX || min_y == usize::MAX {
         return None;
     }
-    let dirty_rect = CanvasDirtyRect {
+    let dirty_rect = PageDirtyRect {
         x: min_x,
         y: min_y,
         width: max_x.saturating_sub(min_x).saturating_add(1),

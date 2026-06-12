@@ -3,17 +3,17 @@
 //! 公開 command 境界の背後にある layer 操作・合成 helper をここへ集約し、
 //! ドキュメント本体を状態遷移の入口として読みやすく保つ。
 
-use crate::{BitmapEdit, CanvasDirtyRect, ClampToCanvasBounds, MergeInSpace, KomaId};
+use crate::{BitmapEdit, PageDirtyRect, ClampToCanvasBounds, MergeInSpace, KomaId};
 
 use super::{BlendMode, CanvasBitmap, Document, LayerNodeId, Koma, RasterLayer};
 
 fn local_dirty_to_page_dirty(
-    dirty: CanvasDirtyRect,
+    dirty: PageDirtyRect,
     koma_bounds: super::KomaBounds,
     page_width: usize,
     page_height: usize,
-) -> CanvasDirtyRect {
-    CanvasDirtyRect {
+) -> PageDirtyRect {
+    PageDirtyRect {
         x: dirty.x.saturating_add(koma_bounds.x),
         y: dirty.y.saturating_add(koma_bounds.y),
         width: dirty.width,
@@ -26,7 +26,7 @@ impl Document {
     pub fn apply_bitmap_edits_to_active_layer(
         &mut self,
         edits: &[BitmapEdit],
-    ) -> Option<CanvasDirtyRect> {
+    ) -> Option<PageDirtyRect> {
         if edits.is_empty() {
             return None;
         }
@@ -75,7 +75,7 @@ impl Document {
         &self,
         koma_id: KomaId,
         layer_index: usize,
-        dirty: CanvasDirtyRect,
+        dirty: PageDirtyRect,
     ) -> Option<CanvasBitmap> {
         let (page_idx, koma_idx) = self.find_koma_location(koma_id)?;
         let koma = &self.work.pages[page_idx].komas[koma_idx];
@@ -93,7 +93,7 @@ impl Document {
         x: usize,
         y: usize,
         bitmap: &CanvasBitmap,
-    ) -> Option<CanvasDirtyRect> {
+    ) -> Option<PageDirtyRect> {
         let (page_idx, koma_idx) = self.find_koma_location(koma_id)?;
         let koma_bounds = self.work.pages[page_idx].komas[koma_idx].bounds;
         let (page_width, page_height) = {
@@ -104,7 +104,7 @@ impl Document {
         if let Some(layer) = koma.layers.get_mut(layer_index) {
             write_bitmap_region(&mut layer.bitmap, x, y, bitmap);
         }
-        let dirty = CanvasDirtyRect {
+        let dirty = PageDirtyRect {
             x,
             y,
             width: bitmap.width,
@@ -139,7 +139,7 @@ impl Document {
         koma_id: KomaId,
         layer_index: usize,
         edits: &[BitmapEdit],
-    ) -> Option<CanvasDirtyRect> {
+    ) -> Option<PageDirtyRect> {
         if edits.is_empty() {
             return None;
         }
@@ -302,12 +302,12 @@ pub(super) fn ensure_koma_layers(koma: &mut Koma) {
 }
 
 
-fn apply_bitmap_edits(koma: &mut Koma, edits: &[BitmapEdit]) -> Option<CanvasDirtyRect> {
+fn apply_bitmap_edits(koma: &mut Koma, edits: &[BitmapEdit]) -> Option<PageDirtyRect> {
     let active_index = koma
         .active_layer_index
         .min(koma.layers.len().saturating_sub(1));
     let layer = &mut koma.layers[active_index];
-    let mut dirty_union: Option<CanvasDirtyRect> = None;
+    let mut dirty_union: Option<PageDirtyRect> = None;
 
     for edit in edits {
         let dirty = edit
@@ -405,7 +405,7 @@ pub(super) fn composite_koma_bitmap(koma: &Koma) -> CanvasBitmap {
         composite_layer_region_into(
             &mut result,
             layer,
-            CanvasDirtyRect {
+            PageDirtyRect {
                 x: 0,
                 y: 0,
                 width,
@@ -416,7 +416,7 @@ pub(super) fn composite_koma_bitmap(koma: &Koma) -> CanvasBitmap {
     result
 }
 
-fn composite_koma_bitmap_region(koma: &mut Koma, dirty: CanvasDirtyRect) {
+fn composite_koma_bitmap_region(koma: &mut Koma, dirty: PageDirtyRect) {
     let dirty = dirty.clamp_to_canvas_bounds(koma.bitmap.width.max(1), koma.bitmap.height.max(1));
     if let Some(layer_index) = single_passthrough_layer_index(koma) {
         copy_bitmap_region(&koma.layers[layer_index].bitmap, &mut koma.bitmap, dirty);
@@ -457,7 +457,7 @@ fn single_passthrough_layer_index(koma: &Koma) -> Option<usize> {
     Some(index)
 }
 
-fn copy_bitmap_region(source: &CanvasBitmap, target: &mut CanvasBitmap, dirty: CanvasDirtyRect) {
+fn copy_bitmap_region(source: &CanvasBitmap, target: &mut CanvasBitmap, dirty: PageDirtyRect) {
     let dirty = dirty.clamp_to_canvas_bounds(
         target.width.min(source.width),
         target.height.min(source.height),
@@ -475,7 +475,7 @@ fn copy_bitmap_region(source: &CanvasBitmap, target: &mut CanvasBitmap, dirty: C
 fn composite_layer_region_into(
     target: &mut CanvasBitmap,
     layer: &RasterLayer,
-    dirty: CanvasDirtyRect,
+    dirty: PageDirtyRect,
 ) {
     let dirty = dirty.clamp_to_canvas_bounds(
         target.width.min(layer.bitmap.width).max(1),

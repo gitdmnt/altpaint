@@ -1,4 +1,4 @@
-use app_core::{CanvasDirtyRect, CanvasViewTransform};
+use app_core::{PageDirtyRect, CanvasViewTransform};
 
 use crate::{
     CanvasScene, PixelRect, map_canvas_dirty_to_display_with_transform, prepare_canvas_scene,
@@ -23,7 +23,7 @@ impl CanvasPlan {
         )
     }
 
-    pub fn map_dirty_rect(&self, dirty: CanvasDirtyRect) -> PixelRect {
+    pub fn map_dirty_rect(&self, dirty: PageDirtyRect) -> PixelRect {
         map_canvas_dirty_to_display_with_transform(
             dirty,
             self.host_rect,

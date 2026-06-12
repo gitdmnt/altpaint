@@ -1,11 +1,11 @@
-use app_core::CanvasPoint;
+use app_core::PagePoint;
 
 use crate::{CanvasScene, PixelRect, union_optional_rect};
 
 pub fn brush_preview_dirty_rect(
     previous_scene: Option<CanvasScene>,
     current_scene: Option<CanvasScene>,
-    canvas_position: CanvasPoint,
+    canvas_position: PagePoint,
     brush_diameter: f32,
 ) -> Option<PixelRect> {
     let previous = previous_scene

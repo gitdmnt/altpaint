@@ -1,13 +1,13 @@
-use app_core::{CanvasPoint, KomaBounds};
+use app_core::{PagePoint, KomaBounds};
 
 use crate::PixelRect;
 
 /// キャンバス上の一時オーバーレイ状態を保持する。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CanvasOverlayState {
-    pub brush_preview: Option<CanvasPoint>,
+    pub brush_preview: Option<PagePoint>,
     pub brush_size: Option<u32>,
-    pub lasso_points: Vec<CanvasPoint>,
+    pub lasso_points: Vec<PagePoint>,
     pub active_koma_bounds: Option<KomaBounds>,
     pub koma_navigator: Option<KomaNavigatorOverlay>,
     pub panel_creation_preview: Option<KomaBounds>,

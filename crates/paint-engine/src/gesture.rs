@@ -1,4 +1,4 @@
-use app_core::{CanvasPoint, PaintInput, KomaLocalPoint, ToolKind};
+use app_core::{PagePoint, PaintInput, KomaLocalPoint, ToolKind};
 
 use crate::CanvasInputState;
 
@@ -16,22 +16,22 @@ pub enum CanvasGestureUpdate {
     LassoPreviewChanged,
     KomaRectPreviewChanged,
     KomaRectCommitted {
-        anchor: CanvasPoint,
-        current: CanvasPoint,
+        anchor: PagePoint,
+        current: PagePoint,
     },
 }
 
 pub fn advance_pointer_gesture<F>(
     state: &mut CanvasInputState,
     action: CanvasPointerAction,
-    point: CanvasPoint,
+    point: PagePoint,
     active_tool: ToolKind,
     pressure: f32,
     stabilization: u8,
     mut to_koma_local: F,
 ) -> CanvasGestureUpdate
 where
-    F: FnMut(CanvasPoint) -> Option<KomaLocalPoint>,
+    F: FnMut(PagePoint) -> Option<KomaLocalPoint>,
 {
     match action {
         CanvasPointerAction::Down => handle_pointer_down(
@@ -58,14 +58,14 @@ where
 
 fn handle_pointer_down<F>(
     state: &mut CanvasInputState,
-    point: CanvasPoint,
+    point: PagePoint,
     active_tool: ToolKind,
     pressure: f32,
     stabilization: u8,
     to_koma_local: &mut F,
 ) -> CanvasGestureUpdate
 where
-    F: FnMut(CanvasPoint) -> Option<KomaLocalPoint>,
+    F: FnMut(PagePoint) -> Option<KomaLocalPoint>,
 {
     match active_tool {
         ToolKind::Bucket => to_koma_local(point)
@@ -99,14 +99,14 @@ where
 
 fn handle_pointer_drag<F>(
     state: &mut CanvasInputState,
-    point: CanvasPoint,
+    point: PagePoint,
     active_tool: ToolKind,
     pressure: f32,
     stabilization: u8,
     to_koma_local: &mut F,
 ) -> CanvasGestureUpdate
 where
-    F: FnMut(CanvasPoint) -> Option<KomaLocalPoint>,
+    F: FnMut(PagePoint) -> Option<KomaLocalPoint>,
 {
     if !state.is_drawing {
         return CanvasGestureUpdate::None;
@@ -150,13 +150,13 @@ where
 
 fn handle_pointer_up<F>(
     state: &mut CanvasInputState,
-    point: CanvasPoint,
+    point: PagePoint,
     active_tool: ToolKind,
     pressure: f32,
     to_koma_local: &mut F,
 ) -> CanvasGestureUpdate
 where
-    F: FnMut(CanvasPoint) -> Option<KomaLocalPoint>,
+    F: FnMut(PagePoint) -> Option<KomaLocalPoint>,
 {
     match active_tool {
         ToolKind::LassoBucket => {
@@ -207,10 +207,10 @@ where
 
 fn stabilized_canvas_position(
     state: &mut CanvasInputState,
-    point: CanvasPoint,
+    point: PagePoint,
     active_tool: ToolKind,
     stabilization: u8,
-) -> CanvasPoint {
+) -> PagePoint {
     if active_tool != ToolKind::Pen || stabilization == 0 {
         state.last_smoothed_position = Some(point.into());
         return point;
@@ -220,5 +220,5 @@ fn stabilized_canvas_position(
     let previous = state.last_smoothed_position.unwrap_or(point.into());
     let next = previous.lerp_toward(point.into(), blend);
     state.last_smoothed_position = Some(next);
-    next.to_canvas_point()
+    next.to_page_point()
 }

@@ -1,6 +1,6 @@
 //! present 向け dirty 状態と更新指示を扱う。
 
-use app_core::{BitmapEdit, CanvasDirtyRect, MergeInSpace};
+use app_core::{BitmapEdit, PageDirtyRect, MergeInSpace};
 
 use super::DesktopApp;
 use crate::frame::Rect;
@@ -11,7 +11,7 @@ pub(crate) struct PresentFrameUpdate {
     pub(crate) background_dirty_rect: Option<Rect>,
     pub(crate) temp_overlay_dirty_rect: Option<Rect>,
     pub(crate) ui_panel_dirty_rect: Option<Rect>,
-    pub(crate) canvas_dirty_rect: Option<CanvasDirtyRect>,
+    pub(crate) canvas_dirty_rect: Option<PageDirtyRect>,
     pub(crate) canvas_transform_changed: bool,
     pub(crate) canvas_updated: bool,
 }
@@ -22,7 +22,7 @@ pub(crate) struct PresentFrameUpdate {
 #[derive(Debug, Default)]
 pub(crate) struct PresentInvalidation {
     /// L2 キャンバス層の保留 dirty rect (キャンバス座標)。
-    pub(crate) canvas_dirty_rect: Option<CanvasDirtyRect>,
+    pub(crate) canvas_dirty_rect: Option<PageDirtyRect>,
     /// L3 一時オーバーレイ層の保留 dirty rect (window 座標)。
     pub(crate) temp_overlay_dirty_rect: Option<Rect>,
     /// L4 UI パネル層の保留 dirty rect (window 座標)。
@@ -134,7 +134,7 @@ impl DesktopApp {
         changed
     }
 
-    pub(super) fn append_canvas_dirty_rect(&mut self, dirty: CanvasDirtyRect) -> bool {
+    pub(super) fn append_canvas_dirty_rect(&mut self, dirty: PageDirtyRect) -> bool {
         self.invalidation.canvas_dirty_rect = Some(
             self.invalidation.canvas_dirty_rect
                 .map_or(dirty, |existing| existing.merge(dirty)),

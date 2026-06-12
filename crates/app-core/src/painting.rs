@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::{
-    CanvasBitmap, CanvasDirtyRect, ColorRgba8, KomaLocalPoint, PenPreset, ToolKind,
+    CanvasBitmap, PageDirtyRect, ColorRgba8, KomaLocalPoint, PenPreset, ToolKind,
     ToolSettingDefinition,
 };
 
@@ -91,14 +91,14 @@ impl BitmapComposite {
 /// 更新が必要な矩形領域と、更新内容を表すビットマップ、合成方法を指定する。
 #[derive(Debug, Clone)]
 pub struct BitmapEdit {
-    pub dirty_rect: CanvasDirtyRect,
+    pub dirty_rect: PageDirtyRect,
     pub bitmap: CanvasBitmap,
     pub composite: BitmapComposite,
 }
 
 impl BitmapEdit {
     pub fn new(
-        dirty_rect: CanvasDirtyRect,
+        dirty_rect: PageDirtyRect,
         bitmap: CanvasBitmap,
         composite: BitmapComposite,
     ) -> Self {

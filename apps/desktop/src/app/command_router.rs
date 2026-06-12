@@ -1,6 +1,6 @@
 //! `Command` の分類と `DesktopApp` への適用経路を整理する。
 
-use app_core::{CanvasDirtyRect, Command};
+use app_core::{PageDirtyRect, Command};
 use panel_runtime::{ServiceRequest, services::names};
 
 use super::DesktopApp;
@@ -118,8 +118,8 @@ impl DesktopApp {
                 let koma_info = self.document.active_koma().map(|p| {
                     (
                         p.id,
-                        CanvasDirtyRect::new(p.bounds.x, p.bounds.y, p.bounds.width, p.bounds.height),
-                        CanvasDirtyRect::new(0, 0, p.bitmap.width, p.bitmap.height),
+                        PageDirtyRect::new(p.bounds.x, p.bounds.y, p.bounds.width, p.bounds.height),
+                        PageDirtyRect::new(0, 0, p.bitmap.width, p.bitmap.height),
                     )
                 });
                 if let Some((_koma_id, page_dirty, _local_dirty)) = koma_info {

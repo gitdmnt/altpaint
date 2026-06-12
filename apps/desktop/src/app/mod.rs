@@ -25,7 +25,7 @@ use std::path::PathBuf;
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use app_core::{CanvasBitmap, CanvasDirtyRect, CanvasPoint, CommandHistory, Document, KomaId};
+use app_core::{CanvasBitmap, PageDirtyRect, PagePoint, CommandHistory, Document, KomaId};
 use desktop_support::{
     DesktopDialogs, NativeDesktopDialogs, WorkspacePresetCatalog, default_workspace_preset_path,
 };
@@ -64,7 +64,7 @@ struct PendingStroke {
     /// CPU パスでは `Some`（ストローク中に CPU bitmap が書き換わるため事前に保存）。
     before_layer: Option<CanvasBitmap>,
     /// ストローク中に蓄積したコマローカル dirty rect の合計。
-    dirty: Option<CanvasDirtyRect>,
+    dirty: Option<PageDirtyRect>,
 }
 
 pub(super) const WORKSPACE_PRESET_PANEL_ID: &str = "builtin.workspace-presets";
@@ -94,7 +94,7 @@ pub(crate) struct DesktopApp {
     pub(crate) history: CommandHistory,
     pub(crate) snapshots: DocumentSnapshotStore,
     pub(crate) panel_interaction: PanelInteractionState,
-    hover_canvas_position: Option<CanvasPoint>,
+    hover_canvas_position: Option<PagePoint>,
     pending_stroke: Option<PendingStroke>,
     /// 進行中のバックグラウンドジョブ (project save 等)。
     pub(crate) background_jobs: Vec<background_tasks::BackgroundJob>,
@@ -304,7 +304,7 @@ impl DesktopApp {
     pub(crate) fn recomposite_koma(
         &self,
         koma_id: KomaId,
-        dirty: Option<CanvasDirtyRect>,
+        dirty: Option<PageDirtyRect>,
     ) {
         let Some(gpu) = self.gpu.as_ref() else {
             return;
@@ -324,7 +324,7 @@ impl DesktopApp {
             return;
         };
         let (pw, ph) = (koma.bitmap.width as u32, koma.bitmap.height as u32);
-        let rect = dirty.unwrap_or(CanvasDirtyRect {
+        let rect = dirty.unwrap_or(PageDirtyRect {
             x: 0,
             y: 0,
             width: koma.bitmap.width,

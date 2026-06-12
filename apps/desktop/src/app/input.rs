@@ -3,7 +3,7 @@
 //! OS 由来の生イベントをドキュメント編集やパネル操作へ変換し、
 //! ランタイム側が UI 詳細を知らずに済むようにする。
 
-use app_core::{CanvasPoint, Command, ToolKind, WindowPoint};
+use app_core::{PagePoint, Command, ToolKind, WindowPoint};
 use paint_engine::{
     CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, CanvasPointerEvent,
     advance_pointer_gesture, map_view_to_canvas_with_transform,
@@ -187,8 +187,8 @@ impl DesktopApp {
             active_tool,
             pressure,
             stabilization,
-            |canvas_point| {
-                active_koma_bounds.and_then(|bounds| bounds.canvas_to_koma_local(canvas_point))
+            |page_point| {
+                active_koma_bounds.and_then(|bounds| bounds.canvas_to_koma_local(page_point))
             },
         );
 
@@ -248,7 +248,7 @@ impl DesktopApp {
         }
     }
 
-    fn canvas_position_from_window(&self, point: WindowPoint) -> Option<CanvasPoint> {
+    fn canvas_position_from_window(&self, point: WindowPoint) -> Option<PagePoint> {
         let layout = self.layout.as_ref()?;
         if !layout.canvas_host_rect.contains(point) {
             return None;
@@ -263,7 +263,7 @@ impl DesktopApp {
             .is_some_and(|layout| layout.canvas_display_rect.contains(point))
     }
 
-    fn hover_canvas_position_from_window(&self, point: WindowPoint) -> Option<CanvasPoint> {
+    fn hover_canvas_position_from_window(&self, point: WindowPoint) -> Option<PagePoint> {
         let position = self.canvas_position_from_window(point)?;
         match self.document.active_tool {
             ToolKind::KomaRect => Some(position),
@@ -276,7 +276,7 @@ impl DesktopApp {
     pub(crate) fn canvas_position_from_window_clamped(
         &self,
         point: WindowPoint,
-    ) -> Option<CanvasPoint> {
+    ) -> Option<PagePoint> {
         let layout = self.layout.as_ref()?;
         let window_rect = app_core::WindowRect::new(
             layout.canvas_host_rect.x,
@@ -298,7 +298,7 @@ impl DesktopApp {
         )
     }
 
-    fn page_position_in_active_panel(&self, point: CanvasPoint) -> Option<CanvasPoint> {
+    fn page_position_in_active_panel(&self, point: PagePoint) -> Option<PagePoint> {
         let bounds = self.document.active_koma_bounds()?;
         bounds.contains_canvas_point(point).then_some(point)
     }

@@ -4,7 +4,7 @@ mod input_tests;
 mod stamp_tests;
 mod stroke_tests;
 
-use app_core::{CanvasDirtyRect, Document, PaintInput};
+use app_core::{PageDirtyRect, Document, PaintInput};
 
 use crate::PaintEngine;
 
@@ -12,7 +12,7 @@ pub(crate) fn apply_input(
     document: &mut Document,
     engine: &PaintEngine,
     input: PaintInput,
-) -> Option<CanvasDirtyRect> {
+) -> Option<PageDirtyRect> {
     let edits = engine.compute_paint_edits(document, &input)?;
     document.apply_bitmap_edits_to_active_layer(&edits)
 }

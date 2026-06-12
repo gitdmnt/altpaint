@@ -1,10 +1,10 @@
 use super::*;
-use crate::{CanvasDirtyRect, ClampToCanvasBounds, MergeInSpace};
+use crate::{PageDirtyRect, ClampToCanvasBounds, MergeInSpace};
 
 fn apply_layer_brush(
     document: &mut Document,
-    paint: impl FnOnce(&mut CanvasBitmap, bool) -> CanvasDirtyRect,
-) -> Option<CanvasDirtyRect> {
+    paint: impl FnOnce(&mut CanvasBitmap, bool) -> PageDirtyRect,
+) -> Option<PageDirtyRect> {
     let koma_bounds = document.active_koma_bounds()?;
     let (page_width, page_height) = document.active_page_dimensions();
     let koma = document.active_koma_mut()?;
@@ -16,7 +16,7 @@ fn apply_layer_brush(
     };
     koma.bitmap = super::layer_ops::composite_koma_bitmap(koma);
     Some(
-        CanvasDirtyRect {
+        PageDirtyRect {
             x: local_dirty.x.saturating_add(koma_bounds.x),
             y: local_dirty.y.saturating_add(koma_bounds.y),
             width: local_dirty.width,
@@ -26,7 +26,7 @@ fn apply_layer_brush(
     )
 }
 
-fn draw_point(document: &mut Document, x: usize, y: usize) -> Option<CanvasDirtyRect> {
+fn draw_point(document: &mut Document, x: usize, y: usize) -> Option<PageDirtyRect> {
     let color = document.active_color.to_rgba8();
     let size = document.resolved_paint_size_with_pressure(1.0);
     let antialias = document
@@ -44,7 +44,7 @@ fn draw_stroke(
     from_y: usize,
     to_x: usize,
     to_y: usize,
-) -> Option<CanvasDirtyRect> {
+) -> Option<PageDirtyRect> {
     let color = document.active_color.to_rgba8();
     let size = document.resolved_paint_size_with_pressure(1.0);
     let antialias = document
@@ -56,7 +56,7 @@ fn draw_stroke(
     })
 }
 
-fn erase_point(document: &mut Document, x: usize, y: usize) -> Option<CanvasDirtyRect> {
+fn erase_point(document: &mut Document, x: usize, y: usize) -> Option<PageDirtyRect> {
     let size = document.resolved_paint_size_with_pressure(1.0);
     let antialias = document
         .active_pen_preset()
@@ -99,7 +99,7 @@ fn draw_point_marks_target_pixel_black() {
     let bitmap = &document.work.pages[0].komas[0].bitmap;
     let index = (4 * bitmap.width + 3) * 4;
     assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
-    assert_eq!(dirty, CanvasDirtyRect::from_inclusive_points(3, 4, 3, 4));
+    assert_eq!(dirty, PageDirtyRect::from_inclusive_points(3, 4, 3, 4));
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn draw_stroke_draws_continuous_line() {
         let index = (2 * bitmap.width + x) * 4;
         assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
     }
-    assert_eq!(dirty, CanvasDirtyRect::from_inclusive_points(2, 2, 6, 2));
+    assert_eq!(dirty, PageDirtyRect::from_inclusive_points(2, 2, 6, 2));
 }
 
 #[test]
@@ -128,7 +128,7 @@ fn erase_point_marks_target_pixel_white() {
     let bitmap = &document.work.pages[0].komas[0].bitmap;
     let index = (4 * bitmap.width + 3) * 4;
     assert_eq!(&bitmap.pixels[index..index + 4], &[255, 255, 255, 255]);
-    assert_eq!(dirty, CanvasDirtyRect::from_inclusive_points(3, 4, 3, 4));
+    assert_eq!(dirty, PageDirtyRect::from_inclusive_points(3, 4, 3, 4));
 }
 
 #[test]
@@ -168,12 +168,12 @@ fn draw_point_uses_active_color() {
 
 #[test]
 fn dirty_rect_union_merges_bounds() {
-    let left = CanvasDirtyRect::from_inclusive_points(2, 3, 4, 5);
-    let right = CanvasDirtyRect::from_inclusive_points(6, 1, 7, 4);
+    let left = PageDirtyRect::from_inclusive_points(2, 3, 4, 5);
+    let right = PageDirtyRect::from_inclusive_points(6, 1, 7, 4);
 
     assert_eq!(
         left.merge(right),
-        CanvasDirtyRect {
+        PageDirtyRect {
             x: 2,
             y: 1,
             width: 6,
@@ -260,7 +260,7 @@ fn bitmap_edit_style_stroke_returns_dirty_rect() {
 
     assert_eq!(
         dirty,
-        Some(CanvasDirtyRect::from_inclusive_points(1, 1, 3, 1))
+        Some(PageDirtyRect::from_inclusive_points(1, 1, 3, 1))
     );
     let bitmap = &document.work.pages[0].komas[0].bitmap;
     let index = (bitmap.width + 2) * 4;
@@ -377,7 +377,7 @@ fn apply_command_new_document_sized_replaces_bitmap_dimensions() {
 
 #[test]
 fn dirty_rect_clamps_to_bitmap_bounds() {
-    let rect = CanvasDirtyRect {
+    let rect = PageDirtyRect {
         x: 60,
         y: 62,
         width: 10,
@@ -386,7 +386,7 @@ fn dirty_rect_clamps_to_bitmap_bounds() {
 
     assert_eq!(
         rect.clamp_to_canvas_bounds(64, 64),
-        CanvasDirtyRect {
+        PageDirtyRect {
             x: 60,
             y: 62,
             width: 4,
@@ -589,7 +589,7 @@ fn koma_local_draw_returns_page_space_dirty_rect() {
 
     assert_eq!(
         dirty,
-        CanvasDirtyRect::from_inclusive_points(42, 35, 42, 35)
+        PageDirtyRect::from_inclusive_points(42, 35, 42, 35)
     );
 }
 

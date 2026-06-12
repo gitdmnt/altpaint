@@ -472,13 +472,13 @@ impl KomaBounds {
             && y < self.y.saturating_add(self.height)
     }
 
-    pub fn contains_canvas_point(self, point: crate::CanvasPoint) -> bool {
+    pub fn contains_canvas_point(self, point: crate::PagePoint) -> bool {
         self.contains(point.x, point.y)
     }
 
     pub fn canvas_to_koma_local(
         self,
-        point: crate::CanvasPoint,
+        point: crate::PagePoint,
     ) -> Option<crate::KomaLocalPoint> {
         self.contains_canvas_point(point)
             .then_some(crate::KomaLocalPoint::new(
@@ -487,14 +487,14 @@ impl KomaBounds {
             ))
     }
 
-    pub fn clamp_canvas_point(self, point: crate::CanvasPoint) -> Option<crate::CanvasPoint> {
+    pub fn clamp_canvas_point(self, point: crate::PagePoint) -> Option<crate::PagePoint> {
         if self.is_empty() {
             return None;
         }
 
         let max_x = self.x.saturating_add(self.width.saturating_sub(1));
         let max_y = self.y.saturating_add(self.height.saturating_sub(1));
-        Some(crate::CanvasPoint::new(
+        Some(crate::PagePoint::new(
             point.x.clamp(self.x, max_x),
             point.y.clamp(self.y, max_y),
         ))
@@ -503,8 +503,8 @@ impl KomaBounds {
     pub fn koma_local_to_canvas(
         self,
         point: crate::KomaLocalPoint,
-    ) -> Option<crate::CanvasPoint> {
-        (point.x < self.width && point.y < self.height).then_some(crate::CanvasPoint::new(
+    ) -> Option<crate::PagePoint> {
+        (point.x < self.width && point.y < self.height).then_some(crate::PagePoint::new(
             self.x.saturating_add(point.x),
             self.y.saturating_add(point.y),
         ))
@@ -831,7 +831,7 @@ impl Document {
         Some(koma.active_layer_index == 0)
     }
 
-    pub fn active_koma_contains_canvas_point(&self, point: crate::CanvasPoint) -> bool {
+    pub fn active_koma_contains_canvas_point(&self, point: crate::PagePoint) -> bool {
         self.active_koma_bounds()
             .is_some_and(|bounds| bounds.contains_canvas_point(point))
     }
@@ -844,7 +844,7 @@ impl Document {
 
     pub fn active_koma_canvas_to_local(
         &self,
-        point: crate::CanvasPoint,
+        point: crate::PagePoint,
     ) -> Option<KomaLocalPoint> {
         self.active_koma_bounds()
             .and_then(|bounds| bounds.canvas_to_koma_local(point))
@@ -853,7 +853,7 @@ impl Document {
     pub fn active_koma_local_to_canvas(
         &self,
         point: KomaLocalPoint,
-    ) -> Option<crate::CanvasPoint> {
+    ) -> Option<crate::PagePoint> {
         self.active_koma_bounds()
             .and_then(|bounds| bounds.koma_local_to_canvas(point))
     }

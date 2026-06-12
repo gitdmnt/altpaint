@@ -1,14 +1,14 @@
-use app_core::{CanvasPoint, CanvasPointF, KomaBounds};
+use app_core::{PagePoint, PagePointF, KomaBounds};
 
 /// キャンバス入力中の最小状態を表す。
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CanvasInputState {
     pub is_drawing: bool,
-    pub last_position: Option<CanvasPoint>,
+    pub last_position: Option<PagePoint>,
     /// 手ぶれ補正で平滑化したサブピクセル位置 (キャンバス座標)。
-    pub last_smoothed_position: Option<CanvasPointF>,
-    pub lasso_points: Vec<CanvasPoint>,
-    pub koma_rect_anchor: Option<CanvasPoint>,
+    pub last_smoothed_position: Option<PagePointF>,
+    pub lasso_points: Vec<PagePoint>,
+    pub koma_rect_anchor: Option<PagePoint>,
 }
 
 impl CanvasInputState {

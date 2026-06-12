@@ -174,7 +174,7 @@ mod gpu_tests {
 
             // dirty 領域 (1,1)-(2x2) をスナップショット
             let snap = pool
-                .snapshot_region("p", 0, app_core::CanvasDirtyRect::new(1, 1, 2, 2))
+                .snapshot_region("p", 0, app_core::PageDirtyRect::new(1, 1, 2, 2))
                 .expect("snapshot");
 
             // レイヤーを別のピクセルで上書き
@@ -213,7 +213,7 @@ mod gpu_tests {
             pool.upload_cpu_bitmap("p", 0, &[0u8; 4 * 4 * 4]);
 
             let region = vec![255u8; 2 * 2 * 4];
-            pool.upload_region("p", 0, app_core::CanvasDirtyRect::new(1, 1, 2, 2), &region);
+            pool.upload_region("p", 0, app_core::PageDirtyRect::new(1, 1, 2, 2), &region);
 
             let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
             for y in 0..4 {

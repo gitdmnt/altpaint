@@ -94,7 +94,7 @@ impl DesktopApp {
                 background_dirty_rect: Some(window_rect),
                 temp_overlay_dirty_rect: Some(window_rect),
                 ui_panel_dirty_rect: Some(window_rect),
-                canvas_dirty_rect: bitmap.map(|bitmap| app_core::CanvasDirtyRect {
+                canvas_dirty_rect: bitmap.map(|bitmap| app_core::PageDirtyRect {
                     x: 0,
                     y: 0,
                     width: bitmap.width,

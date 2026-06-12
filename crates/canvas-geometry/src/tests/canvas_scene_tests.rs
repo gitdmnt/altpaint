@@ -1,5 +1,5 @@
 use app_core::{
-    CanvasDirtyRect, CanvasPoint, CanvasViewTransform, CanvasViewportPoint, PanelSurfacePoint,
+    PageDirtyRect, PagePoint, CanvasViewTransform, CanvasViewportPoint, PanelSurfacePoint,
     WindowPoint,
 };
 
@@ -78,7 +78,7 @@ fn brush_preview_dirty_rect_unions_previous_and_current_preview() {
         },
     );
 
-    let dirty = brush_preview_dirty_rect(previous, current, CanvasPoint::new(20, 20), 12.0)
+    let dirty = brush_preview_dirty_rect(previous, current, PagePoint::new(20, 20), 12.0)
         .expect("dirty rect exists");
 
     assert!(dirty.width > 0);
@@ -88,7 +88,7 @@ fn brush_preview_dirty_rect_unions_previous_and_current_preview() {
 #[test]
 fn transformed_canvas_dirty_rect_tracks_zoom_and_pan() {
     let mapped = map_canvas_dirty_to_display_with_transform(
-        CanvasDirtyRect {
+        PageDirtyRect {
             x: 16,
             y: 16,
             width: 8,
@@ -168,7 +168,7 @@ fn map_view_to_canvas_tracks_shifted_scene() {
         },
     );
 
-    assert_eq!(mapped, Some(CanvasPoint::new(32, 32)));
+    assert_eq!(mapped, Some(PagePoint::new(32, 32)));
 }
 
 #[test]
@@ -217,7 +217,7 @@ fn arbitrary_rotation_roundtrips_view_to_canvas() {
         flip_y: false,
     };
     let display =
-        map_canvas_point_to_display(viewport, 64, 32, transform, CanvasPoint::new(24, 12))
+        map_canvas_point_to_display(viewport, 64, 32, transform, PagePoint::new(24, 12))
             .expect("display point exists");
 
     let mapped = map_view_to_canvas_with_transform(
@@ -228,7 +228,7 @@ fn arbitrary_rotation_roundtrips_view_to_canvas() {
         transform,
     );
 
-    assert_eq!(mapped, Some(CanvasPoint::new(24, 12)));
+    assert_eq!(mapped, Some(PagePoint::new(24, 12)));
 }
 
 #[test]

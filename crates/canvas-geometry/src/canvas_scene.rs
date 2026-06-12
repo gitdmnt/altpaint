@@ -1,5 +1,5 @@
 use app_core::{
-    CanvasDirtyRect, CanvasDisplayPoint, CanvasPoint, CanvasViewTransform, CanvasViewportPoint,
+    PageDirtyRect, CanvasDisplayPoint, PagePoint, CanvasViewTransform, CanvasViewportPoint,
     ClampToCanvasBounds, PanelSurfacePoint, WindowPoint,
 };
 
@@ -127,7 +127,7 @@ impl CanvasScene {
         self.scale
     }
 
-    pub fn map_canvas_dirty_rect(&self, dirty: CanvasDirtyRect) -> PixelRect {
+    pub fn map_canvas_dirty_rect(&self, dirty: PageDirtyRect) -> PixelRect {
         self.map_source_rect_to_display(dirty)
             .and_then(|rect| rect.intersect(self.viewport))
             .unwrap_or(PixelRect {
@@ -140,7 +140,7 @@ impl CanvasScene {
 
     pub fn brush_preview_rect_for_diameter(
         &self,
-        canvas_position: CanvasPoint,
+        canvas_position: PagePoint,
         brush_diameter: f32,
     ) -> Option<PixelRect> {
         let center = self.map_source_point_to_display(canvas_position)?;
@@ -172,12 +172,12 @@ impl CanvasScene {
 
     pub fn map_canvas_point_to_display(
         &self,
-        canvas_position: CanvasPoint,
+        canvas_position: PagePoint,
     ) -> Option<CanvasDisplayPoint> {
         self.map_source_point_to_display(canvas_position)
     }
 
-    pub fn map_view_to_canvas(&self, point: CanvasViewportPoint) -> Option<CanvasPoint> {
+    pub fn map_view_to_canvas(&self, point: CanvasViewportPoint) -> Option<PagePoint> {
         let drawn_width = self.bbox_width * self.scale;
         let drawn_height = self.bbox_height * self.scale;
         let local_x = point.x as f32 - self.offset_x;
@@ -197,13 +197,13 @@ impl CanvasScene {
         let canvas_x = (source.u * self.source_width as f32).floor() as usize;
         let canvas_y = (source.v * self.source_height as f32).floor() as usize;
 
-        Some(CanvasPoint::new(
+        Some(PagePoint::new(
             canvas_x.min(self.source_width.saturating_sub(1)),
             canvas_y.min(self.source_height.saturating_sub(1)),
         ))
     }
 
-    fn map_source_rect_to_display(&self, dirty: CanvasDirtyRect) -> Option<PixelRect> {
+    fn map_source_rect_to_display(&self, dirty: PageDirtyRect) -> Option<PixelRect> {
         let dirty = dirty.clamp_to_canvas_bounds(self.source_width, self.source_height);
         let corners = [
             SourceUv {
@@ -248,7 +248,7 @@ impl CanvasScene {
 
     fn map_source_point_to_display(
         &self,
-        canvas_position: CanvasPoint,
+        canvas_position: PagePoint,
     ) -> Option<CanvasDisplayPoint> {
         if canvas_position.x >= self.source_width || canvas_position.y >= self.source_height {
             return None;
@@ -421,7 +421,7 @@ fn rotated_to_source_uv(rotated: RotatedUv, uv_transform: UvTransform) -> Source
 }
 
 pub fn map_canvas_dirty_to_display_with_transform(
-    dirty: CanvasDirtyRect,
+    dirty: PageDirtyRect,
     viewport: PixelRect,
     source_width: usize,
     source_height: usize,
@@ -442,7 +442,7 @@ pub fn brush_preview_rect_for_diameter(
     source_width: usize,
     source_height: usize,
     transform: CanvasViewTransform,
-    canvas_position: CanvasPoint,
+    canvas_position: PagePoint,
     brush_diameter: f32,
 ) -> Option<PixelRect> {
     prepare_canvas_scene(viewport, source_width, source_height, transform)
@@ -454,7 +454,7 @@ pub fn map_canvas_point_to_display(
     source_width: usize,
     source_height: usize,
     transform: CanvasViewTransform,
-    canvas_position: CanvasPoint,
+    canvas_position: PagePoint,
 ) -> Option<CanvasDisplayPoint> {
     prepare_canvas_scene(viewport, source_width, source_height, transform)
         .and_then(|scene| scene.map_canvas_point_to_display(canvas_position))
@@ -476,7 +476,7 @@ pub fn map_view_to_canvas_with_transform(
     source_height: usize,
     point: CanvasViewportPoint,
     transform: CanvasViewTransform,
-) -> Option<CanvasPoint> {
+) -> Option<PagePoint> {
     prepare_canvas_scene(viewport, source_width, source_height, transform)
         .and_then(|scene| scene.map_view_to_canvas(point))
 }

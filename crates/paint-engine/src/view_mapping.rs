@@ -1,4 +1,4 @@
-use app_core::{CanvasPoint, CanvasViewTransform, CanvasViewportPoint};
+use app_core::{PagePoint, CanvasViewTransform, CanvasViewportPoint};
 use canvas_geometry::PixelRect;
 
 /// ビュー空間で受け取ったキャンバスポインタイベントを表す。
@@ -14,7 +14,7 @@ pub fn map_view_to_canvas_with_transform(
     canvas_height: usize,
     event: CanvasPointerEvent,
     transform: CanvasViewTransform,
-) -> Option<CanvasPoint> {
+) -> Option<PagePoint> {
     canvas_geometry::map_view_to_canvas_with_transform(
         PixelRect {
             x: 0,
