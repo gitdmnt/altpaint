@@ -1,4 +1,4 @@
-//! `UiShell` の focus 状態を扱う。
+//! `PanelWorkspace` の focus 状態を扱う。
 //!
 //! ADR 014 以降、HTML パネルへの統一でテキスト入力 (IME/preedit) や dropdown 状態は
 //! HTML パネル内部の DOM mutation で完結するようになり、panel-workspace は

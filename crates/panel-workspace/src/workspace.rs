@@ -1,4 +1,4 @@
-//! `UiShell` の workspace 管理責務をまとめる。
+//! `PanelWorkspace` の workspace 管理責務をまとめる。
 //!
 //! panel 並び順・表示状態の管理をここへ寄せる。
 //! ADR 014 以降、`builtin.workspace-layout` は通常の HTML パネルとして
