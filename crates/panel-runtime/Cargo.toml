@@ -9,7 +9,7 @@ authors.workspace = true
 app-core = { path = "../app-core" }
 panel-api = { path = "../panel-api" }
 panel-protocol = { path = "../panel-protocol" }
-plugin-host = { path = "../plugin-host" }
+panel-wasm-host = { path = "../panel-wasm-host" }
 panel-html = { path = "../panel-html" }
 thiserror = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

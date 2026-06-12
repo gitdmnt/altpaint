@@ -23,7 +23,7 @@ use crate::host_sync::{
     EMPTY_WORKSPACE_PANELS_JSON, HostSnapshotCache, build_host_snapshot_cached,
 };
 use crate::meta::PanelMeta;
-use plugin_host::{PluginHostError, WasmPanelRuntime};
+use panel_wasm_host::{PluginHostError, WasmPanelRuntime};
 use serde_json::{Value, json};
 
 pub struct BuiltinPanelPlugin {
@@ -54,7 +54,7 @@ pub enum BuiltinPanelError {
     Io(#[from] std::io::Error),
     #[error("invalid panel.meta.json: {0}")]
     Meta(#[from] serde_json::Error),
-    #[error("plugin host: {0}")]
+    #[error("panel wasm host: {0}")]
     Host(#[from] PluginHostError),
 }
 

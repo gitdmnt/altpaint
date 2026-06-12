@@ -1074,7 +1074,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("system time available")
             .as_nanos();
-        let directory = std::env::temp_dir().join(format!("altpaint-plugin-host-{suffix}"));
+        let directory = std::env::temp_dir().join(format!("altpaint-panel-wasm-host-{suffix}"));
         fs::create_dir_all(&directory).expect("temp directory created");
         let path = directory.join("sample.wasm");
         fs::write(&path, contents).expect("wat file written");

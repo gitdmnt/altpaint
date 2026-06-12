@@ -6,7 +6,7 @@
 use blitz_dom::DocumentConfig;
 use blitz_dom::node::NodeData;
 use blitz_html::{HtmlDocument, HtmlProvider};
-use plugin_host::WasmPanelRuntime;
+use panel_wasm_host::WasmPanelRuntime;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
