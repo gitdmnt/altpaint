@@ -1,15 +1,15 @@
 mod builtin_plugin;
 mod commands;
 mod config;
-pub mod host_sync;
+pub mod host_state;
 mod loader;
 mod meta;
 mod runtime;
 
 pub use builtin_plugin::{BuiltinPanelError, BuiltinPanelPlugin};
 pub use commands::command_from_descriptor;
-pub use host_sync::{
-    EMPTY_WORKSPACE_PANELS_JSON, HostSnapshotCache, build_host_snapshot_cached,
+pub use host_state::{
+    EMPTY_WORKSPACE_PANELS_JSON, HostStateCache, build_host_state,
 };
 pub use loader::{BuiltinPanelDef, BuiltinPanelLoadError, register_builtin_panels};
 pub use meta::{PanelMeta, PanelSizeMeta};

@@ -1,6 +1,6 @@
 //! `builtin.view-controls` パネル (Phase 10 DOM mutation 版)。
 //!
-//! `panel_sync_host` で host snapshot から各 DOM 要素を直接 update する。
+//! `panel_sync_host` で host state から各 DOM 要素を直接 update する。
 //! `panel_handle_*` はサービスを発行する (UI 表示は次フレームの sync_host で更新)。
 
 use panel_sdk::{

@@ -1,6 +1,6 @@
 use crate::builtin_plugin::BuiltinPanelPlugin;
 use crate::config::{collect_persistent_panel_configs, restore_persistent_panel_configs};
-use crate::host_sync::EMPTY_WORKSPACE_PANELS_JSON;
+use crate::host_state::EMPTY_WORKSPACE_PANELS_JSON;
 use app_core::Document;
 use panel_api::{HostAction, PanelEvent, PanelPlugin};
 use panel_html::{vello, wgpu, HtmlPanelView, PanelSizeConstraints, ActionRect};
@@ -59,7 +59,7 @@ pub struct PanelRuntime {
     gpu_ctx: Option<PanelGpuContext>,
     /// `workspace_layout` の登録パネル一覧 (id / title / visible) を表現する JSON。
     /// `sync_document_subset` の前に各 `BuiltinPanelPlugin` へ注入され、
-    /// host snapshot の `workspace.panels_json` フィールドに反映される。
+    /// host state の `workspace.panels_json` フィールドに反映される。
     workspace_panels_json: String,
 }
 
@@ -387,7 +387,7 @@ impl PanelRuntime {
     }
 
     /// 登録されたパネル ID / title の対 (登録順) を返す。
-    /// builtin.workspace-layout が host snapshot 用に title を引くのに使う。
+    /// builtin.workspace-layout が host state 用に title を引くのに使う。
     pub fn panel_id_titles(&self) -> Vec<(String, String)> {
         self.panels
             .iter()
@@ -496,7 +496,7 @@ impl PanelRuntime {
             if panel_ids.is_some_and(|panel_ids| !panel_ids.contains(panel.id())) {
                 continue;
             }
-            // BuiltinPanelPlugin にはホストスナップショット組立用の workspace 情報を注入する。
+            // BuiltinPanelPlugin にはhost state 組立用の workspace 情報を注入する。
             if let Some(any) = panel.as_any_mut()
                 && let Some(builtin) = any.downcast_mut::<BuiltinPanelPlugin>()
             {

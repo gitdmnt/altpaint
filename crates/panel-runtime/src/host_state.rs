@@ -4,9 +4,9 @@ use serde_json::{Value, json};
 /// 高価な JSON シリアライズ結果を再利用するためのキャッシュ。
 ///
 /// ズーム/パンなど view のみが変わる操作では pen_presets / tool_catalog 等の
-/// 再シリアライズをスキップし、build_host_snapshot のコストを大幅に削減する。
+/// 再シリアライズをスキップし、build_host_state のコストを大幅に削減する。
 #[derive(Default)]
-pub struct HostSnapshotCache {
+pub struct HostStateCache {
     /// 初回呼び出しで必ず全フィールドを構築するためのフラグ。
     initialized: bool,
 
@@ -32,7 +32,7 @@ pub struct HostSnapshotCache {
     komas_json: String,
 }
 
-/// `build_host_snapshot_cached` 呼出側が事前に組み立てた workspace パネル一覧 JSON のデフォルト。
+/// `build_host_state` 呼出側が事前に組み立てた workspace パネル一覧 JSON のデフォルト。
 /// 未設定時は空配列を返す。
 pub const EMPTY_WORKSPACE_PANELS_JSON: &str = "[]";
 
@@ -46,7 +46,7 @@ pub(crate) fn active_tool_name(tool: ToolKind) -> &'static str {
     }
 }
 
-/// キャッシュを利用してホストスナップショットを構築する。
+/// キャッシュを利用してhost state を構築する。
 ///
 /// 変化していないフィールドのシリアライズを再利用することで、
 /// ズーム/パン操作時のコストを大幅に削減する。
@@ -54,13 +54,13 @@ pub(crate) fn active_tool_name(tool: ToolKind) -> &'static str {
 /// `workspace_panels_json` には呼出元が事前に組み立てた
 /// `[{"id","title","visible"}, ...]` 形式の JSON 文字列を渡す。
 /// `workspace.panels_json` キーに格納され、`host::workspace::panels_json()` から参照される。
-pub fn build_host_snapshot_cached(
+pub fn build_host_state(
     document: &Document,
     can_undo: bool,
     can_redo: bool,
     active_jobs: usize,
     snapshot_count: usize,
-    cache: &mut HostSnapshotCache,
+    cache: &mut HostStateCache,
     workspace_panels_json: &str,
 ) -> Value {
     let active_tool_definition = document.active_tool_definition().cloned();
@@ -280,14 +280,14 @@ mod tests {
     use super::*;
     use app_core::Document;
 
-    /// build_host_snapshot_cached が `workspace.panels_json` を登録順 + visible 反映で出力する。
+    /// build_host_state が `workspace.panels_json` を登録順 + visible 反映で出力する。
     #[test]
-    fn host_sync_emits_workspace_panels_json_in_registered_order() {
+    fn host_state_emits_workspace_panels_json_in_registered_order() {
         let document = Document::default();
-        let mut cache = HostSnapshotCache::default();
+        let mut cache = HostStateCache::default();
         let workspace_panels_json = r#"[{"id":"builtin.foo","title":"Foo","visible":true},{"id":"builtin.bar","title":"Bar","visible":false}]"#;
 
-        let snapshot = build_host_snapshot_cached(
+        let host_state = build_host_state(
             &document,
             false,
             false,
@@ -297,7 +297,7 @@ mod tests {
             workspace_panels_json,
         );
 
-        let emitted = snapshot
+        let emitted = host_state
             .get("workspace")
             .and_then(|v| v.get("panels_json"))
             .and_then(|v| v.as_str())
@@ -307,11 +307,11 @@ mod tests {
 
     /// `workspace_panels_json` が空 (デフォルト) の場合は空配列文字列がそのまま出る。
     #[test]
-    fn host_sync_emits_empty_workspace_panels_json_when_absent() {
+    fn host_state_emits_empty_workspace_panels_json_when_absent() {
         let document = Document::default();
-        let mut cache = HostSnapshotCache::default();
+        let mut cache = HostStateCache::default();
 
-        let snapshot = build_host_snapshot_cached(
+        let host_state = build_host_state(
             &document,
             false,
             false,
@@ -321,7 +321,7 @@ mod tests {
             EMPTY_WORKSPACE_PANELS_JSON,
         );
 
-        let emitted = snapshot
+        let emitted = host_state
             .get("workspace")
             .and_then(|v| v.get("panels_json"))
             .and_then(|v| v.as_str())

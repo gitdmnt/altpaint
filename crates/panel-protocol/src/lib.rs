@@ -11,7 +11,7 @@ pub struct PanelEventRequest {
     #[serde(default)]
     pub state_snapshot: Value,
     #[serde(default)]
-    pub host_snapshot: Value,
+    pub host_state: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

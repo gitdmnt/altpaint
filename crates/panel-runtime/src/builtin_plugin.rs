@@ -6,7 +6,7 @@
 //! - 各 Wasm 呼出は `PanelWasmInstance::call_with_dom` で view の document を context にし、
 //!   Wasm 内 DOM mutation host function (`set_attribute` / `set_inner_html` 等) で直接 DOM を書換える
 //!
-//! `update` (host snapshot 同期) と `handle_event` (UI イベント) のいずれでも DOM mutation を
+//! `update` (host state 同期) と `handle_event` (UI イベント) のいずれでも DOM mutation を
 //! 行う可能性があるため、両経路で `call_with_dom` を必ず通すこと。
 
 use std::any::Any;
@@ -19,8 +19,8 @@ use panel_html::{
     parse_data_action,
 };
 use crate::commands::command_from_descriptor;
-use crate::host_sync::{
-    EMPTY_WORKSPACE_PANELS_JSON, HostSnapshotCache, build_host_snapshot_cached,
+use crate::host_state::{
+    EMPTY_WORKSPACE_PANELS_JSON, HostStateCache, build_host_state,
 };
 use crate::meta::PanelMeta;
 use panel_wasm_host::{PanelWasmHostError, PanelWasmInstance};
@@ -34,13 +34,13 @@ pub struct BuiltinPanelPlugin {
     wasm: PanelWasmInstance,
     /// Wasm 側が保持する state (panel_init で初期化、handler 戻り値の patch を蓄積)。
     state: Value,
-    /// host snapshot のキャッシュ。
-    snapshot_cache: HostSnapshotCache,
-    /// 最新の host snapshot (handler 内 host_get_* で利用される)。
-    last_host_snapshot: Value,
+    /// host state のキャッシュ。
+    host_state_cache: HostStateCache,
+    /// 最新の host state (handler 内 host_get_* で利用される)。
+    last_host_state: Value,
     /// ワークスペースに登録されたパネル一覧 (id / title / visible) を JSON 化したもの。
     /// `PanelRuntime::set_workspace_panels_json` 経由で更新され、次回 `update` で
-    /// host snapshot に含められる。builtin.workspace-layout 用。
+    /// host state に含められる。builtin.workspace-layout 用。
     workspace_panels_json: String,
     /// Wasm が `panel_handle_keyboard` を export しているか (load 時に確定)。
     /// `handles_keyboard_event` は `&self` のため、`PanelWasmInstance::has_handler`
@@ -102,15 +102,15 @@ impl BuiltinPanelPlugin {
             view,
             wasm,
             state,
-            snapshot_cache: HostSnapshotCache::default(),
-            last_host_snapshot: json!({}),
+            host_state_cache: HostStateCache::default(),
+            last_host_state: json!({}),
             workspace_panels_json: EMPTY_WORKSPACE_PANELS_JSON.to_string(),
             has_keyboard_handler,
         })
     }
 
     /// ワークスペースに登録されたパネル一覧 JSON を更新する。
-    /// 次回 `update` で host snapshot に反映される。
+    /// 次回 `update` で host state に反映される。
     pub fn set_workspace_panels_json(&mut self, json: String) {
         self.workspace_panels_json = json;
     }
@@ -144,7 +144,7 @@ impl BuiltinPanelPlugin {
             handler_name,
             event_payload,
             &self.state,
-            &self.last_host_snapshot,
+            &self.last_host_state,
         );
         let result = self
             .wasm
@@ -163,13 +163,13 @@ fn panel_host_request(
     handler_name: &str,
     event_payload: Value,
     state_snapshot: &Value,
-    host_snapshot: &Value,
+    host_state: &Value,
 ) -> panel_protocol::PanelEventRequest {
     panel_protocol::PanelEventRequest {
         handler_name: handler_name.to_string(),
         event_payload,
         state_snapshot: state_snapshot.clone(),
-        host_snapshot: host_snapshot.clone(),
+        host_state: host_state.clone(),
     }
 }
 
@@ -243,16 +243,16 @@ impl PanelPlugin for BuiltinPanelPlugin {
         active_jobs: usize,
         snapshot_count: usize,
     ) {
-        let host_snapshot = build_host_snapshot_cached(
+        let host_state = build_host_state(
             document,
             can_undo,
             can_redo,
             active_jobs,
             snapshot_count,
-            &mut self.snapshot_cache,
+            &mut self.host_state_cache,
             &self.workspace_panels_json,
         );
-        self.last_host_snapshot = host_snapshot.clone();
+        self.last_host_state = host_state.clone();
         if !self.wasm.supports_sync_host() {
             return;
         }
@@ -260,7 +260,7 @@ impl PanelPlugin for BuiltinPanelPlugin {
         let outcome = self
             .wasm
             .call_with_dom(self.view.document_mut(), |rt| {
-                rt.sync_host(state, &host_snapshot)
+                rt.sync_host(state, &host_state)
             });
         if let Ok(result) = outcome {
             apply_state_patches(&mut self.state, &result.state_patch);

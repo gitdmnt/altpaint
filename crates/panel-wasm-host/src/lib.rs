@@ -351,7 +351,7 @@ impl PanelWasmInstance {
                         .data()
                         .current_request
                         .as_ref()
-                        .and_then(|request| lookup_json_path(&request.host_snapshot, &path))
+                        .and_then(|request| lookup_json_path(&request.host_state, &path))
                         .and_then(Value::as_bool)
                         .map(i32::from)
                         .unwrap_or_default()
@@ -378,7 +378,7 @@ impl PanelWasmInstance {
                         .data()
                         .current_request
                         .as_ref()
-                        .and_then(|request| lookup_json_path(&request.host_snapshot, &path))
+                        .and_then(|request| lookup_json_path(&request.host_state, &path))
                         .and_then(Value::as_i64)
                         .unwrap_or_default() as i32
                 },
@@ -404,7 +404,7 @@ impl PanelWasmInstance {
                         .data()
                         .current_request
                         .as_ref()
-                        .and_then(|request| lookup_json_path(&request.host_snapshot, &path))
+                        .and_then(|request| lookup_json_path(&request.host_state, &path))
                         .and_then(Value::as_str)
                         .map(|value| value.len() as i32)
                         .unwrap_or_default()
@@ -433,7 +433,7 @@ impl PanelWasmInstance {
                         .data()
                         .current_request
                         .as_ref()
-                        .and_then(|request| lookup_json_path(&request.host_snapshot, &path))
+                        .and_then(|request| lookup_json_path(&request.host_state, &path))
                         .and_then(Value::as_str)
                         .map(ToString::to_string)
                     else {
@@ -702,14 +702,14 @@ impl PanelWasmInstance {
     pub fn sync_host(
         &mut self,
         state_snapshot: &Value,
-        host_snapshot: &Value,
+        host_state: &Value,
     ) -> Result<HandlerEffects, PanelWasmHostError> {
         self.store.data_mut().clear();
         self.store.data_mut().current_request = Some(PanelEventRequest {
             handler_name: "sync_host".to_string(),
             event_payload: Value::Object(Map::new()),
             state_snapshot: state_snapshot.clone(),
-            host_snapshot: host_snapshot.clone(),
+            host_state: host_state.clone(),
         });
 
         let handler = self
@@ -970,7 +970,7 @@ mod tests {
             .handle_event(&PanelEventRequest {
                 handler_name: "toggle-expanded".to_string(),                event_payload: json!({}),
                 state_snapshot: initial_state.clone(),
-                host_snapshot: json!({}),
+                host_state: json!({}),
             })
             .expect("toggle handler runs");
         assert_eq!(toggled.state_patch, vec![StatePatch::toggle("expanded")]);
@@ -979,7 +979,7 @@ mod tests {
             .handle_event(&PanelEventRequest {
                 handler_name: "save_project".to_string(),                event_payload: json!({}),
                 state_snapshot: initial_state.clone(),
-                host_snapshot: json!({}),
+                host_state: json!({}),
             })
             .expect("save handler runs");
         assert_eq!(saved.commands, vec![RequestDescriptor::new("project.save")]);
@@ -988,7 +988,7 @@ mod tests {
             .handle_event(&PanelEventRequest {
                 handler_name: "activate_pen".to_string(),                event_payload: json!({}),
                 state_snapshot: initial_state,
-                host_snapshot: json!({}),
+                host_state: json!({}),
             })
             .expect("tool handler runs");
         let mut expected = RequestDescriptor::new("tool.set_active");
@@ -1001,7 +1001,7 @@ mod tests {
             .handle_event(&PanelEventRequest {
                 handler_name: "save_path_len".to_string(),                event_payload: json!({}),
                 state_snapshot: json!({"save_path": "project.altp.json"}),
-                host_snapshot: json!({}),
+                host_state: json!({}),
             })
             .expect("string state handler runs");
         assert!(string_len.diagnostics.is_empty());
@@ -1010,7 +1010,7 @@ mod tests {
             .handle_event(&PanelEventRequest {
                 handler_name: "move_layer".to_string(),                event_payload: json!({}),
                 state_snapshot: json!({}),
-                host_snapshot: json!({}),
+                host_state: json!({}),
             })
             .expect("json payload handler runs");
         let mut expected_move = RequestDescriptor::new("layer.move");
@@ -1026,7 +1026,7 @@ mod tests {
             .handle_event(&PanelEventRequest {
                 handler_name: "apply_batch".to_string(),                event_payload: json!({}),
                 state_snapshot: json!({}),
-                host_snapshot: json!({}),
+                host_state: json!({}),
             })
             .expect("state batch handler runs");
         assert_eq!(
@@ -1039,7 +1039,7 @@ mod tests {
     }
 
     #[test]
-    fn instance_reads_host_snapshot_through_host_imports() {
+    fn instance_reads_host_state_through_host_imports() {
         let wasm_path = write_temp_wat(HOST_SYNC_WAT);
         let mut instance = PanelWasmInstance::load(&wasm_path).expect("instance loads");
 

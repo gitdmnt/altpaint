@@ -1,4 +1,4 @@
-//! host snapshot を型付き getter で読む補助 API を提供する。
+//! host state を型付き getter で読む補助 API を提供する。
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolSnapshot {

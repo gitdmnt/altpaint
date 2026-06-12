@@ -97,7 +97,7 @@ pub fn clear_attribute(node: NodeId, name: &str) {
 /// 要素の inner HTML を置き換える (HTML 断片を Blitz パーサに通す)。
 ///
 /// **信頼境界**: `html` 引数は Blitz の HTML パーサに直接流される。
-/// host snapshot 由来の文字列を埋め込む場合は必ず `html_escape` を経由すること。
+/// host state 由来の文字列を埋め込む場合は必ず `html_escape` を経由すること。
 pub fn set_inner_html(node: NodeId, html: &str) {
     let hb = html.as_bytes();
     #[cfg(target_arch = "wasm32")]

@@ -48,7 +48,7 @@ impl DesktopApp {
     }
 
     /// ワークスペース登録パネル一覧 (id / title / visible) を JSON 化する。
-    /// builtin.workspace-layout が host snapshot 経由で参照する。
+    /// builtin.workspace-layout が host state 経由で参照する。
     /// `workspace-layout` 自身も含めて返し、UI 側でフィルタする。
     pub(crate) fn build_workspace_panels_json(&self) -> String {
         let titles: BTreeMap<String, String> =
