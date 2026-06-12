@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::{WindowPoint, WindowRect};
 
 /// パネルプラグインごとの永続設定。キーは panel_id。
-pub type PluginConfigs = BTreeMap<String, Value>;
+pub type PanelConfigs = BTreeMap<String, Value>;
 
 /// project / session の双方で共有する panel UI 永続化スナップショット。
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -14,23 +14,23 @@ pub struct WorkspaceUiState {
     #[serde(default)]
     pub workspace_layout: WorkspaceLayout,
     #[serde(default)]
-    pub plugin_configs: PluginConfigs,
+    pub panel_configs: PanelConfigs,
 }
 
 impl WorkspaceUiState {
-    pub fn new(workspace_layout: WorkspaceLayout, plugin_configs: PluginConfigs) -> Self {
+    pub fn new(workspace_layout: WorkspaceLayout, panel_configs: PanelConfigs) -> Self {
         Self {
             workspace_layout,
-            plugin_configs,
+            panel_configs,
         }
     }
 
-    pub fn into_parts(self) -> (WorkspaceLayout, PluginConfigs) {
-        (self.workspace_layout, self.plugin_configs)
+    pub fn into_parts(self) -> (WorkspaceLayout, PanelConfigs) {
+        (self.workspace_layout, self.panel_configs)
     }
 
     pub fn is_empty(&self) -> bool {
-        self.workspace_layout.panels.is_empty() && self.plugin_configs.is_empty()
+        self.workspace_layout.panels.is_empty() && self.panel_configs.is_empty()
     }
 }
 
@@ -286,7 +286,7 @@ mod tests {
                     size: None,
                 }],
             },
-            plugin_configs: BTreeMap::from([(
+            panel_configs: BTreeMap::from([(
                 "builtin.tool-settings".to_string(),
                 serde_json::json!({"size": 8}),
             )]),

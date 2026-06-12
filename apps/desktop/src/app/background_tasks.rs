@@ -39,9 +39,9 @@ impl DesktopApp {
         self.sync_gpu_bitmaps_to_cpu();
         let document = self.document.clone();
         let workspace_layout = self.panel_presentation.workspace_layout();
-        let plugin_configs = self.panel_runtime.persistent_panel_configs();
+        let panel_configs = self.panel_runtime.persistent_panel_configs();
         let handle = thread::spawn(move || {
-            save_project_to_path(&path, &document, &workspace_layout, &plugin_configs)
+            save_project_to_path(&path, &document, &workspace_layout, &panel_configs)
                 .map_err(|error| error.to_string())
         });
         self.background_jobs.push(BackgroundJob {

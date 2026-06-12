@@ -90,7 +90,7 @@ fn save_and_load_restore_plugin_shortcut_configs() {
 
     let loaded = load_project_from_path(&path).expect("saved project should load");
     assert_eq!(
-        loaded.ui_state.plugin_configs.get("builtin.app-actions"),
+        loaded.ui_state.panel_configs.get("builtin.app-actions"),
         Some(&json!({
             "default_template_size": "2894x4093",
             "new_shortcut": "Ctrl+Alt+N",
@@ -103,7 +103,7 @@ fn save_and_load_restore_plugin_shortcut_configs() {
     assert_eq!(
         loaded
             .ui_state
-            .plugin_configs
+            .panel_configs
             .get("builtin.workspace-presets"),
         Some(&json!({
             "workspace_options": "default-floating:Default floating workspace",

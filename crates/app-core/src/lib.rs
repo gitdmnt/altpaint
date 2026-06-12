@@ -28,6 +28,6 @@ pub use painting::{
     BitmapComposite, BitmapCompositor, BitmapEdit, PaintInput, PaintPlugin, PaintPluginContext,
 };
 pub use workspace::{
-    PluginConfigs, WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition,
+    PanelConfigs, WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition,
     WorkspacePanelSize, WorkspacePanelState, WorkspaceUiState,
 };

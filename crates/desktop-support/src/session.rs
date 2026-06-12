@@ -72,7 +72,7 @@ mod tests {
                         size: None,
                     }],
                 },
-                plugin_configs: BTreeMap::from([(
+                panel_configs: BTreeMap::from([(
                     "builtin.app-actions".to_string(),
                     serde_json::json!({"new_shortcut": "Ctrl+Alt+N"}),
                 )]),

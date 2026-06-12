@@ -62,13 +62,13 @@ pub fn save_project_to_path(
     path: impl AsRef<Path>,
     document: &Document,
     workspace_layout: &WorkspaceLayout,
-    plugin_configs: &BTreeMap<String, Value>,
+    panel_configs: &BTreeMap<String, Value>,
 ) -> Result<(), ProjectStoreError> {
     save_project_to_path_with_options(
         path,
         document,
         workspace_layout,
-        plugin_configs,
+        panel_configs,
         ProjectSaveOptions::default(),
     )
 }
@@ -77,11 +77,11 @@ pub(crate) fn save_project_to_path_with_options(
     path: impl AsRef<Path>,
     document: &Document,
     workspace_layout: &WorkspaceLayout,
-    plugin_configs: &BTreeMap<String, Value>,
+    panel_configs: &BTreeMap<String, Value>,
     options: ProjectSaveOptions,
 ) -> Result<(), ProjectStoreError> {
     let path = path.as_ref();
-    save_project_to_sqlite_path(path, document, workspace_layout, plugin_configs, options)
+    save_project_to_sqlite_path(path, document, workspace_layout, panel_configs, options)
 }
 
 pub fn load_project_from_path(path: impl AsRef<Path>) -> Result<LoadedProject, ProjectStoreError> {
@@ -299,11 +299,11 @@ mod tests {
     }
 
     #[test]
-    fn save_and_load_roundtrip_preserves_plugin_configs() {
+    fn save_and_load_roundtrip_preserves_panel_configs() {
         let path = temp_path("plugin-configs");
         let document = small_document();
-        let mut plugin_configs = BTreeMap::new();
-        plugin_configs.insert(
+        let mut panel_configs = BTreeMap::new();
+        panel_configs.insert(
             "builtin.tool-palette".to_string(),
             serde_json::json!({ "pen_shortcut": "P", "eraser_shortcut": "E" }),
         );
@@ -312,12 +312,12 @@ mod tests {
             &path,
             &document,
             &WorkspaceLayout::default(),
-            &plugin_configs,
+            &panel_configs,
         )
         .expect("save should succeed");
         let loaded = load_project_from_path(&path).expect("load should succeed");
 
-        assert_eq!(loaded.ui_state.plugin_configs, plugin_configs);
+        assert_eq!(loaded.ui_state.panel_configs, panel_configs);
 
         let _ = fs::remove_file(path);
     }

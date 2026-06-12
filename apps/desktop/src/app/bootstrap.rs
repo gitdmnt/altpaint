@@ -115,11 +115,11 @@ impl DesktopApp {
     }
 
     pub(super) fn apply_workspace_ui_state(&mut self, ui_state: WorkspaceUiState) {
-        let (workspace_layout, plugin_configs) = ui_state.into_parts();
+        let (workspace_layout, panel_configs) = ui_state.into_parts();
         self.panel_presentation
             .replace_workspace_layout(workspace_layout);
         self.panel_runtime
-            .replace_persistent_panel_configs(plugin_configs);
+            .replace_persistent_panel_configs(panel_configs);
         self.panel_presentation
             .reconcile_panels(self.panel_runtime.panel_static_ids());
         self.refresh_new_document_size_presets();
@@ -188,8 +188,8 @@ fn apply_ui_state_to_panel_system(
     if !ui_state.workspace_layout.panels.is_empty() {
         panel_presentation.replace_workspace_layout(ui_state.workspace_layout.clone());
     }
-    if !ui_state.plugin_configs.is_empty() {
-        panel_runtime.replace_persistent_panel_configs(ui_state.plugin_configs.clone());
+    if !ui_state.panel_configs.is_empty() {
+        panel_runtime.replace_persistent_panel_configs(ui_state.panel_configs.clone());
     }
     panel_presentation.reconcile_panels(panel_runtime.panel_static_ids());
 

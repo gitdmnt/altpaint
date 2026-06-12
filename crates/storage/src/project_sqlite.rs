@@ -12,7 +12,7 @@ use app_core::{
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use app_core::{PluginConfigs, WorkspaceUiState};
+use app_core::{PanelConfigs, WorkspaceUiState};
 
 use crate::project_file::{CURRENT_PROJECT_FORMAT_VERSION, LoadedProject, ProjectStoreError};
 
@@ -111,7 +111,7 @@ pub struct ProjectManifest {
     pub chunk_size: usize,
     pub pages: Vec<ProjectPageSummary>,
     pub workspace_layout: WorkspaceLayout,
-    pub plugin_configs: PluginConfigs,
+    pub panel_configs: PanelConfigs,
     pub composites: Vec<PersistedKomaCompositeSummary>,
 }
 
@@ -172,7 +172,7 @@ pub(crate) fn save_project_to_sqlite_path(
     path: impl AsRef<Path>,
     document: &Document,
     workspace_layout: &WorkspaceLayout,
-    plugin_configs: &std::collections::BTreeMap<String, Value>,
+    panel_configs: &std::collections::BTreeMap<String, Value>,
     options: ProjectSaveOptions,
 ) -> Result<(), ProjectStoreError> {
     let path = path.as_ref();
@@ -209,7 +209,7 @@ pub(crate) fn save_project_to_sqlite_path(
     put_metadata(
         &transaction,
         METADATA_UI_STATE,
-        &WorkspaceUiState::new(workspace_layout.clone(), plugin_configs.clone()),
+        &WorkspaceUiState::new(workspace_layout.clone(), panel_configs.clone()),
     )?;
     put_metadata(&transaction, METADATA_SAVE_OPTIONS, &options)?;
 
@@ -412,7 +412,7 @@ pub(crate) fn load_project_manifest_from_sqlite_path(
         chunk_size: options.chunk_size,
         pages,
         workspace_layout: ui_state.workspace_layout,
-        plugin_configs: ui_state.plugin_configs,
+        panel_configs: ui_state.panel_configs,
         composites,
     })
 }

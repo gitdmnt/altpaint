@@ -440,7 +440,7 @@ impl DesktopApp {
                 self.panel_presentation
                     .replace_workspace_layout(project.ui_state.workspace_layout);
                 self.panel_runtime
-                    .replace_persistent_panel_configs(project.ui_state.plugin_configs);
+                    .replace_persistent_panel_configs(project.ui_state.panel_configs);
                 self.panel_presentation
                     .reconcile_panels(self.panel_runtime.panel_static_ids());
                 self.refresh_new_document_size_presets();
