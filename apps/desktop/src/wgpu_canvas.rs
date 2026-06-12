@@ -2120,15 +2120,9 @@ fn fullscreen_quad(width: u32, height: u32) -> TextureQuad {
 /// [15] metrics.w = 0 (未使用)
 /// ```
 fn quad_uniform_bytes(quad: TextureQuad, surface_width: u32, surface_height: u32) -> [u8; 64] {
-    let surface_width = surface_width.max(1) as f32;
-    let surface_height = surface_height.max(1) as f32;
-
-    // ピクセル座標 → NDC 座標 への変換。
-    // wgpu の NDC は Y 上向きなのでピクセル Y を反転させる（1.0 - ...）。
-    let left = quad.destination.x as f32 / surface_width * 2.0 - 1.0;
-    let top = 1.0 - quad.destination.y as f32 / surface_height * 2.0;
-    let right = (quad.destination.x + quad.destination.width) as f32 / surface_width * 2.0 - 1.0;
-    let bottom = 1.0 - (quad.destination.y + quad.destination.height) as f32 / surface_height * 2.0;
+    // ピクセル座標 → NDC 座標 への変換は pixel_rect_to_ndc に集約。
+    let [left, top, right, bottom] =
+        pixel_rect_to_ndc(quad.destination, surface_width, surface_height);
 
     let values = [
         left,
