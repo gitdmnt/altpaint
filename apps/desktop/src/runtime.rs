@@ -23,7 +23,7 @@ use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::app::DesktopApp;
 use crate::wgpu_canvas::{
-    CanvasLayer, CanvasLayerSource, PresentScene, TextureSource, UploadRegion, WgpuPresenter,
+    CanvasLayer, CanvasLayerSource, PresentFrame, TextureSource, UploadRegion, WgpuPresenter,
 };
 
 /// `winit` アプリケーションとして振る舞う実行時コンテナを表す。
@@ -450,7 +450,7 @@ impl ApplicationHandler for DesktopRuntime {
                     });
 
                 let timings = match presenter.render(
-                    PresentScene {
+                    PresentFrame {
                         background_quads: &background_solid_quads,
                         canvas_layer,
                         overlay_solid_quads: &overlay_solid_quads,

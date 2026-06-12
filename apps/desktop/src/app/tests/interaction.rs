@@ -347,7 +347,7 @@ fn workspace_manager_panel_can_be_moved() {
 // 削除: panel_move_dirty_rect_covers_previous_and_current_overlay_bounds (Phase 9E-5)
 // L4 ui_panel_layer は 9E-3 で dummy 化されたため `ui_panel_dirty_rect` は常に None。
 // パネル GPU 直描画後の dirty rect 監視は Phase 9F で `panel_quads` レイヤー再構成
-// (PresentScene 改名) と一緒に書き直す。
+// (PresentFrame 改名) と一緒に書き直す。
 
 // 削除: overlapping_panel_and_canvas_overlay_updates_union_dirty_rects (Phase 9E-5)
 // 同上。`ui_panel_dirty_rect` 検証経路が dummy 化されたため、Phase 9F で

@@ -1,6 +1,6 @@
 //! フレーム生成と差分更新の責務を `DesktopApp` へ追加する。
 //!
-//! Phase 9F 完了後、`PresentScene` のレイヤーは
+//! Phase 9F 完了後、`PresentFrame` のレイヤーは
 //! `background_quads` / `canvas_layer` / `overlay_*_quads` / `panel_quads` /
 //! `foreground_quads` / `status_quad` のみ。CPU 合成経路は完全撤去済み。
 

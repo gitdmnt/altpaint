@@ -106,7 +106,7 @@ pub struct CanvasLayer<'a> {
     pub quad: TextureQuad,
 }
 
-/// 1 フレームに必要な全レイヤーをまとめた描画シーン。
+/// 1 描画フレームに必要な全レイヤーをまとめた quad 集合。
 /// レイヤーは以下の順番で上から合成される:
 ///   L0 background_quads     … 背景 solid quad 群（ウィンドウ背景・キャンバス枠 fill・ホスト枠線）
 ///   L1 canvas_layer         … キャンバス本体（None なら描画しない）
@@ -117,7 +117,7 @@ pub struct CanvasLayer<'a> {
 ///   L4 foreground_quads     … 前景 solid quad 群（アクティブ UI パネル枠線）
 ///   L5 status_quad          … ステータスバー (HtmlPanelView GPU 描画) を最前面に配置
 #[derive(Debug, Clone, Copy)]
-pub struct PresentScene<'a> {
+pub struct PresentFrame<'a> {
     pub background_quads: &'a [SolidQuad],
     pub canvas_layer: Option<CanvasLayer<'a>>,
     pub overlay_solid_quads: &'a [SolidQuad],
@@ -1348,7 +1348,7 @@ impl WgpuPresenter {
     /// 6. コマンドを submit して GPU へ投入、present で画面表示
     pub fn render(
         &mut self,
-        scene: PresentScene<'_>,
+        frame: PresentFrame<'_>,
         layer_texture_store: Option<&gpu_paint::LayerTextureStore>,
     ) -> Result<PresentTimings> {
         // サーフェスが 0 サイズなら描画をスキップ（最小化時など）。
@@ -1358,7 +1358,7 @@ impl WgpuPresenter {
 
         // ─── ステップ 1: テクスチャの確保 ────────────────────────────────────
         // canvas_layer は省略可能。GPU ソース時は ensure をスキップ（gpu-paint プール管理）。
-        if let Some(canvas_layer) = scene
+        if let Some(canvas_layer) = frame
             .canvas_layer
             .filter(|c| c.source.cpu_source().is_some())
         {
@@ -1377,7 +1377,7 @@ impl WgpuPresenter {
         // upload_region が Some なら dirty rect 範囲だけ転送し、None ならスキップする。
         // needs_full_upload フラグが立っている場合はフルアップロードが優先される。
         let upload_started = Instant::now();
-        let canvas_upload = if let Some(canvas_layer) = scene.canvas_layer {
+        let canvas_upload = if let Some(canvas_layer) = frame.canvas_layer {
             if let Some(cpu_src) = canvas_layer.source.cpu_source() {
                 Self::upload_layer(
                     &self.queue,
@@ -1395,7 +1395,7 @@ impl WgpuPresenter {
         // ─── ステップ 3: ユニフォームバッファ更新 ────────────────────────────
         // ユニフォームバッファに描画先矩形（NDC）・UV 範囲・回転などを書き込む。
         // canvas_layer は quad で位置・回転・スケールが指定される。
-        if let Some(canvas_layer) = scene.canvas_layer {
+        if let Some(canvas_layer) = frame.canvas_layer {
             if canvas_layer.source.is_gpu() {
                 self.update_gpu_canvas_bind_group(
                     canvas_layer.source,
@@ -1466,8 +1466,8 @@ impl WgpuPresenter {
         let surface_h = self.config.height;
         // status_quad は panel_quads と同じ bind_group キャッシュ仕組みを共有する。
         // panel_id にプレフィックス "__status__" を付けてキー衝突を避ける。
-        let status_iter = scene.status_quad.as_ref().into_iter();
-        for quad in scene.panel_quads.iter().chain(status_iter) {
+        let status_iter = frame.status_quad.as_ref().into_iter();
+        for quad in frame.panel_quads.iter().chain(status_iter) {
             let w = quad.texture.width();
             let h = quad.texture.height();
             let needs_rebuild = self
@@ -1541,8 +1541,8 @@ impl WgpuPresenter {
         }
         // 既に消えた panel_id をキャッシュから drop（panel-runtime 側のテクスチャ解放と歩調を合わせる）
         let mut live_ids: std::collections::HashSet<&str> =
-            scene.panel_quads.iter().map(|q| q.panel_id).collect();
-        if let Some(status) = scene.status_quad.as_ref() {
+            frame.panel_quads.iter().map(|q| q.panel_id).collect();
+        if let Some(status) = frame.status_quad.as_ref() {
             live_ids.insert(status.panel_id);
         }
         self.panel_bind_groups
@@ -1550,13 +1550,13 @@ impl WgpuPresenter {
 
         // solid quad の uniform を準備（背景 + L3 overlay AABB + 前景 を 1 本の Vec に連結）
         let mut combined_solid_quads: Vec<SolidQuad> = Vec::with_capacity(
-            scene.background_quads.len()
-                + scene.overlay_solid_quads.len()
-                + scene.foreground_quads.len(),
+            frame.background_quads.len()
+                + frame.overlay_solid_quads.len()
+                + frame.foreground_quads.len(),
         );
-        combined_solid_quads.extend_from_slice(scene.background_quads);
-        combined_solid_quads.extend_from_slice(scene.overlay_solid_quads);
-        combined_solid_quads.extend_from_slice(scene.foreground_quads);
+        combined_solid_quads.extend_from_slice(frame.background_quads);
+        combined_solid_quads.extend_from_slice(frame.overlay_solid_quads);
+        combined_solid_quads.extend_from_slice(frame.foreground_quads);
         self.solid_quad_pipeline.prepare(
             &self.device,
             &self.queue,
@@ -1564,22 +1564,22 @@ impl WgpuPresenter {
             self.config.width,
             self.config.height,
         );
-        let background_quad_count = scene.background_quads.len();
-        let overlay_solid_quad_count = scene.overlay_solid_quads.len();
-        let foreground_quad_count = scene.foreground_quads.len();
+        let background_quad_count = frame.background_quads.len();
+        let overlay_solid_quad_count = frame.overlay_solid_quads.len();
+        let foreground_quad_count = frame.foreground_quads.len();
 
         // L3 SDF パイプライン (円リング・ラッソ線分) の uniform を準備。
         self.overlay_circle_pipeline.prepare(
             &self.device,
             &self.queue,
-            scene.overlay_circle_quads,
+            frame.overlay_circle_quads,
             self.config.width,
             self.config.height,
         );
         self.overlay_line_pipeline.prepare(
             &self.device,
             &self.queue,
-            scene.overlay_line_quads,
+            frame.overlay_line_quads,
             self.config.width,
             self.config.height,
         );
@@ -1620,7 +1620,7 @@ impl WgpuPresenter {
             pass.set_pipeline(&self.pipeline);
 
             // レイヤーを下から順番に描画（後に描くほど手前に表示される）。
-            if let Some(canvas_layer) = scene.canvas_layer {
+            if let Some(canvas_layer) = frame.canvas_layer {
                 if canvas_layer.source.is_gpu() {
                     if let Some(cache) = &self.canvas_gpu_bind_group_cache {
                         pass.set_bind_group(0, &cache.bind_group, &[]);
@@ -1647,16 +1647,16 @@ impl WgpuPresenter {
             }
             // L3b: ブラシプレビュー円リング（SDF）
             self.overlay_circle_pipeline
-                .record(&mut pass, scene.overlay_circle_quads.len());
+                .record(&mut pass, frame.overlay_circle_quads.len());
             // L3c: ラッソ線分（カプセル SDF）
             self.overlay_line_pipeline
-                .record(&mut pass, scene.overlay_line_quads.len());
+                .record(&mut pass, frame.overlay_line_quads.len());
 
             // 後続レイヤー (L3 HTML パネル群) はテクスチャ pipeline を使う。
             pass.set_pipeline(&self.pipeline);
 
             // L3: HTML パネル群（GPU 直描画）
-            for quad in scene.panel_quads {
+            for quad in frame.panel_quads {
                 if let Some(entry) = self.panel_bind_groups.get(quad.panel_id) {
                     pass.set_bind_group(0, &entry.bind_group, &[]);
                     pass.draw(0..6, 0..1);
@@ -1681,7 +1681,7 @@ impl WgpuPresenter {
             }
 
             // L5: ステータスバー (HtmlPanelView GPU 描画) を最前面に配置
-            if let Some(status) = scene.status_quad.as_ref()
+            if let Some(status) = frame.status_quad.as_ref()
                 && let Some(entry) = self.panel_bind_groups.get(status.panel_id)
             {
                 pass.set_pipeline(&self.pipeline);

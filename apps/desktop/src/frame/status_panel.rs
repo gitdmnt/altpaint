@@ -201,9 +201,9 @@ mod tests {
         );
     }
 
-    /// テスト 2: render_gpu が PanelGpuTarget を返す（PresentScene への合流に必要）。
+    /// テスト 2: render_gpu が PanelGpuTarget を返す（PresentFrame への合流に必要）。
     #[test]
-    fn status_panel_quad_present_in_scene() {
+    fn status_panel_quad_present_in_present_frame() {
         let _guard = gpu_test_lock();
         let Some((device, queue)) = try_init_device() else {
             eprintln!("skip: no GPU device");
