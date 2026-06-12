@@ -1,6 +1,6 @@
 //! `builtin.tool-settings` パネル (Phase 10 DOM mutation 版)。
 
-use plugin_sdk::{
+use panel_sdk::{
     commands,
     dom::{clear_attribute, html_escape, query_selector, set_attribute, set_inner_html},
     host,
@@ -99,24 +99,24 @@ fn render_dom() {
     set_button_active("#pen\\.antialias", host::tool::pen_antialias());
 }
 
-#[plugin_sdk::panel_init]
+#[panel_sdk::panel_init]
 fn init() {
     render_dom();
 }
 
-#[plugin_sdk::panel_sync_host]
+#[panel_sdk::panel_sync_host]
 fn sync_host() {
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_pen_size(value: i32) {
     let size = slider_to_size(value);
     emit_command(&commands::tool::set_size(size));
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_pen_size_text() {
     let value = event_string("value");
     let Ok(size) = parse_size_input(&value) else {
@@ -127,7 +127,7 @@ fn set_pen_size_text() {
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn toggle_pressure() {
     emit_command(&commands::tool::set_pressure_enabled(
         !host::tool::pen_pressure_enabled(),
@@ -135,13 +135,13 @@ fn toggle_pressure() {
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn toggle_antialias() {
     emit_command(&commands::tool::set_antialias(!host::tool::pen_antialias()));
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_stabilization(value: i32) {
     emit_command(&commands::tool::set_stabilization(value.clamp(0, 100) as u8));
     render_dom();

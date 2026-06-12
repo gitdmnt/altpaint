@@ -1,6 +1,6 @@
 //! `builtin.app-actions` パネル (Phase 10 DOM mutation 版)。
 
-use plugin_sdk::{
+use panel_sdk::{
     CommandDescriptor,
     dom::{clear_attribute, html_escape, query_selector, set_attribute, set_inner_html},
     runtime::{
@@ -123,7 +123,7 @@ fn set_button_active(selector: &str, active: bool) {
     }
 }
 
-#[plugin_sdk::panel_init]
+#[panel_sdk::panel_init]
 fn init() {
     // DSL 時代の初期 state 宣言に相当するデフォルトショートカット。
     // 永続化済み config がある場合は registry の restore_persistent_config が
@@ -137,7 +137,7 @@ fn init() {
     render_dom();
 }
 
-#[plugin_sdk::panel_sync_host]
+#[panel_sdk::panel_sync_host]
 fn sync_host() {
     render_dom();
 }
@@ -166,7 +166,7 @@ fn shortcut_matches(configured: &str, incoming: &str) -> bool {
     !configured.is_empty() && configured.eq_ignore_ascii_case(incoming)
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn show_new_form() {
     let selected = state_string(SELECTED_TEMPLATE);
     let fallback = state_string(DEFAULT_TEMPLATE_SIZE);
@@ -180,39 +180,39 @@ fn show_new_form() {
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn cancel_forms() {
     set_state_bool(SHOW_NEW, false);
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn toggle_shortcuts() {
     toggle_state(SHOW_SHORTCUTS);
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn capture_new_shortcut() {
     capture_shortcut("new");
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn capture_save_shortcut() {
     capture_shortcut("save");
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn capture_save_as_shortcut() {
     capture_shortcut("save_as");
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn capture_open_shortcut() {
     capture_shortcut("open");
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn edit_new_width() {
     let value = event_string("value");
     if !value.is_empty() {
@@ -220,7 +220,7 @@ fn edit_new_width() {
     }
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn edit_new_height() {
     let value = event_string("value");
     if !value.is_empty() {
@@ -228,7 +228,7 @@ fn edit_new_height() {
     }
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn new_project() {
     let width = state_string(NEW_WIDTH);
     let height = state_string(NEW_HEIGHT);
@@ -240,7 +240,7 @@ fn new_project() {
     cancel_forms();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn select_template() {
     let value = event_string("value");
     if value.is_empty() {
@@ -252,32 +252,32 @@ fn select_template() {
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn save_project() {
     emit_service(&services::project_io::save_current());
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn save_project_as() {
     emit_service(&services::project_io::save_as());
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn load_project() {
     emit_service(&services::project_io::load_dialog());
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn undo() {
     emit_service(&services::history::undo());
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn redo() {
     emit_service(&services::history::redo());
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn keyboard() {
     let shortcut = event_string("shortcut");
     if shortcut.is_empty() {
@@ -314,7 +314,7 @@ mod tests {
     #[test]
     fn new_project_command_trims_dimensions() {
         let cmd = build_new_project_command(" 320 ", " 240 ").expect("ok");
-        assert_eq!(cmd.name, plugin_sdk::names::project_io::NEW_DOCUMENT_SIZED);
+        assert_eq!(cmd.name, panel_sdk::names::project_io::NEW_DOCUMENT_SIZED);
     }
 
     #[test]

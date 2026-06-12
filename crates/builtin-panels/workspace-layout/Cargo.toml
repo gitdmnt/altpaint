@@ -9,6 +9,6 @@ authors.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-plugin-sdk = { path = "../../plugin-sdk" }
+panel-sdk = { path = "../../panel-sdk" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

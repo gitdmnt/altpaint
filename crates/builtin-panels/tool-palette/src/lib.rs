@@ -1,6 +1,6 @@
 //! `builtin.tool-palette` パネル (Phase 10 DOM mutation 版)。
 
-use plugin_sdk::{
+use panel_sdk::{
     CommandDescriptor,
     commands::{self, Tool},
     dom::{clear_attribute, html_escape, query_selector, set_attribute, set_inner_html},
@@ -134,7 +134,7 @@ fn set_button_active(selector: &str, active: bool) {
     }
 }
 
-#[plugin_sdk::panel_init]
+#[panel_sdk::panel_init]
 fn init() {
     // DSL 時代の初期 state 宣言に相当するデフォルトショートカット。
     // 永続化済み config がある場合は registry の restore_persistent_config が
@@ -149,12 +149,12 @@ fn init() {
     render_dom();
 }
 
-#[plugin_sdk::panel_sync_host]
+#[panel_sdk::panel_sync_host]
 fn sync_host() {
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn select_tool() {
     let tool_id = event_string("value");
     if tool_id.trim().is_empty() {
@@ -244,32 +244,32 @@ fn switch_pen_with_size_restore(delta: isize) {
     }
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn activate_pen() {
     switch_tool_with_size_restore(Tool::Pen);
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn activate_eraser() {
     switch_tool_with_size_restore(Tool::Eraser);
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn activate_bucket() {
     emit_command(&build_tool_command(Tool::Bucket));
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn activate_lasso_bucket() {
     emit_command(&build_tool_command(Tool::LassoBucket));
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn activate_koma_rect() {
     emit_command(&build_tool_command(Tool::KomaRect));
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn select_child_tool() {
     let child_id = event_string("value");
     if child_id.trim().is_empty() {
@@ -278,43 +278,43 @@ fn select_child_tool() {
     emit_command(&commands::tool::select_child_tool(child_id.trim()));
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn previous_pen() {
     switch_pen_with_size_restore(-1);
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn next_pen() {
     switch_pen_with_size_restore(1);
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn reload_pens() {
     emit_service(&services::tool_catalog::reload_pen_presets());
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn import_pens() {
     emit_service(&services::tool_catalog::import_pen_presets());
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn toggle_shortcuts() {
     toggle_state(SHOW_SHORTCUTS);
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn capture_pen_shortcut() {
     capture_shortcut("pen");
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn capture_eraser_shortcut() {
     capture_shortcut("eraser");
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn keyboard() {
     let shortcut = event_string("shortcut");
     if shortcut.is_empty() {
@@ -363,7 +363,7 @@ mod tests {
     #[test]
     fn tool_command_embeds_tool_name() {
         let c = build_tool_command(Tool::Eraser);
-        assert_eq!(c.name, plugin_sdk::names::tool::SET_ACTIVE);
+        assert_eq!(c.name, panel_sdk::names::tool::SET_ACTIVE);
     }
 
     #[test]

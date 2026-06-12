@@ -3,7 +3,7 @@
 //! HSV / Lab / Oklch の 3 経路で色を編集できる。スライダー入力で色空間変換 → RGB を計算し、
 //! `commands::tool::set_color_hex` を発行する。
 
-use plugin_sdk::{
+use panel_sdk::{
     commands::{self, RgbColor},
     dom::{clear_attribute, query_selector, set_attribute, set_inner_html},
     host,
@@ -102,91 +102,91 @@ fn emit_color_from_rgb(r: i32, g: i32, b: i32) {
     render_dom();
 }
 
-#[plugin_sdk::panel_init]
+#[panel_sdk::panel_init]
 fn init() {
     render_dom();
 }
 
-#[plugin_sdk::panel_sync_host]
+#[panel_sdk::panel_sync_host]
 fn sync_host() {
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_mode_hsv() {
     set_state_i32(COLOR_MODE, 0);
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_mode_lab() {
     set_state_i32(COLOR_MODE, 1);
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_mode_oklch() {
     set_state_i32(COLOR_MODE, 2);
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_hue(value: i32) {
     let h = value.rem_euclid(360);
     let rgb = hsv_to_rgb(h, state_i32(SATURATION), state_i32(VALUE));
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_saturation(value: i32) {
     let s = value.clamp(0, 100);
     let rgb = hsv_to_rgb(state_i32(HUE), s, state_i32(VALUE));
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_value(value: i32) {
     let v = value.clamp(0, 100);
     let rgb = hsv_to_rgb(state_i32(HUE), state_i32(SATURATION), v);
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_lab_l(value: i32) {
     let l = value.clamp(0, 100);
     let rgb = lab_to_rgb(l, state_i32(LAB_A), state_i32(LAB_B));
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_lab_a(value: i32) {
     let a = value.clamp(-128, 127);
     let rgb = lab_to_rgb(state_i32(LAB_L), a, state_i32(LAB_B));
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_lab_b(value: i32) {
     let b = value.clamp(-128, 127);
     let rgb = lab_to_rgb(state_i32(LAB_L), state_i32(LAB_A), b);
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_oklch_l(value: i32) {
     let l = value.clamp(0, 100);
     let rgb = oklch_to_rgb(l, state_i32(OKLCH_C), state_i32(OKLCH_H));
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_oklch_c(value: i32) {
     let c = value.clamp(0, 400);
     let rgb = oklch_to_rgb(state_i32(OKLCH_L), c, state_i32(OKLCH_H));
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_oklch_h(value: i32) {
     let h = value.rem_euclid(360);
     let rgb = oklch_to_rgb(state_i32(OKLCH_L), state_i32(OKLCH_C), h);

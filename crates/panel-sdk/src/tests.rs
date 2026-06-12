@@ -1,4 +1,4 @@
-//! `plugin-sdk` surface の回帰テストを保持する。
+//! `panel-sdk` surface の回帰テストを保持する。
 
 use serde_json::json;
 

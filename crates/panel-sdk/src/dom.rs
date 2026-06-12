@@ -5,7 +5,7 @@
 //!
 //! 使用例:
 //! ```ignore
-//! use plugin_sdk::dom::{query_selector, set_attribute, set_inner_html, html_escape};
+//! use panel_sdk::dom::{query_selector, set_attribute, set_inner_html, html_escape};
 //!
 //! // Undo ボタンを disable に
 //! if let Some(btn) = query_selector("#btn-undo") {

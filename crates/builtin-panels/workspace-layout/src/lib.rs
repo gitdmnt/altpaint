@@ -4,7 +4,7 @@
 //! チェックボックス UI を生成する。チェック切替で
 //! `workspace_layout.set_panel_visibility` を emit してホスト側で可視性を反映する。
 
-use plugin_sdk::{
+use panel_sdk::{
     dom::{html_escape, query_selector, set_inner_html},
     host,
     runtime::{emit_service, event_string},
@@ -46,10 +46,10 @@ fn render_panel_list(workspace_panels_json: &str) -> String {
     out
 }
 
-#[plugin_sdk::panel_init]
+#[panel_sdk::panel_init]
 fn init() {}
 
-#[plugin_sdk::panel_sync_host]
+#[panel_sdk::panel_sync_host]
 fn sync_host() {
     if let Some(list) = query_selector("#workspace-panels") {
         let json = host::workspace::panels_json();
@@ -57,7 +57,7 @@ fn sync_host() {
     }
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_visibility(value: i32) {
     let panel_id = event_string("panel_id");
     if panel_id.is_empty() {

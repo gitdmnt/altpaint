@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 
-use plugin_sdk::{
+use panel_sdk::{
     commands,
     dom::{html_escape, query_selector, set_attribute, set_inner_html},
     host,
@@ -111,27 +111,27 @@ fn render_dom() {
     }
 }
 
-#[plugin_sdk::panel_init]
+#[panel_sdk::panel_init]
 fn init() {
     render_dom();
 }
 
-#[plugin_sdk::panel_sync_host]
+#[panel_sdk::panel_sync_host]
 fn sync_host() {
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn add_layer() {
     emit_command(&commands::layer::add());
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn remove_layer() {
     emit_command(&commands::layer::remove());
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn handle_layer_list(value: i32) {
     let layer_count = host::document::layer_count() as usize;
     let ui_target = value.max(0) as usize;
@@ -145,14 +145,14 @@ fn handle_layer_list(value: i32) {
     emit_command(&commands::layer::select(actual_target));
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn update_rename_text() {
     let name = event_string("value");
     RENAME_BUF.with(|buf| *buf.borrow_mut() = name.clone());
     set_state_string(RENAME_TEXT, &name);
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn confirm_rename() {
     let name = RENAME_BUF.with(|buf| buf.borrow().clone());
     let name = if name.is_empty() {
@@ -165,7 +165,7 @@ fn confirm_rename() {
     }
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn set_blend_mode() {
     let mode = event_string("value");
     if mode.is_empty() {
@@ -174,7 +174,7 @@ fn set_blend_mode() {
     emit_command(&commands::layer::set_blend_mode(mode));
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn toggle_layer_visibility() {
     emit_command(&commands::layer::toggle_visibility());
 }

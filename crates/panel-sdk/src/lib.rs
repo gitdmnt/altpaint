@@ -1,4 +1,4 @@
-//! `plugin-sdk` は plugin 作者向けの正面入口である。
+//! `panel-sdk` はパネル作者向けの正面入口である。
 
 pub mod commands;
 pub mod dom;

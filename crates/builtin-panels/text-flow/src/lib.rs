@@ -1,6 +1,6 @@
 //! `builtin.text-flow` パネル (Phase 10 DOM mutation 版)。
 
-use plugin_sdk::{
+use panel_sdk::{
     dom::{query_selector, set_attribute, set_inner_html},
     runtime::{
         emit_service, event_string, set_state_i32, set_state_string, state_i32, state_string,
@@ -34,41 +34,41 @@ fn render_dom() {
     }
 }
 
-#[plugin_sdk::panel_init]
+#[panel_sdk::panel_init]
 fn init() {
     render_dom();
 }
 
-#[plugin_sdk::panel_sync_host]
+#[panel_sdk::panel_sync_host]
 fn sync_host() {
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn update_text() {
     let value = event_string("value");
     set_state_string(INPUT_TEXT, &value);
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn update_font_size(value: i32) {
     set_state_i32(FONT_SIZE, value.clamp(8, 200));
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn update_x(value: i32) {
     set_state_i32(X, value.max(0));
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn update_y(value: i32) {
     set_state_i32(Y, value.max(0));
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn render_text() {
     let text = state_string(INPUT_TEXT);
     if text.trim().is_empty() {

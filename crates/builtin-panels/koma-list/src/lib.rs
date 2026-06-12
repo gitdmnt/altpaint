@@ -1,16 +1,16 @@
 //! `builtin.koma-list` パネル (Phase 10 DOM mutation 版)。
 
-use plugin_sdk::{
+use panel_sdk::{
     dom::{html_escape, query_selector, set_inner_html},
     host,
     runtime::emit_service,
     services,
 };
 
-#[plugin_sdk::panel_init]
+#[panel_sdk::panel_init]
 fn init() {}
 
-#[plugin_sdk::panel_sync_host]
+#[panel_sdk::panel_sync_host]
 fn sync_host() {
     if let Some(node) = query_selector("#title") {
         set_inner_html(node, &html_escape(&host::document::title()));
@@ -67,32 +67,32 @@ struct PanelEntry {
     detail: String,
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn add_panel() {
     emit_service(&services::koma_nav::add());
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn remove_panel() {
     emit_service(&services::koma_nav::remove());
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn select_previous_panel() {
     emit_service(&services::koma_nav::select_previous());
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn select_next_panel() {
     emit_service(&services::koma_nav::select_next());
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn focus_active_panel() {
     emit_service(&services::koma_nav::focus_active());
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn handle_panel_list(value: i32) {
     emit_service(&services::koma_nav::select(value.max(0) as usize));
 }

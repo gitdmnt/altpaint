@@ -1,6 +1,6 @@
 //! `builtin.workspace-presets` パネル (Phase 10 DOM mutation 版)。
 
-use plugin_sdk::{
+use panel_sdk::{
     dom::{html_escape, query_selector, set_attribute, set_inner_html},
     runtime::{
         emit_service, error, event_string, set_state_string, state_string,
@@ -72,17 +72,17 @@ fn render_dom() {
     }
 }
 
-#[plugin_sdk::panel_init]
+#[panel_sdk::panel_init]
 fn init() {
     render_dom();
 }
 
-#[plugin_sdk::panel_sync_host]
+#[panel_sdk::panel_sync_host]
 fn sync_host() {
     render_dom();
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn select_workspace() {
     let value = event_string("value");
     if value.trim().is_empty() {
@@ -97,7 +97,7 @@ fn select_workspace() {
     emit_service(&services::workspace_io::apply_preset(value.trim()));
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn edit_workspace_id() {
     let value = event_string("value");
     if value.trim().is_empty() {
@@ -106,7 +106,7 @@ fn edit_workspace_id() {
     set_state_string(SELECTED_WORKSPACE, value.trim());
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn edit_workspace_label() {
     let value = event_string("value");
     if value.trim().is_empty() {
@@ -115,7 +115,7 @@ fn edit_workspace_label() {
     set_state_string(SELECTED_WORKSPACE_LABEL, value.trim());
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn load_workspace() {
     let Ok((preset_id, _)) = validate_selection() else {
         error("workspace preset id is required");
@@ -124,7 +124,7 @@ fn load_workspace() {
     emit_service(&services::workspace_io::apply_preset(preset_id));
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn save_workspace() {
     let Ok((preset_id, label)) = validate_selection() else {
         error("workspace preset id and label are required");
@@ -133,7 +133,7 @@ fn save_workspace() {
     emit_service(&services::workspace_io::save_preset(preset_id, label));
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn export_workspace() {
     let Ok((preset_id, label)) = validate_selection() else {
         error("workspace preset id and label are required");
@@ -142,7 +142,7 @@ fn export_workspace() {
     emit_service(&services::workspace_io::export_preset(preset_id, label));
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn reload_workspaces() {
     emit_service(&services::workspace_io::reload_presets());
 }

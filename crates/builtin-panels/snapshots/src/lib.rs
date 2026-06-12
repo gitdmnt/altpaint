@@ -1,16 +1,16 @@
 //! `builtin.snapshots` パネル (Phase 10 DOM mutation 版)。
 
-use plugin_sdk::{
+use panel_sdk::{
     dom::{html_escape, query_selector, set_inner_html},
     host,
     runtime::emit_service,
     services,
 };
 
-#[plugin_sdk::panel_init]
+#[panel_sdk::panel_init]
 fn init() {}
 
-#[plugin_sdk::panel_sync_host]
+#[panel_sdk::panel_sync_host]
 fn sync_host() {
     if let Some(node) = query_selector("#title") {
         set_inner_html(node, &html_escape(&host::document::title()));
@@ -32,7 +32,7 @@ fn sync_host() {
     }
 }
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn create_snapshot() {
     emit_service(&services::snapshot::create("Snapshot"));
 }

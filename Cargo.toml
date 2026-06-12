@@ -19,7 +19,7 @@ members = [
   "crates/panel-runtime",
   "crates/panel-protocol",
   "crates/panel-macros",
-  "crates/plugin-sdk",
+  "crates/panel-sdk",
   "crates/plugin-host",
   "crates/gpu-canvas",
   "crates/panel-html",

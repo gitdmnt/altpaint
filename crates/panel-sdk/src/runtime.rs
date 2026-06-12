@@ -84,7 +84,7 @@ pub fn set_state_string(_path: impl AsRef<str>, _value: impl AsRef<str>) {}
 #[cfg(target_arch = "wasm32")]
 pub fn apply_state_patches(patches: &[StatePatch]) {
     let Ok(serialized) = serde_json::to_string(patches) else {
-        error("failed to serialize state patch batch in plugin-sdk runtime");
+        error("failed to serialize state patch batch in panel-sdk runtime");
         return;
     };
     with_bytes(&serialized, |ptr, len| unsafe {
@@ -252,7 +252,7 @@ pub fn emit_command_descriptor(descriptor: &CommandDescriptor) {
 #[cfg(target_arch = "wasm32")]
 fn emit_command_payload_json(descriptor: &CommandDescriptor, payload: &Value) {
     let Ok(json) = serde_json::to_string(payload) else {
-        error("failed to serialize command payload in plugin-sdk runtime");
+        error("failed to serialize command payload in panel-sdk runtime");
         return;
     };
 

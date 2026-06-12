@@ -88,7 +88,7 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 | `crates/panel-api`                    | パネル/ホスト間コントラクト（`PanelPlugin`、`PanelEvent`、`HostAction`）                  |
 | `crates/plugin-host`                  | wasmtime ベースの Wasm パネルランタイム + DOM mutation host functions                     |
 | `crates/panel-protocol`               | ホスト↔Wasm 共有 DTO                                                                      |
-| `crates/plugin-sdk` + `panel-macros`  | プラグイン作者向け SDK と proc-macro                                                      |
+| `crates/panel-sdk` + `panel-macros`   | パネル作者向け SDK と proc-macro                                                          |
 | `crates/storage`                      | SQLite プロジェクト永続化、ペン/ツールカタログ                                            |
 | `crates/desktop-support`              | セッション、ダイアログ、パス、プロファイラー、キャンバステンプレート                      |
 | `crates/builtin-panels/*`             | 12 個のビルトインパネル（各々 `panel.html` + `panel.css` + `panel.meta.json` + Rust/Wasm ソース） |
