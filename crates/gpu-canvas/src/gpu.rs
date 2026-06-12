@@ -98,7 +98,7 @@ impl GpuLayerTexture {
     }
 }
 
-/// `(panel_id: String, layer_index: usize)` をキーにレイヤーテクスチャを管理するプール。
+/// `(koma_id: String, layer_index: usize)` をキーにレイヤーテクスチャを管理するプール。
 pub struct GpuCanvasPool {
     ctx: GpuCanvasContext,
     textures: HashMap<(String, usize), GpuLayerTexture>,
@@ -122,34 +122,34 @@ impl GpuCanvasPool {
     /// 同じキーが既に存在する場合は上書きする。
     pub fn create_layer_texture(
         &mut self,
-        panel_id: &str,
+        koma_id: &str,
         layer_index: usize,
         width: u32,
         height: u32,
     ) {
         let texture = GpuLayerTexture::create(&self.ctx, width, height);
         self.textures
-            .insert((panel_id.to_string(), layer_index), texture);
+            .insert((koma_id.to_string(), layer_index), texture);
     }
 
     /// CPU ビットマップをテクスチャへアップロードする。
     ///
     /// テクスチャが存在しない場合は何もしない。
-    pub fn upload_cpu_bitmap(&self, panel_id: &str, layer_index: usize, pixels: &[u8]) {
-        let key = (panel_id.to_string(), layer_index);
+    pub fn upload_cpu_bitmap(&self, koma_id: &str, layer_index: usize, pixels: &[u8]) {
+        let key = (koma_id.to_string(), layer_index);
         if let Some(texture) = self.textures.get(&key) {
             texture.upload_pixels(&self.ctx, pixels);
         }
     }
 
     /// 指定パネル・レイヤーのテクスチャを取得する。
-    pub fn get(&self, panel_id: &str, layer_index: usize) -> Option<&GpuLayerTexture> {
-        self.textures.get(&(panel_id.to_string(), layer_index))
+    pub fn get(&self, koma_id: &str, layer_index: usize) -> Option<&GpuLayerTexture> {
+        self.textures.get(&(koma_id.to_string(), layer_index))
     }
 
     /// 指定パネル・レイヤーの sRGB TextureView を生成して返す。
-    pub fn get_view(&self, panel_id: &str, layer_index: usize) -> Option<wgpu::TextureView> {
-        self.get(panel_id, layer_index)
+    pub fn get_view(&self, koma_id: &str, layer_index: usize) -> Option<wgpu::TextureView> {
+        self.get(koma_id, layer_index)
             .map(|t| t.create_srgb_view())
     }
 
@@ -158,13 +158,13 @@ impl GpuCanvasPool {
     /// ストローク前/後スナップショット作成用。返却テクスチャは `COPY_SRC | COPY_DST` を持つ。
     pub fn snapshot_region(
         &self,
-        panel_id: &str,
+        koma_id: &str,
         layer_index: usize,
         region: CanvasDirtyRect,
     ) -> Option<wgpu::Texture> {
         let (x, y) = (region.x as u32, region.y as u32);
         let (w, h) = (region.width as u32, region.height as u32);
-        let src = self.get(panel_id, layer_index)?;
+        let src = self.get(koma_id, layer_index)?;
         let dst = self.ctx.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("gpu-canvas-snapshot"),
             size: wgpu::Extent3d {
@@ -213,13 +213,13 @@ impl GpuCanvasPool {
     /// Undo/Redo 用。`src` の `width/height` 全体をレイヤーへコピーする。
     pub fn restore_region(
         &self,
-        panel_id: &str,
+        koma_id: &str,
         layer_index: usize,
         origin: KomaLocalPoint,
         src: &wgpu::Texture,
     ) {
         let (x, y) = (origin.x as u32, origin.y as u32);
-        let Some(dst) = self.get(panel_id, layer_index) else {
+        let Some(dst) = self.get(koma_id, layer_index) else {
             return;
         };
         let w = src.width();
@@ -257,14 +257,14 @@ impl GpuCanvasPool {
     /// テクスチャが存在しない場合は何もしない。
     pub fn upload_region(
         &self,
-        panel_id: &str,
+        koma_id: &str,
         layer_index: usize,
         region: CanvasDirtyRect,
         pixels: &[u8],
     ) {
         let (x, y) = (region.x as u32, region.y as u32);
         let (w, h) = (region.width as u32, region.height as u32);
-        let Some(dst) = self.get(panel_id, layer_index) else {
+        let Some(dst) = self.get(koma_id, layer_index) else {
             return;
         };
         self.ctx.queue.write_texture(
@@ -294,19 +294,19 @@ impl GpuCanvasPool {
     /// パディングバッファを介して読み戻し、パック済み RGBA8 列に詰め直して返す。
     pub fn read_back_full(
         &self,
-        panel_id: &str,
+        koma_id: &str,
         layer_index: usize,
     ) -> Option<(u32, u32, Vec<u8>)> {
-        let tex = self.get(panel_id, layer_index)?;
+        let tex = self.get(koma_id, layer_index)?;
         read_back_texture(&self.ctx, &tex.texture, tex.width, tex.height)
     }
 
-    /// Panel ID に紐づく合成テクスチャを遅延作成する。
+    /// コマ ID に紐づく合成テクスチャを遅延作成する。
     ///
     /// 既存テクスチャが同サイズなら no-op。サイズが異なる場合は旧テクスチャを
     /// drop して新規作成する。
-    pub fn ensure_composite_texture(&mut self, panel_id: &str, width: u32, height: u32) {
-        let key = panel_id.to_string();
+    pub fn ensure_composite_texture(&mut self, koma_id: &str, width: u32, height: u32) {
+        let key = koma_id.to_string();
         if let Some(existing) = self.composite_textures.get(&key)
             && existing.width == width
             && existing.height == height
@@ -317,21 +317,21 @@ impl GpuCanvasPool {
         self.composite_textures.insert(key, tex);
     }
 
-    /// Panel ID に紐づく合成テクスチャを取得する。
-    pub fn get_composite(&self, panel_id: &str) -> Option<&GpuLayerTexture> {
-        self.composite_textures.get(panel_id)
+    /// コマ ID に紐づく合成テクスチャを取得する。
+    pub fn get_composite(&self, koma_id: &str) -> Option<&GpuLayerTexture> {
+        self.composite_textures.get(koma_id)
     }
 
-    /// Panel ID に紐づく合成テクスチャの sRGB TextureView を生成する。
-    pub fn get_composite_view(&self, panel_id: &str) -> Option<wgpu::TextureView> {
-        self.get_composite(panel_id).map(|t| t.create_srgb_view())
+    /// コマ ID に紐づく合成テクスチャの sRGB TextureView を生成する。
+    pub fn get_composite_view(&self, koma_id: &str) -> Option<wgpu::TextureView> {
+        self.get_composite(koma_id).map(|t| t.create_srgb_view())
     }
 
     /// レイヤーマスク（1 ch alpha）を RGBA8（R=G=B=255, A=mask）に展開して
     /// アップロードする。既存マスクは上書きする。
     pub fn upload_mask(
         &mut self,
-        panel_id: &str,
+        koma_id: &str,
         layer_index: usize,
         width: u32,
         height: u32,
@@ -375,34 +375,34 @@ impl GpuCanvasPool {
             },
         );
         self.mask_textures
-            .insert((panel_id.to_string(), layer_index), texture);
+            .insert((koma_id.to_string(), layer_index), texture);
     }
 
     /// 登録済みマスクテクスチャを取得する。
-    pub fn get_mask(&self, panel_id: &str, layer_index: usize) -> Option<&wgpu::Texture> {
+    pub fn get_mask(&self, koma_id: &str, layer_index: usize) -> Option<&wgpu::Texture> {
         self.mask_textures
-            .get(&(panel_id.to_string(), layer_index))
+            .get(&(koma_id.to_string(), layer_index))
     }
 
     /// 登録済みマスクテクスチャを削除する。
-    pub fn remove_mask(&mut self, panel_id: &str, layer_index: usize) {
+    pub fn remove_mask(&mut self, koma_id: &str, layer_index: usize) {
         self.mask_textures
-            .remove(&(panel_id.to_string(), layer_index));
+            .remove(&(koma_id.to_string(), layer_index));
     }
 
     /// 指定パネルの全レイヤーテクスチャ・マスクテクスチャエントリを削除する。
     ///
     /// レイヤー追加/削除/並べ替えで古いインデックスが残存するのを防ぐため、
     /// `sync_all_layers_to_gpu` の再構築前に呼び出す。
-    pub fn clear_layers_for_panel(&mut self, panel_id: &str) {
-        let pid = panel_id.to_string();
+    pub fn clear_layers_for_panel(&mut self, koma_id: &str) {
+        let pid = koma_id.to_string();
         self.textures.retain(|(p, _), _| p != &pid);
         self.mask_textures.retain(|(p, _), _| p != &pid);
     }
 
-    /// 合成テクスチャを CPU へ読み戻す（保存経路の `panel.bitmap` 更新用）。
-    pub fn read_back_composite(&self, panel_id: &str) -> Option<(u32, u32, Vec<u8>)> {
-        let tex = self.get_composite(panel_id)?;
+    /// 合成テクスチャを CPU へ読み戻す（保存経路の `koma.bitmap` 更新用）。
+    pub fn read_back_composite(&self, koma_id: &str) -> Option<(u32, u32, Vec<u8>)> {
+        let tex = self.get_composite(koma_id)?;
         let w = tex.width;
         let h = tex.height;
         read_back_texture(&self.ctx, &tex.texture, w, h)

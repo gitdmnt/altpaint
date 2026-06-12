@@ -79,7 +79,7 @@ impl GpuFillDispatch {
     /// 指定座標の seed 色に一致する連結成分を塗りつぶす。
     ///
     /// - `source`: seed 色と連結成分の判定に使うテクスチャ。CPU 実装の
-    ///   `composited_bitmap` に相当（多レイヤー時は panel の composite テクスチャを
+    ///   `composited_bitmap` に相当（多レイヤー時はコマの composite テクスチャを
     ///   渡す。単一レイヤー時は active layer テクスチャで等価）。
     /// - `target`: 実際に塗り色を書き込むレイヤーテクスチャ（active layer）。
     /// - `source` と `target` は同じサイズである必要がある。

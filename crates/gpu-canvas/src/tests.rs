@@ -46,10 +46,10 @@ mod gpu_tests {
                 return;
             };
             let mut pool = GpuCanvasPool::new(device, queue);
-            pool.create_layer_texture("panel-1", 0, 4, 4);
+            pool.create_layer_texture("koma-1", 0, 4, 4);
             let pixels = vec![128u8; 4 * 4 * 4];
-            pool.upload_cpu_bitmap("panel-1", 0, &pixels);
-            assert!(pool.get("panel-1", 0).is_some());
+            pool.upload_cpu_bitmap("koma-1", 0, &pixels);
+            assert!(pool.get("koma-1", 0).is_some());
         });
     }
 
