@@ -3,7 +3,7 @@
 //! ドメイン型定義から描画アルゴリズムを分離し、`Document` 本体の責務を
 //! 状態遷移に集中させる。
 
-use crate::{PageDirtyRect, ClampToCanvasBounds};
+use geometry::{ClampToCanvasBounds, PageDirtyRect};
 
 use super::CanvasBitmap;
 

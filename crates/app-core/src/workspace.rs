@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{WindowPoint, WindowRect};
+use geometry::{WindowPoint, WindowRect};
 
 /// パネルごとの永続設定。キーは panel_id。
 pub type PanelConfigs = BTreeMap<String, Value>;

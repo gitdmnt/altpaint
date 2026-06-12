@@ -15,7 +15,8 @@
 //! GPU 側 (`crates/gpu-paint/src/shaders/layer_composite.wgsl` の `blend_channel`)
 //! はこの表を複製している。変更時は必ず両者を同期すること。
 
-use crate::{BlendMode, CanvasBitmap, ClampToCanvasBounds, PageDirtyRect, RasterLayer};
+use crate::{BlendMode, CanvasBitmap, RasterLayer};
+use geometry::{ClampToCanvasBounds, PageDirtyRect};
 
 impl BlendMode {
     /// GPU compute shader に渡す blend code。

@@ -28,16 +28,16 @@ pub struct PanelWorkspace {
     /// HTML パネル (GPU 直描画) の hit 情報。`update_panel_hits` で毎フレーム更新する。
     panel_hits: BTreeMap<String, PanelHitMap>,
     /// HTML パネルのタイトルバードラッグハンドル (screen 座標)。`update_panel_move_handle` で更新。
-    panel_move_handles: BTreeMap<String, app_core::WindowRect>,
+    panel_move_handles: BTreeMap<String, geometry::WindowRect>,
     /// Phase 11: HTML パネル全体 (chrome + body) の screen 座標矩形。
     /// `update_panel_full_rect` で毎フレーム更新し、リサイズハンドルの hit テストに使う。
-    panel_full_rects: BTreeMap<String, app_core::WindowRect>,
+    panel_full_rects: BTreeMap<String, geometry::WindowRect>,
 }
 
 /// HTML パネル 1 枚分の hit 情報。screen 座標の矩形と panel-relative の hit 群。
 #[derive(Debug, Clone)]
 struct PanelHitMap {
-    screen_rect: app_core::WindowRect,
+    screen_rect: geometry::WindowRect,
     hits: Vec<PanelHitItem>,
 }
 
@@ -46,7 +46,7 @@ struct PanelHitItem {
     /// HTML 要素の `id` 属性。`HtmlWasmPanel::handle_event` の matching に使われる。
     node_id: String,
     /// パネル原点を (0,0) とする矩形。
-    rect_in_panel: app_core::WindowRect,
+    rect_in_panel: geometry::WindowRect,
 }
 
 impl PanelWorkspace {
@@ -64,7 +64,7 @@ impl PanelWorkspace {
     pub fn update_panel_move_handle(
         &mut self,
         panel_id: &str,
-        screen_rect: app_core::WindowRect,
+        screen_rect: geometry::WindowRect,
     ) {
         self.panel_move_handles
             .insert(panel_id.to_string(), screen_rect);
@@ -86,8 +86,8 @@ impl PanelWorkspace {
     pub fn update_panel_hits(
         &mut self,
         panel_id: &str,
-        screen_rect: app_core::WindowRect,
-        hits: Vec<(String, app_core::WindowRect)>,
+        screen_rect: geometry::WindowRect,
+        hits: Vec<(String, geometry::WindowRect)>,
     ) {
         let items = hits
             .into_iter()
@@ -126,7 +126,7 @@ impl PanelWorkspace {
     pub fn update_panel_full_rect(
         &mut self,
         panel_id: &str,
-        screen_rect: app_core::WindowRect,
+        screen_rect: geometry::WindowRect,
     ) {
         self.panel_full_rects
             .insert(panel_id.to_string(), screen_rect);
@@ -134,7 +134,7 @@ impl PanelWorkspace {
 
     /// 指定 panel_id の HTML パネル full rect (chrome + body の screen 座標矩形) を返す。
     /// GPU quad の配置 (`runtime.rs`) が hit テーブル更新側と同じ矩形を共有するために使う。
-    pub fn panel_full_rect(&self, panel_id: &str) -> Option<app_core::WindowRect> {
+    pub fn panel_full_rect(&self, panel_id: &str) -> Option<geometry::WindowRect> {
         self.panel_full_rects.get(panel_id).copied()
     }
 
@@ -198,7 +198,7 @@ const RESIZE_HANDLE_CORNER_PX: usize = 12;
 /// 角優先 → 辺 → 内側 (None) の順で評価する。
 fn resize_hit_in_rect(
     point: WindowPoint,
-    rect: app_core::WindowRect,
+    rect: geometry::WindowRect,
 ) -> Option<panel_api::ResizeHandle> {
     use panel_api::ResizeHandle;
 

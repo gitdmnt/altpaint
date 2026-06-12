@@ -93,9 +93,9 @@ impl PanelWorkspace {
     pub fn resize_panel_keeping_anchor(
         &mut self,
         panel_id: &str,
-        new_rect: app_core::WindowRect,
+        new_rect: geometry::WindowRect,
         viewport: (usize, usize),
-    ) -> Option<app_core::WindowRect> {
+    ) -> Option<geometry::WindowRect> {
         let (vw, vh) = viewport;
         let width = new_rect.width.clamp(1, vw.max(1));
         let height = new_rect.height.clamp(1, vh.max(1));
@@ -112,7 +112,7 @@ impl PanelWorkspace {
         let next_size = WorkspacePanelSize { width, height };
         entry.size = Some(next_size);
         entry.set_position_from_absolute(x, y, vw, vh, next_size);
-        Some(app_core::WindowRect {
+        Some(geometry::WindowRect {
             x,
             y,
             width,
@@ -154,7 +154,7 @@ impl PanelWorkspace {
         panel_id: &str,
         viewport_width: usize,
         viewport_height: usize,
-    ) -> Option<app_core::WindowRect> {
+    ) -> Option<geometry::WindowRect> {
         let entry = self
             .workspace_layout
             .panels
@@ -167,7 +167,7 @@ impl PanelWorkspace {
             size,
             default_panel_position(panel_id, 0),
         );
-        Some(app_core::WindowRect {
+        Some(geometry::WindowRect {
             x: position.x,
             y: position.y,
             width: size.width,

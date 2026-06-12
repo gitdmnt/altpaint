@@ -3,7 +3,8 @@
 //! `EditHistory` は操作記録（`HistoryEntry`）のスタックを管理する。
 //! undo 方式はビットマップ前後スナップショット（`BitmapPatch`）の保存・復元方式。
 
-use crate::{CanvasBitmap, PageDirtyRect, KomaId};
+use crate::{CanvasBitmap, KomaId};
+use geometry::PageDirtyRect;
 
 /// 履歴スタックのデフォルト容量。
 pub const DEFAULT_HISTORY_CAPACITY: usize = 50;

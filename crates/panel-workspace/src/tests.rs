@@ -29,7 +29,7 @@ fn panel_move_handle_at_resolves_drag_handle_to_panel_id() {
     let mut panel_workspace = PanelWorkspace::new();
     panel_workspace.update_panel_move_handle(
         "html.test",
-        app_core::WindowRect {
+        geometry::WindowRect {
             x: 100,
             y: 50,
             width: 280,
@@ -39,13 +39,13 @@ fn panel_move_handle_at_resolves_drag_handle_to_panel_id() {
 
     // ハンドル内
     assert_eq!(
-        panel_workspace.panel_move_handle_at(app_core::WindowPoint::new(120, 60)),
+        panel_workspace.panel_move_handle_at(geometry::WindowPoint::new(120, 60)),
         Some("html.test".to_string())
     );
     // ハンドル外 (右下)
-    assert_eq!(panel_workspace.panel_move_handle_at(app_core::WindowPoint::new(120, 80)), None);
+    assert_eq!(panel_workspace.panel_move_handle_at(geometry::WindowPoint::new(120, 80)), None);
     // ハンドル外 (上端より上)
-    assert_eq!(panel_workspace.panel_move_handle_at(app_core::WindowPoint::new(120, 49)), None);
+    assert_eq!(panel_workspace.panel_move_handle_at(geometry::WindowPoint::new(120, 49)), None);
 }
 
 /// Phase 4: `remove_panel_move_handle` で個別削除できる。
@@ -54,24 +54,24 @@ fn remove_panel_move_handle_clears_handle() {
     let mut panel_workspace = PanelWorkspace::new();
     panel_workspace.update_panel_move_handle(
         "html.test",
-        app_core::WindowRect {
+        geometry::WindowRect {
             x: 0,
             y: 0,
             width: 100,
             height: 24,
         },
     );
-    assert!(panel_workspace.panel_move_handle_at(app_core::WindowPoint::new(50, 10)).is_some());
+    assert!(panel_workspace.panel_move_handle_at(geometry::WindowPoint::new(50, 10)).is_some());
 
     panel_workspace.remove_panel_move_handle("html.test");
-    assert!(panel_workspace.panel_move_handle_at(app_core::WindowPoint::new(50, 10)).is_none());
+    assert!(panel_workspace.panel_move_handle_at(geometry::WindowPoint::new(50, 10)).is_none());
 }
 
 /// Phase 3: HTML パネル hit table を screen 座標で検索すると `(panel_id, node_id)` が返る。
 #[test]
 fn panel_hit_at_resolves_screen_coordinates_to_panel_event() {
     let mut panel_workspace = PanelWorkspace::new();
-    let screen_rect = app_core::WindowRect {
+    let screen_rect = geometry::WindowRect {
         x: 100,
         y: 50,
         width: 280,
@@ -80,7 +80,7 @@ fn panel_hit_at_resolves_screen_coordinates_to_panel_event() {
     let hits = vec![
         (
             "save_btn".to_string(),
-            app_core::WindowRect {
+            geometry::WindowRect {
                 x: 10,
                 y: 20,
                 width: 60,
@@ -89,7 +89,7 @@ fn panel_hit_at_resolves_screen_coordinates_to_panel_event() {
         ),
         (
             "undo_btn".to_string(),
-            app_core::WindowRect {
+            geometry::WindowRect {
                 x: 80,
                 y: 20,
                 width: 60,
@@ -100,22 +100,22 @@ fn panel_hit_at_resolves_screen_coordinates_to_panel_event() {
     panel_workspace.update_panel_hits("html.test", screen_rect, hits);
 
     // panel-relative (10,20) → screen (110, 70)。範囲は (110..170, 70..100)
-    let inside_save = panel_workspace.panel_hit_at(app_core::WindowPoint::new(120, 80));
+    let inside_save = panel_workspace.panel_hit_at(geometry::WindowPoint::new(120, 80));
     assert_eq!(
         inside_save,
         Some(("html.test".to_string(), "save_btn".to_string()))
     );
 
-    let inside_undo = panel_workspace.panel_hit_at(app_core::WindowPoint::new(190, 85));
+    let inside_undo = panel_workspace.panel_hit_at(geometry::WindowPoint::new(190, 85));
     assert_eq!(
         inside_undo,
         Some(("html.test".to_string(), "undo_btn".to_string()))
     );
 
     // パネル矩形外
-    assert_eq!(panel_workspace.panel_hit_at(app_core::WindowPoint::new(50, 50)), None);
+    assert_eq!(panel_workspace.panel_hit_at(geometry::WindowPoint::new(50, 50)), None);
     // パネル矩形内だが action 矩形外
-    assert_eq!(panel_workspace.panel_hit_at(app_core::WindowPoint::new(110, 200)), None);
+    assert_eq!(panel_workspace.panel_hit_at(geometry::WindowPoint::new(110, 200)), None);
 }
 
 /// Phase 3: `remove_panel_hits` で hit 情報を消すと、その後の検索は None。
@@ -124,7 +124,7 @@ fn remove_panel_hits_clears_hits_for_panel() {
     let mut panel_workspace = PanelWorkspace::new();
     panel_workspace.update_panel_hits(
         "html.test",
-        app_core::WindowRect {
+        geometry::WindowRect {
             x: 0,
             y: 0,
             width: 100,
@@ -132,7 +132,7 @@ fn remove_panel_hits_clears_hits_for_panel() {
         },
         vec![(
             "btn".to_string(),
-            app_core::WindowRect {
+            geometry::WindowRect {
                 x: 10,
                 y: 10,
                 width: 40,
@@ -140,10 +140,10 @@ fn remove_panel_hits_clears_hits_for_panel() {
             },
         )],
     );
-    assert!(panel_workspace.panel_hit_at(app_core::WindowPoint::new(20, 20)).is_some());
+    assert!(panel_workspace.panel_hit_at(geometry::WindowPoint::new(20, 20)).is_some());
 
     panel_workspace.remove_panel_hits("html.test");
-    assert!(panel_workspace.panel_hit_at(app_core::WindowPoint::new(20, 20)).is_none());
+    assert!(panel_workspace.panel_hit_at(geometry::WindowPoint::new(20, 20)).is_none());
 }
 
 /// Phase 2: HTML パネル相当の workspace エントリは `set_panel_visibility` で切り替えられ、

@@ -1,5 +1,5 @@
 use super::*;
-use crate::{PageDirtyRect, ClampToCanvasBounds, MergeInSpace};
+use geometry::{ClampToCanvasBounds, MergeInSpace, PageDirtyRect};
 
 fn apply_layer_brush(
     document: &mut Document,

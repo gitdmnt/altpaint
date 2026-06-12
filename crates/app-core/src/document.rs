@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{DocumentCommand, KomaLocalPoint, SessionCommand};
+use crate::{DocumentCommand, SessionCommand};
+use geometry::KomaLocalPoint;
 
 mod bitmap;
 mod layer_ops;
@@ -541,29 +542,29 @@ impl KomaBounds {
             && y < self.y.saturating_add(self.height)
     }
 
-    pub fn contains_canvas_point(self, point: crate::PagePoint) -> bool {
+    pub fn contains_canvas_point(self, point: geometry::PagePoint) -> bool {
         self.contains(point.x, point.y)
     }
 
     pub fn canvas_to_koma_local(
         self,
-        point: crate::PagePoint,
-    ) -> Option<crate::KomaLocalPoint> {
+        point: geometry::PagePoint,
+    ) -> Option<geometry::KomaLocalPoint> {
         self.contains_canvas_point(point)
-            .then_some(crate::KomaLocalPoint::new(
+            .then_some(geometry::KomaLocalPoint::new(
                 point.x.saturating_sub(self.x),
                 point.y.saturating_sub(self.y),
             ))
     }
 
-    pub fn clamp_canvas_point(self, point: crate::PagePoint) -> Option<crate::PagePoint> {
+    pub fn clamp_canvas_point(self, point: geometry::PagePoint) -> Option<geometry::PagePoint> {
         if self.is_empty() {
             return None;
         }
 
         let max_x = self.x.saturating_add(self.width.saturating_sub(1));
         let max_y = self.y.saturating_add(self.height.saturating_sub(1));
-        Some(crate::PagePoint::new(
+        Some(geometry::PagePoint::new(
             point.x.clamp(self.x, max_x),
             point.y.clamp(self.y, max_y),
         ))
@@ -571,9 +572,9 @@ impl KomaBounds {
 
     pub fn koma_local_to_canvas(
         self,
-        point: crate::KomaLocalPoint,
-    ) -> Option<crate::PagePoint> {
-        (point.x < self.width && point.y < self.height).then_some(crate::PagePoint::new(
+        point: geometry::KomaLocalPoint,
+    ) -> Option<geometry::PagePoint> {
+        (point.x < self.width && point.y < self.height).then_some(geometry::PagePoint::new(
             self.x.saturating_add(point.x),
             self.y.saturating_add(point.y),
         ))
@@ -889,7 +890,7 @@ impl Document {
         Some(koma.active_layer_index == 0)
     }
 
-    pub fn active_koma_contains_canvas_point(&self, point: crate::PagePoint) -> bool {
+    pub fn active_koma_contains_canvas_point(&self, point: geometry::PagePoint) -> bool {
         self.active_koma_bounds()
             .is_some_and(|bounds| bounds.contains_canvas_point(point))
     }
@@ -902,7 +903,7 @@ impl Document {
 
     pub fn active_koma_canvas_to_local(
         &self,
-        point: crate::PagePoint,
+        point: geometry::PagePoint,
     ) -> Option<KomaLocalPoint> {
         self.active_koma_bounds()
             .and_then(|bounds| bounds.canvas_to_koma_local(point))
@@ -911,7 +912,7 @@ impl Document {
     pub fn active_koma_local_to_canvas(
         &self,
         point: KomaLocalPoint,
-    ) -> Option<crate::PagePoint> {
+    ) -> Option<geometry::PagePoint> {
         self.active_koma_bounds()
             .and_then(|bounds| bounds.koma_local_to_canvas(point))
     }

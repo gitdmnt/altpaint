@@ -3,7 +3,8 @@
 //! 公開 command 境界の背後にある layer 操作・合成 helper をここへ集約し、
 //! ドキュメント本体を状態遷移の入口として読みやすく保つ。
 
-use crate::{BitmapEdit, PageDirtyRect, ClampToCanvasBounds, MergeInSpace, KomaId};
+use crate::{BitmapEdit, KomaId};
+use geometry::{ClampToCanvasBounds, MergeInSpace, PageDirtyRect};
 
 use super::{BlendMode, CanvasBitmap, Document, LayerNodeId, Koma, RasterLayer};
 

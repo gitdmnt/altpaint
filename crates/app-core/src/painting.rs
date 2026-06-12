@@ -2,9 +2,9 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::{
-    BlendMode, CanvasBitmap, PageDirtyRect, ColorRgba8, KomaLocalPoint, PenPreset, ToolKind,
-    ToolSettingDefinition,
+    BlendMode, CanvasBitmap, ColorRgba8, PenPreset, ToolKind, ToolSettingDefinition,
 };
+use geometry::{KomaLocalPoint, PageDirtyRect};
 
 /// 描画プラグインが受け取る最小入力イベント。
 #[derive(Debug, Clone, PartialEq)]
