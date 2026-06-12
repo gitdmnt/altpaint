@@ -138,7 +138,7 @@ XSS 境界を検証する。
 
 - workspace 内 `panel_tree\|PanelTree\|altp:\|data-bind` のヒットなし
 - `cargo build --workspace` / `cargo test --workspace` / `cargo clippy --workspace --all-targets` 通過
-- `cargo run -p desktop` で全 11 パネルが起動・操作可能
+- `cargo run -p altpaint-desktop` で全 11 パネルが起動・操作可能
 - XSS 境界テスト (layer 名に `<script>` 等を含めて HTML 注入が起きない)
 
 ## 関連 ADR / 文書

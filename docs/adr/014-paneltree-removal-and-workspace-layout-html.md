@@ -132,7 +132,7 @@ emit_command / emit_service / state_patch のいずれかを必ず行うため�
 
 4. `cargo clippy --workspace --all-targets` でベースライン以上の警告増なし
    (ベースライン 84 → 本 PR 76 件、8 件減)。
-5. 実機 `cargo run -p desktop`:
+5. 実機 `cargo run -p altpaint-desktop`:
    - workspace-layout パネルが TopLeft anchor で表示され、11 行のチェックボックスリストが描画される
    - `builtin.tool-palette` のチェックを外す → 該当パネルが画面から消える。チェック復帰で再表示
    - 8 ハンドルリサイズが workspace-layout でも機能する

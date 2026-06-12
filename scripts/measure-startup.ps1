@@ -12,9 +12,7 @@ param(
 if (-not $ExePath) {
     $candidates = @(
         ".\target\release\altpaint.exe",
-        ".\target\debug\altpaint.exe",
-        ".\target\release\desktop.exe",
-        ".\target\debug\desktop.exe"
+        ".\target\debug\altpaint.exe"
     )
     foreach ($c in $candidates) {
         if (Test-Path $c) { $ExePath = $c; break }

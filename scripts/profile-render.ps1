@@ -17,7 +17,7 @@ $ErrorActionPreference = "Stop"
 $RootDir = Split-Path $PSScriptRoot -Parent
 
 # ビルド
-$BuildArgs = @("build", "-p", "desktop")
+$BuildArgs = @("build", "-p", "altpaint-desktop")
 if ($Release) { $BuildArgs += "--release" }
 Write-Host "[profile-render] Building..."
 & cargo @BuildArgs
