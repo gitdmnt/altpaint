@@ -16,7 +16,7 @@ pub enum PanelMoveDirection {
 /// パネル境界の 8 ハンドル (4 辺 + 4 角)。
 /// Phase 11: 手動リサイズのドラッグ方向を識別する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ResizeEdge {
+pub enum ResizeHandle {
     North,
     NorthEast,
     East,
@@ -27,7 +27,7 @@ pub enum ResizeEdge {
     NorthWest,
 }
 
-impl ResizeEdge {
+impl ResizeHandle {
     /// 左辺 (x = panel.left) を掴んでいるか。
     pub fn touches_left(self) -> bool {
         matches!(self, Self::NorthWest | Self::West | Self::SouthWest)
@@ -51,7 +51,7 @@ impl ResizeEdge {
 
 #[cfg(test)]
 mod resize_edge_tests {
-    use super::ResizeEdge::*;
+    use super::ResizeHandle::*;
 
     #[test]
     fn touches_left_returns_true_for_west_variants() {

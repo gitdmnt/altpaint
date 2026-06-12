@@ -14,7 +14,7 @@ use focus::FocusTarget;
 use std::collections::BTreeMap;
 
 // hit-test API の戻り値型。利用側が panel-api へ直接依存しなくて済むよう再公開する。
-pub use panel_api::ResizeEdge;
+pub use panel_api::ResizeHandle;
 
 /// 全パネルの配置 (workspace layout)・focus・hit テーブルの状態ストア。
 ///
@@ -143,16 +143,16 @@ impl PanelWorkspace {
     }
 
     /// Phase 11: window 座標の点のリサイズハンドル hit を検索し、
-    /// `(panel_id, ResizeEdge)` を返す。角優先、辺は厚 6px、角は 12x12。
+    /// `(panel_id, ResizeHandle)` を返す。角優先、辺は厚 6px、角は 12x12。
     /// パネル内側はリサイズ対象外なので `None`。
     pub fn panel_resize_hit_at(
         &self,
         point: WindowPoint,
-    ) -> Option<(String, panel_api::ResizeEdge)> {
+    ) -> Option<(String, panel_api::ResizeHandle)> {
         self.panel_full_rects
             .iter()
             .find_map(|(panel_id, rect)| {
-                resize_hit_in_rect(point, *rect).map(|edge| (panel_id.clone(), edge))
+                resize_hit_in_rect(point, *rect).map(|handle| (panel_id.clone(), handle))
             })
     }
 
@@ -206,8 +206,8 @@ const RESIZE_HANDLE_CORNER_PX: usize = 12;
 fn resize_hit_in_rect(
     point: WindowPoint,
     rect: canvas_geometry::PixelRect,
-) -> Option<panel_api::ResizeEdge> {
-    use panel_api::ResizeEdge;
+) -> Option<panel_api::ResizeHandle> {
+    use panel_api::ResizeHandle;
 
     if rect.width == 0 || rect.height == 0 {
         return None;
@@ -236,30 +236,30 @@ fn resize_hit_in_rect(
     let in_bottom_corner = y >= bottom - corner_h;
 
     if in_top_corner && in_left_corner {
-        return Some(ResizeEdge::NorthWest);
+        return Some(ResizeHandle::NorthWest);
     }
     if in_top_corner && in_right_corner {
-        return Some(ResizeEdge::NorthEast);
+        return Some(ResizeHandle::NorthEast);
     }
     if in_bottom_corner && in_left_corner {
-        return Some(ResizeEdge::SouthWest);
+        return Some(ResizeHandle::SouthWest);
     }
     if in_bottom_corner && in_right_corner {
-        return Some(ResizeEdge::SouthEast);
+        return Some(ResizeHandle::SouthEast);
     }
 
     // 4 辺 (角に当たらなかった残り)
     if y < top + edge_h {
-        return Some(ResizeEdge::North);
+        return Some(ResizeHandle::North);
     }
     if y >= bottom - edge_h {
-        return Some(ResizeEdge::South);
+        return Some(ResizeHandle::South);
     }
     if x < left + edge_w {
-        return Some(ResizeEdge::West);
+        return Some(ResizeHandle::West);
     }
     if x >= right - edge_w {
-        return Some(ResizeEdge::East);
+        return Some(ResizeHandle::East);
     }
 
     // パネル内側
@@ -269,7 +269,7 @@ fn resize_hit_in_rect(
 #[cfg(test)]
 mod resize_hit_tests {
     use super::*;
-    use panel_api::ResizeEdge;
+    use panel_api::ResizeHandle;
     use canvas_geometry::PixelRect;
 
     fn rect(x: usize, y: usize, w: usize, h: usize) -> PixelRect {
@@ -289,41 +289,41 @@ mod resize_hit_tests {
     }
 
     #[test]
-    fn corners_return_corner_edges() {
+    fn corners_return_corner_handles() {
         let r = rect(100, 100, 200, 150);
         // NW
         assert_eq!(
             resize_hit_in_rect(WindowPoint::new(105, 105), r),
-            Some(ResizeEdge::NorthWest)
+            Some(ResizeHandle::NorthWest)
         );
         // NE (右上角の内側)
         assert_eq!(
             resize_hit_in_rect(WindowPoint::new(295, 105), r),
-            Some(ResizeEdge::NorthEast)
+            Some(ResizeHandle::NorthEast)
         );
         // SE (右下)
         assert_eq!(
             resize_hit_in_rect(WindowPoint::new(295, 245), r),
-            Some(ResizeEdge::SouthEast)
+            Some(ResizeHandle::SouthEast)
         );
         // SW
         assert_eq!(
             resize_hit_in_rect(WindowPoint::new(105, 245), r),
-            Some(ResizeEdge::SouthWest)
+            Some(ResizeHandle::SouthWest)
         );
     }
 
     #[test]
-    fn edges_return_edge_directions() {
+    fn edges_return_edge_handles() {
         let r = rect(100, 100, 200, 150);
         // 上辺中央
-        assert_eq!(resize_hit_in_rect(WindowPoint::new(200, 102), r), Some(ResizeEdge::North));
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(200, 102), r), Some(ResizeHandle::North));
         // 右辺中央
-        assert_eq!(resize_hit_in_rect(WindowPoint::new(298, 175), r), Some(ResizeEdge::East));
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(298, 175), r), Some(ResizeHandle::East));
         // 下辺中央
-        assert_eq!(resize_hit_in_rect(WindowPoint::new(200, 248), r), Some(ResizeEdge::South));
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(200, 248), r), Some(ResizeHandle::South));
         // 左辺中央
-        assert_eq!(resize_hit_in_rect(WindowPoint::new(102, 175), r), Some(ResizeEdge::West));
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(102, 175), r), Some(ResizeHandle::West));
     }
 
     #[test]
@@ -334,13 +334,13 @@ mod resize_hit_tests {
     }
 
     #[test]
-    fn titlebar_top_6px_returns_north_edge() {
+    fn titlebar_top_6px_returns_north_handle() {
         let r = rect(100, 100, 200, 150);
-        // パネル上端 6px の範囲 (タイトルバーと重なる領域も N edge を返す)
+        // パネル上端 6px の範囲 (タイトルバーと重なる領域も North handle を返す)
         // ただし角の 12px は除く
-        assert_eq!(resize_hit_in_rect(WindowPoint::new(150, 100), r), Some(ResizeEdge::North));
-        assert_eq!(resize_hit_in_rect(WindowPoint::new(150, 105), r), Some(ResizeEdge::North));
-        // 7px 目以降は N edge ではない
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(150, 100), r), Some(ResizeHandle::North));
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(150, 105), r), Some(ResizeHandle::North));
+        // 7px 目以降は North handle ではない
         assert_eq!(resize_hit_in_rect(WindowPoint::new(150, 107), r), None);
     }
 
@@ -348,7 +348,7 @@ mod resize_hit_tests {
     fn corner_takes_priority_over_edge() {
         let r = rect(100, 100, 200, 150);
         // 左上角 12x12 内 = NW (上辺の 6px とも重なるが角優先)
-        assert_eq!(resize_hit_in_rect(WindowPoint::new(102, 102), r), Some(ResizeEdge::NorthWest));
+        assert_eq!(resize_hit_in_rect(WindowPoint::new(102, 102), r), Some(ResizeHandle::NorthWest));
     }
 
     #[test]

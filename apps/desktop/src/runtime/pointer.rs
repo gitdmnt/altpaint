@@ -45,7 +45,7 @@ impl DesktopRuntime {
             .record("canvas_input_window_event", std::time::Duration::ZERO);
 
         // Phase 11: リサイズハンドル hover に応じて OS カーソル icon を更新する。
-        // active resize 中はその edge を、それ以外なら hover 先の edge を採用。
+        // active resize 中はその handle を、それ以外なら hover 先の handle を採用。
         self.update_cursor_icon_for_pointer(x, y);
 
         // HTML パネル領域内なら Blitz に PointerMove を転送（:hover を動かすため）
@@ -59,26 +59,26 @@ impl DesktopRuntime {
     }
 
     /// Phase 11: 現在のポインタ位置に応じて OS カーソルアイコンを更新する。
-    /// active resize 中はその edge を優先 (hover hit 判定をスキップ)。
+    /// active resize 中はその handle を優先 (hover hit 判定をスキップ)。
     fn update_cursor_icon_for_pointer(&self, x: i32, y: i32) {
-        use crate::app::cursor::cursor_icon_for_edge;
+        use crate::app::cursor::cursor_icon_for_resize_handle;
         use winit::window::Cursor;
 
         let Some(window) = self.window.as_ref() else {
             return;
         };
-        let active_edge = self
+        let active_handle = self
             .app
             .panel_interaction
             .active_panel_resize
             .as_ref()
-            .map(|s| s.edge);
-        let edge = active_edge.or_else(|| {
+            .map(|s| s.handle);
+        let handle = active_handle.or_else(|| {
             self.app
                 .panel_resize_hit_from_window(app_core::WindowPoint::new(x, y))
-                .map(|(_, edge)| edge)
+                .map(|(_, handle)| handle)
         });
-        let icon = cursor_icon_for_edge(edge);
+        let icon = cursor_icon_for_resize_handle(handle);
         window.set_cursor(Cursor::Icon(icon));
     }
 

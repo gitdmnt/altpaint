@@ -1,6 +1,6 @@
 //! Phase 11: リサイズハンドル/インタラクション状態に応じた OS カーソルアイコン解決。
 //!
-//! `panel_resize_hit_at` の結果や active resize edge から winit `CursorIcon` を返す
+//! `panel_resize_hit_at` の結果や active resize handle から winit `CursorIcon` を返す
 //! 純粋関数を提供する。
 //!
 //! - 上下辺: `NsResize`
@@ -9,17 +9,17 @@
 //! - 右上 / 左下角: `NeswResize`
 //! - リサイズハンドル外: `Default`
 
-use panel_runtime::ResizeEdge;
+use panel_runtime::ResizeHandle;
 use winit::window::CursorIcon;
 
-/// 与えられた edge (None = リサイズハンドル外) に対応する OS カーソルアイコンを返す。
-pub(crate) fn cursor_icon_for_edge(edge: Option<ResizeEdge>) -> CursorIcon {
-    match edge {
+/// 与えられた handle (None = リサイズハンドル外) に対応する OS カーソルアイコンを返す。
+pub(crate) fn cursor_icon_for_resize_handle(handle: Option<ResizeHandle>) -> CursorIcon {
+    match handle {
         None => CursorIcon::Default,
-        Some(ResizeEdge::North) | Some(ResizeEdge::South) => CursorIcon::NsResize,
-        Some(ResizeEdge::East) | Some(ResizeEdge::West) => CursorIcon::EwResize,
-        Some(ResizeEdge::NorthWest) | Some(ResizeEdge::SouthEast) => CursorIcon::NwseResize,
-        Some(ResizeEdge::NorthEast) | Some(ResizeEdge::SouthWest) => CursorIcon::NeswResize,
+        Some(ResizeHandle::North) | Some(ResizeHandle::South) => CursorIcon::NsResize,
+        Some(ResizeHandle::East) | Some(ResizeHandle::West) => CursorIcon::EwResize,
+        Some(ResizeHandle::NorthWest) | Some(ResizeHandle::SouthEast) => CursorIcon::NwseResize,
+        Some(ResizeHandle::NorthEast) | Some(ResizeHandle::SouthWest) => CursorIcon::NeswResize,
     }
 }
 
@@ -29,17 +29,17 @@ mod tests {
 
     #[test]
     fn no_edge_returns_default_cursor() {
-        assert_eq!(cursor_icon_for_edge(None), CursorIcon::Default);
+        assert_eq!(cursor_icon_for_resize_handle(None), CursorIcon::Default);
     }
 
     #[test]
     fn vertical_edges_return_ns_resize() {
         assert_eq!(
-            cursor_icon_for_edge(Some(ResizeEdge::North)),
+            cursor_icon_for_resize_handle(Some(ResizeHandle::North)),
             CursorIcon::NsResize
         );
         assert_eq!(
-            cursor_icon_for_edge(Some(ResizeEdge::South)),
+            cursor_icon_for_resize_handle(Some(ResizeHandle::South)),
             CursorIcon::NsResize
         );
     }
@@ -47,11 +47,11 @@ mod tests {
     #[test]
     fn horizontal_edges_return_ew_resize() {
         assert_eq!(
-            cursor_icon_for_edge(Some(ResizeEdge::East)),
+            cursor_icon_for_resize_handle(Some(ResizeHandle::East)),
             CursorIcon::EwResize
         );
         assert_eq!(
-            cursor_icon_for_edge(Some(ResizeEdge::West)),
+            cursor_icon_for_resize_handle(Some(ResizeHandle::West)),
             CursorIcon::EwResize
         );
     }
@@ -59,11 +59,11 @@ mod tests {
     #[test]
     fn nw_se_corners_return_nwse_resize() {
         assert_eq!(
-            cursor_icon_for_edge(Some(ResizeEdge::NorthWest)),
+            cursor_icon_for_resize_handle(Some(ResizeHandle::NorthWest)),
             CursorIcon::NwseResize
         );
         assert_eq!(
-            cursor_icon_for_edge(Some(ResizeEdge::SouthEast)),
+            cursor_icon_for_resize_handle(Some(ResizeHandle::SouthEast)),
             CursorIcon::NwseResize
         );
     }
@@ -71,11 +71,11 @@ mod tests {
     #[test]
     fn ne_sw_corners_return_nesw_resize() {
         assert_eq!(
-            cursor_icon_for_edge(Some(ResizeEdge::NorthEast)),
+            cursor_icon_for_resize_handle(Some(ResizeHandle::NorthEast)),
             CursorIcon::NeswResize
         );
         assert_eq!(
-            cursor_icon_for_edge(Some(ResizeEdge::SouthWest)),
+            cursor_icon_for_resize_handle(Some(ResizeHandle::SouthWest)),
             CursorIcon::NeswResize
         );
     }
