@@ -5,7 +5,7 @@
 //! 考慮した変換式を一箇所に集約する。
 
 use desktop_support::{
-    ACTIVE_UI_PANEL_BORDER, APP_BACKGROUND, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND,
+    ACTIVE_PANEL_BORDER, APP_BACKGROUND, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND,
     CANVAS_FRAME_BORDER,
 };
 
@@ -168,7 +168,7 @@ pub(crate) fn build_foreground_solid_quads(active_panel_rect: Option<Rect>) -> V
         return Vec::new();
     }
     let mut quads = Vec::with_capacity(4);
-    push_border_quads(&mut quads, rect, ACTIVE_UI_PANEL_BORDER);
+    push_border_quads(&mut quads, rect, ACTIVE_PANEL_BORDER);
     quads
 }
 
@@ -282,7 +282,7 @@ mod tests {
         let quads = build_foreground_solid_quads(Some(rect(100, 100, 200, 150)));
         assert_eq!(quads.len(), 4);
         for quad in &quads {
-            assert_eq!(quad.color, ACTIVE_UI_PANEL_BORDER);
+            assert_eq!(quad.color, ACTIVE_PANEL_BORDER);
         }
     }
 }

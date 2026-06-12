@@ -7,9 +7,9 @@
 
 use app_core::CanvasDirtyRect;
 use desktop_support::{
-    ACTIVE_PANEL_BORDER, ACTIVE_PANEL_FILL, ACTIVE_PANEL_MASK, BRUSH_PREVIEW_RING, LASSO_LINE,
-    PANEL_NAVIGATOR_ACTIVE, PANEL_NAVIGATOR_BACKGROUND, PANEL_NAVIGATOR_BORDER,
-    PANEL_NAVIGATOR_PANEL, PANEL_PREVIEW_BORDER, PANEL_PREVIEW_FILL,
+    ACTIVE_KOMA_BORDER, ACTIVE_KOMA_FILL, ACTIVE_KOMA_MASK, BRUSH_PREVIEW_RING, LASSO_LINE,
+    KOMA_NAVIGATOR_ACTIVE, KOMA_NAVIGATOR_BACKGROUND, KOMA_NAVIGATOR_BORDER,
+    KOMA_NAVIGATOR_KOMA, KOMA_PREVIEW_BORDER, KOMA_PREVIEW_FILL,
 };
 use render_types::{CanvasOverlayState, CanvasPlan, KomaNavigatorOverlay};
 
@@ -56,7 +56,7 @@ pub(crate) fn build_overlay_solid_quads(
 ) -> Vec<SolidQuad> {
     let mut quads = Vec::new();
     if let Some(bounds) = overlay.active_panel_bounds {
-        push_active_panel_mask(&mut quads, plan, bounds);
+        push_active_koma_mask(&mut quads, plan, bounds);
     }
     if let Some(bounds) = overlay.panel_creation_preview {
         push_koma_creation_preview(&mut quads, plan, bounds);
@@ -119,7 +119,7 @@ pub(crate) fn build_overlay_line_quads(
     quads
 }
 
-fn push_active_panel_mask(
+fn push_active_koma_mask(
     out: &mut Vec<SolidQuad>,
     plan: &CanvasPlan,
     bounds: app_core::KomaBounds,
@@ -166,24 +166,24 @@ fn push_active_panel_mask(
         }
         out.push(SolidQuad {
             rect,
-            color: ACTIVE_PANEL_MASK,
+            color: ACTIVE_KOMA_MASK,
         });
     }
 
-    let panel_rect = plan.map_dirty_rect(CanvasDirtyRect {
+    let koma_rect = plan.map_dirty_rect(CanvasDirtyRect {
         x: bounds.x,
         y: bounds.y,
         width: bounds.width,
         height: bounds.height,
     });
-    if panel_rect.width == 0 || panel_rect.height == 0 {
+    if koma_rect.width == 0 || koma_rect.height == 0 {
         return;
     }
     out.push(SolidQuad {
-        rect: panel_rect,
-        color: ACTIVE_PANEL_FILL,
+        rect: koma_rect,
+        color: ACTIVE_KOMA_FILL,
     });
-    push_border_quads(out, panel_rect, ACTIVE_PANEL_BORDER);
+    push_border_quads(out, koma_rect, ACTIVE_KOMA_BORDER);
 }
 
 fn push_koma_creation_preview(
@@ -206,9 +206,9 @@ fn push_koma_creation_preview(
     }
     out.push(SolidQuad {
         rect,
-        color: PANEL_PREVIEW_FILL,
+        color: KOMA_PREVIEW_FILL,
     });
-    push_border_quads(out, rect, PANEL_PREVIEW_BORDER);
+    push_border_quads(out, rect, KOMA_PREVIEW_BORDER);
 }
 
 fn push_koma_navigator(
@@ -248,16 +248,16 @@ fn push_koma_navigator(
 
     out.push(SolidQuad {
         rect: outer,
-        color: PANEL_NAVIGATOR_BACKGROUND,
+        color: KOMA_NAVIGATOR_BACKGROUND,
     });
-    push_border_quads(out, outer, PANEL_NAVIGATOR_BORDER);
+    push_border_quads(out, outer, KOMA_NAVIGATOR_BORDER);
     let inner = Rect {
         x: outer.x + 8,
         y: outer.y + 8,
         width: scaled_width,
         height: scaled_height,
     };
-    push_border_quads(out, inner, PANEL_NAVIGATOR_BORDER);
+    push_border_quads(out, inner, KOMA_NAVIGATOR_BORDER);
 
     for koma in &navigator.panels {
         let rect = Rect {
@@ -268,22 +268,22 @@ fn push_koma_navigator(
         };
         let fill_color = if koma.active {
             [
-                PANEL_NAVIGATOR_ACTIVE[0],
-                PANEL_NAVIGATOR_ACTIVE[1],
-                PANEL_NAVIGATOR_ACTIVE[2],
+                KOMA_NAVIGATOR_ACTIVE[0],
+                KOMA_NAVIGATOR_ACTIVE[1],
+                KOMA_NAVIGATOR_ACTIVE[2],
                 0x40,
             ]
         } else {
-            PANEL_NAVIGATOR_PANEL
+            KOMA_NAVIGATOR_KOMA
         };
         out.push(SolidQuad {
             rect,
             color: fill_color,
         });
         let border_color = if koma.active {
-            PANEL_NAVIGATOR_ACTIVE
+            KOMA_NAVIGATOR_ACTIVE
         } else {
-            PANEL_NAVIGATOR_BORDER
+            KOMA_NAVIGATOR_BORDER
         };
         push_border_quads(out, rect, border_color);
     }
@@ -333,11 +333,11 @@ mod tests {
         let quads = build_overlay_solid_quads(&plan, &overlay);
         let fills = quads
             .iter()
-            .filter(|q| q.color == ACTIVE_PANEL_FILL)
+            .filter(|q| q.color == ACTIVE_KOMA_FILL)
             .count();
         let borders = quads
             .iter()
-            .filter(|q| q.color == ACTIVE_PANEL_BORDER)
+            .filter(|q| q.color == ACTIVE_KOMA_BORDER)
             .count();
         assert_eq!(fills, 1);
         assert_eq!(borders, 4);
@@ -412,19 +412,19 @@ mod tests {
         let quads = build_overlay_solid_quads(&plan, &overlay);
         let backgrounds = quads
             .iter()
-            .filter(|q| q.color == PANEL_NAVIGATOR_BACKGROUND)
+            .filter(|q| q.color == KOMA_NAVIGATOR_BACKGROUND)
             .count();
         let outer_borders = quads
             .iter()
-            .filter(|q| q.color == PANEL_NAVIGATOR_BORDER)
+            .filter(|q| q.color == KOMA_NAVIGATOR_BORDER)
             .count();
         let active_quads = quads
             .iter()
-            .filter(|q| q.color == PANEL_NAVIGATOR_ACTIVE)
+            .filter(|q| q.color == KOMA_NAVIGATOR_ACTIVE)
             .count();
         let koma_fills = quads
             .iter()
-            .filter(|q| q.color == PANEL_NAVIGATOR_PANEL)
+            .filter(|q| q.color == KOMA_NAVIGATOR_KOMA)
             .count();
         assert_eq!(backgrounds, 1, "navigator outer fill");
         // outer 枠 (4) + inner 枠 (4) + 非 active コマの枠線 (4) = 12
@@ -450,11 +450,11 @@ mod tests {
         let quads = build_overlay_solid_quads(&plan, &overlay);
         let fills = quads
             .iter()
-            .filter(|q| q.color == PANEL_PREVIEW_FILL)
+            .filter(|q| q.color == KOMA_PREVIEW_FILL)
             .count();
         let borders = quads
             .iter()
-            .filter(|q| q.color == PANEL_PREVIEW_BORDER)
+            .filter(|q| q.color == KOMA_PREVIEW_BORDER)
             .count();
         assert_eq!(fills, 1);
         assert_eq!(borders, 4);

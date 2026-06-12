@@ -29,25 +29,25 @@ pub const CANVAS_FRAME_BACKGROUND: [u8; 4] = [0x40, 0x40, 0x40, 0xff];
 /// キャンバス枠線色を表す。
 pub const CANVAS_FRAME_BORDER: [u8; 4] = [0x2a, 0x2a, 0x2a, 0xff];
 /// アクティブ UI パネル枠線の色（水色）。
-pub const ACTIVE_UI_PANEL_BORDER: [u8; 4] = [0x42, 0xa5, 0xf5, 0xff];
-/// アクティブパネル外側マスク（半透明黒）。
-pub const ACTIVE_PANEL_MASK: [u8; 4] = [0x00, 0x00, 0x00, 0x90];
-/// アクティブパネル内側 fill（薄い黄色）。
-pub const ACTIVE_PANEL_FILL: [u8; 4] = [0xff, 0xc1, 0x07, 0x18];
-/// アクティブパネル枠線（黄色）。
-pub const ACTIVE_PANEL_BORDER: [u8; 4] = [0xff, 0xc1, 0x07, 0xff];
-/// パネル作成プレビューの fill（薄シアン）。
-pub const PANEL_PREVIEW_FILL: [u8; 4] = [0x80, 0xde, 0xea, 0x32];
-/// パネル作成プレビューの枠線（シアン）。
-pub const PANEL_PREVIEW_BORDER: [u8; 4] = [0x80, 0xde, 0xea, 0xff];
-/// パネルナビゲータ背景。
-pub const PANEL_NAVIGATOR_BACKGROUND: [u8; 4] = [0x10, 0x16, 0x21, 0xdd];
-/// パネルナビゲータ枠線。
-pub const PANEL_NAVIGATOR_BORDER: [u8; 4] = [0x90, 0xa4, 0xae, 0xff];
-/// パネルナビゲータ内のパネル fill。
-pub const PANEL_NAVIGATOR_PANEL: [u8; 4] = [0x4f, 0x5b, 0x6d, 0xd0];
-/// パネルナビゲータ内のアクティブパネル色（黄色）。
-pub const PANEL_NAVIGATOR_ACTIVE: [u8; 4] = [0xff, 0xc1, 0x07, 0xff];
+pub const ACTIVE_PANEL_BORDER: [u8; 4] = [0x42, 0xa5, 0xf5, 0xff];
+/// アクティブコマ外側マスク（半透明黒）。
+pub const ACTIVE_KOMA_MASK: [u8; 4] = [0x00, 0x00, 0x00, 0x90];
+/// アクティブコマ内側 fill（薄い黄色）。
+pub const ACTIVE_KOMA_FILL: [u8; 4] = [0xff, 0xc1, 0x07, 0x18];
+/// アクティブコマ枠線（黄色）。
+pub const ACTIVE_KOMA_BORDER: [u8; 4] = [0xff, 0xc1, 0x07, 0xff];
+/// コマ作成プレビューの fill（薄シアン）。
+pub const KOMA_PREVIEW_FILL: [u8; 4] = [0x80, 0xde, 0xea, 0x32];
+/// コマ作成プレビューの枠線（シアン）。
+pub const KOMA_PREVIEW_BORDER: [u8; 4] = [0x80, 0xde, 0xea, 0xff];
+/// コマナビゲータ背景。
+pub const KOMA_NAVIGATOR_BACKGROUND: [u8; 4] = [0x10, 0x16, 0x21, 0xdd];
+/// コマナビゲータ枠線。
+pub const KOMA_NAVIGATOR_BORDER: [u8; 4] = [0x90, 0xa4, 0xae, 0xff];
+/// コマナビゲータ内のコマ fill。
+pub const KOMA_NAVIGATOR_KOMA: [u8; 4] = [0x4f, 0x5b, 0x6d, 0xd0];
+/// コマナビゲータ内のアクティブコマ色（黄色）。
+pub const KOMA_NAVIGATOR_ACTIVE: [u8; 4] = [0xff, 0xc1, 0x07, 0xff];
 /// ブラシプレビュー円リング色。
 pub const BRUSH_PREVIEW_RING: [u8; 4] = [0x9f, 0xb7, 0xff, 0xff];
 /// ラッソ選択プレビュー線の色（黄色）。
