@@ -11,11 +11,11 @@
 //! - `query_selector` の Option 返却は u64 で表現 (0 = None, それ以外は NodeId + 1)
 
 use crate::HostCallContext;
+use crate::memory::{push_error, read_utf8};
 use blitz_dom::{LocalName, Namespace, QualName};
 use blitz_html::HtmlDocument;
-use panel_protocol::{Diagnostic, DiagnosticLevel};
 use std::ptr::NonNull;
-use wasmtime::{Caller, Extern, Linker, Memory};
+use wasmtime::{Caller, Linker};
 
 /// Wasm 呼出スコープ内のみ有効な DOM コンテキスト。
 ///
@@ -53,11 +53,11 @@ pub(crate) fn register_dom_host_functions(
 
 fn host_query_selector(mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32) -> i64 {
     let Some(selector) = read_utf8(&mut caller, ptr, len) else {
-        push_err(&mut caller, "query_selector: invalid selector ptr/len");
+        push_error(&mut caller, "query_selector: invalid selector ptr/len");
         return 0;
     };
     let Some(doc) = current_document(&caller) else {
-        push_err(&mut caller, "query_selector: no DOM context");
+        push_error(&mut caller, "query_selector: no DOM context");
         return 0;
     };
     let doc_ref = unsafe { doc.as_ref() };
@@ -65,7 +65,7 @@ fn host_query_selector(mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i
         Ok(Some(id)) => (id as i64) + 1,
         Ok(None) => 0,
         Err(_) => {
-            push_err(&mut caller, "query_selector: invalid CSS selector");
+            push_error(&mut caller, "query_selector: invalid CSS selector");
             0
         }
     }
@@ -80,21 +80,21 @@ fn host_set_attribute(
     value_len: i32,
 ) {
     let Some(name) = read_utf8(&mut caller, name_ptr, name_len) else {
-        push_err(&mut caller, "set_attribute: invalid name ptr/len");
+        push_error(&mut caller, "set_attribute: invalid name ptr/len");
         return;
     };
     let Some(value) = read_utf8(&mut caller, value_ptr, value_len) else {
-        push_err(&mut caller, "set_attribute: invalid value ptr/len");
+        push_error(&mut caller, "set_attribute: invalid value ptr/len");
         return;
     };
     let Some(mut doc) = current_document_mut(&mut caller) else {
-        push_err(&mut caller, "set_attribute: no DOM context");
+        push_error(&mut caller, "set_attribute: no DOM context");
         return;
     };
     let id = match decode_node_id(node_id) {
         Some(id) => id,
         None => {
-            push_err(&mut caller, "set_attribute: invalid node_id");
+            push_error(&mut caller, "set_attribute: invalid node_id");
             return;
         }
     };
@@ -110,17 +110,17 @@ fn host_clear_attribute(
     name_len: i32,
 ) {
     let Some(name) = read_utf8(&mut caller, name_ptr, name_len) else {
-        push_err(&mut caller, "clear_attribute: invalid name ptr/len");
+        push_error(&mut caller, "clear_attribute: invalid name ptr/len");
         return;
     };
     let Some(mut doc) = current_document_mut(&mut caller) else {
-        push_err(&mut caller, "clear_attribute: no DOM context");
+        push_error(&mut caller, "clear_attribute: no DOM context");
         return;
     };
     let id = match decode_node_id(node_id) {
         Some(id) => id,
         None => {
-            push_err(&mut caller, "clear_attribute: invalid node_id");
+            push_error(&mut caller, "clear_attribute: invalid node_id");
             return;
         }
     };
@@ -136,17 +136,17 @@ fn host_set_inner_html(
     html_len: i32,
 ) {
     let Some(html) = read_utf8(&mut caller, html_ptr, html_len) else {
-        push_err(&mut caller, "set_inner_html: invalid html ptr/len");
+        push_error(&mut caller, "set_inner_html: invalid html ptr/len");
         return;
     };
     let Some(mut doc) = current_document_mut(&mut caller) else {
-        push_err(&mut caller, "set_inner_html: no DOM context");
+        push_error(&mut caller, "set_inner_html: no DOM context");
         return;
     };
     let id = match decode_node_id(node_id) {
         Some(id) => id,
         None => {
-            push_err(&mut caller, "set_inner_html: invalid node_id");
+            push_error(&mut caller, "set_inner_html: invalid node_id");
             return;
         }
     };
@@ -172,32 +172,6 @@ fn current_document_mut(
     caller: &mut Caller<'_, HostCallContext>,
 ) -> Option<NonNull<HtmlDocument>> {
     caller.data_mut().dom_ctx.document
-}
-
-fn read_utf8(caller: &mut Caller<'_, HostCallContext>, ptr: i32, len: i32) -> Option<String> {
-    if ptr < 0 || len < 0 {
-        return None;
-    }
-    let memory = current_memory(caller)?;
-    let data = memory.data(caller);
-    let start = ptr as usize;
-    let end = start.checked_add(len as usize)?;
-    let bytes = data.get(start..end)?;
-    std::str::from_utf8(bytes).ok().map(ToString::to_string)
-}
-
-fn current_memory(caller: &mut Caller<'_, HostCallContext>) -> Option<Memory> {
-    match caller.get_export("memory") {
-        Some(Extern::Memory(memory)) => Some(memory),
-        _ => None,
-    }
-}
-
-fn push_err(caller: &mut Caller<'_, HostCallContext>, msg: &str) {
-    caller.data_mut().result.diagnostics.push(Diagnostic {
-        level: DiagnosticLevel::Error,
-        message: msg.to_string(),
-    });
 }
 
 fn qual_name(local: &str) -> QualName {
