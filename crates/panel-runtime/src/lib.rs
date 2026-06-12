@@ -1,13 +1,13 @@
 mod html_wasm_panel;
-mod commands;
-mod config;
+mod request_translation;
+mod persistent_config;
 pub mod host_state;
 mod loader;
 mod meta;
 mod runtime;
 
 pub use html_wasm_panel::{HtmlWasmPanelError, HtmlWasmPanel};
-pub use commands::command_from_descriptor;
+pub use request_translation::command_from_descriptor;
 pub use host_state::{
     EMPTY_WORKSPACE_PANELS_JSON, HostStateCache, build_host_state,
 };

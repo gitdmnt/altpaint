@@ -18,7 +18,7 @@ use panel_html::{
     ActionDescriptor, HtmlPanelView, blitz_dom::LocalName, blitz_dom::node::NodeData,
     parse_data_action,
 };
-use crate::commands::command_from_descriptor;
+use crate::request_translation::command_from_descriptor;
 use crate::host_state::{
     EMPTY_WORKSPACE_PANELS_JSON, HostStateCache, build_host_state,
 };

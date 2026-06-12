@@ -1,5 +1,5 @@
 use crate::html_wasm_panel::HtmlWasmPanel;
-use crate::config::{collect_persistent_panel_configs, restore_persistent_panel_configs};
+use crate::persistent_config::{collect_persistent_panel_configs, restore_persistent_panel_configs};
 use crate::host_state::EMPTY_WORKSPACE_PANELS_JSON;
 use app_core::Document;
 use panel_api::{HostAction, PanelEvent, PanelPlugin};
