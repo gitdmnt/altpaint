@@ -566,33 +566,13 @@ impl CanvasBitmap {
 
         let index = (y * self.width + x) * 4;
         let dst = [
-            self.pixels[index] as f32 / 255.0,
-            self.pixels[index + 1] as f32 / 255.0,
-            self.pixels[index + 2] as f32 / 255.0,
-            self.pixels[index + 3] as f32 / 255.0,
+            self.pixels[index],
+            self.pixels[index + 1],
+            self.pixels[index + 2],
+            self.pixels[index + 3],
         ];
-        let src_alpha = (rgba[3] as f32 / 255.0) * coverage.clamp(0.0, 1.0);
-        let out_alpha = src_alpha + dst[3] * (1.0 - src_alpha);
-
-        let (out_r, out_g, out_b) = if out_alpha <= f32::EPSILON {
-            (0.0, 0.0, 0.0)
-        } else {
-            let src = [
-                rgba[0] as f32 / 255.0,
-                rgba[1] as f32 / 255.0,
-                rgba[2] as f32 / 255.0,
-            ];
-            (
-                (src[0] * src_alpha + dst[0] * dst[3] * (1.0 - src_alpha)) / out_alpha,
-                (src[1] * src_alpha + dst[1] * dst[3] * (1.0 - src_alpha)) / out_alpha,
-                (src[2] * src_alpha + dst[2] * dst[3] * (1.0 - src_alpha)) / out_alpha,
-            )
-        };
-
-        self.pixels[index] = (out_r * 255.0).round().clamp(0.0, 255.0) as u8;
-        self.pixels[index + 1] = (out_g * 255.0).round().clamp(0.0, 255.0) as u8;
-        self.pixels[index + 2] = (out_b * 255.0).round().clamp(0.0, 255.0) as u8;
-        self.pixels[index + 3] = (out_alpha * 255.0).round().clamp(0.0, 255.0) as u8;
+        let blended = crate::blend::source_over_coverage_pixel(dst, rgba, coverage);
+        self.pixels[index..index + 4].copy_from_slice(&blended);
         PageDirtyRect::from_inclusive_points(x, y, x, y)
     }
 }

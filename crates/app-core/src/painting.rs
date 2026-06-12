@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::{
-    CanvasBitmap, PageDirtyRect, ColorRgba8, KomaLocalPoint, PenPreset, ToolKind,
+    BlendMode, CanvasBitmap, PageDirtyRect, ColorRgba8, KomaLocalPoint, PenPreset, ToolKind,
     ToolSettingDefinition,
 };
 
@@ -80,8 +80,8 @@ impl BitmapComposite {
 
     pub fn compose(&self, bitmap_a: &CanvasBitmap, bitmap_b: &CanvasBitmap) -> CanvasBitmap {
         match self {
-            Self::SourceOver => source_over_bitmap(bitmap_a, bitmap_b),
-            Self::Multiply => multiply_bitmap(bitmap_a, bitmap_b),
+            Self::SourceOver => compose_bitmaps(bitmap_a, bitmap_b, &BlendMode::Normal),
+            Self::Multiply => compose_bitmaps(bitmap_a, bitmap_b, &BlendMode::Multiply),
             Self::Custom(compositor) => compositor.compose(bitmap_a, bitmap_b),
         }
     }
@@ -117,91 +117,35 @@ pub trait PaintPlugin {
     fn process(&self, input: &PaintInput, context: &PaintPluginContext<'_>) -> Vec<BitmapEdit>;
 }
 
-fn source_over_bitmap(bitmap_a: &CanvasBitmap, bitmap_b: &CanvasBitmap) -> CanvasBitmap {
-    let width = bitmap_a.width.min(bitmap_b.width);
-    let height = bitmap_a.height.min(bitmap_b.height);
+/// `incoming` を `previous` の上に `mode` で重ねた結果ビットマップを返す。
+///
+/// 両ビットマップは同サイズを前提とする (異なる場合は小さい方の寸法に切り詰める)。
+fn compose_bitmaps(
+    incoming: &CanvasBitmap,
+    previous: &CanvasBitmap,
+    mode: &BlendMode,
+) -> CanvasBitmap {
+    let width = incoming.width.min(previous.width);
+    let height = incoming.height.min(previous.height);
     let mut out = CanvasBitmap::transparent(width, height);
     for y in 0..height {
         for x in 0..width {
             let index = (y * width + x) * 4;
-            let incoming = [
-                bitmap_a.pixels[index],
-                bitmap_a.pixels[index + 1],
-                bitmap_a.pixels[index + 2],
-                bitmap_a.pixels[index + 3],
+            let src = [
+                incoming.pixels[index],
+                incoming.pixels[index + 1],
+                incoming.pixels[index + 2],
+                incoming.pixels[index + 3],
             ];
-            let previous = [
-                bitmap_b.pixels[index],
-                bitmap_b.pixels[index + 1],
-                bitmap_b.pixels[index + 2],
-                bitmap_b.pixels[index + 3],
+            let dst = [
+                previous.pixels[index],
+                previous.pixels[index + 1],
+                previous.pixels[index + 2],
+                previous.pixels[index + 3],
             ];
-            let blended = source_over_pixel(previous, incoming);
+            let blended = crate::blend::composite_pixel(dst, src, mode);
             out.pixels[index..index + 4].copy_from_slice(&blended);
         }
     }
-    out
-}
-
-fn multiply_bitmap(bitmap_a: &CanvasBitmap, bitmap_b: &CanvasBitmap) -> CanvasBitmap {
-    let width = bitmap_a.width.min(bitmap_b.width);
-    let height = bitmap_a.height.min(bitmap_b.height);
-    let mut out = CanvasBitmap::transparent(width, height);
-    for y in 0..height {
-        for x in 0..width {
-            let index = (y * width + x) * 4;
-            let incoming = [
-                bitmap_a.pixels[index],
-                bitmap_a.pixels[index + 1],
-                bitmap_a.pixels[index + 2],
-                bitmap_a.pixels[index + 3],
-            ];
-            let previous = [
-                bitmap_b.pixels[index],
-                bitmap_b.pixels[index + 1],
-                bitmap_b.pixels[index + 2],
-                bitmap_b.pixels[index + 3],
-            ];
-            let blended = multiply_pixel(previous, incoming);
-            out.pixels[index..index + 4].copy_from_slice(&blended);
-        }
-    }
-    out
-}
-
-fn source_over_pixel(previous: [u8; 4], incoming: [u8; 4]) -> [u8; 4] {
-    let src_a = incoming[3] as f32 / 255.0;
-    if src_a <= 0.0 {
-        return previous;
-    }
-    let dst_a = previous[3] as f32 / 255.0;
-    let out_a = src_a + dst_a * (1.0 - src_a);
-    let mut out = [0_u8; 4];
-    for channel in 0..3 {
-        let src = incoming[channel] as f32 / 255.0;
-        let dst = previous[channel] as f32 / 255.0;
-        let value = src * src_a + dst * (1.0 - src_a);
-        out[channel] = (value * 255.0).round().clamp(0.0, 255.0) as u8;
-    }
-    out[3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
-    out
-}
-
-fn multiply_pixel(previous: [u8; 4], incoming: [u8; 4]) -> [u8; 4] {
-    let src_a = incoming[3] as f32 / 255.0;
-    if src_a <= 0.0 {
-        return previous;
-    }
-    let dst_a = previous[3] as f32 / 255.0;
-    let out_a = src_a + dst_a * (1.0 - src_a);
-    let mut out = [0_u8; 4];
-    for channel in 0..3 {
-        let src = incoming[channel] as f32 / 255.0;
-        let dst = previous[channel] as f32 / 255.0;
-        let multiplied = src * dst;
-        let value = multiplied * src_a + dst * (1.0 - src_a);
-        out[channel] = (value * 255.0).round().clamp(0.0, 255.0) as u8;
-    }
-    out[3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
     out
 }

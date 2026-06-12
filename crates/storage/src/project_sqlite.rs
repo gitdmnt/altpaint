@@ -5,9 +5,9 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use app_core::{
-    BlendMode, CanvasBitmap, PageDirtyRect, CanvasViewTransform, ClampToCanvasBounds, ColorRgba8,
-    Document, LayerMask, LayerNodeId, Page, PageId, Koma, KomaBounds, KomaId, PenPreset,
-    RasterLayer, ToolKind, Work, WorkId, WorkspaceLayout,
+    BlendMode, CanvasBitmap, CanvasViewTransform, ColorRgba8, Document, LayerMask, LayerNodeId,
+    Page, PageId, Koma, KomaBounds, KomaId, PenPreset, RasterLayer, ToolKind, Work, WorkId,
+    WorkspaceLayout,
 };
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -816,7 +816,7 @@ fn load_koma(
     let composite_cache =
         match load_koma_composite(connection, &current_composite_id(page_id, koma_id))? {
             Some(composite) => composite.bitmap,
-            None => compose_koma_bitmap(
+            None => app_core::blend::composite_layers(
                 koma_record.composed_width.max(1),
                 koma_record.composed_height.max(1),
                 &layers,
@@ -1030,95 +1030,6 @@ fn blit_chunk(
         bitmap.pixels[dst_start..dst_end].copy_from_slice(&pixels[src_start..src_end]);
     }
     Ok(())
-}
-
-fn compose_koma_bitmap(width: usize, height: usize, layers: &[RasterLayer]) -> CanvasBitmap {
-    let mut bitmap = CanvasBitmap::transparent(width, height);
-    for layer in layers.iter().filter(|layer| layer.visible) {
-        composite_layer_region_into(
-            &mut bitmap,
-            layer,
-            PageDirtyRect {
-                x: 0,
-                y: 0,
-                width,
-                height,
-            },
-        );
-    }
-    bitmap
-}
-
-fn composite_layer_region_into(
-    target: &mut CanvasBitmap,
-    layer: &RasterLayer,
-    dirty: PageDirtyRect,
-) {
-    let dirty = dirty.clamp_to_canvas_bounds(
-        target.width.min(layer.bitmap.width).max(1),
-        target.height.min(layer.bitmap.height).max(1),
-    );
-
-    for y in dirty.y..dirty.y + dirty.height {
-        for x in dirty.x..dirty.x + dirty.width {
-            let target_index = (y * target.width + x) * 4;
-            let source_index = (y * layer.bitmap.width + x) * 4;
-            let mut src = [
-                layer.bitmap.pixels[source_index],
-                layer.bitmap.pixels[source_index + 1],
-                layer.bitmap.pixels[source_index + 2],
-                layer.bitmap.pixels[source_index + 3],
-            ];
-            if let Some(mask) = &layer.mask {
-                src[3] = ((src[3] as u16 * mask_alpha_at(mask, x, y) as u16) / 255) as u8;
-            }
-            let dst = [
-                target.pixels[target_index],
-                target.pixels[target_index + 1],
-                target.pixels[target_index + 2],
-                target.pixels[target_index + 3],
-            ];
-            let blended = blend_pixel(dst, src, &layer.blend_mode);
-            target.pixels[target_index..target_index + 4].copy_from_slice(&blended);
-        }
-    }
-}
-
-fn mask_alpha_at(mask: &LayerMask, x: usize, y: usize) -> u8 {
-    if x >= mask.width || y >= mask.height {
-        return 0;
-    }
-    mask.alpha[y * mask.width + x]
-}
-
-fn blend_pixel(dst: [u8; 4], src: [u8; 4], mode: &BlendMode) -> [u8; 4] {
-    let src_a = src[3] as f32 / 255.0;
-    if src_a <= 0.0 {
-        return dst;
-    }
-    let dst_a = dst[3] as f32 / 255.0;
-
-    let blend_channel = |dst_c: u8, src_c: u8| -> f32 {
-        let d = dst_c as f32 / 255.0;
-        let s = src_c as f32 / 255.0;
-        match mode {
-            BlendMode::Normal => s,
-            BlendMode::Multiply => s * d,
-            BlendMode::Screen => 1.0 - (1.0 - s) * (1.0 - d),
-            BlendMode::Add => (s + d).min(1.0),
-        }
-    };
-
-    let out_a = src_a + dst_a * (1.0 - src_a);
-    let mut out = [0u8; 4];
-    for channel in 0..3 {
-        let dst_c = dst[channel] as f32 / 255.0;
-        let mixed = blend_channel(dst[channel], src[channel]);
-        let out_c = mixed * src_a + dst_c * (1.0 - src_a);
-        out[channel] = (out_c * 255.0).round().clamp(0.0, 255.0) as u8;
-    }
-    out[3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
-    out
 }
 
 fn current_composite_id(page_id: PageId, koma_id: KomaId) -> String {

@@ -1,4 +1,6 @@
-use app_core::{BitmapComposite, BitmapCompositor, CanvasBitmap, PaintPluginContext, ToolKind};
+use app_core::{
+    BitmapComposite, BitmapCompositor, BlendMode, CanvasBitmap, PaintPluginContext, ToolKind,
+};
 
 #[derive(Clone, Copy)]
 pub(crate) struct EraseComposite;
@@ -94,26 +96,11 @@ pub(crate) fn blend_stamp(
                 target.pixels[dst_index + 2],
                 target.pixels[dst_index + 3],
             ];
-            target.pixels[dst_index..dst_index + 4]
-                .copy_from_slice(&source_over_pixel(previous, incoming));
+            target.pixels[dst_index..dst_index + 4].copy_from_slice(&app_core::blend::composite_pixel(
+                previous,
+                incoming,
+                &BlendMode::Normal,
+            ));
         }
     }
-}
-
-pub(crate) fn source_over_pixel(previous: [u8; 4], incoming: [u8; 4]) -> [u8; 4] {
-    let src_a = incoming[3] as f32 / 255.0;
-    if src_a <= 0.0 {
-        return previous;
-    }
-    let dst_a = previous[3] as f32 / 255.0;
-    let out_a = src_a + dst_a * (1.0 - src_a);
-    let mut out = [0_u8; 4];
-    for channel in 0..3 {
-        let src = incoming[channel] as f32 / 255.0;
-        let dst = previous[channel] as f32 / 255.0;
-        let value = src * src_a + dst * (1.0 - src_a);
-        out[channel] = (value * 255.0).round().clamp(0.0, 255.0) as u8;
-    }
-    out[3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
-    out
 }

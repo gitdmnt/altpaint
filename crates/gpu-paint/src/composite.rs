@@ -2,7 +2,8 @@
 //!
 //! `composite_clear.wgsl` で dirty 領域を透明クリアし、bottom → top で
 //! `layer_composite.wgsl` を 1 レイヤーずつ dispatch する。blend mode は
-//! `Normal=0 / Multiply=1 / Screen=2 / Add=3` の u32 code で渡す。
+//! u32 code で渡す (対応表の単一定義は `crates/app-core/src/blend.rs` の
+//! `BlendMode::gpu_code`)。
 
 use std::sync::Arc;
 

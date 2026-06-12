@@ -522,15 +522,6 @@ fn parse_name_falls_back_to_normal_for_unknown_strings() {
     assert_eq!(BlendMode::parse_name("   "), None);
 }
 
-/// BlendMode::gpu_code は GPU shader の switch コードと 1:1 対応する。
-#[test]
-fn gpu_code_matches_shader_switch_codes() {
-    assert_eq!(BlendMode::Normal.gpu_code(), 0);
-    assert_eq!(BlendMode::Multiply.gpu_code(), 1);
-    assert_eq!(BlendMode::Screen.gpu_code(), 2);
-    assert_eq!(BlendMode::Add.gpu_code(), 3);
-}
-
 #[test]
 fn toggle_active_layer_visibility_reveals_underlying_layer() {
     let mut document = Document::default();

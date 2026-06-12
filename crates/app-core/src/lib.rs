@@ -3,6 +3,7 @@
 //! 作品・ページ・コマ・レイヤーのドメイン構造に加え、変更経路の入口になる
 //! `Command` 型、座標系、Undo/Redo 履歴、ペイント基本型、ワークスペース UI 状態を定義する。
 
+pub mod blend;
 pub mod command;
 pub mod coordinates;
 pub mod document;

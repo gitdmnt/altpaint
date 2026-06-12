@@ -25,7 +25,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     let dst = textureLoad(layer_rw, p);
-    // Straight-alpha source-over, matching CPU app_core::document::layer_ops::blend_pixel
+    // Straight-alpha source-over, matching CPU app_core::blend::composite_pixel
     // with BlendMode::Normal:
     //   out_c = src_c * src_a + dst_c * (1 - src_a)
     //   out_a = src_a + dst_a * (1 - src_a)
