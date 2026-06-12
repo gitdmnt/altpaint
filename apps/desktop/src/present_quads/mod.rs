@@ -4,7 +4,7 @@ mod geometry;
 mod overlay_quad;
 mod solid_quad;
 pub(crate) mod status_panel;
-use canvas_geometry::PixelRect;
+use app_core::WindowRect;
 use desktop_support::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
 
 pub(crate) use geometry::fit_rect;
@@ -21,9 +21,9 @@ pub(crate) type TextureQuad = canvas_geometry::TextureQuad;
 /// デスクトップ UI の固定レイアウト情報。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DesktopLayout {
-    pub(crate) window_rect: PixelRect,
-    pub(crate) canvas_host_rect: PixelRect,
-    pub(crate) canvas_display_rect: PixelRect,
+    pub(crate) window_rect: WindowRect,
+    pub(crate) canvas_host_rect: WindowRect,
+    pub(crate) canvas_display_rect: WindowRect,
 }
 
 impl DesktopLayout {
@@ -33,13 +33,13 @@ impl DesktopLayout {
         canvas_width: usize,
         canvas_height: usize,
     ) -> Self {
-        let window_rect = PixelRect {
+        let window_rect = WindowRect {
             x: 0,
             y: 0,
             width: window_width.max(1),
             height: window_height.max(1),
         };
-        let canvas_host_rect = PixelRect {
+        let canvas_host_rect = WindowRect {
             x: WINDOW_PADDING,
             y: WINDOW_PADDING + HEADER_HEIGHT + WINDOW_PADDING,
             width: window_width.saturating_sub(WINDOW_PADDING * 2).max(1),

@@ -1,16 +1,15 @@
 //! present 向け dirty 状態と更新指示を扱う。
 
-use app_core::{BitmapEdit, PageDirtyRect, MergeInSpace};
+use app_core::{BitmapEdit, MergeInSpace, PageDirtyRect, WindowRect};
 
 use super::DesktopApp;
-use canvas_geometry::PixelRect;
 
 /// 差分提示のために更新領域を集約した結果を表す。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PresentFrameUpdate {
-    pub(crate) background_dirty_rect: Option<PixelRect>,
-    pub(crate) temp_overlay_dirty_rect: Option<PixelRect>,
-    pub(crate) ui_panel_dirty_rect: Option<PixelRect>,
+    pub(crate) background_dirty_rect: Option<WindowRect>,
+    pub(crate) temp_overlay_dirty_rect: Option<WindowRect>,
+    pub(crate) ui_panel_dirty_rect: Option<WindowRect>,
     pub(crate) canvas_dirty_rect: Option<PageDirtyRect>,
     pub(crate) canvas_transform_changed: bool,
     pub(crate) canvas_updated: bool,
@@ -24,9 +23,9 @@ pub(crate) struct PresentInvalidation {
     /// L2 キャンバス層の保留 dirty rect (キャンバス座標)。
     pub(crate) canvas_dirty_rect: Option<PageDirtyRect>,
     /// L3 一時オーバーレイ層の保留 dirty rect (window 座標)。
-    pub(crate) temp_overlay_dirty_rect: Option<PixelRect>,
+    pub(crate) temp_overlay_dirty_rect: Option<WindowRect>,
     /// L4 UI パネル層の保留 dirty rect (window 座標)。
-    pub(crate) ui_panel_dirty_rect: Option<PixelRect>,
+    pub(crate) ui_panel_dirty_rect: Option<WindowRect>,
     /// ビュー変換 (pan/zoom/rotation) が変化したか。
     pub(crate) canvas_transform_update: bool,
     /// view-controls パネルの再同期をフレーム後段へ遅延しているか。
@@ -149,7 +148,7 @@ impl DesktopApp {
     }
 
     /// temp オーバーレイ (L3) の dirty rect を蓄積する。
-    pub(super) fn append_temp_overlay_dirty_rect(&mut self, dirty: PixelRect) -> bool {
+    pub(super) fn append_temp_overlay_dirty_rect(&mut self, dirty: WindowRect) -> bool {
         self.invalidation.temp_overlay_dirty_rect = Some(
             self.invalidation.temp_overlay_dirty_rect
                 .map_or(dirty, |existing| existing.union(dirty)),
@@ -158,7 +157,7 @@ impl DesktopApp {
     }
 
     /// UI パネル (L4) の dirty rect を蓄積する。
-    pub(super) fn append_ui_panel_dirty_rect(&mut self, dirty: PixelRect) -> bool {
+    pub(super) fn append_ui_panel_dirty_rect(&mut self, dirty: WindowRect) -> bool {
         self.invalidation.ui_panel_dirty_rect = Some(
             self.invalidation.ui_panel_dirty_rect
                 .map_or(dirty, |existing| existing.union(dirty)),
@@ -175,7 +174,7 @@ impl DesktopApp {
             self.layout.as_ref().map(|layout| layout.canvas_host_rect)
         {
             let (canvas_width, canvas_height) = self.canvas_dimensions();
-            let viewport = canvas_geometry::PixelRect {
+            let viewport = app_core::WindowRect {
                 x: canvas_viewport_rect.x,
                 y: canvas_viewport_rect.y,
                 width: canvas_viewport_rect.width,
@@ -274,7 +273,7 @@ impl DesktopApp {
     pub(crate) fn canvas_view_geometry(&mut self) -> Option<canvas_geometry::CanvasViewGeometry> {
         let layout = self.layout.as_ref()?;
         let bitmap = self.cpu_canvas_snapshot()?;
-        let viewport = canvas_geometry::PixelRect {
+        let viewport = app_core::WindowRect {
             x: layout.canvas_host_rect.x,
             y: layout.canvas_host_rect.y,
             width: layout.canvas_host_rect.width,

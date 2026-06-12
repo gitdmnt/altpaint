@@ -1,44 +1,9 @@
-use app_core::{PagePoint, CanvasViewTransform, CanvasViewportPoint, KomaLocalPoint, ToolKind};
+use app_core::{PagePoint, KomaLocalPoint, ToolKind};
 
 use crate::{
-    CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, CanvasPointerEvent,
-    advance_pointer_gesture, map_view_to_canvas_with_transform, koma_creation_preview_bounds,
+    CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, advance_pointer_gesture,
+    koma_creation_preview_bounds,
 };
-
-const SAMPLE_CANVAS_WIDTH: usize = 64;
-const SAMPLE_CANVAS_HEIGHT: usize = 64;
-
-#[test]
-fn map_view_center_into_canvas_center() {
-    let mapped = map_view_to_canvas_with_transform(
-        SAMPLE_CANVAS_WIDTH,
-        SAMPLE_CANVAS_HEIGHT,
-        CanvasPointerEvent {
-            position: CanvasViewportPoint::new(320, 320),
-            width: 640,
-            height: 640,
-        },
-        CanvasViewTransform::default(),
-    );
-
-    assert_eq!(mapped, Some(PagePoint::new(32, 32)));
-}
-
-#[test]
-fn map_view_returns_none_outside_letterboxed_canvas() {
-    let mapped = map_view_to_canvas_with_transform(
-        SAMPLE_CANVAS_WIDTH,
-        SAMPLE_CANVAS_HEIGHT,
-        CanvasPointerEvent {
-            position: CanvasViewportPoint::new(10, 10),
-            width: 900,
-            height: 640,
-        },
-        CanvasViewTransform::default(),
-    );
-
-    assert_eq!(mapped, None);
-}
 
 #[test]
 fn lasso_gesture_collects_points_and_emits_fill_on_release() {

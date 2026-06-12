@@ -5,7 +5,7 @@
 //! ブラシプレビュー円リング、`LineQuad` はラッソ線分カプセル。各々
 //! `WgpuPresenter` の専用パイプラインへ渡される。
 
-use app_core::PageDirtyRect;
+use app_core::{PageDirtyRect, WindowRect};
 use desktop_support::{
     ACTIVE_KOMA_BORDER, ACTIVE_KOMA_FILL, ACTIVE_KOMA_MASK, BRUSH_PREVIEW_RING, LASSO_LINE,
     KOMA_NAVIGATOR_ACTIVE, KOMA_NAVIGATOR_BACKGROUND, KOMA_NAVIGATOR_BORDER,
@@ -13,7 +13,6 @@ use desktop_support::{
 };
 use canvas_geometry::{CanvasOverlayState, CanvasPlan, KomaNavigatorOverlay};
 
-use canvas_geometry::PixelRect;
 use super::solid_quad::{SolidQuad, push_border_quads};
 
 /// ブラシプレビュー円リングの線幅 (px)。
@@ -235,7 +234,7 @@ fn push_koma_navigator(
     let scale = scale_x.min(scale_y).max(f32::EPSILON);
     let scaled_width = ((navigator.page_width as f32 * scale).round() as usize).max(1);
     let scaled_height = ((navigator.page_height as f32 * scale).round() as usize).max(1);
-    let outer = PixelRect {
+    let outer = WindowRect {
         x: canvas_host
             .x
             .saturating_add(canvas_host.width)
@@ -251,7 +250,7 @@ fn push_koma_navigator(
         color: KOMA_NAVIGATOR_BACKGROUND,
     });
     push_border_quads(out, outer, KOMA_NAVIGATOR_BORDER);
-    let inner = PixelRect {
+    let inner = WindowRect {
         x: outer.x + 8,
         y: outer.y + 8,
         width: scaled_width,
@@ -260,7 +259,7 @@ fn push_koma_navigator(
     push_border_quads(out, inner, KOMA_NAVIGATOR_BORDER);
 
     for koma in &navigator.panels {
-        let rect = PixelRect {
+        let rect = WindowRect {
             x: inner.x + ((koma.bounds.x as f32 * scale).round() as usize),
             y: inner.y + ((koma.bounds.y as f32 * scale).round() as usize),
             width: ((koma.bounds.width as f32 * scale).round() as usize).max(1),
@@ -292,12 +291,12 @@ fn push_koma_navigator(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::{PagePoint, CanvasViewTransform, KomaBounds};
-    use canvas_geometry::{KomaNavigatorEntry, PixelRect};
+    use app_core::{PagePoint, CanvasViewTransform, KomaBounds, WindowRect};
+    use canvas_geometry::KomaNavigatorEntry;
 
     fn make_plan(canvas_width: usize, canvas_height: usize) -> CanvasPlan {
         CanvasPlan {
-            host_rect: PixelRect {
+            host_rect: WindowRect {
                 x: 0,
                 y: 0,
                 width: canvas_width,

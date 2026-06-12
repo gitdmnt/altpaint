@@ -28,16 +28,16 @@ pub struct PanelWorkspace {
     /// HTML パネル (GPU 直描画) の hit 情報。`update_panel_hits` で毎フレーム更新する。
     panel_hits: BTreeMap<String, PanelHitMap>,
     /// HTML パネルのタイトルバードラッグハンドル (screen 座標)。`update_panel_move_handle` で更新。
-    panel_move_handles: BTreeMap<String, canvas_geometry::PixelRect>,
+    panel_move_handles: BTreeMap<String, app_core::WindowRect>,
     /// Phase 11: HTML パネル全体 (chrome + body) の screen 座標矩形。
     /// `update_panel_full_rect` で毎フレーム更新し、リサイズハンドルの hit テストに使う。
-    panel_full_rects: BTreeMap<String, canvas_geometry::PixelRect>,
+    panel_full_rects: BTreeMap<String, app_core::WindowRect>,
 }
 
 /// HTML パネル 1 枚分の hit 情報。screen 座標の矩形と panel-relative の hit 群。
 #[derive(Debug, Clone)]
 struct PanelHitMap {
-    screen_rect: canvas_geometry::PixelRect,
+    screen_rect: app_core::WindowRect,
     hits: Vec<PanelHitItem>,
 }
 
@@ -46,7 +46,7 @@ struct PanelHitItem {
     /// HTML 要素の `id` 属性。`HtmlWasmPanel::handle_event` の matching に使われる。
     node_id: String,
     /// パネル原点を (0,0) とする矩形。
-    rect_in_panel: canvas_geometry::PixelRect,
+    rect_in_panel: app_core::WindowRect,
 }
 
 impl PanelWorkspace {
@@ -64,7 +64,7 @@ impl PanelWorkspace {
     pub fn update_panel_move_handle(
         &mut self,
         panel_id: &str,
-        screen_rect: canvas_geometry::PixelRect,
+        screen_rect: app_core::WindowRect,
     ) {
         self.panel_move_handles
             .insert(panel_id.to_string(), screen_rect);
@@ -86,8 +86,8 @@ impl PanelWorkspace {
     pub fn update_panel_hits(
         &mut self,
         panel_id: &str,
-        screen_rect: canvas_geometry::PixelRect,
-        hits: Vec<(String, canvas_geometry::PixelRect)>,
+        screen_rect: app_core::WindowRect,
+        hits: Vec<(String, app_core::WindowRect)>,
     ) {
         let items = hits
             .into_iter()
@@ -116,7 +116,7 @@ impl PanelWorkspace {
     pub fn panel_at(&self, point: WindowPoint) -> Option<(String, PanelSurfacePoint)> {
         self.panel_hits.iter().find_map(|(panel_id, map)| {
             map.screen_rect
-                .to_local_point(point)
+                .to_panel_surface_point(point)
                 .map(|local| (panel_id.clone(), local))
         })
     }
@@ -126,7 +126,7 @@ impl PanelWorkspace {
     pub fn update_panel_full_rect(
         &mut self,
         panel_id: &str,
-        screen_rect: canvas_geometry::PixelRect,
+        screen_rect: app_core::WindowRect,
     ) {
         self.panel_full_rects
             .insert(panel_id.to_string(), screen_rect);
@@ -134,7 +134,7 @@ impl PanelWorkspace {
 
     /// 指定 panel_id の HTML パネル full rect (chrome + body の screen 座標矩形) を返す。
     /// GPU quad の配置 (`runtime.rs`) が hit テーブル更新側と同じ矩形を共有するために使う。
-    pub fn panel_full_rect(&self, panel_id: &str) -> Option<canvas_geometry::PixelRect> {
+    pub fn panel_full_rect(&self, panel_id: &str) -> Option<app_core::WindowRect> {
         self.panel_full_rects.get(panel_id).copied()
     }
 
@@ -159,7 +159,7 @@ impl PanelWorkspace {
     /// window 座標の点の HTML パネル hit を検索し、`(panel_id, node_id)` を返す。
     pub fn panel_hit_at(&self, point: WindowPoint) -> Option<(String, String)> {
         self.panel_hits.iter().find_map(|(panel_id, map)| {
-            let local = map.screen_rect.to_local_point(point)?;
+            let local = map.screen_rect.to_panel_surface_point(point)?;
             map.hits
                 .iter()
                 .find(|hit| hit.rect_in_panel.contains_local(local))
@@ -198,7 +198,7 @@ const RESIZE_HANDLE_CORNER_PX: usize = 12;
 /// 角優先 → 辺 → 内側 (None) の順で評価する。
 fn resize_hit_in_rect(
     point: WindowPoint,
-    rect: canvas_geometry::PixelRect,
+    rect: app_core::WindowRect,
 ) -> Option<panel_api::ResizeHandle> {
     use panel_api::ResizeHandle;
 
@@ -263,10 +263,10 @@ fn resize_hit_in_rect(
 mod resize_hit_tests {
     use super::*;
     use panel_api::ResizeHandle;
-    use canvas_geometry::PixelRect;
+    use app_core::WindowRect;
 
-    fn rect(x: usize, y: usize, w: usize, h: usize) -> PixelRect {
-        PixelRect {
+    fn rect(x: usize, y: usize, w: usize, h: usize) -> WindowRect {
+        WindowRect {
             x,
             y,
             width: w,

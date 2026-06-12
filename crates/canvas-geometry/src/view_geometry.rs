@@ -1,83 +1,12 @@
 use app_core::{
     CanvasDisplayPoint, CanvasViewTransform, CanvasViewportPoint, ClampToCanvasBounds,
-    PageDirtyRect, PagePoint, PanelSurfacePoint, WindowPoint,
+    PageDirtyRect, PagePoint, WindowRect,
 };
-
-/// 画面上のピクセル矩形を表す。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PixelRect {
-    pub x: usize,
-    pub y: usize,
-    pub width: usize,
-    pub height: usize,
-}
-
-impl PixelRect {
-    /// window 座標の点が範囲内に含まれるか判定する。
-    pub fn contains(&self, point: WindowPoint) -> bool {
-        point.x >= self.x as i32
-            && point.y >= self.y as i32
-            && point.x < (self.x + self.width) as i32
-            && point.y < (self.y + self.height) as i32
-    }
-
-    /// window 座標の点を矩形原点基準のローカル座標へ変換する。
-    ///
-    /// 範囲外の場合は `None` を返します。
-    pub fn to_local_point(&self, point: WindowPoint) -> Option<PanelSurfacePoint> {
-        self.contains(point).then(|| {
-            PanelSurfacePoint::new(
-                (point.x - self.x as i32) as usize,
-                (point.y - self.y as i32) as usize,
-            )
-        })
-    }
-
-    /// 矩形と同じローカル座標系の点が範囲内に含まれるか判定する。
-    pub fn contains_local(&self, point: PanelSurfacePoint) -> bool {
-        point.x >= self.x
-            && point.y >= self.y
-            && point.x < self.x + self.width
-            && point.y < self.y + self.height
-    }
-
-    pub fn union(&self, other: PixelRect) -> PixelRect {
-        let left = self.x.min(other.x);
-        let top = self.y.min(other.y);
-        let right = (self.x + self.width).max(other.x + other.width);
-        let bottom = (self.y + self.height).max(other.y + other.height);
-
-        PixelRect {
-            x: left,
-            y: top,
-            width: right.saturating_sub(left),
-            height: bottom.saturating_sub(top),
-        }
-    }
-
-    pub fn intersect(&self, other: PixelRect) -> Option<PixelRect> {
-        let left = self.x.max(other.x);
-        let top = self.y.max(other.y);
-        let right = (self.x + self.width).min(other.x + other.width);
-        let bottom = (self.y + self.height).min(other.y + other.height);
-
-        if left >= right || top >= bottom {
-            return None;
-        }
-
-        Some(PixelRect {
-            x: left,
-            y: top,
-            width: right - left,
-            height: bottom - top,
-        })
-    }
-}
 
 /// GPU 上で提示するテクスチャ付き矩形を表す。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TextureQuad {
-    pub destination: PixelRect,
+    pub destination: WindowRect,
     pub uv_min: [f32; 2],
     pub uv_max: [f32; 2],
     pub rotation_degrees: f32,
@@ -89,7 +18,7 @@ pub struct TextureQuad {
 /// `CanvasViewTransform` から導かれる表示用の幾何計画。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CanvasViewGeometry {
-    viewport: PixelRect,
+    viewport: WindowRect,
     source_width: usize,
     source_height: usize,
     bbox_width: f32,
@@ -127,10 +56,10 @@ impl CanvasViewGeometry {
         self.scale
     }
 
-    pub fn map_canvas_dirty_rect(&self, dirty: PageDirtyRect) -> PixelRect {
+    pub fn map_canvas_dirty_rect(&self, dirty: PageDirtyRect) -> WindowRect {
         self.map_source_rect_to_display(dirty)
             .and_then(|rect| rect.intersect(self.viewport))
-            .unwrap_or(PixelRect {
+            .unwrap_or(WindowRect {
                 x: self.viewport.x,
                 y: self.viewport.y,
                 width: 0,
@@ -142,11 +71,11 @@ impl CanvasViewGeometry {
         &self,
         canvas_position: PagePoint,
         brush_diameter: f32,
-    ) -> Option<PixelRect> {
+    ) -> Option<WindowRect> {
         let center = self.map_source_point_to_display(canvas_position)?;
         let radius = ((brush_diameter.max(1.0) * self.scale) * 0.5).max(4.0);
 
-        self.viewport.intersect(PixelRect {
+        self.viewport.intersect(WindowRect {
             x: (center.x - radius - 2.0)
                 .floor()
                 .max(self.viewport.x as f32) as usize,
@@ -203,7 +132,7 @@ impl CanvasViewGeometry {
         ))
     }
 
-    fn map_source_rect_to_display(&self, dirty: PageDirtyRect) -> Option<PixelRect> {
+    fn map_source_rect_to_display(&self, dirty: PageDirtyRect) -> Option<WindowRect> {
         let dirty = dirty.clamp_to_canvas_bounds(self.source_width, self.source_height);
         let corners = [
             SourceUv {
@@ -238,7 +167,7 @@ impl CanvasViewGeometry {
             max_y = max_y.max(display_y);
         }
 
-        (min_x < max_x && min_y < max_y).then_some(PixelRect {
+        (min_x < max_x && min_y < max_y).then_some(WindowRect {
             x: min_x.floor().max(self.viewport.x as f32) as usize,
             y: min_y.floor().max(self.viewport.y as f32) as usize,
             width: (max_x.ceil() - min_x.floor()).max(1.0) as usize,
@@ -268,7 +197,7 @@ impl CanvasViewGeometry {
     ///
     /// viewport またはソース寸法が 0 の場合は `None` を返す。
     pub fn compute(
-        viewport: PixelRect,
+        viewport: WindowRect,
         source_width: usize,
         source_height: usize,
         transform: CanvasViewTransform,
@@ -309,7 +238,7 @@ impl CanvasViewGeometry {
         let clipped_bottom = bottom.min((viewport.y + viewport.height) as f32);
 
         let drawn_rect =
-            (clipped_left < clipped_right && clipped_top < clipped_bottom).then_some(PixelRect {
+            (clipped_left < clipped_right && clipped_top < clipped_bottom).then_some(WindowRect {
                 x: clipped_left as usize,
                 y: clipped_top as usize,
                 width: (clipped_right - clipped_left) as usize,
@@ -429,14 +358,14 @@ fn rotated_to_source_uv(rotated: RotatedUv, uv_transform: UvTransform) -> Source
 
 pub fn map_canvas_dirty_to_display_with_transform(
     dirty: PageDirtyRect,
-    viewport: PixelRect,
+    viewport: WindowRect,
     source_width: usize,
     source_height: usize,
     transform: CanvasViewTransform,
-) -> PixelRect {
+) -> WindowRect {
     CanvasViewGeometry::compute(viewport, source_width, source_height, transform)
         .map(|geometry| geometry.map_canvas_dirty_rect(dirty))
-        .unwrap_or(PixelRect {
+        .unwrap_or(WindowRect {
             x: viewport.x,
             y: viewport.y,
             width: 0,
@@ -445,20 +374,20 @@ pub fn map_canvas_dirty_to_display_with_transform(
 }
 
 pub fn brush_preview_rect_for_diameter(
-    viewport: PixelRect,
+    viewport: WindowRect,
     source_width: usize,
     source_height: usize,
     transform: CanvasViewTransform,
     canvas_position: PagePoint,
     brush_diameter: f32,
-) -> Option<PixelRect> {
+) -> Option<WindowRect> {
     CanvasViewGeometry::compute(viewport, source_width, source_height, transform).and_then(
         |geometry| geometry.brush_preview_rect_for_diameter(canvas_position, brush_diameter),
     )
 }
 
 pub fn map_canvas_point_to_display(
-    viewport: PixelRect,
+    viewport: WindowRect,
     source_width: usize,
     source_height: usize,
     transform: CanvasViewTransform,
@@ -469,7 +398,7 @@ pub fn map_canvas_point_to_display(
 }
 
 pub fn canvas_texture_quad(
-    viewport: PixelRect,
+    viewport: WindowRect,
     source_width: usize,
     source_height: usize,
     transform: CanvasViewTransform,
@@ -479,7 +408,7 @@ pub fn canvas_texture_quad(
 }
 
 pub fn map_view_to_canvas_with_transform(
-    viewport: PixelRect,
+    viewport: WindowRect,
     source_width: usize,
     source_height: usize,
     point: CanvasViewportPoint,

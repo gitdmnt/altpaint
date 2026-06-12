@@ -1,8 +1,7 @@
 //! パネル入力中継とホストアクション適用を集約する。
 
-use app_core::{PanelSurfacePoint, WindowPoint};
+use app_core::{PanelSurfacePoint, WindowPoint, WindowRect};
 use panel_runtime::{HostAction, PanelEvent, ResizeHandle};
-use canvas_geometry::PixelRect;
 
 use super::DesktopApp;
 /// パネル移動ドラッグ中の被操作パネル情報を保持する。
@@ -20,7 +19,7 @@ pub(crate) struct PanelDragState {
 pub(crate) struct PanelResizeState {
     pub(crate) panel_id: String,
     pub(crate) handle: ResizeHandle,
-    pub(crate) start_rect: PixelRect,
+    pub(crate) start_rect: WindowRect,
     pub(crate) start_pointer: WindowPoint,
 }
 
@@ -44,7 +43,7 @@ impl DesktopApp {
     /// 現在のウィンドウ viewport で指定パネルの矩形を解決する。
     /// layout 未確定 (初回フレーム前) は `None` (BL-051: `usize::MAX`
     /// フォールバックは右/下アンカーで画面外座標を返すため廃止)。
-    pub(crate) fn panel_rect_in_window(&self, panel_id: &str) -> Option<PixelRect> {
+    pub(crate) fn panel_rect_in_window(&self, panel_id: &str) -> Option<WindowRect> {
         let layout = self.layout.as_ref()?;
         self.panel_workspace.panel_rect(
             panel_id,
@@ -79,7 +78,7 @@ impl DesktopApp {
             self.panel_interaction.active_panel_drag = Some(PanelDragState {
                 panel_id,
                 grab_offset: panel_rect
-                    .to_local_point(point)
+                    .to_panel_surface_point(point)
                     .unwrap_or(PanelSurfacePoint::new(0, 0)),
             });
             return true;
@@ -383,7 +382,7 @@ pub(crate) fn compute_resized_rect(
     pointer: WindowPoint,
     viewport: (u32, u32),
     constraints: panel_runtime::PanelSizeConstraints,
-) -> PixelRect {
+) -> WindowRect {
     let dx = pointer.x - state.start_pointer.x;
     let dy = pointer.y - state.start_pointer.y;
 
@@ -446,7 +445,7 @@ pub(crate) fn compute_resized_rect(
     let final_x = new_left.clamp(0, max_x);
     let final_y = new_top.clamp(0, max_y);
 
-    PixelRect {
+    WindowRect {
         x: final_x as usize,
         y: final_y as usize,
         width: width as usize,
@@ -459,7 +458,7 @@ mod resize_drag_tests {
     use super::*;
     use panel_runtime::PanelSizeConstraints;
 
-    fn state(handle: ResizeHandle, start_rect: PixelRect, start_pointer: WindowPoint) -> PanelResizeState {
+    fn state(handle: ResizeHandle, start_rect: WindowRect, start_pointer: WindowPoint) -> PanelResizeState {
         PanelResizeState {
             panel_id: "test.panel".to_string(),
             handle,
@@ -468,8 +467,8 @@ mod resize_drag_tests {
         }
     }
 
-    fn rect(x: usize, y: usize, w: usize, h: usize) -> PixelRect {
-        PixelRect {
+    fn rect(x: usize, y: usize, w: usize, h: usize) -> WindowRect {
+        WindowRect {
             x,
             y,
             width: w,

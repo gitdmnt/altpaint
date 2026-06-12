@@ -89,6 +89,48 @@ impl WindowRect {
         let point = self.clamp_point(point)?;
         self.to_panel_surface_point(point)
     }
+
+    /// 同じローカル座標系の点が範囲内に含まれるか判定する。
+    pub fn contains_local(self, point: PanelSurfacePoint) -> bool {
+        point.x >= self.x
+            && point.y >= self.y
+            && point.x < self.x + self.width
+            && point.y < self.y + self.height
+    }
+
+    /// 2 つの矩形を内包する最小の矩形を返す。
+    pub fn union(self, other: WindowRect) -> WindowRect {
+        let left = self.x.min(other.x);
+        let top = self.y.min(other.y);
+        let right = (self.x + self.width).max(other.x + other.width);
+        let bottom = (self.y + self.height).max(other.y + other.height);
+
+        WindowRect {
+            x: left,
+            y: top,
+            width: right.saturating_sub(left),
+            height: bottom.saturating_sub(top),
+        }
+    }
+
+    /// 2 つの矩形の共通部分を返す。重なりがない場合は `None`。
+    pub fn intersect(self, other: WindowRect) -> Option<WindowRect> {
+        let left = self.x.max(other.x);
+        let top = self.y.max(other.y);
+        let right = (self.x + self.width).min(other.x + other.width);
+        let bottom = (self.y + self.height).min(other.y + other.height);
+
+        if left >= right || top >= bottom {
+            return None;
+        }
+
+        Some(WindowRect {
+            x: left,
+            y: top,
+            width: right - left,
+            height: bottom - top,
+        })
+    }
 }
 
 /// キャンバス表示 viewport 左上基準のローカル座標を表す。
@@ -410,6 +452,33 @@ mod tests {
             rect.clamp_to_surface_point(WindowPoint::new(999, -10)),
             Some(PanelSurfacePoint::new(7, 0))
         );
+    }
+
+    #[test]
+    fn window_rect_union_covers_both_rects() {
+        let a = WindowRect::new(10, 10, 20, 20);
+        let b = WindowRect::new(25, 30, 10, 10);
+
+        assert_eq!(a.union(b), WindowRect::new(10, 10, 25, 30));
+    }
+
+    #[test]
+    fn window_rect_intersect_returns_overlap_or_none() {
+        let a = WindowRect::new(10, 10, 20, 20);
+        let b = WindowRect::new(20, 20, 20, 20);
+
+        assert_eq!(a.intersect(b), Some(WindowRect::new(20, 20, 10, 10)));
+        assert_eq!(a.intersect(WindowRect::new(100, 100, 5, 5)), None);
+    }
+
+    #[test]
+    fn window_rect_contains_local_checks_same_space_point() {
+        let rect = WindowRect::new(4, 4, 8, 8);
+
+        assert!(rect.contains_local(PanelSurfacePoint::new(4, 4)));
+        assert!(rect.contains_local(PanelSurfacePoint::new(11, 11)));
+        assert!(!rect.contains_local(PanelSurfacePoint::new(12, 4)));
+        assert!(!rect.contains_local(PanelSurfacePoint::new(3, 4)));
     }
 
     #[test]

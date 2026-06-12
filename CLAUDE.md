@@ -69,7 +69,7 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 
 **起動**: `apps/desktop` が winit + wgpu 初期化 → `DesktopApp::new` がセッション/プロジェクト/ワークスペース復元 → `PanelRuntime` が `crates/builtin-panels/` の HTML+CSS+Wasm パネル 12 個を読み込む → `storage` がツール・ペンを読み込む → 初期レンダリング
 
-**入力 → 描画**: OS入力 → `event_loop/pointer.rs` 正規化 → `app/input.rs` がキャンバスかパネルへ振り分け → `paint_engine::view_mapping` が座標変換 → `paint_engine::gesture` が `PaintInput` を生成 → `paint_engine::context_builder` が `Document` からペイントコンテキストを解決 → `gpu-paint` の compute shader が GPU レイヤーテクスチャへ直接描画（ブラシ/塗りつぶし/合成）→ `wgpu_canvas.rs` が GPU へ提示
+**入力 → 描画**: OS入力 → `event_loop/pointer.rs` 正規化 → `app/input.rs` がキャンバスかパネルへ振り分け → `canvas-geometry::map_view_to_canvas_with_transform` が座標変換 → `paint_engine::gesture` が `PaintInput` を生成 → `paint_engine::context_builder` が `Document` からペイントコンテキストを解決 → `gpu-paint` の compute shader が GPU レイヤーテクスチャへ直接描画（ブラシ/塗りつぶし/合成）→ `wgpu_canvas.rs` が GPU へ提示
 
 **パネル**: `HtmlWasmPanel` が `panel.html` + `panel.css` をロード → `panel-wasm-host`（wasmtime）が Wasm を実行し DOM mutation host function で直接 DOM を書換え → `PanelRuntime` が host state を同期 → `PanelEvent`（Activate/Keyboard 等）/`HostAction` → `DesktopApp` が `Command` またはサイドエフェクトとして適用 → `panel-html::HtmlPanelView`（Blitz + vello）が GPU テクスチャに直描画 → `wgpu_canvas` が `panel_quads` レイヤーで合成。hit / move handle テーブルは `prepare_present_frame` が GPU 非依存で毎フレーム更新
 

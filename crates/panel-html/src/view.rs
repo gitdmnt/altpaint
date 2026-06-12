@@ -71,8 +71,13 @@ impl<'a> RenderOutcome<'a> {
     }
 }
 
+/// `data-action` 要素のレイアウト矩形 (パネルローカル座標、u32 ピクセル)。
+///
+/// panel-html はローカルクレート依存を持たない (§1.4) ため、`app-core::WindowRect`
+/// (usize) には統合せず、本クレート固有の型として保持する。ホスト側 (desktop) が
+/// `WindowRect` へ変換して使う。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PixelRect {
+pub struct PanelActionRect {
     pub x: u32,
     pub y: u32,
     pub width: u32,
@@ -85,7 +90,7 @@ pub struct ActionRect {
     pub element_id: Option<String>,
     pub data_action: String,
     pub data_args: Option<String>,
-    pub rect: PixelRect,
+    pub rect: PanelActionRect,
 }
 
 /// stylo の resolve を直列化するグローバルロック。
@@ -453,7 +458,7 @@ impl HtmlPanelView {
         let data_args = element.attr(LocalName::from("data-args")).map(str::to_string);
         let (x, y) = compute_absolute_position(&self.document, node_id)?;
         let size = node.final_layout.size;
-        let rect = PixelRect {
+        let rect = PanelActionRect {
             x: x.max(0.0).floor() as u32,
             y: y.max(0.0).floor() as u32,
             width: size.width.max(0.0).ceil() as u32,

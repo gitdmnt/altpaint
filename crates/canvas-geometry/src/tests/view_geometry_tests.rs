@@ -1,67 +1,16 @@
 use app_core::{
-    PageDirtyRect, PagePoint, CanvasViewTransform, CanvasViewportPoint, PanelSurfacePoint,
-    WindowPoint,
+    PageDirtyRect, PagePoint, CanvasViewTransform, CanvasViewportPoint, WindowRect,
 };
 
 use crate::{
-    CanvasViewGeometry, PixelRect, brush_preview_dirty_rect, canvas_texture_quad,
+    CanvasViewGeometry, brush_preview_dirty_rect, canvas_texture_quad,
     map_canvas_dirty_to_display_with_transform, map_canvas_point_to_display,
     map_view_to_canvas_with_transform,
 };
 
-/// PixelRect::contains が window 座標点の内外を正しく判定することを検証する。
-#[test]
-fn pixel_rect_contains_judges_window_point() {
-    let rect = PixelRect {
-        x: 100,
-        y: 50,
-        width: 30,
-        height: 20,
-    };
-
-    assert!(rect.contains(WindowPoint::new(100, 50)));
-    assert!(rect.contains(WindowPoint::new(129, 69)));
-    assert!(!rect.contains(WindowPoint::new(130, 50)));
-    assert!(!rect.contains(WindowPoint::new(99, 50)));
-    assert!(!rect.contains(WindowPoint::new(-1, -1)));
-}
-
-/// PixelRect::to_local_point が矩形原点基準のローカル座標へ変換することを検証する。
-#[test]
-fn pixel_rect_to_local_point_offsets_by_origin() {
-    let rect = PixelRect {
-        x: 100,
-        y: 50,
-        width: 30,
-        height: 20,
-    };
-
-    assert_eq!(
-        rect.to_local_point(WindowPoint::new(112, 58)),
-        Some(PanelSurfacePoint::new(12, 8))
-    );
-    assert_eq!(rect.to_local_point(WindowPoint::new(99, 58)), None);
-}
-
-/// PixelRect::contains_local がローカル座標系の点を判定することを検証する。
-#[test]
-fn pixel_rect_contains_local_judges_same_space_point() {
-    let rect = PixelRect {
-        x: 4,
-        y: 4,
-        width: 8,
-        height: 8,
-    };
-
-    assert!(rect.contains_local(PanelSurfacePoint::new(4, 4)));
-    assert!(rect.contains_local(PanelSurfacePoint::new(11, 11)));
-    assert!(!rect.contains_local(PanelSurfacePoint::new(12, 4)));
-    assert!(!rect.contains_local(PanelSurfacePoint::new(3, 4)));
-}
-
 #[test]
 fn brush_preview_dirty_rect_unions_previous_and_current_preview() {
-    let viewport = PixelRect {
+    let viewport = WindowRect {
         x: 0,
         y: 0,
         width: 400,
@@ -94,7 +43,7 @@ fn transformed_canvas_dirty_rect_tracks_zoom_and_pan() {
             width: 8,
             height: 8,
         },
-        PixelRect {
+        WindowRect {
             x: 100,
             y: 50,
             width: 320,
@@ -121,7 +70,7 @@ fn transformed_canvas_dirty_rect_tracks_zoom_and_pan() {
 #[test]
 fn canvas_texture_quad_clips_uv_when_panned_outside_display() {
     let quad = canvas_texture_quad(
-        PixelRect {
+        WindowRect {
             x: 100,
             y: 80,
             width: 320,
@@ -149,7 +98,7 @@ fn canvas_texture_quad_clips_uv_when_panned_outside_display() {
 #[test]
 fn map_view_to_canvas_tracks_shifted_view_geometry() {
     let mapped = map_view_to_canvas_with_transform(
-        PixelRect {
+        WindowRect {
             x: 0,
             y: 0,
             width: 640,
@@ -171,10 +120,40 @@ fn map_view_to_canvas_tracks_shifted_view_geometry() {
     assert_eq!(mapped, Some(PagePoint::new(32, 32)));
 }
 
+/// 正方形キャンバスの中心 view 座標がキャンバス中心へ写像されることを検証する。
+/// (BL-042 で削除した paint-engine ラッパーのテストを統合先へ移設)
+#[test]
+fn map_view_center_into_canvas_center() {
+    let mapped = map_view_to_canvas_with_transform(
+        WindowRect::new(0, 0, 640, 640),
+        64,
+        64,
+        CanvasViewportPoint::new(320, 320),
+        CanvasViewTransform::default(),
+    );
+
+    assert_eq!(mapped, Some(PagePoint::new(32, 32)));
+}
+
+/// letterbox された余白上の view 座標が `None` を返すことを検証する。
+/// (BL-042 で削除した paint-engine ラッパーのテストを統合先へ移設)
+#[test]
+fn map_view_returns_none_outside_letterboxed_canvas() {
+    let mapped = map_view_to_canvas_with_transform(
+        WindowRect::new(0, 0, 900, 640),
+        64,
+        64,
+        CanvasViewportPoint::new(10, 10),
+        CanvasViewTransform::default(),
+    );
+
+    assert_eq!(mapped, None);
+}
+
 #[test]
 fn canvas_texture_quad_carries_rotation_and_flip_flags() {
     let quad = canvas_texture_quad(
-        PixelRect {
+        WindowRect {
             x: 0,
             y: 0,
             width: 640,
@@ -202,7 +181,7 @@ fn canvas_texture_quad_carries_rotation_and_flip_flags() {
 
 #[test]
 fn arbitrary_rotation_roundtrips_view_to_canvas() {
-    let viewport = PixelRect {
+    let viewport = WindowRect {
         x: 0,
         y: 0,
         width: 640,
@@ -233,7 +212,7 @@ fn arbitrary_rotation_roundtrips_view_to_canvas() {
 
 #[test]
 fn arbitrary_rotation_keeps_canvas_scale_stable() {
-    let viewport = PixelRect {
+    let viewport = WindowRect {
         x: 0,
         y: 0,
         width: 640,
@@ -256,7 +235,7 @@ fn arbitrary_rotation_keeps_canvas_scale_stable() {
 #[test]
 fn map_view_to_canvas_tracks_rotated_geometry() {
     let mapped = map_view_to_canvas_with_transform(
-        PixelRect {
+        WindowRect {
             x: 0,
             y: 0,
             width: 640,

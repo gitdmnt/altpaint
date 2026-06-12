@@ -160,9 +160,9 @@
 
 `canvas` には次がある。
 
-- `CanvasRuntime`
+- `PaintEngine`
 - `CanvasInputState`
-- `CanvasPointerEvent` と view-to-canvas 変換
+- view-to-canvas 変換は `canvas-geometry::map_view_to_canvas_with_transform` を直接呼ぶ (BL-042 でラッパー `view_mapping.rs` / `CanvasPointerEvent` を廃止)
 - `advance_pointer_gesture(...)` による gesture state machine
 - `build_paint_context(...)` による `Document` からの runtime 文脈構築
 - built-in bitmap paint plugin

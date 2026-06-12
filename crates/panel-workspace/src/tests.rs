@@ -29,7 +29,7 @@ fn panel_move_handle_at_resolves_drag_handle_to_panel_id() {
     let mut panel_workspace = PanelWorkspace::new();
     panel_workspace.update_panel_move_handle(
         "html.test",
-        canvas_geometry::PixelRect {
+        app_core::WindowRect {
             x: 100,
             y: 50,
             width: 280,
@@ -54,7 +54,7 @@ fn remove_panel_move_handle_clears_handle() {
     let mut panel_workspace = PanelWorkspace::new();
     panel_workspace.update_panel_move_handle(
         "html.test",
-        canvas_geometry::PixelRect {
+        app_core::WindowRect {
             x: 0,
             y: 0,
             width: 100,
@@ -71,7 +71,7 @@ fn remove_panel_move_handle_clears_handle() {
 #[test]
 fn panel_hit_at_resolves_screen_coordinates_to_panel_event() {
     let mut panel_workspace = PanelWorkspace::new();
-    let screen_rect = canvas_geometry::PixelRect {
+    let screen_rect = app_core::WindowRect {
         x: 100,
         y: 50,
         width: 280,
@@ -80,7 +80,7 @@ fn panel_hit_at_resolves_screen_coordinates_to_panel_event() {
     let hits = vec![
         (
             "save_btn".to_string(),
-            canvas_geometry::PixelRect {
+            app_core::WindowRect {
                 x: 10,
                 y: 20,
                 width: 60,
@@ -89,7 +89,7 @@ fn panel_hit_at_resolves_screen_coordinates_to_panel_event() {
         ),
         (
             "undo_btn".to_string(),
-            canvas_geometry::PixelRect {
+            app_core::WindowRect {
                 x: 80,
                 y: 20,
                 width: 60,
@@ -124,7 +124,7 @@ fn remove_panel_hits_clears_hits_for_panel() {
     let mut panel_workspace = PanelWorkspace::new();
     panel_workspace.update_panel_hits(
         "html.test",
-        canvas_geometry::PixelRect {
+        app_core::WindowRect {
             x: 0,
             y: 0,
             width: 100,
@@ -132,7 +132,7 @@ fn remove_panel_hits_clears_hits_for_panel() {
         },
         vec![(
             "btn".to_string(),
-            canvas_geometry::PixelRect {
+            app_core::WindowRect {
                 x: 10,
                 y: 10,
                 width: 40,
@@ -220,7 +220,7 @@ fn resize_panel_keeping_anchor_top_right_keeps_right_edge_fixed() {
         WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
         WorkspacePanelState,
     };
-    use canvas_geometry::PixelRect;
+    use app_core::WindowRect;
 
     let mut panel_workspace = PanelWorkspace::new();
     panel_workspace.replace_workspace_layout(WorkspaceLayout {
@@ -239,7 +239,7 @@ fn resize_panel_keeping_anchor_top_right_keeps_right_edge_fixed() {
     let viewport = (1280usize, 800usize);
     // 元の rect: x = 1280 - 200 - 0 = 1080, width = 200 → 右辺 = 1280
     // W ハンドルで左へドラッグ: 新しい width = 300, x = 980 → 右辺 = 1280 (不変)
-    let new_rect = PixelRect {
+    let new_rect = WindowRect {
         x: 980,
         y: 0,
         width: 300,

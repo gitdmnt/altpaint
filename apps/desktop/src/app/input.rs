@@ -3,10 +3,9 @@
 //! OS 由来の生イベントをドキュメント編集やパネル操作へ変換し、
 //! ランタイム側が UI 詳細を知らずに済むようにする。
 
-use app_core::{PagePoint, Command, ToolKind, WindowPoint};
+use app_core::{PagePoint, Command, ToolKind, WindowPoint, WindowRect};
 use paint_engine::{
-    CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, CanvasPointerEvent,
-    advance_pointer_gesture, map_view_to_canvas_with_transform,
+    CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, advance_pointer_gesture,
 };
 
 use super::DesktopApp;
@@ -286,14 +285,16 @@ impl DesktopApp {
         );
         let viewport_point = window_rect.clamp_to_canvas_viewport_point(point)?;
         let (canvas_width, canvas_height) = self.canvas_dimensions();
-        map_view_to_canvas_with_transform(
+        canvas_geometry::map_view_to_canvas_with_transform(
+            WindowRect::new(
+                0,
+                0,
+                layout.canvas_host_rect.width,
+                layout.canvas_host_rect.height,
+            ),
             canvas_width,
             canvas_height,
-            CanvasPointerEvent {
-                position: viewport_point,
-                width: layout.canvas_host_rect.width as i32,
-                height: layout.canvas_host_rect.height as i32,
-            },
+            viewport_point,
             self.document.view_transform,
         )
     }

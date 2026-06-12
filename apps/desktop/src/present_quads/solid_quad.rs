@@ -9,7 +9,7 @@ use desktop_support::{
     CANVAS_FRAME_BORDER,
 };
 
-use canvas_geometry::PixelRect;
+use app_core::WindowRect;
 
 /// 1px 線幅の枠線分解で使用する固定線幅。
 const BORDER_THICKNESS: usize = 1;
@@ -17,7 +17,7 @@ const BORDER_THICKNESS: usize = 1;
 /// GPU で描画する単色矩形の最小 DTO。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SolidQuad {
-    pub(crate) rect: PixelRect,
+    pub(crate) rect: WindowRect,
     /// RGBA 各 1 バイト (sRGB)。
     pub(crate) color: [u8; 4],
 }
@@ -27,7 +27,7 @@ pub(crate) struct SolidQuad {
 /// wgpu の NDC は左 = -1.0, 右 = +1.0, 上 = +1.0, 下 = -1.0。
 /// ピクセル Y は下方向が増加するため、Y は反転して NDC 化する。
 pub(crate) fn pixel_rect_to_ndc(
-    rect: PixelRect,
+    rect: WindowRect,
     surface_width: u32,
     surface_height: u32,
 ) -> [f32; 4] {
@@ -43,13 +43,13 @@ pub(crate) fn pixel_rect_to_ndc(
 /// 矩形を 4 本の 1px 枠線（top/bottom/left/right）に分解する。
 ///
 /// 矩形の幅・高さが 0 の場合は何も追加しない。
-pub(crate) fn push_border_quads(out: &mut Vec<SolidQuad>, rect: PixelRect, color: [u8; 4]) {
+pub(crate) fn push_border_quads(out: &mut Vec<SolidQuad>, rect: WindowRect, color: [u8; 4]) {
     if rect.width == 0 || rect.height == 0 {
         return;
     }
     let t = BORDER_THICKNESS;
     out.push(SolidQuad {
-        rect: PixelRect {
+        rect: WindowRect {
             x: rect.x,
             y: rect.y,
             width: rect.width,
@@ -59,7 +59,7 @@ pub(crate) fn push_border_quads(out: &mut Vec<SolidQuad>, rect: PixelRect, color
     });
     if rect.height > t {
         out.push(SolidQuad {
-            rect: PixelRect {
+            rect: WindowRect {
                 x: rect.x,
                 y: rect.y + rect.height - t,
                 width: rect.width,
@@ -71,7 +71,7 @@ pub(crate) fn push_border_quads(out: &mut Vec<SolidQuad>, rect: PixelRect, color
     if rect.height > t * 2 {
         let inner_h = rect.height - t * 2;
         out.push(SolidQuad {
-            rect: PixelRect {
+            rect: WindowRect {
                 x: rect.x,
                 y: rect.y + t,
                 width: t.min(rect.width),
@@ -81,7 +81,7 @@ pub(crate) fn push_border_quads(out: &mut Vec<SolidQuad>, rect: PixelRect, color
         });
         if rect.width > t {
             out.push(SolidQuad {
-                rect: PixelRect {
+                rect: WindowRect {
                     x: rect.x + rect.width - t,
                     y: rect.y + t,
                     width: t,
@@ -94,29 +94,29 @@ pub(crate) fn push_border_quads(out: &mut Vec<SolidQuad>, rect: PixelRect, color
 }
 
 /// `host` 矩形のうち `display` 矩形に覆われない 4 つのマージン領域を返す。
-fn host_margins(host: PixelRect, display: PixelRect) -> [PixelRect; 4] {
+fn host_margins(host: WindowRect, display: WindowRect) -> [WindowRect; 4] {
     let display_y = display.y.max(host.y);
     let display_y_end = (display.y + display.height).min(host.y + host.height);
     [
-        PixelRect {
+        WindowRect {
             x: host.x,
             y: host.y,
             width: host.width,
             height: display_y.saturating_sub(host.y),
         },
-        PixelRect {
+        WindowRect {
             x: host.x,
             y: display_y_end,
             width: host.width,
             height: (host.y + host.height).saturating_sub(display_y_end),
         },
-        PixelRect {
+        WindowRect {
             x: host.x,
             y: display_y,
             width: display.x.saturating_sub(host.x),
             height: display_y_end.saturating_sub(display_y),
         },
-        PixelRect {
+        WindowRect {
             x: display.x + display.width,
             y: display_y,
             width: (host.x + host.width).saturating_sub(display.x + display.width),
@@ -132,7 +132,7 @@ fn host_margins(host: PixelRect, display: PixelRect) -> [PixelRect; 4] {
 /// - キャンバスホストの `display` 領域 (`CANVAS_BACKGROUND`)
 /// - キャンバスホストの 4 マージン領域 (`CANVAS_FRAME_BACKGROUND`)
 /// - キャンバスホスト枠線 (`CANVAS_FRAME_BORDER`、4 矩形分解)
-pub(crate) fn build_background_solid_quads(window: PixelRect, host: PixelRect, display: PixelRect) -> Vec<SolidQuad> {
+pub(crate) fn build_background_solid_quads(window: WindowRect, host: WindowRect, display: WindowRect) -> Vec<SolidQuad> {
     let mut quads = Vec::with_capacity(10);
     quads.push(SolidQuad {
         rect: window,
@@ -160,7 +160,7 @@ pub(crate) fn build_background_solid_quads(window: PixelRect, host: PixelRect, d
 ///
 /// 現状はアクティブ UI パネル枠線のみ。`active_panel_rect` が `None` または
 /// 0 サイズなら空の `Vec` を返す。
-pub(crate) fn build_foreground_solid_quads(active_panel_rect: Option<PixelRect>) -> Vec<SolidQuad> {
+pub(crate) fn build_foreground_solid_quads(active_panel_rect: Option<WindowRect>) -> Vec<SolidQuad> {
     let Some(rect) = active_panel_rect else {
         return Vec::new();
     };
@@ -176,8 +176,8 @@ pub(crate) fn build_foreground_solid_quads(active_panel_rect: Option<PixelRect>)
 mod tests {
     use super::*;
 
-    fn rect(x: usize, y: usize, w: usize, h: usize) -> PixelRect {
-        PixelRect {
+    fn rect(x: usize, y: usize, w: usize, h: usize) -> WindowRect {
+        WindowRect {
             x,
             y,
             width: w,

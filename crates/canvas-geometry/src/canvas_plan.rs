@@ -1,13 +1,11 @@
-use app_core::{PageDirtyRect, CanvasViewTransform};
+use app_core::{CanvasViewTransform, PageDirtyRect, WindowRect};
 
-use crate::{
-    CanvasViewGeometry, PixelRect, map_canvas_dirty_to_display_with_transform,
-};
+use crate::{CanvasViewGeometry, map_canvas_dirty_to_display_with_transform};
 
 /// `render` が扱うキャンバス表示計画を表す。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CanvasPlan {
-    pub host_rect: PixelRect,
+    pub host_rect: WindowRect,
     pub source_width: usize,
     pub source_height: usize,
     pub transform: CanvasViewTransform,
@@ -23,7 +21,7 @@ impl CanvasPlan {
         )
     }
 
-    pub fn map_dirty_rect(&self, dirty: PageDirtyRect) -> PixelRect {
+    pub fn map_dirty_rect(&self, dirty: PageDirtyRect) -> WindowRect {
         map_canvas_dirty_to_display_with_transform(
             dirty,
             self.host_rect,

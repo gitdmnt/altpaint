@@ -246,7 +246,7 @@ impl ApplicationHandler for DesktopEventLoop {
                 struct HtmlQuadEntry {
                     panel_id: String,
                     texture_ptr: *const wgpu::Texture,
-                    screen_rect: canvas_geometry::PixelRect,
+                    screen_rect: app_core::WindowRect,
                 }
                 let html_quad_entries: Vec<HtmlQuadEntry> = {
                     // hit / move handle / full rect テーブルは prepare_present_frame
@@ -292,7 +292,7 @@ impl ApplicationHandler for DesktopEventLoop {
                                     .app
                                     .panel_workspace
                                     .panel_full_rect(&panel_id)
-                                    .unwrap_or(canvas_geometry::PixelRect {
+                                    .unwrap_or(app_core::WindowRect {
                                         x: 0,
                                         y: 0,
                                         width: tex_w as usize,
@@ -403,7 +403,7 @@ impl ApplicationHandler for DesktopEventLoop {
                 // panel_runtime の gpu_ctx (device/queue/renderer/scene_scratch) を共有借用する。
                 struct StatusEntry {
                     texture_ptr: *const wgpu::Texture,
-                    screen_rect: canvas_geometry::PixelRect,
+                    screen_rect: app_core::WindowRect,
                 }
                 let status_entry: Option<StatusEntry> = {
                     let snapshot = self.app.build_status_snapshot();
@@ -424,7 +424,7 @@ impl ApplicationHandler for DesktopEventLoop {
                         let texture_ptr: *const wgpu::Texture = &target.texture;
                         let target_w = target.width;
                         let target_h = target.height;
-                        let screen_rect = canvas_geometry::PixelRect {
+                        let screen_rect = app_core::WindowRect {
                             x: 0,
                             y: size.height.saturating_sub(target_h) as usize,
                             width: target_w as usize,

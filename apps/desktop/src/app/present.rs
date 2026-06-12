@@ -84,7 +84,7 @@ impl DesktopApp {
             self.invalidation.needs_status_refresh = false;
             self.invalidation.needs_full_present_rebuild = false;
             let bitmap = self.cpu_canvas_snapshot.as_ref();
-            let window_rect = canvas_geometry::PixelRect {
+            let window_rect = app_core::WindowRect {
                 x: 0,
                 y: 0,
                 width: window_width,
@@ -204,7 +204,7 @@ impl DesktopApp {
         let chrome_h = super::PANEL_CHROME_HEIGHT as usize;
         let measured = self.panel_runtime.panel_sizes();
         let mut sized: Vec<(String, u32, u32)> = Vec::with_capacity(panel_ids.len());
-        let mut panel_rects: Vec<canvas_geometry::PixelRect> = Vec::with_capacity(panel_ids.len());
+        let mut panel_rects: Vec<app_core::WindowRect> = Vec::with_capacity(panel_ids.len());
         for id in &panel_ids {
             let (mw, mh) = measured
                 .iter()
@@ -215,13 +215,13 @@ impl DesktopApp {
             let position_rect = self
                 .panel_workspace
                 .panel_rect(id, window_width, window_height)
-                .unwrap_or(canvas_geometry::PixelRect {
+                .unwrap_or(app_core::WindowRect {
                     x: 0,
                     y: 0,
                     width: mw as usize,
                     height: mh as usize,
                 });
-            panel_rects.push(canvas_geometry::PixelRect {
+            panel_rects.push(app_core::WindowRect {
                 x: position_rect.x,
                 y: position_rect.y,
                 width: mw as usize,
@@ -241,25 +241,25 @@ impl DesktopApp {
                 continue;
             };
             let panel_rect = panel_rects[index];
-            let body_screen_rect = canvas_geometry::PixelRect {
+            let body_screen_rect = app_core::WindowRect {
                 x: panel_rect.x,
                 y: panel_rect.y + chrome_h,
                 width: panel_rect.width,
                 height: panel_rect.height.saturating_sub(chrome_h),
             };
-            let chrome_screen_rect = canvas_geometry::PixelRect {
+            let chrome_screen_rect = app_core::WindowRect {
                 x: panel_rect.x,
                 y: panel_rect.y,
                 width: panel_rect.width,
                 height: chrome_h,
             };
-            let hit_rects: Vec<(String, canvas_geometry::PixelRect)> = hits
+            let hit_rects: Vec<(String, app_core::WindowRect)> = hits
                 .into_iter()
                 .filter_map(|hit| {
                     let element_id = hit.element_id?;
                     Some((
                         element_id,
-                        canvas_geometry::PixelRect {
+                        app_core::WindowRect {
                             x: hit.rect.x as usize,
                             y: hit.rect.y as usize,
                             width: hit.rect.width as usize,

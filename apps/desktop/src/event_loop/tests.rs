@@ -228,7 +228,7 @@ fn builtin_shortcut_can_move_focus_backward() {
     // ADR 014 以降、focus は HTML hit table を辿るため事前に hit を 1 件 inject する。
     event_loop.app.panel_workspace.update_panel_hits(
         "builtin.app-actions",
-        canvas_geometry::PixelRect {
+        app_core::WindowRect {
             x: 100,
             y: 50,
             width: 200,
@@ -236,7 +236,7 @@ fn builtin_shortcut_can_move_focus_backward() {
         },
         vec![(
             "app.save".to_string(),
-            canvas_geometry::PixelRect {
+            app_core::WindowRect {
                 x: 8,
                 y: 4,
                 width: 80,

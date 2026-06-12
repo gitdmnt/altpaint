@@ -7,5 +7,4 @@ authors.workspace = true
 
 [dependencies]
 app-core = { path = "../app-core" }
-canvas-geometry = { path = "../canvas-geometry" }
 font8x8 = { workspace = true }

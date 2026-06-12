@@ -3,9 +3,8 @@
 use std::time::{Duration, Instant};
 
 use app_core::{
-    PagePoint, CanvasViewportPoint, ColorRgba8, Command, ToolKind, WindowPoint,
+    PagePoint, CanvasViewportPoint, ColorRgba8, Command, ToolKind, WindowPoint, WindowRect,
 };
-use paint_engine::{CanvasPointerEvent, map_view_to_canvas_with_transform};
 use desktop_support::{FrameProfiler, StageStats, ValueStats};
 
 use super::{TestDialogs, test_app_with_dialogs};
@@ -14,14 +13,11 @@ use crate::app::cpu_canvas_snapshot::build_cpu_canvas_snapshot;
 
 #[test]
 fn canvas_position_maps_view_center_into_bitmap_bounds() {
-    let position = map_view_to_canvas_with_transform(
+    let position = canvas_geometry::map_view_to_canvas_with_transform(
+        WindowRect::new(0, 0, 640, 640),
         64,
         64,
-        CanvasPointerEvent {
-            position: CanvasViewportPoint::new(320, 320),
-            width: 640,
-            height: 640,
-        },
+        CanvasViewportPoint::new(320, 320),
         app_core::CanvasViewTransform::default(),
     );
 
@@ -699,7 +695,7 @@ fn focus_refresh_does_not_trigger_ui_update() {
     // テストでは事前に hit を 1 件 inject して focus 対象を用意する。
     app.panel_workspace.update_panel_hits(
         "builtin.app-actions",
-        canvas_geometry::PixelRect {
+        app_core::WindowRect {
             x: 100,
             y: 50,
             width: 200,
@@ -707,7 +703,7 @@ fn focus_refresh_does_not_trigger_ui_update() {
         },
         vec![(
             "app.save".to_string(),
-            canvas_geometry::PixelRect {
+            app_core::WindowRect {
                 x: 8,
                 y: 4,
                 width: 80,
@@ -755,13 +751,13 @@ fn panel_release_without_matching_press_does_not_activate_save() {
     let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
-    let panel_screen_rect = canvas_geometry::PixelRect {
+    let panel_screen_rect = app_core::WindowRect {
         x: 100,
         y: 100,
         width: 200,
         height: 60,
     };
-    let save_button_rect = canvas_geometry::PixelRect {
+    let save_button_rect = app_core::WindowRect {
         x: 8,
         y: 8,
         width: 64,

@@ -1,6 +1,4 @@
-use app_core::{PagePoint, KomaBounds};
-
-use crate::PixelRect;
+use app_core::{KomaBounds, PagePoint, WindowRect};
 
 /// キャンバス上の一時オーバーレイ状態を保持する。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -12,7 +10,7 @@ pub struct CanvasOverlayState {
     pub koma_navigator: Option<KomaNavigatorOverlay>,
     pub panel_creation_preview: Option<KomaBounds>,
     /// アクティブ UI パネルの画面座標矩形。Some のとき枠線を描画する。
-    pub active_ui_panel_rect: Option<PixelRect>,
+    pub active_ui_panel_rect: Option<WindowRect>,
 }
 
 /// コマ境界ナビゲータに表示する 1 件分の情報。

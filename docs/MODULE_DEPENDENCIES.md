@@ -115,13 +115,13 @@ graph TD
 - `app-core` は workspace 内の土台であり、ローカル依存を持たない。UI 永続化 DTO
   （`WorkspaceUiState` / `PanelConfigs`）も ADR 016 で `app-core::workspace` に統合された
 - `paint-engine` / `gpu-paint` / `canvas-geometry` / `panel-api` は `app-core` 系の周辺クレートである
-- `paint-engine` は `canvas-geometry` の view mapping API を使うが、project I/O や panel runtime へは依存しない
+- `paint-engine` のローカル依存は `app-core` のみ（BL-042 で view mapping ラッパーを廃止し、view 座標変換は desktop が `canvas-geometry::map_view_to_canvas_with_transform` を直接呼ぶ）。project I/O や panel runtime へは依存しない
 - `gpu-paint` は `wgpu` に依存する唯一のペイント実装クレートで、`app-core` 以外のローカル依存を持たない
 - `panel-html` はローカル依存を持たず、Blitz / taffy / vello / wgpu に閉じた HTML パネル描画クレートである
 - `panel-runtime` は panel サブシステムの facade であり、`PanelRuntime`・`HtmlWasmPanel`
   （HTML+Wasm）・host state 同期・hit 収集・同梱パネル loader を持ち、`panel-api` の host 向け型と
   `panel-html`（`panel_runtime::html`）を再公開する。desktop は panel-api / panel-html へ直接依存しない（ADR 017）
-- `panel-workspace` はパネル配置専用 crate で、ローカル依存は `app-core` / `panel-api` / `canvas-geometry` のみ。
+- `panel-workspace` はパネル配置専用 crate で、ローカル依存は `app-core` / `panel-api` のみ（BL-041 で hit 矩形型を `app-core::WindowRect` に統合し canvas-geometry 依存を解消）。
   runtime のパネル一覧は `reconcile_panels(panel_ids)` の引数として desktop 側から受け取り（ADR 016）、
   hit-test API の戻り値型 `ResizeHandle` を再公開する（ADR 017）
 - `panel-wasm-host` は `panel-runtime` の内側で使われ、`apps/desktop` は直接依存していない
@@ -210,7 +210,6 @@ graph TD
 - `context.rs`
 - `gesture.rs`
 - `input_state.rs`
-- `view_mapping.rs`
 - `plugins/builtin_bitmap.rs`
 - `ops/*`
 
@@ -234,7 +233,7 @@ graph TD
 担当:
 
 - キャンバス表示幾何クレート（wgpu / fontdb / panel-api 非依存、`app-core` のみ依存）
-- `PixelRect` / `TextureQuad` / `CanvasViewGeometry`（旧 `CanvasScene`。構築は `CanvasViewGeometry::compute`）
+- `TextureQuad` / `CanvasViewGeometry`（旧 `CanvasScene`。構築は `CanvasViewGeometry::compute`）。矩形型は `app-core::WindowRect` を使う（BL-041 で旧 `PixelRect` を統合）
 - `CanvasPlan` / `LayerDirtyAccumulator`（旧 `LayerGroupDirtyPlan`。`PanelPlan` / `PanelSurfaceSource` は ADR 016、`FramePlan` / `CanvasCompositeSource` は ADR 018 B0 で削除し `CanvasPlan` 直渡しへ）
 - `CanvasOverlayState` / `KomaNavigatorOverlay` / `KomaNavigatorEntry`
 - dirty rect の蓄積（`accumulate_dirty_rect`）、ブラシ preview dirty / 座標変換などの純粋計算（露出背景機構は ADR 018 B0 で削除）
@@ -474,7 +473,6 @@ crates/paint-engine/src/lib.rs
   -> engine.rs
   -> context_builder.rs
   -> gesture.rs
-  -> view_mapping.rs
   -> plugins/builtin_bitmap.rs
   -> ops/*
 
@@ -544,7 +542,7 @@ project file と session file は役割が異なる。
 
 1. OS pointer event が `event_loop.rs` に届く
 2. `DesktopApp::handle_pointer_*` が panel/canvas を振り分ける
-3. `paint_engine::view_mapping` が view 座標を page 座標へ変換する
+3. `canvas-geometry::map_view_to_canvas_with_transform` が view 座標を page 座標へ変換する（desktop が直接呼ぶ）
 4. `paint_engine::gesture` が down / drag / up を `PaintInput` やコマ矩形 preview へ変換する
 5. `services/project_io.rs::apply_paint_input` が `paint_engine::PaintEngine::compute_paint_edits` で `BitmapEdit` 差分（dirty rect の典拠）を計算する
 6. `BrushPipeline` / `FillPipeline` が compute shader で GPU レイヤーテクスチャへ直接書き込み、`CompositePipeline` が合成する（ストローク中は CPU bitmap を書き換えない）

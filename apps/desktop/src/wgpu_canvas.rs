@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
-use canvas_geometry::PixelRect;
+use app_core::WindowRect;
 use crate::present_quads::{CircleQuad, LineQuad, SolidQuad, TextureQuad, pixel_rect_to_ndc};
 
 /// CPU 側のピクセルデータへの参照を保持する軽量ビュー。
@@ -136,7 +136,7 @@ pub struct PresentFrame<'a> {
 pub struct GpuPanelQuad<'a> {
     pub panel_id: &'a str,
     pub texture: &'a wgpu::Texture,
-    pub screen_rect: canvas_geometry::PixelRect,
+    pub screen_rect: app_core::WindowRect,
 }
 
 /// WGSL（WebGPU Shading Language）で書かれた描画シェーダ。
@@ -982,7 +982,7 @@ fn circle_quad_uniform_bytes(
     let bbox_min_y = (quad.center_px[1] - pad).floor();
     let bbox_max_x = (quad.center_px[0] + pad).ceil();
     let bbox_max_y = (quad.center_px[1] + pad).ceil();
-    let rect = PixelRect {
+    let rect = WindowRect {
         x: bbox_min_x.max(0.0) as usize,
         y: bbox_min_y.max(0.0) as usize,
         width: (bbox_max_x - bbox_min_x).max(1.0) as usize,
@@ -1027,7 +1027,7 @@ fn line_quad_uniform_bytes(quad: LineQuad, surface_width: u32, surface_height: u
     let bbox_min_y = quad.start_px[1].min(quad.end_px[1]) - pad;
     let bbox_max_x = quad.start_px[0].max(quad.end_px[0]) + pad;
     let bbox_max_y = quad.start_px[1].max(quad.end_px[1]) + pad;
-    let rect = PixelRect {
+    let rect = WindowRect {
         x: bbox_min_x.max(0.0).floor() as usize,
         y: bbox_min_y.max(0.0).floor() as usize,
         width: (bbox_max_x.ceil() - bbox_min_x.floor()).max(1.0) as usize,
@@ -2078,7 +2078,7 @@ fn upload_texture_region(
 #[cfg(test)]
 fn fullscreen_quad(width: u32, height: u32) -> TextureQuad {
     TextureQuad {
-        destination: PixelRect {
+        destination: WindowRect {
             x: 0,
             y: 0,
             width: width as usize,

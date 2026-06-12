@@ -47,7 +47,7 @@ static TEST_SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// canvas_view_geometry のキャッシュエントリ。入力が同じなら再計算を省略するために使う。
 struct CachedCanvasViewGeometry {
-    viewport: canvas_geometry::PixelRect,
+    viewport: app_core::WindowRect,
     canvas_width: usize,
     canvas_height: usize,
     transform: app_core::CanvasViewTransform,

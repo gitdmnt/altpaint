@@ -1,8 +1,9 @@
-use crate::PixelRect;
+use app_core::WindowRect;
+
 use crate::layer_dirty::LayerDirtyAccumulator;
 
-fn rect(x: usize, y: usize, width: usize, height: usize) -> PixelRect {
-    PixelRect { x, y, width, height }
+fn rect(x: usize, y: usize, width: usize, height: usize) -> WindowRect {
+    WindowRect { x, y, width, height }
 }
 
 #[test]

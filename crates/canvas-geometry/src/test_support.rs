@@ -4,12 +4,12 @@
 //! ピクセル一致比較系テストが破綻したため、実装非依存の
 //! 弱検証 (色矩形検出 / 暗色ピクセル数) で代替する。
 //!
-//! - 純データ依存: `app-core` のドメイン型と本クレート内の `PixelRect` のみ。
+//! - 純データ依存: `app-core` のドメイン型 (`WindowRect` 含む) のみ。
 //! - vello scene の glyph run 数カウントは `vello` 直接依存が必要となるため
 //!   ここには置かず、各クレート (panel-html 等) のテスト側で
 //!   `scene.encoding().resources` を直接参照する形を取る。
 
-use crate::PixelRect;
+use app_core::WindowRect;
 
 /// RGBA8 ピクセル列のうち暗色 (R+G+B が `threshold` 以下) を数える。
 ///
@@ -30,7 +30,7 @@ pub fn find_dark_pixels(pixels: &[u8], threshold: u32) -> usize {
 pub fn find_color_in_rect(
     pixels: &[u8],
     width: usize,
-    rect: PixelRect,
+    rect: WindowRect,
     target: (u8, u8, u8),
     tolerance: i32,
 ) -> usize {
@@ -83,7 +83,7 @@ mod tests {
         };
         set(&mut pixels, 1, 0, [250, 5, 5, 255]);
         set(&mut pixels, 2, 1, [200, 0, 0, 255]);
-        let rect = PixelRect {
+        let rect = WindowRect {
             x: 0,
             y: 0,
             width: 3,
