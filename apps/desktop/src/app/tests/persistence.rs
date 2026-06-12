@@ -148,7 +148,7 @@ fn load_project_restores_workspace_layout() {
     let mut moved = false;
     for _ in 0..3 {
         moved |= source_app.execute_host_action(HostAction::MovePanel {
-            panel_id: "builtin.layers-panel".to_string(),
+            panel_id: "builtin.layers".to_string(),
             direction: PanelMoveDirection::Up,
         });
     }
@@ -192,7 +192,7 @@ fn move_panel_host_action_updates_status_without_full_recompose() {
     let _layout = app.layout.clone().expect("layout exists");
 
     assert!(app.execute_host_action(HostAction::MovePanel {
-        panel_id: "builtin.layers-panel".to_string(),
+        panel_id: "builtin.layers".to_string(),
         direction: PanelMoveDirection::Up,
     }));
     let _update = app.prepare_present_frame(1280, 200, &mut profiler);
@@ -272,7 +272,7 @@ fn startup_uses_default_workspace_preset_when_project_and_session_are_empty() {
                 ui_state: app_core::WorkspaceUiState::new(
                     app_core::WorkspaceLayout {
                         panels: vec![WorkspacePanelState {
-                            id: "builtin.layers-panel".to_string(),
+                            id: "builtin.layers".to_string(),
                             visible: true,
                             anchor: WorkspacePanelAnchor::TopRight,
                             position: Some(WorkspacePanelPosition { x: 40, y: 88 }),
@@ -302,7 +302,7 @@ fn startup_uses_default_workspace_preset_when_project_and_session_are_empty() {
         .workspace_layout()
         .panels
         .into_iter()
-        .find(|entry| entry.id == "builtin.layers-panel")
+        .find(|entry| entry.id == "builtin.layers")
         .expect("layers panel layout exists");
 
     assert_eq!(entry.anchor, WorkspacePanelAnchor::TopRight);
@@ -328,7 +328,7 @@ fn session_layout_overrides_default_workspace_preset() {
                 ui_state: app_core::WorkspaceUiState::new(
                     app_core::WorkspaceLayout {
                         panels: vec![WorkspacePanelState {
-                            id: "builtin.layers-panel".to_string(),
+                            id: "builtin.layers".to_string(),
                             visible: true,
                             anchor: WorkspacePanelAnchor::TopRight,
                             position: Some(WorkspacePanelPosition { x: 40, y: 88 }),
@@ -352,7 +352,7 @@ fn session_layout_overrides_default_workspace_preset() {
             ui_state: app_core::WorkspaceUiState::new(
                 app_core::WorkspaceLayout {
                     panels: vec![WorkspacePanelState {
-                        id: "builtin.layers-panel".to_string(),
+                        id: "builtin.layers".to_string(),
                         visible: true,
                         anchor: WorkspacePanelAnchor::TopLeft,
                         position: Some(WorkspacePanelPosition { x: 12, y: 24 }),
@@ -379,7 +379,7 @@ fn session_layout_overrides_default_workspace_preset() {
         .workspace_layout()
         .panels
         .into_iter()
-        .find(|entry| entry.id == "builtin.layers-panel")
+        .find(|entry| entry.id == "builtin.layers")
         .expect("layers panel layout exists");
 
     assert_eq!(entry.anchor, WorkspacePanelAnchor::TopLeft);
@@ -428,7 +428,7 @@ fn panel_visibility_round_trip_through_session_save_load() {
         test_app_with_dialogs_and_session_path(TestDialogs::default(), session_path.clone());
 
     assert!(source_app.execute_host_action(HostAction::MovePanel {
-        panel_id: "builtin.layers-panel".to_string(),
+        panel_id: "builtin.layers".to_string(),
         direction: PanelMoveDirection::Up,
     }));
     assert!(
@@ -470,7 +470,7 @@ fn startup_preserves_last_selected_workspace_preset_id() {
                     ui_state: app_core::WorkspaceUiState::new(
                         app_core::WorkspaceLayout {
                             panels: vec![WorkspacePanelState {
-                                id: "builtin.layers-panel".to_string(),
+                                id: "builtin.layers".to_string(),
                                 visible: true,
                                 anchor: WorkspacePanelAnchor::BottomRight,
                                 position: Some(WorkspacePanelPosition { x: 32, y: 40 }),

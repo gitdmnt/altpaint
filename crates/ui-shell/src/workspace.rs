@@ -313,7 +313,7 @@ fn default_panel_anchor_and_position(
             app_core::WorkspacePanelAnchor::TopLeft,
             WorkspacePanelPosition { x: 24, y: 72 },
         ),
-        "builtin.layers-panel" => (
+        "builtin.layers" => (
             app_core::WorkspacePanelAnchor::TopRight,
             WorkspacePanelPosition { x: 24, y: 72 },
         ),

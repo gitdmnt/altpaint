@@ -61,7 +61,7 @@
               }
             },
             {
-              "id": "builtin.layers-panel",
+              "id": "builtin.layers",
               "visible": true,
               "anchor": "top-right",
               "position": {

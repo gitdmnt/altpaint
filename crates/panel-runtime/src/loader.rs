@@ -65,8 +65,8 @@ const BUILTIN_PANELS: &[BuiltinPanelDef] = &[
         wasm_filename: "builtin_panel_app_actions.wasm",
     },
     BuiltinPanelDef {
-        directory_name: "layers-panel",
-        wasm_filename: "builtin_panel_layers_panel.wasm",
+        directory_name: "layers",
+        wasm_filename: "builtin_panel_layers.wasm",
     },
     BuiltinPanelDef {
         directory_name: "text-flow",

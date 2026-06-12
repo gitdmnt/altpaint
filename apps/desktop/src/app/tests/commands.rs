@@ -226,7 +226,7 @@ fn builtin_panels_are_registered() {
         "builtin.app-actions",
         "builtin.workspace-presets",
         "builtin.tool-palette",
-        "builtin.layers-panel",
+        "builtin.layers",
         "builtin.pen-settings",
         "builtin.color-palette",
         "builtin.view-controls",
@@ -279,7 +279,7 @@ fn execute_command_applies_selected_workspace_preset() {
                     ui_state: WorkspaceUiState::new(
                         WorkspaceLayout {
                             panels: vec![WorkspacePanelState {
-                                id: "builtin.layers-panel".to_string(),
+                                id: "builtin.layers".to_string(),
                                 visible: true,
                                 anchor: WorkspacePanelAnchor::TopLeft,
                                 position: Some(WorkspacePanelPosition { x: 24, y: 72 }),
@@ -298,7 +298,7 @@ fn execute_command_applies_selected_workspace_preset() {
                     ui_state: WorkspaceUiState::new(
                         WorkspaceLayout {
                             panels: vec![WorkspacePanelState {
-                                id: "builtin.layers-panel".to_string(),
+                                id: "builtin.layers".to_string(),
                                 visible: true,
                                 anchor: WorkspacePanelAnchor::BottomRight,
                                 position: Some(WorkspacePanelPosition { x: 32, y: 40 }),
@@ -329,7 +329,7 @@ fn execute_command_applies_selected_workspace_preset() {
         .workspace_layout()
         .panels
         .into_iter()
-        .find(|panel| panel.id == "builtin.layers-panel")
+        .find(|panel| panel.id == "builtin.layers")
         .expect("layers panel should exist");
     assert_eq!(layout_entry.anchor, WorkspacePanelAnchor::BottomRight);
     assert_eq!(
@@ -363,7 +363,7 @@ fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
                     ui_state: WorkspaceUiState::new(
                         WorkspaceLayout {
                             panels: vec![WorkspacePanelState {
-                                id: "builtin.layers-panel".to_string(),
+                                id: "builtin.layers".to_string(),
                                 visible: true,
                                 anchor: WorkspacePanelAnchor::TopLeft,
                                 position: Some(WorkspacePanelPosition { x: 24, y: 72 }),
@@ -382,7 +382,7 @@ fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
                     ui_state: WorkspaceUiState::new(
                         WorkspaceLayout {
                             panels: vec![WorkspacePanelState {
-                                id: "builtin.layers-panel".to_string(),
+                                id: "builtin.layers".to_string(),
                                 visible: true,
                                 anchor: WorkspacePanelAnchor::BottomRight,
                                 position: Some(WorkspacePanelPosition { x: 32, y: 40 }),
@@ -415,7 +415,7 @@ fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
         .workspace_layout()
         .panels
         .into_iter()
-        .find(|panel| panel.id == "builtin.layers-panel")
+        .find(|panel| panel.id == "builtin.layers")
         .expect("layers panel should exist");
     assert_eq!(layout_entry.anchor, WorkspacePanelAnchor::BottomRight);
     assert_eq!(

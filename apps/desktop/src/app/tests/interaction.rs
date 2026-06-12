@@ -237,16 +237,16 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
 
-    // 他パネルの chrome / hit 領域との重なりを避けるため layers-panel のみ表示する
+    // 他パネルの chrome / hit 領域との重なりを避けるため layers のみ表示する
     for id in app.panel_runtime.panel_ids_with_gpu() {
-        if id != "builtin.layers-panel" {
+        if id != "builtin.layers" {
             let _ = app.panel_presentation.set_panel_visibility(&id, false);
         }
     }
     let panel_x = layout.canvas_display_rect.x + 32;
     let panel_y = layout.canvas_display_rect.y + 32;
     assert!(app.panel_presentation.move_panel_to(
-        "builtin.layers-panel",
+        "builtin.layers",
         panel_x,
         panel_y,
         layout.window_rect.width,
@@ -258,15 +258,15 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
     // 実 move handle (タイトルバー chrome) は prepare_present_frame が更新済み
     let full_rect = app
         .panel_presentation
-        .html_panel_full_rect("builtin.layers-panel")
-        .expect("layers-panel full rect exists");
+        .html_panel_full_rect("builtin.layers")
+        .expect("layers panel full rect exists");
 
     let before_position = app
         .panel_presentation
         .workspace_layout()
         .panels
         .into_iter()
-        .find(|panel| panel.id == "builtin.layers-panel")
+        .find(|panel| panel.id == "builtin.layers")
         .and_then(|panel| panel.position)
         .expect("stored panel position exists");
     // リサイズハンドル (上端 6px の辺 / 12px の角) を避けて chrome 中央を掴む
@@ -283,14 +283,14 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
 
     let after = app
         .panel_presentation
-        .panel_rect("builtin.layers-panel")
+        .panel_rect("builtin.layers")
         .expect("panel rect exists");
     let after_position = app
         .panel_presentation
         .workspace_layout()
         .panels
         .into_iter()
-        .find(|panel| panel.id == "builtin.layers-panel")
+        .find(|panel| panel.id == "builtin.layers")
         .and_then(|panel| panel.position)
         .expect("stored panel position exists");
     assert_ne!(
@@ -304,7 +304,7 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
 // 削除: layer_list_drag_keeps_dragged_layer_selected_while_reordering (Phase 9F)
 // `PanelDragState::Control` ベースのドラッグソース追跡機構は Phase 9F で撤去済み。
 // HTML パネル側のレイヤー再配置は `dispatch_panel_event(DragValue { ... })` を
-// 直接 layers-panel Wasm handler が消費する経路に統一されている。
+// 直接 layers パネル Wasm handler が消費する経路に統一されている。
 // 削除: scroll_refresh_does_not_trigger_ui_update (依存最小化リアーキテクト)
 // パネル上ホイールの `scroll_panel_surface` 経路は常に no-op のスタブだったため
 // 撤去された。パネル上ホイールは pointer.rs がキャンバスへのフォールスルーを
@@ -515,7 +515,7 @@ fn profile_panel_drag_for_ten_seconds() {
         let layout = app.layout.clone().expect("layout exists");
         let (x, y) = positions[position_index % positions.len()];
         let changed = app.panel_presentation.move_panel_to(
-            "builtin.layers-panel",
+            "builtin.layers",
             x,
             y,
             layout.window_rect.width,

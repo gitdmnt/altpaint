@@ -82,7 +82,7 @@ pub fn default_workspace_preset_catalog() -> WorkspacePresetCatalog {
                             180,
                         ),
                         panel_state(
-                            "builtin.layers-panel",
+                            "builtin.layers",
                             true,
                             WorkspacePanelAnchor::TopRight,
                             24,
@@ -212,7 +212,7 @@ mod tests {
             .workspace_layout
             .panels
             .iter()
-            .find(|panel| panel.id == "builtin.layers-panel")
+            .find(|panel| panel.id == "builtin.layers")
             .expect("layers preset exists");
 
         assert_eq!(layers.anchor, WorkspacePanelAnchor::TopRight);

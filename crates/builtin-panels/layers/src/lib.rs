@@ -1,4 +1,4 @@
-//! `builtin.layers-panel` パネル (Phase 10 DOM mutation 版)。
+//! `builtin.layers` パネル (Phase 10 DOM mutation 版)。
 
 use std::cell::RefCell;
 

@@ -324,7 +324,7 @@ mod tests {
                     }),
                 },
                 WorkspacePanelState {
-                    id: "builtin.layers-panel".to_string(),
+                    id: "builtin.layers".to_string(),
                     visible: true,
                     anchor: WorkspacePanelAnchor::TopLeft,
                     position: Some(WorkspacePanelPosition { x: 340, y: 72 }),
@@ -355,7 +355,7 @@ mod tests {
     #[test]
     fn resolved_position_uses_anchor_relative_offsets() {
         let panel = WorkspacePanelState {
-            id: "builtin.layers-panel".to_string(),
+            id: "builtin.layers".to_string(),
             visible: true,
             anchor: WorkspacePanelAnchor::TopRight,
             position: Some(WorkspacePanelPosition { x: 24, y: 72 }),
@@ -379,7 +379,7 @@ mod tests {
     #[test]
     fn set_position_from_absolute_picks_nearest_corner_anchor() {
         let mut panel = WorkspacePanelState {
-            id: "builtin.layers-panel".to_string(),
+            id: "builtin.layers".to_string(),
             visible: true,
             anchor: WorkspacePanelAnchor::TopLeft,
             position: None,

@@ -1,5 +1,5 @@
 [package]
-name = "builtin-panel-layers-panel"
+name = "builtin-panel-layers"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

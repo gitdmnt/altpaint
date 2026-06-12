@@ -273,7 +273,7 @@ mod tests {
         let workspace_layout = WorkspaceLayout {
             panels: vec![
                 app_core::WorkspacePanelState {
-                    id: "builtin.layers-panel".to_string(),
+                    id: "builtin.layers".to_string(),
                     visible: true,
                     anchor: app_core::WorkspacePanelAnchor::TopLeft,
                     position: None,
