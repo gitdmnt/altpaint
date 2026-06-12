@@ -5,7 +5,7 @@
 
 use super::DesktopApp;
 use super::canvas_frame::build_canvas_frame;
-use render_types::{PanelNavigatorEntry, PanelNavigatorOverlay};
+use render_types::{KomaNavigatorEntry, KomaNavigatorOverlay};
 
 impl DesktopApp {
     pub(super) fn brush_preview_size(&self) -> Option<u32> {
@@ -36,17 +36,17 @@ impl DesktopApp {
         canvas::panel_creation_preview_bounds(&self.canvas_input, page_width, page_height)
     }
 
-    pub(super) fn panel_navigator_overlay(&self) -> Option<PanelNavigatorOverlay> {
+    pub(super) fn koma_navigator_overlay(&self) -> Option<KomaNavigatorOverlay> {
         let page = self.document.active_page()?;
-        (page.panels.len() > 1).then(|| PanelNavigatorOverlay {
+        (page.panels.len() > 1).then(|| KomaNavigatorOverlay {
             page_width: page.width,
             page_height: page.height,
             panels: page
                 .panels
                 .iter()
                 .enumerate()
-                .map(|(index, panel)| PanelNavigatorEntry {
-                    bounds: panel.bounds,
+                .map(|(index, koma)| KomaNavigatorEntry {
+                    bounds: koma.bounds,
                     active: index == self.document.active_panel_index(),
                 })
                 .collect(),

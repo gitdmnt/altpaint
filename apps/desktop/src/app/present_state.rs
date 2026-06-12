@@ -252,7 +252,7 @@ impl DesktopApp {
             brush_size: self.brush_preview_size(),
             lasso_points: self.canvas_input.lasso_points.clone(),
             active_panel_bounds: self.active_panel_mask_overlay(),
-            panel_navigator: self.panel_navigator_overlay(),
+            panel_navigator: self.koma_navigator_overlay(),
             panel_creation_preview: self.panel_creation_preview_bounds(),
             active_ui_panel_rect: self
                 .panel_presentation

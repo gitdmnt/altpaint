@@ -11,7 +11,7 @@ use desktop_support::{
     PANEL_NAVIGATOR_ACTIVE, PANEL_NAVIGATOR_BACKGROUND, PANEL_NAVIGATOR_BORDER,
     PANEL_NAVIGATOR_PANEL, PANEL_PREVIEW_BORDER, PANEL_PREVIEW_FILL,
 };
-use render_types::{CanvasOverlayState, CanvasPlan, PanelNavigatorOverlay};
+use render_types::{CanvasOverlayState, CanvasPlan, KomaNavigatorOverlay};
 
 use super::Rect;
 use super::solid_quad::{SolidQuad, push_border_quads};
@@ -49,7 +49,7 @@ pub(crate) struct LineQuad {
 /// 内訳:
 /// - active panel mask (外側 4 矩形 fill + 内側 fill + 4 矩形分解枠線)
 /// - panel creation preview (fill + 4 矩形分解枠線)
-/// - panel navigator (背景 fill + 外枠 + 内枠 + 各 panel fill + 各 panel 枠線)
+/// - koma navigator (背景 fill + 外枠 + 内枠 + 各コマ fill + 各コマ枠線)
 pub(crate) fn build_overlay_solid_quads(
     plan: &CanvasPlan,
     overlay: &CanvasOverlayState,
@@ -62,7 +62,7 @@ pub(crate) fn build_overlay_solid_quads(
         push_panel_creation_preview(&mut quads, plan, bounds);
     }
     if let Some(navigator) = overlay.panel_navigator.as_ref() {
-        push_panel_navigator(&mut quads, plan, navigator);
+        push_koma_navigator(&mut quads, plan, navigator);
     }
     quads
 }
@@ -211,10 +211,10 @@ fn push_panel_creation_preview(
     push_border_quads(out, rect, PANEL_PREVIEW_BORDER);
 }
 
-fn push_panel_navigator(
+fn push_koma_navigator(
     out: &mut Vec<SolidQuad>,
     plan: &CanvasPlan,
-    navigator: &PanelNavigatorOverlay,
+    navigator: &KomaNavigatorOverlay,
 ) {
     let canvas_host = plan.host_rect;
     if navigator.page_width == 0
@@ -259,14 +259,14 @@ fn push_panel_navigator(
     };
     push_border_quads(out, inner, PANEL_NAVIGATOR_BORDER);
 
-    for panel in &navigator.panels {
+    for koma in &navigator.panels {
         let rect = Rect {
-            x: inner.x + ((panel.bounds.x as f32 * scale).round() as usize),
-            y: inner.y + ((panel.bounds.y as f32 * scale).round() as usize),
-            width: ((panel.bounds.width as f32 * scale).round() as usize).max(1),
-            height: ((panel.bounds.height as f32 * scale).round() as usize).max(1),
+            x: inner.x + ((koma.bounds.x as f32 * scale).round() as usize),
+            y: inner.y + ((koma.bounds.y as f32 * scale).round() as usize),
+            width: ((koma.bounds.width as f32 * scale).round() as usize).max(1),
+            height: ((koma.bounds.height as f32 * scale).round() as usize).max(1),
         };
-        let fill_color = if panel.active {
+        let fill_color = if koma.active {
             [
                 PANEL_NAVIGATOR_ACTIVE[0],
                 PANEL_NAVIGATOR_ACTIVE[1],
@@ -280,7 +280,7 @@ fn push_panel_navigator(
             rect,
             color: fill_color,
         });
-        let border_color = if panel.active {
+        let border_color = if koma.active {
             PANEL_NAVIGATOR_ACTIVE
         } else {
             PANEL_NAVIGATOR_BORDER
@@ -293,7 +293,7 @@ fn push_panel_navigator(
 mod tests {
     use super::*;
     use app_core::{CanvasPoint, CanvasViewTransform, KomaBounds};
-    use render_types::{PanelNavigatorEntry, PixelRect};
+    use render_types::{KomaNavigatorEntry, PixelRect};
 
     fn make_plan(canvas_width: usize, canvas_height: usize) -> CanvasPlan {
         CanvasPlan {
@@ -380,14 +380,14 @@ mod tests {
     }
 
     #[test]
-    fn panel_navigator_emits_background_and_per_panel_quads() {
+    fn koma_navigator_emits_background_and_per_koma_quads() {
         let plan = make_plan(120, 120);
         let overlay = CanvasOverlayState {
-            panel_navigator: Some(PanelNavigatorOverlay {
+            panel_navigator: Some(KomaNavigatorOverlay {
                 page_width: 100,
                 page_height: 80,
                 panels: vec![
-                    PanelNavigatorEntry {
+                    KomaNavigatorEntry {
                         bounds: KomaBounds {
                             x: 0,
                             y: 0,
@@ -396,7 +396,7 @@ mod tests {
                         },
                         active: true,
                     },
-                    PanelNavigatorEntry {
+                    KomaNavigatorEntry {
                         bounds: KomaBounds {
                             x: 50,
                             y: 0,
@@ -422,17 +422,17 @@ mod tests {
             .iter()
             .filter(|q| q.color == PANEL_NAVIGATOR_ACTIVE)
             .count();
-        let panel_fills = quads
+        let koma_fills = quads
             .iter()
             .filter(|q| q.color == PANEL_NAVIGATOR_PANEL)
             .count();
         assert_eq!(backgrounds, 1, "navigator outer fill");
-        // outer 枠 (4) + inner 枠 (4) + 非 active panel の枠線 (4) = 12
+        // outer 枠 (4) + inner 枠 (4) + 非 active コマの枠線 (4) = 12
         assert_eq!(outer_borders, 4 + 4 + 4);
-        // active panel の枠線 (4 矩形分解。fill は alpha 0x40 で別色)
+        // active コマの枠線 (4 矩形分解。fill は alpha 0x40 で別色)
         assert_eq!(active_quads, 4);
-        // 非 active panel の fill 1 個
-        assert_eq!(panel_fills, 1);
+        // 非 active コマの fill 1 個
+        assert_eq!(koma_fills, 1);
     }
 
     #[test]

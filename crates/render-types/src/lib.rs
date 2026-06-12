@@ -21,7 +21,7 @@ pub use canvas_scene::{
 };
 pub use dirty::{union_dirty_rect, union_optional_rect};
 pub use layer_group::LayerGroupDirtyPlan;
-pub use overlay_plan::{CanvasOverlayState, PanelNavigatorEntry, PanelNavigatorOverlay};
+pub use overlay_plan::{CanvasOverlayState, KomaNavigatorEntry, KomaNavigatorOverlay};
 
 #[cfg(test)]
 mod tests;
