@@ -6,7 +6,6 @@
 
 pub mod blend;
 pub mod command;
-pub mod coordinates;
 pub mod document;
 pub mod history;
 pub mod paint_params;
@@ -15,9 +14,9 @@ pub mod view_policy;
 pub mod workspace;
 
 pub use command::{DocumentCommand, SessionCommand};
-pub use coordinates::{
-    PageDirtyRect, CanvasDisplayPoint, PagePoint, PagePointF, CanvasViewportPoint,
-    ClampToCanvasBounds, MergeInSpace, KomaLocalPoint, PanelSurfaceDirtyRect, PanelSurfacePoint,
+pub use geometry::{
+    CanvasDisplayPoint, CanvasViewportPoint, ClampToCanvasBounds, KomaLocalPoint, MergeInSpace,
+    PageDirtyRect, PagePoint, PagePointF, PanelSurfaceDirtyRect, PanelSurfacePoint,
     PanelSurfaceRect, WindowDirtyRect, WindowPoint, WindowRect,
 };
 pub use document::{

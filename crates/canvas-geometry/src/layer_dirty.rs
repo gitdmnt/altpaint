@@ -1,6 +1,4 @@
-use app_core::WindowRect;
-
-use crate::accumulate_dirty_rect;
+use geometry::{WindowRect, accumulate_dirty_rect};
 
 /// 各レイヤーグループの dirty rect を独立して蓄積する。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]

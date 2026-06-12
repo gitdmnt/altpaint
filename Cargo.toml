@@ -14,6 +14,7 @@ members = [
   "crates/builtin-panels/workspace-layout",
   "crates/panel-api",
   "crates/paint-engine",
+  "crates/geometry",
   "crates/app-core",
   "crates/desktop-support",
   "crates/panel-runtime",
