@@ -314,7 +314,7 @@ mod tests {
     #[test]
     fn new_project_command_trims_dimensions() {
         let cmd = build_new_project_command(" 320 ", " 240 ").expect("ok");
-        assert_eq!(cmd.name, "project_io.new_document_sized");
+        assert_eq!(cmd.name, plugin_sdk::names::project_io::NEW_DOCUMENT_SIZED);
     }
 
     #[test]

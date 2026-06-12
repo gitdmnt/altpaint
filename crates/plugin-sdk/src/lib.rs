@@ -7,6 +7,7 @@ pub mod runtime;
 pub mod services;
 pub mod state;
 
+pub use panel_schema::names;
 pub use panel_schema::{
     CommandDescriptor, Diagnostic, DiagnosticLevel, HandlerResult, PanelEventRequest, StatePatch,
     StatePatchOp,

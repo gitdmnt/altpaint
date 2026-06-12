@@ -130,9 +130,9 @@ mod tests {
 
     #[test]
     fn command_descriptor_starts_with_empty_payload() {
-        let descriptor = CommandDescriptor::new("tool.set_active");
+        let descriptor = CommandDescriptor::new(crate::names::tool::SET_ACTIVE);
 
-        assert_eq!(descriptor.name, "tool.set_active");
+        assert_eq!(descriptor.name, crate::names::tool::SET_ACTIVE);
         assert!(descriptor.payload.is_empty());
     }
 }

@@ -363,7 +363,7 @@ mod tests {
     #[test]
     fn tool_command_embeds_tool_name() {
         let c = build_tool_command(Tool::Eraser);
-        assert_eq!(c.name, "tool.set_active");
+        assert_eq!(c.name, plugin_sdk::names::tool::SET_ACTIVE);
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use crate::{CommandDescriptor, commands, host, runtime, services, state};
+use crate::{CommandDescriptor, commands, host, names, runtime, services, state};
 use crate::{panel_handler, panel_init, panel_sync_host};
 
 #[panel_init]
@@ -26,7 +26,7 @@ fn typed_service_requests_hide_service_names() {
     let zoom = services::view::set_zoom(1.25);
     let select_panel = services::panel_nav::select(2);
 
-    assert_eq!(save.name, "project_io.save_current");
+    assert_eq!(save.name, names::project_io::SAVE_CURRENT);
     assert_eq!(preset.payload.get("preset_id"), Some(&json!("review")));
     assert_eq!(zoom.payload.get("zoom"), Some(&json!(1.25)));
     assert_eq!(select_panel.payload.get("index"), Some(&json!(2)));
@@ -55,11 +55,14 @@ fn typed_tool_commands_cover_remaining_variants() {
         commands::tool::set_size(24).payload.get("size"),
         Some(&json!(24))
     );
-    assert_eq!(commands::tool::select_next_pen().name, "tool.pen_next");
-    assert_eq!(commands::tool::select_previous_pen().name, "tool.pen_prev");
+    assert_eq!(commands::tool::select_next_pen().name, names::tool::PEN_NEXT);
+    assert_eq!(
+        commands::tool::select_previous_pen().name,
+        names::tool::PEN_PREV
+    );
     assert_eq!(
         commands::tool::reload_pen_presets().name,
-        "tool.reload_pen_presets"
+        names::tool::RELOAD_PEN_PRESETS
     );
 }
 
@@ -69,11 +72,11 @@ fn typed_layer_commands_hide_payload_keys() {
     let blend_descriptor = commands::layer::set_blend_mode_enum(commands::layer::BlendMode::Screen);
     let rename_descriptor = commands::layer::rename_active("Ink");
 
-    assert_eq!(commands::layer::remove().name, "layer.remove");
+    assert_eq!(commands::layer::remove().name, names::layer::REMOVE);
     assert_eq!(move_descriptor.payload.get("from_index"), Some(&json!(2)));
     assert_eq!(move_descriptor.payload.get("to_index"), Some(&json!(0)));
     assert_eq!(blend_descriptor.payload.get("mode"), Some(&json!("screen")));
-    assert_eq!(rename_descriptor.name, "layer.rename_active");
+    assert_eq!(rename_descriptor.name, names::layer::RENAME_ACTIVE);
     assert_eq!(rename_descriptor.payload.get("name"), Some(&json!("Ink")));
 }
 
@@ -82,19 +85,19 @@ fn typed_layer_commands_cover_remaining_variants() {
     assert_eq!(commands::layer::BlendMode::Normal.as_str(), "normal");
     assert_eq!(commands::layer::BlendMode::Multiply.as_str(), "multiply");
     assert_eq!(commands::layer::BlendMode::Add.as_str(), "add");
-    assert_eq!(commands::layer::add().name, "layer.add");
+    assert_eq!(commands::layer::add().name, names::layer::ADD);
     assert_eq!(
         commands::layer::select(3).payload.get("index"),
         Some(&json!(3))
     );
-    assert_eq!(commands::layer::select_next().name, "layer.select_next");
+    assert_eq!(commands::layer::select_next().name, names::layer::SELECT_NEXT);
     assert_eq!(
         commands::layer::cycle_blend_mode().name,
-        "layer.cycle_blend_mode"
+        names::layer::CYCLE_BLEND_MODE
     );
     assert_eq!(
         commands::layer::toggle_visibility().name,
-        "layer.toggle_visibility"
+        names::layer::TOGGLE_VISIBILITY
     );
 }
 

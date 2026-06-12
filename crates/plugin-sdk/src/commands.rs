@@ -44,10 +44,11 @@ impl RgbColor {
 pub mod tool {
     use super::{RgbColor, Tool};
     use panel_schema::CommandDescriptor;
+    use panel_schema::names::tool as wire;
     use serde_json::json;
 
     pub fn set_active(tool: Tool) -> CommandDescriptor {
-        let mut descriptor = CommandDescriptor::new("tool.set_active");
+        let mut descriptor = CommandDescriptor::new(wire::SET_ACTIVE);
         descriptor
             .payload
             .insert("tool".to_string(), json!(tool.as_str()));
@@ -55,7 +56,7 @@ pub mod tool {
     }
 
     pub fn select_tool(tool_id: impl Into<String>) -> CommandDescriptor {
-        let mut descriptor = CommandDescriptor::new("tool.select");
+        let mut descriptor = CommandDescriptor::new(wire::SELECT);
         descriptor
             .payload
             .insert("tool_id".to_string(), json!(tool_id.into()));
@@ -63,7 +64,7 @@ pub mod tool {
     }
 
     pub fn set_color_hex(color: impl Into<String>) -> CommandDescriptor {
-        let mut descriptor = CommandDescriptor::new("tool.set_color");
+        let mut descriptor = CommandDescriptor::new(wire::SET_COLOR);
         descriptor
             .payload
             .insert("color".to_string(), json!(color.into()));
@@ -75,13 +76,13 @@ pub mod tool {
     }
 
     pub fn set_size(size: u32) -> CommandDescriptor {
-        let mut descriptor = CommandDescriptor::new("tool.set_size");
+        let mut descriptor = CommandDescriptor::new(wire::SET_SIZE);
         descriptor.payload.insert("size".to_string(), json!(size));
         descriptor
     }
 
     pub fn set_pressure_enabled(enabled: bool) -> CommandDescriptor {
-        let mut descriptor = CommandDescriptor::new("tool.set_pressure_enabled");
+        let mut descriptor = CommandDescriptor::new(wire::SET_PRESSURE_ENABLED);
         descriptor
             .payload
             .insert("enabled".to_string(), json!(enabled));
@@ -89,7 +90,7 @@ pub mod tool {
     }
 
     pub fn set_antialias(enabled: bool) -> CommandDescriptor {
-        let mut descriptor = CommandDescriptor::new("tool.set_antialias");
+        let mut descriptor = CommandDescriptor::new(wire::SET_ANTIALIAS);
         descriptor
             .payload
             .insert("enabled".to_string(), json!(enabled));
@@ -97,7 +98,7 @@ pub mod tool {
     }
 
     pub fn set_stabilization(amount: u8) -> CommandDescriptor {
-        let mut descriptor = CommandDescriptor::new("tool.set_stabilization");
+        let mut descriptor = CommandDescriptor::new(wire::SET_STABILIZATION);
         descriptor
             .payload
             .insert("amount".to_string(), json!(amount.min(100)));
@@ -105,23 +106,23 @@ pub mod tool {
     }
 
     pub fn select_next_pen() -> CommandDescriptor {
-        CommandDescriptor::new("tool.pen_next")
+        CommandDescriptor::new(wire::PEN_NEXT)
     }
 
     pub fn select_previous_pen() -> CommandDescriptor {
-        CommandDescriptor::new("tool.pen_prev")
+        CommandDescriptor::new(wire::PEN_PREV)
     }
 
     pub fn reload_pen_presets() -> CommandDescriptor {
-        CommandDescriptor::new("tool.reload_pen_presets")
+        CommandDescriptor::new(wire::RELOAD_PEN_PRESETS)
     }
 
     pub fn import_pen_presets() -> CommandDescriptor {
-        CommandDescriptor::new("tool.import_pen_presets")
+        CommandDescriptor::new(wire::IMPORT_PEN_PRESETS)
     }
 
     pub fn select_child_tool(child_id: impl Into<String>) -> CommandDescriptor {
-        let mut descriptor = CommandDescriptor::new("tool.select_child");
+        let mut descriptor = CommandDescriptor::new(wire::SELECT_CHILD);
         descriptor
             .payload
             .insert("child_id".to_string(), json!(child_id.into()));
@@ -129,7 +130,7 @@ pub mod tool {
     }
 
     pub fn import_pen_path(path: impl Into<String>) -> CommandDescriptor {
-        let mut descriptor = CommandDescriptor::new("tool.import_pen_path");
+        let mut descriptor = CommandDescriptor::new(wire::IMPORT_PEN_PATH);
         descriptor
             .payload
             .insert("path".to_string(), json!(path.into()));
@@ -140,6 +141,7 @@ pub mod tool {
 /// レイヤー操作コマンド群。
 pub mod layer {
     use panel_schema::CommandDescriptor;
+    use panel_schema::names::layer as wire;
     use serde_json::json;
 
     /// レイヤーブレンドモードを型として表す。
@@ -163,21 +165,21 @@ pub mod layer {
     }
 
     pub fn add() -> CommandDescriptor {
-        CommandDescriptor::new("layer.add")
+        CommandDescriptor::new(wire::ADD)
     }
 
     pub fn remove() -> CommandDescriptor {
-        CommandDescriptor::new("layer.remove")
+        CommandDescriptor::new(wire::REMOVE)
     }
 
     pub fn select(index: usize) -> CommandDescriptor {
-        let mut descriptor = CommandDescriptor::new("layer.select");
+        let mut descriptor = CommandDescriptor::new(wire::SELECT);
         descriptor.payload.insert("index".to_string(), json!(index));
         descriptor
     }
 
     pub fn rename_active(name: impl Into<String>) -> CommandDescriptor {
-        let mut descriptor = CommandDescriptor::new("layer.rename_active");
+        let mut descriptor = CommandDescriptor::new(wire::RENAME_ACTIVE);
         descriptor
             .payload
             .insert("name".to_string(), json!(name.into()));
@@ -185,7 +187,7 @@ pub mod layer {
     }
 
     pub fn move_to(from_index: usize, to_index: usize) -> CommandDescriptor {
-        let mut descriptor = CommandDescriptor::new("layer.move");
+        let mut descriptor = CommandDescriptor::new(wire::MOVE);
         descriptor
             .payload
             .insert("from_index".to_string(), json!(from_index));
@@ -196,15 +198,15 @@ pub mod layer {
     }
 
     pub fn select_next() -> CommandDescriptor {
-        CommandDescriptor::new("layer.select_next")
+        CommandDescriptor::new(wire::SELECT_NEXT)
     }
 
     pub fn cycle_blend_mode() -> CommandDescriptor {
-        CommandDescriptor::new("layer.cycle_blend_mode")
+        CommandDescriptor::new(wire::CYCLE_BLEND_MODE)
     }
 
     pub fn set_blend_mode(mode: impl Into<String>) -> CommandDescriptor {
-        let mut descriptor = CommandDescriptor::new("layer.set_blend_mode");
+        let mut descriptor = CommandDescriptor::new(wire::SET_BLEND_MODE);
         descriptor
             .payload
             .insert("mode".to_string(), json!(mode.into()));
@@ -216,6 +218,6 @@ pub mod layer {
     }
 
     pub fn toggle_visibility() -> CommandDescriptor {
-        CommandDescriptor::new("layer.toggle_visibility")
+        CommandDescriptor::new(wire::TOGGLE_VISIBILITY)
     }
 }

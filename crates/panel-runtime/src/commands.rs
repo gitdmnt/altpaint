@@ -5,6 +5,7 @@
 
 use app_core::{Command, ToolKind};
 use panel_schema::CommandDescriptor;
+use panel_schema::names::{layer, tool};
 use serde_json::Value;
 
 fn parse_hex_color(input: &str) -> Option<app_core::ColorRgba8> {
@@ -20,12 +21,12 @@ fn parse_hex_color(input: &str) -> Option<app_core::ColorRgba8> {
 
 pub fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, String> {
     match descriptor.name.as_str() {
-        "tool.set_active" => {
+        tool::SET_ACTIVE => {
             let tool = descriptor
                 .payload
                 .get("tool")
                 .and_then(Value::as_str)
-                .ok_or_else(|| "tool.set_active is missing payload.tool".to_string())?;
+                .ok_or_else(|| format!("{} is missing payload.tool", tool::SET_ACTIVE))?;
             let tool = match tool {
                 "pen" => ToolKind::Pen,
                 "eraser" => ToolKind::Eraser,
@@ -36,137 +37,137 @@ pub fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command
             };
             Ok(Command::SetActiveTool { tool })
         }
-        "tool.select" => {
+        tool::SELECT => {
             let tool_id = descriptor
                 .payload
                 .get("tool_id")
                 .and_then(Value::as_str)
-                .ok_or_else(|| "tool.select is missing payload.tool_id".to_string())?;
+                .ok_or_else(|| format!("{} is missing payload.tool_id", tool::SELECT))?;
             Ok(Command::SelectTool {
                 tool_id: tool_id.to_string(),
             })
         }
-        "tool.select_child" => {
+        tool::SELECT_CHILD => {
             let child_id = descriptor
                 .payload
                 .get("child_id")
                 .and_then(Value::as_str)
-                .ok_or_else(|| "tool.select_child is missing payload.child_id".to_string())?;
+                .ok_or_else(|| format!("{} is missing payload.child_id", tool::SELECT_CHILD))?;
             Ok(Command::SelectChildTool {
                 child_id: child_id.to_string(),
             })
         }
-        "tool.set_size" => {
+        tool::SET_SIZE => {
             let size = descriptor
                 .payload
                 .get("size")
                 .and_then(payload_u64)
-                .ok_or_else(|| "tool.set_size is missing payload.size".to_string())?;
+                .ok_or_else(|| format!("{} is missing payload.size", tool::SET_SIZE))?;
             Ok(Command::SetActivePenSize { size: size as u32 })
         }
-        "tool.set_pressure_enabled" => {
+        tool::SET_PRESSURE_ENABLED => {
             let enabled = descriptor
                 .payload
                 .get("enabled")
                 .and_then(Value::as_bool)
                 .ok_or_else(|| {
-                    "tool.set_pressure_enabled is missing payload.enabled".to_string()
+                    format!("{} is missing payload.enabled", tool::SET_PRESSURE_ENABLED)
                 })?;
             Ok(Command::SetActivePenPressureEnabled { enabled })
         }
-        "tool.set_antialias" => {
+        tool::SET_ANTIALIAS => {
             let enabled = descriptor
                 .payload
                 .get("enabled")
                 .and_then(Value::as_bool)
-                .ok_or_else(|| "tool.set_antialias is missing payload.enabled".to_string())?;
+                .ok_or_else(|| format!("{} is missing payload.enabled", tool::SET_ANTIALIAS))?;
             Ok(Command::SetActivePenAntialias { enabled })
         }
-        "tool.set_stabilization" => {
+        tool::SET_STABILIZATION => {
             let amount = descriptor
                 .payload
                 .get("amount")
                 .and_then(payload_u64)
-                .ok_or_else(|| "tool.set_stabilization is missing payload.amount".to_string())?;
+                .ok_or_else(|| format!("{} is missing payload.amount", tool::SET_STABILIZATION))?;
             Ok(Command::SetActivePenStabilization {
                 amount: amount.min(100) as u8,
             })
         }
-        "tool.pen_next" => Ok(Command::SelectNextPenPreset),
-        "tool.pen_prev" => Ok(Command::SelectPreviousPenPreset),
-        "tool.reload_pen_presets" => Ok(Command::ReloadPenPresets),
-        "tool.import_pen_presets" => Ok(Command::ImportPenPresets),
-        "tool.import_pen_path" => {
+        tool::PEN_NEXT => Ok(Command::SelectNextPenPreset),
+        tool::PEN_PREV => Ok(Command::SelectPreviousPenPreset),
+        tool::RELOAD_PEN_PRESETS => Ok(Command::ReloadPenPresets),
+        tool::IMPORT_PEN_PRESETS => Ok(Command::ImportPenPresets),
+        tool::IMPORT_PEN_PATH => {
             let path = descriptor
                 .payload
                 .get("path")
                 .and_then(Value::as_str)
-                .ok_or_else(|| "tool.import_pen_path is missing payload.path".to_string())?;
+                .ok_or_else(|| format!("{} is missing payload.path", tool::IMPORT_PEN_PATH))?;
             Ok(Command::ImportPenPresetsFromPath {
                 path: path.to_string(),
             })
         }
-        "tool.set_color" => {
+        tool::SET_COLOR => {
             let color = descriptor
                 .payload
                 .get("color")
                 .and_then(Value::as_str)
-                .ok_or_else(|| "tool.set_color is missing payload.color".to_string())?;
+                .ok_or_else(|| format!("{} is missing payload.color", tool::SET_COLOR))?;
             parse_hex_color(color)
                 .map(|color| Command::SetActiveColor { color })
                 .ok_or_else(|| format!("invalid color payload: {color}"))
         }
-        "layer.add" => Ok(Command::AddRasterLayer),
-        "layer.remove" => Ok(Command::RemoveActiveLayer),
-        "layer.select" => {
+        layer::ADD => Ok(Command::AddRasterLayer),
+        layer::REMOVE => Ok(Command::RemoveActiveLayer),
+        layer::SELECT => {
             let index = descriptor
                 .payload
                 .get("index")
                 .and_then(payload_u64)
-                .ok_or_else(|| "layer.select is missing payload.index".to_string())?;
+                .ok_or_else(|| format!("{} is missing payload.index", layer::SELECT))?;
             Ok(Command::SelectLayer {
                 index: index as usize,
             })
         }
-        "layer.rename_active" => {
+        layer::RENAME_ACTIVE => {
             let name = descriptor
                 .payload
                 .get("name")
                 .and_then(Value::as_str)
-                .ok_or_else(|| "layer.rename_active is missing payload.name".to_string())?;
+                .ok_or_else(|| format!("{} is missing payload.name", layer::RENAME_ACTIVE))?;
             Ok(Command::RenameActiveLayer {
                 name: name.to_string(),
             })
         }
-        "layer.move" => {
+        layer::MOVE => {
             let from_index = descriptor
                 .payload
                 .get("from_index")
                 .and_then(payload_u64)
-                .ok_or_else(|| "layer.move is missing payload.from_index".to_string())?;
+                .ok_or_else(|| format!("{} is missing payload.from_index", layer::MOVE))?;
             let to_index = descriptor
                 .payload
                 .get("to_index")
                 .and_then(payload_u64)
-                .ok_or_else(|| "layer.move is missing payload.to_index".to_string())?;
+                .ok_or_else(|| format!("{} is missing payload.to_index", layer::MOVE))?;
             Ok(Command::MoveLayer {
                 from_index: from_index as usize,
                 to_index: to_index as usize,
             })
         }
-        "layer.select_next" => Ok(Command::SelectNextLayer),
-        "layer.cycle_blend_mode" => Ok(Command::CycleActiveLayerBlendMode),
-        "layer.set_blend_mode" => {
+        layer::SELECT_NEXT => Ok(Command::SelectNextLayer),
+        layer::CYCLE_BLEND_MODE => Ok(Command::CycleActiveLayerBlendMode),
+        layer::SET_BLEND_MODE => {
             let mode = descriptor
                 .payload
                 .get("mode")
                 .and_then(Value::as_str)
-                .ok_or_else(|| "layer.set_blend_mode is missing payload.mode".to_string())?;
+                .ok_or_else(|| format!("{} is missing payload.mode", layer::SET_BLEND_MODE))?;
             let mode = app_core::BlendMode::parse_name(mode)
                 .ok_or_else(|| format!("unsupported layer blend mode: {mode}"))?;
             Ok(Command::SetActiveLayerBlendMode { mode })
         }
-        "layer.toggle_visibility" => Ok(Command::ToggleActiveLayerVisibility),
+        layer::TOGGLE_VISIBILITY => Ok(Command::ToggleActiveLayerVisibility),
         other => Err(format!("unsupported command descriptor: {other}")),
     }
 }
