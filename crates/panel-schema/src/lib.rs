@@ -1,3 +1,5 @@
+pub mod names;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
