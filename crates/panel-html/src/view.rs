@@ -93,6 +93,21 @@ pub struct ActionRect {
     pub rect: PanelActionRect,
 }
 
+/// `panel_size` を viewport / chrome_height でクランプした描画用ローカルサイズ。
+///
+/// `on_render` (GPU 描画) と `resolve_action_rects` (hit 矩形収集) が
+/// **必ず同一のクランプ規則** で layout を解決するための単一定義点。
+/// 旧実装はこの規則を 2 箇所に複製し「同期を保つ」コメント運用に頼っていた (BL-043)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LocalRenderSize {
+    /// chrome を含むパネル全体の幅。
+    width: u32,
+    /// chrome を含むパネル全体の高さ。
+    height: u32,
+    /// chrome を除いた body 部分の高さ。
+    body_height: u32,
+}
+
 /// stylo の resolve を直列化するグローバルロック。
 ///
 /// Blitz の `BaseDocument::resolve` はグローバル rayon プール (StyleThread) で
@@ -102,6 +117,22 @@ pub struct ActionRect {
 static STYLE_RESOLVE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 impl HtmlPanelView {
+    /// `panel_size` を viewport / chrome_height でクランプした描画用ローカルサイズを返す。
+    ///
+    /// `on_render` と `resolve_action_rects` の両方がこの 1 箇所を経由することで、
+    /// GPU 描画と hit 矩形が常に同一の local size で layout 解決される。
+    fn local_render_size(&self, viewport: (u32, u32), chrome_height: u32) -> LocalRenderSize {
+        let (vp_w, vp_h) = (viewport.0.max(1), viewport.1.max(chrome_height + 1));
+        let width = self.panel_size.0.min(vp_w).max(1);
+        let height = self.panel_size.1.min(vp_h).max(chrome_height + 1);
+        let body_height = height.saturating_sub(chrome_height).max(1);
+        LocalRenderSize {
+            width,
+            height,
+            body_height,
+        }
+    }
+
     pub fn new(html: &str, user_css: &str) -> Self {
         let mut config = DocumentConfig::default();
         if !user_css.is_empty() {
@@ -195,12 +226,11 @@ impl HtmlPanelView {
         chrome_height: u32,
     ) -> RenderOutcome<'a> {
         // viewport クランプ: 描画用 local 変数のみで行い panel_size は変更しない。
-        let (vp_w, vp_h) = (viewport.0.max(1), viewport.1.max(chrome_height + 1));
-        let local_w = self.panel_size.0.min(vp_w).max(1);
-        let local_h = self.panel_size.1.min(vp_h).max(chrome_height + 1);
-
-        // body 部分の高さ (chrome を除く)
-        let body_h = local_h.saturating_sub(chrome_height).max(1);
+        let LocalRenderSize {
+            width: local_w,
+            height: local_h,
+            body_height: body_h,
+        } = self.local_render_size(viewport, chrome_height);
 
         // layout_dirty なら resolve のみ実行 (content size の再測定 + panel_size 更新は廃止)
         if self.layout_dirty {
@@ -426,12 +456,9 @@ impl HtmlPanelView {
         scale: f32,
         chrome_height: u32,
     ) -> Vec<ActionRect> {
-        let (vp_w, vp_h) = (viewport.0.max(1), viewport.1.max(chrome_height + 1));
-        let local_w = self.panel_size.0.min(vp_w).max(1);
-        let local_h = self.panel_size.1.min(vp_h).max(chrome_height + 1);
-        let body_h = local_h.saturating_sub(chrome_height).max(1);
+        let local = self.local_render_size(viewport, chrome_height);
         if self.layout_dirty {
-            self.resolve_layout(local_w, body_h, scale);
+            self.resolve_layout(local.width, local.body_height, scale);
             self.layout_dirty = false;
         }
         self.collect_action_rects()
@@ -732,6 +759,31 @@ mod tests {
             "expected clamped width <= 200, got {}",
             rects[0].rect.width
         );
+    }
+
+    /// BL-043: local_render_size は viewport / chrome_height で panel_size を
+    /// クランプし、body_height = height - chrome_height (>=1) を返す単一定義点。
+    #[test]
+    fn local_render_size_clamps_panel_size_and_derives_body_height() {
+        let mut view = view(r#"<html><body><div></div></body></html>"#);
+        view.set_panel_size((800, 600));
+
+        // viewport が panel_size より小さい → viewport へクランプ
+        let clamped = view.local_render_size((200, 124), 24);
+        assert_eq!(clamped.width, 200);
+        assert_eq!(clamped.height, 124);
+        assert_eq!(clamped.body_height, 100);
+
+        // viewport が panel_size より大きい → panel_size を採用
+        let full = view.local_render_size((1280, 720), 24);
+        assert_eq!(full.width, 800);
+        assert_eq!(full.height, 600);
+        assert_eq!(full.body_height, 576);
+
+        // chrome_height が高さを超える退化ケースでも body_height は 1 以上
+        let degenerate = view.local_render_size((10, 10), 100);
+        assert_eq!(degenerate.height, 101);
+        assert_eq!(degenerate.body_height, 1);
     }
 
     #[test]
