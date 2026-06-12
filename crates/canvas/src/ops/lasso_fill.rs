@@ -1,9 +1,9 @@
-use app_core::{BitmapEdit, PaintPluginContext, PanelLocalPoint};
+use app_core::{BitmapEdit, PaintPluginContext, KomaLocalPoint};
 
 use super::{bitmap_from_points, composite, point_in_polygon};
 
 pub(crate) fn lasso_fill_edit(
-    points: &[PanelLocalPoint],
+    points: &[KomaLocalPoint],
     context: &PaintPluginContext<'_>,
 ) -> Option<BitmapEdit> {
     if points.len() < 3 {

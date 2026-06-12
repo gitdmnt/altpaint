@@ -114,7 +114,7 @@ pub fn load_panel_snapshot_from_path(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::{BlendMode, ColorRgba8, Document, LayerMask, Page, PageId, PanelId};
+    use app_core::{BlendMode, ColorRgba8, Document, LayerMask, Page, PageId, KomaId};
     use rusqlite::Connection;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -125,11 +125,11 @@ mod tests {
 
     fn draw_test_point(document: &mut Document, x: usize, y: usize) {
         let color = document.active_color.to_rgba8();
-        if let Some(panel) = document.active_panel_mut() {
-            let _ = panel.layers[0]
+        if let Some(koma) = document.active_panel_mut() {
+            let _ = koma.layers[0]
                 .bitmap
                 .draw_point_sized_rgba(x, y, color, 1, true);
-            panel.bitmap = panel.layers[0].bitmap.clone();
+            koma.bitmap = koma.layers[0].bitmap.clone();
         }
     }
 
@@ -146,7 +146,7 @@ mod tests {
         document.work.title = "Phase 11 test".to_string();
 
         let mut second_panel = Document::new(8, 8).work.pages[0].panels[0].clone();
-        second_panel.id = PanelId(2);
+        second_panel.id = KomaId(2);
         second_panel.layers[0].name = "Blue layer".to_string();
         second_panel.layers[0]
             .bitmap
@@ -154,7 +154,7 @@ mod tests {
         second_panel.bitmap = second_panel.layers[0].bitmap.clone();
 
         let mut third_panel = Document::new(8, 8).work.pages[0].panels[0].clone();
-        third_panel.id = PanelId(3);
+        third_panel.id = KomaId(3);
         third_panel.layers[0]
             .bitmap
             .set_pixel_rgba(1, 1, [0x55, 0x99, 0x22, 0xff]);
@@ -236,14 +236,14 @@ mod tests {
         assert_eq!(loaded.work.pages.len(), document.work.pages.len());
         for (page, loaded_page) in document.work.pages.iter().zip(loaded.work.pages.iter()) {
             assert_eq!(loaded_page.panels.len(), page.panels.len());
-            for (panel, loaded_panel) in page.panels.iter().zip(loaded_page.panels.iter()) {
-                assert_eq!(loaded_panel.id, panel.id);
-                assert_eq!(loaded_panel.bounds, panel.bounds);
-                assert_eq!(loaded_panel.active_layer_index, panel.active_layer_index);
-                assert_eq!(loaded_panel.created_layer_count, panel.created_layer_count);
-                assert_eq!(loaded_panel.bitmap.pixels, panel.bitmap.pixels);
-                assert_eq!(loaded_panel.layers.len(), panel.layers.len());
-                for (layer, loaded_layer) in panel.layers.iter().zip(loaded_panel.layers.iter()) {
+            for (koma, loaded_koma) in page.panels.iter().zip(loaded_page.panels.iter()) {
+                assert_eq!(loaded_koma.id, koma.id);
+                assert_eq!(loaded_koma.bounds, koma.bounds);
+                assert_eq!(loaded_koma.active_layer_index, koma.active_layer_index);
+                assert_eq!(loaded_koma.created_layer_count, koma.created_layer_count);
+                assert_eq!(loaded_koma.bitmap.pixels, koma.bitmap.pixels);
+                assert_eq!(loaded_koma.layers.len(), koma.layers.len());
+                for (layer, loaded_layer) in koma.layers.iter().zip(loaded_koma.layers.iter()) {
                     assert_eq!(loaded_layer.id, layer.id);
                     assert_eq!(loaded_layer.name, layer.name);
                     assert_eq!(loaded_layer.visible, layer.visible);
@@ -399,7 +399,7 @@ mod tests {
 
         assert_eq!(page.id, PageId(20));
         assert_eq!(page.panels.len(), 1);
-        assert_eq!(page.panels[0].id, PanelId(3));
+        assert_eq!(page.panels[0].id, KomaId(3));
         assert_eq!(
             page.panels[0].bitmap.pixel_rgba(1, 1),
             Some([0x55, 0x99, 0x22, 0xff])
@@ -428,7 +428,7 @@ mod tests {
             .expect("snapshot should exist");
 
         assert_eq!(snapshot.summary.page_id, PageId(10));
-        assert_eq!(snapshot.summary.panel_id, PanelId(2));
+        assert_eq!(snapshot.summary.panel_id, KomaId(2));
         assert_eq!(snapshot.bitmap.pixel_rgba(2, 3), expected);
 
         let _ = fs::remove_file(path);

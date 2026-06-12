@@ -122,7 +122,7 @@ pub(crate) fn build_overlay_line_quads(
 fn push_active_panel_mask(
     out: &mut Vec<SolidQuad>,
     plan: &CanvasPlan,
-    bounds: app_core::PanelBounds,
+    bounds: app_core::KomaBounds,
 ) {
     let source_width = plan.source_width;
     let source_height = plan.source_height;
@@ -189,7 +189,7 @@ fn push_active_panel_mask(
 fn push_panel_creation_preview(
     out: &mut Vec<SolidQuad>,
     plan: &CanvasPlan,
-    bounds: app_core::PanelBounds,
+    bounds: app_core::KomaBounds,
 ) {
     if plan.source_width == 0 || plan.source_height == 0 || bounds.width == 0 || bounds.height == 0
     {
@@ -292,7 +292,7 @@ fn push_panel_navigator(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::{CanvasPoint, CanvasViewTransform, PanelBounds};
+    use app_core::{CanvasPoint, CanvasViewTransform, KomaBounds};
     use render_types::{PanelNavigatorEntry, PixelRect};
 
     fn make_plan(canvas_width: usize, canvas_height: usize) -> CanvasPlan {
@@ -322,7 +322,7 @@ mod tests {
     fn active_panel_mask_emits_inside_fill_and_four_borders() {
         let plan = make_plan(64, 64);
         let overlay = CanvasOverlayState {
-            active_panel_bounds: Some(PanelBounds {
+            active_panel_bounds: Some(KomaBounds {
                 x: 0,
                 y: 0,
                 width: 64,
@@ -388,7 +388,7 @@ mod tests {
                 page_height: 80,
                 panels: vec![
                     PanelNavigatorEntry {
-                        bounds: PanelBounds {
+                        bounds: KomaBounds {
                             x: 0,
                             y: 0,
                             width: 50,
@@ -397,7 +397,7 @@ mod tests {
                         active: true,
                     },
                     PanelNavigatorEntry {
-                        bounds: PanelBounds {
+                        bounds: KomaBounds {
                             x: 50,
                             y: 0,
                             width: 50,
@@ -439,7 +439,7 @@ mod tests {
     fn panel_creation_preview_emits_fill_and_border() {
         let plan = make_plan(64, 64);
         let overlay = CanvasOverlayState {
-            panel_creation_preview: Some(PanelBounds {
+            panel_creation_preview: Some(KomaBounds {
                 x: 8,
                 y: 8,
                 width: 32,

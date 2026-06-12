@@ -1,4 +1,4 @@
-use app_core::{CanvasPoint, PaintInput, PanelLocalPoint, ToolKind};
+use app_core::{CanvasPoint, PaintInput, KomaLocalPoint, ToolKind};
 
 use crate::CanvasInputState;
 
@@ -31,7 +31,7 @@ pub fn advance_pointer_gesture<F>(
     mut to_panel_local: F,
 ) -> CanvasGestureUpdate
 where
-    F: FnMut(CanvasPoint) -> Option<PanelLocalPoint>,
+    F: FnMut(CanvasPoint) -> Option<KomaLocalPoint>,
 {
     match action {
         CanvasPointerAction::Down => handle_pointer_down(
@@ -65,7 +65,7 @@ fn handle_pointer_down<F>(
     to_panel_local: &mut F,
 ) -> CanvasGestureUpdate
 where
-    F: FnMut(CanvasPoint) -> Option<PanelLocalPoint>,
+    F: FnMut(CanvasPoint) -> Option<KomaLocalPoint>,
 {
     match active_tool {
         ToolKind::Bucket => to_panel_local(point)
@@ -106,7 +106,7 @@ fn handle_pointer_drag<F>(
     to_panel_local: &mut F,
 ) -> CanvasGestureUpdate
 where
-    F: FnMut(CanvasPoint) -> Option<PanelLocalPoint>,
+    F: FnMut(CanvasPoint) -> Option<KomaLocalPoint>,
 {
     if !state.is_drawing {
         return CanvasGestureUpdate::None;
@@ -156,7 +156,7 @@ fn handle_pointer_up<F>(
     to_panel_local: &mut F,
 ) -> CanvasGestureUpdate
 where
-    F: FnMut(CanvasPoint) -> Option<PanelLocalPoint>,
+    F: FnMut(CanvasPoint) -> Option<KomaLocalPoint>,
 {
     match active_tool {
         ToolKind::LassoBucket => {

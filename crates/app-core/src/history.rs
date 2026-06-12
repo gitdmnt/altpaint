@@ -3,7 +3,7 @@
 //! `CommandHistory` は操作記録（`HistoryEntry`）のスタックを管理する。
 //! undo 方式はビットマップ前後スナップショット（`BitmapPatch`）の保存・復元方式。
 
-use crate::{CanvasBitmap, CanvasDirtyRect, PanelId};
+use crate::{CanvasBitmap, CanvasDirtyRect, KomaId};
 
 /// 履歴スタックのデフォルト容量。
 pub const DEFAULT_HISTORY_CAPACITY: usize = 50;
@@ -29,9 +29,9 @@ impl std::fmt::Debug for OpaqueGpuData {
 pub enum HistoryEntry {
     /// ビットマップ前後スナップショット方式。
     BitmapPatch {
-        panel_id: PanelId,
+        panel_id: KomaId,
         layer_index: usize,
-        /// パネルローカル座標系の変更領域。
+        /// コマローカル座標系の変更領域。
         dirty: CanvasDirtyRect,
         /// 操作前のビットマップ領域。
         before: CanvasBitmap,
@@ -40,9 +40,9 @@ pub enum HistoryEntry {
     },
     /// GPU テクスチャスナップショット方式（`gpu` feature 有効時のストローク用）。
     GpuBitmapPatch {
-        panel_id: PanelId,
+        panel_id: KomaId,
         layer_index: usize,
-        /// パネルローカル座標系の変更領域。
+        /// コマローカル座標系の変更領域。
         dirty: CanvasDirtyRect,
         /// desktop 層で定義した `GpuPatchSnapshot` を保持する型消去ラッパー。
         gpu_data: OpaqueGpuData,
@@ -129,7 +129,7 @@ mod tests {
 
     fn make_patch(x: usize) -> HistoryEntry {
         HistoryEntry::BitmapPatch {
-            panel_id: PanelId(1),
+            panel_id: KomaId(1),
             layer_index: 0,
             dirty: CanvasDirtyRect {
                 x,

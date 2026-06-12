@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::{
-    CanvasBitmap, CanvasDirtyRect, ColorRgba8, PanelLocalPoint, PenPreset, ToolKind,
+    CanvasBitmap, CanvasDirtyRect, ColorRgba8, KomaLocalPoint, PenPreset, ToolKind,
     ToolSettingDefinition,
 };
 
@@ -10,19 +10,19 @@ use crate::{
 #[derive(Debug, Clone, PartialEq)]
 pub enum PaintInput {
     Stamp {
-        at: PanelLocalPoint,
+        at: KomaLocalPoint,
         pressure: f32,
     },
     StrokeSegment {
-        from: PanelLocalPoint,
-        to: PanelLocalPoint,
+        from: KomaLocalPoint,
+        to: KomaLocalPoint,
         pressure: f32,
     },
     FloodFill {
-        at: PanelLocalPoint,
+        at: KomaLocalPoint,
     },
     LassoFill {
-        points: Vec<PanelLocalPoint>,
+        points: Vec<KomaLocalPoint>,
     },
 }
 

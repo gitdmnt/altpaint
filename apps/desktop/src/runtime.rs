@@ -314,17 +314,17 @@ impl ApplicationHandler for DesktopRuntime {
                     u32,
                     u32,
                 )> = self.app.canvas_layer_source_kind().and_then(|kind| {
-                    let panel = self.app.document.active_panel()?;
+                    let koma = self.app.document.active_panel()?;
                     let (w, h) = match kind {
-                        crate::app::GpuCanvasSourceKind::Single => panel
+                        crate::app::GpuCanvasSourceKind::Single => koma
                             .layers
                             .first()
                             .map(|l| (l.bitmap.width as u32, l.bitmap.height as u32))?,
                         crate::app::GpuCanvasSourceKind::Composite => {
-                            (panel.bitmap.width as u32, panel.bitmap.height as u32)
+                            (koma.bitmap.width as u32, koma.bitmap.height as u32)
                         }
                     };
-                    Some((panel.id.0.to_string(), kind, w, h))
+                    Some((koma.id.0.to_string(), kind, w, h))
                 });
 
                 // CPU canvas frame は &mut self.app.status_panel と借用が衝突するため、

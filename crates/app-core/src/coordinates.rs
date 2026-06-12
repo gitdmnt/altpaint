@@ -158,12 +158,12 @@ impl From<CanvasPoint> for CanvasPointF {
 
 /// アクティブコマローカルの編集座標を表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PanelLocalPoint {
+pub struct KomaLocalPoint {
     pub x: usize,
     pub y: usize,
 }
 
-impl PanelLocalPoint {
+impl KomaLocalPoint {
     pub const fn new(x: usize, y: usize) -> Self {
         Self { x, y }
     }

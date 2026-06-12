@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use app_core::paint_params::MAX_STAMP_STEPS;
-use app_core::{PanelLocalPoint, ToolKind};
+use app_core::{KomaLocalPoint, ToolKind};
 
 use crate::gpu::GpuLayerTexture;
 
@@ -95,7 +95,7 @@ impl GpuBrushDispatch {
     pub fn dispatch_stroke(
         &self,
         layer_texture: &GpuLayerTexture,
-        positions: &[PanelLocalPoint],
+        positions: &[KomaLocalPoint],
         params: &BrushStrokeParams,
     ) {
         let stamp_count = positions.len().min(MAX_STAMP_STEPS + 1) as u32;
@@ -257,7 +257,7 @@ fn build_stroke_params_bytes(
 /// スタンプ位置（コマローカル座標）を `max_count` 個までフラットな f32 LE バイト列へ直列化する。
 ///
 /// `STAMP_POSITIONS_SIZE` バイトの固定長バッファを返す。
-fn build_positions_bytes(positions: &[PanelLocalPoint], max_count: usize) -> Vec<u8> {
+fn build_positions_bytes(positions: &[KomaLocalPoint], max_count: usize) -> Vec<u8> {
     let mut buf = vec![0u8; max_count * 8];
     for (i, point) in positions.iter().take(max_count).enumerate() {
         let offset = i * 8;
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn positions_bytes_layout_is_correct() {
-        let positions = vec![PanelLocalPoint::new(1, 2), PanelLocalPoint::new(3, 4)];
+        let positions = vec![KomaLocalPoint::new(1, 2), KomaLocalPoint::new(3, 4)];
         let bytes = build_positions_bytes(&positions, MAX_STAMP_STEPS + 1);
         assert_eq!(bytes.len(), (MAX_STAMP_STEPS + 1) * 8);
         assert_eq!(f32::from_le_bytes(bytes[0..4].try_into().unwrap()), 1.0);

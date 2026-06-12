@@ -1,5 +1,5 @@
 use app_core::{
-    BitmapEdit, CanvasBitmap, CanvasDirtyRect, PaintPluginContext, PanelLocalPoint,
+    BitmapEdit, CanvasBitmap, CanvasDirtyRect, PaintPluginContext, KomaLocalPoint,
     paint_params::MAX_STAMP_STEPS,
 };
 
@@ -11,11 +11,11 @@ use super::{composite, stamp};
 /// Phase 8B〜8D の暫定措置として GPU ディスパッチ呼び出し側が使用する。
 /// Phase 8E（CPU bitmap 廃止）以降は `gpu-canvas` が直接 dispatch を担うため削除予定。
 pub fn compute_stamp_positions(
-    from: PanelLocalPoint,
-    to: PanelLocalPoint,
+    from: KomaLocalPoint,
+    to: KomaLocalPoint,
     pressure: f32,
     context: &PaintPluginContext<'_>,
-) -> Vec<PanelLocalPoint> {
+) -> Vec<KomaLocalPoint> {
     let size = stamp::effective_size(context, pressure).max(1);
     let spacing = effective_spacing(context, size);
     let dx = to.x as f32 - from.x as f32;
@@ -31,7 +31,7 @@ pub fn compute_stamp_positions(
         };
         let x = from.x as f32 + dx * t;
         let y = from.y as f32 + dy * t;
-        points.push(PanelLocalPoint::new(
+        points.push(KomaLocalPoint::new(
             x.round().max(0.0) as usize,
             y.round().max(0.0) as usize,
         ));
@@ -40,8 +40,8 @@ pub fn compute_stamp_positions(
 }
 
 pub(crate) fn stroke_segment_edit(
-    from: PanelLocalPoint,
-    to: PanelLocalPoint,
+    from: KomaLocalPoint,
+    to: KomaLocalPoint,
     pressure: f32,
     context: &PaintPluginContext<'_>,
 ) -> Option<BitmapEdit> {
@@ -50,7 +50,7 @@ pub(crate) fn stroke_segment_edit(
 }
 
 pub(crate) fn stroke_like_edit(
-    points: &[PanelLocalPoint],
+    points: &[KomaLocalPoint],
     pressure: f32,
     context: &PaintPluginContext<'_>,
 ) -> Option<BitmapEdit> {
@@ -135,9 +135,9 @@ mod tests {
             active_layer_index: 0,
             layer_count: 1,
         };
-        let from = PanelLocalPoint::new(0, 0);
+        let from = KomaLocalPoint::new(0, 0);
         // 非常に長い距離（spacing=1px なら本来 10000 スタンプ）
-        let to = PanelLocalPoint::new(999, 0);
+        let to = KomaLocalPoint::new(999, 0);
         let size = stamp::effective_size(&context, 1.0).max(1);
         let spacing = effective_spacing(&context, size);
         let distance = (to.x as f32 - from.x as f32).hypot(0.0);
@@ -176,7 +176,7 @@ mod tests {
             layer_count: 1,
         };
         let positions =
-            compute_stamp_positions(PanelLocalPoint::new(0, 0), PanelLocalPoint::new(999, 0), 1.0, &context);
+            compute_stamp_positions(KomaLocalPoint::new(0, 0), KomaLocalPoint::new(999, 0), 1.0, &context);
         assert!(!positions.is_empty());
         assert!(positions.len() <= MAX_STAMP_STEPS + 1);
     }

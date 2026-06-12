@@ -1,9 +1,9 @@
-use app_core::{BitmapEdit, PaintPluginContext, PanelLocalPoint};
+use app_core::{BitmapEdit, PaintPluginContext, KomaLocalPoint};
 
 use super::{bitmap_from_points, composite};
 
 pub(crate) fn flood_fill_edit(
-    at: PanelLocalPoint,
+    at: KomaLocalPoint,
     context: &PaintPluginContext<'_>,
 ) -> Option<BitmapEdit> {
     let width = context.composited_bitmap.width;

@@ -1,4 +1,4 @@
-use app_core::{CanvasPoint, CanvasPointF, PanelBounds};
+use app_core::{CanvasPoint, CanvasPointF, KomaBounds};
 
 /// キャンバス入力中の最小状態を表す。
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -21,7 +21,7 @@ pub fn panel_creation_preview_bounds(
     state: &CanvasInputState,
     page_width: usize,
     page_height: usize,
-) -> Option<PanelBounds> {
+) -> Option<KomaBounds> {
     let anchor = state.panel_rect_anchor?;
     let current = state.last_position?;
     let left = anchor.x.min(current.x).min(page_width.saturating_sub(1));
@@ -30,7 +30,7 @@ pub fn panel_creation_preview_bounds(
     let bottom = anchor.y.max(current.y).min(page_height.saturating_sub(1));
     let width = right.saturating_sub(left).saturating_add(1);
     let height = bottom.saturating_sub(top).saturating_add(1);
-    (width > 0 && height > 0).then_some(PanelBounds {
+    (width > 0 && height > 0).then_some(KomaBounds {
         x: left,
         y: top,
         width,

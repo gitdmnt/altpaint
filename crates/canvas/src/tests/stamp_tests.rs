@@ -1,4 +1,4 @@
-use app_core::{ColorRgba8, Document, PaintInput, PanelLocalPoint};
+use app_core::{ColorRgba8, Document, PaintInput, KomaLocalPoint};
 
 use crate::CanvasRuntime;
 
@@ -16,7 +16,7 @@ fn stamp_input_paints_selected_color() {
         &mut document,
         &runtime,
         PaintInput::Stamp {
-            at: PanelLocalPoint::new(64, 64),
+            at: KomaLocalPoint::new(64, 64),
             pressure: 1.0,
         },
     )

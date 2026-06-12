@@ -115,21 +115,21 @@ impl DesktopApp {
             }
             Command::SetActiveLayerBlendMode { .. }
             | Command::ToggleActiveLayerVisibility => {
-                let panel_info = self.document.active_panel().map(|p| {
+                let koma_info = self.document.active_panel().map(|p| {
                     (
                         p.id,
                         CanvasDirtyRect::new(p.bounds.x, p.bounds.y, p.bounds.width, p.bounds.height),
                         CanvasDirtyRect::new(0, 0, p.bitmap.width, p.bitmap.height),
                     )
                 });
-                if let Some((_panel_id, page_dirty, _local_dirty)) = panel_info {
+                if let Some((_koma_id, page_dirty, _local_dirty)) = koma_info {
                     self.append_canvas_dirty_rect(page_dirty);
                 } else {
                     self.refresh_canvas_frame();
                     self.rebuild_present_frame();
                 }
-                if let Some((panel_id, _page_dirty, local_dirty)) = panel_info {
-                    self.recomposite_panel(panel_id, Some(local_dirty));
+                if let Some((koma_id, _page_dirty, local_dirty)) = koma_info {
+                    self.recomposite_panel(koma_id, Some(local_dirty));
                 }
                 self.sync_ui_from_document();
                 self.mark_status_dirty();

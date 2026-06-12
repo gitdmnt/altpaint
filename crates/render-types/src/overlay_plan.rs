@@ -1,4 +1,4 @@
-use app_core::{CanvasPoint, PanelBounds};
+use app_core::{CanvasPoint, KomaBounds};
 
 use crate::PixelRect;
 
@@ -8,9 +8,9 @@ pub struct CanvasOverlayState {
     pub brush_preview: Option<CanvasPoint>,
     pub brush_size: Option<u32>,
     pub lasso_points: Vec<CanvasPoint>,
-    pub active_panel_bounds: Option<PanelBounds>,
+    pub active_panel_bounds: Option<KomaBounds>,
     pub panel_navigator: Option<PanelNavigatorOverlay>,
-    pub panel_creation_preview: Option<PanelBounds>,
+    pub panel_creation_preview: Option<KomaBounds>,
     /// アクティブ UI パネルの画面座標矩形。Some のとき枠線を描画する。
     pub active_ui_panel_rect: Option<PixelRect>,
 }
@@ -18,7 +18,7 @@ pub struct CanvasOverlayState {
 /// コマ境界ナビゲータに表示する 1 件分の情報。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PanelNavigatorEntry {
-    pub bounds: PanelBounds,
+    pub bounds: KomaBounds,
     pub active: bool,
 }
 

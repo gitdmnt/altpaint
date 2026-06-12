@@ -23,15 +23,15 @@ impl DesktopApp {
         self.canvas_frame = Some(build_canvas_frame(&self.document));
     }
 
-    pub(super) fn active_panel_mask_overlay(&self) -> Option<app_core::PanelBounds> {
+    pub(super) fn active_panel_mask_overlay(&self) -> Option<app_core::KomaBounds> {
         let page = self.document.active_page()?;
         let bounds = self.document.active_panel_bounds()?;
         (page.panels.len() > 1
-            || bounds != app_core::PanelBounds::full_page(page.width, page.height))
+            || bounds != app_core::KomaBounds::full_page(page.width, page.height))
         .then_some(bounds)
     }
 
-    pub(super) fn panel_creation_preview_bounds(&self) -> Option<app_core::PanelBounds> {
+    pub(super) fn panel_creation_preview_bounds(&self) -> Option<app_core::KomaBounds> {
         let (page_width, page_height) = self.document.active_page_dimensions();
         canvas::panel_creation_preview_bounds(&self.canvas_input, page_width, page_height)
     }

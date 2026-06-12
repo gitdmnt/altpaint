@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{Command, PanelLocalPoint};
+use crate::{Command, KomaLocalPoint};
 
 mod bitmap;
 mod layer_ops;
@@ -349,7 +349,7 @@ pub struct PageId(pub u64);
 
 /// コマを識別する最小ID型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct PanelId(pub u64);
+pub struct KomaId(pub u64);
 
 /// レイヤーノードを識別する最小ID型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -428,7 +428,7 @@ pub struct Page {
     #[serde(default = "default_page_height")]
     pub height: usize,
     /// ページ内に含まれるコマ列。
-    pub panels: Vec<Panel>,
+    pub panels: Vec<Koma>,
 }
 
 impl Default for Page {
@@ -437,21 +437,21 @@ impl Default for Page {
             id: PageId(1),
             width: default_page_width(),
             height: default_page_height(),
-            panels: vec![Panel::default()],
+            panels: vec![Koma::default()],
         }
     }
 }
 
 /// ページ内のコマ矩形を表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PanelBounds {
+pub struct KomaBounds {
     pub x: usize,
     pub y: usize,
     pub width: usize,
     pub height: usize,
 }
 
-impl PanelBounds {
+impl KomaBounds {
     pub fn full_page(width: usize, height: usize) -> Self {
         Self {
             x: 0,
@@ -479,9 +479,9 @@ impl PanelBounds {
     pub fn canvas_to_panel_local(
         self,
         point: crate::CanvasPoint,
-    ) -> Option<crate::PanelLocalPoint> {
+    ) -> Option<crate::KomaLocalPoint> {
         self.contains_canvas_point(point)
-            .then_some(crate::PanelLocalPoint::new(
+            .then_some(crate::KomaLocalPoint::new(
                 point.x.saturating_sub(self.x),
                 point.y.saturating_sub(self.y),
             ))
@@ -502,7 +502,7 @@ impl PanelBounds {
 
     pub fn panel_local_to_canvas(
         self,
-        point: crate::PanelLocalPoint,
+        point: crate::KomaLocalPoint,
     ) -> Option<crate::CanvasPoint> {
         (point.x < self.width && point.y < self.height).then_some(crate::CanvasPoint::new(
             self.x.saturating_add(point.x),
@@ -511,7 +511,7 @@ impl PanelBounds {
     }
 }
 
-impl Default for PanelBounds {
+impl Default for KomaBounds {
     fn default() -> Self {
         Self::full_page(DEFAULT_DOCUMENT_WIDTH, DEFAULT_DOCUMENT_HEIGHT)
     }
@@ -519,12 +519,12 @@ impl Default for PanelBounds {
 
 /// 漫画のコマを表す最小単位。
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Panel {
+pub struct Koma {
     /// コマID。
-    pub id: PanelId,
+    pub id: KomaId,
     /// ページ内でのコマ矩形。
     #[serde(default)]
-    pub bounds: PanelBounds,
+    pub bounds: KomaBounds,
     /// フェーズ2の最小ラスタキャンバス。
     pub bitmap: CanvasBitmap,
     /// フェーズ9の最小レイヤー列。
@@ -538,14 +538,14 @@ pub struct Panel {
     pub created_layer_count: u64,
 }
 
-impl Default for Panel {
+impl Default for Koma {
     fn default() -> Self {
-        Self::new_blank(PanelId(1), DEFAULT_DOCUMENT_WIDTH, DEFAULT_DOCUMENT_HEIGHT)
+        Self::new_blank(KomaId(1), DEFAULT_DOCUMENT_WIDTH, DEFAULT_DOCUMENT_HEIGHT)
     }
 }
 
-impl Panel {
-    pub fn new_blank(id: PanelId, width: usize, height: usize) -> Self {
+impl Koma {
+    pub fn new_blank(id: KomaId, width: usize, height: usize) -> Self {
         let background = RasterLayer::background(
             LayerNodeId(1),
             "Layer 1".to_string(),
@@ -554,7 +554,7 @@ impl Panel {
         );
         Self {
             id,
-            bounds: PanelBounds::full_page(width, height),
+            bounds: KomaBounds::full_page(width, height),
             bitmap: background.bitmap.clone(),
             layers: vec![background],
             active_layer_index: 0,
@@ -749,7 +749,7 @@ impl Document {
                 pages: vec![Page {
                     width,
                     height,
-                    panels: vec![Panel::new_blank(PanelId(1), width, height)],
+                    panels: vec![Koma::new_blank(KomaId(1), width, height)],
                     ..Page::default()
                 }],
                 ..Work::default()
@@ -793,42 +793,42 @@ impl Document {
         self.work.pages.get_mut(index)
     }
 
-    pub fn active_panel(&self) -> Option<&Panel> {
-        let panel_index = self.active_panel_index();
+    pub fn active_panel(&self) -> Option<&Koma> {
+        let koma_index = self.active_panel_index();
         self.active_page()
-            .and_then(|page| page.panels.get(panel_index))
+            .and_then(|page| page.panels.get(koma_index))
     }
 
-    pub fn active_panel_mut(&mut self) -> Option<&mut Panel> {
+    pub fn active_panel_mut(&mut self) -> Option<&mut Koma> {
         let page_index = self
             .active_page_index
             .min(self.work.pages.len().saturating_sub(1));
-        let panel_index = self.active_panel_index;
+        let koma_index = self.active_panel_index;
         self.work.pages.get_mut(page_index).and_then(|page| {
-            let clamped_index = panel_index.min(page.panels.len().saturating_sub(1));
+            let clamped_index = koma_index.min(page.panels.len().saturating_sub(1));
             page.panels.get_mut(clamped_index)
         })
     }
 
     pub fn active_bitmap(&self) -> Option<&CanvasBitmap> {
-        self.active_panel().map(|panel| &panel.bitmap)
+        self.active_panel().map(|koma| &koma.bitmap)
     }
 
     pub fn active_layer_bitmap(&self) -> Option<&CanvasBitmap> {
-        let panel = self.active_panel()?;
-        panel
+        let koma = self.active_panel()?;
+        koma
             .layers
             .get(
-                panel
+                koma
                     .active_layer_index
-                    .min(panel.layers.len().saturating_sub(1)),
+                    .min(koma.layers.len().saturating_sub(1)),
             )
             .map(|layer| &layer.bitmap)
     }
 
     pub fn active_layer_is_background(&self) -> Option<bool> {
-        let panel = self.active_panel()?;
-        Some(panel.active_layer_index == 0)
+        let koma = self.active_panel()?;
+        Some(koma.active_layer_index == 0)
     }
 
     pub fn active_panel_contains_canvas_point(&self, point: crate::CanvasPoint) -> bool {
@@ -836,7 +836,7 @@ impl Document {
             .is_some_and(|bounds| bounds.contains_canvas_point(point))
     }
 
-    pub fn active_panel_contains_local_point(&self, point: PanelLocalPoint) -> bool {
+    pub fn active_panel_contains_local_point(&self, point: KomaLocalPoint) -> bool {
         self.active_panel_bounds()
             .and_then(|bounds| bounds.panel_local_to_canvas(point))
             .is_some()
@@ -845,14 +845,14 @@ impl Document {
     pub fn active_panel_canvas_to_local(
         &self,
         point: crate::CanvasPoint,
-    ) -> Option<PanelLocalPoint> {
+    ) -> Option<KomaLocalPoint> {
         self.active_panel_bounds()
             .and_then(|bounds| bounds.canvas_to_panel_local(point))
     }
 
     pub fn active_panel_local_to_canvas(
         &self,
-        point: PanelLocalPoint,
+        point: KomaLocalPoint,
     ) -> Option<crate::CanvasPoint> {
         self.active_panel_bounds()
             .and_then(|bounds| bounds.panel_local_to_canvas(point))
@@ -903,8 +903,8 @@ impl Document {
             .unwrap_or(&[])
     }
 
-    pub fn active_panel_bounds(&self) -> Option<PanelBounds> {
-        self.active_panel().map(|panel| panel.bounds)
+    pub fn active_panel_bounds(&self) -> Option<KomaBounds> {
+        self.active_panel().map(|koma| koma.bounds)
     }
 
     pub fn active_page_panel_count(&self) -> usize {
@@ -928,15 +928,15 @@ impl Document {
 
     pub fn select_next_panel(&mut self) {
         if let Some(page) = self.active_page() {
-            let panel_count = page.panels.len().max(1);
-            self.active_panel_index = (self.active_panel_index() + 1) % panel_count;
+            let koma_count = page.panels.len().max(1);
+            self.active_panel_index = (self.active_panel_index() + 1) % koma_count;
         }
     }
 
     pub fn select_previous_panel(&mut self) {
         if let Some(page) = self.active_page() {
-            let panel_count = page.panels.len().max(1);
-            self.active_panel_index = (self.active_panel_index() + panel_count - 1) % panel_count;
+            let koma_count = page.panels.len().max(1);
+            self.active_panel_index = (self.active_panel_index() + koma_count - 1) % koma_count;
         }
     }
 
@@ -952,16 +952,16 @@ impl Document {
         let new_bounds = next_bounds
             .last()
             .copied()
-            .unwrap_or_else(|| PanelBounds::full_page(page.width, page.height));
-        let mut panel = Panel::new_blank(next_id, new_bounds.width, new_bounds.height);
-        panel.bounds = new_bounds;
-        page.panels.push(panel);
+            .unwrap_or_else(|| KomaBounds::full_page(page.width, page.height));
+        let mut koma = Koma::new_blank(next_id, new_bounds.width, new_bounds.height);
+        koma.bounds = new_bounds;
+        page.panels.push(koma);
         relayout_page_panels(page);
         self.active_panel_index = page.panels.len().saturating_sub(1);
         self.focus_active_panel_view();
     }
 
-    pub fn create_panel(&mut self, bounds: PanelBounds) {
+    pub fn create_panel(&mut self, bounds: KomaBounds) {
         let next_id = next_panel_id(&self.work.pages);
         let page_index = self.active_page_index();
         let Some(page) = self.work.pages.get_mut(page_index) else {
@@ -971,9 +971,9 @@ impl Document {
             return;
         };
 
-        let mut panel = Panel::new_blank(next_id, bounds.width, bounds.height);
-        panel.bounds = bounds;
-        page.panels.push(panel);
+        let mut koma = Koma::new_blank(next_id, bounds.width, bounds.height);
+        koma.bounds = bounds;
+        page.panels.push(koma);
         self.active_panel_index = page.panels.len().saturating_sub(1);
         self.focus_active_panel_view();
     }
@@ -1132,14 +1132,14 @@ impl Document {
             page.height = page.height.max(1);
             if page.panels.is_empty() {
                 page.panels
-                    .push(Panel::new_blank(PanelId(1), page.width, page.height));
+                    .push(Koma::new_blank(KomaId(1), page.width, page.height));
             }
-            let needs_relayout = page.panels.iter().any(|panel| panel.bounds.is_empty());
-            for panel in &mut page.panels {
-                if panel.bounds.is_empty() {
-                    panel.bounds = PanelBounds::full_page(page.width, page.height);
+            let needs_relayout = page.panels.iter().any(|koma| koma.bounds.is_empty());
+            for koma in &mut page.panels {
+                if koma.bounds.is_empty() {
+                    koma.bounds = KomaBounds::full_page(page.width, page.height);
                 }
-                ensure_panel_layers(panel);
+                ensure_panel_layers(koma);
             }
             if needs_relayout {
                 relayout_page_panels(page);
@@ -1196,7 +1196,7 @@ impl Document {
                 width,
                 height,
             } => {
-                self.create_panel(PanelBounds {
+                self.create_panel(KomaBounds {
                     x: *x,
                     y: *y,
                     width: *width,
@@ -1306,31 +1306,31 @@ impl Document {
     }
 }
 
-fn next_panel_id(pages: &[Page]) -> PanelId {
+fn next_panel_id(pages: &[Page]) -> KomaId {
     let next = pages
         .iter()
         .flat_map(|page| page.panels.iter())
-        .map(|panel| panel.id.0)
+        .map(|koma| koma.id.0)
         .max()
         .unwrap_or(0)
         .saturating_add(1);
-    PanelId(next)
+    KomaId(next)
 }
 
 fn default_panel_grid_bounds(
     page_width: usize,
     page_height: usize,
-    panel_count: usize,
-) -> Vec<PanelBounds> {
-    let panel_count = panel_count.max(1);
-    if panel_count == 1 {
-        return vec![PanelBounds::full_page(page_width, page_height)];
+    koma_count: usize,
+) -> Vec<KomaBounds> {
+    let koma_count = koma_count.max(1);
+    if koma_count == 1 {
+        return vec![KomaBounds::full_page(page_width, page_height)];
     }
 
     let page_width = page_width.max(1);
     let page_height = page_height.max(1);
-    let columns = (panel_count as f32).sqrt().ceil() as usize;
-    let rows = panel_count.div_ceil(columns);
+    let columns = (koma_count as f32).sqrt().ceil() as usize;
+    let rows = koma_count.div_ceil(columns);
     let margin_x = ((page_width as f32 * 0.04).round() as usize).clamp(12, 96);
     let margin_y = ((page_height as f32 * 0.04).round() as usize).clamp(12, 96);
     let gap_x = ((page_width as f32 * 0.015).round() as usize).clamp(8, 48);
@@ -1344,11 +1344,11 @@ fn default_panel_grid_bounds(
     let cell_width = (available_width / columns.max(1)).max(64);
     let cell_height = (available_height / rows.max(1)).max(64);
 
-    (0..panel_count)
+    (0..koma_count)
         .map(|index| {
             let row = index / columns.max(1);
             let column = index % columns.max(1);
-            PanelBounds {
+            KomaBounds {
                 x: margin_x + column * (cell_width + gap_x),
                 y: margin_y + row * (cell_height + gap_y),
                 width: cell_width.min(page_width.max(1)),
@@ -1360,17 +1360,17 @@ fn default_panel_grid_bounds(
 
 fn relayout_page_panels(page: &mut Page) {
     let bounds = default_panel_grid_bounds(page.width, page.height, page.panels.len());
-    for (panel, next_bounds) in page.panels.iter_mut().zip(bounds.into_iter()) {
-        resize_panel_to_bounds(panel, next_bounds.width, next_bounds.height);
-        panel.bounds = next_bounds;
+    for (koma, next_bounds) in page.panels.iter_mut().zip(bounds.into_iter()) {
+        resize_panel_to_bounds(koma, next_bounds.width, next_bounds.height);
+        koma.bounds = next_bounds;
     }
 }
 
 fn clamp_panel_bounds(
-    bounds: PanelBounds,
+    bounds: KomaBounds,
     page_width: usize,
     page_height: usize,
-) -> Option<PanelBounds> {
+) -> Option<KomaBounds> {
     let page_width = page_width.max(1);
     let page_height = page_height.max(1);
     let x = bounds.x.min(page_width.saturating_sub(1));
@@ -1379,7 +1379,7 @@ fn clamp_panel_bounds(
     let max_height = page_height.saturating_sub(y);
     let width = bounds.width.min(max_width);
     let height = bounds.height.min(max_height);
-    (width > 0 && height > 0).then_some(PanelBounds {
+    (width > 0 && height > 0).then_some(KomaBounds {
         x,
         y,
         width,
@@ -1387,21 +1387,21 @@ fn clamp_panel_bounds(
     })
 }
 
-fn resize_panel_to_bounds(panel: &mut Panel, width: usize, height: usize) {
+fn resize_panel_to_bounds(koma: &mut Koma, width: usize, height: usize) {
     let width = width.max(1);
     let height = height.max(1);
-    if panel.bitmap.width == width && panel.bitmap.height == height {
+    if koma.bitmap.width == width && koma.bitmap.height == height {
         return;
     }
 
-    ensure_panel_layers(panel);
-    for layer in &mut panel.layers {
+    ensure_panel_layers(koma);
+    for layer in &mut koma.layers {
         layer.bitmap = resize_bitmap_nearest(&layer.bitmap, width, height);
         if let Some(mask) = layer.mask.as_mut() {
             *mask = resize_mask_nearest(mask, width, height);
         }
     }
-    panel.bitmap = composite_panel_bitmap(panel);
+    koma.bitmap = composite_panel_bitmap(koma);
 }
 
 fn resize_bitmap_nearest(bitmap: &CanvasBitmap, width: usize, height: usize) -> CanvasBitmap {

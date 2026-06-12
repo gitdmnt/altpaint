@@ -7,7 +7,7 @@ pub mod text;
 
 pub use stroke::compute_stamp_positions;
 
-use app_core::{BitmapEdit, CanvasBitmap, CanvasDirtyRect, PaintPluginContext, PanelLocalPoint};
+use app_core::{BitmapEdit, CanvasBitmap, CanvasDirtyRect, PaintPluginContext, KomaLocalPoint};
 
 pub(crate) fn bitmap_from_points(
     points: Vec<(usize, usize)>,
@@ -41,7 +41,7 @@ pub(crate) fn bitmap_from_points(
     ))
 }
 
-pub(crate) fn point_in_polygon(x: f32, y: f32, points: &[PanelLocalPoint]) -> bool {
+pub(crate) fn point_in_polygon(x: f32, y: f32, points: &[KomaLocalPoint]) -> bool {
     let mut inside = false;
     let mut previous = *points.last().expect("polygon has points");
     for current in points {

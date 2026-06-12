@@ -25,7 +25,7 @@ use std::path::PathBuf;
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use app_core::{CanvasBitmap, CanvasDirtyRect, CanvasPoint, CommandHistory, Document, PanelId};
+use app_core::{CanvasBitmap, CanvasDirtyRect, CanvasPoint, CommandHistory, Document, KomaId};
 use desktop_support::{
     DesktopDialogs, NativeDesktopDialogs, WorkspacePresetCatalog, default_workspace_preset_path,
 };
@@ -56,14 +56,14 @@ struct CachedCanvasScene {
 
 /// ストローク中のビットマップ差分追跡状態。
 struct PendingStroke {
-    panel_id: PanelId,
+    panel_id: KomaId,
     layer_index: usize,
     /// ストローク開始前のレイヤービットマップ全体。
     ///
     /// GPU パスでは `None`（commit 時に CPU bitmap がストローク前状態を保持している）。
     /// CPU パスでは `Some`（ストローク中に CPU bitmap が書き換わるため事前に保存）。
     before_layer: Option<CanvasBitmap>,
-    /// ストローク中に蓄積したパネルローカル dirty rect の合計。
+    /// ストローク中に蓄積したコマローカル dirty rect の合計。
     dirty: Option<CanvasDirtyRect>,
 }
 
@@ -195,12 +195,12 @@ impl DesktopApp {
     /// マスクと composite テクスチャも同期する。
     ///
     /// レイヤー追加/削除/並べ替えで古いエントリがずれるのを防ぐため、
-    /// 各パネルのレイヤー/マスクエントリを先にクリアしてから再登録する。
+    /// 各コマのレイヤー/マスクエントリを先にクリアしてから再登録する。
     pub(crate) fn sync_all_layers_to_gpu(&mut self) {
         if self.gpu.is_none() {
             return;
         }
-        let panel_ids: Vec<String> = self
+        let koma_ids: Vec<String> = self
             .document
             .work
             .pages
@@ -208,15 +208,15 @@ impl DesktopApp {
             .flat_map(|page| page.panels.iter().map(|p| p.id.0.to_string()))
             .collect();
         if let Some(gpu) = self.gpu.as_mut() {
-            for pid in &panel_ids {
+            for pid in &koma_ids {
                 gpu.pool.clear_layers_for_panel(pid);
             }
         }
         #[derive(Clone)]
         struct LayerSync {
-            panel_id: String,
-            panel_w: u32,
-            panel_h: u32,
+            koma_id: String,
+            koma_w: u32,
+            koma_h: u32,
             layer_index: usize,
             w: u32,
             h: u32,
@@ -225,15 +225,15 @@ impl DesktopApp {
         }
         let mut entries: Vec<LayerSync> = Vec::new();
         for page in &self.document.work.pages {
-            for panel in &page.panels {
-                let panel_id = panel.id.0.to_string();
-                let panel_w = panel.bitmap.width as u32;
-                let panel_h = panel.bitmap.height as u32;
-                for (idx, layer) in panel.layers.iter().enumerate() {
+            for koma in &page.panels {
+                let koma_id = koma.id.0.to_string();
+                let koma_w = koma.bitmap.width as u32;
+                let koma_h = koma.bitmap.height as u32;
+                for (idx, layer) in koma.layers.iter().enumerate() {
                     entries.push(LayerSync {
-                        panel_id: panel_id.clone(),
-                        panel_w,
-                        panel_h,
+                        koma_id: koma_id.clone(),
+                        koma_w,
+                        koma_h,
                         layer_index: idx,
                         w: layer.bitmap.width as u32,
                         h: layer.bitmap.height as u32,
@@ -247,15 +247,15 @@ impl DesktopApp {
         }
         let pool = &mut self.gpu.as_mut().unwrap().pool;
         for entry in entries {
-            pool.ensure_composite_texture(&entry.panel_id, entry.panel_w, entry.panel_h);
-            pool.create_layer_texture(&entry.panel_id, entry.layer_index, entry.w, entry.h);
-            pool.upload_cpu_bitmap(&entry.panel_id, entry.layer_index, &entry.pixels);
+            pool.ensure_composite_texture(&entry.koma_id, entry.koma_w, entry.koma_h);
+            pool.create_layer_texture(&entry.koma_id, entry.layer_index, entry.w, entry.h);
+            pool.upload_cpu_bitmap(&entry.koma_id, entry.layer_index, &entry.pixels);
             match entry.mask {
                 Some((mw, mh, alpha)) => {
-                    pool.upload_mask(&entry.panel_id, entry.layer_index, mw, mh, &alpha);
+                    pool.upload_mask(&entry.koma_id, entry.layer_index, mw, mh, &alpha);
                 }
                 None => {
-                    pool.remove_mask(&entry.panel_id, entry.layer_index);
+                    pool.remove_mask(&entry.koma_id, entry.layer_index);
                 }
             }
         }
@@ -278,9 +278,9 @@ impl DesktopApp {
     /// - GPU 非対応: `None`
     pub(crate) fn canvas_layer_source_kind(&self) -> Option<GpuCanvasSourceKind> {
         let pool = &self.gpu.as_ref()?.pool;
-        let panel = self.document.active_panel()?;
-        let pid = panel.id.0.to_string();
-        if panel.layers.len() == 1 {
+        let koma = self.document.active_panel()?;
+        let pid = koma.id.0.to_string();
+        if koma.layers.len() == 1 {
             if pool.get(&pid, 0).is_some() {
                 Some(GpuCanvasSourceKind::Single)
             } else {
@@ -298,37 +298,37 @@ impl DesktopApp {
         self.gpu.as_ref().map(|gpu| &gpu.pool)
     }
 
-    /// 指定パネルに対し、現在のレイヤー構成を composite テクスチャへ再合成する。
+    /// 指定コマに対し、現在のレイヤー構成を composite テクスチャへ再合成する。
     ///
-    /// `dirty` はパネルローカル座標系の矩形。None の場合はパネル全体。
+    /// `dirty` はコマローカル座標系の矩形。None の場合はコマ全体。
     pub(crate) fn recomposite_panel(
         &self,
-        panel_id: PanelId,
+        koma_id: KomaId,
         dirty: Option<CanvasDirtyRect>,
     ) {
         let Some(gpu) = self.gpu.as_ref() else {
             return;
         };
-        let pid_str = panel_id.0.to_string();
-        let Some(panel) = self
+        let pid_str = koma_id.0.to_string();
+        let Some(koma) = self
             .document
             .work
             .pages
             .iter()
             .flat_map(|p| &p.panels)
-            .find(|p| p.id == panel_id)
+            .find(|p| p.id == koma_id)
         else {
             return;
         };
         let Some(composite) = gpu.pool.get_composite(&pid_str) else {
             return;
         };
-        let (pw, ph) = (panel.bitmap.width as u32, panel.bitmap.height as u32);
+        let (pw, ph) = (koma.bitmap.width as u32, koma.bitmap.height as u32);
         let rect = dirty.unwrap_or(CanvasDirtyRect {
             x: 0,
             y: 0,
-            width: panel.bitmap.width,
-            height: panel.bitmap.height,
+            width: koma.bitmap.width,
+            height: koma.bitmap.height,
         });
         let x0 = (rect.x as u32).min(pw);
         let y0 = (rect.y as u32).min(ph);
@@ -338,7 +338,7 @@ impl DesktopApp {
             return;
         }
 
-        let entries: Vec<gpu_canvas::CompositeLayerEntry<'_>> = panel
+        let entries: Vec<gpu_canvas::CompositeLayerEntry<'_>> = koma
             .layers
             .iter()
             .enumerate()
@@ -357,10 +357,10 @@ impl DesktopApp {
         gpu.compositor.recomposite(composite, &entries, (x0, y0, x1, y1));
     }
 
-    /// 全パネルの composite テクスチャを再合成する。`install_gpu_resources` や
+    /// 全コマの composite テクスチャを再合成する。`install_gpu_resources` や
     /// `sync_all_layers_to_gpu` 後に呼ぶ。
     pub(crate) fn recomposite_all_panels(&self) {
-        let ids: Vec<PanelId> = self
+        let ids: Vec<KomaId> = self
             .document
             .work
             .pages

@@ -1,4 +1,4 @@
-use app_core::{ColorRgba8, Document, PaintInput, PanelLocalPoint};
+use app_core::{ColorRgba8, Document, PaintInput, KomaLocalPoint};
 
 use crate::CanvasRuntime;
 
@@ -16,7 +16,7 @@ fn flood_fill_recolors_matching_region() {
         &mut document,
         &runtime,
         PaintInput::FloodFill {
-            at: PanelLocalPoint::new(8, 8),
+            at: KomaLocalPoint::new(8, 8),
         },
     )
     .expect("dirty rect");
@@ -44,9 +44,9 @@ fn lasso_fill_triangular_region_diagonal_edges() {
         &runtime,
         PaintInput::LassoFill {
             points: vec![
-                PanelLocalPoint::new(0, 0),
-                PanelLocalPoint::new(20, 0),
-                PanelLocalPoint::new(10, 20),
+                KomaLocalPoint::new(0, 0),
+                KomaLocalPoint::new(20, 0),
+                KomaLocalPoint::new(10, 20),
             ],
         },
     )
@@ -75,10 +75,10 @@ fn lasso_fill_colors_polygon_area() {
         &runtime,
         PaintInput::LassoFill {
             points: vec![
-                PanelLocalPoint::new(10, 10),
-                PanelLocalPoint::new(30, 10),
-                PanelLocalPoint::new(30, 30),
-                PanelLocalPoint::new(10, 30),
+                KomaLocalPoint::new(10, 10),
+                KomaLocalPoint::new(30, 10),
+                KomaLocalPoint::new(30, 30),
+                KomaLocalPoint::new(10, 30),
             ],
         },
     )

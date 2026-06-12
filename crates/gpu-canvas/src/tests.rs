@@ -86,7 +86,7 @@ mod gpu_tests {
                 let brush = GpuBrushDispatch::new(device.clone(), queue.clone());
                 brush.dispatch_stroke(
                     &texture,
-                    &[app_core::PanelLocalPoint::new(2, 2)],
+                    &[app_core::KomaLocalPoint::new(2, 2)],
                     &crate::BrushStrokeParams {
                         color_rgba: [1.0, 0.0, 0.0, 1.0],
                         radius: 2.0,
@@ -182,7 +182,7 @@ mod gpu_tests {
             pool.upload_cpu_bitmap("p", 0, &zeros);
 
             // snap を元の位置へ復元
-            pool.restore_region("p", 0, app_core::PanelLocalPoint::new(1, 1), &snap);
+            pool.restore_region("p", 0, app_core::KomaLocalPoint::new(1, 1), &snap);
 
             let (w, h, out) = pool.read_back_full("p", 0).expect("readback");
             assert_eq!((w, h), (4, 4));
@@ -242,7 +242,7 @@ mod gpu_tests {
 
             let region = vec![128u8; 2 * 2 * 4];
             let tex = pool.create_and_upload(2, 2, &region);
-            pool.restore_region("p", 0, app_core::PanelLocalPoint::new(1, 1), &tex);
+            pool.restore_region("p", 0, app_core::KomaLocalPoint::new(1, 1), &tex);
 
             let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
             for y in 0..4 {

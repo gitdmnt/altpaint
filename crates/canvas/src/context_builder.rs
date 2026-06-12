@@ -24,7 +24,7 @@ pub fn build_paint_context<'a>(
     let resolved_size = resolved_size_for_input(document, input);
     let active_tool = document.active_tool_definition()?;
     let active_pen = document.active_pen_preset()?;
-    let active_panel = document.active_panel()?;
+    let active_koma = document.active_panel()?;
     let active_layer_bitmap = document.active_layer_bitmap()?;
     let composited_bitmap = document.active_bitmap()?;
 
@@ -42,8 +42,8 @@ pub fn build_paint_context<'a>(
             active_layer_bitmap,
             composited_bitmap,
             active_layer_is_background: document.active_layer_is_background().unwrap_or(false),
-            active_layer_index: active_panel.active_layer_index,
-            layer_count: active_panel.layers.len(),
+            active_layer_index: active_koma.active_layer_index,
+            layer_count: active_koma.layers.len(),
         },
     })
 }

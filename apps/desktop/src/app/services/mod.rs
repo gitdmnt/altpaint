@@ -118,7 +118,7 @@ impl DesktopApp {
                     pool.restore_region(
                         &panel_id.0.to_string(),
                         layer_index,
-                        app_core::PanelLocalPoint::new(dirty.x, dirty.y),
+                        app_core::KomaLocalPoint::new(dirty.x, dirty.y),
                         &snap.before,
                     );
                     self.append_canvas_dirty_rect(dirty);
@@ -180,7 +180,7 @@ impl DesktopApp {
                     pool.restore_region(
                         &panel_id.0.to_string(),
                         layer_index,
-                        app_core::PanelLocalPoint::new(dirty.x, dirty.y),
+                        app_core::KomaLocalPoint::new(dirty.x, dirty.y),
                         &snap.after,
                     );
                     self.append_canvas_dirty_rect(dirty);

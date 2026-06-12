@@ -1,4 +1,4 @@
-use app_core::{Command, Document, PaintInput, PanelLocalPoint, ToolKind};
+use app_core::{Command, Document, PaintInput, KomaLocalPoint, ToolKind};
 
 use crate::CanvasRuntime;
 
@@ -13,8 +13,8 @@ fn stroke_segment_paints_multiple_pixels() {
         &mut document,
         &runtime,
         PaintInput::StrokeSegment {
-            from: PanelLocalPoint::new(32, 32),
-            to: PanelLocalPoint::new(64, 32),
+            from: KomaLocalPoint::new(32, 32),
+            to: KomaLocalPoint::new(64, 32),
             pressure: 1.0,
         },
     )
@@ -39,7 +39,7 @@ fn eraser_uses_runtime_composite_to_clear_pixels() {
         &mut document,
         &runtime,
         PaintInput::Stamp {
-            at: PanelLocalPoint::new(48, 48),
+            at: KomaLocalPoint::new(48, 48),
             pressure: 1.0,
         },
     );
@@ -50,7 +50,7 @@ fn eraser_uses_runtime_composite_to_clear_pixels() {
         &mut document,
         &runtime,
         PaintInput::Stamp {
-            at: PanelLocalPoint::new(48, 48),
+            at: KomaLocalPoint::new(48, 48),
             pressure: 1.0,
         },
     );

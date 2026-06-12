@@ -5,20 +5,20 @@ fn apply_layer_brush(
     document: &mut Document,
     paint: impl FnOnce(&mut CanvasBitmap, bool) -> CanvasDirtyRect,
 ) -> Option<CanvasDirtyRect> {
-    let panel_bounds = document.active_panel_bounds()?;
+    let koma_bounds = document.active_panel_bounds()?;
     let (page_width, page_height) = document.active_page_dimensions();
-    let panel = document.active_panel_mut()?;
-    super::layer_ops::ensure_panel_layers(panel);
-    let is_background = panel.active_layer_index == 0;
+    let koma = document.active_panel_mut()?;
+    super::layer_ops::ensure_panel_layers(koma);
+    let is_background = koma.active_layer_index == 0;
     let local_dirty = {
-        let layer = &mut panel.layers[panel.active_layer_index];
+        let layer = &mut koma.layers[koma.active_layer_index];
         paint(&mut layer.bitmap, is_background)
     };
-    panel.bitmap = super::layer_ops::composite_panel_bitmap(panel);
+    koma.bitmap = super::layer_ops::composite_panel_bitmap(koma);
     Some(
         CanvasDirtyRect {
-            x: local_dirty.x.saturating_add(panel_bounds.x),
-            y: local_dirty.y.saturating_add(panel_bounds.y),
+            x: local_dirty.x.saturating_add(koma_bounds.x),
+            y: local_dirty.y.saturating_add(koma_bounds.y),
             width: local_dirty.width,
             height: local_dirty.height,
         }
@@ -94,7 +94,7 @@ fn draw_point_marks_target_pixel_black() {
     let mut document = Document::default();
     document.set_active_pen_size(1);
 
-    let dirty = draw_point(&mut document, 3, 4).expect("panel should exist");
+    let dirty = draw_point(&mut document, 3, 4).expect("koma should exist");
 
     let bitmap = &document.work.pages[0].panels[0].bitmap;
     let index = (4 * bitmap.width + 3) * 4;
@@ -107,7 +107,7 @@ fn draw_stroke_draws_continuous_line() {
     let mut document = Document::default();
     document.set_active_pen_size(1);
 
-    let dirty = draw_stroke(&mut document, 2, 2, 6, 2).expect("panel should exist");
+    let dirty = draw_stroke(&mut document, 2, 2, 6, 2).expect("koma should exist");
 
     let bitmap = &document.work.pages[0].panels[0].bitmap;
     for x in 2..=6 {
@@ -123,7 +123,7 @@ fn erase_point_marks_target_pixel_white() {
     document.set_active_pen_size(1);
     let _ = draw_point(&mut document, 3, 4);
 
-    let dirty = erase_point(&mut document, 3, 4).expect("panel should exist");
+    let dirty = erase_point(&mut document, 3, 4).expect("koma should exist");
 
     let bitmap = &document.work.pages[0].panels[0].bitmap;
     let index = (4 * bitmap.width + 3) * 4;
@@ -275,7 +275,7 @@ fn pen_draws_wider_than_single_pixel_default_stroke() {
     });
     document.apply_command(&Command::SetActivePenSize { size: 5 });
 
-    let dirty = draw_point(&mut document, 10, 10).expect("panel should exist");
+    let dirty = draw_point(&mut document, 10, 10).expect("koma should exist");
 
     assert!(dirty.width >= 5);
     assert!(dirty.height >= 5);
@@ -294,7 +294,7 @@ fn wide_stroke_keeps_segment_core_filled() {
     });
     document.apply_command(&Command::SetActivePenSize { size: 24 });
 
-    let dirty = draw_stroke(&mut document, 20, 64, 108, 64).expect("panel should exist");
+    let dirty = draw_stroke(&mut document, 20, 64, 108, 64).expect("koma should exist");
 
     assert!(dirty.width >= 88);
     assert!(dirty.height >= 24);
@@ -313,7 +313,7 @@ fn wide_diagonal_stroke_marks_midpoint_pixels() {
     });
     document.apply_command(&Command::SetActivePenSize { size: 18 });
 
-    let dirty = draw_stroke(&mut document, 16, 16, 112, 112).expect("panel should exist");
+    let dirty = draw_stroke(&mut document, 16, 16, 112, 112).expect("koma should exist");
 
     assert!(dirty.width >= 96);
     assert!(dirty.height >= 96);
@@ -418,10 +418,10 @@ fn add_raster_layer_selects_new_layer() {
 
     document.apply_command(&Command::AddRasterLayer);
 
-    let panel = &document.work.pages[0].panels[0];
-    assert_eq!(panel.layers.len(), 2);
-    assert_eq!(panel.active_layer_index, 1);
-    assert_eq!(panel.layers[1].name, "Layer 2");
+    let koma = &document.work.pages[0].panels[0];
+    assert_eq!(koma.layers.len(), 2);
+    assert_eq!(koma.active_layer_index, 1);
+    assert_eq!(koma.layers[1].name, "Layer 2");
 }
 
 #[test]
@@ -433,14 +433,14 @@ fn add_raster_layer_uses_created_layer_counter_for_names() {
 
     document.apply_command(&Command::AddRasterLayer);
 
-    let panel = &document.work.pages[0].panels[0];
-    let names = panel
+    let koma = &document.work.pages[0].panels[0];
+    let names = koma
         .layers
         .iter()
         .map(|layer| layer.name.as_str())
         .collect::<Vec<_>>();
     assert_eq!(names, vec!["Layer 1", "Layer 2", "Layer 4"]);
-    assert_eq!(panel.created_layer_count, 4);
+    assert_eq!(koma.created_layer_count, 4);
 }
 
 #[test]
@@ -449,9 +449,9 @@ fn remove_active_layer_keeps_at_least_one_layer() {
 
     document.apply_command(&Command::RemoveActiveLayer);
 
-    let panel = &document.work.pages[0].panels[0];
-    assert_eq!(panel.layers.len(), 1);
-    assert_eq!(panel.active_layer_index, 0);
+    let koma = &document.work.pages[0].panels[0];
+    assert_eq!(koma.layers.len(), 1);
+    assert_eq!(koma.active_layer_index, 0);
 }
 
 #[test]
@@ -462,10 +462,10 @@ fn remove_active_layer_selects_remaining_layer() {
 
     document.apply_command(&Command::RemoveActiveLayer);
 
-    let panel = &document.work.pages[0].panels[0];
-    assert_eq!(panel.layers.len(), 2);
-    assert_eq!(panel.active_layer_index, 1);
-    assert_eq!(panel.layers[1].name, "Layer 2");
+    let koma = &document.work.pages[0].panels[0];
+    assert_eq!(koma.layers.len(), 2);
+    assert_eq!(koma.active_layer_index, 1);
+    assert_eq!(koma.layers[1].name, "Layer 2");
 }
 
 #[test]
@@ -479,14 +479,14 @@ fn move_layer_reorders_layers_and_tracks_active_selection() {
         to_index: 0,
     });
 
-    let panel = &document.work.pages[0].panels[0];
-    let names = panel
+    let koma = &document.work.pages[0].panels[0];
+    let names = koma
         .layers
         .iter()
         .map(|layer| layer.name.as_str())
         .collect::<Vec<_>>();
     assert_eq!(names, vec!["Layer 3", "Layer 1", "Layer 2"]);
-    assert_eq!(panel.active_layer_index, 0);
+    assert_eq!(koma.active_layer_index, 0);
 }
 
 #[test]
@@ -498,8 +498,8 @@ fn rename_active_layer_updates_selected_layer_name() {
         name: "Ink".to_string(),
     });
 
-    let panel = &document.work.pages[0].panels[0];
-    assert_eq!(panel.layers[1].name, "Ink");
+    let koma = &document.work.pages[0].panels[0];
+    assert_eq!(koma.layers[1].name, "Ink");
 }
 
 #[test]
@@ -509,8 +509,8 @@ fn set_active_layer_blend_mode_sets_requested_mode() {
         mode: BlendMode::Screen,
     });
 
-    let panel = &document.work.pages[0].panels[0];
-    assert_eq!(panel.layers[0].blend_mode, BlendMode::Screen);
+    let koma = &document.work.pages[0].panels[0];
+    assert_eq!(koma.layers[0].blend_mode, BlendMode::Screen);
 }
 
 /// 未知のブレンドモード名は後方互換として Normal にフォールバックする。
@@ -561,17 +561,17 @@ fn create_panel_command_adds_rectangular_panel_without_relayout() {
     });
 
     assert_eq!(document.active_page_panel_count(), 2);
-    let panel = document.active_panel().expect("active panel exists");
+    let koma = document.active_panel().expect("active koma exists");
     assert_eq!(
-        panel.bounds,
-        PanelBounds {
+        koma.bounds,
+        KomaBounds {
             x: 40,
             y: 32,
             width: 120,
             height: 80,
         }
     );
-    assert_eq!((panel.bitmap.width, panel.bitmap.height), (120, 80));
+    assert_eq!((koma.bitmap.width, koma.bitmap.height), (120, 80));
 }
 
 #[test]
@@ -601,9 +601,9 @@ fn add_panel_selects_new_active_panel() {
 
     assert_eq!(document.active_page_panel_count(), 2);
     assert_eq!(document.active_panel_index(), 1);
-    let active_panel = document.active_panel().expect("active panel exists");
-    assert!(active_panel.bounds.width > 0);
-    assert!(active_panel.bounds.height > 0);
+    let active_koma = document.active_panel().expect("active koma exists");
+    assert!(active_koma.bounds.width > 0);
+    assert!(active_koma.bounds.height > 0);
 }
 
 #[test]
@@ -615,16 +615,16 @@ fn panel_selection_switches_edit_target() {
 
     let _ = draw_point(&mut document, 2, 3);
 
-    let first_panel = &document.work.pages[0].panels[0];
-    let second_panel = &document.work.pages[0].panels[1];
-    let first_index = (3 * first_panel.bitmap.width + 2) * 4;
-    let second_index = (3 * second_panel.bitmap.width + 2) * 4;
+    let first_koma = &document.work.pages[0].panels[0];
+    let second_koma = &document.work.pages[0].panels[1];
+    let first_index = (3 * first_koma.bitmap.width + 2) * 4;
+    let second_index = (3 * second_koma.bitmap.width + 2) * 4;
     assert_eq!(
-        &first_panel.bitmap.pixels[first_index..first_index + 4],
+        &first_koma.bitmap.pixels[first_index..first_index + 4],
         &[255, 255, 255, 255]
     );
     assert_eq!(
-        &second_panel.bitmap.pixels[second_index..second_index + 4],
+        &second_koma.bitmap.pixels[second_index..second_index + 4],
         &[0, 0, 0, 255]
     );
 }

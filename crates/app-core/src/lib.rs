@@ -14,13 +14,13 @@ pub mod workspace;
 pub use command::Command;
 pub use coordinates::{
     CanvasDirtyRect, CanvasDisplayPoint, CanvasPoint, CanvasPointF, CanvasViewportPoint,
-    ClampToCanvasBounds, MergeInSpace, PanelLocalPoint, PanelSurfaceDirtyRect, PanelSurfacePoint,
+    ClampToCanvasBounds, MergeInSpace, KomaLocalPoint, PanelSurfaceDirtyRect, PanelSurfacePoint,
     PanelSurfaceRect, WindowDirtyRect, WindowPoint, WindowRect,
 };
 pub use document::{
     BlendMode, CanvasBitmap, CanvasViewTransform, ColorRgba8, DEFAULT_DOCUMENT_HEIGHT,
-    DEFAULT_DOCUMENT_WIDTH, Document, LayerMask, LayerNodeId, Page, PageId, Panel,
-    PanelBounds, PanelId, PenPreset, PenRuntimeEngine, PenTipBitmap, RasterLayer, ToolDefinition,
+    DEFAULT_DOCUMENT_WIDTH, Document, LayerMask, LayerNodeId, Page, PageId, Koma,
+    KomaBounds, KomaId, PenPreset, PenRuntimeEngine, PenTipBitmap, RasterLayer, ToolDefinition,
     ToolKind, ToolSettingControl, ToolSettingDefinition, Work, WorkId,
 };
 pub use history::{CommandHistory, DEFAULT_HISTORY_CAPACITY, HistoryEntry, OpaqueGpuData};

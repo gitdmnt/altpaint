@@ -1,9 +1,9 @@
-use app_core::{BitmapEdit, CanvasBitmap, PaintPluginContext, PanelLocalPoint, PenTipBitmap};
+use app_core::{BitmapEdit, CanvasBitmap, PaintPluginContext, KomaLocalPoint, PenTipBitmap};
 
 use super::{composite, stroke};
 
 pub(crate) fn stamp_edit(
-    at: PanelLocalPoint,
+    at: KomaLocalPoint,
     pressure: f32,
     context: &PaintPluginContext<'_>,
 ) -> Option<BitmapEdit> {

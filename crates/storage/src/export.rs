@@ -41,8 +41,8 @@ fn write_png(bitmap: &CanvasBitmap, path: &Path) -> Result<(), ExportError> {
 /// 引数の `document` からアクティブパネルを取得し、そのビットマップを
 /// `path` に PNG 形式で保存する。パネルが存在しない場合は `ExportError::NoActivePanel` を返す。
 pub fn export_active_panel_as_png(document: &Document, path: &Path) -> Result<(), ExportError> {
-    let panel = document.active_panel().ok_or(ExportError::NoActivePanel)?;
-    write_png(&panel.bitmap, path)
+    let koma = document.active_panel().ok_or(ExportError::NoActivePanel)?;
+    write_png(&koma.bitmap, path)
 }
 
 #[cfg(test)]

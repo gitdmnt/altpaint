@@ -1,4 +1,4 @@
-use app_core::{Document, PaintInput, PanelLocalPoint};
+use app_core::{Document, PaintInput, KomaLocalPoint};
 
 use crate::{build_paint_context, resolved_size_for_input};
 
@@ -6,7 +6,7 @@ use crate::{build_paint_context, resolved_size_for_input};
 fn context_builder_resolves_active_tool_and_layer_metadata() {
     let document = Document::default();
     let input = PaintInput::Stamp {
-        at: PanelLocalPoint::new(32, 32),
+        at: KomaLocalPoint::new(32, 32),
         pressure: 1.0,
     };
 
@@ -22,7 +22,7 @@ fn context_builder_resolves_active_tool_and_layer_metadata() {
 fn context_builder_rejects_points_outside_active_panel() {
     let document = Document::default();
     let input = PaintInput::Stamp {
-        at: PanelLocalPoint::new(10_000, 10_000),
+        at: KomaLocalPoint::new(10_000, 10_000),
         pressure: 1.0,
     };
 
@@ -35,14 +35,14 @@ fn resolved_size_uses_pressure_for_stamp_inputs() {
     let full = resolved_size_for_input(
         &document,
         &PaintInput::Stamp {
-            at: PanelLocalPoint::new(16, 16),
+            at: KomaLocalPoint::new(16, 16),
             pressure: 1.0,
         },
     );
     let light = resolved_size_for_input(
         &document,
         &PaintInput::Stamp {
-            at: PanelLocalPoint::new(16, 16),
+            at: KomaLocalPoint::new(16, 16),
             pressure: 0.2,
         },
     );

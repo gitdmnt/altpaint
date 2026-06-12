@@ -78,12 +78,12 @@ fn sync_all_layers_to_gpu_creates_textures_for_all_layers() {
         // pool が全レイヤーのテクスチャを持つことを確認
         let pool = app.gpu_canvas_pool().unwrap();
         for page in &app.document.work.pages {
-            for panel in &page.panels {
-                let panel_id_str = panel.id.0.to_string();
-                for layer_index in 0..panel.layers.len() {
+            for koma in &page.panels {
+                let koma_id_str = koma.id.0.to_string();
+                for layer_index in 0..koma.layers.len() {
                     assert!(
-                        pool.get(&panel_id_str, layer_index).is_some(),
-                        "panel={panel_id_str} layer={layer_index} should have a texture"
+                        pool.get(&koma_id_str, layer_index).is_some(),
+                        "koma={koma_id_str} layer={layer_index} should have a texture"
                     );
                 }
             }
