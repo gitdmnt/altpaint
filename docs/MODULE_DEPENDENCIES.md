@@ -163,7 +163,7 @@ graph TD
 
 担当:
 
-- `Document` / `Work` / `Page` / `Panel` / `RasterLayer` などのドメインモデル
+- `Document` / `Work` / `Page` / `Koma` / `RasterLayer` などのドメインモデル（旧 `Panel` は ADR 018 B1 で `Koma` へ改名。panel は UI パネル専用語）
 - `Command` による状態変更入口
 - `CommandHistory`（undo/redo、`BitmapPatch` / `GpuBitmapPatch` スナップショット方式）
 - キャンバス編集、レイヤー操作、表示変換、色、ペンプリセット状態
@@ -380,8 +380,8 @@ graph TD
 
 - SQLite ベース project save/load（`rusqlite` bundled）
 - `format_version` 管理
-- page / panel 単位の部分読込、layer chunk 保存（`zstd` 圧縮チャンク）
-- current panel snapshot 永続化
+- page / koma 単位の部分読込、layer chunk 保存（`zstd` 圧縮チャンク）
+- コマ合成キャッシュ永続化（SQLite テーブルは `komas` / `koma_composites`、ADR 018 B1 で改名）
 - PNG export
 - ペンプリセット読込と import/export
 - `tools/` カタログ読込
@@ -616,8 +616,7 @@ project file と session file は役割が異なる。
 1. `execute_paint_input`（`services/project_io.rs`）内の CPU 差分計算と GPU dispatch の分離
 2. `panel-api` が `app-core::Command` を直接知っている点の再評価 (ADR 017 で検討し、HostAction 境界の再設計を伴うため見送り)
 3. tool 実行 plugin と host runtime の安定境界の確立
-4. `app_core::Panel` (コマ) と UI パネルの命名衝突の解消 (ADR 017 スコープ外、将来候補)
 
-（旧候補「`panel-html-experiment` の正式名称化」は ADR 016 で、desktop の依存集中・座標系の生タプルは ADR 017 で完了済み）
+（旧候補「`panel-html-experiment` の正式名称化」は ADR 016 で、desktop の依存集中・座標系の生タプルは ADR 017 で、「`app_core::Panel` (コマ) と UI パネルの命名衝突の解消」は ADR 018 B1 の `Koma` 改名で完了済み）
 
 ただし、これらは**今そうなっている**という意味ではない。現時点の正本は、上記 compile-time 依存と runtime flow である。
