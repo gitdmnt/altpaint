@@ -1,3 +1,4 @@
+mod fs_walk;
 mod pen_exchange;
 mod pen_format;
 mod pen_catalog;

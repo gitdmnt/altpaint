@@ -1,14 +1,22 @@
 //! `tools/` 配下の描画ツール定義を再帰ロードする。
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use app_core::ToolDefinition;
+
+use crate::fs_walk::collect_files;
 
 pub fn load_tool_directory(directory: impl AsRef<Path>) -> (Vec<ToolDefinition>, Vec<String>) {
     let mut files = Vec::new();
     let mut diagnostics = Vec::new();
-    collect_tool_files(directory.as_ref(), &mut files, &mut diagnostics);
+    collect_files(
+        directory.as_ref(),
+        "tool",
+        &is_supported_tool_file,
+        &mut files,
+        &mut diagnostics,
+    );
     files.sort();
 
     let mut tools = Vec::new();
@@ -20,32 +28,6 @@ pub fn load_tool_directory(directory: impl AsRef<Path>) -> (Vec<ToolDefinition>,
     }
 
     (tools, diagnostics)
-}
-
-fn collect_tool_files(directory: &Path, files: &mut Vec<PathBuf>, diagnostics: &mut Vec<String>) {
-    let Ok(entries) = fs::read_dir(directory) else {
-        if directory.exists() {
-            diagnostics.push(format!(
-                "failed to read tool directory: {}",
-                directory.display()
-            ));
-        }
-        return;
-    };
-
-    for entry in entries {
-        match entry {
-            Ok(entry) => {
-                let path = entry.path();
-                if path.is_dir() {
-                    collect_tool_files(&path, files, diagnostics);
-                } else if is_supported_tool_file(&path) {
-                    files.push(path);
-                }
-            }
-            Err(error) => diagnostics.push(format!("failed to enumerate tool directory: {error}")),
-        }
-    }
 }
 
 fn is_supported_tool_file(path: &Path) -> bool {
@@ -76,6 +58,7 @@ fn load_tool_file(path: &Path) -> Result<ToolDefinition, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     fn unique_temp_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(

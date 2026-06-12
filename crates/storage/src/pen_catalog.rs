@@ -3,17 +3,23 @@
 //! 現段階では `pens/` 配下の `*.altp-pen.json` を最小フォーマットとして扱い、
 //! 将来の Photoshop / CSP importer はこの内部表現へ落とし込む前提にする。
 
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use app_core::PenPreset;
 
+use crate::fs_walk::collect_files;
 use crate::parse_pen_file;
 
 pub fn load_pen_directory(directory: impl AsRef<Path>) -> (Vec<PenPreset>, Vec<String>) {
     let mut files = Vec::new();
     let mut diagnostics = Vec::new();
-    collect_pen_files(directory.as_ref(), &mut files, &mut diagnostics);
+    collect_files(
+        directory.as_ref(),
+        "pen",
+        &is_supported_pen_file,
+        &mut files,
+        &mut diagnostics,
+    );
     files.sort();
 
     let mut presets = Vec::new();
@@ -25,32 +31,6 @@ pub fn load_pen_directory(directory: impl AsRef<Path>) -> (Vec<PenPreset>, Vec<S
     }
 
     (presets, diagnostics)
-}
-
-fn collect_pen_files(directory: &Path, files: &mut Vec<PathBuf>, diagnostics: &mut Vec<String>) {
-    let Ok(entries) = fs::read_dir(directory) else {
-        if directory.exists() {
-            diagnostics.push(format!(
-                "failed to read pen directory: {}",
-                directory.display()
-            ));
-        }
-        return;
-    };
-
-    for entry in entries {
-        match entry {
-            Ok(entry) => {
-                let path = entry.path();
-                if path.is_dir() {
-                    collect_pen_files(&path, files, diagnostics);
-                } else if is_supported_pen_file(&path) {
-                    files.push(path);
-                }
-            }
-            Err(error) => diagnostics.push(format!("failed to enumerate pen directory: {error}")),
-        }
-    }
 }
 
 fn is_supported_pen_file(path: &Path) -> bool {
@@ -117,6 +97,7 @@ impl PenImportSeverityLabel for crate::PenImportIssueSeverity {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     fn workspace_pen_path(relative: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
