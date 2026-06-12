@@ -231,7 +231,7 @@ fn builtin_panels_are_registered() {
         "builtin.color-palette",
         "builtin.view-controls",
         "builtin.koma-list",
-        "builtin.snapshot-panel",
+        "builtin.snapshots",
         "builtin.text-flow",
         "builtin.job-progress",
     ] {

@@ -1,5 +1,5 @@
 {
-  "id": "builtin.snapshot-panel",
+  "id": "builtin.snapshots",
   "title": "Snapshots",
   "default_size": { "width": 320, "height": 320 }
 }

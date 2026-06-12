@@ -127,7 +127,7 @@ pub fn default_workspace_preset_catalog() -> WorkspacePresetCatalog {
                             180,
                         ),
                         panel_state(
-                            "builtin.snapshot-panel",
+                            "builtin.snapshots",
                             true,
                             WorkspacePanelAnchor::TopRight,
                             24,

@@ -126,7 +126,7 @@
               }
             },
             {
-              "id": "builtin.snapshot-panel",
+              "id": "builtin.snapshots",
               "visible": true,
               "anchor": "top-right",
               "position": {

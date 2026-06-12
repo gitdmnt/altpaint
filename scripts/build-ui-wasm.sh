@@ -31,7 +31,7 @@ declare -A PANELS=(
   ["builtin-panel-color-palette"]="crates/builtin-panels/color-palette/builtin_panel_color_palette.wasm"
   ["builtin-panel-pen-settings"]="crates/builtin-panels/pen-settings/builtin_panel_pen_settings.wasm"
   ["builtin-panel-job-progress"]="crates/builtin-panels/job-progress/builtin_panel_job_progress.wasm"
-  ["builtin-panel-snapshot-panel"]="crates/builtin-panels/snapshot-panel/builtin_panel_snapshot_panel.wasm"
+  ["builtin-panel-snapshots"]="crates/builtin-panels/snapshots/builtin_panel_snapshots.wasm"
   ["builtin-panel-text-flow"]="crates/builtin-panels/text-flow/builtin_panel_text_flow.wasm"
 )
 

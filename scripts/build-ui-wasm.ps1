@@ -27,7 +27,7 @@ try {
         @{ Package = 'builtin-panel-color-palette'; Destination = 'crates/builtin-panels/color-palette/builtin_panel_color_palette.wasm' },
         @{ Package = 'builtin-panel-pen-settings'; Destination = 'crates/builtin-panels/pen-settings/builtin_panel_pen_settings.wasm' },
         @{ Package = 'builtin-panel-job-progress'; Destination = 'crates/builtin-panels/job-progress/builtin_panel_job_progress.wasm' },
-        @{ Package = 'builtin-panel-snapshot-panel'; Destination = 'crates/builtin-panels/snapshot-panel/builtin_panel_snapshot_panel.wasm' },
+        @{ Package = 'builtin-panel-snapshots'; Destination = 'crates/builtin-panels/snapshots/builtin_panel_snapshots.wasm' },
         @{ Package = 'builtin-panel-text-flow'; Destination = 'crates/builtin-panels/text-flow/builtin_panel_text_flow.wasm' },
         @{ Package = 'builtin-panel-workspace-layout'; Destination = 'crates/builtin-panels/workspace-layout/builtin_panel_workspace_layout.wasm' }
     )

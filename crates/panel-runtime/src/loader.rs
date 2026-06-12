@@ -49,8 +49,8 @@ const BUILTIN_PANELS: &[BuiltinPanelDef] = &[
         wasm_filename: "builtin_panel_tool_palette.wasm",
     },
     BuiltinPanelDef {
-        directory_name: "snapshot-panel",
-        wasm_filename: "builtin_panel_snapshot_panel.wasm",
+        directory_name: "snapshots",
+        wasm_filename: "builtin_panel_snapshots.wasm",
     },
     BuiltinPanelDef {
         directory_name: "pen-settings",

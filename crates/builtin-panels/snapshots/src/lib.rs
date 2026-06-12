@@ -1,4 +1,4 @@
-//! `builtin.snapshot-panel` パネル (Phase 10 DOM mutation 版)。
+//! `builtin.snapshots` パネル (Phase 10 DOM mutation 版)。
 
 use plugin_sdk::{
     dom::{html_escape, query_selector, set_inner_html},
