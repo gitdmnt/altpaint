@@ -119,6 +119,27 @@ fn request_service_workspace_layout_set_panel_visibility_toggles_visibility() {
     );
 }
 
+/// `koma_nav.*` service がコマ選択へ届く (K6 wire 改名の操作経路生存確認)。
+#[test]
+fn request_service_koma_nav_add_and_select_changes_active_koma() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    assert_eq!(app.document.active_panel_index(), 0);
+
+    assert!(
+        app.execute_host_action(HostAction::RequestService(ServiceRequest::new(
+            names::KOMA_NAV_ADD,
+        )))
+    );
+    assert_eq!(app.document.active_panel_index(), 1);
+
+    assert!(
+        app.execute_host_action(HostAction::RequestService(
+            ServiceRequest::new(names::KOMA_NAV_SELECT).with_value("index", 0),
+        ))
+    );
+    assert_eq!(app.document.active_panel_index(), 0);
+}
+
 #[test]
 fn request_service_reload_pen_presets_refreshes_document_state() {
     let mut app = test_app_with_dialogs(TestDialogs::default());

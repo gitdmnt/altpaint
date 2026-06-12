@@ -180,10 +180,10 @@ pub mod view {
     }
 }
 
-pub mod panel_nav {
+pub mod koma_nav {
     use super::{descriptor, json};
     use panel_schema::CommandDescriptor;
-    use panel_schema::names::panel_nav as wire;
+    use panel_schema::names::koma_nav as wire;
 
     pub fn add() -> CommandDescriptor {
         descriptor(wire::ADD)

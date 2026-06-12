@@ -102,17 +102,17 @@ fn reset_view() {
 
 #[plugin_sdk::panel_handler]
 fn focus_active_panel() {
-    emit_service(&services::panel_nav::focus_active());
+    emit_service(&services::koma_nav::focus_active());
 }
 
 #[plugin_sdk::panel_handler]
 fn previous_panel() {
-    emit_service(&services::panel_nav::select_previous());
+    emit_service(&services::koma_nav::select_previous());
 }
 
 #[plugin_sdk::panel_handler]
 fn next_panel() {
-    emit_service(&services::panel_nav::select_next());
+    emit_service(&services::koma_nav::select_next());
 }
 
 #[plugin_sdk::panel_handler]

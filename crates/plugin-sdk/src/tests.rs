@@ -24,12 +24,12 @@ fn typed_service_requests_hide_service_names() {
     let save = services::project_io::save_current();
     let preset = services::workspace_io::save_preset("review", "Review");
     let zoom = services::view::set_zoom(1.25);
-    let select_panel = services::panel_nav::select(2);
+    let select_koma = services::koma_nav::select(2);
 
     assert_eq!(save.name, names::project_io::SAVE_CURRENT);
     assert_eq!(preset.payload.get("preset_id"), Some(&json!("review")));
     assert_eq!(zoom.payload.get("zoom"), Some(&json!(1.25)));
-    assert_eq!(select_panel.payload.get("index"), Some(&json!(2)));
+    assert_eq!(select_koma.payload.get("index"), Some(&json!(2)));
 }
 
 #[test]

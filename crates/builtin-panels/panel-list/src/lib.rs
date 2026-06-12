@@ -69,32 +69,32 @@ struct PanelEntry {
 
 #[plugin_sdk::panel_handler]
 fn add_panel() {
-    emit_service(&services::panel_nav::add());
+    emit_service(&services::koma_nav::add());
 }
 
 #[plugin_sdk::panel_handler]
 fn remove_panel() {
-    emit_service(&services::panel_nav::remove());
+    emit_service(&services::koma_nav::remove());
 }
 
 #[plugin_sdk::panel_handler]
 fn select_previous_panel() {
-    emit_service(&services::panel_nav::select_previous());
+    emit_service(&services::koma_nav::select_previous());
 }
 
 #[plugin_sdk::panel_handler]
 fn select_next_panel() {
-    emit_service(&services::panel_nav::select_next());
+    emit_service(&services::koma_nav::select_next());
 }
 
 #[plugin_sdk::panel_handler]
 fn focus_active_panel() {
-    emit_service(&services::panel_nav::focus_active());
+    emit_service(&services::koma_nav::focus_active());
 }
 
 #[plugin_sdk::panel_handler]
 fn handle_panel_list(value: i32) {
-    emit_service(&services::panel_nav::select(value.max(0) as usize));
+    emit_service(&services::koma_nav::select(value.max(0) as usize));
 }
 
 #[cfg(test)]

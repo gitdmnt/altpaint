@@ -69,14 +69,13 @@ pub mod view {
 }
 
 /// コマナビゲーションサービス。
-/// 後続チャンク (koma-wire) でモジュール名 `koma_nav`・値 `koma_nav.*` へ改名する。
-pub mod panel_nav {
-    pub const ADD: &str = "panel_nav.add";
-    pub const REMOVE: &str = "panel_nav.remove";
-    pub const SELECT: &str = "panel_nav.select";
-    pub const SELECT_NEXT: &str = "panel_nav.select_next";
-    pub const SELECT_PREVIOUS: &str = "panel_nav.select_previous";
-    pub const FOCUS_ACTIVE: &str = "panel_nav.focus_active";
+pub mod koma_nav {
+    pub const ADD: &str = "koma_nav.add";
+    pub const REMOVE: &str = "koma_nav.remove";
+    pub const SELECT: &str = "koma_nav.select";
+    pub const SELECT_NEXT: &str = "koma_nav.select_next";
+    pub const SELECT_PREVIOUS: &str = "koma_nav.select_previous";
+    pub const FOCUS_ACTIVE: &str = "koma_nav.focus_active";
 }
 
 /// 編集履歴サービス。
@@ -157,12 +156,12 @@ mod tests {
         view::FLIP_HORIZONTAL,
         view::FLIP_VERTICAL,
         view::RESET,
-        panel_nav::ADD,
-        panel_nav::REMOVE,
-        panel_nav::SELECT,
-        panel_nav::SELECT_NEXT,
-        panel_nav::SELECT_PREVIOUS,
-        panel_nav::FOCUS_ACTIVE,
+        koma_nav::ADD,
+        koma_nav::REMOVE,
+        koma_nav::SELECT,
+        koma_nav::SELECT_NEXT,
+        koma_nav::SELECT_PREVIOUS,
+        koma_nav::FOCUS_ACTIVE,
         history::UNDO,
         history::REDO,
         snapshot::CREATE,
@@ -242,12 +241,12 @@ mod tests {
         assert_eq!(view::FLIP_HORIZONTAL, "view_service.flip_horizontal");
         assert_eq!(view::FLIP_VERTICAL, "view_service.flip_vertical");
         assert_eq!(view::RESET, "view_service.reset");
-        assert_eq!(panel_nav::ADD, "panel_nav.add");
-        assert_eq!(panel_nav::REMOVE, "panel_nav.remove");
-        assert_eq!(panel_nav::SELECT, "panel_nav.select");
-        assert_eq!(panel_nav::SELECT_NEXT, "panel_nav.select_next");
-        assert_eq!(panel_nav::SELECT_PREVIOUS, "panel_nav.select_previous");
-        assert_eq!(panel_nav::FOCUS_ACTIVE, "panel_nav.focus_active");
+        assert_eq!(koma_nav::ADD, "koma_nav.add");
+        assert_eq!(koma_nav::REMOVE, "koma_nav.remove");
+        assert_eq!(koma_nav::SELECT, "koma_nav.select");
+        assert_eq!(koma_nav::SELECT_NEXT, "koma_nav.select_next");
+        assert_eq!(koma_nav::SELECT_PREVIOUS, "koma_nav.select_previous");
+        assert_eq!(koma_nav::FOCUS_ACTIVE, "koma_nav.focus_active");
         assert_eq!(history::UNDO, "history.undo");
         assert_eq!(history::REDO, "history.redo");
         assert_eq!(snapshot::CREATE, "snapshot.create");

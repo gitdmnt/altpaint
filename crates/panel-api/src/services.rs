@@ -31,10 +31,10 @@ pub mod names {
         SET_ZOOM as VIEW_SET_ZOOM,
     };
 
-    pub use panel_schema::names::panel_nav::{
-        ADD as PANEL_NAV_ADD, FOCUS_ACTIVE as PANEL_NAV_FOCUS_ACTIVE,
-        REMOVE as PANEL_NAV_REMOVE, SELECT as PANEL_NAV_SELECT,
-        SELECT_NEXT as PANEL_NAV_SELECT_NEXT, SELECT_PREVIOUS as PANEL_NAV_SELECT_PREVIOUS,
+    pub use panel_schema::names::koma_nav::{
+        ADD as KOMA_NAV_ADD, FOCUS_ACTIVE as KOMA_NAV_FOCUS_ACTIVE,
+        REMOVE as KOMA_NAV_REMOVE, SELECT as KOMA_NAV_SELECT,
+        SELECT_NEXT as KOMA_NAV_SELECT_NEXT, SELECT_PREVIOUS as KOMA_NAV_SELECT_PREVIOUS,
     };
 
     pub use panel_schema::names::history::{REDO as HISTORY_REDO, UNDO as HISTORY_UNDO};

@@ -40,7 +40,7 @@ impl DesktopApp {
         if let Some(changed) = self.handle_view_service_request(&request) {
             return changed;
         }
-        if let Some(changed) = self.handle_panel_navigation_service_request(&request) {
+        if let Some(changed) = self.handle_koma_navigation_service_request(&request) {
             return changed;
         }
         if let Some(changed) = self.handle_history_service_request(&request) {
@@ -215,21 +215,21 @@ impl DesktopApp {
         Some(changed)
     }
 
-    fn handle_panel_navigation_service_request(
+    fn handle_koma_navigation_service_request(
         &mut self,
         request: &ServiceRequest,
     ) -> Option<bool> {
         let changed = match request.name.as_str() {
-            names::PANEL_NAV_ADD => self.execute_document_command(Command::AddKoma),
-            names::PANEL_NAV_REMOVE => self.execute_document_command(Command::RemoveActiveKoma),
-            names::PANEL_NAV_SELECT => self.execute_document_command(Command::SelectKoma {
+            names::KOMA_NAV_ADD => self.execute_document_command(Command::AddKoma),
+            names::KOMA_NAV_REMOVE => self.execute_document_command(Command::RemoveActiveKoma),
+            names::KOMA_NAV_SELECT => self.execute_document_command(Command::SelectKoma {
                 index: request.u64("index")? as usize,
             }),
-            names::PANEL_NAV_SELECT_NEXT => self.execute_document_command(Command::SelectNextKoma),
-            names::PANEL_NAV_SELECT_PREVIOUS => {
+            names::KOMA_NAV_SELECT_NEXT => self.execute_document_command(Command::SelectNextKoma),
+            names::KOMA_NAV_SELECT_PREVIOUS => {
                 self.execute_document_command(Command::SelectPreviousKoma)
             }
-            names::PANEL_NAV_FOCUS_ACTIVE => {
+            names::KOMA_NAV_FOCUS_ACTIVE => {
                 self.execute_document_command(Command::FocusActiveKoma)
             }
             _ => return None,
