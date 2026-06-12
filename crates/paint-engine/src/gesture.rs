@@ -34,14 +34,9 @@ where
     F: FnMut(PagePoint) -> Option<KomaLocalPoint>,
 {
     match action {
-        CanvasPointerAction::Down => handle_pointer_down(
-            state,
-            point,
-            active_tool,
-            pressure,
-            stabilization,
-            &mut to_koma_local,
-        ),
+        CanvasPointerAction::Down => {
+            handle_pointer_down(state, point, active_tool, pressure, &mut to_koma_local)
+        }
         CanvasPointerAction::Drag => handle_pointer_drag(
             state,
             point,
@@ -61,7 +56,6 @@ fn handle_pointer_down<F>(
     point: PagePoint,
     active_tool: ToolKind,
     pressure: f32,
-    stabilization: u8,
     to_koma_local: &mut F,
 ) -> CanvasGestureUpdate
 where
@@ -86,10 +80,10 @@ where
             CanvasGestureUpdate::KomaRectPreviewChanged
         }
         ToolKind::Pen | ToolKind::Eraser => {
+            // Down では手ブレ補正を適用しない (補正は drag の平滑化でのみ働く)。
             state.is_drawing = true;
             state.last_position = Some(point);
             state.last_smoothed_position = Some(point.into());
-            let _ = stabilization;
             to_koma_local(point)
                 .map(|at| CanvasGestureUpdate::Paint(PaintInput::Stamp { at, pressure }))
                 .unwrap_or(CanvasGestureUpdate::None)
