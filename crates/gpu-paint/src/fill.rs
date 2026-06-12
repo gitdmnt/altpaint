@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use crate::gpu::GpuLayerTexture;
+use crate::gpu::GpuRgbaTexture;
 
 /// flood_fill_step の uniform バッファサイズ（32 bytes）。
 const FLOOD_FILL_PARAMS_SIZE: u64 = 32;
@@ -26,8 +26,8 @@ pub struct FloodFillOutcome {
     pub pixels_changed: u32,
 }
 
-/// GPU 塗りつぶしパイプラインを管理するディスパッチャ。
-pub struct GpuFillDispatch {
+/// GPU 塗りつぶし（flood fill / lasso fill）のパイプラインを保持する。
+pub struct FillPipeline {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     flood_step_pipeline: wgpu::ComputePipeline,
@@ -38,7 +38,7 @@ pub struct GpuFillDispatch {
     apply_bgl: wgpu::BindGroupLayout,
 }
 
-impl GpuFillDispatch {
+impl FillPipeline {
     /// 計算パイプラインと BGL を初期化する。
     pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
         let flood_step_bgl = create_flood_step_bgl(&device);
@@ -85,8 +85,8 @@ impl GpuFillDispatch {
     /// - `source` と `target` は同じサイズである必要がある。
     pub fn dispatch_flood_fill(
         &self,
-        source: &GpuLayerTexture,
-        target: &GpuLayerTexture,
+        source: &GpuRgbaTexture,
+        target: &GpuRgbaTexture,
         seed: (u32, u32),
         fill_rgba: [f32; 4],
     ) -> FloodFillOutcome {
@@ -247,7 +247,7 @@ impl GpuFillDispatch {
     /// バウンディングボックス（x1/y1 は最終ピクセル座標）。
     pub fn dispatch_lasso_fill(
         &self,
-        active_layer: &GpuLayerTexture,
+        active_layer: &GpuRgbaTexture,
         polygon: &[(f32, f32)],
         polygon_aabb: (u32, u32, u32, u32),
         fill_rgba: [f32; 4],
@@ -333,7 +333,7 @@ impl GpuFillDispatch {
     fn apply_mark_to_layer(
         &self,
         mark: &wgpu::Texture,
-        active_layer: &GpuLayerTexture,
+        active_layer: &GpuRgbaTexture,
         fill_rgba: [f32; 4],
     ) {
         let w = active_layer.width;

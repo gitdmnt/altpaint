@@ -209,7 +209,7 @@ impl DesktopApp {
     /// が無い・入力が不適）は `false` を返して呼び出し元が CPU にフォールバックする。
     ///
     /// Undo スナップショットは `snapshot_region` (after) と
-    /// `capture_koma_layer_region` → `create_and_upload` (before) で構築する。
+    /// `capture_koma_layer_region` → `create_snapshot_texture` (before) で構築する。
     fn execute_gpu_fill(
         &mut self,
         koma_id: app_core::KomaId,
@@ -262,7 +262,7 @@ impl DesktopApp {
         };
         // source は composite があればそれ、無ければ active layer 自身。
         let source_is_composite = pool.get_composite(&pid).is_some();
-        let source_ref: &gpu_paint::GpuLayerTexture = if source_is_composite {
+        let source_ref: &gpu_paint::GpuRgbaTexture = if source_is_composite {
             pool.get_composite(&pid).unwrap()
         } else {
             target
@@ -306,7 +306,7 @@ impl DesktopApp {
             self.recomposite_koma(koma_id, Some(dirty));
             return true;
         };
-        let before_tex = pool.create_and_upload(
+        let before_tex = pool.create_snapshot_texture(
             dirty.width as u32,
             dirty.height as u32,
             &before_region.pixels,
@@ -337,14 +337,14 @@ impl DesktopApp {
         // GPU パス: CPU bitmap は書き換えていないため、現在の CPU bitmap から dirty 領域を
         // 取り出すと「ストローク前」ピクセルになる。それを GPU テクスチャへ 1 回アップロードして
         // `before` スナップショットを作り、`after` は GPU-to-GPU コピーで取得する。
-        if let Some(pool) = self.gpu_canvas_pool() {
+        if let Some(pool) = self.layer_texture_store() {
             let pid = stroke.koma_id.0.to_string();
             let before_pixels =
                 self.document
                     .capture_koma_layer_region(stroke.koma_id, stroke.layer_index, dirty);
             let after_tex = pool.snapshot_region(&pid, stroke.layer_index, dirty);
             if let (Some(bp), Some(after_tex)) = (before_pixels, after_tex) {
-                let before_tex = pool.create_and_upload(
+                let before_tex = pool.create_snapshot_texture(
                     dirty.width as u32,
                     dirty.height as u32,
                     &bp.pixels,

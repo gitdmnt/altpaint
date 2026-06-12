@@ -6,21 +6,21 @@
 
 use std::sync::Arc;
 
-use crate::gpu::GpuLayerTexture;
+use crate::gpu::GpuRgbaTexture;
 
 const CLEAR_PARAMS_SIZE: u64 = 32;
 const COMPOSITE_PARAMS_SIZE: u64 = 32;
 
 /// 合成する 1 レイヤー分の情報。
 pub struct CompositeLayerEntry<'a> {
-    pub color: &'a GpuLayerTexture,
+    pub color: &'a GpuRgbaTexture,
     pub mask: Option<&'a wgpu::Texture>,
     pub blend_code: u32,
     pub visible: bool,
 }
 
-/// 多レイヤー合成パイプラインを管理するディスパッチャ。
-pub struct GpuLayerCompositor {
+/// 多レイヤー合成のパイプラインを保持する。
+pub struct CompositePipeline {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     clear_pipeline: wgpu::ComputePipeline,
@@ -30,7 +30,7 @@ pub struct GpuLayerCompositor {
     dummy_mask: wgpu::Texture,
 }
 
-impl GpuLayerCompositor {
+impl CompositePipeline {
     /// 計算パイプラインと BGL を初期化する。
     pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
         let clear_bgl = create_clear_bgl(&device);
@@ -65,7 +65,7 @@ impl GpuLayerCompositor {
     /// `dirty` は `(x0, y0, x1, y1)` の半開区間。範囲外は書き換えない。
     pub fn recomposite(
         &self,
-        composite: &GpuLayerTexture,
+        composite: &GpuRgbaTexture,
         layers: &[CompositeLayerEntry<'_>],
         dirty: (u32, u32, u32, u32),
     ) {

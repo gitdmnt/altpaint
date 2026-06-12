@@ -1311,14 +1311,14 @@ impl WgpuPresenter {
     /// ウィンドウサイズ変更時にサーフェスを再設定する。
     /// Arc でラップされたデバイスへの参照を返す。
     ///
-    /// gpu-paint クレートの `GpuCanvasPool` と共有するために使う。
+    /// gpu-paint クレートの `LayerTextureStore` と共有するために使う。
     pub fn device(&self) -> Arc<wgpu::Device> {
         Arc::clone(&self.device)
     }
 
     /// Arc でラップされたキューへの参照を返す。
     ///
-    /// gpu-paint クレートの `GpuCanvasPool` と共有するために使う。
+    /// gpu-paint クレートの `LayerTextureStore` と共有するために使う。
     pub fn queue(&self) -> Arc<wgpu::Queue> {
         Arc::clone(&self.queue)
     }
@@ -1349,7 +1349,7 @@ impl WgpuPresenter {
     pub fn render(
         &mut self,
         scene: PresentScene<'_>,
-        gpu_canvas_pool: Option<&gpu_paint::GpuCanvasPool>,
+        layer_texture_store: Option<&gpu_paint::LayerTextureStore>,
     ) -> Result<PresentTimings> {
         // サーフェスが 0 サイズなら描画をスキップ（最小化時など）。
         if self.config.width == 0 || self.config.height == 0 {
@@ -1400,7 +1400,7 @@ impl WgpuPresenter {
                 self.update_gpu_canvas_bind_group(
                     canvas_layer.source,
                     canvas_layer.quad,
-                    gpu_canvas_pool,
+                    layer_texture_store,
                     self.config.width,
                     self.config.height,
                 );
@@ -1882,7 +1882,7 @@ impl WgpuPresenter {
         &mut self,
         source: CanvasLayerSource<'_>,
         quad: TextureQuad,
-        pool: Option<&gpu_paint::GpuCanvasPool>,
+        pool: Option<&gpu_paint::LayerTextureStore>,
         surface_width: u32,
         surface_height: u32,
     ) {

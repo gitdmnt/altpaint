@@ -26,13 +26,13 @@ impl GpuCanvasContext {
 ///
 /// Format: Rgba8Unorm
 /// Usage: STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST
-pub struct GpuLayerTexture {
+pub struct GpuRgbaTexture {
     pub texture: wgpu::Texture,
     pub width: u32,
     pub height: u32,
 }
 
-impl GpuLayerTexture {
+impl GpuRgbaTexture {
     /// 指定サイズのテクスチャを GPU 上に生成する。
     pub fn create(ctx: &GpuCanvasContext, width: u32, height: u32) -> Self {
         let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
@@ -98,16 +98,16 @@ impl GpuLayerTexture {
     }
 }
 
-/// `(koma_id: String, layer_index: usize)` をキーにレイヤーテクスチャを管理するプール。
-pub struct GpuCanvasPool {
+/// `(koma_id: String, layer_index: usize)` をキーにレイヤーテクスチャを管理するストア。
+pub struct LayerTextureStore {
     ctx: GpuCanvasContext,
-    textures: HashMap<(String, usize), GpuLayerTexture>,
-    composite_textures: HashMap<String, GpuLayerTexture>,
+    textures: HashMap<(String, usize), GpuRgbaTexture>,
+    composite_textures: HashMap<String, GpuRgbaTexture>,
     mask_textures: HashMap<(String, usize), wgpu::Texture>,
 }
 
-impl GpuCanvasPool {
-    /// 新しいプールを生成する。
+impl LayerTextureStore {
+    /// 新しいストアを生成する。
     pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
         Self {
             ctx: GpuCanvasContext::new(device, queue),
@@ -117,7 +117,7 @@ impl GpuCanvasPool {
         }
     }
 
-    /// 指定パネル・レイヤーインデックスのテクスチャを生成・登録する。
+    /// 指定コマ・レイヤーインデックスのテクスチャを生成・登録する。
     ///
     /// 同じキーが既に存在する場合は上書きする。
     pub fn create_layer_texture(
@@ -127,7 +127,7 @@ impl GpuCanvasPool {
         width: u32,
         height: u32,
     ) {
-        let texture = GpuLayerTexture::create(&self.ctx, width, height);
+        let texture = GpuRgbaTexture::create(&self.ctx, width, height);
         self.textures
             .insert((koma_id.to_string(), layer_index), texture);
     }
@@ -142,12 +142,12 @@ impl GpuCanvasPool {
         }
     }
 
-    /// 指定パネル・レイヤーのテクスチャを取得する。
-    pub fn get(&self, koma_id: &str, layer_index: usize) -> Option<&GpuLayerTexture> {
+    /// 指定コマ・レイヤーのテクスチャを取得する。
+    pub fn get(&self, koma_id: &str, layer_index: usize) -> Option<&GpuRgbaTexture> {
         self.textures.get(&(koma_id.to_string(), layer_index))
     }
 
-    /// 指定パネル・レイヤーの sRGB TextureView を生成して返す。
+    /// 指定コマ・レイヤーの sRGB TextureView を生成して返す。
     pub fn get_view(&self, koma_id: &str, layer_index: usize) -> Option<wgpu::TextureView> {
         self.get(koma_id, layer_index)
             .map(|t| t.create_srgb_view())
@@ -313,12 +313,12 @@ impl GpuCanvasPool {
         {
             return;
         }
-        let tex = GpuLayerTexture::create(&self.ctx, width, height);
+        let tex = GpuRgbaTexture::create(&self.ctx, width, height);
         self.composite_textures.insert(key, tex);
     }
 
     /// コマ ID に紐づく合成テクスチャを取得する。
-    pub fn get_composite(&self, koma_id: &str) -> Option<&GpuLayerTexture> {
+    pub fn get_composite(&self, koma_id: &str) -> Option<&GpuRgbaTexture> {
         self.composite_textures.get(koma_id)
     }
 
@@ -390,11 +390,11 @@ impl GpuCanvasPool {
             .remove(&(koma_id.to_string(), layer_index));
     }
 
-    /// 指定パネルの全レイヤーテクスチャ・マスクテクスチャエントリを削除する。
+    /// 指定コマの全レイヤーテクスチャ・マスクテクスチャエントリを削除する。
     ///
     /// レイヤー追加/削除/並べ替えで古いインデックスが残存するのを防ぐため、
     /// `sync_all_layers_to_gpu` の再構築前に呼び出す。
-    pub fn clear_layers_for_panel(&mut self, koma_id: &str) {
+    pub fn clear_layers_for_koma(&mut self, koma_id: &str) {
         let pid = koma_id.to_string();
         self.textures.retain(|(p, _), _| p != &pid);
         self.mask_textures.retain(|(p, _), _| p != &pid);
@@ -411,7 +411,7 @@ impl GpuCanvasPool {
     /// 指定ピクセル（RGBA8）を保持する新規 GPU テクスチャを作成して返す。
     ///
     /// ストローク before スナップショット用。`COPY_SRC | COPY_DST` を持つ。
-    pub fn create_and_upload(&self, w: u32, h: u32, pixels: &[u8]) -> wgpu::Texture {
+    pub fn create_snapshot_texture(&self, w: u32, h: u32, pixels: &[u8]) -> wgpu::Texture {
         let texture = self.ctx.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("gpu-paint-upload"),
             size: wgpu::Extent3d {

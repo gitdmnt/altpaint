@@ -108,13 +108,13 @@ pub(crate) struct DesktopApp {
 /// 部分的な初期化状態は存在しないため、各リソースは Option で包まない。
 pub(crate) struct GpuPaintEngine {
     /// GPU レイヤーテクスチャプール。
-    pub(crate) pool: gpu_paint::GpuCanvasPool,
+    pub(crate) pool: gpu_paint::LayerTextureStore,
     /// GPU ブラシ計算シェーダーディスパッチャ。
-    pub(crate) brush: gpu_paint::GpuBrushDispatch,
+    pub(crate) brush: gpu_paint::BrushPipeline,
     /// GPU 塗りつぶしディスパッチャ。
-    pub(crate) fill: gpu_paint::GpuFillDispatch,
+    pub(crate) fill: gpu_paint::FillPipeline,
     /// GPU レイヤー合成ディスパッチャ。
-    pub(crate) compositor: gpu_paint::GpuLayerCompositor,
+    pub(crate) compositor: gpu_paint::CompositePipeline,
 }
 
 impl DesktopApp {
@@ -182,10 +182,10 @@ impl DesktopApp {
         queue: std::sync::Arc<wgpu::Queue>,
     ) {
         self.gpu = Some(GpuPaintEngine {
-            pool: gpu_paint::GpuCanvasPool::new(device.clone(), queue.clone()),
-            brush: gpu_paint::GpuBrushDispatch::new(device.clone(), queue.clone()),
-            fill: gpu_paint::GpuFillDispatch::new(device.clone(), queue.clone()),
-            compositor: gpu_paint::GpuLayerCompositor::new(device, queue),
+            pool: gpu_paint::LayerTextureStore::new(device.clone(), queue.clone()),
+            brush: gpu_paint::BrushPipeline::new(device.clone(), queue.clone()),
+            fill: gpu_paint::FillPipeline::new(device.clone(), queue.clone()),
+            compositor: gpu_paint::CompositePipeline::new(device, queue),
         });
         self.sync_all_layers_to_gpu();
         self.recomposite_all_komas();
@@ -209,7 +209,7 @@ impl DesktopApp {
             .collect();
         if let Some(gpu) = self.gpu.as_mut() {
             for pid in &koma_ids {
-                gpu.pool.clear_layers_for_panel(pid);
+                gpu.pool.clear_layers_for_koma(pid);
             }
         }
         #[derive(Clone)]
@@ -294,7 +294,7 @@ impl DesktopApp {
     }
 
     /// GPU レイヤーテクスチャプールへの参照を返す。
-    pub(crate) fn gpu_canvas_pool(&self) -> Option<&gpu_paint::GpuCanvasPool> {
+    pub(crate) fn layer_texture_store(&self) -> Option<&gpu_paint::LayerTextureStore> {
         self.gpu.as_ref().map(|gpu| &gpu.pool)
     }
 

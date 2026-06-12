@@ -76,7 +76,7 @@ fn sync_all_layers_to_gpu_creates_textures_for_all_layers() {
         app.execute_document_command(Command::AddRasterLayer);
 
         // pool が全レイヤーのテクスチャを持つことを確認
-        let pool = app.gpu_canvas_pool().unwrap();
+        let pool = app.layer_texture_store().unwrap();
         for page in &app.document.work.pages {
             for koma in &page.komas {
                 let koma_id_str = koma.id.0.to_string();

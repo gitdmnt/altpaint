@@ -8,7 +8,7 @@ use std::sync::Arc;
 use app_core::paint_params::MAX_STAMP_STEPS;
 use app_core::{KomaLocalPoint, ToolKind};
 
-use crate::gpu::GpuLayerTexture;
+use crate::gpu::GpuRgbaTexture;
 
 /// 1 ストローク分のブラシ描画パラメータ。
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -27,10 +27,10 @@ const BRUSH_STROKE_PARAMS_SIZE: u64 = 48;
 /// MAX_STAMP_STEPS+1 個の vec2<f32>（各 8 bytes）。
 const STAMP_POSITIONS_SIZE: u64 = (MAX_STAMP_STEPS as u64 + 1) * 8;
 
-/// GPU ブラシ/消しゴム計算シェーダーを管理するディスパッチャ。
+/// GPU ブラシ/消しゴム計算シェーダーのパイプラインを保持する。
 ///
 /// `new` でパイプラインを一度構築し、`dispatch_stroke` を繰り返し呼び出す。
-pub struct GpuBrushDispatch {
+pub struct BrushPipeline {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     stroke_pipeline: wgpu::ComputePipeline,
@@ -38,7 +38,7 @@ pub struct GpuBrushDispatch {
     bind_group_layout: wgpu::BindGroupLayout,
 }
 
-impl GpuBrushDispatch {
+impl BrushPipeline {
     /// 計算パイプラインとバインドグループレイアウトを初期化する。
     pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
         let bind_group_layout = Self::create_bind_group_layout(&device);
@@ -94,7 +94,7 @@ impl GpuBrushDispatch {
     /// - `positions` が空の場合は何もしない。
     pub fn dispatch_stroke(
         &self,
-        layer_texture: &GpuLayerTexture,
+        layer_texture: &GpuRgbaTexture,
         positions: &[KomaLocalPoint],
         params: &BrushStrokeParams,
     ) {

@@ -5,8 +5,8 @@ mod gpu_tests {
     use std::sync::Arc;
 
     use crate::{
-        CompositeLayerEntry, GpuBrushDispatch, GpuCanvasPool, GpuFillDispatch,
-        GpuLayerCompositor,
+        CompositeLayerEntry, BrushPipeline, LayerTextureStore, FillPipeline,
+        CompositePipeline,
     };
 
     /// wgpu アダプターとデバイスを生成するヘルパー。GPU がない CI では `None` を返す。
@@ -38,14 +38,14 @@ mod gpu_tests {
         Some((Arc::new(device), Arc::new(queue), adapter))
     }
 
-    /// GpuCanvasPool::upload_cpu_bitmap が panic なく完了することを確認する。
+    /// LayerTextureStore::upload_cpu_bitmap が panic なく完了することを確認する。
     #[test]
-    fn gpu_canvas_pool_upload_smoke() {
+    fn layer_texture_store_upload_smoke() {
         pollster::block_on(async {
             let Some((device, queue, _adapter)) = try_init_device().await else {
                 return;
             };
-            let mut pool = GpuCanvasPool::new(device, queue);
+            let mut pool = LayerTextureStore::new(device, queue);
             pool.create_layer_texture("koma-1", 0, 4, 4);
             let pixels = vec![128u8; 4 * 4 * 4];
             pool.upload_cpu_bitmap("koma-1", 0, &pixels);
@@ -55,12 +55,12 @@ mod gpu_tests {
 
     /// create_layer_texture 後に get が Some を返すことを確認する。
     #[test]
-    fn gpu_canvas_pool_create_layer_texture_registers_key() {
+    fn layer_texture_store_create_layer_texture_registers_key() {
         pollster::block_on(async {
             let Some((device, queue, _adapter)) = try_init_device().await else {
                 return;
             };
-            let mut pool = GpuCanvasPool::new(device, queue);
+            let mut pool = LayerTextureStore::new(device, queue);
             assert!(pool.get("p1", 0).is_none());
             pool.create_layer_texture("p1", 0, 8, 8);
             assert!(pool.get("p1", 0).is_some());
@@ -80,10 +80,10 @@ mod gpu_tests {
                 }
 
                 let ctx = crate::GpuCanvasContext::new(device.clone(), queue.clone());
-                let texture = crate::GpuLayerTexture::create(&ctx, 4, 4);
+                let texture = crate::GpuRgbaTexture::create(&ctx, 4, 4);
                 texture.upload_pixels(&ctx, &[0u8; 4 * 4 * 4]);
 
-                let brush = GpuBrushDispatch::new(device.clone(), queue.clone());
+                let brush = BrushPipeline::new(device.clone(), queue.clone());
                 brush.dispatch_stroke(
                     &texture,
                     &[app_core::KomaLocalPoint::new(2, 2)],
@@ -159,12 +159,12 @@ mod gpu_tests {
     /// snapshot_region で取り出したテクスチャを restore_region で元のレイヤーへ書き戻すと、
     /// read_back_full で元のピクセルが一致することを確認する。
     #[test]
-    fn gpu_canvas_pool_snapshot_and_restore_round_trip() {
+    fn layer_texture_store_snapshot_and_restore_round_trip() {
         pollster::block_on(async {
             let Some((device, queue, _adapter)) = try_init_device().await else {
                 return;
             };
-            let mut pool = GpuCanvasPool::new(device, queue);
+            let mut pool = LayerTextureStore::new(device, queue);
             pool.create_layer_texture("p", 0, 4, 4);
             let mut pixels = vec![0u8; 4 * 4 * 4];
             for (i, px) in pixels.iter_mut().enumerate() {
@@ -203,12 +203,12 @@ mod gpu_tests {
 
     /// upload_region で指定矩形だけがテクスチャへ反映されることを確認する。
     #[test]
-    fn gpu_canvas_pool_upload_region_partial() {
+    fn layer_texture_store_upload_region_partial() {
         pollster::block_on(async {
             let Some((device, queue, _adapter)) = try_init_device().await else {
                 return;
             };
-            let mut pool = GpuCanvasPool::new(device, queue);
+            let mut pool = LayerTextureStore::new(device, queue);
             pool.create_layer_texture("p", 0, 4, 4);
             pool.upload_cpu_bitmap("p", 0, &[0u8; 4 * 4 * 4]);
 
@@ -229,19 +229,19 @@ mod gpu_tests {
         });
     }
 
-    /// create_and_upload で作成したテクスチャが restore_region のソースとして使えることを確認する。
+    /// create_snapshot_texture で作成したテクスチャが restore_region のソースとして使えることを確認する。
     #[test]
-    fn gpu_canvas_pool_create_and_upload_can_be_restored() {
+    fn layer_texture_store_create_snapshot_texture_can_be_restored() {
         pollster::block_on(async {
             let Some((device, queue, _adapter)) = try_init_device().await else {
                 return;
             };
-            let mut pool = GpuCanvasPool::new(device, queue);
+            let mut pool = LayerTextureStore::new(device, queue);
             pool.create_layer_texture("p", 0, 4, 4);
             pool.upload_cpu_bitmap("p", 0, &[0u8; 4 * 4 * 4]);
 
             let region = vec![128u8; 2 * 2 * 4];
-            let tex = pool.create_and_upload(2, 2, &region);
+            let tex = pool.create_snapshot_texture(2, 2, &region);
             pool.restore_region("p", 0, app_core::KomaLocalPoint::new(1, 1), &tex);
 
             let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
@@ -258,21 +258,21 @@ mod gpu_tests {
         });
     }
 
-    /// GpuCanvasPool::upload_cpu_bitmap は存在しないキーに対して panic しないことを確認する。
+    /// LayerTextureStore::upload_cpu_bitmap は存在しないキーに対して panic しないことを確認する。
     #[test]
-    fn gpu_canvas_pool_upload_nonexistent_key_is_noop() {
+    fn layer_texture_store_upload_nonexistent_key_is_noop() {
         pollster::block_on(async {
             let Some((device, queue, _adapter)) = try_init_device().await else {
                 return;
             };
-            let pool = GpuCanvasPool::new(device, queue);
+            let pool = LayerTextureStore::new(device, queue);
             let pixels = vec![0u8; 4 * 4 * 4];
             pool.upload_cpu_bitmap("nonexistent", 0, &pixels);
             assert!(pool.get("nonexistent", 0).is_none());
         });
     }
 
-    /// GpuFillDispatch::dispatch_flood_fill が連結成分だけを塗り、非連結ピクセルは
+    /// FillPipeline::dispatch_flood_fill が連結成分だけを塗り、非連結ピクセルは
     /// 変化させないことを検証する。
     #[test]
     fn gpu_flood_fill_fills_connected_region_only() {
@@ -285,7 +285,7 @@ mod gpu_tests {
 
                 // 4x4 キャンバス: 左 2 列が透明の連結領域、右 2 列は非連結で別色で埋める。
                 // 期待: 左 2 列のみが赤 (255,0,0,255) に塗られる。
-                let mut pool = GpuCanvasPool::new(device.clone(), queue.clone());
+                let mut pool = LayerTextureStore::new(device.clone(), queue.clone());
                 pool.create_layer_texture("p", 0, 4, 4);
                 let mut pixels = vec![0u8; 4 * 4 * 4];
                 for y in 0..4 {
@@ -299,7 +299,7 @@ mod gpu_tests {
                 }
                 pool.upload_cpu_bitmap("p", 0, &pixels);
 
-                let fill = GpuFillDispatch::new(device, queue);
+                let fill = FillPipeline::new(device, queue);
                 let target = pool.get("p", 0).unwrap();
                 fill.dispatch_flood_fill(target, target, (0, 0), [1.0, 0.0, 0.0, 1.0]);
 
@@ -322,7 +322,7 @@ mod gpu_tests {
         let _ = outcome; // GPU 非対応ではスキップ
     }
 
-    /// GpuFillDispatch::dispatch_lasso_fill が三角ポリゴン内部のピクセルを塗り、
+    /// FillPipeline::dispatch_lasso_fill が三角ポリゴン内部のピクセルを塗り、
     /// 外側は変更しないことを検証する。
     #[test]
     fn gpu_lasso_fill_triangle_paints_interior() {
@@ -332,12 +332,12 @@ mod gpu_tests {
                 if !crate::format_check::supports_rgba8unorm_storage(&adapter) {
                     return None;
                 }
-                let mut pool = GpuCanvasPool::new(device.clone(), queue.clone());
+                let mut pool = LayerTextureStore::new(device.clone(), queue.clone());
                 pool.create_layer_texture("p", 0, 8, 8);
                 let pixels = vec![0u8; 8 * 8 * 4];
                 pool.upload_cpu_bitmap("p", 0, &pixels);
 
-                let fill = GpuFillDispatch::new(device, queue);
+                let fill = FillPipeline::new(device, queue);
                 let target = pool.get("p", 0).unwrap();
                 // 三角形 (0,0), (7,0), (0,7) — 左上半分が内側。
                 let polygon = vec![(0.0, 0.0), (7.0, 0.0), (0.0, 7.0)];
@@ -360,7 +360,7 @@ mod gpu_tests {
         let _ = outcome;
     }
 
-    /// GpuLayerCompositor::recomposite で単一レイヤー (Normal blend) が passthrough
+    /// CompositePipeline::recomposite で単一レイヤー (Normal blend) が passthrough
     /// として合成テクスチャへコピーされることを確認する。
     #[test]
     fn gpu_layer_compositor_single_layer_passthrough() {
@@ -370,7 +370,7 @@ mod gpu_tests {
                 if !crate::format_check::supports_rgba8unorm_storage(&adapter) {
                     return None;
                 }
-                let mut pool = GpuCanvasPool::new(device.clone(), queue.clone());
+                let mut pool = LayerTextureStore::new(device.clone(), queue.clone());
                 pool.ensure_composite_texture("p", 4, 4);
                 pool.create_layer_texture("p", 0, 4, 4);
                 let mut pixels = vec![0u8; 4 * 4 * 4];
@@ -385,7 +385,7 @@ mod gpu_tests {
                 }
                 pool.upload_cpu_bitmap("p", 0, &pixels);
 
-                let compositor = GpuLayerCompositor::new(device, queue);
+                let compositor = CompositePipeline::new(device, queue);
                 let composite = pool.get_composite("p").unwrap();
                 let layer = pool.get("p", 0).unwrap();
                 compositor.recomposite(
@@ -411,7 +411,7 @@ mod gpu_tests {
         let _ = outcome;
     }
 
-    /// GpuLayerCompositor が invisible layer を完全にスキップし、dirty rect 範囲外を
+    /// CompositePipeline が invisible layer を完全にスキップし、dirty rect 範囲外を
     /// 変更しないことを検証する。
     #[test]
     fn gpu_layer_compositor_invisible_layer_is_skipped() {
@@ -421,14 +421,14 @@ mod gpu_tests {
                 if !crate::format_check::supports_rgba8unorm_storage(&adapter) {
                     return None;
                 }
-                let mut pool = GpuCanvasPool::new(device.clone(), queue.clone());
+                let mut pool = LayerTextureStore::new(device.clone(), queue.clone());
                 pool.ensure_composite_texture("p", 4, 4);
                 pool.create_layer_texture("p", 0, 4, 4);
                 // Fill with solid red.
                 let pixels: Vec<u8> = (0..16).flat_map(|_| [255u8, 0, 0, 255]).collect();
                 pool.upload_cpu_bitmap("p", 0, &pixels);
 
-                let compositor = GpuLayerCompositor::new(device, queue);
+                let compositor = CompositePipeline::new(device, queue);
                 let composite = pool.get_composite("p").unwrap();
                 let layer = pool.get("p", 0).unwrap();
                 compositor.recomposite(

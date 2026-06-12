@@ -1,6 +1,6 @@
 //! HTML パネル毎の GPU テクスチャラッパ。
 //!
-//! `gpu-paint::GpuLayerTexture` と同じ設定を採用:
+//! `gpu-paint::GpuRgbaTexture` と同じ設定を採用:
 //! - Format: Rgba8Unorm（vello の出力先要件）
 //! - Usage: STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST
 //! - view_formats: [Rgba8UnormSrgb]（present 側で sRGB view を作って合成する）

@@ -9,10 +9,10 @@ pub mod composite;
 pub mod fill;
 mod gpu;
 
-pub use brush::{BrushStrokeParams, GpuBrushDispatch};
-pub use composite::{CompositeLayerEntry, GpuLayerCompositor};
-pub use fill::{FloodFillOutcome, GpuFillDispatch};
-pub use gpu::{GpuCanvasContext, GpuCanvasPool, GpuLayerTexture};
+pub use brush::{BrushStrokeParams, BrushPipeline};
+pub use composite::{CompositeLayerEntry, CompositePipeline};
+pub use fill::{FloodFillOutcome, FillPipeline};
+pub use gpu::{GpuCanvasContext, LayerTextureStore, GpuRgbaTexture};
 
 #[cfg(test)]
 mod tests;

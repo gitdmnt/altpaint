@@ -89,7 +89,7 @@ impl DesktopApp {
                 ) {
                     self.append_canvas_dirty_rect(page_dirty);
                     // GPU パス: dirty 領域だけを GPU へ同期（全レイヤー転送は不要）
-                    if let Some(pool) = self.gpu_canvas_pool()
+                    if let Some(pool) = self.layer_texture_store()
                         && let Some(region) =
                             self.document
                                 .capture_koma_layer_region(koma_id, layer_index, page_dirty)
@@ -112,7 +112,7 @@ impl DesktopApp {
                 gpu_data,
             }) => {
                 if let (Some(pool), Some(snap)) = (
-                    self.gpu_canvas_pool(),
+                    self.layer_texture_store(),
                     (*gpu_data.0).downcast_ref::<project_io::GpuPatchSnapshot>(),
                 ) {
                     pool.restore_region(
@@ -151,7 +151,7 @@ impl DesktopApp {
                     &after,
                 ) {
                     self.append_canvas_dirty_rect(page_dirty);
-                    if let Some(pool) = self.gpu_canvas_pool()
+                    if let Some(pool) = self.layer_texture_store()
                         && let Some(region) =
                             self.document
                                 .capture_koma_layer_region(koma_id, layer_index, page_dirty)
@@ -174,7 +174,7 @@ impl DesktopApp {
                 gpu_data,
             }) => {
                 if let (Some(pool), Some(snap)) = (
-                    self.gpu_canvas_pool(),
+                    self.layer_texture_store(),
                     (*gpu_data.0).downcast_ref::<project_io::GpuPatchSnapshot>(),
                 ) {
                     pool.restore_region(

@@ -460,7 +460,7 @@ impl ApplicationHandler for DesktopRuntime {
                         foreground_quads: &foreground_solid_quads,
                         status_quad,
                     },
-                    self.app.gpu_canvas_pool(),
+                    self.app.layer_texture_store(),
                 ) {
                     Ok(timings) => timings,
                     Err(error) => {
