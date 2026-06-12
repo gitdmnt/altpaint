@@ -109,11 +109,6 @@ pub fn set_state_string(path: impl AsRef<str>, value: impl AsRef<str>) {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn set_state_string(_path: impl AsRef<str>, _value: impl AsRef<str>) {}
 
-/// 状態 JSON を設定する。
-pub fn set_state_json(path: impl Into<String>, value: impl Into<serde_json::Value>) {
-    apply_state_patches(&[StatePatch::set(path.into(), value.into())]);
-}
-
 /// 現在の値を 状態 patches へ変換する。
 #[cfg(target_arch = "wasm32")]
 pub fn apply_state_patches(patches: &[StatePatch]) {

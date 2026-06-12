@@ -132,7 +132,6 @@ fn typed_host_helpers_are_callable_on_native_targets() {
     assert!(!host::document::active_layer_visible());
     assert!(!host::document::active_layer_masked());
     assert_eq!(host::document::layers_json(), "");
-    assert!(!host::tool::is_active(commands::Tool::Pen));
     assert_eq!(host::tool::active_name(), "");
     assert_eq!(host::tool::pen_name(), "");
     assert_eq!(host::tool::pen_id(), "");
@@ -146,11 +145,9 @@ fn typed_host_helpers_are_callable_on_native_targets() {
     assert_eq!(host::color::red(), 0);
     assert_eq!(host::color::green(), 0);
     assert_eq!(host::color::blue(), 0);
-    assert_eq!(host::color::active_rgb().red, 0);
     assert_eq!(host::view::zoom_milli(), 0);
     assert_eq!(host::view::pan_x(), 0);
     assert_eq!(host::view::pan_y(), 0);
-    assert_eq!(host::view::quarter_turns(), 0);
     assert!(!host::view::flipped_x());
     assert!(!host::view::flipped_y());
     assert_eq!(host::jobs::active(), 0);
@@ -176,7 +173,6 @@ fn native_runtime_helpers_are_safe_noops() {
     runtime::set_state_bool("flag", true);
     runtime::set_state_i32("count", 3);
     runtime::set_state_string("name", "demo");
-    runtime::set_state_json("config", json!({"enabled": true}));
     runtime::emit_command(&CommandDescriptor::new("project.save"));
     runtime::emit_command_descriptor(&CommandDescriptor::new("project.load"));
     runtime::emit_service(&services::project_io::save_current());

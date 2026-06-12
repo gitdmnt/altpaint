@@ -1,12 +1,5 @@
 //! host snapshot を型付き getter で読む補助 API を提供する。
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ColorSnapshot {
-    pub red: i32,
-    pub green: i32,
-    pub blue: i32,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolSnapshot {
     pub active_name: String,
@@ -66,11 +59,6 @@ pub mod document {
         host_i32("document.active_panel_index")
     }
 
-    /// アクティブな パネル ラベル を返す。
-    pub fn active_panel_label() -> String {
-        host_string("document.active_panel_label")
-    }
-
     /// アクティブな パネル 範囲 を返す。
     pub fn active_panel_bounds() -> String {
         host_string("document.active_panel_bounds")
@@ -119,10 +107,7 @@ pub mod document {
 
 /// ツール関連 host 値を読む。
 pub mod tool {
-    use crate::{
-        commands::Tool,
-        runtime::{host_i32, host_string},
-    };
+    use crate::runtime::{host_i32, host_string};
 
     use super::{ToolCapabilities, ToolSnapshot};
 
@@ -141,11 +126,6 @@ pub mod tool {
         host_string("tool.active_label")
     }
 
-    /// Is アクティブ かどうかを返す。
-    pub fn is_active(tool: Tool) -> bool {
-        active_name().eq_ignore_ascii_case(tool.as_str())
-    }
-
     /// Host snapshot の tool / pen_name を 文字列として返す。
     pub fn pen_name() -> String {
         host_string("tool.pen_name")
@@ -156,11 +136,6 @@ pub mod tool {
         host_string("tool.catalog_json")
     }
 
-    /// アクティブな 設定 JSON を返す。
-    pub fn active_settings_json() -> String {
-        host_string("tool.active_settings_json")
-    }
-
     /// アクティブな provider プラグイン ID を返す。
     pub fn active_provider_plugin_id() -> String {
         host_string("tool.active_provider_plugin_id")
@@ -169,11 +144,6 @@ pub mod tool {
     /// アクティブな 描画 プラグイン ID を返す。
     pub fn active_drawing_plugin_id() -> String {
         host_string("tool.active_drawing_plugin_id")
-    }
-
-    /// アクティブな 子ツール ID を返す。
-    pub fn active_child_tool_id() -> String {
-        host_string("tool.active_child_tool_id")
     }
 
     /// アクティブな 子ツール ラベル を返す。
@@ -275,8 +245,6 @@ pub mod tool {
 pub mod color {
     use crate::runtime::{host_i32, host_string};
 
-    use super::ColorSnapshot;
-
     /// アクティブな 16進文字列 を返す。
     pub fn active_hex() -> String {
         host_string("color.active")
@@ -295,15 +263,6 @@ pub mod color {
     /// Host snapshot の color / blue を 整数値として返す。
     pub fn blue() -> i32 {
         host_i32("color.blue")
-    }
-
-    /// アクティブな RGB を返す。
-    pub fn active_rgb() -> ColorSnapshot {
-        ColorSnapshot {
-            red: red(),
-            green: green(),
-            blue: blue(),
-        }
     }
 }
 
@@ -324,11 +283,6 @@ pub mod view {
     /// Host snapshot の view / pan_y を 整数値として返す。
     pub fn pan_y() -> i32 {
         host_i32("view.pan_y")
-    }
-
-    /// Host snapshot の view / quarter_turns を 整数値として返す。
-    pub fn quarter_turns() -> i32 {
-        host_i32("view.quarter_turns")
     }
 
     /// Host snapshot の view / rotation_degrees を 整数値として返す。
