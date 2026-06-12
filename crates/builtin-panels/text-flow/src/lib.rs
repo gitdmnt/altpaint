@@ -10,7 +10,6 @@ use plugin_sdk::{
 
 const INPUT_TEXT: state::StringKey = state::string("input_text");
 const FONT_SIZE: state::IntKey = state::int("font_size");
-const COLOR_HEX: state::StringKey = state::string("color_hex");
 const X: state::IntKey = state::int("x");
 const Y: state::IntKey = state::int("y");
 
@@ -76,11 +75,11 @@ fn render_text() {
         return;
     }
     let font_size = state_i32(FONT_SIZE).max(8) as u32;
-    let color_hex = state_string(COLOR_HEX);
     let x = state_i32(X).max(0) as usize;
     let y = state_i32(Y).max(0) as usize;
+    // 色指定 UI は未提供。空文字を渡すと host 側既定 (#000000) で描画される。
     emit_service(&services::text_render::render_to_layer(
-        &text, font_size, &color_hex, x, y,
+        &text, font_size, "", x, y,
     ));
 }
 

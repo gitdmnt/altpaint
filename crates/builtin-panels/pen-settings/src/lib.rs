@@ -63,7 +63,6 @@ fn set_button_active(selector: &str, active: bool) {
 fn render_dom() {
     let snapshot = host::tool::snapshot();
     let capabilities = host::tool::capabilities();
-    let active_tool = snapshot.active_name.clone();
     let size = snapshot.pen_size.max(1);
 
     set_text("#active-tool-label", &snapshot.active_label);
@@ -98,15 +97,6 @@ fn render_dom() {
 
     set_button_active("#pen\\.pressure", host::tool::pen_pressure_enabled());
     set_button_active("#pen\\.antialias", host::tool::pen_antialias());
-
-    let label = if active_tool.eq_ignore_ascii_case("eraser") {
-        "Eraser Width"
-    } else if active_tool.eq_ignore_ascii_case("pen") {
-        "Pen Width"
-    } else {
-        "Tool Size"
-    };
-    let _ = label;
 }
 
 #[plugin_sdk::panel_init]
