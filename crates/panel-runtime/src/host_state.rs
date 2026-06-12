@@ -1,4 +1,4 @@
-use app_core::{Document, PenPreset, ToolKind};
+use app_core::{Document, PenPreset};
 use serde_json::{Value, json};
 
 /// 高価な JSON シリアライズ結果を再利用するためのキャッシュ。
@@ -30,15 +30,6 @@ pub struct HostStateCache {
 /// 未設定時は空配列を返す。
 pub const EMPTY_WORKSPACE_PANELS_JSON: &str = "[]";
 
-pub(crate) fn active_tool_name(tool: ToolKind) -> &'static str {
-    match tool {
-        ToolKind::Pen => "pen",
-        ToolKind::Eraser => "eraser",
-        ToolKind::Bucket => "bucket",
-        ToolKind::LassoBucket => "lasso_bucket",
-        ToolKind::KomaRect => "koma_rect",
-    }
-}
 
 /// キャッシュを利用してhost state を構築する。
 ///
@@ -204,12 +195,12 @@ pub fn build_host_state(
             "layers_json": layers_json,
         },
         "tool": {
-            "active": active_tool_name(document.active_tool),
+            "active": document.active_tool.as_str(),
             "active_id": &document.active_tool_id,
             "active_label": active_tool_definition
                 .as_ref()
                 .map(|tool| tool.name.clone())
-                .unwrap_or_else(|| active_tool_name(document.active_tool).to_string()),
+                .unwrap_or_else(|| document.active_tool.as_str().to_string()),
             "catalog_json": cache.tool_catalog_json,
             "active_settings_json": cache.active_tool_settings_json,
             "active_child_tool_id": active_child_tool_id,

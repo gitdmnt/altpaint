@@ -253,13 +253,7 @@ impl DesktopApp {
     /// 9E-4: HtmlPanelView ステータスバー用のスナップショットを組み立てる。
     /// ツール名・ズーム % ・status text を集約して返す。
     pub(crate) fn build_status_snapshot(&self) -> crate::present_quads::status_panel::StatusSnapshot {
-        let tool_name = match self.document.active_tool {
-            app_core::ToolKind::Pen => "Pen",
-            app_core::ToolKind::Eraser => "Eraser",
-            app_core::ToolKind::Bucket => "Bucket",
-            app_core::ToolKind::LassoBucket => "LassoBucket",
-            app_core::ToolKind::KomaRect => "KomaRect",
-        };
+        let tool_name = self.document.active_tool.display_label();
         let zoom_percent =
             (self.document.view_transform.zoom * 100.0).round().clamp(1.0, 100_000.0) as u32;
         let status_text = self.status_text();

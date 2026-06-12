@@ -48,6 +48,42 @@ pub enum ToolKind {
     KomaRect,
 }
 
+impl ToolKind {
+    /// ホスト↔パネル間で交換する wire 名 (snake_case)。
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            ToolKind::Pen => "pen",
+            ToolKind::Eraser => "eraser",
+            ToolKind::Bucket => "bucket",
+            ToolKind::LassoBucket => "lasso_bucket",
+            ToolKind::KomaRect => "koma_rect",
+        }
+    }
+
+    /// wire 名を `ToolKind` へ解釈する。未知の名前は `None`。
+    pub fn from_wire(name: &str) -> Option<Self> {
+        match name {
+            "pen" => Some(ToolKind::Pen),
+            "eraser" => Some(ToolKind::Eraser),
+            "bucket" => Some(ToolKind::Bucket),
+            "lasso_bucket" => Some(ToolKind::LassoBucket),
+            "koma_rect" => Some(ToolKind::KomaRect),
+            _ => None,
+        }
+    }
+
+    /// ステータスバー等の UI 表示用ラベル (PascalCase)。
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            ToolKind::Pen => "Pen",
+            ToolKind::Eraser => "Eraser",
+            ToolKind::Bucket => "Bucket",
+            ToolKind::LassoBucket => "LassoBucket",
+            ToolKind::KomaRect => "KomaRect",
+        }
+    }
+}
+
 /// ツール設定 UI の入力種別。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

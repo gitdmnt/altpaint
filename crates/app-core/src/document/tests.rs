@@ -858,3 +858,24 @@ fn parse_document_size_rejects_invalid_dimensions() {
     assert_eq!(parse_document_size("99999x1"), None);
     assert_eq!(parse_document_size("foo"), None);
 }
+
+#[test]
+fn tool_kind_wire_name_round_trips() {
+    for tool in [
+        ToolKind::Pen,
+        ToolKind::Eraser,
+        ToolKind::Bucket,
+        ToolKind::LassoBucket,
+        ToolKind::KomaRect,
+    ] {
+        assert_eq!(ToolKind::from_wire(tool.as_str()), Some(tool));
+    }
+    assert_eq!(ToolKind::from_wire("unknown"), None);
+}
+
+#[test]
+fn tool_kind_display_labels_are_pascal_case() {
+    assert_eq!(ToolKind::Pen.display_label(), "Pen");
+    assert_eq!(ToolKind::LassoBucket.display_label(), "LassoBucket");
+    assert_eq!(ToolKind::KomaRect.display_label(), "KomaRect");
+}

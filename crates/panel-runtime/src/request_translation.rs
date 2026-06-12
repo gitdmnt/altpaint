@@ -27,14 +27,8 @@ pub fn command_from_descriptor(descriptor: &RequestDescriptor) -> Result<Command
                 .get("tool")
                 .and_then(Value::as_str)
                 .ok_or_else(|| format!("{} is missing payload.tool", tool::SET_ACTIVE))?;
-            let tool = match tool {
-                "pen" => ToolKind::Pen,
-                "eraser" => ToolKind::Eraser,
-                "bucket" => ToolKind::Bucket,
-                "lasso_bucket" => ToolKind::LassoBucket,
-                "koma_rect" => ToolKind::KomaRect,
-                other => return Err(format!("unsupported tool kind: {other}")),
-            };
+            let tool = ToolKind::from_wire(tool)
+                .ok_or_else(|| format!("unsupported tool kind: {tool}"))?;
             Ok(Command::SetActiveTool { tool })
         }
         tool::SELECT => {
