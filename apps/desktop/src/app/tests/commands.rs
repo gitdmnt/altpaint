@@ -504,10 +504,11 @@ fn execute_command_saves_current_workspace_preset_into_catalog() {
         preset_path.clone(),
     );
 
-    assert!(app.execute_host_action(HostAction::SetPanelVisibility {
-        panel_id: "builtin.tool-palette".to_string(),
-        visible: false,
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+            .with_value("panel_id", "builtin.tool-palette")
+            .with_value("visible", false),
+    ));
     assert!(app.execute_service_request(
         ServiceRequest::new(names::WORKSPACE_SAVE_PRESET)
             .with_value("preset_id", "review")

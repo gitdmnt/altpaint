@@ -119,6 +119,32 @@ fn request_service_workspace_layout_set_panel_visibility_toggles_visibility() {
     );
 }
 
+/// BL-062: `workspace_layout.move_panel` がパネルの並び順を入れ替える。
+#[test]
+fn request_service_workspace_layout_move_panel_reorders_layout() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let index_of = |app: &crate::app::DesktopApp, id: &str| {
+        app.panel_workspace
+            .workspace_layout()
+            .panels
+            .iter()
+            .position(|entry| entry.id == id)
+    };
+    let before = index_of(&app, "builtin.layers").expect("layers panel exists");
+    assert!(before > 0, "前提: layers は先頭ではない (上に移動できる)");
+
+    assert!(
+        app.execute_host_action(HostAction::RequestService(
+            ServiceRequest::new(names::WORKSPACE_LAYOUT_MOVE_PANEL)
+                .with_value("panel_id", "builtin.layers")
+                .with_value("direction", "up"),
+        ))
+    );
+
+    let after = index_of(&app, "builtin.layers").expect("layers panel exists");
+    assert_eq!(after, before - 1, "up で 1 つ前へ移動する");
+}
+
 /// `koma_nav.*` service がコマ選択へ届く (K6 wire 改名の操作経路生存確認)。
 #[test]
 fn request_service_koma_nav_add_and_select_changes_active_koma() {

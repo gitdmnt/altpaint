@@ -100,9 +100,10 @@ pub mod text_render {
     pub const RENDER_TO_LAYER: &str = "text_render.render_to_layer";
 }
 
-/// ワークスペースレイアウト (UI パネル可視性) サービス。
+/// ワークスペースレイアウト (UI パネル可視性・並び順) サービス。
 pub mod workspace_layout {
     pub const SET_PANEL_VISIBILITY: &str = "workspace_layout.set_panel_visibility";
+    pub const MOVE_PANEL: &str = "workspace_layout.move_panel";
 }
 
 #[cfg(test)]
@@ -169,6 +170,7 @@ mod tests {
         export::IMAGE,
         text_render::RENDER_TO_LAYER,
         workspace_layout::SET_PANEL_VISIBILITY,
+        workspace_layout::MOVE_PANEL,
     ];
 
     #[test]
@@ -257,5 +259,6 @@ mod tests {
             workspace_layout::SET_PANEL_VISIBILITY,
             "workspace_layout.set_panel_visibility"
         );
+        assert_eq!(workspace_layout::MOVE_PANEL, "workspace_layout.move_panel");
     }
 }

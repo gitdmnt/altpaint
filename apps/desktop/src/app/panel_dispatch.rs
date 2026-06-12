@@ -1,7 +1,9 @@
 //! パネル入力中継とホストアクション適用を集約する。
 
 use app_core::{PanelSurfacePoint, WindowPoint, WindowRect};
-use panel_runtime::{HostAction, PanelEvent, ResizeHandle};
+use panel_runtime::{
+    HostAction, PanelEvent, PanelMoveDirection, ResizeHandle, ServiceRequest, services::names,
+};
 
 use super::DesktopApp;
 /// パネル移動ドラッグ中の被操作パネル情報を保持する。
@@ -223,37 +225,27 @@ impl DesktopApp {
             }
             HostAction::DispatchSessionCommand(command) => self.apply_session_command(&command),
             HostAction::RequestService(request) => self.execute_service_request(request),
+            // BL-062: パネル可視性/並び替えは workspace_layout サービス経路に一本化する。
+            // panel-api の専用 variant は B6 (P3) で削除予定だが、B4 では service へ流す。
             HostAction::MovePanel {
                 panel_id,
                 direction,
             } => {
-                let previous_rect = self.panel_rect_in_window(&panel_id);
-                let changed = self.panel_workspace.move_panel(&panel_id, direction);
-                if changed {
-                    self.request_panel_reconcile();
-                    self.mark_status_dirty();
-                    self.persist_session_state();
-                    if let Some(rect) = previous_rect {
-                        self.append_ui_panel_dirty_rect(rect);
-                    }
-                }
-                changed
+                let direction = match direction {
+                    PanelMoveDirection::Up => "up",
+                    PanelMoveDirection::Down => "down",
+                };
+                self.execute_service_request(
+                    ServiceRequest::new(names::WORKSPACE_LAYOUT_MOVE_PANEL)
+                        .with_value("panel_id", panel_id)
+                        .with_value("direction", direction),
+                )
             }
-            HostAction::SetPanelVisibility { panel_id, visible } => {
-                let previous_rect = self.panel_rect_in_window(&panel_id);
-                let changed = self
-                    .panel_workspace
-                    .set_panel_visibility(&panel_id, visible);
-                if changed {
-                    self.request_panel_reconcile();
-                    self.mark_status_dirty();
-                    self.persist_session_state();
-                    if let Some(rect) = previous_rect {
-                        self.append_ui_panel_dirty_rect(rect);
-                    }
-                }
-                changed
-            }
+            HostAction::SetPanelVisibility { panel_id, visible } => self.execute_service_request(
+                ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+                    .with_value("panel_id", panel_id)
+                    .with_value("visible", visible),
+            ),
         }
     }
 

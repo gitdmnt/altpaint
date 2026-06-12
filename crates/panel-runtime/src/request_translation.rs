@@ -280,7 +280,10 @@ pub fn register_default_translators(registry: &mut TranslatorRegistry) {
     );
     registry.register(
         "workspace_layout.",
-        passthrough(&[workspace_layout::SET_PANEL_VISIBILITY]),
+        passthrough(&[
+            workspace_layout::SET_PANEL_VISIBILITY,
+            workspace_layout::MOVE_PANEL,
+        ]),
     );
     registry.register(
         "tool_catalog.",
@@ -464,6 +467,7 @@ mod tests {
             export::IMAGE,
             text_render::RENDER_TO_LAYER,
             workspace_layout::SET_PANEL_VISIBILITY,
+            workspace_layout::MOVE_PANEL,
         ];
         for name in all_names {
             match registry.translate(&RequestDescriptor::new(*name)) {

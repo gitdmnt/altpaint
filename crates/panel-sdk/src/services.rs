@@ -287,6 +287,21 @@ pub mod workspace_layout {
             .insert("visible".to_string(), json!(visible));
         descriptor
     }
+
+    /// 指定パネルを並び順で 1 つ上 (`"up"`) / 下 (`"down"`) へ移動する。
+    pub fn move_panel(
+        panel_id: impl Into<String>,
+        direction: impl Into<String>,
+    ) -> RequestDescriptor {
+        let mut descriptor = descriptor(wire::MOVE_PANEL);
+        descriptor
+            .payload
+            .insert("panel_id".to_string(), json!(panel_id.into()));
+        descriptor
+            .payload
+            .insert("direction".to_string(), json!(direction.into()));
+        descriptor
+    }
 }
 
 /// テキスト描画サービス。

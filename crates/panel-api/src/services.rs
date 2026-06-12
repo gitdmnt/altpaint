@@ -47,7 +47,10 @@ pub mod names {
 
     pub use panel_protocol::names::text_render::RENDER_TO_LAYER as TEXT_RENDER_TO_LAYER;
 
-    pub use panel_protocol::names::workspace_layout::SET_PANEL_VISIBILITY as WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY;
+    pub use panel_protocol::names::workspace_layout::{
+        MOVE_PANEL as WORKSPACE_LAYOUT_MOVE_PANEL,
+        SET_PANEL_VISIBILITY as WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY,
+    };
 }
 
 #[derive(Debug, Clone, PartialEq)]

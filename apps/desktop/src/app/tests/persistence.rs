@@ -9,7 +9,7 @@ use desktop_support::{
     DEFAULT_PROJECT_FILE_NAME, FrameProfiler, WorkspacePreset, WorkspacePresetCatalog,
     save_workspace_preset_catalog,
 };
-use panel_runtime::{HostAction, PanelMoveDirection, ServiceRequest, services::names};
+use panel_runtime::{ServiceRequest, services::names};
 use serde_json::json;
 use std::collections::BTreeMap;
 use storage::{load_project_from_path, save_project_to_path};
@@ -23,12 +23,11 @@ use crate::app::DesktopApp;
 fn execute_command_load_project_uses_native_dialog_path() {
     let path = std::env::temp_dir().join("altpaint-open-dialog-test.altp.json");
     let mut source_app = test_app_with_dialogs(TestDialogs::default());
-    assert!(
-        source_app.execute_host_action(HostAction::SetPanelVisibility {
-            panel_id: "builtin.tool-palette".to_string(),
-            visible: false,
-        })
-    );
+    assert!(source_app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+            .with_value("panel_id", "builtin.tool-palette")
+            .with_value("visible", false),
+    ));
     save_project_to_path(
         &path,
         &source_app.document,
@@ -55,10 +54,11 @@ fn save_project_as_updates_project_path_and_persists_workspace_layout() {
     let path = std::env::temp_dir().join("altpaint-save-as-test.altp.json");
     let mut app = test_app_with_dialogs(TestDialogs::with_save_path(path.clone()));
 
-    assert!(app.execute_host_action(HostAction::SetPanelVisibility {
-        panel_id: "builtin.tool-palette".to_string(),
-        visible: false,
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+            .with_value("panel_id", "builtin.tool-palette")
+            .with_value("visible", false),
+    ));
     assert!(app.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_AS)));
     assert_eq!(app.pending_save_task_count(), 1);
     app.wait_for_pending_save_tasks();
@@ -146,18 +146,18 @@ fn load_project_restores_workspace_layout() {
     let mut source_app = test_app_with_dialogs(TestDialogs::default());
     let mut moved = false;
     for _ in 0..3 {
-        moved |= source_app.execute_host_action(HostAction::MovePanel {
-            panel_id: "builtin.layers".to_string(),
-            direction: PanelMoveDirection::Up,
-        });
+        moved |= source_app.execute_service_request(
+            ServiceRequest::new(names::WORKSPACE_LAYOUT_MOVE_PANEL)
+                .with_value("panel_id", "builtin.layers")
+                .with_value("direction", "up"),
+        );
     }
     assert!(moved);
-    assert!(
-        source_app.execute_host_action(HostAction::SetPanelVisibility {
-            panel_id: "builtin.tool-palette".to_string(),
-            visible: false,
-        })
-    );
+    assert!(source_app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+            .with_value("panel_id", "builtin.tool-palette")
+            .with_value("visible", false),
+    ));
     let expected_layout = source_app.panel_workspace.workspace_layout();
     save_project_to_path(
         &path,
@@ -184,38 +184,40 @@ fn load_project_restores_workspace_layout() {
 }
 
 #[test]
-fn move_panel_host_action_updates_status_without_full_recompose() {
+fn move_panel_service_updates_status_without_full_recompose() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
     let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();
     let _layout = app.layout.clone().expect("layout exists");
 
-    assert!(app.execute_host_action(HostAction::MovePanel {
-        panel_id: "builtin.layers".to_string(),
-        direction: PanelMoveDirection::Up,
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_MOVE_PANEL)
+            .with_value("panel_id", "builtin.layers")
+            .with_value("direction", "up"),
+    ));
     let _update = app.prepare_present_frame(1280, 200, &mut profiler);
 
     // Phase 9F: status text は GPU 描画化済み、L1/L4 dummy 経路も撤去済み。
-    // MovePanel が full recompose を起こさず ui_update を発火しないことのみ検証する。
+    // move_panel が full recompose を起こさず ui_update を発火しないことのみ検証する。
     // (CPU dirty rect のピクセル一致比較は Phase 9E-4 までで撤去済み。)
     assert!(!profiler.stats.contains_key("ui_update"));
     assert!(!profiler.stats.contains_key("compose_full_frame"));
 }
 
 #[test]
-fn set_panel_visibility_updates_status_without_full_recompose() {
+fn set_panel_visibility_service_updates_status_without_full_recompose() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
     let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();
     let _layout = app.layout.clone().expect("layout exists");
 
-    assert!(app.execute_host_action(HostAction::SetPanelVisibility {
-        panel_id: "builtin.tool-palette".to_string(),
-        visible: false,
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+            .with_value("panel_id", "builtin.tool-palette")
+            .with_value("visible", false),
+    ));
     let update = app.prepare_present_frame(1280, 200, &mut profiler);
 
     // 9E-4: status text の compose ピクセル比較は廃止。CPU dirty rect 一致確認も廃止。
@@ -246,10 +248,11 @@ fn hiding_panel_clears_previous_overlay_bounds_when_surface_shrinks() {
         .expect("hidden panel rect exists");
 
     profiler.stats.clear();
-    assert!(app.execute_host_action(HostAction::SetPanelVisibility {
-        panel_id: "builtin.tool-palette".to_string(),
-        visible: false,
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+            .with_value("panel_id", "builtin.tool-palette")
+            .with_value("visible", false),
+    ));
     let update = app.prepare_present_frame(1280, 800, &mut profiler);
 
     // 9E-4: compose_dirty_panel プロファイラキー / ui_panel_dirty_rect の厳密一致は廃止。
@@ -427,16 +430,16 @@ fn panel_visibility_round_trip_through_session_save_load() {
     let mut source_app =
         test_app_with_dialogs_and_session_path(TestDialogs::default(), session_path.clone());
 
-    assert!(source_app.execute_host_action(HostAction::MovePanel {
-        panel_id: "builtin.layers".to_string(),
-        direction: PanelMoveDirection::Up,
-    }));
-    assert!(
-        source_app.execute_host_action(HostAction::SetPanelVisibility {
-            panel_id: "builtin.tool-palette".to_string(),
-            visible: false,
-        })
-    );
+    assert!(source_app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_MOVE_PANEL)
+            .with_value("panel_id", "builtin.layers")
+            .with_value("direction", "up"),
+    ));
+    assert!(source_app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+            .with_value("panel_id", "builtin.tool-palette")
+            .with_value("visible", false),
+    ));
     let expected_layout = source_app.panel_workspace.workspace_layout();
 
     let app = test_app_with_dialogs_and_session_path(TestDialogs::default(), session_path.clone());

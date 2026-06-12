@@ -2,7 +2,7 @@
 
 use app_core::WindowPoint;
 use desktop_support::FrameProfiler;
-use panel_runtime::HostAction;
+use panel_runtime::{ServiceRequest, services::names};
 
 use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::PanelDragState;
@@ -76,10 +76,11 @@ fn hiding_bottom_right_anchored_panel_marks_dirty_rect_within_viewport() {
     app.invalidation.ui_panel_dirty_rect = None;
 
     // builtin.tool-settings は BottomRight アンカーが既定
-    assert!(app.execute_host_action(HostAction::SetPanelVisibility {
-        panel_id: "builtin.tool-settings".to_string(),
-        visible: false,
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+            .with_value("panel_id", "builtin.tool-settings")
+            .with_value("visible", false),
+    ));
 
     let dirty = app
         .invalidation
