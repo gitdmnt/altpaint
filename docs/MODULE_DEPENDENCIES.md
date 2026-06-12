@@ -92,6 +92,7 @@ graph TD
     storage --> appcore
     dsupport --> appcore
     panelapi[panel-api] --> appcore
+    panelapi --> pschema[panel-schema]
 
     uishell --> appcore
     uishell --> panelapi
@@ -253,7 +254,8 @@ graph TD
 - `PanelEvent`（`Activate` / `SetValue` / `DragValue` / `SetText` / `Keyboard`）
 - `HostAction`（`DispatchCommand` / `RequestService` / `MovePanel` / `SetPanelVisibility`）
 - `ResizeEdge`（8 ハンドルリサイズ）
-- `ServiceRequest` と service 名定数
+- `ServiceRequest` と service 名定数の互換表面（定数の正本は `panel_schema::names`。
+  `services::names` はフラット名の再エクスポートとして維持）
 
 意味:
 
@@ -270,6 +272,8 @@ graph TD
 - `StatePatch` / `StatePatchOp`
 - `CommandDescriptor`
 - `Diagnostic`
+- `names`: host↔panel 間 wire 名（command / service 名）の feature 別定数モジュール
+  （単一定義点。リテラル直書き禁止）
 
 ### `plugin-macros`
 
