@@ -18,7 +18,7 @@ members = [
   "crates/desktop-support",
   "crates/panel-runtime",
   "crates/panel-protocol",
-  "crates/plugin-macros",
+  "crates/panel-macros",
   "crates/plugin-sdk",
   "crates/plugin-host",
   "crates/gpu-canvas",

@@ -12,7 +12,7 @@ pub use panel_protocol::{
     CommandDescriptor, Diagnostic, DiagnosticLevel, HandlerResult, PanelEventRequest, StatePatch,
     StatePatchOp,
 };
-pub use plugin_macros::{panel_handler, panel_init, panel_sync_host};
+pub use panel_macros::{panel_handler, panel_init, panel_sync_host};
 
 #[cfg(test)]
 mod tests;

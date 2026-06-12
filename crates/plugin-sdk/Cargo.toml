@@ -6,6 +6,6 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-plugin-macros = { path = "../plugin-macros" }
+panel-macros = { path = "../panel-macros" }
 panel-protocol = { path = "../panel-protocol" }
 serde_json.workspace = true
