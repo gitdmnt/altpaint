@@ -80,7 +80,9 @@ impl Document {
         let (page_idx, koma_idx) = self.find_koma_location(koma_id)?;
         let koma = &self.work.pages[page_idx].komas[koma_idx];
         let layer = koma.layers.get(layer_index)?;
-        extract_bitmap_region(&layer.bitmap, dirty.x, dirty.y, dirty.width, dirty.height)
+        layer
+            .bitmap
+            .extract_region(dirty.x, dirty.y, dirty.width, dirty.height)
     }
 
     /// 指定 koma/layer の指定位置にビットマップを復元し、コマ合成も更新する。
@@ -322,10 +324,12 @@ fn apply_bitmap_edits(koma: &mut Koma, edits: &[BitmapEdit]) -> Option<PageDirty
 
         let source_x = dirty.x.saturating_sub(edit.dirty_rect.x);
         let source_y = dirty.y.saturating_sub(edit.dirty_rect.y);
-        let incoming =
-            extract_bitmap_region(&edit.bitmap, source_x, source_y, dirty.width, dirty.height)?;
-        let previous =
-            extract_bitmap_region(&layer.bitmap, dirty.x, dirty.y, dirty.width, dirty.height)?;
+        let incoming = edit
+            .bitmap
+            .extract_region(source_x, source_y, dirty.width, dirty.height)?;
+        let previous = layer
+            .bitmap
+            .extract_region(dirty.x, dirty.y, dirty.width, dirty.height)?;
         let merged = edit.composite.compose(&incoming, &previous);
         write_bitmap_region(&mut layer.bitmap, dirty.x, dirty.y, &merged);
 
@@ -336,35 +340,6 @@ fn apply_bitmap_edits(koma: &mut Koma, edits: &[BitmapEdit]) -> Option<PageDirty
     }
 
     dirty_union
-}
-
-fn extract_bitmap_region(
-    bitmap: &CanvasBitmap,
-    start_x: usize,
-    start_y: usize,
-    width: usize,
-    height: usize,
-) -> Option<CanvasBitmap> {
-    if width == 0
-        || height == 0
-        || start_x >= bitmap.width
-        || start_y >= bitmap.height
-        || start_x.saturating_add(width) > bitmap.width
-        || start_y.saturating_add(height) > bitmap.height
-    {
-        return None;
-    }
-
-    let mut region = CanvasBitmap::transparent(width, height);
-    for row in 0..height {
-        let src_row_start = ((start_y + row) * bitmap.width + start_x) * 4;
-        let src_row_end = src_row_start + width * 4;
-        let dst_row_start = row * width * 4;
-        let dst_row_end = dst_row_start + width * 4;
-        region.pixels[dst_row_start..dst_row_end]
-            .copy_from_slice(&bitmap.pixels[src_row_start..src_row_end]);
-    }
-    Some(region)
 }
 
 fn write_bitmap_region(
