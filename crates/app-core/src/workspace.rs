@@ -287,7 +287,7 @@ mod tests {
                 }],
             },
             plugin_configs: BTreeMap::from([(
-                "builtin.pen-settings".to_string(),
+                "builtin.tool-settings".to_string(),
                 serde_json::json!({"size": 8}),
             )]),
         };

@@ -53,8 +53,8 @@ const BUILTIN_PANELS: &[BuiltinPanelDef] = &[
         wasm_filename: "builtin_panel_snapshots.wasm",
     },
     BuiltinPanelDef {
-        directory_name: "pen-settings",
-        wasm_filename: "builtin_panel_pen_settings.wasm",
+        directory_name: "tool-settings",
+        wasm_filename: "builtin_panel_tool_settings.wasm",
     },
     BuiltinPanelDef {
         directory_name: "workspace-presets",

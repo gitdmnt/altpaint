@@ -321,7 +321,7 @@ fn default_panel_anchor_and_position(
             app_core::WorkspacePanelAnchor::BottomLeft,
             WorkspacePanelPosition { x: 24, y: 24 },
         ),
-        "builtin.pen-settings" => (
+        "builtin.tool-settings" => (
             app_core::WorkspacePanelAnchor::BottomRight,
             WorkspacePanelPosition { x: 24, y: 24 },
         ),

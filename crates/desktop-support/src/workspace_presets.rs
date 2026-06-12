@@ -100,7 +100,7 @@ pub fn default_workspace_preset_catalog() -> WorkspacePresetCatalog {
                             320,
                         ),
                         panel_state(
-                            "builtin.pen-settings",
+                            "builtin.tool-settings",
                             true,
                             WorkspacePanelAnchor::BottomRight,
                             24,

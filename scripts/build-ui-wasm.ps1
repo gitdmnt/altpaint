@@ -25,7 +25,7 @@ try {
         @{ Package = 'builtin-panel-koma-list'; Destination = 'crates/builtin-panels/koma-list/builtin_panel_koma_list.wasm' },
         @{ Package = 'builtin-panel-layers'; Destination = 'crates/builtin-panels/layers/builtin_panel_layers.wasm' },
         @{ Package = 'builtin-panel-color-palette'; Destination = 'crates/builtin-panels/color-palette/builtin_panel_color_palette.wasm' },
-        @{ Package = 'builtin-panel-pen-settings'; Destination = 'crates/builtin-panels/pen-settings/builtin_panel_pen_settings.wasm' },
+        @{ Package = 'builtin-panel-tool-settings'; Destination = 'crates/builtin-panels/tool-settings/builtin_panel_tool_settings.wasm' },
         @{ Package = 'builtin-panel-job-progress'; Destination = 'crates/builtin-panels/job-progress/builtin_panel_job_progress.wasm' },
         @{ Package = 'builtin-panel-snapshots'; Destination = 'crates/builtin-panels/snapshots/builtin_panel_snapshots.wasm' },
         @{ Package = 'builtin-panel-text-flow'; Destination = 'crates/builtin-panels/text-flow/builtin_panel_text_flow.wasm' },

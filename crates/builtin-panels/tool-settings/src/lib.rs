@@ -1,4 +1,4 @@
-//! `builtin.pen-settings` パネル (Phase 10 DOM mutation 版)。
+//! `builtin.tool-settings` パネル (Phase 10 DOM mutation 版)。
 
 use plugin_sdk::{
     commands,

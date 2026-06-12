@@ -227,7 +227,7 @@ fn builtin_panels_are_registered() {
         "builtin.workspace-presets",
         "builtin.tool-palette",
         "builtin.layers",
-        "builtin.pen-settings",
+        "builtin.tool-settings",
         "builtin.color-palette",
         "builtin.view-controls",
         "builtin.koma-list",

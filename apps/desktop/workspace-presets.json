@@ -87,7 +87,7 @@
               }
             },
             {
-              "id": "builtin.pen-settings",
+              "id": "builtin.tool-settings",
               "visible": true,
               "anchor": "bottom-right",
               "position": {

@@ -448,7 +448,7 @@ fn profile_slider_drag_for_ten_seconds() {
     profiler.stats.clear();
     profiler.value_stats.clear();
 
-    let points = control_points_from_surface(&app, "builtin.pen-settings", "pen.size");
+    let points = control_points_from_surface(&app, "builtin.tool-settings", "pen.size");
     assert!(points.len() >= 8, "slider points exist");
 
     let duration = perf_duration();

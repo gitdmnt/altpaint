@@ -5,7 +5,7 @@ use panel_runtime::{ServiceRequest, services::names};
 
 use super::DesktopApp;
 
-const TOOL_PANEL_IDS: &[&str] = &["builtin.pen-settings", "builtin.tool-palette"];
+const TOOL_PANEL_IDS: &[&str] = &["builtin.tool-settings", "builtin.tool-palette"];
 const COLOR_PANEL_IDS: &[&str] = &["builtin.color-palette"];
 impl DesktopApp {
     pub(crate) fn execute_command(&mut self, command: Command) -> bool {

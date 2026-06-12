@@ -8,7 +8,7 @@ members = [
   "crates/builtin-panels/app-actions",
   "crates/builtin-panels/text-flow",
   "crates/builtin-panels/tool-palette",
-  "crates/builtin-panels/pen-settings",
+  "crates/builtin-panels/tool-settings",
   "crates/builtin-panels/layers",
   "crates/builtin-panels/color-palette",
   "crates/builtin-panels/workspace-layout",
