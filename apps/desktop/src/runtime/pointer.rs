@@ -22,7 +22,7 @@ impl DesktopRuntime {
         match delta {
             MouseScrollDelta::LineDelta(x, y) => (x, y),
             MouseScrollDelta::PixelDelta(position) => {
-                // 9E-4: 旧 ui_shell::text_line_height() (font8x8 由来) を撤去。
+                // 9E-4: 旧 panel_workspace::text_line_height() (font8x8 由来) を撤去。
                 // wheel pixel → line 換算用に system-ui の標準行高 16px を採用する。
                 const PIXELS_PER_LINE: f32 = 16.0;
                 (

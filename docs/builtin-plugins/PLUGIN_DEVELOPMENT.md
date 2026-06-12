@@ -152,7 +152,7 @@ release 生成したい場合:
 
 必要なら先に確認:
 
-- `cargo test -p ui-shell`
+- `cargo test -p panel-workspace`
 - `cargo test -p desktop`
 - `cargo clippy --workspace --all-targets`
 

@@ -84,7 +84,7 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 | `crates/canvas-geometry`              | `CanvasPlan`、`PixelRect`/`CanvasScene`/`CanvasOverlayState` 等の純データ DTO             |
 | `crates/panel-runtime`                | パネルサブシステム facade。`PanelRuntime`/`BuiltinPanelPlugin`、Wasm ブリッジ、ホストスナップショット同期、永続設定、同梱パネル loader、panel-api/panel-html の再公開 |
 | `crates/panel-html`                   | `HtmlPanelEngine`（Blitz HTML/CSS + parley + vello GPU 直描画、hit 矩形収集）             |
-| `crates/ui-shell`                     | パネルワークスペースレイアウト、フォーカス、ヒットテスト                                  |
+| `crates/panel-workspace`              | パネルワークスペースレイアウト、フォーカス、ヒットテスト                                  |
 | `crates/panel-api`                    | パネル/ホスト間コントラクト（`PanelPlugin`、`PanelEvent`、`HostAction`）                  |
 | `crates/panel-wasm-host`              | wasmtime ベースの Wasm パネルランタイム + DOM mutation host functions                     |
 | `crates/panel-protocol`               | ホスト↔Wasm 共有 DTO                                                                      |

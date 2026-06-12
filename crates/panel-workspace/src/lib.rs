@@ -1,4 +1,4 @@
-//! `ui-shell` は panel presentation と workspace 上の panel UI 制御を提供する。
+//! `panel-workspace` は panel presentation と workspace 上の panel UI 制御を提供する。
 
 mod focus;
 mod workspace;
@@ -19,7 +19,7 @@ pub use panel_api::ResizeEdge;
 /// パネルの presentation 状態を保持する。
 ///
 /// すべてのパネルは GPU 直描画 (`PanelRuntime::render_panels`) で提示され、
-/// ui-shell は workspace layout・focus・hit table の管理だけを担う。
+/// panel-workspace は workspace layout・focus・hit table の管理だけを担う。
 pub struct PanelPresentation {
     /// panel 並び順と表示状態。
     workspace_layout: WorkspaceLayout,

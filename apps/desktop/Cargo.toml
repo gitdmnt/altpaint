@@ -17,7 +17,7 @@ pollster.workspace = true
 canvas-geometry = { path = "../../crates/canvas-geometry" }
 serde_json.workspace = true
 storage = { path = "../../crates/storage" }
-ui-shell = { path = "../../crates/ui-shell" }
+panel-workspace = { path = "../../crates/panel-workspace" }
 wgpu.workspace = true
 winit.workspace = true
 

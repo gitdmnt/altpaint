@@ -1,7 +1,7 @@
 //! `UiShell` の focus 状態を扱う。
 //!
 //! ADR 014 以降、HTML パネルへの統一でテキスト入力 (IME/preedit) や dropdown 状態は
-//! HTML パネル内部の DOM mutation で完結するようになり、ui-shell は
+//! HTML パネル内部の DOM mutation で完結するようになり、panel-workspace は
 //! `focused_target` (panel_id, node_id) の保持と HTML hit table ベースの巡回のみを担う。
 
 use super::*;

@@ -1,7 +1,7 @@
 //! キーボード入力の正規化を `DesktopRuntime` へ追加する。
 //!
 //! ADR 014 以降、テキスト入力 / IME 編集は HTML パネル内部の DOM mutation で完結する。
-//! ui-shell 側のテキスト editor state はすべて撤去済み。
+//! panel-workspace 側のテキスト editor state はすべて撤去済み。
 //! ここではアプリ全体のグローバルショートカットだけを扱う。
 
 use app_core::Command;

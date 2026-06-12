@@ -30,7 +30,7 @@ use desktop_support::{
     DesktopDialogs, NativeDesktopDialogs, WorkspacePresetCatalog, default_workspace_preset_path,
 };
 use panel_runtime::PanelRuntime;
-use ui_shell::PanelPresentation;
+use panel_workspace::PanelPresentation;
 
 pub(crate) use self::canvas_frame::CanvasFrame;
 use self::io_state::DesktopIoState;

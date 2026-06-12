@@ -285,7 +285,7 @@ impl PanelPresentation {
 
     /// 指定パネルが現在表示状態かを返す (外部 crate 向け公開 API)。
     ///
-    /// HTML パネルの GPU 描画スキップ判定など、ui-shell 外部からも参照される。
+    /// HTML パネルの GPU 描画スキップ判定など、panel-workspace 外部からも参照される。
     pub fn is_panel_visible(&self, panel_id: &str) -> bool {
         self.panel_is_visible(panel_id)
     }
