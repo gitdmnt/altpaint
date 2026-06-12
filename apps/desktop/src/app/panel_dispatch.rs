@@ -41,21 +41,25 @@ pub(crate) struct PanelInteractionState {
 }
 
 impl DesktopApp {
+    /// 現在のウィンドウ viewport で指定パネルの矩形を解決する。
+    /// layout 未確定 (初回フレーム前) は `None` (BL-051: `usize::MAX`
+    /// フォールバックは右/下アンカーで画面外座標を返すため廃止)。
+    pub(crate) fn panel_rect_in_window(&self, panel_id: &str) -> Option<PixelRect> {
+        let layout = self.layout.as_ref()?;
+        self.panel_workspace.panel_rect(
+            panel_id,
+            layout.window_rect.width,
+            layout.window_rect.height,
+        )
+    }
+
     pub(super) fn begin_panel_interaction(&mut self, point: WindowPoint) -> bool {
         self.panel_interaction.pending_panel_press = None;
 
         // Phase 11: リサイズハンドルを最優先で評価。タイトルバー上端 6px (= North handle) も
         // 移動より優先される。
         if let Some((panel_id, handle)) = self.panel_resize_hit_from_window(point) {
-            let viewport = self
-                .layout
-                .as_ref()
-                .map(|l| (l.window_rect.width, l.window_rect.height))
-                .unwrap_or((usize::MAX, usize::MAX));
-            let Some(start_rect) = self
-                .panel_workspace
-                .panel_rect_in_viewport(&panel_id, viewport.0, viewport.1)
-            else {
+            let Some(start_rect) = self.panel_rect_in_window(&panel_id) else {
                 return false;
             };
             self.panel_interaction.active_panel_resize = Some(PanelResizeState {
@@ -69,15 +73,7 @@ impl DesktopApp {
         }
 
         if let Some(panel_id) = self.panel_move_hit_from_window(point) {
-            let viewport = self
-                .layout
-                .as_ref()
-                .map(|l| (l.window_rect.width, l.window_rect.height))
-                .unwrap_or((usize::MAX, usize::MAX));
-            let Some(panel_rect) = self
-                .panel_workspace
-                .panel_rect_in_viewport(&panel_id, viewport.0, viewport.1)
-            else {
+            let Some(panel_rect) = self.panel_rect_in_window(&panel_id) else {
                 return false;
             };
             self.panel_interaction.active_panel_drag = Some(PanelDragState {
@@ -129,7 +125,7 @@ impl DesktopApp {
         let (win_w, win_h) = (layout.window_rect.width, layout.window_rect.height);
         let window_x = point.x.max(0) as usize;
         let window_y = point.y.max(0) as usize;
-        let previous_rect = self.panel_workspace.panel_rect(&panel_id);
+        let previous_rect = self.panel_workspace.panel_rect(&panel_id, win_w, win_h);
         let changed = self.panel_workspace.move_panel_to(
             &panel_id,
             window_x.saturating_sub(grab_offset.x),
@@ -168,7 +164,7 @@ impl DesktopApp {
             (win_w as u32, win_h as u32),
             constraints,
         );
-        let previous_rect = self.panel_workspace.panel_rect(&state.panel_id);
+        let previous_rect = self.panel_workspace.panel_rect(&state.panel_id, win_w, win_h);
 
         let applied = self.panel_workspace.resize_panel_keeping_anchor(
             &state.panel_id,
@@ -227,7 +223,7 @@ impl DesktopApp {
                 panel_id,
                 direction,
             } => {
-                let previous_rect = self.panel_workspace.panel_rect(&panel_id);
+                let previous_rect = self.panel_rect_in_window(&panel_id);
                 let changed = self.panel_workspace.move_panel(&panel_id, direction);
                 if changed {
                     self.request_panel_reconcile();
@@ -240,7 +236,7 @@ impl DesktopApp {
                 changed
             }
             HostAction::SetPanelVisibility { panel_id, visible } => {
-                let previous_rect = self.panel_workspace.panel_rect(&panel_id);
+                let previous_rect = self.panel_rect_in_window(&panel_id);
                 let changed = self
                     .panel_workspace
                     .set_panel_visibility(&panel_id, visible);

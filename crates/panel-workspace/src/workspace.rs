@@ -83,27 +83,6 @@ impl PanelWorkspace {
         true
     }
 
-    pub fn panel_rect(&self, panel_id: &str) -> Option<canvas_geometry::PixelRect> {
-        let entry = self
-            .workspace_layout
-            .panels
-            .iter()
-            .find(|entry| entry.id == panel_id)?;
-        let size = entry.size.unwrap_or_default();
-        let position = entry.resolved_position(
-            usize::MAX,
-            usize::MAX,
-            size,
-            default_panel_position(panel_id, 0),
-        );
-        Some(canvas_geometry::PixelRect {
-            x: position.x,
-            y: position.y,
-            width: size.width,
-            height: size.height,
-        })
-    }
-
     /// Phase 11: リサイズドラッグ結果を atomic に反映する。
     /// 1. 最終 rect を viewport 内にクランプ
     /// 2. `set_panel_size` で workspace 上の size を確定
@@ -165,9 +144,12 @@ impl PanelWorkspace {
         true
     }
 
-    /// `panel_rect` の viewport 指定版。anchor (TopRight/BottomRight/BottomLeft) で
-    /// `usize::MAX` を使うと座標が画面外に飛ぶため、HTML パネルではこちらを使う。
-    pub fn panel_rect_in_viewport(
+    /// 指定パネルの矩形を viewport 内で解決する。
+    ///
+    /// anchor (TopRight/BottomRight/BottomLeft) は viewport 寸法からの相対オフセット
+    /// のため viewport は必須 (BL-051: 旧 viewport なし版は `usize::MAX` フォールバックで
+    /// 右/下アンカーのパネルを画面外座標に解決する実バグがあった)。
+    pub fn panel_rect(
         &self,
         panel_id: &str,
         viewport_width: usize,

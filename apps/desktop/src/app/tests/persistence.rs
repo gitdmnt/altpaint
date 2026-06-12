@@ -242,7 +242,7 @@ fn hiding_panel_clears_previous_overlay_bounds_when_surface_shrinks() {
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let hidden_panel_rect = app
         .panel_workspace
-        .panel_rect("builtin.tool-palette")
+        .panel_rect("builtin.tool-palette", 1280, 800)
         .expect("hidden panel rect exists");
 
     profiler.stats.clear();

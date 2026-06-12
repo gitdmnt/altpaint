@@ -2,6 +2,7 @@
 
 use app_core::{Command, WindowPoint};
 use desktop_support::FrameProfiler;
+use panel_runtime::HostAction;
 
 use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::PanelDragState;
@@ -38,7 +39,7 @@ fn drag_panel_move_marks_canvas_host_dirty() {
 
     // builtin.app-actions パネルが存在する位置を取得
     let panel_id = "builtin.app-actions".to_string();
-    let panel_rect = app.panel_workspace.panel_rect(&panel_id);
+    let panel_rect = app.panel_workspace.panel_rect(&panel_id, 1280, 720);
     // パネルが配置されていないとテストにならない
     let Some(rect) = panel_rect else {
         return; // パネルが見つからない場合はスキップ
@@ -60,5 +61,34 @@ fn drag_panel_move_marks_canvas_host_dirty() {
     assert!(
         app.invalidation.ui_panel_dirty_rect.is_some(),
         "パネル移動後に canvas ホスト dirty rect が設定されるべき"
+    );
+}
+
+/// BL-051: 右/下アンカーパネルを非表示にしたとき、直前矩形の dirty rect が
+/// viewport 内で解決される回帰テスト。
+///
+/// 旧 viewport なし版 `panel_rect` は `usize::MAX` フォールバックで
+/// BottomRight アンカーのパネル矩形を画面外座標に解決し、dirty rect を
+/// 無効化していた (= 再描画されない)。
+#[test]
+fn hiding_bottom_right_anchored_panel_marks_dirty_rect_within_viewport() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
+    app.invalidation.ui_panel_dirty_rect = None;
+
+    // builtin.tool-settings は BottomRight アンカーが既定
+    assert!(app.execute_host_action(HostAction::SetPanelVisibility {
+        panel_id: "builtin.tool-settings".to_string(),
+        visible: false,
+    }));
+
+    let dirty = app
+        .invalidation
+        .ui_panel_dirty_rect
+        .expect("パネル非表示時に直前矩形が dirty になるべき");
+    assert!(
+        dirty.x + dirty.width <= 1280 && dirty.y + dirty.height <= 800,
+        "dirty rect は viewport 内で解決されるべき: {dirty:?}"
     );
 }

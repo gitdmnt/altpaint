@@ -214,7 +214,7 @@ impl DesktopApp {
             // 位置は workspace_layout の position を使う（サイズは measured で上書き）
             let position_rect = self
                 .panel_workspace
-                .panel_rect_in_viewport(id, window_width, window_height)
+                .panel_rect(id, window_width, window_height)
                 .unwrap_or(canvas_geometry::PixelRect {
                     x: 0,
                     y: 0,

@@ -180,6 +180,39 @@ fn panel_with_empty_tree_gets_workspace_entry_after_reconcile() {
     assert!(entry.position.is_some(), "default position assigned");
 }
 
+/// BL-051: 右下アンカーパネルの矩形が viewport 指定で正しく解決される。
+/// (旧 viewport なし版は usize::MAX フォールバックで画面外座標を返す実バグがあった)
+#[test]
+fn panel_rect_resolves_bottom_right_anchor_within_viewport() {
+    use app_core::{
+        WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
+        WorkspacePanelState,
+    };
+
+    let mut panel_workspace = PanelWorkspace::new();
+    panel_workspace.replace_workspace_layout(WorkspaceLayout {
+        panels: vec![WorkspacePanelState {
+            id: "builtin.mock".to_string(),
+            visible: true,
+            anchor: WorkspacePanelAnchor::BottomRight,
+            position: Some(WorkspacePanelPosition { x: 24, y: 24 }),
+            size: Some(WorkspacePanelSize {
+                width: 300,
+                height: 220,
+            }),
+        }],
+    });
+
+    let rect = panel_workspace
+        .panel_rect("builtin.mock", 1280, 800)
+        .expect("rect resolves");
+    // BottomRight anchor: x = 1280 - 300 - 24, y = 800 - 220 - 24
+    assert_eq!(rect.x, 956);
+    assert_eq!(rect.y, 556);
+    assert!(rect.x + rect.width <= 1280, "rect within viewport width");
+    assert!(rect.y + rect.height <= 800, "rect within viewport height");
+}
+
 /// Phase 11: TopRight anchor のパネルで W ハンドルドラッグ → 右辺の screen 座標が固定される。
 #[test]
 fn resize_panel_keeping_anchor_top_right_keeps_right_edge_fixed() {

@@ -283,7 +283,7 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
 
     let after = app
         .panel_workspace
-        .panel_rect("builtin.layers")
+        .panel_rect("builtin.layers", 1280, 800)
         .expect("panel rect exists");
     let after_position = app
         .panel_workspace
@@ -323,7 +323,7 @@ fn workspace_manager_panel_can_be_moved() {
     let layout = app.layout.clone().expect("layout exists");
     let before = app
         .panel_workspace
-        .panel_rect("builtin.workspace-layout")
+        .panel_rect("builtin.workspace-layout", 1280, 200)
         .expect("workspace panel rect exists");
 
     assert!(app.panel_workspace.move_panel_to(
@@ -338,7 +338,7 @@ fn workspace_manager_panel_can_be_moved() {
 
     let after = app
         .panel_workspace
-        .panel_rect("builtin.workspace-layout")
+        .panel_rect("builtin.workspace-layout", 1280, 200)
         .expect("workspace panel rect exists");
     assert_ne!(after, before);
     assert!(after.x >= before.x + 80 || after.y >= before.y + 24);

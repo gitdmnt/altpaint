@@ -224,7 +224,7 @@ impl DesktopApp {
         let active_rect = self
             .panel_workspace
             .focused_target()
-            .and_then(|(panel_id, _)| self.panel_workspace.panel_rect(panel_id));
+            .and_then(|(panel_id, _)| self.panel_rect_in_window(panel_id));
         crate::present_quads::build_foreground_solid_quads(active_rect)
     }
 
@@ -257,7 +257,7 @@ impl DesktopApp {
             active_ui_panel_rect: self
                 .panel_workspace
                 .focused_target()
-                .and_then(|(panel_id, _)| self.panel_workspace.panel_rect(panel_id)),
+                .and_then(|(panel_id, _)| self.panel_rect_in_window(panel_id)),
         };
         (
             crate::present_quads::build_overlay_solid_quads(&canvas_plan, &overlay_state),
