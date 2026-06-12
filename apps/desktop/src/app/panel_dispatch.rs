@@ -148,7 +148,7 @@ impl DesktopApp {
 
     /// Phase 11: リサイズドラッグ 1 フレームの処理。
     /// edge に応じて new_rect を算出し、最小/最大クランプ → workspace に書き戻し →
-    /// engine の measured_size に即時反映する。
+    /// view の panel_size に即時反映する。
     fn drag_resize_interaction(
         &mut self,
         point: WindowPoint,
@@ -178,7 +178,7 @@ impl DesktopApp {
         let Some(applied_rect) = applied else {
             return false;
         };
-        // engine の measured_size をフレーム内追従させる
+        // view の panel_size をフレーム内追従させる
         let _ = self.panel_runtime.restore_panel_size(
             &state.panel_id,
             (

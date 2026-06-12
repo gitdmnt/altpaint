@@ -198,7 +198,7 @@ fn apply_ui_state_to_panel_system(
     // 2. 無ければ panel.meta.json の default_size を使う。
     // 3. どちらも無ければ (1, 1) を最終 fallback (実質的に到達しない経路)。
     // 確定値を panel_presentation.set_panel_size で workspace に書き戻し、
-    // panel_runtime.restore_panel_size で engine の measured_size にも反映する。
+    // panel_runtime.restore_panel_size で view の panel_size にも反映する。
     let panel_ids = panel_runtime.panel_ids_with_gpu();
     let layout_snapshot = panel_presentation.workspace_layout();
     for panel_id in panel_ids {

@@ -142,7 +142,7 @@ impl PanelPresentation {
     }
 
     /// 指定パネルの workspace_layout 上のサイズを `(width, height)` に書き換える。
-    /// HTML パネルが measured_size の変化を永続化する経路で使う。
+    /// HTML パネルが panel_size の変化を永続化する経路で使う。
     /// 戻り値: 値が実際に変わった場合 true（永続化 dirty フラグを立てる判断に使う）。
     pub fn set_panel_size(&mut self, panel_id: &str, width: usize, height: usize) -> bool {
         let Some(entry) = self

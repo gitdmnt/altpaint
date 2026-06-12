@@ -6,7 +6,7 @@
 //!
 //! ## 主要 API
 //!
-//! - [`engine::HtmlPanelEngine`] — `HtmlDocument` を保持し、style/layout 解決と `vello::Scene`
+//! - [`view::HtmlPanelView`] — `HtmlDocument` を保持し、style/layout 解決と `vello::Scene`
 //!   構築までを行う。実描画（`render_to_texture`）は外部所有の `vello::Renderer` で行う
 //! - [`gpu::PanelGpuTarget`] — パネル毎の GPU テクスチャ（`Rgba8Unorm` + `STORAGE_BINDING` +
 //!   `view_formats=[Rgba8UnormSrgb]`）
@@ -17,12 +17,12 @@
 //! - `blitz_dom` / `blitz_html` / `vello` / `wgpu` — 上位 crate が直接型を扱えるよう公開
 
 pub mod action;
-pub mod engine;
+pub mod view;
 pub mod gpu;
 
 pub use action::{ActionDescriptor, ActionParseError, parse_data_action};
-pub use engine::{
-    HtmlPanelEngine, PanelSizeConstraints, PixelRect, RenderOutcome, RenderedPanelHit,
+pub use view::{
+    HtmlPanelView, PanelSizeConstraints, PixelRect, RenderOutcome, ActionRect,
 };
 pub use gpu::PanelGpuTarget;
 

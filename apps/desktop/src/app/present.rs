@@ -107,8 +107,8 @@ impl DesktopApp {
 
         let mut layer_dirty = canvas_geometry::LayerDirtyAccumulator::default();
 
-        // ステータス更新 — HtmlPanelEngine 化されたため、毎フレーム
-        // status_panel.update() を呼んで snapshot を engine に流す（差分なら no-op）。
+        // ステータス更新 — HtmlPanelView 化されたため、毎フレーム
+        // status_panel.update() を呼んで snapshot を view に流す（差分なら no-op）。
         // 実際の GPU 描画は runtime.rs の RedrawRequested で行う。
         if self.invalidation.needs_status_refresh {
             self.invalidation.needs_status_refresh = false;
@@ -183,7 +183,7 @@ impl DesktopApp {
 
     /// HTML パネルの hit / move handle / full rect テーブルを更新する。
     ///
-    /// パネル位置は workspace_layout、サイズは Engine の `measured_size` が権威。
+    /// パネル位置は workspace_layout、サイズは View の `panel_size` が権威。
     /// hit 矩形は `collect_panel_hits` が GPU 描画と同一のクランプ規則で
     /// レイアウト解決して返すため、実描画と常に一致する。
     fn refresh_html_panel_hit_tables(&mut self, window_width: usize, window_height: usize) {
@@ -202,7 +202,7 @@ impl DesktopApp {
         }
 
         let chrome_h = super::HTML_PANEL_CHROME_HEIGHT as usize;
-        let measured = self.panel_runtime.panel_measured_sizes();
+        let measured = self.panel_runtime.panel_sizes();
         let mut sized: Vec<(String, u32, u32)> = Vec::with_capacity(panel_ids.len());
         let mut panel_rects: Vec<canvas_geometry::PixelRect> = Vec::with_capacity(panel_ids.len());
         for id in &panel_ids {
@@ -227,7 +227,7 @@ impl DesktopApp {
                 width: mw as usize,
                 height: mh as usize,
             });
-            // viewport はクランプ上限としてそのまま渡し、Engine 側でクランプさせる
+            // viewport はクランプ上限としてそのまま渡し、View 側でクランプさせる
             sized.push((id.clone(), window_width as u32, window_height as u32));
         }
 

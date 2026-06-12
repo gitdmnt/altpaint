@@ -86,7 +86,7 @@ pub(crate) struct DesktopApp {
     canvas_input: CanvasInputState,
     pub(crate) layout: Option<DesktopLayout>,
     canvas_frame: Option<CanvasFrame>,
-    /// Phase 9E-4: ステータスバー (HtmlPanelEngine GPU 描画)。
+    /// Phase 9E-4: ステータスバー (HtmlPanelView GPU 描画)。
     pub(crate) status_panel: crate::frame::status_panel::StatusPanel,
     /// 次フレームで消化される提示無効化状態 (保留 dirty rect・再構築フラグ)。
     pub(crate) invalidation: present_state::PresentInvalidation,

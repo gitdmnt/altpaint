@@ -1,9 +1,9 @@
 //! `BuiltinPanelPlugin` — Phase 10 同梱パネルの統一実装型。
 //!
 //! 構成要素:
-//! - `HtmlPanelEngine` (Blitz HTML/CSS + parley + vello)
+//! - `HtmlPanelView` (Blitz HTML/CSS + parley + vello)
 //! - `PanelWasmInstance` (wasmtime, panel_init / panel_handle_* / panel_sync_host export を呼ぶ)
-//! - 各 Wasm 呼出は `PanelWasmInstance::call_with_dom` で engine の document を context にし、
+//! - 各 Wasm 呼出は `PanelWasmInstance::call_with_dom` で view の document を context にし、
 //!   Wasm 内 DOM mutation host function (`set_attribute` / `set_inner_html` 等) で直接 DOM を書換える
 //!
 //! `update` (host snapshot 同期) と `handle_event` (UI イベント) のいずれでも DOM mutation を
@@ -15,7 +15,7 @@ use std::path::Path;
 use app_core::{Command, Document};
 use panel_api::{HostAction, PanelEvent, PanelPlugin, ServiceRequest};
 use panel_html::{
-    ActionDescriptor, HtmlPanelEngine, blitz_dom::LocalName, blitz_dom::node::NodeData,
+    ActionDescriptor, HtmlPanelView, blitz_dom::LocalName, blitz_dom::node::NodeData,
     parse_data_action,
 };
 use crate::commands::command_from_descriptor;
@@ -30,7 +30,7 @@ pub struct BuiltinPanelPlugin {
     id: &'static str,
     title: &'static str,
     default_size: (u32, u32),
-    engine: HtmlPanelEngine,
+    view: HtmlPanelView,
     wasm: PanelWasmInstance,
     /// Wasm 側が保持する state (panel_init で初期化、handler 戻り値の patch を蓄積)。
     state: Value,
@@ -82,13 +82,13 @@ impl BuiltinPanelPlugin {
         let meta: PanelMeta = serde_json::from_str(&meta_raw)?;
         let default_size = meta.default_size.as_tuple();
 
-        let mut engine = HtmlPanelEngine::new(&html, &css);
-        engine.on_load(restored_size.unwrap_or(default_size));
+        let mut view = HtmlPanelView::new(&html, &css);
+        view.set_panel_size(restored_size.unwrap_or(default_size));
         let mut wasm = PanelWasmInstance::load(directory.join(wasm_filename))?;
 
         // panel_init は DOM context 必須 (Wasm が初期 DOM を mutate する可能性)。
-        let init = wasm.call_with_dom(engine.document_mut(), |rt| rt.panel_init())?;
-        engine.mark_mutated();
+        let init = wasm.call_with_dom(view.document_mut(), |rt| rt.panel_init())?;
+        view.mark_mutated();
         let has_keyboard_handler = wasm.has_handler("keyboard");
 
         // panel_init が返した state_patch を空 state に適用して初期 state を確定する。
@@ -99,7 +99,7 @@ impl BuiltinPanelPlugin {
             id: Box::leak(meta.id.into_boxed_str()),
             title: Box::leak(meta.title.into_boxed_str()),
             default_size,
-            engine,
+            view,
             wasm,
             state,
             snapshot_cache: HostSnapshotCache::default(),
@@ -121,12 +121,12 @@ impl BuiltinPanelPlugin {
         self.default_size
     }
 
-    pub fn engine(&self) -> &HtmlPanelEngine {
-        &self.engine
+    pub fn view(&self) -> &HtmlPanelView {
+        &self.view
     }
 
-    pub fn engine_mut(&mut self) -> &mut HtmlPanelEngine {
-        &mut self.engine
+    pub fn view_mut(&mut self) -> &mut HtmlPanelView {
+        &mut self.view
     }
 
     /// Wasm が `data-action="command:..."` ボタンをクリックされた等のイベントを処理する。
@@ -148,8 +148,8 @@ impl BuiltinPanelPlugin {
         );
         let result = self
             .wasm
-            .call_with_dom(self.engine.document_mut(), |rt| rt.handle_event(&request))?;
-        self.engine.mark_mutated();
+            .call_with_dom(self.view.document_mut(), |rt| rt.handle_event(&request))?;
+        self.view.mark_mutated();
         apply_state_patches(&mut self.state, &result.state_patch);
         Ok(result
             .commands
@@ -259,12 +259,12 @@ impl PanelPlugin for BuiltinPanelPlugin {
         let state = &self.state;
         let outcome = self
             .wasm
-            .call_with_dom(self.engine.document_mut(), |rt| {
+            .call_with_dom(self.view.document_mut(), |rt| {
                 rt.sync_host(state, &host_snapshot)
             });
         if let Ok(result) = outcome {
             apply_state_patches(&mut self.state, &result.state_patch);
-            self.engine.mark_mutated();
+            self.view.mark_mutated();
         }
     }
 
@@ -341,7 +341,7 @@ impl PanelPlugin for BuiltinPanelPlugin {
 
 impl BuiltinPanelPlugin {
     fn lookup_action_descriptor(&self, node_id: &str) -> Option<ActionDescriptor> {
-        let document = self.engine.document();
+        let document = self.view.document();
         let id_selector = format!("#{}", css_escape_id(node_id));
         let id = document.query_selector(&id_selector).ok().flatten()?;
         let node = document.get_node(id)?;

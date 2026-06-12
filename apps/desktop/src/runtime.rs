@@ -262,7 +262,7 @@ impl ApplicationHandler for DesktopRuntime {
                     if panel_ids.is_empty() {
                         Vec::new()
                     } else {
-                        // viewport は GPU テクスチャの上限としてそのまま渡し、Engine 側でクランプさせる。
+                        // viewport は GPU テクスチャの上限としてそのまま渡し、View 側でクランプさせる。
                         let sized: Vec<(String, u32, u32)> = panel_ids
                             .iter()
                             .map(|id| (id.clone(), size.width, size.height))
@@ -399,7 +399,7 @@ impl ApplicationHandler for DesktopRuntime {
                 let (overlay_solid_quads, overlay_circle_quads, overlay_line_quads) =
                     self.app.overlay_quads();
 
-                // 9E-4: ステータスバーを HtmlPanelEngine で GPU 描画する。
+                // 9E-4: ステータスバーを HtmlPanelView で GPU 描画する。
                 // panel_runtime の gpu_ctx (device/queue/renderer/scene_scratch) を共有借用する。
                 struct StatusEntry {
                     texture_ptr: *const wgpu::Texture,

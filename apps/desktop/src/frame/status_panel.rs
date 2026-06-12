@@ -1,13 +1,13 @@
-//! ステータスバー専用 `HtmlPanelEngine` ラッパ。
+//! ステータスバー専用 `HtmlPanelView` ラッパ。
 //!
 //! Phase 9E-4 で `crates/render/src/{text,status}.rs` を撤去し、ステータステキストも
-//! GPU 直描画 (`HtmlPanelEngine` + Blitz HTML/CSS + `vello::Renderer`) で描画する。
+//! GPU 直描画 (`HtmlPanelView` + Blitz HTML/CSS + `vello::Renderer`) で描画する。
 //!
 //! - HTML テンプレート: 1 行の flex レイアウト（tool / zoom / status text）
 //! - スケール: 1.0 固定（HiDPI はスコープ外）
 //! - フォント: `system-ui` フォールバック
 
-use panel_runtime::html::{HtmlPanelEngine, RenderOutcome, vello, wgpu};
+use panel_runtime::html::{HtmlPanelView, RenderOutcome, vello, wgpu};
 #[cfg(test)]
 use panel_runtime::html::PanelGpuTarget;
 
@@ -71,22 +71,22 @@ fn html_escape(input: &str) -> String {
 }
 
 pub(crate) struct StatusPanel {
-    engine: HtmlPanelEngine,
+    view: HtmlPanelView,
     last_snapshot: Option<StatusSnapshot>,
 }
 
 impl StatusPanel {
-    /// 初期 HTML テンプレートで engine を初期化する。
+    /// 初期 HTML テンプレートで view を初期化する。
     pub(crate) fn new() -> Self {
         let initial = StatusSnapshot::new("Pen", 100, "");
         let html = render_html(&initial);
-        let mut engine = HtmlPanelEngine::new(&html, STATUS_CSS);
-        // 初期サイズはダミー (1, 1)。`render_gpu` 内で viewport に応じて on_load し直す。
+        let mut view = HtmlPanelView::new(&html, STATUS_CSS);
+        // 初期サイズはダミー (1, 1)。`render_gpu` 内で viewport に応じて set_panel_size し直す。
         // 状態行はビューポートの全幅を埋める性質なので workspace パネルと違って
-        // engine の measured_size をビューポートに常に追従させる方針。
-        engine.on_load((1, 1));
+        // view の panel_size をビューポートに常に追従させる方針。
+        view.set_panel_size((1, 1));
         Self {
-            engine,
+            view,
             last_snapshot: Some(initial),
         }
     }
@@ -96,12 +96,12 @@ impl StatusPanel {
             return;
         }
         let html = render_html(snapshot);
-        self.engine.replace_document(&html, STATUS_CSS);
+        self.view.replace_document(&html, STATUS_CSS);
         self.last_snapshot = Some(snapshot.clone());
     }
 
-    /// `engine.on_render` の薄いラッパ。
-    /// 状態行は viewport の全幅を埋める性質のため、viewport 変化時は engine に流し込む。
+    /// `view.on_render` の薄いラッパ。
+    /// 状態行は viewport の全幅を埋める性質のため、viewport 変化時は view に流し込む。
     pub(crate) fn render_gpu<'a>(
         &'a mut self,
         device: &wgpu::Device,
@@ -110,23 +110,23 @@ impl StatusPanel {
         scene_buf: &mut vello::Scene,
         viewport: (u32, u32),
     ) -> RenderOutcome<'a> {
-        if self.engine.measured_size() != viewport {
-            self.engine.on_load(viewport);
+        if self.view.panel_size() != viewport {
+            self.view.set_panel_size(viewport);
         }
         // chrome_height = 0（タイトルバー無し、純粋な status row）
-        self.engine
+        self.view
             .on_render(device, queue, renderer, scene_buf, viewport, 1.0, 0)
     }
 
     /// 直近 render 後の GPU テクスチャ。
     #[cfg(test)]
     pub(crate) fn gpu_target(&self) -> Option<&PanelGpuTarget> {
-        self.engine.gpu_target()
+        self.view.gpu_target()
     }
 
     #[cfg(test)]
-    pub(crate) fn engine_mut(&mut self) -> &mut HtmlPanelEngine {
-        &mut self.engine
+    pub(crate) fn view_mut(&mut self) -> &mut HtmlPanelView {
+        &mut self.view
     }
 }
 
@@ -226,7 +226,7 @@ mod tests {
         let mut panel = StatusPanel::new();
         panel.update(&StatusSnapshot::new("Pen", 100, "ready"));
         let initial_html_len = panel
-            .engine_mut()
+            .view_mut()
             .document()
             .root_node()
             .children
@@ -234,7 +234,7 @@ mod tests {
         panel.update(&StatusSnapshot::new("Pen", 250, "ready"));
         // DOM が再構築されたので何らかのノードが存在することを弱検証する
         let updated_html_len = panel
-            .engine_mut()
+            .view_mut()
             .document()
             .root_node()
             .children

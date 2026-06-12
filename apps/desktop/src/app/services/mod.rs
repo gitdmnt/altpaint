@@ -250,7 +250,7 @@ impl DesktopApp {
         true
     }
 
-    /// 9E-4: HtmlPanelEngine ステータスバー用のスナップショットを組み立てる。
+    /// 9E-4: HtmlPanelView ステータスバー用のスナップショットを組み立てる。
     /// ツール名・ズーム % ・status text を集約して返す。
     pub(crate) fn build_status_snapshot(&self) -> crate::frame::status_panel::StatusSnapshot {
         let tool_name = match self.document.active_tool {

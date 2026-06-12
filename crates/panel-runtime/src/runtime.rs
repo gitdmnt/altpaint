@@ -3,7 +3,7 @@ use crate::config::{collect_persistent_panel_configs, restore_persistent_panel_c
 use crate::host_sync::EMPTY_WORKSPACE_PANELS_JSON;
 use app_core::Document;
 use panel_api::{HostAction, PanelEvent, PanelPlugin};
-use panel_html::{vello, wgpu, HtmlPanelEngine, PanelSizeConstraints, RenderedPanelHit};
+use panel_html::{vello, wgpu, HtmlPanelView, PanelSizeConstraints, ActionRect};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -26,12 +26,12 @@ struct PanelGpuContext {
     scene_scratch: vello::Scene,
 }
 
-/// パネルから可変 `HtmlPanelEngine` を取り出すための共通アクセサ。
-/// `BuiltinPanelPlugin` のみが GPU 描画 (HtmlPanelEngine) を持つので downcast する。
-fn panel_engine_mut(panel: &mut Box<dyn PanelPlugin>) -> Option<&mut HtmlPanelEngine> {
+/// パネルから可変 `HtmlPanelView` を取り出すための共通アクセサ。
+/// `BuiltinPanelPlugin` のみが GPU 描画 (HtmlPanelView) を持つので downcast する。
+fn panel_view_mut(panel: &mut Box<dyn PanelPlugin>) -> Option<&mut HtmlPanelView> {
     let any = panel.as_any_mut()?;
     any.downcast_mut::<BuiltinPanelPlugin>()
-        .map(|p| p.engine_mut())
+        .map(|p| p.view_mut())
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -102,7 +102,7 @@ impl PanelRuntime {
 
     /// 集約 vello::Renderer / scene scratch / device / queue への可変アクセスを提供する。
     /// `install_gpu_context` 未呼び出しなら `None`。
-    /// 9E-4: ステータスバーなど panel-runtime 外部の `HtmlPanelEngine` 利用者が
+    /// 9E-4: ステータスバーなど panel-runtime 外部の `HtmlPanelView` 利用者が
     /// 共有 GPU コンテキストを再利用するために公開する。
     pub fn gpu_context_parts(
         &mut self,
@@ -160,26 +160,26 @@ impl PanelRuntime {
 
     /// パネル毎の現在の権威サイズを返す。
     /// 戻り値: `Vec<(panel_id, width, height)>`。
-    pub fn panel_measured_sizes(&mut self) -> Vec<(String, u32, u32)> {
+    pub fn panel_sizes(&mut self) -> Vec<(String, u32, u32)> {
         let mut out = Vec::new();
         for panel in &mut self.panels {
             let panel_id = panel.id().to_string();
-            if let Some(engine) = panel_engine_mut(panel) {
-                let (w, h) = engine.measured_size();
+            if let Some(view) = panel_view_mut(panel) {
+                let (w, h) = view.panel_size();
                 out.push((panel_id, w, h));
             }
         }
         out
     }
 
-    /// 指定パネル (DSL/HTML) の measured_size を返す。該当無しの場合は `(1, 1)`。
-    pub fn measured_size(&mut self, panel_id: &str) -> (u32, u32) {
+    /// 指定パネル (DSL/HTML) の panel_size を返す。該当無しの場合は `(1, 1)`。
+    pub fn panel_size(&mut self, panel_id: &str) -> (u32, u32) {
         for panel in &mut self.panels {
             if panel.id() != panel_id {
                 continue;
             }
-            if let Some(engine) = panel_engine_mut(panel) {
-                return engine.measured_size();
+            if let Some(view) = panel_view_mut(panel) {
+                return view.panel_size();
             }
         }
         (1, 1)
@@ -196,8 +196,8 @@ impl PanelRuntime {
             if panel.id() != panel_id {
                 continue;
             }
-            if let Some(engine) = panel_engine_mut(panel) {
-                engine.on_input(event);
+            if let Some(view) = panel_view_mut(panel) {
+                view.on_input(event);
                 return true;
             }
             return false;
@@ -213,8 +213,8 @@ impl PanelRuntime {
             if panel.id() != panel_id {
                 continue;
             }
-            if let Some(engine) = panel_engine_mut(panel) {
-                return Some(engine.root_size_constraints());
+            if let Some(view) = panel_view_mut(panel) {
+                return Some(view.root_size_constraints());
             }
             return None;
         }
@@ -236,15 +236,15 @@ impl PanelRuntime {
         None
     }
 
-    /// 起動時 restore 用：指定 panel_id に永続化された measured_size を流し込む。
+    /// 起動時 restore 用：指定 panel_id に永続化された panel_size を流し込む。
     /// 戻り値: 該当パネルが見つかった場合 true。
     pub fn restore_panel_size(&mut self, panel_id: &str, size: (u32, u32)) -> bool {
         for panel in &mut self.panels {
             if panel.id() != panel_id {
                 continue;
             }
-            if let Some(engine) = panel_engine_mut(panel) {
-                engine.on_load(size);
+            if let Some(view) = panel_view_mut(panel) {
+                view.set_panel_size(size);
                 return true;
             }
             return false;
@@ -272,10 +272,10 @@ impl PanelRuntime {
             let Some(panel) = self.panels.iter_mut().find(|p| p.id() == panel_id.as_str()) else {
                 continue;
             };
-            let Some(engine) = panel_engine_mut(panel) else {
+            let Some(view) = panel_view_mut(panel) else {
                 continue;
             };
-            let outcome = engine.on_render(
+            let outcome = view.on_render(
                 &gpu_ctx.device,
                 &gpu_ctx.queue,
                 &mut gpu_ctx.renderer,
@@ -289,7 +289,7 @@ impl PanelRuntime {
             frames.push((panel_id.clone(), ptr, target.width, target.height));
         }
         // SAFETY: 各 *const wgpu::Texture は self.panels 内の Box<dyn PanelPlugin> 内
-        // engine が保持するテクスチャを指す。Box は heap に固定されており、戻り値の
+        // view が保持するテクスチャを指す。Box は heap に固定されており、戻り値の
         // PanelGpuFrame は &mut self に紐付くので、戻り値存在中は self.panels が
         // 不変に保たれる。テクスチャの寿命も同期する。
         frames
@@ -313,16 +313,16 @@ impl PanelRuntime {
         sized: &[(String, u32, u32)],
         scale: f32,
         chrome_height: u32,
-    ) -> Vec<(String, Vec<RenderedPanelHit>)> {
+    ) -> Vec<(String, Vec<ActionRect>)> {
         let mut out = Vec::with_capacity(sized.len());
         for (panel_id, width, height) in sized {
             let Some(panel) = self.panels.iter_mut().find(|p| p.id() == panel_id.as_str()) else {
                 continue;
             };
-            let Some(engine) = panel_engine_mut(panel) else {
+            let Some(view) = panel_view_mut(panel) else {
                 continue;
             };
-            let hits = engine.resolve_action_rects((*width, *height), scale, chrome_height);
+            let hits = view.resolve_action_rects((*width, *height), scale, chrome_height);
             out.push((panel_id.clone(), hits));
         }
         out

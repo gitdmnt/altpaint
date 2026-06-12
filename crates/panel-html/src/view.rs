@@ -1,4 +1,4 @@
-//! Blitz HTML パネル描画エンジン（GPU 直描画版）。
+//! Blitz HTML パネルビュー（GPU 直描画版）。
 //!
 //! - HTML を [`HtmlDocument`] にパース
 //! - ユーザー指定 CSS を user-agent stylesheet として追加
@@ -22,7 +22,7 @@ use blitz_traits::events::UiEvent;
 use blitz_traits::shell::Viewport;
 
 /// パネル描画器。`HtmlDocument` を保持し、layout 解決と vello scene 構築を行う。
-pub struct HtmlPanelEngine {
+pub struct HtmlPanelView {
     document: HtmlDocument,
     user_css: String,
     /// 直近の `replace_document` で渡された HTML 文字列。同一なら no-op。
@@ -32,9 +32,9 @@ pub struct HtmlPanelEngine {
     /// Blitz の `BaseDocument::has_changes()` は内部実装の都合で当てにできないため自前トラック。
     pending_mutation: bool,
     /// パネル単位の権威サイズ (chrome を含む幅・高さ)。
-    /// Phase 11: workspace_layout の永続値が唯一の入力経路 (`on_load` / `restore_size`)。
-    /// engine 自身は自動測定/上書きを行わない。
-    measured_size: (u32, u32),
+    /// Phase 11: workspace_layout の永続値が唯一の入力経路 (`set_panel_size` / `restore_size`)。
+    /// view 自身は自動測定/上書きを行わない。
+    panel_size: (u32, u32),
     /// 次フレームで `resolve_layout` が必要か。
     /// `mark_mutated` / `on_input` / 初回ロードで true を立てる。
     layout_dirty: bool,
@@ -80,7 +80,7 @@ pub struct PixelRect {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RenderedPanelHit {
+pub struct ActionRect {
     pub node_id: usize,
     pub element_id: Option<String>,
     pub data_action: String,
@@ -96,7 +96,7 @@ pub struct RenderedPanelHit {
 /// 単一 UI スレッドからのみ呼ばれるため無競合 (ロックコストは実質ゼロ)。
 static STYLE_RESOLVE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-impl HtmlPanelEngine {
+impl HtmlPanelView {
     pub fn new(html: &str, user_css: &str) -> Self {
         let mut config = DocumentConfig::default();
         if !user_css.is_empty() {
@@ -110,7 +110,7 @@ impl HtmlPanelEngine {
             last_html: Some(html.to_string()),
             last_resolved: None,
             pending_mutation: true,
-            measured_size: (1, 1),
+            panel_size: (1, 1),
             layout_dirty: true,
             render_dirty: true,
             gpu_target: None,
@@ -119,15 +119,15 @@ impl HtmlPanelEngine {
 
     /// パネルロード時に呼ぶ。bootstrap で必ず確定したサイズ
     /// (workspace 永続値 or panel.meta.json `default_size`) が渡される。
-    pub fn on_load(&mut self, size: (u32, u32)) {
-        self.measured_size = (size.0.max(1), size.1.max(1));
+    pub fn set_panel_size(&mut self, size: (u32, u32)) {
+        self.panel_size = (size.0.max(1), size.1.max(1));
         self.layout_dirty = true;
         self.render_dirty = true;
     }
 
     /// 現在の権威サイズ (HTML 本体の width, height)。
-    pub fn measured_size(&self) -> (u32, u32) {
-        self.measured_size
+    pub fn panel_size(&self) -> (u32, u32) {
+        self.panel_size
     }
 
     /// Phase 11: パネル root 要素 (body 直下の最初の要素) の CSS `min-width` /
@@ -172,7 +172,7 @@ impl HtmlPanelEngine {
     ///
     /// 動作 (Phase 11):
     /// 1. viewport (画面側) で **描画用ローカル size** を算出: `min(measured_w, viewport_w)` 等。
-    ///    `measured_size` 自体は変更しない (ウィンドウ縮小→復元時の往復不変)。
+    ///    `panel_size` 自体は変更しない (ウィンドウ縮小→復元時の往復不変)。
     /// 2. layout_dirty なら local size で `resolve_layout` を走らせる (content size の自動再測定はしない)。
     /// 3. render_dirty なら scene 構築 + chrome 描画 + render_to_texture。
     ///
@@ -189,15 +189,15 @@ impl HtmlPanelEngine {
         scale: f32,
         chrome_height: u32,
     ) -> RenderOutcome<'a> {
-        // viewport クランプ: 描画用 local 変数のみで行い measured_size は変更しない。
+        // viewport クランプ: 描画用 local 変数のみで行い panel_size は変更しない。
         let (vp_w, vp_h) = (viewport.0.max(1), viewport.1.max(chrome_height + 1));
-        let local_w = self.measured_size.0.min(vp_w).max(1);
-        let local_h = self.measured_size.1.min(vp_h).max(chrome_height + 1);
+        let local_w = self.panel_size.0.min(vp_w).max(1);
+        let local_h = self.panel_size.1.min(vp_h).max(chrome_height + 1);
 
         // body 部分の高さ (chrome を除く)
         let body_h = local_h.saturating_sub(chrome_height).max(1);
 
-        // layout_dirty なら resolve のみ実行 (content size の再測定 + measured_size 更新は廃止)
+        // layout_dirty なら resolve のみ実行 (content size の再測定 + panel_size 更新は廃止)
         if self.layout_dirty {
             self.resolve_layout(local_w, body_h, scale);
             self.layout_dirty = false;
@@ -412,7 +412,7 @@ impl HtmlPanelEngine {
 
     /// GPU 非依存でレイアウトを解決し、`data-action` 要素の hit 矩形を返す。
     ///
-    /// `on_render` と同一のクランプ規則 (measured_size を viewport / chrome_height で
+    /// `on_render` と同一のクランプ規則 (panel_size を viewport / chrome_height で
     /// クランプした local size) で `resolve_layout` を走らせるため、GPU 描画と
     /// hit 矩形が常に一致する。headless (GPU コンテキストなし) でも動作する。
     pub fn resolve_action_rects(
@@ -420,10 +420,10 @@ impl HtmlPanelEngine {
         viewport: (u32, u32),
         scale: f32,
         chrome_height: u32,
-    ) -> Vec<RenderedPanelHit> {
+    ) -> Vec<ActionRect> {
         let (vp_w, vp_h) = (viewport.0.max(1), viewport.1.max(chrome_height + 1));
-        let local_w = self.measured_size.0.min(vp_w).max(1);
-        let local_h = self.measured_size.1.min(vp_h).max(chrome_height + 1);
+        let local_w = self.panel_size.0.min(vp_w).max(1);
+        let local_h = self.panel_size.1.min(vp_h).max(chrome_height + 1);
         let body_h = local_h.saturating_sub(chrome_height).max(1);
         if self.layout_dirty {
             self.resolve_layout(local_w, body_h, scale);
@@ -433,7 +433,7 @@ impl HtmlPanelEngine {
     }
 
     /// `data-action` 属性を持つ全要素の絶対矩形を返す（要 `resolve_layout` 済み）。
-    pub fn collect_action_rects(&self) -> Vec<RenderedPanelHit> {
+    pub fn collect_action_rects(&self) -> Vec<ActionRect> {
         let ids = match self.document.query_selector_all("[data-action]") {
             Ok(ids) => ids,
             Err(_) => return Vec::new(),
@@ -443,7 +443,7 @@ impl HtmlPanelEngine {
             .collect()
     }
 
-    fn action_rect_for(&self, node_id: usize) -> Option<RenderedPanelHit> {
+    fn action_rect_for(&self, node_id: usize) -> Option<ActionRect> {
         let node = self.document.get_node(node_id)?;
         let NodeData::Element(element) = &node.data else {
             return None;
@@ -462,7 +462,7 @@ impl HtmlPanelEngine {
         if rect.width == 0 || rect.height == 0 {
             return None;
         }
-        Some(RenderedPanelHit {
+        Some(ActionRect {
             node_id,
             element_id,
             data_action,
@@ -494,7 +494,7 @@ fn dimension_to_px(d: taffy::Dimension) -> Option<u32> {
 }
 
 /// HTML パネル上端のタイトルバー (chrome) を vello シーンに矩形で描画する。
-/// テキスト描画は将来追加。Plugin 側から Engine に移管された描画ロジック。
+/// テキスト描画は将来追加。Plugin 側から View に移管された描画ロジック。
 fn paint_chrome_rect(scene: &mut vello::Scene, width: u32, chrome_height: u32) {
     use vello::kurbo::{Affine, Rect};
     use vello::peniko::{Color, Fill};
@@ -535,39 +535,39 @@ fn qual_name(local: &str) -> QualName {
 mod tests {
     use super::*;
 
-    fn engine(html: &str) -> HtmlPanelEngine {
-        HtmlPanelEngine::new(html, "")
+    fn view(html: &str) -> HtmlPanelView {
+        HtmlPanelView::new(html, "")
     }
 
-    /// Phase 11: on_load(size) は measured_size をその値で初期化する
+    /// Phase 11: set_panel_size(size) は panel_size をその値で初期化する
     #[test]
     fn on_load_uses_passed_size() {
         let html = r#"<html><body><div style="width:80px;height:30px;"></div></body></html>"#;
-        let mut engine = engine(html);
-        engine.on_load((400, 300));
-        assert_eq!(engine.measured_size(), (400, 300));
+        let mut view = view(html);
+        view.set_panel_size((400, 300));
+        assert_eq!(view.panel_size(), (400, 300));
     }
 
-    /// Phase 11: 連続 on_load が同じサイズを返す (intrinsic 自動測定で書き換わらない)
+    /// Phase 11: 連続 set_panel_size が同じサイズを返す (intrinsic 自動測定で書き換わらない)
     #[test]
     fn on_load_does_not_invoke_intrinsic_measurement() {
-        // body コンテンツは (10, 10) しかないが on_load の引数 (320, 240) で確定する
+        // body コンテンツは (10, 10) しかないが set_panel_size の引数 (320, 240) で確定する
         let html =
             r#"<html><body style="margin:0"><div style="width:10px;height:10px;"></div></body></html>"#;
-        let mut engine = engine(html);
-        engine.on_load((320, 240));
-        assert_eq!(engine.measured_size(), (320, 240));
+        let mut view = view(html);
+        view.set_panel_size((320, 240));
+        assert_eq!(view.panel_size(), (320, 240));
     }
 
     /// Phase 11: root 要素の CSS `min-width` / `max-width` / `min-height` / `max-height` を取り出す。
     #[test]
     fn root_size_constraints_reads_min_max_from_root_element_css() {
         let html = r#"<html><body><div class="panel" style="min-width:240px; max-width:600px; min-height:120px; max-height:480px;"></div></body></html>"#;
-        let mut engine = engine(html);
-        engine.on_load((400, 300));
+        let mut view = view(html);
+        view.set_panel_size((400, 300));
         // resolve_layout を一度走らせて taffy::Style が生成される状態にする
-        engine.resolve_layout(400, 300, 1.0);
-        let constraints = engine.root_size_constraints();
+        view.resolve_layout(400, 300, 1.0);
+        let constraints = view.root_size_constraints();
         assert_eq!(constraints.min_width, Some(240));
         assert_eq!(constraints.max_width, Some(600));
         assert_eq!(constraints.min_height, Some(120));
@@ -578,10 +578,10 @@ mod tests {
     #[test]
     fn root_size_constraints_returns_none_when_unset() {
         let html = r#"<html><body><div class="panel"></div></body></html>"#;
-        let mut engine = engine(html);
-        engine.on_load((400, 300));
-        engine.resolve_layout(400, 300, 1.0);
-        let constraints = engine.root_size_constraints();
+        let mut view = view(html);
+        view.set_panel_size((400, 300));
+        view.resolve_layout(400, 300, 1.0);
+        let constraints = view.root_size_constraints();
         assert_eq!(constraints.min_width, None);
         assert_eq!(constraints.max_width, None);
         assert_eq!(constraints.min_height, None);
@@ -592,10 +592,10 @@ mod tests {
     #[test]
     fn root_size_constraints_returns_none_for_percent_units() {
         let html = r#"<html><body><div class="panel" style="min-width:50%;"></div></body></html>"#;
-        let mut engine = engine(html);
-        engine.on_load((400, 300));
-        engine.resolve_layout(400, 300, 1.0);
-        let constraints = engine.root_size_constraints();
+        let mut view = view(html);
+        view.set_panel_size((400, 300));
+        view.resolve_layout(400, 300, 1.0);
+        let constraints = view.root_size_constraints();
         assert_eq!(constraints.min_width, None);
     }
 
@@ -603,14 +603,14 @@ mod tests {
     #[test]
     fn on_input_pointer_move_updates_hover_and_marks_dirty() {
         let html = r#"<html><body style="margin:0"><button id="b" data-action="command:noop" style="display:block;width:80px;height:40px;">B</button></body></html>"#;
-        let mut engine = engine(html);
-        engine.on_load((400, 300));
+        let mut view = view(html);
+        view.set_panel_size((400, 300));
         // 一旦 dirty フラグをクリアした想定で on_input が dirty を立てるかをテストする
-        engine.clear_dirty_for_test();
+        view.clear_dirty_for_test();
         let event = blitz_traits::events::UiEvent::PointerMove(test_pointer_event(40.0, 20.0));
-        engine.on_input(event);
-        assert!(engine.layout_dirty(), "layout_dirty after on_input");
-        assert!(engine.render_dirty(), "render_dirty after on_input");
+        view.on_input(event);
+        assert!(view.layout_dirty(), "layout_dirty after on_input");
+        assert!(view.render_dirty(), "render_dirty after on_input");
     }
 
     /// D1: ASCII テキストが vello::Scene に glyph run として積まれることを確認する。
@@ -619,9 +619,9 @@ mod tests {
     #[test]
     fn ascii_text_emits_glyph_run_in_scene() {
         let html = r#"<html><body><p>Hello</p></body></html>"#;
-        let mut engine = engine(html);
+        let mut view = view(html);
         let mut scene = vello::Scene::new();
-        engine.build_scene(&mut scene, 200, 80, 1.0);
+        view.build_scene(&mut scene, 200, 80, 1.0);
         let glyph_runs = scene.encoding().resources.glyph_runs.len();
         assert!(
             glyph_runs > 0,
@@ -633,9 +633,9 @@ mod tests {
     #[test]
     fn html_engine_build_scene_populates_vello_scene() {
         let html = r#"<html><body><div style="width:50px;height:30px;background:#ff0000;"></div></body></html>"#;
-        let mut engine = engine(html);
+        let mut view = view(html);
         let mut scene = vello::Scene::new();
-        engine.build_scene(&mut scene, 100, 60, 1.0);
+        view.build_scene(&mut scene, 100, 60, 1.0);
         let encoding = scene.encoding();
         assert!(
             !encoding.path_tags.is_empty() || !encoding.draw_tags.is_empty(),
@@ -653,9 +653,9 @@ mod tests {
             <button id="b" data-action="command:redo" style="display:block;">B</button>
             <span>nope</span>
         </body></html>"#;
-        let mut engine = engine(html);
-        engine.resolve_layout(300, 100, 1.0);
-        let rects = engine.collect_action_rects();
+        let mut view = view(html);
+        view.resolve_layout(300, 100, 1.0);
+        let rects = view.collect_action_rects();
         assert_eq!(rects.len(), 2, "expected 2 data-action elements");
         assert!(rects.iter().any(|r| r.element_id.as_deref() == Some("a")));
         assert!(rects.iter().any(|r| r.element_id.as_deref() == Some("b")));
@@ -682,9 +682,9 @@ mod tests {
             .map(|_| {
                 std::thread::spawn(move || {
                     for _ in 0..20 {
-                        let mut engine = HtmlPanelEngine::new(html, "");
-                        engine.on_load((280, 640));
-                        let rects = engine.resolve_action_rects((1280, 720), 1.0, 24);
+                        let mut view = HtmlPanelView::new(html, "");
+                        view.set_panel_size((280, 640));
+                        let rects = view.resolve_action_rects((1280, 720), 1.0, 24);
                         assert_eq!(rects.len(), 2);
                     }
                 })
@@ -701,25 +701,25 @@ mod tests {
         let html = r#"<html><body>
             <button id="app.save" data-action="service:project_io.save" style="display:block;">Save</button>
         </body></html>"#;
-        let mut engine = engine(html);
-        engine.on_load((280, 160));
-        let rects = engine.resolve_action_rects((1280, 720), 1.0, 24);
+        let mut view = view(html);
+        view.set_panel_size((280, 160));
+        let rects = view.resolve_action_rects((1280, 720), 1.0, 24);
         assert_eq!(rects.len(), 1, "expected 1 data-action element");
         let hit = &rects[0];
         assert_eq!(hit.element_id.as_deref(), Some("app.save"));
         assert!(hit.rect.width > 0 && hit.rect.height > 0);
     }
 
-    /// S2c: resolve_action_rects は viewport が measured_size より小さい場合
+    /// S2c: resolve_action_rects は viewport が panel_size より小さい場合
     /// on_render と同じ local size でクランプして解決する
     #[test]
     fn resolve_action_rects_clamps_to_viewport_like_on_render() {
         let html = r#"<html><body>
             <button id="a" data-action="command:noop" style="display:block;width:100%;">A</button>
         </body></html>"#;
-        let mut engine = engine(html);
-        engine.on_load((800, 600));
-        let rects = engine.resolve_action_rects((200, 124), 1.0, 24);
+        let mut view = view(html);
+        view.set_panel_size((800, 600));
+        let rects = view.resolve_action_rects((200, 124), 1.0, 24);
         assert_eq!(rects.len(), 1);
         // local_w = min(800, 200) = 200 なので width:100% のボタンは 200px を超えない
         assert!(
@@ -731,42 +731,42 @@ mod tests {
 
     #[test]
     fn replace_document_swaps_html_and_marks_dirty() {
-        let mut engine = engine(r#"<html><body><span id="a">A</span></body></html>"#);
-        engine.on_load((400, 200));
-        engine.clear_dirty_for_test();
-        engine.replace_document(
+        let mut view = view(r#"<html><body><span id="a">A</span></body></html>"#);
+        view.set_panel_size((400, 200));
+        view.clear_dirty_for_test();
+        view.replace_document(
             r#"<html><body><span id="b">B</span></body></html>"#,
             "",
         );
-        assert!(engine.render_dirty(), "after replace render_dirty=true");
-        assert!(engine.layout_dirty(), "after replace layout_dirty=true");
-        assert!(engine.find_element_id("b").is_some(), "new element id present");
-        assert!(engine.find_element_id("a").is_none(), "old element gone");
+        assert!(view.render_dirty(), "after replace render_dirty=true");
+        assert!(view.layout_dirty(), "after replace layout_dirty=true");
+        assert!(view.find_element_id("b").is_some(), "new element id present");
+        assert!(view.find_element_id("a").is_none(), "old element gone");
     }
 
     #[test]
     fn replace_document_with_same_html_is_no_op() {
         let html = r#"<html><body><span id="a">A</span></body></html>"#;
-        let mut engine = engine(html);
-        engine.on_load((400, 200));
-        engine.clear_dirty_for_test();
-        engine.replace_document(html, "");
-        assert!(!engine.render_dirty(), "no-op when html unchanged");
-        assert!(!engine.layout_dirty(), "no-op when html unchanged");
+        let mut view = view(html);
+        view.set_panel_size((400, 200));
+        view.clear_dirty_for_test();
+        view.replace_document(html, "");
+        assert!(!view.render_dirty(), "no-op when html unchanged");
+        assert!(!view.layout_dirty(), "no-op when html unchanged");
     }
 
     #[test]
     fn replace_document_keeps_open_details_when_id_was_open() {
         // 初期: 開いている details が 1 つ
         let initial = r#"<html><body><details open data-altp-id="s"><summary>S</summary>x</details></body></html>"#;
-        let mut engine = engine(initial);
-        engine.on_load((400, 200));
+        let mut view = view(initial);
+        view.set_panel_size((400, 200));
         // 翻訳結果も open: そのまま open を維持すべき
         let next = r#"<html><body><details open data-altp-id="s"><summary>S</summary>y</details></body></html>"#;
-        engine.replace_document(next, "");
-        let details_id = engine.find_element_id_by_altp("s").expect("details exists");
+        view.replace_document(next, "");
+        let details_id = view.find_element_id_by_altp("s").expect("details exists");
         assert!(
-            engine.element_has_attribute(details_id, "open"),
+            view.element_has_attribute(details_id, "open"),
             "previously open details should remain open after replace"
         );
     }
@@ -794,7 +794,7 @@ mod tests {
         }
     }
 
-    impl HtmlPanelEngine {
+    impl HtmlPanelView {
         /// Phase 1.7 テスト用: dirty フラグを手動でクリアする
         pub(crate) fn clear_dirty_for_test(&mut self) {
             self.layout_dirty = false;

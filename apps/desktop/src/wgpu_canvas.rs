@@ -115,7 +115,7 @@ pub struct CanvasLayer<'a> {
 ///   L2c overlay_line_quads  … ラッソプレビュー線（カプセル SDF）
 ///   L3 panel_quads          … DSL/HTML 全パネル（vello で GPU 直描画されたテクスチャを quad 合成）
 ///   L4 foreground_quads     … 前景 solid quad 群（アクティブ UI パネル枠線）
-///   L5 status_quad          … ステータスバー (HtmlPanelEngine GPU 描画) を最前面に配置
+///   L5 status_quad          … ステータスバー (HtmlPanelView GPU 描画) を最前面に配置
 #[derive(Debug, Clone, Copy)]
 pub struct PresentScene<'a> {
     pub background_quads: &'a [SolidQuad],
@@ -1680,7 +1680,7 @@ impl WgpuPresenter {
                 }
             }
 
-            // L5: ステータスバー (HtmlPanelEngine GPU 描画) を最前面に配置
+            // L5: ステータスバー (HtmlPanelView GPU 描画) を最前面に配置
             if let Some(status) = scene.status_quad.as_ref()
                 && let Some(entry) = self.html_panel_bind_groups.get(status.panel_id)
             {

@@ -205,7 +205,7 @@ impl DesktopRuntime {
         let (delta_x_lines, delta_y_lines) = Self::wheel_delta_lines(delta);
 
         if on_panel {
-            // パネルスクロールは Engine 内部で完結するため、ここでは
+            // パネルスクロールは View 内部で完結するため、ここでは
             // キャンバスへのフォールスルーだけを防ぐ。
             return false;
         }
@@ -296,7 +296,7 @@ impl DesktopRuntime {
         }
     }
 
-    /// HTML パネル body 領域内なら、対応 Blitz `UiEvent` を Engine に転送する。
+    /// HTML パネル body 領域内なら、対応 Blitz `UiEvent` を View に転送する。
     /// 戻り値: 転送した場合 true（再描画トリガに使う）。
     pub(super) fn forward_html_pointer(
         &mut self,
@@ -316,7 +316,7 @@ impl DesktopRuntime {
             PointerCoords, PointerDetails, UiEvent,
         };
         // local は chrome を含む panel 全体原点（screen_rect 基準）なので
-        // body オフセット（chrome_height）を Engine 側で扱う。Blitz には panel-local 座標を渡す。
+        // body オフセット（chrome_height）を View 側で扱う。Blitz には panel-local 座標を渡す。
         let coords = PointerCoords {
             page_x: local.x as f32,
             page_y: local.y as f32,
