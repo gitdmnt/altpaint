@@ -4,7 +4,7 @@ use crate::{Command, KomaLocalPoint};
 
 mod bitmap;
 mod layer_ops;
-mod pen_state;
+mod tool_state;
 
 use self::layer_ops::{composite_koma_bitmap, ensure_koma_layers};
 
