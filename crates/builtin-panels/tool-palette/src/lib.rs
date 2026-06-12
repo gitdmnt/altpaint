@@ -1,7 +1,7 @@
 //! `builtin.tool-palette` パネル (Phase 10 DOM mutation 版)。
 
 use panel_sdk::{
-    CommandDescriptor,
+    RequestDescriptor,
     commands::{self, Tool},
     dom::{clear_attribute, html_escape, query_selector, set_attribute, set_inner_html},
     host,
@@ -26,7 +26,7 @@ const LAST_IMPORT_SUMMARY: state::StringKey = state::string("config.last_import_
 const LAST_IMPORT_PREVIEW: state::StringKey = state::string("config.last_import_preview");
 const LAST_IMPORT_ISSUES: state::StringKey = state::string("config.last_import_issues");
 
-fn build_tool_command(tool: Tool) -> CommandDescriptor {
+fn build_tool_command(tool: Tool) -> RequestDescriptor {
     commands::tool::set_active(tool)
 }
 

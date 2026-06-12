@@ -1,10 +1,10 @@
-//! Wasm が emit する `CommandDescriptor` を `Command` enum に変換する。
+//! Wasm が emit する `RequestDescriptor` を `Command` enum に変換する。
 //!
 //! Phase 10 では BuiltinPanelPlugin がこのマッピングを使い、Wasm の戻り値を
 //! HostAction::DispatchCommand(Command::*) に翻訳する。
 
 use app_core::{Command, ToolKind};
-use panel_protocol::CommandDescriptor;
+use panel_protocol::RequestDescriptor;
 use panel_protocol::names::{layer, tool};
 use serde_json::Value;
 
@@ -19,7 +19,7 @@ fn parse_hex_color(input: &str) -> Option<app_core::ColorRgba8> {
     Some(app_core::ColorRgba8::new(r, g, b, 0xff))
 }
 
-pub fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command, String> {
+pub fn command_from_descriptor(descriptor: &RequestDescriptor) -> Result<Command, String> {
     match descriptor.name.as_str() {
         tool::SET_ACTIVE => {
             let tool = descriptor
@@ -168,7 +168,7 @@ pub fn command_from_descriptor(descriptor: &CommandDescriptor) -> Result<Command
             Ok(Command::SetActiveLayerBlendMode { mode })
         }
         layer::TOGGLE_VISIBILITY => Ok(Command::ToggleActiveLayerVisibility),
-        other => Err(format!("unsupported command descriptor: {other}")),
+        other => Err(format!("unsupported request descriptor: {other}")),
     }
 }
 

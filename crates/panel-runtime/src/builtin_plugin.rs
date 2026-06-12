@@ -154,7 +154,7 @@ impl BuiltinPanelPlugin {
         Ok(result
             .commands
             .into_iter()
-            .filter_map(command_descriptor_to_host_action)
+            .filter_map(request_descriptor_to_host_action)
             .collect())
     }
 }
@@ -211,8 +211,8 @@ fn apply_state_patches(state: &mut Value, patches: &[panel_protocol::StatePatch]
     }
 }
 
-fn command_descriptor_to_host_action(
-    descriptor: panel_protocol::CommandDescriptor,
+fn request_descriptor_to_host_action(
+    descriptor: panel_protocol::RequestDescriptor,
 ) -> Option<HostAction> {
     // 1. 命令名が Command enum に翻訳できれば DispatchCommand
     if let Ok(command) = command_from_descriptor(&descriptor) {

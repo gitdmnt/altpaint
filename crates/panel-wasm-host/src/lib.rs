@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use blitz_html::HtmlDocument;
 use dom_api::DomCtx;
 use panel_protocol::{
-    CommandDescriptor, Diagnostic, DiagnosticLevel, HandlerResult, PanelEventRequest, StatePatch,
+    RequestDescriptor, Diagnostic, DiagnosticLevel, HandlerEffects, PanelEventRequest, StatePatch,
 };
 use serde_json::{Map, Value};
 use thiserror::Error;
@@ -38,14 +38,14 @@ pub enum PluginHostError {
 
 #[derive(Default)]
 struct RuntimeCollector {
-    result: HandlerResult,
+    result: HandlerEffects,
     current_request: Option<PanelEventRequest>,
     dom_ctx: DomCtx,
 }
 
 impl RuntimeCollector {
     fn clear(&mut self) {
-        self.result = HandlerResult::default();
+        self.result = HandlerEffects::default();
         self.current_request = None;
         // dom_ctx は call_with_dom が制御するためここではクリアしない
     }
@@ -559,7 +559,7 @@ impl WasmPanelRuntime {
                             .data_mut()
                             .result
                             .commands
-                            .push(CommandDescriptor::new(name));
+                            .push(RequestDescriptor::new(name));
                     } else {
                         caller
                             .data_mut()
@@ -607,7 +607,7 @@ impl WasmPanelRuntime {
                         return;
                     };
 
-                    let mut descriptor = CommandDescriptor::new(name);
+                    let mut descriptor = RequestDescriptor::new(name);
                     descriptor.payload.insert(key, Value::String(value));
                     caller.data_mut().result.commands.push(descriptor);
                 },
@@ -647,7 +647,7 @@ impl WasmPanelRuntime {
                         return;
                     };
 
-                    let mut descriptor = CommandDescriptor::new(name);
+                    let mut descriptor = RequestDescriptor::new(name);
                     descriptor.payload = payload;
                     caller.data_mut().result.commands.push(descriptor);
                 },
@@ -703,7 +703,7 @@ impl WasmPanelRuntime {
         &mut self,
         state_snapshot: &Value,
         host_snapshot: &Value,
-    ) -> Result<HandlerResult, PluginHostError> {
+    ) -> Result<HandlerEffects, PluginHostError> {
         self.store.data_mut().clear();
         self.store.data_mut().current_request = Some(PanelEventRequest {
             handler_name: "sync_host".to_string(),
@@ -727,7 +727,7 @@ impl WasmPanelRuntime {
     pub fn handle_event(
         &mut self,
         request: &PanelEventRequest,
-    ) -> Result<HandlerResult, PluginHostError> {
+    ) -> Result<HandlerEffects, PluginHostError> {
         self.store.data_mut().clear();
         self.store.data_mut().current_request = Some(request.clone());
         let export_name = format!(
@@ -783,9 +783,9 @@ impl WasmPanelRuntime {
 
     /// `panel_init` export を呼び出す (DOM context 必須)。
     ///
-    /// 戻り値は handler の `HandlerResult` (commands / state_patch / diagnostics)。
+    /// 戻り値は handler の `HandlerEffects` (commands / state_patch / diagnostics)。
     /// init 中に Wasm が DOM を mutate するなら `call_with_dom` 内で呼ぶこと。
-    pub fn panel_init(&mut self) -> Result<HandlerResult, PluginHostError> {
+    pub fn panel_init(&mut self) -> Result<HandlerEffects, PluginHostError> {
         self.store.data_mut().clear();
         if let Some(init) = self.instance.get_func(&mut self.store, PANEL_INIT_EXPORT) {
             call_export(&mut self.store, init, None).map_err(PluginHostError::Runtime)?;
@@ -982,7 +982,7 @@ mod tests {
                 host_snapshot: json!({}),
             })
             .expect("save handler runs");
-        assert_eq!(saved.commands, vec![CommandDescriptor::new("project.save")]);
+        assert_eq!(saved.commands, vec![RequestDescriptor::new("project.save")]);
 
         let pen = runtime
             .handle_event(&PanelEventRequest {
@@ -991,7 +991,7 @@ mod tests {
                 host_snapshot: json!({}),
             })
             .expect("tool handler runs");
-        let mut expected = CommandDescriptor::new("tool.set_active");
+        let mut expected = RequestDescriptor::new("tool.set_active");
         expected
             .payload
             .insert("tool".to_string(), Value::String("pen".to_string()));
@@ -1013,7 +1013,7 @@ mod tests {
                 host_snapshot: json!({}),
             })
             .expect("json payload handler runs");
-        let mut expected_move = CommandDescriptor::new("layer.move");
+        let mut expected_move = RequestDescriptor::new("layer.move");
         expected_move
             .payload
             .insert("from_index".to_string(), json!(2));

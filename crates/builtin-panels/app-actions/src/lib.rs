@@ -1,7 +1,7 @@
 //! `builtin.app-actions` パネル (Phase 10 DOM mutation 版)。
 
 use panel_sdk::{
-    CommandDescriptor,
+    RequestDescriptor,
     dom::{clear_attribute, html_escape, query_selector, set_attribute, set_inner_html},
     runtime::{
         StatePatchBuffer, emit_service, error, event_string, set_state_bool, set_state_string,
@@ -33,7 +33,7 @@ fn parse_dimension(value: &str) -> Result<usize, &'static str> {
         .map_err(|_| "width and height must be positive integers")
 }
 
-fn build_new_project_command(width: &str, height: &str) -> Result<CommandDescriptor, &'static str> {
+fn build_new_project_command(width: &str, height: &str) -> Result<RequestDescriptor, &'static str> {
     let width = parse_dimension(width)?;
     let height = parse_dimension(height)?;
     Ok(services::project_io::new_document_sized(width, height))

@@ -15,11 +15,11 @@ pub struct PanelEventRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub struct HandlerResult {
+pub struct HandlerEffects {
     #[serde(default)]
     pub state_patch: Vec<StatePatch>,
     #[serde(default)]
-    pub commands: Vec<CommandDescriptor>,
+    pub commands: Vec<RequestDescriptor>,
     #[serde(default)]
     pub diagnostics: Vec<Diagnostic>,
 }
@@ -58,13 +58,13 @@ impl StatePatch {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct CommandDescriptor {
+pub struct RequestDescriptor {
     pub name: String,
     #[serde(default)]
     pub payload: Map<String, Value>,
 }
 
-impl CommandDescriptor {
+impl RequestDescriptor {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -129,8 +129,8 @@ mod tests {
     }
 
     #[test]
-    fn command_descriptor_starts_with_empty_payload() {
-        let descriptor = CommandDescriptor::new(crate::names::tool::SET_ACTIVE);
+    fn request_descriptor_starts_with_empty_payload() {
+        let descriptor = RequestDescriptor::new(crate::names::tool::SET_ACTIVE);
 
         assert_eq!(descriptor.name, crate::names::tool::SET_ACTIVE);
         assert!(descriptor.payload.is_empty());

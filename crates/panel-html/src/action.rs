@@ -133,7 +133,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn parse_command_descriptor_without_args() {
+    fn parse_request_descriptor_without_args() {
         let desc = parse_data_action("command:undo", None).unwrap();
         assert_eq!(
             desc,

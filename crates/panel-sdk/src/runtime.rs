@@ -1,6 +1,6 @@
 //! Wasm パネルから host ABI を呼び出すランタイム関数群を提供する。
 
-use panel_protocol::CommandDescriptor;
+use panel_protocol::RequestDescriptor;
 use panel_protocol::StatePatch;
 #[cfg(target_arch = "wasm32")]
 use serde_json::Value;
@@ -218,7 +218,7 @@ pub fn host_string(_path: impl AsRef<str>) -> String {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn emit_command_descriptor(descriptor: &CommandDescriptor) {
+pub fn emit_command_descriptor(descriptor: &RequestDescriptor) {
     match descriptor.payload.len() {
         0 => with_bytes(&descriptor.name, |ptr, len| unsafe { command(ptr, len) }),
         1 => {
@@ -250,7 +250,7 @@ pub fn emit_command_descriptor(descriptor: &CommandDescriptor) {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn emit_command_payload_json(descriptor: &CommandDescriptor, payload: &Value) {
+fn emit_command_payload_json(descriptor: &RequestDescriptor, payload: &Value) {
     let Ok(json) = serde_json::to_string(payload) else {
         error("failed to serialize command payload in panel-sdk runtime");
         return;
@@ -264,17 +264,17 @@ fn emit_command_payload_json(descriptor: &CommandDescriptor, payload: &Value) {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn emit_command_descriptor(_descriptor: &CommandDescriptor) {}
+pub fn emit_command_descriptor(_descriptor: &RequestDescriptor) {}
 
-pub fn emit_service_descriptor(descriptor: &CommandDescriptor) {
+pub fn emit_service_descriptor(descriptor: &RequestDescriptor) {
     emit_command_descriptor(descriptor);
 }
 
-pub fn emit_command(descriptor: &CommandDescriptor) {
+pub fn emit_command(descriptor: &RequestDescriptor) {
     emit_command_descriptor(descriptor);
 }
 
-pub fn emit_service(descriptor: &CommandDescriptor) {
+pub fn emit_service(descriptor: &RequestDescriptor) {
     emit_service_descriptor(descriptor);
 }
 

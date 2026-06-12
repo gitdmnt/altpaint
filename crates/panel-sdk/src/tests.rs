@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use crate::{CommandDescriptor, commands, host, names, runtime, services, state};
+use crate::{RequestDescriptor, commands, host, names, runtime, services, state};
 use crate::{panel_handler, panel_init, panel_sync_host};
 
 #[panel_init]
@@ -162,8 +162,8 @@ fn native_runtime_helpers_are_safe_noops() {
     runtime::set_state_bool("flag", true);
     runtime::set_state_i32("count", 3);
     runtime::set_state_string("name", "demo");
-    runtime::emit_command(&CommandDescriptor::new("project.save"));
-    runtime::emit_command_descriptor(&CommandDescriptor::new("project.load"));
+    runtime::emit_command(&RequestDescriptor::new("project.save"));
+    runtime::emit_command_descriptor(&RequestDescriptor::new("project.load"));
     runtime::emit_service(&services::project_io::save_current());
     runtime::info("info");
     runtime::warn("warn");
