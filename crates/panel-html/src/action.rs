@@ -20,31 +20,16 @@ pub enum ActionDescriptor {
         name: String,
         payload: Map<String, Value>,
     },
-    /// DSL パネル翻訳結果が出力する `altp:<kind>:<node_id>` 形式。
-    /// 9E-1 で導入、9E-2 以降で `panel-runtime::dsl_panel` が `PanelEvent` に解決する。
+    /// パネル翻訳結果が出力する `altp:<kind>:<node_id>` 形式。
+    /// `<kind>` は許可リスト ([`ALTP_KINDS`]) で検証するのみで、下流は `node_id` だけを消費する。
     Altp {
-        kind: AltpKind,
         node_id: String,
         payload: Map<String, Value>,
     },
 }
 
-/// `altp:` data-action のサブ種別。Phase 9E で DSL パネルが GPU 経路に乗る際に使用。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AltpKind {
-    /// `<button>` クリック → `PanelEvent::Activate`
-    Activate,
-    /// `<input type="range">` change → `PanelEvent::SetValue`
-    Slider,
-    /// `<select>` change → `PanelEvent::SetText` (option value を文字列で送る)
-    Select,
-    /// `<input type="text|number">` change → `PanelEvent::SetText`
-    Input,
-    /// `<input type="color">` change → `PanelEvent::SetText` (#rrggbb)
-    Color,
-    /// `<li data-action="altp:layer-select:...">` クリック → `PanelEvent::SetValue` (index)
-    LayerSelect,
-}
+/// `altp:` data-action で許可されるサブ種別 (検証用許可リスト)。
+const ALTP_KINDS: &[&str] = &["activate", "slider", "select", "input", "color", "layer-select"];
 
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum ActionParseError {
@@ -116,21 +101,13 @@ fn parse_altp(
             prefix: format!("altp:{kind_raw}"),
         });
     }
-    let kind = match kind_raw.trim() {
-        "activate" => AltpKind::Activate,
-        "slider" => AltpKind::Slider,
-        "select" => AltpKind::Select,
-        "input" => AltpKind::Input,
-        "color" => AltpKind::Color,
-        "layer-select" => AltpKind::LayerSelect,
-        other => {
-            return Err(ActionParseError::UnknownPrefix {
-                raw: format!("altp:{other}"),
-            });
-        }
-    };
+    let kind = kind_raw.trim();
+    if !ALTP_KINDS.contains(&kind) {
+        return Err(ActionParseError::UnknownPrefix {
+            raw: format!("altp:{kind}"),
+        });
+    }
     Ok(ActionDescriptor::Altp {
-        kind,
         node_id: node_id.to_string(),
         payload,
     })
@@ -242,7 +219,6 @@ mod tests {
         assert_eq!(
             desc,
             ActionDescriptor::Altp {
-                kind: AltpKind::Activate,
                 node_id: "tool.pen".to_string(),
                 payload: Map::new(),
             }
@@ -254,8 +230,7 @@ mod tests {
         let desc =
             parse_data_action("altp:slider:color.red", Some(r#"{"min":0,"max":255}"#)).unwrap();
         match desc {
-            ActionDescriptor::Altp { kind, node_id, payload } => {
-                assert_eq!(kind, AltpKind::Slider);
+            ActionDescriptor::Altp { node_id, payload } => {
                 assert_eq!(node_id, "color.red");
                 assert_eq!(payload.get("min").and_then(|v| v.as_i64()), Some(0));
                 assert_eq!(payload.get("max").and_then(|v| v.as_i64()), Some(255));
@@ -268,8 +243,7 @@ mod tests {
     fn parse_altp_layer_select_descriptor() {
         let desc = parse_data_action("altp:layer-select:layers", Some(r#"{"index":3}"#)).unwrap();
         match desc {
-            ActionDescriptor::Altp { kind, payload, .. } => {
-                assert_eq!(kind, AltpKind::LayerSelect);
+            ActionDescriptor::Altp { payload, .. } => {
                 assert_eq!(payload.get("index").and_then(|v| v.as_i64()), Some(3));
             }
             _ => panic!("expected altp"),

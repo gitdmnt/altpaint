@@ -6,16 +6,14 @@
 //! - `data-bind-*` を JSON snapshot で評価し、DOM の attribute / class / textContent を更新
 //! - `data-action` を持つ要素のレイアウト矩形を CSS 解決後の絶対座標で収集
 //!
-//! 実描画（vello::Renderer::render_to_texture）は外部所有のレンダラ／ターゲットで行うため本 crate
-//! では GPU リソースを保持しない。`build_scene` で `vello::Scene` を埋め、上位レイヤが
-//! 共有 `wgpu::Device` で render する。
+//! 実描画（vello::Renderer::render_to_texture）は `on_render` が外部所有のレンダラ／共有
+//! `wgpu::Device` で行い、本 crate では GPU リソースを保持しない。
 
-use crate::action::ActionDescriptor;
 use anyrender_vello::VelloScenePainter;
 use blitz_dom::{
     BaseDocument, DocumentConfig, EventDriver, LocalName, Namespace, NoopEventHandler, QualName,
     local_name,
-    node::{Attribute, NodeData},
+    node::NodeData,
 };
 use blitz_html::{HtmlDocument, HtmlProvider};
 use std::sync::Arc;
@@ -79,14 +77,6 @@ pub struct PixelRect {
     pub y: u32,
     pub width: u32,
     pub height: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PanelHit {
-    pub node_id: usize,
-    pub element_id: Option<String>,
-    pub data_action: Option<String>,
-    pub data_args: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -258,8 +248,7 @@ impl HtmlPanelEngine {
 
     /// UiEvent (PointerDown/Up/Move 等) を Blitz に流す。
     /// `:hover` / `<details>` 開閉 / `<button>` のアクティブ状態などはこの経路でのみ反映される。
-    /// 戻り値: layout_dirty を立てた場合 true（呼び出し側がフレーム再描画判断に使う）。
-    pub fn on_input(&mut self, event: UiEvent) -> bool {
+    pub fn on_input(&mut self, event: UiEvent) {
         let mut driver = EventDriver::new(&mut self.document, NoopEventHandler);
         driver.handle_ui_event(event);
         // pointer / key 系イベントは hover 状態 / focus / details 開閉 など
@@ -268,11 +257,6 @@ impl HtmlPanelEngine {
         // 楽観的に再 resolve させる。
         self.layout_dirty = true;
         self.render_dirty = true;
-        true
-    }
-
-    pub fn user_css(&self) -> &str {
-        &self.user_css
     }
 
     pub fn document(&self) -> &BaseDocument {
@@ -369,11 +353,6 @@ impl HtmlPanelEngine {
         }
     }
 
-    /// 直前の `resolve_layout` 以降に DOM mutation があったか（Wasm `mark_mutated` 由来）。
-    pub fn document_dirty(&self) -> bool {
-        self.pending_mutation
-    }
-
     /// viewport を設定し layout を解決する。同サイズかつ未変更ならスキップ。
     pub fn resolve_layout(&mut self, width: u32, height: u32, scale: f32) {
         if self.last_resolved == Some((width, height)) && !self.pending_mutation {
@@ -393,8 +372,10 @@ impl HtmlPanelEngine {
         self.pending_mutation = false;
     }
 
-    /// blitz-paint で `vello::Scene` を埋める（実描画は呼び出し元）。
-    pub fn build_scene(
+    /// テスト用: blitz-paint で `vello::Scene` を埋める (offset なし)。
+    /// 本番の実描画は `on_render` が `build_scene_with_offset` 経由で行う。
+    #[cfg(test)]
+    pub(crate) fn build_scene(
         &mut self,
         scene: &mut vello::Scene,
         width: u32,
@@ -404,7 +385,8 @@ impl HtmlPanelEngine {
         self.build_scene_with_offset(scene, width, height, scale, 0, 0);
     }
 
-    /// `build_scene` の offset 版。HTML 本体を `(x_offset, y_offset)` ピクセル分ずらして描画する。
+    /// blitz-paint で `vello::Scene` を埋める（実描画は `on_render`）。
+    /// HTML 本体を `(x_offset, y_offset)` ピクセル分ずらして描画する。
     /// ホスト描画タイトルバーを上に重ねるためのオフセット指定に使う。
     pub fn build_scene_with_offset(
         &mut self,
@@ -426,30 +408,6 @@ impl HtmlPanelEngine {
             x_offset,
             y_offset,
         );
-    }
-
-    /// 点 `(x, y)` に最も近い `data-action` 要素を返す。
-    pub fn hit_test(&self, x: f32, y: f32) -> Option<PanelHit> {
-        let hit = self.document.hit(x, y)?;
-        let mut current = hit.node_id;
-        loop {
-            let node = self.document.get_node(current)?;
-            if let NodeData::Element(element) = &node.data {
-                let data_action = element.attr(LocalName::from("data-action"));
-                if data_action.is_some() {
-                    let element_id = element.attr(local_name!("id")).map(str::to_string);
-                    return Some(PanelHit {
-                        node_id: current,
-                        element_id,
-                        data_action: data_action.map(str::to_string),
-                        data_args: element
-                            .attr(LocalName::from("data-args"))
-                            .map(str::to_string),
-                    });
-                }
-            }
-            current = node.parent?;
-        }
     }
 
     /// GPU 非依存でレイアウトを解決し、`data-action` 要素の hit 矩形を返す。
@@ -512,10 +470,6 @@ impl HtmlPanelEngine {
             rect,
         })
     }
-
-    pub fn diagnostics(&self) -> Vec<String> {
-        Vec::new()
-    }
 }
 
 /// Phase 11: パネル root 要素 (body 直下の最初の Element ノード) の NodeId を返す。
@@ -575,17 +529,6 @@ fn compute_absolute_position(doc: &BaseDocument, start: usize) -> Option<(f32, f
 
 fn qual_name(local: &str) -> QualName {
     QualName::new(None, Namespace::default(), LocalName::from(local))
-}
-
-pub fn descriptor_from_hit(hit: &PanelHit) -> Option<ActionDescriptor> {
-    let raw = hit.data_action.as_deref()?;
-    let args = hit.data_args.as_deref();
-    crate::action::parse_data_action(raw, args).ok()
-}
-
-#[allow(dead_code)]
-fn _attribute_helper_namespace_check(attr: &Attribute) -> bool {
-    attr.name.ns == Namespace::default()
 }
 
 #[cfg(test)]
@@ -665,21 +608,9 @@ mod tests {
         // 一旦 dirty フラグをクリアした想定で on_input が dirty を立てるかをテストする
         engine.clear_dirty_for_test();
         let event = blitz_traits::events::UiEvent::PointerMove(test_pointer_event(40.0, 20.0));
-        let changed = engine.on_input(event);
-        assert!(changed, "PointerMove should mark layout dirty");
+        engine.on_input(event);
         assert!(engine.layout_dirty(), "layout_dirty after on_input");
-    }
-
-    #[test]
-    fn engine_parses_html_and_finds_button_via_hit_test() {
-        let html = r#"<html><body><button id="undo" data-action="command:noop" style="display:block; width:100px; height:40px;">Undo</button></body></html>"#;
-        let mut engine = engine(html);
-        engine.resolve_layout(200, 100, 1.0);
-        let hit = engine.hit_test(20.0, 20.0);
-        assert!(hit.is_some(), "expected hit on button");
-        let hit = hit.unwrap();
-        assert_eq!(hit.element_id.as_deref(), Some("undo"));
-        assert_eq!(hit.data_action.as_deref(), Some("command:noop"));
+        assert!(engine.render_dirty(), "render_dirty after on_input");
     }
 
     /// D1: ASCII テキストが vello::Scene に glyph run として積まれることを確認する。
@@ -796,26 +727,6 @@ mod tests {
             "expected clamped width <= 200, got {}",
             rects[0].rect.width
         );
-    }
-
-    /// S14: ヒットテストが CSS padding を尊重
-    #[test]
-    fn html_engine_hit_test_screen_to_node_with_css_padding() {
-        let html = r#"<html><body>
-            <button id="x" data-action="command:noop" style="display:block;width:80px;height:40px;margin:20px;">X</button>
-        </body></html>"#;
-        let mut engine = engine(html);
-        engine.resolve_layout(200, 100, 1.0);
-        // margin 20px の外側はヒットしない
-        let hit_outside = engine.hit_test(2.0, 2.0);
-        assert!(
-            hit_outside.is_none() || hit_outside.unwrap().element_id.as_deref() != Some("x"),
-            "outside button should not hit x"
-        );
-        // 要素内側はヒットする
-        let hit_inside = engine.hit_test(60.0, 50.0);
-        assert!(hit_inside.is_some());
-        assert_eq!(hit_inside.unwrap().element_id.as_deref(), Some("x"));
     }
 
     #[test]

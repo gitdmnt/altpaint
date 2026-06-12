@@ -20,10 +20,9 @@ pub mod action;
 pub mod engine;
 pub mod gpu;
 
-pub use action::{ActionDescriptor, ActionParseError, AltpKind, parse_data_action};
+pub use action::{ActionDescriptor, ActionParseError, parse_data_action};
 pub use engine::{
-    HtmlPanelEngine, PanelHit, PanelSizeConstraints, PixelRect, RenderOutcome, RenderedPanelHit,
-    descriptor_from_hit,
+    HtmlPanelEngine, PanelSizeConstraints, PixelRect, RenderOutcome, RenderedPanelHit,
 };
 pub use gpu::PanelGpuTarget;
 

@@ -374,7 +374,7 @@ impl BuiltinPanelPlugin {
                 }
                 vec![HostAction::RequestService(request)]
             }
-            Some(ActionDescriptor::Altp { node_id: handler, mut payload, .. }) => {
+            Some(ActionDescriptor::Altp { node_id: handler, mut payload }) => {
                 if let Some(extra_obj) = extra_payload.as_object() {
                     for (k, v) in extra_obj {
                         payload.insert(k.clone(), v.clone());
