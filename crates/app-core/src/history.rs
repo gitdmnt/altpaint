@@ -3,8 +3,9 @@
 //! `EditHistory` は操作記録（`HistoryEntry`）のスタックを管理する。
 //! undo 方式はビットマップ前後スナップショット（`BitmapPatch`）の保存・復元方式。
 
-use crate::{CanvasBitmap, KomaId};
+use crate::KomaId;
 use geometry::PageDirtyRect;
+use raster::RgbaBitmap;
 
 /// 履歴スタックのデフォルト容量。
 pub const DEFAULT_HISTORY_CAPACITY: usize = 50;
@@ -35,9 +36,9 @@ pub enum HistoryEntry {
         /// コマローカル座標系の変更領域。
         dirty: PageDirtyRect,
         /// 操作前のビットマップ領域。
-        before: CanvasBitmap,
+        before: RgbaBitmap,
         /// 操作後のビットマップ領域。
-        after: CanvasBitmap,
+        after: RgbaBitmap,
     },
     /// GPU テクスチャスナップショット方式（`gpu` feature 有効時のストローク用）。
     GpuBitmapPatch {
@@ -138,8 +139,8 @@ mod tests {
                 width: 1,
                 height: 1,
             },
-            before: CanvasBitmap::transparent(1, 1),
-            after: CanvasBitmap::transparent(1, 1),
+            before: RgbaBitmap::transparent(1, 1),
+            after: RgbaBitmap::transparent(1, 1),
         }
     }
 

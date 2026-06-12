@@ -884,13 +884,13 @@ fn bitmap_composite_golden_source_over_and_multiply() {
     let previous = golden_row_bitmap(&GOLDEN_DST_PIXELS);
 
     assert_eq!(
-        crate::BitmapComposite::SourceOver
+        raster::BitmapComposite::SourceOver
             .compose(&incoming, &previous)
             .pixels,
         [152, 40, 100, 255, 50, 80, 200, 255, 0, 0, 0, 0, 150, 150, 150, 228],
     );
     assert_eq!(
-        crate::BitmapComposite::Multiply
+        raster::BitmapComposite::Multiply
             .compose(&incoming, &previous)
             .pixels,
         [152, 0, 0, 255, 0, 80, 0, 255, 0, 0, 0, 0, 89, 89, 89, 228],

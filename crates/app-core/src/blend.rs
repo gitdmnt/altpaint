@@ -4,10 +4,7 @@
 //! `raster` クレートが持つ。本モジュールはドメインの `RasterLayer` / `LayerMask` を
 //! 参照する層合成のみを担う (document-model 確立まで app-core 残置)。
 
-use raster::RgbaBitmap;
-// `paint-engine` が現在 `app_core::blend::composite_pixel` を参照する。raster 直接参照への
-// 付け替えは B5 切り出しの第 2 段で行うため、それまで再エクスポートで生かす。
-pub use raster::composite_pixel;
+use raster::{RgbaBitmap, composite_pixel};
 
 use crate::RasterLayer;
 use geometry::{ClampToCanvasBounds, PageDirtyRect};
