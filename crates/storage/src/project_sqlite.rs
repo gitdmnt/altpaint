@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use app_core::{PluginConfigs, WorkspaceUiState};
 
-use crate::project_file::{CURRENT_FORMAT_VERSION, LoadedProject, StorageError};
+use crate::project_file::{CURRENT_PROJECT_FORMAT_VERSION, LoadedProject, ProjectStoreError};
 
 pub(crate) const SQLITE_HEADER: &[u8; 16] = b"SQLite format 3\0";
 pub const DEFAULT_PROJECT_CHUNK_SIZE: usize = 256;
@@ -44,11 +44,11 @@ impl ProjectSaveMode {
         }
     }
 
-    fn from_db(value: &str) -> Result<Self, StorageError> {
+    fn from_db(value: &str) -> Result<Self, ProjectStoreError> {
         match value {
             "full" => Ok(Self::Full),
             "delta" => Ok(Self::Delta),
-            other => Err(StorageError::InvalidProject(format!(
+            other => Err(ProjectStoreError::InvalidProject(format!(
                 "unknown project save mode: {other}"
             ))),
         }
@@ -103,7 +103,7 @@ pub struct ProjectPageSummary {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ProjectIndex {
+pub struct ProjectManifest {
     pub format_version: u32,
     pub work_id: WorkId,
     pub title: String,
@@ -160,7 +160,7 @@ struct StoredChunk {
     data: Option<Vec<u8>>,
 }
 
-pub(crate) fn is_sqlite_project_path(path: impl AsRef<Path>) -> Result<bool, StorageError> {
+pub(crate) fn file_has_sqlite_header(path: impl AsRef<Path>) -> Result<bool, ProjectStoreError> {
     let path = path.as_ref();
     let mut file = File::open(path)?;
     let mut header = [0u8; SQLITE_HEADER.len()];
@@ -174,7 +174,7 @@ pub(crate) fn save_project_to_sqlite_path(
     workspace_layout: &WorkspaceLayout,
     plugin_configs: &std::collections::BTreeMap<String, Value>,
     options: ProjectSaveOptions,
-) -> Result<(), StorageError> {
+) -> Result<(), ProjectStoreError> {
     let path = path.as_ref();
     if path.exists() {
         fs::remove_file(path)?;
@@ -188,7 +188,7 @@ pub(crate) fn save_project_to_sqlite_path(
     put_metadata(
         &transaction,
         METADATA_FORMAT_VERSION,
-        &CURRENT_FORMAT_VERSION,
+        &CURRENT_PROJECT_FORMAT_VERSION,
     )?;
     put_metadata(
         &transaction,
@@ -309,7 +309,7 @@ pub(crate) fn save_project_to_sqlite_path(
 
 pub(crate) fn load_project_from_sqlite_path(
     path: impl AsRef<Path>,
-) -> Result<LoadedProject, StorageError> {
+) -> Result<LoadedProject, ProjectStoreError> {
     let connection = open_read_only(path.as_ref())?;
     validate_format_version(&connection)?;
     let document_record: SqliteDocumentRecord = get_metadata(&connection, METADATA_DOCUMENT)?;
@@ -339,9 +339,9 @@ pub(crate) fn load_project_from_sqlite_path(
     Ok(LoadedProject { document, ui_state })
 }
 
-pub(crate) fn load_project_index_from_sqlite_path(
+pub(crate) fn load_project_manifest_from_sqlite_path(
     path: impl AsRef<Path>,
-) -> Result<ProjectIndex, StorageError> {
+) -> Result<ProjectManifest, ProjectStoreError> {
     let connection = open_read_only(path.as_ref())?;
     validate_format_version(&connection)?;
 
@@ -404,8 +404,8 @@ pub(crate) fn load_project_index_from_sqlite_path(
         });
     }
 
-    Ok(ProjectIndex {
-        format_version: CURRENT_FORMAT_VERSION,
+    Ok(ProjectManifest {
+        format_version: CURRENT_PROJECT_FORMAT_VERSION,
         work_id: WorkId(document_record.work_id),
         title: document_record.title,
         save_mode: options.save_mode,
@@ -420,7 +420,7 @@ pub(crate) fn load_project_index_from_sqlite_path(
 pub(crate) fn load_page_from_sqlite_path(
     path: impl AsRef<Path>,
     page_id: PageId,
-) -> Result<Page, StorageError> {
+) -> Result<Page, ProjectStoreError> {
     let connection = open_read_only(path.as_ref())?;
     validate_format_version(&connection)?;
     load_page(&connection, page_id)
@@ -429,7 +429,7 @@ pub(crate) fn load_page_from_sqlite_path(
 pub(crate) fn load_koma_composite_from_sqlite_path(
     path: impl AsRef<Path>,
     composite_id: &str,
-) -> Result<Option<PersistedKomaComposite>, StorageError> {
+) -> Result<Option<PersistedKomaComposite>, ProjectStoreError> {
     let connection = open_read_only(path.as_ref())?;
     validate_format_version(&connection)?;
     load_koma_composite(&connection, composite_id)
@@ -442,14 +442,14 @@ fn normalize_options(options: ProjectSaveOptions) -> ProjectSaveOptions {
     }
 }
 
-fn open_read_only(path: &Path) -> Result<Connection, StorageError> {
+fn open_read_only(path: &Path) -> Result<Connection, ProjectStoreError> {
     Ok(Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_ONLY,
     )?)
 }
 
-fn initialize_schema(connection: &Connection) -> Result<(), StorageError> {
+fn initialize_schema(connection: &Connection) -> Result<(), ProjectStoreError> {
     connection.execute_batch(
         "
 		PRAGMA foreign_keys = OFF;
@@ -529,7 +529,7 @@ fn put_metadata<T: Serialize>(
     transaction: &Transaction<'_>,
     key: &str,
     value: &T,
-) -> Result<(), StorageError> {
+) -> Result<(), ProjectStoreError> {
     transaction.execute(
         "INSERT INTO metadata (key, value_json) VALUES (?1, ?2)",
         params![key, encode_json(value)?],
@@ -540,7 +540,7 @@ fn put_metadata<T: Serialize>(
 fn get_metadata<T: DeserializeOwned>(
     connection: &Connection,
     key: &str,
-) -> Result<T, StorageError> {
+) -> Result<T, ProjectStoreError> {
     let value = connection
         .query_row(
             "SELECT value_json FROM metadata WHERE key = ?1",
@@ -548,27 +548,27 @@ fn get_metadata<T: DeserializeOwned>(
             |row| row.get::<_, String>(0),
         )
         .optional()?
-        .ok_or_else(|| StorageError::InvalidProject(format!("missing metadata key: {key}")))?;
+        .ok_or_else(|| ProjectStoreError::InvalidProject(format!("missing metadata key: {key}")))?;
     decode_json(&value)
 }
 
 /// 保存された format_version が現行版と一致することを検証する。
 ///
 /// 旧版の受理は行わない (alpha 方針で互換を持たない)。
-fn validate_format_version(connection: &Connection) -> Result<(), StorageError> {
+fn validate_format_version(connection: &Connection) -> Result<(), ProjectStoreError> {
     let format_version: u32 = get_metadata(connection, METADATA_FORMAT_VERSION)?;
-    if format_version != CURRENT_FORMAT_VERSION {
-        return Err(StorageError::UnsupportedFormatVersion(format_version));
+    if format_version != CURRENT_PROJECT_FORMAT_VERSION {
+        return Err(ProjectStoreError::UnsupportedFormatVersion(format_version));
     }
     Ok(())
 }
 
-fn encode_json<T: Serialize>(value: &T) -> Result<String, StorageError> {
-    serde_json::to_string(value).map_err(StorageError::SerializeMetadataJson)
+fn encode_json<T: Serialize>(value: &T) -> Result<String, ProjectStoreError> {
+    serde_json::to_string(value).map_err(ProjectStoreError::SerializeMetadataJson)
 }
 
-fn decode_json<T: DeserializeOwned>(value: &str) -> Result<T, StorageError> {
-    serde_json::from_str(value).map_err(StorageError::DeserializeMetadataJson)
+fn decode_json<T: DeserializeOwned>(value: &str) -> Result<T, ProjectStoreError> {
+    serde_json::from_str(value).map_err(ProjectStoreError::DeserializeMetadataJson)
 }
 
 fn insert_layer_chunks(
@@ -577,7 +577,7 @@ fn insert_layer_chunks(
     layer_index: usize,
     bitmap: &CanvasBitmap,
     chunk_size: usize,
-) -> Result<(), StorageError> {
+) -> Result<(), ProjectStoreError> {
     for chunk in chunk_bitmap(bitmap, chunk_size)? {
         transaction.execute(
             "INSERT INTO layer_chunks (
@@ -612,7 +612,7 @@ fn insert_composite_chunks(
     composite_id: &str,
     bitmap: &CanvasBitmap,
     chunk_size: usize,
-) -> Result<(), StorageError> {
+) -> Result<(), ProjectStoreError> {
     for chunk in chunk_bitmap(bitmap, chunk_size)? {
         transaction.execute(
             "INSERT INTO koma_composite_chunks (
@@ -643,7 +643,7 @@ fn insert_composite_chunks(
 fn chunk_bitmap(
     bitmap: &CanvasBitmap,
     chunk_size: usize,
-) -> Result<Vec<StoredChunk>, StorageError> {
+) -> Result<Vec<StoredChunk>, ProjectStoreError> {
     let mut chunks = Vec::new();
     let chunk_size = chunk_size.max(1);
     for chunk_y in (0..bitmap.height).step_by(chunk_size) {
@@ -664,7 +664,7 @@ fn chunk_bitmap(
             } else {
                 let compressed =
                     zstd::stream::encode_all(Cursor::new(pixels), ZSTD_COMPRESSION_LEVEL)
-                        .map_err(StorageError::Compress)?;
+                        .map_err(ProjectStoreError::Compress)?;
                 chunks.push(StoredChunk {
                     chunk_x,
                     chunk_y,
@@ -722,7 +722,7 @@ fn decode_rgba(value: i64) -> [u8; 4] {
     ]
 }
 
-fn load_all_pages(connection: &Connection) -> Result<Vec<Page>, StorageError> {
+fn load_all_pages(connection: &Connection) -> Result<Vec<Page>, ProjectStoreError> {
     let mut statement = connection.prepare("SELECT page_id FROM pages ORDER BY page_index ASC")?;
     let page_ids = statement
         .query_map([], |row| row.get::<_, i64>(0))?
@@ -733,7 +733,7 @@ fn load_all_pages(connection: &Connection) -> Result<Vec<Page>, StorageError> {
         .collect()
 }
 
-fn load_page(connection: &Connection, page_id: PageId) -> Result<Page, StorageError> {
+fn load_page(connection: &Connection, page_id: PageId) -> Result<Page, ProjectStoreError> {
     let page_dimensions = connection
         .query_row(
             "SELECT width, height FROM pages WHERE page_id = ?1",
@@ -742,7 +742,7 @@ fn load_page(connection: &Connection, page_id: PageId) -> Result<Page, StorageEr
         )
         .optional()?;
     let Some((width, height)) = page_dimensions else {
-        return Err(StorageError::PageNotFound(page_id.0));
+        return Err(ProjectStoreError::PageNotFound(page_id.0));
     };
 
     let mut koma_statement = connection
@@ -768,7 +768,7 @@ fn load_koma(
     connection: &Connection,
     page_id: PageId,
     koma_id: KomaId,
-) -> Result<Koma, StorageError> {
+) -> Result<Koma, ProjectStoreError> {
     let metadata_json = connection
         .query_row(
             "SELECT metadata_json FROM komas WHERE page_id = ?1 AND koma_id = ?2",
@@ -776,7 +776,7 @@ fn load_koma(
             |row| row.get::<_, String>(0),
         )
         .optional()?
-        .ok_or(StorageError::KomaNotFound {
+        .ok_or(ProjectStoreError::KomaNotFound {
             page_id: page_id.0,
             koma_id: koma_id.0,
         })?;
@@ -838,7 +838,7 @@ fn load_layer_bitmap(
     layer_index: usize,
     width: usize,
     height: usize,
-) -> Result<CanvasBitmap, StorageError> {
+) -> Result<CanvasBitmap, ProjectStoreError> {
     let mut bitmap = CanvasBitmap::transparent(width.max(1), height.max(1));
     let mut statement = connection.prepare(
         "SELECT chunk_x, chunk_y, width, height, encoding, rgba, data
@@ -867,7 +867,7 @@ fn load_layer_bitmap(
 fn load_koma_composite(
     connection: &Connection,
     composite_id: &str,
-) -> Result<Option<PersistedKomaComposite>, StorageError> {
+) -> Result<Option<PersistedKomaComposite>, ProjectStoreError> {
     let row = connection
         .query_row(
             "SELECT page_id, koma_id, save_mode, width, height, chunk_size
@@ -927,7 +927,7 @@ fn load_koma_composite(
 
 fn load_composite_summaries(
     connection: &Connection,
-) -> Result<Vec<PersistedKomaCompositeSummary>, StorageError> {
+) -> Result<Vec<PersistedKomaCompositeSummary>, ProjectStoreError> {
     let mut statement = connection.prepare(
         "SELECT composite_id, page_id, koma_id, save_mode, chunk_size
 		 FROM koma_composites
@@ -946,10 +946,10 @@ fn load_composite_summaries(
             })
         })?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(StorageError::Sqlite)
+        .map_err(ProjectStoreError::Sqlite)
 }
 
-fn apply_chunks(bitmap: &mut CanvasBitmap, chunks: &[StoredChunk]) -> Result<(), StorageError> {
+fn apply_chunks(bitmap: &mut CanvasBitmap, chunks: &[StoredChunk]) -> Result<(), ProjectStoreError> {
     for chunk in chunks {
         match chunk.encoding {
             CHUNK_ENCODING_SOLID => fill_chunk(
@@ -959,18 +959,18 @@ fn apply_chunks(bitmap: &mut CanvasBitmap, chunks: &[StoredChunk]) -> Result<(),
                 chunk.width,
                 chunk.height,
                 chunk.rgba.ok_or_else(|| {
-                    StorageError::InvalidProject("solid chunk is missing rgba payload".to_string())
+                    ProjectStoreError::InvalidProject("solid chunk is missing rgba payload".to_string())
                 })?,
             ),
             CHUNK_ENCODING_ZSTD => {
                 let decoded = zstd::stream::decode_all(Cursor::new(
                     chunk.data.as_deref().ok_or_else(|| {
-                        StorageError::InvalidProject(
+                        ProjectStoreError::InvalidProject(
                             "compressed chunk is missing payload".to_string(),
                         )
                     })?,
                 ))
-                .map_err(StorageError::Decompress)?;
+                .map_err(ProjectStoreError::Decompress)?;
                 blit_chunk(
                     bitmap,
                     chunk.chunk_x,
@@ -981,7 +981,7 @@ fn apply_chunks(bitmap: &mut CanvasBitmap, chunks: &[StoredChunk]) -> Result<(),
                 )?;
             }
             encoding => {
-                return Err(StorageError::InvalidProject(format!(
+                return Err(ProjectStoreError::InvalidProject(format!(
                     "unknown chunk encoding: {encoding}"
                 )));
             }
@@ -1013,10 +1013,10 @@ fn blit_chunk(
     width: usize,
     height: usize,
     pixels: &[u8],
-) -> Result<(), StorageError> {
+) -> Result<(), ProjectStoreError> {
     let expected_len = width.saturating_mul(height).saturating_mul(4);
     if pixels.len() != expected_len {
-        return Err(StorageError::InvalidProject(format!(
+        return Err(ProjectStoreError::InvalidProject(format!(
             "chunk payload length mismatch: expected {expected_len}, got {}",
             pixels.len()
         )));
@@ -1124,13 +1124,13 @@ fn current_composite_id(page_id: PageId, koma_id: KomaId) -> String {
     format!("page:{}:koma:{}:current", page_id.0, koma_id.0)
 }
 
-fn current_unix_ms() -> Result<i64, StorageError> {
+fn current_unix_ms() -> Result<i64, ProjectStoreError> {
     Ok(SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|error| StorageError::InvalidProject(format!("system clock error: {error}")))?
+        .map_err(|error| ProjectStoreError::InvalidProject(format!("system clock error: {error}")))?
         .as_millis() as i64)
 }
 
-fn to_sqlite_conversion_error(error: StorageError) -> rusqlite::Error {
+fn to_sqlite_conversion_error(error: ProjectStoreError) -> rusqlite::Error {
     rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(error))
 }

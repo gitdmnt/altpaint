@@ -7,13 +7,13 @@ use thiserror::Error;
 use app_core::WorkspaceUiState;
 
 use crate::project_sqlite::{
-    PersistedKomaComposite, ProjectIndex, ProjectSaveOptions, is_sqlite_project_path,
+    PersistedKomaComposite, ProjectManifest, ProjectSaveOptions, file_has_sqlite_header,
     load_page_from_sqlite_path, load_koma_composite_from_sqlite_path,
-    load_project_from_sqlite_path, load_project_index_from_sqlite_path,
+    load_project_from_sqlite_path, load_project_manifest_from_sqlite_path,
     save_project_to_sqlite_path,
 };
 
-pub const CURRENT_FORMAT_VERSION: u32 = 7;
+pub const CURRENT_PROJECT_FORMAT_VERSION: u32 = 7;
 
 #[derive(Debug, Clone)]
 pub struct LoadedProject {
@@ -22,7 +22,7 @@ pub struct LoadedProject {
 }
 
 #[derive(Debug, Error)]
-pub enum StorageError {
+pub enum ProjectStoreError {
     #[error("unsupported altpaint project format version: {0}")]
     UnsupportedFormatVersion(u32),
     #[error("failed to compress project file: {0}")]
@@ -48,11 +48,11 @@ pub enum StorageError {
 /// 指定パスが altpaint の sqlite プロジェクトファイルであることを確認する。
 ///
 /// sqlite ヘッダーを持たないファイル (旧 JSON / ALTPBIN 形式を含む) はエラーになる。
-fn ensure_sqlite_project(path: &Path) -> Result<(), StorageError> {
-    if is_sqlite_project_path(path)? {
+fn ensure_sqlite_project(path: &Path) -> Result<(), ProjectStoreError> {
+    if file_has_sqlite_header(path)? {
         return Ok(());
     }
-    Err(StorageError::InvalidProject(format!(
+    Err(ProjectStoreError::InvalidProject(format!(
         "not an altpaint sqlite project file: {}",
         path.display()
     )))
@@ -63,7 +63,7 @@ pub fn save_project_to_path(
     document: &Document,
     workspace_layout: &WorkspaceLayout,
     plugin_configs: &BTreeMap<String, Value>,
-) -> Result<(), StorageError> {
+) -> Result<(), ProjectStoreError> {
     save_project_to_path_with_options(
         path,
         document,
@@ -79,24 +79,24 @@ pub(crate) fn save_project_to_path_with_options(
     workspace_layout: &WorkspaceLayout,
     plugin_configs: &BTreeMap<String, Value>,
     options: ProjectSaveOptions,
-) -> Result<(), StorageError> {
+) -> Result<(), ProjectStoreError> {
     let path = path.as_ref();
     save_project_to_sqlite_path(path, document, workspace_layout, plugin_configs, options)
 }
 
-pub fn load_project_from_path(path: impl AsRef<Path>) -> Result<LoadedProject, StorageError> {
+pub fn load_project_from_path(path: impl AsRef<Path>) -> Result<LoadedProject, ProjectStoreError> {
     let path = path.as_ref();
     ensure_sqlite_project(path)?;
     load_project_from_sqlite_path(path)
 }
 
-pub fn load_project_index_from_path(path: impl AsRef<Path>) -> Result<ProjectIndex, StorageError> {
+pub fn load_project_manifest_from_path(path: impl AsRef<Path>) -> Result<ProjectManifest, ProjectStoreError> {
     let path = path.as_ref();
     ensure_sqlite_project(path)?;
-    load_project_index_from_sqlite_path(path)
+    load_project_manifest_from_sqlite_path(path)
 }
 
-pub fn load_page_from_path(path: impl AsRef<Path>, page_id: PageId) -> Result<Page, StorageError> {
+pub fn load_page_from_path(path: impl AsRef<Path>, page_id: PageId) -> Result<Page, ProjectStoreError> {
     let path = path.as_ref();
     ensure_sqlite_project(path)?;
     load_page_from_sqlite_path(path, page_id)
@@ -105,7 +105,7 @@ pub fn load_page_from_path(path: impl AsRef<Path>, page_id: PageId) -> Result<Pa
 pub fn load_koma_composite_from_path(
     path: impl AsRef<Path>,
     composite_id: &str,
-) -> Result<Option<PersistedKomaComposite>, StorageError> {
+) -> Result<Option<PersistedKomaComposite>, ProjectStoreError> {
     let path = path.as_ref();
     ensure_sqlite_project(path)?;
     load_koma_composite_from_sqlite_path(path, composite_id)
@@ -351,8 +351,8 @@ mod tests {
     }
 
     #[test]
-    fn load_project_index_reports_pages_komas_and_composites() {
-        let path = temp_path("project-index");
+    fn load_project_manifest_reports_pages_komas_and_composites() {
+        let path = temp_path("project-manifest");
         let document = multi_page_document();
 
         save_project_to_path(
@@ -363,17 +363,18 @@ mod tests {
         )
         .expect("save should succeed");
 
-        let index = load_project_index_from_path(&path).expect("index load should succeed");
+        let manifest =
+            load_project_manifest_from_path(&path).expect("manifest load should succeed");
 
-        assert_eq!(index.format_version, CURRENT_FORMAT_VERSION);
-        assert_eq!(index.pages.len(), 2);
-        assert_eq!(index.pages[0].id, PageId(10));
-        assert_eq!(index.pages[0].komas.len(), 2);
-        assert_eq!(index.pages[1].id, PageId(20));
-        assert_eq!(index.pages[1].komas[0].layer_count, 2);
-        assert_eq!(index.composites.len(), 3);
+        assert_eq!(manifest.format_version, CURRENT_PROJECT_FORMAT_VERSION);
+        assert_eq!(manifest.pages.len(), 2);
+        assert_eq!(manifest.pages[0].id, PageId(10));
+        assert_eq!(manifest.pages[0].komas.len(), 2);
+        assert_eq!(manifest.pages[1].id, PageId(20));
+        assert_eq!(manifest.pages[1].komas[0].layer_count, 2);
+        assert_eq!(manifest.composites.len(), 3);
         assert!(
-            index
+            manifest
                 .composites
                 .iter()
                 .any(|composite| composite.composite_id == "page:10:koma:2:current")
@@ -456,12 +457,12 @@ mod tests {
             &BTreeMap::new(),
         )
         .expect("save should succeed");
-        overwrite_format_version(&path, CURRENT_FORMAT_VERSION + 1);
+        overwrite_format_version(&path, CURRENT_PROJECT_FORMAT_VERSION + 1);
 
         let error = load_project_from_path(&path).expect_err("unknown version should fail");
         assert!(matches!(
             error,
-            StorageError::UnsupportedFormatVersion(version) if version == CURRENT_FORMAT_VERSION + 1
+            ProjectStoreError::UnsupportedFormatVersion(version) if version == CURRENT_PROJECT_FORMAT_VERSION + 1
         ));
 
         let _ = fs::remove_file(path);
@@ -478,12 +479,12 @@ mod tests {
             &BTreeMap::new(),
         )
         .expect("save should succeed");
-        overwrite_format_version(&path, CURRENT_FORMAT_VERSION - 1);
+        overwrite_format_version(&path, CURRENT_PROJECT_FORMAT_VERSION - 1);
 
         let error = load_project_from_path(&path).expect_err("outdated version should fail");
         assert!(matches!(
             error,
-            StorageError::UnsupportedFormatVersion(version) if version == CURRENT_FORMAT_VERSION - 1
+            ProjectStoreError::UnsupportedFormatVersion(version) if version == CURRENT_PROJECT_FORMAT_VERSION - 1
         ));
 
         let _ = fs::remove_file(path);
@@ -494,7 +495,7 @@ mod tests {
     fn load_rejects_legacy_json_project_file() {
         let path = temp_path("legacy-json-rejected");
         let legacy = serde_json::json!({
-            "format_version": CURRENT_FORMAT_VERSION,
+            "format_version": CURRENT_PROJECT_FORMAT_VERSION,
             "document": small_document(),
         });
         fs::write(
@@ -504,7 +505,7 @@ mod tests {
         .expect("write should succeed");
 
         let error = load_project_from_path(&path).expect_err("legacy json should fail");
-        assert!(matches!(error, StorageError::InvalidProject(_)));
+        assert!(matches!(error, ProjectStoreError::InvalidProject(_)));
 
         let _ = fs::remove_file(path);
     }

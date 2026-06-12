@@ -16,11 +16,11 @@ pub use pen_format::{
 };
 pub use pen_presets::load_pen_directory;
 pub use project_file::{
-    LoadedProject, StorageError, load_page_from_path, load_koma_composite_from_path,
-    load_project_from_path, load_project_index_from_path, save_project_to_path,
+    LoadedProject, ProjectStoreError, load_page_from_path, load_koma_composite_from_path,
+    load_project_from_path, load_project_manifest_from_path, save_project_to_path,
 };
 pub use project_sqlite::{
-    PersistedKomaComposite, PersistedKomaCompositeSummary, ProjectIndex, ProjectPageSummary,
+    PersistedKomaComposite, PersistedKomaCompositeSummary, ProjectManifest, ProjectPageSummary,
     ProjectKomaSummary, ProjectSaveMode,
 };
 pub use export::{ExportError, export_active_koma_as_png};
