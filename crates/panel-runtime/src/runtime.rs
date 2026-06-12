@@ -1,4 +1,4 @@
-use crate::builtin_plugin::BuiltinPanelPlugin;
+use crate::html_wasm_panel::HtmlWasmPanel;
 use crate::config::{collect_persistent_panel_configs, restore_persistent_panel_configs};
 use crate::host_state::EMPTY_WORKSPACE_PANELS_JSON;
 use app_core::Document;
@@ -27,10 +27,10 @@ struct PanelGpuContext {
 }
 
 /// パネルから可変 `HtmlPanelView` を取り出すための共通アクセサ。
-/// `BuiltinPanelPlugin` のみが GPU 描画 (HtmlPanelView) を持つので downcast する。
+/// `HtmlWasmPanel` のみが GPU 描画 (HtmlPanelView) を持つので downcast する。
 fn panel_view_mut(panel: &mut Box<dyn PanelPlugin>) -> Option<&mut HtmlPanelView> {
     let any = panel.as_any_mut()?;
-    any.downcast_mut::<BuiltinPanelPlugin>()
+    any.downcast_mut::<HtmlWasmPanel>()
         .map(|p| p.view_mut())
 }
 
@@ -58,7 +58,7 @@ pub struct PanelRuntime {
     /// GPU コンテキスト（device/queue/renderer/scene scratch）。
     gpu_ctx: Option<PanelGpuContext>,
     /// `workspace_layout` の登録パネル一覧 (id / title / visible) を表現する JSON。
-    /// `sync_document_subset` の前に各 `BuiltinPanelPlugin` へ注入され、
+    /// `sync_document_subset` の前に各 `HtmlWasmPanel` へ注入され、
     /// host state の `workspace.panels_json` フィールドに反映される。
     workspace_panels_json: String,
 }
@@ -145,13 +145,13 @@ impl PanelRuntime {
         }
     }
 
-    /// GPU 直描画対応パネル (BuiltinPanelPlugin) の ID 一覧。
+    /// GPU 直描画対応パネル (HtmlWasmPanel) の ID 一覧。
     pub fn panel_ids_with_gpu(&mut self) -> Vec<String> {
         let mut ids = Vec::new();
         for panel in &mut self.panels {
             let panel_id = panel.id().to_string();
             if let Some(any) = panel.as_any_mut()
-                && any.downcast_mut::<BuiltinPanelPlugin>().is_some() {
+                && any.downcast_mut::<HtmlWasmPanel>().is_some() {
                     ids.push(panel_id);
                 }
         }
@@ -230,7 +230,7 @@ impl PanelRuntime {
             }
             let any = panel.as_any_mut()?;
             return any
-                .downcast_ref::<BuiltinPanelPlugin>()
+                .downcast_ref::<HtmlWasmPanel>()
                 .map(|p| p.default_size());
         }
         None
@@ -496,9 +496,9 @@ impl PanelRuntime {
             if panel_ids.is_some_and(|panel_ids| !panel_ids.contains(panel.id())) {
                 continue;
             }
-            // BuiltinPanelPlugin にはhost state 組立用の workspace 情報を注入する。
+            // HtmlWasmPanel にはhost state 組立用の workspace 情報を注入する。
             if let Some(any) = panel.as_any_mut()
-                && let Some(builtin) = any.downcast_mut::<BuiltinPanelPlugin>()
+                && let Some(builtin) = any.downcast_mut::<HtmlWasmPanel>()
             {
                 builtin.set_workspace_panels_json(workspace_json.clone());
             }
@@ -522,14 +522,14 @@ fn event_panel_id(event: &PanelEvent) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::builtin_plugin::test_fixture::{
+    use crate::html_wasm_panel::test_fixture::{
         KEYBOARD_WAT, NO_KEYBOARD_WAT, write_panel_fixture,
     };
     use serde_json::json;
 
     fn runtime_with_panel(name: &str, wat: &str) -> PanelRuntime {
         let dir = write_panel_fixture(name, wat);
-        let panel = BuiltinPanelPlugin::load(&dir, "panel.wasm", None).expect("panel loads");
+        let panel = HtmlWasmPanel::load(&dir, "panel.wasm", None).expect("panel loads");
         let mut runtime = PanelRuntime::new();
         runtime.register_panel(Box::new(panel));
         runtime

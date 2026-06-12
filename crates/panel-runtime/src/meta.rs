@@ -1,7 +1,7 @@
 //! `panel.meta.json` の deserialize 型。
 //!
 //! Phase 11: `default_size` を必須フィールドとして導入。
-//! BuiltinPanelPlugin / HtmlPanelPlugin の双方で共有する。
+//! HtmlWasmPanel と同梱パネル loader の双方で共有する。
 
 use serde::Deserialize;
 

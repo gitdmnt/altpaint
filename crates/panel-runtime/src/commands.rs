@@ -1,6 +1,6 @@
 //! Wasm が emit する `RequestDescriptor` を `Command` enum に変換する。
 //!
-//! Phase 10 では BuiltinPanelPlugin がこのマッピングを使い、Wasm の戻り値を
+//! Phase 10 では HtmlWasmPanel がこのマッピングを使い、Wasm の戻り値を
 //! HostAction::DispatchCommand(Command::*) に翻訳する。
 
 use app_core::{Command, ToolKind};

@@ -43,7 +43,7 @@ struct HtmlPanelHitMap {
 
 #[derive(Debug, Clone)]
 struct HtmlPanelHitItem {
-    /// HTML 要素の `id` 属性。`HtmlPanelPlugin::handle_event` の matching に使われる。
+    /// HTML 要素の `id` 属性。`HtmlWasmPanel::handle_event` の matching に使われる。
     node_id: String,
     /// パネル原点を (0,0) とする矩形。
     rect_in_panel: canvas_geometry::PixelRect,

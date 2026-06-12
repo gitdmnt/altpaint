@@ -1,4 +1,4 @@
-mod builtin_plugin;
+mod html_wasm_panel;
 mod commands;
 mod config;
 pub mod host_state;
@@ -6,7 +6,7 @@ mod loader;
 mod meta;
 mod runtime;
 
-pub use builtin_plugin::{BuiltinPanelError, BuiltinPanelPlugin};
+pub use html_wasm_panel::{HtmlWasmPanelError, HtmlWasmPanel};
 pub use commands::command_from_descriptor;
 pub use host_state::{
     EMPTY_WORKSPACE_PANELS_JSON, HostStateCache, build_host_state,

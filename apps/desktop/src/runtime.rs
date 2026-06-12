@@ -379,7 +379,7 @@ impl ApplicationHandler for DesktopRuntime {
                 let present_started = Instant::now();
 
                 // 上で組み立てた html_quad_entries を `GpuPanelQuad<'_>` に変換する。
-                // SAFETY: texture_ptr は self.app.panel_runtime 所有の Box<HtmlPanelPlugin>::target.texture
+                // SAFETY: texture_ptr は self.app.panel_runtime 所有の Box<HtmlWasmPanel>::target.texture
                 // を指す。Box は heap に固定されており、本フレームの間 panel_runtime に変更を加えないため
                 // 寿命が保たれる。html_quad_entries 自体は本ブロックスコープで保持されている。
                 let html_panel_quads_owned: Vec<crate::wgpu_canvas::GpuPanelQuad<'_>> =

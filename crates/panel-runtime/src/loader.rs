@@ -2,13 +2,13 @@
 //!
 //! `crates/builtin-panels/<name>/` 以下の
 //! `panel.html` / `panel.css` / `panel.meta.json` / `<wasm>` を順に読み、
-//! `BuiltinPanelPlugin` として `PanelRuntime` に登録する。
+//! `HtmlWasmPanel` として `PanelRuntime` に登録する。
 //! (旧 `builtin-panels` umbrella クレートから Phase 15 で統合)
 
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-use crate::{BuiltinPanelPlugin, PanelRuntime};
+use crate::{HtmlWasmPanel, PanelRuntime};
 
 #[derive(Debug, Error)]
 pub enum BuiltinPanelLoadError {
@@ -100,7 +100,7 @@ pub fn register_builtin_panels(
     }
     for def in BUILTIN_PANELS {
         let directory = assets_root.join(def.directory_name);
-        match BuiltinPanelPlugin::load(&directory, def.wasm_filename, None) {
+        match HtmlWasmPanel::load(&directory, def.wasm_filename, None) {
             Ok(panel) => runtime.register_panel(Box::new(panel)),
             Err(error) => diagnostics.push(format!("{}: {error}", directory.display())),
         }

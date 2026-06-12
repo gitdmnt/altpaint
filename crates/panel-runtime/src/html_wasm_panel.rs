@@ -1,4 +1,4 @@
-//! `BuiltinPanelPlugin` — Phase 10 同梱パネルの統一実装型。
+//! `HtmlWasmPanel` — Phase 10 同梱パネルの統一実装型。
 //!
 //! 構成要素:
 //! - `HtmlPanelView` (Blitz HTML/CSS + parley + vello)
@@ -26,7 +26,7 @@ use crate::meta::PanelMeta;
 use panel_wasm_host::{PanelWasmHostError, PanelWasmInstance};
 use serde_json::{Value, json};
 
-pub struct BuiltinPanelPlugin {
+pub struct HtmlWasmPanel {
     id: &'static str,
     title: &'static str,
     default_size: (u32, u32),
@@ -49,7 +49,7 @@ pub struct BuiltinPanelPlugin {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum BuiltinPanelError {
+pub enum HtmlWasmPanelError {
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
     #[error("invalid panel.meta.json: {0}")]
@@ -58,7 +58,7 @@ pub enum BuiltinPanelError {
     Host(#[from] PanelWasmHostError),
 }
 
-impl BuiltinPanelPlugin {
+impl HtmlWasmPanel {
     /// パネルディレクトリを読み込み、HTML/CSS/Wasm を初期化する。
     ///
     /// ディレクトリ構成:
@@ -70,7 +70,7 @@ impl BuiltinPanelPlugin {
         directory: &Path,
         wasm_filename: &str,
         restored_size: Option<(u32, u32)>,
-    ) -> Result<Self, BuiltinPanelError> {
+    ) -> Result<Self, HtmlWasmPanelError> {
         let html = std::fs::read_to_string(directory.join("panel.html"))?;
         let css = directory.join("panel.css");
         let css = if css.exists() {
@@ -226,7 +226,7 @@ fn request_descriptor_to_host_action(
     Some(HostAction::RequestService(request))
 }
 
-impl PanelPlugin for BuiltinPanelPlugin {
+impl PanelPlugin for HtmlWasmPanel {
     fn id(&self) -> &'static str {
         self.id
     }
@@ -339,7 +339,7 @@ impl PanelPlugin for BuiltinPanelPlugin {
     }
 }
 
-impl BuiltinPanelPlugin {
+impl HtmlWasmPanel {
     fn lookup_action_descriptor(&self, node_id: &str) -> Option<ActionDescriptor> {
         let document = self.view.document();
         let id_selector = format!("#{}", css_escape_id(node_id));
@@ -479,7 +479,7 @@ mod tests {
     #[test]
     fn handles_keyboard_event_true_when_wasm_exports_keyboard_handler() {
         let dir = write_panel_fixture("kb-true", KEYBOARD_WAT);
-        let panel = BuiltinPanelPlugin::load(&dir, "panel.wasm", None).expect("panel loads");
+        let panel = HtmlWasmPanel::load(&dir, "panel.wasm", None).expect("panel loads");
         assert!(panel.handles_keyboard_event());
     }
 
@@ -487,7 +487,7 @@ mod tests {
     #[test]
     fn handles_keyboard_event_false_without_keyboard_handler() {
         let dir = write_panel_fixture("kb-false", NO_KEYBOARD_WAT);
-        let panel = BuiltinPanelPlugin::load(&dir, "panel.wasm", None).expect("panel loads");
+        let panel = HtmlWasmPanel::load(&dir, "panel.wasm", None).expect("panel loads");
         assert!(!panel.handles_keyboard_event());
     }
 
@@ -496,7 +496,7 @@ mod tests {
     #[test]
     fn keyboard_event_dispatches_to_wasm_and_updates_persistent_config() {
         let dir = write_panel_fixture("kb-dispatch", KEYBOARD_WAT);
-        let mut panel = BuiltinPanelPlugin::load(&dir, "panel.wasm", None).expect("panel loads");
+        let mut panel = HtmlWasmPanel::load(&dir, "panel.wasm", None).expect("panel loads");
 
         let actions = panel.handle_event(&PanelEvent::Keyboard {
             panel_id: "builtin.test-kb".to_string(),
@@ -516,7 +516,7 @@ mod tests {
     #[test]
     fn keyboard_event_for_other_panel_is_ignored() {
         let dir = write_panel_fixture("kb-other", KEYBOARD_WAT);
-        let mut panel = BuiltinPanelPlugin::load(&dir, "panel.wasm", None).expect("panel loads");
+        let mut panel = HtmlWasmPanel::load(&dir, "panel.wasm", None).expect("panel loads");
 
         let actions = panel.handle_event(&PanelEvent::Keyboard {
             panel_id: "builtin.other".to_string(),
