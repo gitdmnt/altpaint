@@ -23,7 +23,7 @@ pub use document::{
     KomaBounds, KomaId, PenPreset, PenRuntimeEngine, PenTipBitmap, RasterLayer, ToolDefinition,
     ToolKind, ToolSettingControl, ToolSettingDefinition, Work, WorkId,
 };
-pub use history::{CommandHistory, DEFAULT_HISTORY_CAPACITY, HistoryEntry, OpaqueGpuData};
+pub use history::{DEFAULT_HISTORY_CAPACITY, EditHistory, HistoryEntry, OpaqueGpuData};
 pub use painting::{
     BitmapComposite, BitmapCompositor, BitmapEdit, PaintInput, PaintPlugin, PaintPluginContext,
 };

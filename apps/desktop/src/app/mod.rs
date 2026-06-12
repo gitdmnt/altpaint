@@ -25,7 +25,7 @@ use std::path::PathBuf;
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use app_core::{CanvasBitmap, PageDirtyRect, PagePoint, CommandHistory, Document, KomaId};
+use app_core::{CanvasBitmap, EditHistory, PageDirtyRect, PagePoint, Document, KomaId};
 use desktop_support::{
     DesktopDialogs, NativeDesktopDialogs, WorkspacePresetCatalog, default_workspace_preset_path,
 };
@@ -91,7 +91,7 @@ pub(crate) struct DesktopApp {
     /// 次フレームで消化される提示無効化状態 (保留 dirty rect・再構築フラグ)。
     pub(crate) invalidation: present_state::PresentInvalidation,
     cached_canvas_view_geometry: Option<CachedCanvasViewGeometry>,
-    pub(crate) history: CommandHistory,
+    pub(crate) history: EditHistory,
     pub(crate) snapshots: DocumentSnapshotStore,
     pub(crate) panel_interaction: PanelInteractionState,
     hover_canvas_position: Option<PagePoint>,
@@ -154,7 +154,7 @@ impl DesktopApp {
             status_panel: crate::frame::status_panel::StatusPanel::new(),
             invalidation: present_state::PresentInvalidation::at_startup(),
             cached_canvas_view_geometry: None,
-            history: CommandHistory::new(),
+            history: EditHistory::new(),
             snapshots: DocumentSnapshotStore::default(),
             panel_interaction: PanelInteractionState::default(),
             hover_canvas_position: None,

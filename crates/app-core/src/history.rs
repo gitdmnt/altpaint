@@ -1,6 +1,6 @@
 //! Undo/Redo の履歴基盤。
 //!
-//! `CommandHistory` は操作記録（`HistoryEntry`）のスタックを管理する。
+//! `EditHistory` は操作記録（`HistoryEntry`）のスタックを管理する。
 //! undo 方式はビットマップ前後スナップショット（`BitmapPatch`）の保存・復元方式。
 
 use crate::{CanvasBitmap, PageDirtyRect, KomaId};
@@ -53,13 +53,13 @@ pub enum HistoryEntry {
 ///
 /// `push` で過去スタックへ追加し、`undo` / `redo` で移動する。
 /// 容量超過時は最も古いエントリを破棄する。
-pub struct CommandHistory {
+pub struct EditHistory {
     past: Vec<HistoryEntry>,
     future: Vec<HistoryEntry>,
     capacity: usize,
 }
 
-impl CommandHistory {
+impl EditHistory {
     /// デフォルト容量（50）で生成する。
     pub fn new() -> Self {
         Self::with_capacity(DEFAULT_HISTORY_CAPACITY)
@@ -117,7 +117,7 @@ impl CommandHistory {
     }
 }
 
-impl Default for CommandHistory {
+impl Default for EditHistory {
     fn default() -> Self {
         Self::new()
     }
@@ -145,7 +145,7 @@ mod tests {
     /// push した後に undo すると past から取り出せることを確認する。
     #[test]
     fn push_and_undo_round_trip() {
-        let mut history = CommandHistory::new();
+        let mut history = EditHistory::new();
         history.push(make_patch(1));
         assert!(history.can_undo());
         let entry = history.undo();
@@ -156,7 +156,7 @@ mod tests {
     /// undo 後に redo すると future から取り出せることを確認する。
     #[test]
     fn undo_then_redo() {
-        let mut history = CommandHistory::new();
+        let mut history = EditHistory::new();
         history.push(make_patch(1));
         history.undo();
         assert!(history.can_redo());
@@ -168,7 +168,7 @@ mod tests {
     /// 新規 push で future がクリアされることを確認する。
     #[test]
     fn push_clears_future() {
-        let mut history = CommandHistory::new();
+        let mut history = EditHistory::new();
         history.push(make_patch(1));
         history.undo();
         assert!(history.can_redo());
@@ -179,7 +179,7 @@ mod tests {
     /// 容量超過時に最古エントリが破棄されることを確認する。
     #[test]
     fn capacity_evicts_oldest() {
-        let mut history = CommandHistory::with_capacity(2);
+        let mut history = EditHistory::with_capacity(2);
         history.push(make_patch(1));
         history.push(make_patch(2));
         history.push(make_patch(3));
@@ -194,7 +194,7 @@ mod tests {
     /// clear で past/future が空になることを確認する。
     #[test]
     fn clear_empties_stacks() {
-        let mut history = CommandHistory::new();
+        let mut history = EditHistory::new();
         history.push(make_patch(1));
         history.clear();
         assert!(!history.can_undo());
