@@ -416,7 +416,7 @@ diagnostics: HandlerEffects (旧 HandlerResult) の diagnostics を panel-runtim
 | BL-006 | exposed background 機構削除 (`let _ =` で破棄、コメントが不要と明言) | dead | render-types, desktop/present_state.rs | — | B0 |
 | BL-007 | `FramePlan` / `CanvasCompositeSource` 削除 (pixels は誰も読まない。CanvasPlan 直渡し) | dead/leak | render-types, desktop | — | B0 |
 | BL-008 | storage レガシー読込全廃: JSON/ALTPBIN フォールバック、AltpaintProjectFile、LegacyAltPaintPen v1、format_version 旧受理、deprecated 二重フィールド、index 二重読込 | dead | storage/project_file.rs, pen_format.rs | — | B0 |
-| BL-009 | storage 死 public API の pub(crate) 化/削除 (save_document_to_path ほか 11 関数) | dead | storage/lib.rs | — | B0 |
+| BL-009 | storage 死 public API の pub(crate) 化/削除 (save_document_to_path ほか 11 関数) | dead | storage/lib.rs | — | B0 (大部分実施。manifest 系ほか一部公開 API は live 設計要素のため残置し B7 で再判断) |
 | BL-010 | desktop-support 死 API 削除 (workspace_layout()/plugin_configs() アクセサ、未参照定数 6 個、未使用再エクスポート) | dead | desktop-support | — | B0 |
 | BL-011 | panel-api 死コード削除: `HostAction::InvokePanelHandler`、`PanelPlugin::commands()`、`debug_summary()` | dead | panel-api, desktop/panel_dispatch.rs | — | B0 |
 | BL-012 | 旧 init プロトコル削除: `PanelInitRequest/Response`、`WasmPanelRuntime::initialize`、`path()`、`apply_state_patches` (host 側コピー)、SDK 再 export、`handler_result()`/builder.rs | dead | panel-schema, plugin-host, plugin-sdk | — | B0 |
@@ -430,7 +430,7 @@ diagnostics: HandlerEffects (旧 HandlerResult) の diagnostics を panel-runtim
 | BL-020 | workspace 依存掃除: fontdb / rfd / pixels (未参照)、`#[allow(unused_imports)]` 再エクスポート | dead | Cargo.toml, desktop/frame | — | B0 |
 | BL-021 | パネル個別の死コード: pen-settings の `let _ = label;`、text-flow の COLOR_HEX (read-only) | dead | builtin-panels | — | B0 |
 | BL-022 | 機械生成テンプレ doc コメント全廃 (実装と矛盾するもの優先: 「入力や種別に応じて処理を振り分ける」等)。非自明箇所のみ実挙動で書き直し | doc | 全クレート | — | B0 (以後の各バッチでも触った箇所は同時更新) |
-| BL-023 | `paint_params` モジュール削除 (定数 1 個を stroke モジュールへ) | cohesion | app-core | — | B0 |
+| BL-023 | `paint_params` モジュール削除 (定数 1 個を stroke モジュールへ) | cohesion | app-core | — | B0 で skip。gpu-canvas が `MAX_STAMP_STEPS` を参照するため B8 (BL-130 PaintPlan 化で stamps が計画側に移り、定数は paint-engine のみで完結) で実施 |
 | BL-024 | `on_input` の常時 true 返値 → `()` | dead | panel-html | — | B0 |
 
 ### 3.2 既知バグ + 重複一本化 (B3)

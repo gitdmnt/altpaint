@@ -67,3 +67,4 @@ B0 死コード一掃 → B1 Koma 用語統一 → B2 クレート・型機械�
 ## 経過記録
 
 - 2026-06-12: 起票。調査 (19 agents) → 設計 → judge panel 3 レンズ × 3 ラウンドのレビューを完了し実装開始。ベースライン: テスト 415 passed / 0 failed / 8 ignored、clippy 警告 0。
+- 2026-06-12: **B0 完了** (死コード一掃と文書浄化、claude-fable-5)。コミット 4bdeb13..7a59cc6 の 28 コミット (145 ファイル / +412 −5,143 行)。テスト 415 → 405 passed / 0 failed / 7 ignored (減少は死 API テストの削除によるもの。ラウンドトリップ/旧形式拒否テストを新規追加した上での正味値)、clippy 警告 0。skipped: BL-023 (`paint_params` モジュール削除) は `MAX_STAMP_STEPS` が gpu-canvas からも参照されるため B0 では実施せず、B8 の PaintPlan 化 (BL-130 で stamps が計画側に移り定数が paint-engine のみで完結) と同時に解決。BL-009 の一部公開 API (manifest 系ほか) は live 設計要素のため残置し B7 で再判断。

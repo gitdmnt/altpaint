@@ -220,11 +220,10 @@ graph TD
 担当:
 
 - `GpuCanvasPool` / `GpuLayerTexture`（レイヤーテクスチャの upload / readback）
-- `GpuPenTipCache`
 - `GpuBrushDispatch`（stamp / stroke / erase）
 - `GpuFillDispatch`（flood fill / lasso fill）
 - `GpuLayerCompositor`（レイヤー合成）
-- `src/shaders/` の 8 WGSL compute shader
+- `src/shaders/` の 7 WGSL compute shader（書込み専用だった `GpuPenTipCache` と孤立 brush_stamp.wgsl は ADR 018 B0 で削除）
 
 依存の特徴:
 
@@ -237,9 +236,9 @@ graph TD
 
 - 純データ DTO 専用クレート（wgpu / fontdb / panel-api 非依存、`app-core` のみ依存）
 - `PixelRect` / `TextureQuad` / `CanvasScene` / `prepare_canvas_scene`
-- `FramePlan` / `CanvasPlan` / `LayerGroupDirtyPlan`（`PanelPlan` / `PanelSurfaceSource` は ADR 016 で削除）
+- `CanvasPlan` / `LayerGroupDirtyPlan`（`PanelPlan` / `PanelSurfaceSource` は ADR 016、`FramePlan` / `CanvasCompositeSource` は ADR 018 B0 で削除し `CanvasPlan` 直渡しへ）
 - `CanvasOverlayState` / `PanelNavigatorOverlay` / `PanelNavigatorEntry`
-- dirty rect の union 計算、ブラシ preview dirty / 露出背景 / 座標変換などの純粋計算
+- dirty rect の union 計算、ブラシ preview dirty / 座標変換などの純粋計算（露出背景機構は ADR 018 B0 で削除）
 
 意味:
 
@@ -417,7 +416,7 @@ graph TD
 
 - `winit` の event loop
 - `wgpu` presenter（`WgpuPresenter` + solid / circle / line quad パイプライン）
-- GPU ペイントリソースの所有と dispatch（`GpuCanvasPool` / `GpuBrushDispatch` / `GpuFillDispatch` / `GpuLayerCompositor` / `GpuPenTipCache`）
+- GPU ペイントリソースの所有と dispatch（`GpuCanvasPool` / `GpuBrushDispatch` / `GpuFillDispatch` / `GpuLayerCompositor`）
 - canvas pointer input から `Command` / `PaintInput` への変換
 - `DesktopApp` による状態遷移と副作用統合
 - `PresentScene`（背景 / canvas / overlay / panel / status quad）の組み立てと提示
