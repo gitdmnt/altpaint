@@ -1,6 +1,6 @@
 mod pen_exchange;
 mod pen_format;
-mod pen_presets;
+mod pen_catalog;
 mod project_file;
 mod project_sqlite;
 mod tool_catalog;
@@ -11,10 +11,10 @@ pub use pen_exchange::{
     export_altpaint_pen_json, export_gimp_gbr, parse_pen_file,
 };
 pub use pen_format::{
-    AltPaintPen, PenDynamics, PenEngine, PenPressureCurve, PenPressurePoint, PenSource,
+    AltPaintPen, PenDynamics, StoredPenEngine, PenPressureCurve, PenPressurePoint, PenSource,
     PenSourceKind, PenTip,
 };
-pub use pen_presets::load_pen_directory;
+pub use pen_catalog::load_pen_directory;
 pub use project_file::{
     LoadedProject, ProjectStoreError, load_page_from_path, load_koma_composite_from_path,
     load_project_from_path, load_project_manifest_from_path, save_project_to_path,

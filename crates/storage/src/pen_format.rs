@@ -9,7 +9,7 @@ pub const CURRENT_PEN_FORMAT_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "kebab-case")]
-pub enum PenEngine {
+pub enum StoredPenEngine {
     #[default]
     Stamp,
     Generated,
@@ -153,7 +153,7 @@ pub struct AltPaintPen {
     #[serde(default = "default_plugin_id")]
     pub plugin_id: String,
     #[serde(default)]
-    pub engine: PenEngine,
+    pub engine: StoredPenEngine,
     #[serde(default = "default_base_size")]
     pub base_size: f32,
     #[serde(default = "default_min_size")]
@@ -191,7 +191,7 @@ impl Default for AltPaintPen {
             id: PenPreset::default().id,
             name: PenPreset::default().name,
             plugin_id: default_plugin_id(),
-            engine: PenEngine::default(),
+            engine: StoredPenEngine::default(),
             base_size: default_base_size(),
             min_size: default_min_size(),
             max_size: default_max_size(),
@@ -272,8 +272,8 @@ impl AltPaintPen {
             antialias: self.antialias,
             stabilization: self.stabilization.min(100),
             engine: match self.engine {
-                PenEngine::Stamp => PenRuntimeEngine::Stamp,
-                PenEngine::Generated => PenRuntimeEngine::Generated,
+                StoredPenEngine::Stamp => PenRuntimeEngine::Stamp,
+                StoredPenEngine::Generated => PenRuntimeEngine::Generated,
             },
             spacing_percent: self.spacing_percent,
             rotation_degrees: self.rotation_deg,
@@ -295,8 +295,8 @@ impl AltPaintPen {
             antialias: preset.antialias,
             stabilization: preset.stabilization,
             engine: match preset.engine {
-                PenRuntimeEngine::Stamp => PenEngine::Stamp,
-                PenRuntimeEngine::Generated => PenEngine::Generated,
+                PenRuntimeEngine::Stamp => StoredPenEngine::Stamp,
+                PenRuntimeEngine::Generated => StoredPenEngine::Generated,
             },
             spacing_percent: preset.spacing_percent,
             rotation_deg: preset.rotation_degrees,
