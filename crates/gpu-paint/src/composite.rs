@@ -7,6 +7,8 @@
 
 use std::sync::Arc;
 
+use app_core::PageDirtyRect;
+
 use crate::gpu::{GpuCanvasContext, GpuRgbaTexture};
 use crate::pipeline::build_compute_pipeline;
 
@@ -66,12 +68,13 @@ impl CompositePipeline {
     /// dirty 範囲内で composite テクスチャを再合成する。
     ///
     /// `layers` は bottom → top 順。`visible == false` のエントリはスキップする。
-    /// `dirty` は `(x0, y0, x1, y1)` の半開区間。範囲外は書き換えない。
+    /// `dirty` は半開矩形 (`x + width`, `y + height` は範囲外の最初の座標)。
+    /// テクスチャ境界へクランプされ、範囲外は書き換えない。
     pub fn recomposite(
         &self,
         composite: &GpuRgbaTexture,
         layers: &[CompositeLayerEntry<'_>],
-        dirty: (u32, u32, u32, u32),
+        dirty: PageDirtyRect,
     ) {
         let w = composite.width;
         let h = composite.height;
@@ -211,11 +214,13 @@ impl CompositePipeline {
     }
 }
 
-fn clamp_dirty(dirty: (u32, u32, u32, u32), w: u32, h: u32) -> (u32, u32, u32, u32) {
-    let x0 = dirty.0.min(w);
-    let y0 = dirty.1.min(h);
-    let x1 = dirty.2.min(w);
-    let y1 = dirty.3.min(h);
+/// 半開矩形 `dirty` を `(x0, y0, x1, y1)` のクランプ済み半開タプル
+/// (WGSL の dirty_x0/y0/x1/y1 に対応) へ変換する。
+fn clamp_dirty(dirty: PageDirtyRect, w: u32, h: u32) -> (u32, u32, u32, u32) {
+    let x0 = (dirty.x as u32).min(w);
+    let y0 = (dirty.y as u32).min(h);
+    let x1 = ((dirty.x + dirty.width) as u32).min(w);
+    let y1 = ((dirty.y + dirty.height) as u32).min(h);
     (x0, y0, x1, y1)
 }
 
@@ -377,5 +382,22 @@ mod tests {
         assert_eq!(u32::from_le_bytes(bytes[20..24].try_into().unwrap()), 66);
         assert_eq!(u32::from_le_bytes(bytes[24..28].try_into().unwrap()), 3);
         assert_eq!(u32::from_le_bytes(bytes[28..32].try_into().unwrap()), 1);
+    }
+
+    #[test]
+    fn clamp_dirty_converts_half_open_rect_to_clamped_tuple() {
+        // 範囲内: 半開矩形 (x=2, y=3, w=4, h=5) → (2, 3, 6, 8)。
+        let inside = clamp_dirty(PageDirtyRect::new(2, 3, 4, 5), 100, 100);
+        assert_eq!(inside, (2, 3, 6, 8));
+    }
+
+    #[test]
+    fn clamp_dirty_clamps_to_texture_bounds() {
+        // テクスチャ (10x10) を超える矩形は x1/y1 が境界へクランプされる。
+        let clamped = clamp_dirty(PageDirtyRect::new(8, 8, 20, 20), 10, 10);
+        assert_eq!(clamped, (8, 8, 10, 10));
+        // 原点も境界へクランプされる。
+        let origin = clamp_dirty(PageDirtyRect::new(50, 50, 4, 4), 10, 10);
+        assert_eq!(origin, (10, 10, 10, 10));
     }
 }

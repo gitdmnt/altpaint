@@ -302,7 +302,12 @@ mod gpu_tests {
                 let ctx = crate::GpuCanvasContext::new(device, queue);
                 let fill = FillPipeline::new(&ctx);
                 let target = pool.get("p", 0).unwrap();
-                fill.dispatch_flood_fill(target, target, (0, 0), [1.0, 0.0, 0.0, 1.0]);
+                fill.dispatch_flood_fill(
+                    target,
+                    target,
+                    app_core::KomaLocalPoint::new(0, 0),
+                    [1.0, 0.0, 0.0, 1.0],
+                );
 
                 let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
                 // Left column (x=0, x=1) should be filled red; right columns unchanged.
@@ -342,11 +347,12 @@ mod gpu_tests {
                 let fill = FillPipeline::new(&ctx);
                 let target = pool.get("p", 0).unwrap();
                 // 三角形 (0,0), (7,0), (0,7) — 左上半分が内側。
+                // 半開矩形 (0, 0, 8, 8) は包括 AABB (0, 0, 7, 7) に対応。
                 let polygon = vec![(0.0, 0.0), (7.0, 0.0), (0.0, 7.0)];
                 fill.dispatch_lasso_fill(
                     target,
                     &polygon,
-                    (0, 0, 7, 7),
+                    app_core::PageDirtyRect::new(0, 0, 8, 8),
                     [0.0, 1.0, 0.0, 1.0],
                 );
 
@@ -399,7 +405,7 @@ mod gpu_tests {
                         blend_code: 0,
                         visible: true,
                     }],
-                    (0, 0, 4, 4),
+                    app_core::PageDirtyRect::new(0, 0, 4, 4),
                 );
 
                 let (_, _, out) = pool.read_back_composite("p").expect("readback");
@@ -443,7 +449,7 @@ mod gpu_tests {
                         blend_code: 0,
                         visible: false,
                     }],
-                    (0, 0, 4, 4),
+                    app_core::PageDirtyRect::new(0, 0, 4, 4),
                 );
 
                 let (_, _, out) = pool.read_back_composite("p").expect("readback");

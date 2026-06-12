@@ -280,12 +280,7 @@ impl DesktopApp {
 
         match input {
             PaintInput::FloodFill { at } => {
-                fill.dispatch_flood_fill(
-                    source_ref,
-                    target,
-                    (at.x as u32, at.y as u32),
-                    fill_rgba,
-                );
+                fill.dispatch_flood_fill(source_ref, target, *at, fill_rgba);
             }
             PaintInput::LassoFill { points } => {
                 if points.len() < 3 {
@@ -294,16 +289,17 @@ impl DesktopApp {
                 let polygon: Vec<(f32, f32)> =
                     points.iter().map(|p| (p.x as f32, p.y as f32)).collect();
                 let (mut x0, mut y0, mut x1, mut y1) =
-                    (u32::MAX, u32::MAX, 0u32, 0u32);
+                    (usize::MAX, usize::MAX, 0usize, 0usize);
                 for (x, y) in &polygon {
-                    let xi = x.floor().max(0.0) as u32;
-                    let yi = y.floor().max(0.0) as u32;
+                    let xi = x.floor().max(0.0) as usize;
+                    let yi = y.floor().max(0.0) as usize;
                     x0 = x0.min(xi);
                     y0 = y0.min(yi);
                     x1 = x1.max(xi);
                     y1 = y1.max(yi);
                 }
-                fill.dispatch_lasso_fill(target, &polygon, (x0, y0, x1, y1), fill_rgba);
+                let aabb = PageDirtyRect::from_inclusive_points(x0, y0, x1, y1);
+                fill.dispatch_lasso_fill(target, &polygon, aabb, fill_rgba);
             }
             _ => return false,
         }

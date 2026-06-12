@@ -331,6 +331,9 @@ impl DesktopApp {
             width: koma.composite_cache.width,
             height: koma.composite_cache.height,
         });
+        // クランプ後に空矩形なら entries 収集と dispatch を省略する
+        // (recomposite 側でも再クランプ + 空チェックされるが、ここで早期 return すると
+        //  無駄な entries collect を避けられる)。
         let x0 = (rect.x as u32).min(pw);
         let y0 = (rect.y as u32).min(ph);
         let x1 = ((rect.x + rect.width) as u32).min(pw);
@@ -355,7 +358,7 @@ impl DesktopApp {
             })
             .collect();
 
-        gpu.compositor.recomposite(composite, &entries, (x0, y0, x1, y1));
+        gpu.compositor.recomposite(composite, &entries, rect);
     }
 
     /// 全コマの composite テクスチャを再合成する。`install_gpu_resources` や

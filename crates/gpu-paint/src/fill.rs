@@ -7,6 +7,8 @@
 
 use std::sync::Arc;
 
+use app_core::{KomaLocalPoint, PageDirtyRect};
+
 use crate::gpu::{GpuCanvasContext, GpuRgbaTexture};
 use crate::pipeline::build_compute_pipeline;
 
@@ -90,12 +92,13 @@ impl FillPipeline {
         &self,
         source: &GpuRgbaTexture,
         target: &GpuRgbaTexture,
-        seed: (u32, u32),
+        seed: KomaLocalPoint,
         fill_rgba: [f32; 4],
     ) -> FloodFillOutcome {
         let w = target.width;
         let h = target.height;
-        if w == 0 || h == 0 || seed.0 >= w || seed.1 >= h {
+        let (seed_x, seed_y) = (seed.x as u32, seed.y as u32);
+        if w == 0 || h == 0 || seed_x >= w || seed_y >= h {
             return FloodFillOutcome {
                 iterations: 0,
                 pixels_changed: 0,
@@ -134,7 +137,7 @@ impl FillPipeline {
         self.queue.write_buffer(
             &params_buf,
             0,
-            &build_flood_fill_params_bytes(seed.0, seed.1, w, h),
+            &build_flood_fill_params_bytes(seed_x, seed_y, w, h),
         );
 
         let counter_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -246,13 +249,13 @@ impl FillPipeline {
         }
     }
 
-    /// 指定ポリゴン内ピクセルを塗りつぶす。`polygon_aabb` は `(x0, y0, x1, y1)` の包括的
-    /// バウンディングボックス（x1/y1 は最終ピクセル座標）。
+    /// 指定ポリゴン内ピクセルを塗りつぶす。`polygon_aabb` はポリゴンの
+    /// バウンディングボックスを表す半開矩形 (dispatch 範囲の culling にのみ使う)。
     pub fn dispatch_lasso_fill(
         &self,
         active_layer: &GpuRgbaTexture,
         polygon: &[(f32, f32)],
-        polygon_aabb: (u32, u32, u32, u32),
+        polygon_aabb: PageDirtyRect,
         fill_rgba: [f32; 4],
     ) {
         let w = active_layer.width;
@@ -621,20 +624,28 @@ pub(crate) fn build_fill_apply_params_bytes(color: [f32; 4], w: u32, h: u32) -> 
 }
 
 /// LassoMarkParams を 32-byte LE シリアライズする。
+///
+/// `aabb` は半開矩形。WGSL 側は包括 AABB (`aabb_x1`/`aabb_y1` = 最終ピクセル座標)
+/// で culling するため、ここで `x + width - 1` / `y + height - 1` の包括座標へ
+/// 変換する。空矩形の場合は culling が常に外れる包括座標を書く。
 pub(crate) fn build_lasso_mark_params_bytes(
     polygon_count: u32,
     w: u32,
     h: u32,
-    aabb: (u32, u32, u32, u32),
+    aabb: PageDirtyRect,
 ) -> [u8; 32] {
+    let x0 = aabb.x as u32;
+    let y0 = aabb.y as u32;
+    let x1 = x0 + (aabb.width as u32).saturating_sub(1);
+    let y1 = y0 + (aabb.height as u32).saturating_sub(1);
     let mut buf = [0u8; 32];
     buf[0..4].copy_from_slice(&polygon_count.to_le_bytes());
     buf[4..8].copy_from_slice(&w.to_le_bytes());
     buf[8..12].copy_from_slice(&h.to_le_bytes());
-    buf[12..16].copy_from_slice(&aabb.0.to_le_bytes());
-    buf[16..20].copy_from_slice(&aabb.1.to_le_bytes());
-    buf[20..24].copy_from_slice(&aabb.2.to_le_bytes());
-    buf[24..28].copy_from_slice(&aabb.3.to_le_bytes());
+    buf[12..16].copy_from_slice(&x0.to_le_bytes());
+    buf[16..20].copy_from_slice(&y0.to_le_bytes());
+    buf[20..24].copy_from_slice(&x1.to_le_bytes());
+    buf[24..28].copy_from_slice(&y1.to_le_bytes());
     buf
 }
 
@@ -668,7 +679,9 @@ mod tests {
 
     #[test]
     fn lasso_mark_params_layout_matches_wgsl() {
-        let bytes = build_lasso_mark_params_bytes(7, 320, 240, (10, 20, 100, 200));
+        // 半開矩形 (x=10, y=20, w=91, h=181) → 包括 AABB (10, 20, 100, 200)。
+        let bytes =
+            build_lasso_mark_params_bytes(7, 320, 240, PageDirtyRect::new(10, 20, 91, 181));
         assert_eq!(bytes.len(), 32);
         assert_eq!(u32::from_le_bytes(bytes[0..4].try_into().unwrap()), 7);
         assert_eq!(u32::from_le_bytes(bytes[4..8].try_into().unwrap()), 320);
@@ -677,5 +690,15 @@ mod tests {
         assert_eq!(u32::from_le_bytes(bytes[16..20].try_into().unwrap()), 20);
         assert_eq!(u32::from_le_bytes(bytes[20..24].try_into().unwrap()), 100);
         assert_eq!(u32::from_le_bytes(bytes[24..28].try_into().unwrap()), 200);
+    }
+
+    #[test]
+    fn lasso_mark_params_single_pixel_aabb_is_inclusive() {
+        // 1x1 半開矩形 (x=5, y=7, w=1, h=1) → 包括 AABB (5, 7, 5, 7)。
+        let bytes = build_lasso_mark_params_bytes(3, 16, 16, PageDirtyRect::new(5, 7, 1, 1));
+        assert_eq!(u32::from_le_bytes(bytes[12..16].try_into().unwrap()), 5);
+        assert_eq!(u32::from_le_bytes(bytes[16..20].try_into().unwrap()), 7);
+        assert_eq!(u32::from_le_bytes(bytes[20..24].try_into().unwrap()), 5);
+        assert_eq!(u32::from_le_bytes(bytes[24..28].try_into().unwrap()), 7);
     }
 }
