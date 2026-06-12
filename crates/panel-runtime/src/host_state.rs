@@ -1,18 +1,22 @@
-use app_core::{Document, ToolKind};
+use app_core::{Document, PenPreset, ToolKind};
 use serde_json::{Value, json};
 
 /// 高価な JSON シリアライズ結果を再利用するためのキャッシュ。
 ///
 /// ズーム/パンなど view のみが変わる操作では pen_presets / tool_catalog 等の
 /// 再シリアライズをスキップし、build_host_state のコストを大幅に削減する。
+///
+/// BL-031 暫定対応: 無効化キーは「件数 + active index」ではなく内容そのもの
+/// (ペンプリセットはクローンの等値比較、レイヤー/コマは内容を毎回再構築) を使う。
+/// revision ベースの完全なキャッシュ化は BL-093 (B6) で行う。
 #[derive(Default)]
 pub struct HostStateCache {
     /// 初回呼び出しで必ず全フィールドを構築するためのフラグ。
     initialized: bool,
 
-    // pen プリセット
-    pen_count: usize,
-    active_pen_index: usize,
+    // pen プリセット (内容の等値比較で無効化。tip ビットマップを含む
+    // 重いシリアライズを内容が変わらない限りスキップする)
+    pen_presets: Vec<PenPreset>,
     pen_presets_json: String,
 
     // ツールカタログ・設定
@@ -20,16 +24,6 @@ pub struct HostStateCache {
     tool_catalog_json: String,
     child_tools_json: String,
     active_tool_settings_json: String,
-
-    // レイヤー一覧
-    layer_count: usize,
-    active_layer_index: usize,
-    layers_json: String,
-
-    // コマ一覧
-    page_koma_count: usize,
-    active_koma_index: usize,
-    komas_json: String,
 }
 
 /// `build_host_state` 呼出側が事前に組み立てた workspace パネル一覧 JSON のデフォルト。
@@ -69,14 +63,15 @@ pub fn build_host_state(
 
     let force_rebuild = !cache.initialized;
 
-    // ---- pen presets (変化しなければキャッシュを再利用) ----
+    // ---- pen presets (内容が変化しなければキャッシュを再利用) ----
+    // BL-031: 件数 + active index ではプリセット内容の編集を検知できないため、
+    // 内容の等値比較で無効化する。
     let pen_count = document.pen_presets.len();
     let active_pen_index = document.active_pen_index();
-    if force_rebuild || cache.pen_count != pen_count || cache.active_pen_index != active_pen_index {
+    if force_rebuild || cache.pen_presets != document.pen_presets {
         cache.pen_presets_json =
             serde_json::to_string(&document.pen_presets).unwrap_or_else(|_| "[]".to_string());
-        cache.pen_count = pen_count;
-        cache.active_pen_index = active_pen_index;
+        cache.pen_presets = document.pen_presets.clone();
     }
 
     // ---- ツールカタログ・設定 ----
@@ -94,67 +89,56 @@ pub fn build_host_state(
     }
 
     // ---- レイヤー一覧 ----
+    // BL-031: 件数 + active index では名前・visible・blend_mode・mask の変更を
+    // 検知できないため、内容 (name, visible, blend_mode, masked) を毎回構築する。
     let layer_count = active_koma.map(|p| p.layers.len()).unwrap_or(1);
     let active_layer_index = active_koma.map(|p| p.active_layer_index).unwrap_or(0);
-    if force_rebuild || cache.layer_count != layer_count || cache.active_layer_index != active_layer_index {
-        let layers = active_koma
-            .map(|koma| {
-                // index 0 が最下層のため逆順で返す（UI の先頭 = 前面レイヤー）
-                koma
-                    .layers
-                    .iter()
-                    .rev()
-                    .map(|layer| {
-                        json!({
-                            "name": layer.name,
-                            "blend_mode": layer.blend_mode.as_str(),
-                            "visible": layer.visible,
-                            "masked": layer.mask.is_some(),
-                        })
+    let layers = active_koma
+        .map(|koma| {
+            // index 0 が最下層のため逆順で返す（UI の先頭 = 前面レイヤー）
+            koma
+                .layers
+                .iter()
+                .rev()
+                .map(|layer| {
+                    json!({
+                        "name": layer.name,
+                        "blend_mode": layer.blend_mode.as_str(),
+                        "visible": layer.visible,
+                        "masked": layer.mask.is_some(),
                     })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_else(|| {
-                vec![json!({ "name": "Layer 1", "blend_mode": "normal", "visible": true, "masked": false })]
-            });
-        cache.layers_json =
-            serde_json::to_string(&layers).unwrap_or_else(|_| "[]".to_string());
-        cache.layer_count = layer_count;
-        cache.active_layer_index = active_layer_index;
-    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(|| {
+            vec![json!({ "name": "Layer 1", "blend_mode": "normal", "visible": true, "masked": false })]
+        });
+    let layers_json = serde_json::to_string(&layers).unwrap_or_else(|_| "[]".to_string());
 
     // ---- コマ一覧 ----
-    let page_koma_count = active_page.map(|p| p.komas.len()).unwrap_or(1);
-    let active_koma_index = document.active_koma_index();
-    if force_rebuild
-        || cache.page_koma_count != page_koma_count
-        || cache.active_koma_index != active_koma_index
-    {
-        let komas = active_page
-            .map(|page| {
-                page.komas
-                    .iter()
-                    .enumerate()
-                    .map(|(index, koma)| {
-                        json!({
-                            "name": format!("コマ {}", index + 1),
-                            "detail": format!(
-                                "{}×{} / ({}, {})",
-                                koma.bounds.width,
-                                koma.bounds.height,
-                                koma.bounds.x,
-                                koma.bounds.y,
-                            ),
-                        })
+    // BL-031: 件数 + active index では bounds の変更を検知できないため、
+    // 内容 (bounds 由来の detail を含む) を毎回構築する。
+    let komas = active_page
+        .map(|page| {
+            page.komas
+                .iter()
+                .enumerate()
+                .map(|(index, koma)| {
+                    json!({
+                        "name": format!("コマ {}", index + 1),
+                        "detail": format!(
+                            "{}×{} / ({}, {})",
+                            koma.bounds.width,
+                            koma.bounds.height,
+                            koma.bounds.x,
+                            koma.bounds.y,
+                        ),
                     })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_else(|| vec![json!({ "name": "コマ 1", "detail": "0×0 / (0, 0)" })]);
-        cache.komas_json =
-            serde_json::to_string(&komas).unwrap_or_else(|_| "[]".to_string());
-        cache.page_koma_count = page_koma_count;
-        cache.active_koma_index = active_koma_index;
-    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(|| vec![json!({ "name": "コマ 1", "detail": "0×0 / (0, 0)" })]);
+    let komas_json = serde_json::to_string(&komas).unwrap_or_else(|_| "[]".to_string());
 
     cache.initialized = true;
 
@@ -216,8 +200,8 @@ pub fn build_host_state(
             "active_layer_blend_mode": active_layer.map(|layer| layer.blend_mode.as_str()).unwrap_or("normal"),
             "active_layer_visible": active_layer.map(|layer| layer.visible).unwrap_or(true),
             "active_layer_masked": active_layer.and_then(|layer| layer.mask.as_ref()).is_some(),
-            "komas_json": cache.komas_json,
-            "layers_json": cache.layers_json,
+            "komas_json": komas_json,
+            "layers_json": layers_json,
         },
         "tool": {
             "active": active_tool_name(document.active_tool),
@@ -278,7 +262,135 @@ pub fn build_host_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::Document;
+    use app_core::{BlendMode, Document, KomaBounds};
+
+    fn build(document: &Document, cache: &mut HostStateCache) -> Value {
+        build_host_state(
+            document,
+            false,
+            false,
+            0,
+            0,
+            cache,
+            EMPTY_WORKSPACE_PANELS_JSON,
+        )
+    }
+
+    /// BL-031: レイヤー名変更が次回 build の layers_json に反映される (stale 配信回帰)。
+    #[test]
+    fn layer_rename_is_reflected_in_next_host_state() {
+        let mut document = Document::default();
+        let mut cache = HostStateCache::default();
+        let _ = build(&document, &mut cache);
+
+        document
+            .active_koma_mut()
+            .expect("active koma exists")
+            .layers[0]
+            .name = "Renamed Layer".to_string();
+
+        let second = build(&document, &mut cache);
+        let layers_json = second["document"]["layers_json"]
+            .as_str()
+            .expect("layers_json is string");
+        assert!(
+            layers_json.contains("Renamed Layer"),
+            "layers_json must reflect the renamed layer: {layers_json}"
+        );
+    }
+
+    /// BL-031: レイヤー visible 変更が次回 build の layers_json に反映される。
+    #[test]
+    fn layer_visibility_change_is_reflected_in_next_host_state() {
+        let mut document = Document::default();
+        let mut cache = HostStateCache::default();
+        let _ = build(&document, &mut cache);
+
+        document
+            .active_koma_mut()
+            .expect("active koma exists")
+            .layers[0]
+            .visible = false;
+
+        let second = build(&document, &mut cache);
+        let layers_json = second["document"]["layers_json"]
+            .as_str()
+            .expect("layers_json is string");
+        assert!(
+            layers_json.contains(r#""visible":false"#),
+            "layers_json must reflect visibility change: {layers_json}"
+        );
+    }
+
+    /// BL-031: レイヤー blend_mode 変更が次回 build の layers_json に反映される。
+    #[test]
+    fn layer_blend_mode_change_is_reflected_in_next_host_state() {
+        let mut document = Document::default();
+        let mut cache = HostStateCache::default();
+        let _ = build(&document, &mut cache);
+
+        document
+            .active_koma_mut()
+            .expect("active koma exists")
+            .layers[0]
+            .blend_mode = BlendMode::Multiply;
+
+        let second = build(&document, &mut cache);
+        let layers_json = second["document"]["layers_json"]
+            .as_str()
+            .expect("layers_json is string");
+        assert!(
+            layers_json.contains("multiply"),
+            "layers_json must reflect blend mode change: {layers_json}"
+        );
+    }
+
+    /// BL-031: コマ bounds 変更が次回 build の komas_json に反映される。
+    #[test]
+    fn koma_bounds_change_is_reflected_in_next_host_state() {
+        let mut document = Document::default();
+        let mut cache = HostStateCache::default();
+        let _ = build(&document, &mut cache);
+
+        document
+            .active_koma_mut()
+            .expect("active koma exists")
+            .bounds = KomaBounds {
+            x: 7,
+            y: 9,
+            width: 123,
+            height: 45,
+        };
+
+        let second = build(&document, &mut cache);
+        let komas_json = second["document"]["komas_json"]
+            .as_str()
+            .expect("komas_json is string");
+        assert!(
+            komas_json.contains("123×45 / (7, 9)"),
+            "komas_json must reflect bounds change: {komas_json}"
+        );
+    }
+
+    /// BL-031: ペンプリセットの内容編集 (件数・active index 不変) が次回 build の
+    /// pen_presets_json に反映される。
+    #[test]
+    fn pen_preset_content_edit_is_reflected_in_next_host_state() {
+        let mut document = Document::default();
+        let mut cache = HostStateCache::default();
+        let _ = build(&document, &mut cache);
+
+        document.pen_presets[0].name = "Edited Pen".to_string();
+
+        let second = build(&document, &mut cache);
+        let pen_presets_json = second["tool"]["pen_presets_json"]
+            .as_str()
+            .expect("pen_presets_json is string");
+        assert!(
+            pen_presets_json.contains("Edited Pen"),
+            "pen_presets_json must reflect preset content edit: {pen_presets_json}"
+        );
+    }
 
     /// build_host_state が `workspace.panels_json` を登録順 + visible 反映で出力する。
     #[test]
