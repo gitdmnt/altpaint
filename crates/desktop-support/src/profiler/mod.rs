@@ -8,7 +8,7 @@ mod snapshot;
 mod types;
 
 pub use engine::DesktopProfiler;
-pub use types::{PerformanceSnapshot, PresentTimings, StageStats, ValueStats};
+pub use types::{PresentTimings, StageStats, ValueStats};
 
 #[cfg(test)]
 mod tests;

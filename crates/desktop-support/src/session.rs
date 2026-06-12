@@ -15,18 +15,6 @@ pub struct DesktopSessionState {
     pub ui_state: WorkspaceUiState,
 }
 
-impl DesktopSessionState {
-    /// ワークスペース レイアウト を計算して返す。
-    pub fn workspace_layout(&self) -> &app_core::WorkspaceLayout {
-        &self.ui_state.workspace_layout
-    }
-
-    /// プラグイン configs を計算して返す。
-    pub fn plugin_configs(&self) -> &app_core::PluginConfigs {
-        &self.ui_state.plugin_configs
-    }
-}
-
 /// 既定の セッション パス を返す。
 pub fn default_session_path() -> PathBuf {
     PathBuf::from("altpaint-session.json")

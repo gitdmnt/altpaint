@@ -2,7 +2,8 @@
 
 use std::time::{Duration, Instant};
 
-use super::{DesktopProfiler, PerformanceSnapshot};
+use super::DesktopProfiler;
+use super::types::PerformanceSnapshot;
 
 /// performance スナップショット formats ウィンドウ title が期待どおりに動作することを検証する。
 #[test]

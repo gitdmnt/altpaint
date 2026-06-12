@@ -14,8 +14,6 @@ pub const WINDOW_TITLE: &str = "altpaint";
 pub const WINDOW_WIDTH: u32 = 1280;
 /// 起動時の既定ウィンドウ高さを表す。
 pub const WINDOW_HEIGHT: u32 = 800;
-/// サイドバーの基準幅を表す。
-pub const SIDEBAR_WIDTH: usize = 280;
 /// 各領域で共有する余白量を表す。
 pub const WINDOW_PADDING: usize = 8;
 /// ヘッダー領域の高さを表す。
@@ -24,12 +22,6 @@ pub const HEADER_HEIGHT: usize = 24;
 pub const FOOTER_HEIGHT: usize = 24;
 /// アプリ全体の背景色を表す。
 pub const APP_BACKGROUND: [u8; 4] = [0x18, 0x18, 0x18, 0xff];
-/// サイドバー背景色を表す。
-pub const SIDEBAR_BACKGROUND: [u8; 4] = [0x2a, 0x2a, 0x2a, 0xff];
-/// パネル枠内の背景色を表す。
-pub const PANEL_FRAME_BACKGROUND: [u8; 4] = [0x1f, 0x1f, 0x1f, 0xff];
-/// パネル枠線色を表す。
-pub const PANEL_FRAME_BORDER: [u8; 4] = [0x3f, 0x3f, 0x3f, 0xff];
 /// キャンバス表示部の背景色を表す。
 pub const CANVAS_BACKGROUND: [u8; 4] = [0x60, 0x60, 0x60, 0xff];
 /// キャンバスホスト枠内の背景色を表す。
@@ -60,10 +52,6 @@ pub const PANEL_NAVIGATOR_ACTIVE: [u8; 4] = [0xff, 0xc1, 0x07, 0xff];
 pub const BRUSH_PREVIEW_RING: [u8; 4] = [0x9f, 0xb7, 0xff, 0xff];
 /// ラッソ選択プレビュー線の色（黄色）。
 pub const LASSO_LINE: [u8; 4] = [0xff, 0xc1, 0x07, 0xff];
-/// 主要ラベル用テキスト色を表す。
-pub const TEXT_PRIMARY: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
-/// 補助情報用テキスト色を表す。
-pub const TEXT_SECONDARY: [u8; 4] = [0xd8, 0xd8, 0xd8, 0xff];
 /// パフォーマンス表示を集計する時間窓を表す。
 pub const PERFORMANCE_SNAPSHOT_WINDOW: Duration = Duration::from_millis(1000);
 /// 入力レイテンシの目標値を表す。
