@@ -3,14 +3,14 @@
 use app_core::{BitmapEdit, PageDirtyRect, MergeInSpace};
 
 use super::DesktopApp;
-use crate::frame::Rect;
+use canvas_geometry::PixelRect;
 
 /// 差分提示のために更新領域を集約した結果を表す。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PresentFrameUpdate {
-    pub(crate) background_dirty_rect: Option<Rect>,
-    pub(crate) temp_overlay_dirty_rect: Option<Rect>,
-    pub(crate) ui_panel_dirty_rect: Option<Rect>,
+    pub(crate) background_dirty_rect: Option<PixelRect>,
+    pub(crate) temp_overlay_dirty_rect: Option<PixelRect>,
+    pub(crate) ui_panel_dirty_rect: Option<PixelRect>,
     pub(crate) canvas_dirty_rect: Option<PageDirtyRect>,
     pub(crate) canvas_transform_changed: bool,
     pub(crate) canvas_updated: bool,
@@ -24,9 +24,9 @@ pub(crate) struct PresentInvalidation {
     /// L2 キャンバス層の保留 dirty rect (キャンバス座標)。
     pub(crate) canvas_dirty_rect: Option<PageDirtyRect>,
     /// L3 一時オーバーレイ層の保留 dirty rect (window 座標)。
-    pub(crate) temp_overlay_dirty_rect: Option<Rect>,
+    pub(crate) temp_overlay_dirty_rect: Option<PixelRect>,
     /// L4 UI パネル層の保留 dirty rect (window 座標)。
-    pub(crate) ui_panel_dirty_rect: Option<Rect>,
+    pub(crate) ui_panel_dirty_rect: Option<PixelRect>,
     /// ビュー変換 (pan/zoom/rotation) が変化したか。
     pub(crate) canvas_transform_update: bool,
     /// view-controls パネルの再同期をフレーム後段へ遅延しているか。
@@ -149,7 +149,7 @@ impl DesktopApp {
     }
 
     /// temp オーバーレイ (L3) の dirty rect を蓄積する。
-    pub(super) fn append_temp_overlay_dirty_rect(&mut self, dirty: Rect) -> bool {
+    pub(super) fn append_temp_overlay_dirty_rect(&mut self, dirty: PixelRect) -> bool {
         self.invalidation.temp_overlay_dirty_rect = Some(
             self.invalidation.temp_overlay_dirty_rect
                 .map_or(dirty, |existing| existing.union(dirty)),
@@ -158,7 +158,7 @@ impl DesktopApp {
     }
 
     /// UI パネル (L4) の dirty rect を蓄積する。
-    pub(super) fn append_ui_panel_dirty_rect(&mut self, dirty: Rect) -> bool {
+    pub(super) fn append_ui_panel_dirty_rect(&mut self, dirty: PixelRect) -> bool {
         self.invalidation.ui_panel_dirty_rect = Some(
             self.invalidation.ui_panel_dirty_rect
                 .map_or(dirty, |existing| existing.union(dirty)),

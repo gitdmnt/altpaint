@@ -13,7 +13,7 @@ use desktop_support::{
 };
 use canvas_geometry::{CanvasOverlayState, CanvasPlan, KomaNavigatorOverlay};
 
-use super::Rect;
+use canvas_geometry::PixelRect;
 use super::solid_quad::{SolidQuad, push_border_quads};
 
 /// ブラシプレビュー円リングの線幅 (px)。
@@ -235,7 +235,7 @@ fn push_koma_navigator(
     let scale = scale_x.min(scale_y).max(f32::EPSILON);
     let scaled_width = ((navigator.page_width as f32 * scale).round() as usize).max(1);
     let scaled_height = ((navigator.page_height as f32 * scale).round() as usize).max(1);
-    let outer = Rect {
+    let outer = PixelRect {
         x: canvas_host
             .x
             .saturating_add(canvas_host.width)
@@ -251,7 +251,7 @@ fn push_koma_navigator(
         color: KOMA_NAVIGATOR_BACKGROUND,
     });
     push_border_quads(out, outer, KOMA_NAVIGATOR_BORDER);
-    let inner = Rect {
+    let inner = PixelRect {
         x: outer.x + 8,
         y: outer.y + 8,
         width: scaled_width,
@@ -260,7 +260,7 @@ fn push_koma_navigator(
     push_border_quads(out, inner, KOMA_NAVIGATOR_BORDER);
 
     for koma in &navigator.panels {
-        let rect = Rect {
+        let rect = PixelRect {
             x: inner.x + ((koma.bounds.x as f32 * scale).round() as usize),
             y: inner.y + ((koma.bounds.y as f32 * scale).round() as usize),
             width: ((koma.bounds.width as f32 * scale).round() as usize).max(1),
