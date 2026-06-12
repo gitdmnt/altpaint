@@ -148,7 +148,7 @@ graph TD
 | 論理名            | 置く責務                                              | 置かない責務                                  |
 | ----------------- | ----------------------------------------------------- | --------------------------------------------- |
 | `desktopApp`      | event loop、OS I/O、GPU 所有、subsystem orchestration | canvas op、panel runtime 詳細、project 意味論 |
-| `app-core`        | pure state、`Document`、`Command`                     | desktop / `wgpu` / `panel-wasm-host` 依存     |
+| `app-core`        | pure state、`Document`、`DocumentCommand` / `SessionCommand` | desktop / `wgpu` / `panel-wasm-host` 依存 |
 | `canvas-geometry` | canvas plan、dirty rect、座標変換の純データ計算       | GPU 実装、project / workspace I/O             |
 | `gpu-paint`       | ブラシ / 塗り / 合成の GPU compute 実装               | dispatch 判断、document 意味論                |
 | `paint-engine`    | gesture 解釈、ペイント文脈解決、bitmap op             | panel runtime                                 |
@@ -163,7 +163,7 @@ graph TD
 担当:
 
 - `Document` / `Work` / `Page` / `Koma` / `RasterLayer` などのドメインモデル（旧 `Panel` は ADR 018 B1 で `Koma` へ改名。panel は UI パネル専用語）
-- `Command` による状態変更入口
+- `DocumentCommand`（純粋なドキュメント変異）と `SessionCommand`（ツール/色/ペン/ビュー）による状態変更入口（B4 で旧 `Command` を 2 分割。I/O 系 variant は enum から除外し `ServiceRequest` 経路へ一本化）
 - `EditHistory`（undo/redo、`BitmapPatch` / `GpuBitmapPatch` スナップショット方式。旧 `CommandHistory`）
 - キャンバス編集、レイヤー操作、表示変換、色、ペンプリセット状態
 - `WorkspaceLayout` とパネル可視性の保存対象モデル
@@ -250,14 +250,14 @@ graph TD
 
 - `PanelPlugin` trait（`handle_event` / `handles_keyboard_event` / `persistent_config` 等）
 - `PanelEvent`（`Activate` / `SetValue` / `DragValue` / `SetText` / `Keyboard`）
-- `HostAction`（`DispatchCommand` / `RequestService` / `MovePanel` / `SetPanelVisibility`）
+- `HostAction`（`DispatchDocumentCommand` / `DispatchSessionCommand` / `RequestService` / `MovePanel` / `SetPanelVisibility`。B4 で `DispatchCommand` を document/session に分割。`MovePanel` / `SetPanelVisibility` は desktop 側で `workspace_layout.*` サービスへ変換され、専用 variant は B6 P3 で削除予定）
 - `ResizeHandle`（8 ハンドルリサイズ。旧 `ResizeEdge`）
 - `ServiceRequest` と service 名定数の互換表面（定数の正本は `panel_protocol::names`。
   `services::names` はフラット名の再エクスポートとして維持）
 
 意味:
 
-- `Command` をパネルから直接返すのではなく、`HostAction` を経由するための境界
+- `DocumentCommand` / `SessionCommand` / `ServiceRequest` をパネルから直接返すのではなく、`HostAction` を経由するための境界
 - `PanelTree` / `PanelNode` / `PanelView` は Phase 12（ADR 014）で撤去済み
 
 ### `panel-protocol`（旧 `panel-schema`）
@@ -434,7 +434,7 @@ graph TD
 - `winit` の event loop（`DesktopEventLoop`、旧 `DesktopRuntime`）
 - `wgpu` presenter（`WgpuPresenter` + solid / circle / line quad パイプライン）
 - GPU ペイントリソースの所有と dispatch（`LayerTextureStore` / `BrushPipeline` / `FillPipeline` / `CompositePipeline`）
-- canvas pointer input から `Command` / `PaintInput` への変換
+- canvas pointer input から `DocumentCommand` / `SessionCommand` / `PaintInput` への変換（ビュー操作は `SessionCommand::ZoomViewBy` 等の相対コマンドを発行し、倍率・clamp は `app_core::view_policy` が所有 = B4 / BL-064）
 - `DesktopApp` による状態遷移と副作用統合
 - `PresentFrame`（旧 `PresentScene`。背景 / canvas / overlay / panel / status quad）の組み立てと提示
 
@@ -565,13 +565,13 @@ project file と session file は役割が異なる。
 3. 対象 panel へ `PanelEvent` が forward され、`HtmlWasmPanel::handle_event(...)` が呼ばれる
 4. `panel-wasm-host` を通じて Wasm handler（`panel_handle_event` / `panel_handle_keyboard`）を実行する。handler は DOM mutation host functions で自パネルの DOM を更新できる
 5. `StatePatch` を panel local state に適用する
-6. `RequestDescriptor` を `HostAction::DispatchCommand(...)` または `HostAction::RequestService(...)` へ変換する
-7. `apps/desktop/src/app/panel_dispatch.rs` の `DesktopApp::execute_host_action(...)` が `Command` または host service handler を実行する
+6. `panel-runtime` の translator registry が `RequestDescriptor` を名前空間 prefix で振り分け、`HostAction::DispatchDocumentCommand(...)`（`DocumentCommand`）/ `DispatchSessionCommand(...)`（`SessionCommand`）/ `RequestService(...)`（`ServiceRequest`）のいずれかへ変換する。未登録 prefix/name は黙殺せず `TranslationDiagnostic` としてログ出力する（B4 / BL-061）
+7. `apps/desktop/src/app/panel_dispatch.rs` の `DesktopApp::execute_host_action(...)` が `apply_document_command` / `apply_session_command` / `execute_service_request` へ振り分けて実行する
 8. `HtmlPanelView` が vello で GPU テクスチャへ再描画し、`wgpu_canvas` が `panel_quads` 層で合成する
 
 ### 保存・読込フロー
 
-1. `apps/desktop/src/app/command_router.rs` が保存/読込 command を service request へ正規化する
+1. 保存/読込は `ServiceRequest` (`project_io.*`) としてパネル/入力層から発行され、`apps/desktop/src/app/services/project_io.rs` のサービスハンドラが受ける (B4 / BL-060 で旧 `command_router` の「Command → ServiceRequest 再変換」経路を撤去し、I/O は最初から service 経路を流れる)
 2. 保存前に `services/gpu_sync.rs` が GPU テクスチャを readback して `Document` の CPU bitmap を最新化する
 3. `apps/desktop/src/app/background_tasks.rs` が project save task を起動または回収する
 4. project 保存は `storage` へ委譲する
@@ -584,7 +584,7 @@ project file と session file は役割が異なる。
 
 今後クレートを増やしても、以下は維持したい。
 
-- `Document` と `Command` は `app-core` に置く
+- `Document`・`DocumentCommand`・`SessionCommand`（B4 で旧 `Command` を 2 分割）は `app-core` に置く。I/O は enum ではなく `ServiceRequest` 経路に一本化する
 - UI や GPU の型を `app-core` に入れない
 - 保存形式と panel runtime は `app-core` の外側に置く
 
