@@ -13,7 +13,7 @@ mod io_state;
 mod panel_config_sync;
 mod panel_dispatch;
 mod present;
-mod present_state;
+mod invalidation;
 mod services;
 mod canvas_state;
 mod snapshot_store;
@@ -37,7 +37,7 @@ use self::io_state::DesktopIoState;
 #[cfg(test)]
 pub(crate) use self::panel_dispatch::PanelDragState;
 use self::panel_dispatch::PanelInteractionState;
-use self::present_state::PresentFrameUpdate;
+use self::invalidation::PresentFrameUpdate;
 use self::snapshot_store::DocumentSnapshotStore;
 use crate::present_quads::DesktopLayout;
 use paint_engine::CanvasInputState;
@@ -89,7 +89,7 @@ pub(crate) struct DesktopApp {
     /// Phase 9E-4: ステータスバー (HtmlPanelView GPU 描画)。
     pub(crate) status_bar: crate::present_quads::status_panel::StatusBar,
     /// 次フレームで消化される提示無効化状態 (保留 dirty rect・再構築フラグ)。
-    pub(crate) invalidation: present_state::PresentInvalidation,
+    pub(crate) invalidation: invalidation::PresentInvalidation,
     cached_canvas_view_geometry: Option<CachedCanvasViewGeometry>,
     pub(crate) history: EditHistory,
     pub(crate) snapshots: DocumentSnapshotStore,
@@ -152,7 +152,7 @@ impl DesktopApp {
             layout: None,
             cpu_canvas_snapshot: None,
             status_bar: crate::present_quads::status_panel::StatusBar::new(),
-            invalidation: present_state::PresentInvalidation::at_startup(),
+            invalidation: invalidation::PresentInvalidation::at_startup(),
             cached_canvas_view_geometry: None,
             history: EditHistory::new(),
             snapshots: DocumentSnapshotStore::default(),

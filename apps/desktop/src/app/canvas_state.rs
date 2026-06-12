@@ -1,6 +1,6 @@
 //! `DesktopApp` のキャンバス表示状態 (寸法・ブラシプレビュー・overlay 構築) を集約する。
 //!
-//! present 系 (`present.rs` / `present_state.rs`) と入力系 (`input.rs`) の両方から参照される
+//! present 系 (`present.rs` / `invalidation.rs`) と入力系 (`input.rs`) の両方から参照される
 //! 読み取り中心の補助メソッド群。
 
 use super::DesktopApp;
