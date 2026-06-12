@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 
 use blitz_html::HtmlDocument;
 use dom_api::DomCtx;
-use panel_schema::{
+use panel_protocol::{
     CommandDescriptor, Diagnostic, DiagnosticLevel, HandlerResult, PanelEventRequest, StatePatch,
 };
 use serde_json::{Map, Value};

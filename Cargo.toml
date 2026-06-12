@@ -17,7 +17,7 @@ members = [
   "crates/app-core",
   "crates/desktop-support",
   "crates/panel-runtime",
-  "crates/panel-schema",
+  "crates/panel-protocol",
   "crates/plugin-macros",
   "crates/plugin-sdk",
   "crates/plugin-host",

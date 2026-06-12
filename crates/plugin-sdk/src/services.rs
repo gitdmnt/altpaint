@@ -1,8 +1,8 @@
 //! host service request を型付きで組み立てる API を提供する。
 //!
-//! wire 名は `panel_schema::names` の定数のみを参照する (BL-036)。
+//! wire 名は `panel_protocol::names` の定数のみを参照する (BL-036)。
 
-use panel_schema::CommandDescriptor;
+use panel_protocol::CommandDescriptor;
 use serde_json::json;
 
 fn descriptor(name: impl Into<String>) -> CommandDescriptor {
@@ -11,8 +11,8 @@ fn descriptor(name: impl Into<String>) -> CommandDescriptor {
 
 pub mod project_io {
     use super::{descriptor, json};
-    use panel_schema::CommandDescriptor;
-    use panel_schema::names::project_io as wire;
+    use panel_protocol::CommandDescriptor;
+    use panel_protocol::names::project_io as wire;
 
     pub fn new_document() -> CommandDescriptor {
         descriptor(wire::NEW_DOCUMENT)
@@ -58,8 +58,8 @@ pub mod project_io {
 
 pub mod workspace_io {
     use super::{descriptor, json};
-    use panel_schema::CommandDescriptor;
-    use panel_schema::names::workspace as wire;
+    use panel_protocol::CommandDescriptor;
+    use panel_protocol::names::workspace as wire;
 
     pub fn reload_presets() -> CommandDescriptor {
         descriptor(wire::RELOAD_PRESETS)
@@ -117,8 +117,8 @@ pub mod workspace_io {
 
 pub mod tool_catalog {
     use super::{descriptor, json};
-    use panel_schema::CommandDescriptor;
-    use panel_schema::names::tool as wire;
+    use panel_protocol::CommandDescriptor;
+    use panel_protocol::names::tool as wire;
 
     pub fn reload_tools() -> CommandDescriptor {
         descriptor(wire::CATALOG_RELOAD_TOOLS)
@@ -143,8 +143,8 @@ pub mod tool_catalog {
 
 pub mod view {
     use super::{descriptor, json};
-    use panel_schema::CommandDescriptor;
-    use panel_schema::names::view as wire;
+    use panel_protocol::CommandDescriptor;
+    use panel_protocol::names::view as wire;
 
     pub fn set_zoom(zoom: f32) -> CommandDescriptor {
         let mut descriptor = descriptor(wire::SET_ZOOM);
@@ -182,8 +182,8 @@ pub mod view {
 
 pub mod koma_nav {
     use super::{descriptor, json};
-    use panel_schema::CommandDescriptor;
-    use panel_schema::names::koma_nav as wire;
+    use panel_protocol::CommandDescriptor;
+    use panel_protocol::names::koma_nav as wire;
 
     pub fn add() -> CommandDescriptor {
         descriptor(wire::ADD)
@@ -214,8 +214,8 @@ pub mod koma_nav {
 
 pub mod history {
     use super::descriptor;
-    use panel_schema::CommandDescriptor;
-    use panel_schema::names::history as wire;
+    use panel_protocol::CommandDescriptor;
+    use panel_protocol::names::history as wire;
 
     /// 直前の操作を元に戻す。
     pub fn undo() -> CommandDescriptor {
@@ -230,8 +230,8 @@ pub mod history {
 
 pub mod snapshot {
     use super::{descriptor, json};
-    use panel_schema::CommandDescriptor;
-    use panel_schema::names::snapshot as wire;
+    use panel_protocol::CommandDescriptor;
+    use panel_protocol::names::snapshot as wire;
 
     /// スナップショットを作成する。handler は 7-4 で登録する。
     pub fn create(label: impl Into<String>) -> CommandDescriptor {
@@ -254,8 +254,8 @@ pub mod snapshot {
 
 pub mod export_image {
     use super::{descriptor, json};
-    use panel_schema::CommandDescriptor;
-    use panel_schema::names::export as wire;
+    use panel_protocol::CommandDescriptor;
+    use panel_protocol::names::export as wire;
 
     /// 画像として書き出す。handler は 7-3 で登録する。
     pub fn export(path: impl Into<String>) -> CommandDescriptor {
@@ -270,8 +270,8 @@ pub mod export_image {
 /// ワークスペース パネル管理 (workspace-layout パネル) 用サービス。
 pub mod workspace_layout {
     use super::{descriptor, json};
-    use panel_schema::CommandDescriptor;
-    use panel_schema::names::workspace_layout as wire;
+    use panel_protocol::CommandDescriptor;
+    use panel_protocol::names::workspace_layout as wire;
 
     /// 指定パネルの表示/非表示を切り替える。
     pub fn set_panel_visibility(
@@ -291,8 +291,8 @@ pub mod workspace_layout {
 
 /// テキスト描画サービス。
 pub mod text_render {
-    use panel_schema::CommandDescriptor;
-    use panel_schema::names::text_render as wire;
+    use panel_protocol::CommandDescriptor;
+    use panel_protocol::names::text_render as wire;
     use serde_json::json;
 
     /// テキストをアクティブレイヤーへ描画するサービス要求を構築する。

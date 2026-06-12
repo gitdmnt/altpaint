@@ -190,11 +190,11 @@ fn state_patch_buffer_collects_expected_patch_sequence() {
     assert_eq!(
         batch.into_vec(),
         vec![
-            panel_schema::StatePatch::set("show", true),
-            panel_schema::StatePatch::set("count", 7),
-            panel_schema::StatePatch::set("name", "demo"),
-            panel_schema::StatePatch::set("config", json!({"mode": "advanced"})),
-            panel_schema::StatePatch::toggle("expanded"),
+            panel_protocol::StatePatch::set("show", true),
+            panel_protocol::StatePatch::set("count", 7),
+            panel_protocol::StatePatch::set("name", "demo"),
+            panel_protocol::StatePatch::set("config", json!({"mode": "advanced"})),
+            panel_protocol::StatePatch::toggle("expanded"),
         ]
     );
 }

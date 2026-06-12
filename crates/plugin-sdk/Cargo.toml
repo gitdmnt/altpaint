@@ -7,5 +7,5 @@ authors.workspace = true
 
 [dependencies]
 plugin-macros = { path = "../plugin-macros" }
-panel-schema = { path = "../panel-schema" }
+panel-protocol = { path = "../panel-protocol" }
 serde_json.workspace = true

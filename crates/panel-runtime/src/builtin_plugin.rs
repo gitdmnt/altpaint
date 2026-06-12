@@ -164,8 +164,8 @@ fn panel_host_request(
     event_payload: Value,
     state_snapshot: &Value,
     host_snapshot: &Value,
-) -> panel_schema::PanelEventRequest {
-    panel_schema::PanelEventRequest {
+) -> panel_protocol::PanelEventRequest {
+    panel_protocol::PanelEventRequest {
         handler_name: handler_name.to_string(),
         event_payload,
         state_snapshot: state_snapshot.clone(),
@@ -173,8 +173,8 @@ fn panel_host_request(
     }
 }
 
-fn apply_state_patches(state: &mut Value, patches: &[panel_schema::StatePatch]) {
-    use panel_schema::StatePatchOp;
+fn apply_state_patches(state: &mut Value, patches: &[panel_protocol::StatePatch]) {
+    use panel_protocol::StatePatchOp;
     use serde_json::Map;
     if !state.is_object() {
         *state = Value::Object(Map::new());
@@ -212,7 +212,7 @@ fn apply_state_patches(state: &mut Value, patches: &[panel_schema::StatePatch]) 
 }
 
 fn command_descriptor_to_host_action(
-    descriptor: panel_schema::CommandDescriptor,
+    descriptor: panel_protocol::CommandDescriptor,
 ) -> Option<HostAction> {
     // 1. 命令名が Command enum に翻訳できれば DispatchCommand
     if let Ok(command) = command_from_descriptor(&descriptor) {

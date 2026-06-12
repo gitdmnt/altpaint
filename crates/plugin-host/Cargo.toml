@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-panel-schema = { path = "../panel-schema" }
+panel-protocol = { path = "../panel-protocol" }
 serde_json.workspace = true
 thiserror.workspace = true
 wasmtime = { version = "30.0", features = ["cache"] }

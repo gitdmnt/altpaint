@@ -43,8 +43,8 @@ impl RgbColor {
 /// ツール操作コマンド群。
 pub mod tool {
     use super::{RgbColor, Tool};
-    use panel_schema::CommandDescriptor;
-    use panel_schema::names::tool as wire;
+    use panel_protocol::CommandDescriptor;
+    use panel_protocol::names::tool as wire;
     use serde_json::json;
 
     pub fn set_active(tool: Tool) -> CommandDescriptor {
@@ -140,8 +140,8 @@ pub mod tool {
 
 /// レイヤー操作コマンド群。
 pub mod layer {
-    use panel_schema::CommandDescriptor;
-    use panel_schema::names::layer as wire;
+    use panel_protocol::CommandDescriptor;
+    use panel_protocol::names::layer as wire;
     use serde_json::json;
 
     /// レイヤーブレンドモードを型として表す。

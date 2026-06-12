@@ -1,7 +1,7 @@
 //! Wasm パネルから host ABI を呼び出すランタイム関数群を提供する。
 
-use panel_schema::CommandDescriptor;
-use panel_schema::StatePatch;
+use panel_protocol::CommandDescriptor;
+use panel_protocol::StatePatch;
 #[cfg(target_arch = "wasm32")]
 use serde_json::Value;
 

@@ -2,52 +2,52 @@
 
 use serde_json::{Map, Value};
 
-/// wire 名定数の互換表面。定義の正本は `panel_schema::names` (BL-036)。
+/// wire 名定数の互換表面。定義の正本は `panel_protocol::names` (BL-036)。
 /// panel-api 解体 (B6) までフラット名の再エクスポートとして維持する。
 pub mod names {
-    pub use panel_schema::names::project_io::{
+    pub use panel_protocol::names::project_io::{
         LOAD_DIALOG as PROJECT_LOAD_DIALOG, LOAD_FROM_PATH as PROJECT_LOAD_FROM_PATH,
         NEW_DOCUMENT as PROJECT_NEW_DOCUMENT, NEW_DOCUMENT_SIZED as PROJECT_NEW_DOCUMENT_SIZED,
         SAVE_AS as PROJECT_SAVE_AS, SAVE_CURRENT as PROJECT_SAVE_CURRENT,
         SAVE_TO_PATH as PROJECT_SAVE_TO_PATH,
     };
 
-    pub use panel_schema::names::workspace::{
+    pub use panel_protocol::names::workspace::{
         APPLY_PRESET as WORKSPACE_APPLY_PRESET, EXPORT_PRESET as WORKSPACE_EXPORT_PRESET,
         EXPORT_PRESET_TO_PATH as WORKSPACE_EXPORT_PRESET_TO_PATH,
         RELOAD_PRESETS as WORKSPACE_RELOAD_PRESETS, SAVE_PRESET as WORKSPACE_SAVE_PRESET,
     };
 
-    pub use panel_schema::names::tool::{
+    pub use panel_protocol::names::tool::{
         CATALOG_IMPORT_PEN_PATH as TOOL_CATALOG_IMPORT_PEN_PATH,
         CATALOG_IMPORT_PEN_PRESETS as TOOL_CATALOG_IMPORT_PEN_PRESETS,
         CATALOG_RELOAD_PEN_PRESETS as TOOL_CATALOG_RELOAD_PEN_PRESETS,
         CATALOG_RELOAD_TOOLS as TOOL_CATALOG_RELOAD_TOOLS,
     };
 
-    pub use panel_schema::names::view::{
+    pub use panel_protocol::names::view::{
         FLIP_HORIZONTAL as VIEW_FLIP_HORIZONTAL, FLIP_VERTICAL as VIEW_FLIP_VERTICAL,
         RESET as VIEW_RESET, SET_PAN as VIEW_SET_PAN, SET_ROTATION as VIEW_SET_ROTATION,
         SET_ZOOM as VIEW_SET_ZOOM,
     };
 
-    pub use panel_schema::names::koma_nav::{
+    pub use panel_protocol::names::koma_nav::{
         ADD as KOMA_NAV_ADD, FOCUS_ACTIVE as KOMA_NAV_FOCUS_ACTIVE,
         REMOVE as KOMA_NAV_REMOVE, SELECT as KOMA_NAV_SELECT,
         SELECT_NEXT as KOMA_NAV_SELECT_NEXT, SELECT_PREVIOUS as KOMA_NAV_SELECT_PREVIOUS,
     };
 
-    pub use panel_schema::names::history::{REDO as HISTORY_REDO, UNDO as HISTORY_UNDO};
+    pub use panel_protocol::names::history::{REDO as HISTORY_REDO, UNDO as HISTORY_UNDO};
 
-    pub use panel_schema::names::snapshot::{
+    pub use panel_protocol::names::snapshot::{
         CREATE as SNAPSHOT_CREATE, RESTORE as SNAPSHOT_RESTORE,
     };
 
-    pub use panel_schema::names::export::IMAGE as EXPORT_IMAGE;
+    pub use panel_protocol::names::export::IMAGE as EXPORT_IMAGE;
 
-    pub use panel_schema::names::text_render::RENDER_TO_LAYER as TEXT_RENDER_TO_LAYER;
+    pub use panel_protocol::names::text_render::RENDER_TO_LAYER as TEXT_RENDER_TO_LAYER;
 
-    pub use panel_schema::names::workspace_layout::SET_PANEL_VISIBILITY as WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY;
+    pub use panel_protocol::names::workspace_layout::SET_PANEL_VISIBILITY as WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY;
 }
 
 #[derive(Debug, Clone, PartialEq)]

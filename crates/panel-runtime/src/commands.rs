@@ -4,8 +4,8 @@
 //! HostAction::DispatchCommand(Command::*) に翻訳する。
 
 use app_core::{Command, ToolKind};
-use panel_schema::CommandDescriptor;
-use panel_schema::names::{layer, tool};
+use panel_protocol::CommandDescriptor;
+use panel_protocol::names::{layer, tool};
 use serde_json::Value;
 
 fn parse_hex_color(input: &str) -> Option<app_core::ColorRgba8> {

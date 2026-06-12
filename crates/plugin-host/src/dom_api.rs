@@ -13,7 +13,7 @@
 use crate::RuntimeCollector;
 use blitz_dom::{LocalName, Namespace, QualName};
 use blitz_html::HtmlDocument;
-use panel_schema::{Diagnostic, DiagnosticLevel};
+use panel_protocol::{Diagnostic, DiagnosticLevel};
 use std::ptr::NonNull;
 use wasmtime::{Caller, Extern, Linker, Memory};
 
