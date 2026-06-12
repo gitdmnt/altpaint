@@ -118,6 +118,19 @@ impl DesktopApp {
         self.invalidation.needs_full_present_rebuild = true;
     }
 
+    /// レイヤー/コマ構成変更後の全面再構築シーケンスをまとめて実行する。
+    ///
+    /// CPU スナップショット再生成・UI 同期・ステータス更新・present 再構築・
+    /// GPU レイヤー同期・全コマ再合成を順に行う。
+    pub(super) fn invalidate_document_structure(&mut self) {
+        self.refresh_cpu_canvas_snapshot();
+        self.sync_ui_from_document();
+        self.mark_status_dirty();
+        self.rebuild_present_frame();
+        self.sync_all_layers_to_gpu();
+        self.recomposite_all_komas();
+    }
+
     pub(super) fn reset_active_interactions(&mut self) {
         self.canvas_input.reset();
         self.invalidation.clear_pending();

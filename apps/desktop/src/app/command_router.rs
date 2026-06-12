@@ -142,12 +142,7 @@ impl DesktopApp {
             | Command::MoveLayer { .. }
             | Command::SelectNextLayer
             | Command::CycleActiveLayerBlendMode => {
-                self.refresh_cpu_canvas_snapshot();
-                self.sync_ui_from_document();
-                self.mark_status_dirty();
-                self.rebuild_present_frame();
-                self.sync_all_layers_to_gpu();
-                self.recomposite_all_komas();
+                self.invalidate_document_structure();
                 true
             }
             Command::AddKoma
@@ -157,24 +152,14 @@ impl DesktopApp {
             | Command::SelectNextKoma
             | Command::SelectPreviousKoma
             | Command::FocusActiveKoma => {
-                self.refresh_cpu_canvas_snapshot();
-                self.sync_ui_from_document();
-                self.mark_status_dirty();
-                self.rebuild_present_frame();
-                self.sync_all_layers_to_gpu();
-                self.recomposite_all_komas();
+                self.invalidate_document_structure();
                 true
             }
             Command::NewDocumentSized { .. } => {
                 let _ = Self::reload_tool_catalog_into_document(&mut self.document);
                 let _ = Self::reload_pen_presets_into_document(&mut self.document);
                 self.reset_active_interactions();
-                self.refresh_cpu_canvas_snapshot();
-                self.sync_ui_from_document();
-                self.mark_status_dirty();
-                self.rebuild_present_frame();
-                self.sync_all_layers_to_gpu();
-                self.recomposite_all_komas();
+                self.invalidate_document_structure();
                 true
             }
             Command::Noop
