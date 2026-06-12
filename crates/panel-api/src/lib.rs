@@ -94,11 +94,6 @@ mod resize_edge_tests {
 pub enum HostAction {
     DispatchCommand(Command),
     RequestService(ServiceRequest),
-    InvokePanelHandler {
-        panel_id: String,
-        handler_name: String,
-        event_kind: String,
-    },
     MovePanel {
         panel_id: String,
         direction: PanelMoveDirection,
@@ -162,20 +157,10 @@ pub trait PanelPlugin {
     ) {
     }
 
-    /// commands を計算して返す。
-    fn commands(&mut self) -> Vec<Command> {
-        Vec::new()
-    }
-
     /// プラグイン具体型へのダウンキャスト用ハンドル。
     /// `BuiltinPanelPlugin` がパネル間共通の workspace 情報注入に使う。
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         None
-    }
-
-    /// debug summary を計算して返す。
-    fn debug_summary(&self) -> String {
-        String::new()
     }
 
     /// handles キーボード イベント を計算して返す。

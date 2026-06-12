@@ -252,7 +252,7 @@ graph TD
 
 - `PanelPlugin` trait（`handle_event` / `handles_keyboard_event` / `persistent_config` 等）
 - `PanelEvent`（`Activate` / `SetValue` / `DragValue` / `SetText` / `Keyboard`）
-- `HostAction`（`DispatchCommand` / `RequestService` / `InvokePanelHandler` / `MovePanel` / `SetPanelVisibility`）
+- `HostAction`（`DispatchCommand` / `RequestService` / `MovePanel` / `SetPanelVisibility`）
 - `ResizeEdge`（8 ハンドルリサイズ）
 - `ServiceRequest` と service 名定数
 

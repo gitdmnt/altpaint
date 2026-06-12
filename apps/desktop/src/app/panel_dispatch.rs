@@ -232,7 +232,6 @@ impl DesktopApp {
         match action {
             HostAction::DispatchCommand(command) => self.execute_command(command),
             HostAction::RequestService(request) => self.execute_service_request(request),
-            HostAction::InvokePanelHandler { .. } => false,
             HostAction::MovePanel {
                 panel_id,
                 direction,
@@ -307,9 +306,7 @@ impl DesktopApp {
                     HostAction::RequestService(_) => {
                         first_command = Some(app_core::Command::Noop);
                     }
-                    HostAction::InvokePanelHandler { .. }
-                    | HostAction::MovePanel { .. }
-                    | HostAction::SetPanelVisibility { .. } => {}
+                    HostAction::MovePanel { .. } | HostAction::SetPanelVisibility { .. } => {}
                 }
             }
             needs_redraw |= self.execute_host_action(action);

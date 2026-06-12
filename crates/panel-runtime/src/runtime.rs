@@ -390,14 +390,6 @@ impl PanelRuntime {
         self.panels.len()
     }
 
-    /// 既存データを走査して パネル debug summaries を組み立てる。
-    pub fn panel_debug_summaries(&self) -> Vec<(&'static str, &'static str, String)> {
-        self.panels
-            .iter()
-            .map(|panel| (panel.id(), panel.title(), panel.debug_summary()))
-            .collect()
-    }
-
     /// 登録されたパネル ID / title の対 (登録順) を返す。
     /// builtin.workspace-layout が host snapshot 用に title を引くのに使う。
     pub fn panel_id_titles(&self) -> Vec<(String, String)> {

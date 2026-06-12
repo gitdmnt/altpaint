@@ -261,9 +261,9 @@ HTML パネル描画エンジン（旧名 `panel-html-experiment`、依存最小
 
 panel host 契約層である。
 
-- `PanelPlugin` trait（`id` / `title` / `update` / `commands` / `handle_event` / `handles_keyboard_event` / `persistent_config` / `restore_persistent_config` 等）
+- `PanelPlugin` trait（`id` / `title` / `update` / `handle_event` / `handles_keyboard_event` / `persistent_config` / `restore_persistent_config` 等）
 - `PanelEvent`（`Activate` / `SetValue` / `DragValue` / `SetText` / `Keyboard`）
-- `HostAction`（`DispatchCommand` / `RequestService` / `InvokePanelHandler` / `MovePanel` / `SetPanelVisibility`）
+- `HostAction`（`DispatchCommand` / `RequestService` / `MovePanel` / `SetPanelVisibility`）
 - `ResizeEdge`（8 ハンドル: 4 辺 + 4 角 — Phase 11）
 - `ServiceRequest` と service 名定数（`src/services.rs`）
 
