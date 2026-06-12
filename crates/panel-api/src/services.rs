@@ -2,52 +2,52 @@
 
 use serde_json::{Map, Value};
 
+/// wire 名定数の互換表面。定義の正本は `panel_schema::names` (BL-036)。
+/// panel-api 解体 (B6) までフラット名の再エクスポートとして維持する。
 pub mod names {
-    pub const PROJECT_NEW_DOCUMENT: &str = "project_io.new_document";
-    pub const PROJECT_NEW_DOCUMENT_SIZED: &str = "project_io.new_document_sized";
-    pub const PROJECT_SAVE_CURRENT: &str = "project_io.save_current";
-    pub const PROJECT_SAVE_AS: &str = "project_io.save_as";
-    pub const PROJECT_SAVE_TO_PATH: &str = "project_io.save_to_path";
-    pub const PROJECT_LOAD_DIALOG: &str = "project_io.load_dialog";
-    pub const PROJECT_LOAD_FROM_PATH: &str = "project_io.load_from_path";
+    pub use panel_schema::names::project_io::{
+        LOAD_DIALOG as PROJECT_LOAD_DIALOG, LOAD_FROM_PATH as PROJECT_LOAD_FROM_PATH,
+        NEW_DOCUMENT as PROJECT_NEW_DOCUMENT, NEW_DOCUMENT_SIZED as PROJECT_NEW_DOCUMENT_SIZED,
+        SAVE_AS as PROJECT_SAVE_AS, SAVE_CURRENT as PROJECT_SAVE_CURRENT,
+        SAVE_TO_PATH as PROJECT_SAVE_TO_PATH,
+    };
 
-    pub const WORKSPACE_RELOAD_PRESETS: &str = "workspace_io.reload_presets";
-    pub const WORKSPACE_APPLY_PRESET: &str = "workspace_io.apply_preset";
-    pub const WORKSPACE_SAVE_PRESET: &str = "workspace_io.save_preset";
-    pub const WORKSPACE_EXPORT_PRESET: &str = "workspace_io.export_preset";
-    pub const WORKSPACE_EXPORT_PRESET_TO_PATH: &str = "workspace_io.export_preset_to_path";
+    pub use panel_schema::names::workspace::{
+        APPLY_PRESET as WORKSPACE_APPLY_PRESET, EXPORT_PRESET as WORKSPACE_EXPORT_PRESET,
+        EXPORT_PRESET_TO_PATH as WORKSPACE_EXPORT_PRESET_TO_PATH,
+        RELOAD_PRESETS as WORKSPACE_RELOAD_PRESETS, SAVE_PRESET as WORKSPACE_SAVE_PRESET,
+    };
 
-    pub const TOOL_CATALOG_RELOAD_TOOLS: &str = "tool_catalog.reload_tools";
-    pub const TOOL_CATALOG_RELOAD_PEN_PRESETS: &str = "tool_catalog.reload_pen_presets";
-    pub const TOOL_CATALOG_IMPORT_PEN_PRESETS: &str = "tool_catalog.import_pen_presets";
-    pub const TOOL_CATALOG_IMPORT_PEN_PATH: &str = "tool_catalog.import_pen_path";
+    pub use panel_schema::names::tool::{
+        CATALOG_IMPORT_PEN_PATH as TOOL_CATALOG_IMPORT_PEN_PATH,
+        CATALOG_IMPORT_PEN_PRESETS as TOOL_CATALOG_IMPORT_PEN_PRESETS,
+        CATALOG_RELOAD_PEN_PRESETS as TOOL_CATALOG_RELOAD_PEN_PRESETS,
+        CATALOG_RELOAD_TOOLS as TOOL_CATALOG_RELOAD_TOOLS,
+    };
 
-    pub const VIEW_SET_ZOOM: &str = "view_service.set_zoom";
-    pub const VIEW_SET_PAN: &str = "view_service.set_pan";
-    pub const VIEW_SET_ROTATION: &str = "view_service.set_rotation";
-    pub const VIEW_FLIP_HORIZONTAL: &str = "view_service.flip_horizontal";
-    pub const VIEW_FLIP_VERTICAL: &str = "view_service.flip_vertical";
-    pub const VIEW_RESET: &str = "view_service.reset";
+    pub use panel_schema::names::view::{
+        FLIP_HORIZONTAL as VIEW_FLIP_HORIZONTAL, FLIP_VERTICAL as VIEW_FLIP_VERTICAL,
+        RESET as VIEW_RESET, SET_PAN as VIEW_SET_PAN, SET_ROTATION as VIEW_SET_ROTATION,
+        SET_ZOOM as VIEW_SET_ZOOM,
+    };
 
-    pub const PANEL_NAV_ADD: &str = "panel_nav.add";
-    pub const PANEL_NAV_REMOVE: &str = "panel_nav.remove";
-    pub const PANEL_NAV_SELECT: &str = "panel_nav.select";
-    pub const PANEL_NAV_SELECT_NEXT: &str = "panel_nav.select_next";
-    pub const PANEL_NAV_SELECT_PREVIOUS: &str = "panel_nav.select_previous";
-    pub const PANEL_NAV_FOCUS_ACTIVE: &str = "panel_nav.focus_active";
+    pub use panel_schema::names::panel_nav::{
+        ADD as PANEL_NAV_ADD, FOCUS_ACTIVE as PANEL_NAV_FOCUS_ACTIVE,
+        REMOVE as PANEL_NAV_REMOVE, SELECT as PANEL_NAV_SELECT,
+        SELECT_NEXT as PANEL_NAV_SELECT_NEXT, SELECT_PREVIOUS as PANEL_NAV_SELECT_PREVIOUS,
+    };
 
-    pub const HISTORY_UNDO: &str = "history.undo";
-    pub const HISTORY_REDO: &str = "history.redo";
+    pub use panel_schema::names::history::{REDO as HISTORY_REDO, UNDO as HISTORY_UNDO};
 
-    pub const SNAPSHOT_CREATE: &str = "snapshot.create";
-    pub const SNAPSHOT_RESTORE: &str = "snapshot.restore";
+    pub use panel_schema::names::snapshot::{
+        CREATE as SNAPSHOT_CREATE, RESTORE as SNAPSHOT_RESTORE,
+    };
 
-    pub const EXPORT_IMAGE: &str = "export.image";
+    pub use panel_schema::names::export::IMAGE as EXPORT_IMAGE;
 
-    pub const TEXT_RENDER_TO_LAYER: &str = "text_render.render_to_layer";
+    pub use panel_schema::names::text_render::RENDER_TO_LAYER as TEXT_RENDER_TO_LAYER;
 
-    pub const WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY: &str =
-        "workspace_layout.set_panel_visibility";
+    pub use panel_schema::names::workspace_layout::SET_PANEL_VISIBILITY as WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY;
 }
 
 #[derive(Debug, Clone, PartialEq)]
