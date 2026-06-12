@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use app_core::Document;
-use desktop_support::{default_panel_dir, default_pen_dir};
+use desktop_support::{builtin_panels_dir, default_pen_dir};
 use panel_runtime::{ServiceRequest, services::names};
 use serde_json::{Map, Value, json};
 use storage::{ImportedPenSet, load_pen_directory, parse_pen_file};
@@ -37,7 +37,7 @@ impl DesktopApp {
     }
 
     pub(crate) fn import_pen_presets(&mut self) -> bool {
-        let suggested = default_panel_dir()
+        let suggested = builtin_panels_dir()
             .parent()
             .map(|_| desktop_support::default_pen_dir())
             .unwrap_or_else(desktop_support::default_pen_dir);

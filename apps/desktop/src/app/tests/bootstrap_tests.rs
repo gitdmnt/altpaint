@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use app_core::Command;
-use desktop_support::DEFAULT_PROJECT_PATH;
+use desktop_support::DEFAULT_PROJECT_FILE_NAME;
 use storage::load_project_from_path;
 
 use super::{
@@ -23,7 +23,7 @@ fn startup_restores_last_project_from_session_path() {
     }));
     source_app.wait_for_pending_save_tasks();
     let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from(DEFAULT_PROJECT_PATH),
+        PathBuf::from(DEFAULT_PROJECT_FILE_NAME),
         Box::new(TestDialogs::default()),
         session_path.clone(),
         unique_test_path("bootstrap-workspace-presets"),

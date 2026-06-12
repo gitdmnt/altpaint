@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 
 use app_core::Document;
 use desktop_support::{
-    DEFAULT_PROJECT_PATH, DesktopSessionState, WorkspacePresetCatalog,
-    default_canvas_template_path, default_canvas_templates, default_panel_dir,
+    DEFAULT_PROJECT_FILE_NAME, DesktopSessionState, WorkspacePresetCatalog,
+    default_canvas_template_path, default_canvas_templates, builtin_panels_dir,
     default_workspace_preset_catalog, load_session_state, load_workspace_preset_catalog,
     save_canvas_templates, save_workspace_preset_catalog,
 };
@@ -80,7 +80,7 @@ impl DesktopApp {
     ) -> (PanelRuntime, PanelPresentation) {
         let mut panel_runtime = PanelRuntime::new();
         let mut panel_presentation = PanelPresentation::new();
-        let diags = register_builtin_panels(&mut panel_runtime, &default_panel_dir());
+        let diags = register_builtin_panels(&mut panel_runtime, &builtin_panels_dir());
         for diag in &diags {
             eprintln!("register_builtin_panels: {diag}");
         }
@@ -173,7 +173,7 @@ fn resolve_startup_project_path(
 ) -> PathBuf {
     session
         .and_then(|state| {
-            (project_path == Path::new(DEFAULT_PROJECT_PATH))
+            (project_path == Path::new(DEFAULT_PROJECT_FILE_NAME))
                 .then(|| state.last_project_path.clone())
                 .flatten()
         })

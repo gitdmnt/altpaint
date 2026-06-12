@@ -6,8 +6,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// 既定のプロジェクト保存先ファイル名を返す。
-pub const DEFAULT_PROJECT_PATH: &str = "altpaint-project.altp.json";
+/// 既定のプロジェクト保存先ファイル名。
+pub const DEFAULT_PROJECT_FILE_NAME: &str = "altpaint-project.altp.json";
 /// ウィンドウタイトルのベース文字列を表す。
 pub const WINDOW_TITLE: &str = "altpaint";
 /// 起動時の既定ウィンドウ幅を表す。
@@ -61,7 +61,7 @@ pub const INPUT_SAMPLING_TARGET_HZ: f64 = 120.0;
 const MAX_DOCUMENT_DIMENSION: usize = 8192;
 const MAX_DOCUMENT_PIXELS: usize = 16_777_216;
 
-pub fn default_panel_dir() -> PathBuf {
+pub fn builtin_panels_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")

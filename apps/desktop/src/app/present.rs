@@ -6,7 +6,7 @@
 
 use std::time::Instant;
 
-use desktop_support::DesktopProfiler;
+use desktop_support::FrameProfiler;
 
 use super::{DesktopApp, PresentFrameUpdate};
 use crate::frame::DesktopLayout;
@@ -16,7 +16,7 @@ impl DesktopApp {
         &mut self,
         window_width: usize,
         window_height: usize,
-        profiler: &mut DesktopProfiler,
+        profiler: &mut FrameProfiler,
     ) -> PresentFrameUpdate {
         self.poll_background_tasks();
         let (canvas_width, canvas_height) = self.canvas_dimensions();

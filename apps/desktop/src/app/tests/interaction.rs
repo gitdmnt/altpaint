@@ -6,7 +6,7 @@ use app_core::{
     PagePoint, CanvasViewportPoint, ColorRgba8, Command, ToolKind, WindowPoint,
 };
 use paint_engine::{CanvasPointerEvent, map_view_to_canvas_with_transform};
-use desktop_support::{DesktopProfiler, StageStats, ValueStats};
+use desktop_support::{FrameProfiler, StageStats, ValueStats};
 
 use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::DesktopApp;
@@ -31,7 +31,7 @@ fn canvas_position_maps_view_center_into_bitmap_bounds() {
 #[test]
 fn eraser_drag_clears_existing_pixels() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
@@ -55,7 +55,7 @@ fn eraser_drag_clears_existing_pixels() {
 #[test]
 fn canvas_drag_draws_black_pixels() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
@@ -77,7 +77,7 @@ fn canvas_drag_draws_black_pixels() {
 #[test]
 fn canvas_drag_draws_using_selected_color() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
@@ -101,7 +101,7 @@ fn canvas_drag_draws_using_selected_color() {
 #[test]
 fn koma_rect_tool_creates_koma_from_dragged_page_rect() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     assert!(app.execute_command(Command::SetActiveTool {
         tool: ToolKind::KomaRect,
@@ -168,7 +168,7 @@ fn panel_color_wheel_updates_document_color() {
 #[test]
 fn overlapping_panel_button_press_takes_priority_over_canvas_input() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
 
@@ -233,7 +233,7 @@ fn overlapping_panel_button_press_takes_priority_over_canvas_input() {
 #[test]
 fn overlapping_panel_drag_takes_priority_over_canvas_input() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
 
@@ -318,7 +318,7 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
 #[test]
 fn workspace_manager_panel_can_be_moved() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
     let before = app
@@ -357,7 +357,7 @@ fn workspace_manager_panel_can_be_moved() {
 #[ignore = "manual performance profiling"]
 fn profile_color_wheel_drag_for_ten_seconds() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let viewport = (1280, 800);
     let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
     profiler.stats.clear();
@@ -403,7 +403,7 @@ fn profile_color_wheel_drag_for_ten_seconds() {
 #[ignore = "manual performance profiling"]
 fn profile_color_wheel_events_for_ten_seconds() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let viewport = (1280, 800);
     let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
     profiler.stats.clear();
@@ -442,7 +442,7 @@ fn profile_color_wheel_events_for_ten_seconds() {
 #[ignore = "manual performance profiling"]
 fn profile_slider_drag_for_ten_seconds() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let viewport = (1280, 800);
     let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
     profiler.stats.clear();
@@ -488,7 +488,7 @@ fn profile_slider_drag_for_ten_seconds() {
 #[ignore = "manual performance profiling"]
 fn profile_panel_drag_for_ten_seconds() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let viewport = (1280, 800);
     let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
     profiler.stats.clear();
@@ -539,7 +539,7 @@ fn profile_panel_drag_for_ten_seconds() {
 #[ignore = "manual performance profiling"]
 fn profile_view_transform_for_ten_seconds() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let viewport = (1280, 800);
     let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
 
@@ -594,7 +594,7 @@ fn profile_view_transform_for_ten_seconds() {
 #[test]
 fn zoom_perf_meets_240fps_target() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
     let iterations = 1000u32;
@@ -626,7 +626,7 @@ fn zoom_perf_meets_240fps_target() {
 #[ignore = "manual performance profiling"]
 fn profile_canvas_brush_sizes_for_ten_seconds() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let viewport = (1280, 800);
     let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
 
@@ -700,7 +700,7 @@ fn profile_canvas_brush_sizes_for_ten_seconds() {
 #[test]
 fn focus_refresh_does_not_trigger_ui_update() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();
 
@@ -739,7 +739,7 @@ fn focus_refresh_does_not_trigger_ui_update() {
 #[test]
 fn tool_change_updates_status_without_full_recompose() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();
     let _layout = app.layout.clone().expect("layout exists");
@@ -761,7 +761,7 @@ fn tool_change_updates_status_without_full_recompose() {
 #[test]
 fn panel_release_without_matching_press_does_not_activate_save() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
     let panel_screen_rect = canvas_geometry::PixelRect {
@@ -788,7 +788,7 @@ fn panel_release_without_matching_press_does_not_activate_save() {
     assert_eq!(app.pending_save_task_count(), 0);
 }
 
-fn avg_stage_ms(profiler: &DesktopProfiler, label: &'static str) -> f64 {
+fn avg_stage_ms(profiler: &FrameProfiler, label: &'static str) -> f64 {
     profiler.stats.get(label).map_or(0.0, avg_stage_stat_ms)
 }
 
@@ -800,14 +800,14 @@ fn avg_stage_stat_ms(stat: &StageStats) -> f64 {
     }
 }
 
-fn max_stage_ms(profiler: &DesktopProfiler, label: &'static str) -> f64 {
+fn max_stage_ms(profiler: &FrameProfiler, label: &'static str) -> f64 {
     profiler
         .stats
         .get(label)
         .map_or(0.0, |stat| stat.max.as_secs_f64() * 1000.0)
 }
 
-fn avg_value(profiler: &DesktopProfiler, label: &'static str) -> f64 {
+fn avg_value(profiler: &FrameProfiler, label: &'static str) -> f64 {
     profiler.value_stats.get(label).map_or(0.0, avg_value_stat)
 }
 
@@ -830,7 +830,7 @@ fn perf_duration() -> Duration {
 fn emit_canvas_perf(
     tool: ToolKind,
     size: u32,
-    profiler: &DesktopProfiler,
+    profiler: &FrameProfiler,
     elapsed: f64,
     iterations: u64,
 ) {
@@ -861,7 +861,7 @@ fn emit_canvas_perf(
     );
 }
 
-fn emit_panel_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterations: u64) {
+fn emit_panel_perf(label: &str, profiler: &FrameProfiler, elapsed: f64, iterations: u64) {
     eprintln!(
         "[{label}] duration={elapsed:.2}s iterations={iterations} rate={:.1}Hz",
         iterations as f64 / elapsed
@@ -899,7 +899,7 @@ fn emit_panel_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterat
     // Phase 9F: base_upload_* / panel_surface_hit_regions は record 側を撤去済み。
 }
 
-fn emit_view_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterations: u64) {
+fn emit_view_perf(label: &str, profiler: &FrameProfiler, elapsed: f64, iterations: u64) {
     eprintln!(
         "[view-perf] case={label} duration={elapsed:.2}s iterations={iterations} rate={:.1}Hz",
         iterations as f64 / elapsed
@@ -925,7 +925,7 @@ fn emit_view_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterati
 fn profile_view_perf_case(
     label: &str,
     app: &mut DesktopApp,
-    profiler: &mut DesktopProfiler,
+    profiler: &mut FrameProfiler,
     viewport: (usize, usize),
     duration: Duration,
     mut step: impl FnMut(&mut DesktopApp, u64) -> bool,
@@ -983,7 +983,7 @@ fn control_points_from_surface(
 #[test]
 fn pan_view_updates_canvas_without_status_recompose() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();
 
@@ -1013,7 +1013,7 @@ fn pan_view_updates_canvas_without_status_recompose() {
 #[test]
 fn pan_view_updates_canvas_quad_without_bitmap_reupload() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let original_quad = app.canvas_texture_quad().expect("canvas quad exists");
 
@@ -1032,7 +1032,7 @@ fn pan_view_updates_canvas_quad_without_bitmap_reupload() {
 #[test]
 fn pan_can_expand_canvas_quad_into_host_margin() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
 
@@ -1049,7 +1049,7 @@ fn pan_can_expand_canvas_quad_into_host_margin() {
 #[test]
 fn new_document_sized_resets_active_interactions() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
@@ -1072,7 +1072,7 @@ fn new_document_sized_resets_active_interactions() {
 #[test]
 fn test_dialog_app_can_prepare_frame() {
     let mut app = super::test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
 
     let update = app.prepare_present_frame(1280, 200, &mut profiler);
 
@@ -1082,7 +1082,7 @@ fn test_dialog_app_can_prepare_frame() {
 #[test]
 fn brush_preview_dirty_rect_grows_with_pen_size() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
@@ -1111,7 +1111,7 @@ fn brush_preview_dirty_rect_grows_with_pen_size() {
 #[test]
 fn lasso_preview_drag_marks_temp_overlay_dirty() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
@@ -1139,7 +1139,7 @@ fn lasso_preview_drag_marks_temp_overlay_dirty() {
 #[test]
 fn toggle_layer_visibility_sets_canvas_dirty_rect_not_full_rebuild() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     // canvas_frame を初期化しておく
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     // 初期化後のフラグをリセット

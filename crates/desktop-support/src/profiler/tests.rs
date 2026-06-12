@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use super::DesktopProfiler;
+use super::FrameProfiler;
 use super::types::PerformanceSnapshot;
 
 #[test]
@@ -31,7 +31,7 @@ fn performance_snapshot_formats_window_title() {
 #[test]
 fn profiler_uses_recent_window_for_snapshot_fps() {
     let start = Instant::now();
-    let mut profiler = DesktopProfiler::new_at(start);
+    let mut profiler = FrameProfiler::new_at(start);
 
     profiler.record("prepare_frame", Duration::from_millis(2));
     profiler.record("ui_update", Duration::from_millis(1));
@@ -59,7 +59,7 @@ fn profiler_uses_recent_window_for_snapshot_fps() {
 #[test]
 fn profiler_tracks_canvas_latency_and_sampling_rate() {
     let start = Instant::now();
-    let mut profiler = DesktopProfiler::new_at(start);
+    let mut profiler = FrameProfiler::new_at(start);
 
     for offset_ms in [0_u64, 8, 16] {
         let input_at = start + Duration::from_millis(offset_ms);
@@ -86,7 +86,7 @@ fn profiler_tracks_canvas_latency_and_sampling_rate() {
 #[test]
 fn profiler_does_not_drop_to_one_fps_after_idle_gap() {
     let start = Instant::now();
-    let mut profiler = DesktopProfiler::new_at(start);
+    let mut profiler = FrameProfiler::new_at(start);
 
     for offset_ms in [0_u64, 16, 32, 48] {
         profiler.record("prepare_frame", Duration::from_millis(2));

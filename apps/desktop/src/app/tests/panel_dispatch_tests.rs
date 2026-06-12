@@ -1,7 +1,7 @@
 //! panel_dispatch の回帰テストをまとめる。
 
 use app_core::{Command, WindowPoint};
-use desktop_support::DesktopProfiler;
+use desktop_support::FrameProfiler;
 
 use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::PanelDragState;
@@ -9,7 +9,7 @@ use crate::app::PanelDragState;
 #[test]
 fn panel_dispatch_keyboard_path_activates_save_action() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
 
     assert!(
@@ -32,7 +32,7 @@ fn panel_dispatch_keyboard_path_activates_save_action() {
 #[test]
 fn drag_panel_move_marks_canvas_host_dirty() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     // レイアウトとパネルを初期化するため一度フレームを作る
     let _ = app.prepare_present_frame(1280, 720, &mut profiler);
 

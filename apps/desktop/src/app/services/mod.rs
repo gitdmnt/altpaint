@@ -10,7 +10,7 @@ mod workspace_io;
 mod workspace_layout;
 
 use app_core::{Command, Document, HistoryEntry};
-use desktop_support::DEFAULT_PROJECT_PATH;
+use desktop_support::DEFAULT_PROJECT_FILE_NAME;
 use panel_runtime::{ServiceRequest, services::names};
 use app_core::WorkspaceUiState;
 
@@ -272,7 +272,7 @@ impl DesktopApp {
             .project_path
             .file_name()
             .and_then(|value| value.to_str())
-            .unwrap_or(DEFAULT_PROJECT_PATH);
+            .unwrap_or(DEFAULT_PROJECT_FILE_NAME);
         let hidden_panels = self
             .panel_presentation
             .workspace_layout()

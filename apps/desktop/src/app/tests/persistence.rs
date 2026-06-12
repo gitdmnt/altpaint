@@ -7,7 +7,7 @@ use app_core::{
     WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState,
 };
 use desktop_support::{
-    DEFAULT_PROJECT_PATH, DesktopProfiler, WorkspacePreset, WorkspacePresetCatalog,
+    DEFAULT_PROJECT_FILE_NAME, FrameProfiler, WorkspacePreset, WorkspacePresetCatalog,
     save_workspace_preset_catalog,
 };
 use panel_runtime::{HostAction, PanelMoveDirection};
@@ -186,7 +186,7 @@ fn load_project_restores_workspace_layout() {
 #[test]
 fn move_panel_host_action_updates_status_without_full_recompose() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();
     let _layout = app.layout.clone().expect("layout exists");
@@ -207,7 +207,7 @@ fn move_panel_host_action_updates_status_without_full_recompose() {
 #[test]
 fn set_panel_visibility_updates_status_without_full_recompose() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();
     let _layout = app.layout.clone().expect("layout exists");
@@ -227,7 +227,7 @@ fn set_panel_visibility_updates_status_without_full_recompose() {
 #[test]
 fn hiding_panel_clears_previous_overlay_bounds_when_surface_shrinks() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
 
@@ -406,7 +406,7 @@ fn startup_restores_last_opened_project_from_session() {
     source_app.wait_for_pending_save_tasks();
 
     let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from(DEFAULT_PROJECT_PATH),
+        PathBuf::from(DEFAULT_PROJECT_FILE_NAME),
         Box::new(TestDialogs::default()),
         session_path.clone(),
         unique_test_path("workspace-presets"),

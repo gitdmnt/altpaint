@@ -35,7 +35,7 @@ struct TimedLatencySample {
 }
 
 /// レンダリング区間と入力レイテンシを窓付きで集計する軽量プロファイラ。
-pub struct DesktopProfiler {
+pub struct FrameProfiler {
     logging_enabled: bool,
     pub stats: BTreeMap<&'static str, StageStats>,
     pub value_stats: BTreeMap<&'static str, ValueStats>,
@@ -53,13 +53,13 @@ pub struct DesktopProfiler {
     latest_snapshot: Option<PerformanceSnapshot>,
 }
 
-impl Default for DesktopProfiler {
+impl Default for FrameProfiler {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl DesktopProfiler {
+impl FrameProfiler {
     pub fn new() -> Self {
         Self::new_at(Instant::now())
     }

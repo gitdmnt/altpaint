@@ -1,6 +1,6 @@
 //! `runtime` モジュールの入力ルーティング回帰テストをまとめる。
 
-use desktop_support::DesktopProfiler;
+use desktop_support::FrameProfiler;
 use winit::event::MouseScrollDelta;
 use winit::event::TouchPhase;
 use winit::keyboard::{Key, ModifiersState, NamedKey};
@@ -27,7 +27,7 @@ fn test_runtime() -> DesktopRuntime {
         pending_wheel_pan: (0.0, 0.0),
         pending_wheel_zoom_lines: 0.0,
         active_touch_id: None,
-        profiler: DesktopProfiler::new(),
+        profiler: FrameProfiler::new(),
         modifiers: ModifiersState::default(),
     }
 }
@@ -59,7 +59,7 @@ fn canvas_input_point(
 #[test]
 fn touch_started_and_moved_draws_black_pixels() {
     let mut runtime = test_runtime();
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 800, &mut profiler);
     let (center_x, center_y) = canvas_input_point(&runtime, 32, 32);
 
@@ -79,7 +79,7 @@ fn touch_started_and_moved_draws_black_pixels() {
 #[test]
 fn touch_cancelled_stops_active_touch_tracking() {
     let mut runtime = test_runtime();
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 800, &mut profiler);
     let (center_x, center_y) = canvas_input_point(&runtime, 16, 16);
 
@@ -93,7 +93,7 @@ fn touch_cancelled_stops_active_touch_tracking() {
 #[test]
 fn raw_mouse_motion_draws_between_cursor_events() {
     let mut runtime = test_runtime();
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 800, &mut profiler);
     let (center_x, center_y) = canvas_input_point(&runtime, 80, 16);
 
@@ -115,7 +115,7 @@ fn raw_mouse_motion_draws_between_cursor_events() {
 #[test]
 fn pixel_wheel_pan_accepts_sub_line_delta() {
     let mut runtime = test_runtime();
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 800, &mut profiler);
     let (center_x, center_y) = canvas_input_point(&runtime, 16, 16);
     runtime.last_cursor_position = Some((center_x, center_y));
@@ -130,7 +130,7 @@ fn pixel_wheel_pan_accepts_sub_line_delta() {
 #[test]
 fn wheel_pan_animation_continues_after_initial_event() {
     let mut runtime = test_runtime();
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 800, &mut profiler);
     let (center_x, center_y) = canvas_input_point(&runtime, 16, 16);
     runtime.last_cursor_position = Some((center_x, center_y));
@@ -150,7 +150,7 @@ fn wheel_pan_animation_continues_after_initial_event() {
 #[test]
 fn shift_wheel_converts_vertical_scroll_into_horizontal_pan() {
     let mut runtime = test_runtime();
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 800, &mut profiler);
     let (center_x, center_y) = canvas_input_point(&runtime, 16, 16);
     runtime.last_cursor_position = Some((center_x, center_y));
@@ -164,7 +164,7 @@ fn shift_wheel_converts_vertical_scroll_into_horizontal_pan() {
 #[test]
 fn control_wheel_changes_zoom() {
     let mut runtime = test_runtime();
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 800, &mut profiler);
     let (center_x, center_y) = canvas_input_point(&runtime, 16, 16);
     runtime.last_cursor_position = Some((center_x, center_y));
@@ -223,7 +223,7 @@ fn builtin_shortcut_dispatches_save_project() {
 #[test]
 fn builtin_shortcut_can_move_focus_backward() {
     let mut runtime = test_runtime();
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 200, &mut profiler);
     // ADR 014 以降、focus は HTML hit table を辿るため事前に hit を 1 件 inject する。
     runtime.app.panel_presentation.update_html_panel_hits(

@@ -10,7 +10,7 @@ use app_core::{
     WorkspacePanelState,
 };
 use desktop_support::{
-    DesktopProfiler, WorkspacePreset, WorkspacePresetCatalog, parse_document_size,
+    FrameProfiler, WorkspacePreset, WorkspacePresetCatalog, parse_document_size,
     save_workspace_preset_catalog,
 };
 use panel_runtime::{HostAction, PanelEvent};
@@ -128,7 +128,7 @@ fn host_action_dispatches_tool_switch_command() {
 #[test]
 fn keyboard_panel_focus_can_activate_app_action() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
 
     assert!(

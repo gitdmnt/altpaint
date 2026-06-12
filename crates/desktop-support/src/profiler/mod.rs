@@ -7,7 +7,7 @@ mod engine;
 mod snapshot;
 mod types;
 
-pub use engine::DesktopProfiler;
+pub use engine::FrameProfiler;
 pub use types::{PresentTimings, StageStats, ValueStats};
 
 #[cfg(test)]

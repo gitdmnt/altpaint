@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::Context;
-use desktop_support::{DesktopProfiler, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
+use desktop_support::{FrameProfiler, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, MouseButton, WindowEvent};
@@ -37,7 +37,7 @@ pub(crate) struct DesktopRuntime {
     pending_wheel_pan: (f32, f32),
     pending_wheel_zoom_lines: f32,
     active_touch_id: Option<u64>,
-    profiler: DesktopProfiler,
+    profiler: FrameProfiler,
     modifiers: ModifiersState,
 }
 
@@ -57,7 +57,7 @@ impl DesktopRuntime {
             pending_wheel_pan: (0.0, 0.0),
             pending_wheel_zoom_lines: 0.0,
             active_touch_id: None,
-            profiler: DesktopProfiler::new(),
+            profiler: FrameProfiler::new(),
             modifiers: ModifiersState::default(),
         }
     }
