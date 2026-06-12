@@ -20,9 +20,10 @@ pub use coordinates::{
 };
 pub use document::{
     BlendMode, CanvasBitmap, CanvasViewTransform, ColorRgba8, DEFAULT_PAGE_HEIGHT,
-    DEFAULT_PAGE_WIDTH, Document, LayerMask, LayerNodeId, Page, PageId, Koma,
-    KomaBounds, KomaId, PenPreset, PenRuntimeEngine, PenTipBitmap, RasterLayer, ToolDefinition,
-    ToolKind, ToolSettingControl, ToolSettingDefinition, Work, WorkId,
+    DEFAULT_PAGE_WIDTH, Document, LayerMask, LayerNodeId, MAX_PAGE_DIMENSION, MAX_PAGE_PIXELS,
+    Page, PageId, Koma, KomaBounds, KomaId, PenPreset, PenRuntimeEngine, PenTipBitmap,
+    RasterLayer, ToolDefinition, ToolKind, ToolSettingControl, ToolSettingDefinition, Work,
+    WorkId, parse_document_size,
 };
 pub use history::{DEFAULT_HISTORY_CAPACITY, EditHistory, HistoryEntry, OpaqueGpuData};
 pub use painting::{

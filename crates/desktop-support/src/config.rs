@@ -58,8 +58,6 @@ pub const PERFORMANCE_SNAPSHOT_WINDOW: Duration = Duration::from_millis(1000);
 pub const INPUT_LATENCY_TARGET_MS: f64 = 10.0;
 /// 入力サンプリング周波数の目標値を表す。
 pub const INPUT_SAMPLING_TARGET_HZ: f64 = 120.0;
-const MAX_DOCUMENT_DIMENSION: usize = 8192;
-const MAX_DOCUMENT_PIXELS: usize = 16_777_216;
 
 pub fn builtin_panels_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -83,46 +81,3 @@ pub fn default_tool_dir() -> PathBuf {
         .join("tools")
 }
 
-pub fn parse_document_size(input: &str) -> Option<(usize, usize)> {
-    let normalized = input.replace(['×', ',', ';'], "x");
-    let parts = normalized
-        .split(|ch: char| ch == 'x' || ch.is_whitespace())
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>();
-    if parts.len() != 2 {
-        return None;
-    }
-
-    let width = parts[0].parse::<usize>().ok()?;
-    let height = parts[1].parse::<usize>().ok()?;
-    if width == 0
-        || height == 0
-        || width > MAX_DOCUMENT_DIMENSION
-        || height > MAX_DOCUMENT_DIMENSION
-        || width.saturating_mul(height) > MAX_DOCUMENT_PIXELS
-    {
-        return None;
-    }
-
-    Some((width, height))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_document_size_accepts_common_formats() {
-        assert_eq!(parse_document_size("64x64"), Some((64, 64)));
-        assert_eq!(parse_document_size("2894x4093"), Some((2894, 4093)));
-        assert_eq!(parse_document_size("320 240"), Some((320, 240)));
-        assert_eq!(parse_document_size("800,600"), Some((800, 600)));
-    }
-
-    #[test]
-    fn parse_document_size_rejects_invalid_dimensions() {
-        assert_eq!(parse_document_size("0x600"), None);
-        assert_eq!(parse_document_size("99999x1"), None);
-        assert_eq!(parse_document_size("foo"), None);
-    }
-}

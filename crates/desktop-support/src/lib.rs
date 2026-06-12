@@ -5,6 +5,7 @@ mod session;
 mod canvas_size_presets;
 mod workspace_presets;
 
+pub use app_core::parse_document_size;
 pub use config::{
     ACTIVE_KOMA_BORDER, ACTIVE_KOMA_FILL, ACTIVE_KOMA_MASK, ACTIVE_PANEL_BORDER,
     APP_BACKGROUND, BRUSH_PREVIEW_RING, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND,
@@ -12,7 +13,6 @@ pub use config::{
     KOMA_NAVIGATOR_ACTIVE, KOMA_NAVIGATOR_BACKGROUND, KOMA_NAVIGATOR_BORDER,
     KOMA_NAVIGATOR_KOMA, KOMA_PREVIEW_BORDER, KOMA_PREVIEW_FILL, WINDOW_HEIGHT, WINDOW_PADDING,
     WINDOW_TITLE, WINDOW_WIDTH, builtin_panels_dir, default_pen_dir, default_tool_dir,
-    parse_document_size,
 };
 pub use dialogs::{DesktopDialogs, NativeDesktopDialogs, normalize_project_path};
 pub use profiler::{FrameProfiler, PresentTimings, StageStats, ValueStats};

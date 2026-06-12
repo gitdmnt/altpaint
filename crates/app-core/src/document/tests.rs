@@ -843,3 +843,18 @@ fn bitmap_composite_golden_source_over_and_multiply() {
         [152, 0, 0, 255, 0, 80, 0, 255, 0, 0, 0, 0, 89, 89, 89, 228],
     );
 }
+
+#[test]
+fn parse_document_size_accepts_common_formats() {
+    assert_eq!(parse_document_size("64x64"), Some((64, 64)));
+    assert_eq!(parse_document_size("2894x4093"), Some((2894, 4093)));
+    assert_eq!(parse_document_size("320 240"), Some((320, 240)));
+    assert_eq!(parse_document_size("800,600"), Some((800, 600)));
+}
+
+#[test]
+fn parse_document_size_rejects_invalid_dimensions() {
+    assert_eq!(parse_document_size("0x600"), None);
+    assert_eq!(parse_document_size("99999x1"), None);
+    assert_eq!(parse_document_size("foo"), None);
+}

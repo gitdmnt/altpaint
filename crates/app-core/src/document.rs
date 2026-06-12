@@ -114,6 +114,39 @@ impl ToolDefinition {
 pub const DEFAULT_PAGE_WIDTH: usize = 2894;
 pub const DEFAULT_PAGE_HEIGHT: usize = 4093;
 
+/// ページ 1 辺の最大ピクセル数。
+pub const MAX_PAGE_DIMENSION: usize = 8192;
+/// ページ全体の最大ピクセル数。
+pub const MAX_PAGE_PIXELS: usize = 16_777_216;
+
+/// `"WIDTHxHEIGHT"` 形式の文字列をページ寸法へ解釈する。
+///
+/// 区切りは `x` / `×` / `,` / `;` / 空白を許容し、上限
+/// (`MAX_PAGE_DIMENSION` / `MAX_PAGE_PIXELS`) を超える寸法や 0 は `None`。
+pub fn parse_document_size(input: &str) -> Option<(usize, usize)> {
+    let normalized = input.replace(['×', ',', ';'], "x");
+    let parts = normalized
+        .split(|ch: char| ch == 'x' || ch.is_whitespace())
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    if parts.len() != 2 {
+        return None;
+    }
+
+    let width = parts[0].parse::<usize>().ok()?;
+    let height = parts[1].parse::<usize>().ok()?;
+    if width == 0
+        || height == 0
+        || width > MAX_PAGE_DIMENSION
+        || height > MAX_PAGE_DIMENSION
+        || width.saturating_mul(height) > MAX_PAGE_PIXELS
+    {
+        return None;
+    }
+
+    Some((width, height))
+}
+
 /// 外部読込可能な最小ペンプリセットを表す。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PenPreset {
