@@ -200,12 +200,6 @@ pub fn build_host_snapshot_cached(
         0
     };
 
-    // layers / panels を JSON Value として埋め込む（キャッシュ文字列から再パース不要）
-    let layers_value: Value =
-        serde_json::from_str(&cache.layers_json).unwrap_or(Value::Array(vec![]));
-    let panels_value: Value =
-        serde_json::from_str(&cache.panels_json).unwrap_or(Value::Array(vec![]));
-
     json!({
         "document": {
             "title": document.work.title,
@@ -223,9 +217,7 @@ pub fn build_host_snapshot_cached(
             "active_layer_blend_mode": active_layer.map(|layer| layer.blend_mode.as_str()).unwrap_or("normal"),
             "active_layer_visible": active_layer.map(|layer| layer.visible).unwrap_or(true),
             "active_layer_masked": active_layer.and_then(|layer| layer.mask.as_ref()).is_some(),
-            "panels": panels_value,
             "panels_json": cache.panels_json,
-            "layers": layers_value,
             "layers_json": cache.layers_json,
         },
         "tool": {
