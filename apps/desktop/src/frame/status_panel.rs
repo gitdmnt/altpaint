@@ -70,12 +70,12 @@ fn html_escape(input: &str) -> String {
     out
 }
 
-pub(crate) struct StatusPanel {
+pub(crate) struct StatusBar {
     view: HtmlPanelView,
     last_snapshot: Option<StatusSnapshot>,
 }
 
-impl StatusPanel {
+impl StatusBar {
     /// 初期 HTML テンプレートで view を初期化する。
     pub(crate) fn new() -> Self {
         let initial = StatusSnapshot::new("Pen", 100, "");
@@ -152,7 +152,7 @@ mod tests {
                 .ok()?;
         let limits = adapter.limits();
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("status-panel-test-device"),
+            label: Some("status-bar-test-device"),
             required_features: wgpu::Features::empty(),
             required_limits: limits,
             memory_hints: wgpu::MemoryHints::default(),
@@ -178,7 +178,7 @@ mod tests {
 
     /// テスト 1: ツール名を含むスナップショットで render_gpu すると glyph run が出力される。
     #[test]
-    fn status_panel_emits_glyph_run_for_tool_name() {
+    fn status_bar_emits_glyph_run_for_tool_name() {
         let _guard = gpu_test_lock();
         let Some((device, queue)) = try_init_device() else {
             eprintln!("skip: no GPU device");
@@ -186,9 +186,9 @@ mod tests {
         };
         let mut renderer = make_renderer(&device);
         let mut scene = vello::Scene::new();
-        let mut panel = StatusPanel::new();
-        panel.update(&StatusSnapshot::new("Pen", 150, "file=untitled"));
-        let outcome = panel.render_gpu(&device, &queue, &mut renderer, &mut scene, (800, 32));
+        let mut bar = StatusBar::new();
+        bar.update(&StatusSnapshot::new("Pen", 150, "file=untitled"));
+        let outcome = bar.render_gpu(&device, &queue, &mut renderer, &mut scene, (800, 32));
         // どんな描画でも glyph run / draw command は scene encoding に積まれるので、
         // resources が空でないことを弱検証する (実装非依存アサート)。
         let resources = scene.encoding().resources.clone();
@@ -203,7 +203,7 @@ mod tests {
 
     /// テスト 2: render_gpu が PanelGpuTarget を返す（PresentFrame への合流に必要）。
     #[test]
-    fn status_panel_quad_present_in_present_frame() {
+    fn status_bar_quad_present_in_present_frame() {
         let _guard = gpu_test_lock();
         let Some((device, queue)) = try_init_device() else {
             eprintln!("skip: no GPU device");
@@ -211,29 +211,29 @@ mod tests {
         };
         let mut renderer = make_renderer(&device);
         let mut scene = vello::Scene::new();
-        let mut panel = StatusPanel::new();
-        panel.update(&StatusSnapshot::new("Pen", 100, "ready"));
-        let outcome = panel.render_gpu(&device, &queue, &mut renderer, &mut scene, (800, 32));
+        let mut bar = StatusBar::new();
+        bar.update(&StatusSnapshot::new("Pen", 100, "ready"));
+        let outcome = bar.render_gpu(&device, &queue, &mut renderer, &mut scene, (800, 32));
         let target = outcome.target();
         assert!(target.width >= 1);
         assert!(target.height >= 1);
-        assert!(panel.gpu_target().is_some());
+        assert!(bar.gpu_target().is_some());
     }
 
     /// テスト 3: snapshot 変更で HTML ドキュメントが更新される。
     #[test]
-    fn status_panel_zoom_percent_updates_on_snapshot_change() {
-        let mut panel = StatusPanel::new();
-        panel.update(&StatusSnapshot::new("Pen", 100, "ready"));
-        let initial_html_len = panel
+    fn status_bar_zoom_percent_updates_on_snapshot_change() {
+        let mut bar = StatusBar::new();
+        bar.update(&StatusSnapshot::new("Pen", 100, "ready"));
+        let initial_html_len = bar
             .view_mut()
             .document()
             .root_node()
             .children
             .len();
-        panel.update(&StatusSnapshot::new("Pen", 250, "ready"));
+        bar.update(&StatusSnapshot::new("Pen", 250, "ready"));
         // DOM が再構築されたので何らかのノードが存在することを弱検証する
-        let updated_html_len = panel
+        let updated_html_len = bar
             .view_mut()
             .document()
             .root_node()
@@ -242,8 +242,8 @@ mod tests {
         assert!(updated_html_len >= initial_html_len.min(1));
         // 二回目の update（同一 snapshot）は no-op
         let snapshot = StatusSnapshot::new("Pen", 250, "ready");
-        panel.update(&snapshot);
+        bar.update(&snapshot);
         // last_snapshot がそのまま保持される
-        assert_eq!(panel.last_snapshot.as_ref(), Some(&snapshot));
+        assert_eq!(bar.last_snapshot.as_ref(), Some(&snapshot));
     }
 }

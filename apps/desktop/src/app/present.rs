@@ -108,7 +108,7 @@ impl DesktopApp {
         let mut layer_dirty = canvas_geometry::LayerDirtyAccumulator::default();
 
         // ステータス更新 — HtmlPanelView 化されたため、毎フレーム
-        // status_panel.update() を呼んで snapshot を view に流す（差分なら no-op）。
+        // status_bar.update() を呼んで snapshot を view に流す（差分なら no-op）。
         // 実際の GPU 描画は runtime.rs の RedrawRequested で行う。
         if self.invalidation.needs_status_refresh {
             self.invalidation.needs_status_refresh = false;

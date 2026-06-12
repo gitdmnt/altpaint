@@ -327,7 +327,7 @@ impl ApplicationHandler for DesktopRuntime {
                     Some((koma.id.0.to_string(), kind, w, h))
                 });
 
-                // CPU canvas frame は &mut self.app.status_panel と借用が衝突するため、
+                // CPU canvas frame は &mut self.app.status_bar と借用が衝突するため、
                 // pixels/サイズを先に Vec へコピーしてから後段で TextureSource を組み立てる。
                 let cpu_canvas_data: Option<(u32, u32, Vec<u8>)> = if gpu_source_spec.is_none() {
                     self.app
@@ -407,13 +407,13 @@ impl ApplicationHandler for DesktopRuntime {
                 }
                 let status_entry: Option<StatusEntry> = {
                     let snapshot = self.app.build_status_snapshot();
-                    self.app.status_panel.update(&snapshot);
+                    self.app.status_bar.update(&snapshot);
                     let parts = self.app.panel_runtime.gpu_context_parts();
                     if let Some((device, queue, renderer, scene_buf)) = parts {
                         // フッター位置 (画面下端) に幅 = window 幅で配置する
                         const FOOTER_HEIGHT: u32 = desktop_support::FOOTER_HEIGHT as u32;
                         let viewport_w = size.width.max(1);
-                        let outcome = self.app.status_panel.render_gpu(
+                        let outcome = self.app.status_bar.render_gpu(
                             device,
                             queue,
                             renderer,
@@ -442,8 +442,8 @@ impl ApplicationHandler for DesktopRuntime {
                     .as_ref()
                     .map(|e| crate::wgpu_canvas::GpuPanelQuad {
                         panel_id: "__status__",
-                        // SAFETY: texture_ptr は self.app.status_panel が所有する
-                        // PanelGpuTarget::texture を指す。本フレーム中、status_panel は
+                        // SAFETY: texture_ptr は self.app.status_bar が所有する
+                        // PanelGpuTarget::texture を指す。本フレーム中、status_bar は
                         // 借用されない（render_gpu の呼び出しは終わっている）ため寿命が保たれる。
                         texture: unsafe { &*e.texture_ptr },
                         screen_rect: e.screen_rect,
