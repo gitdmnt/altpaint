@@ -5,7 +5,7 @@
 mod brush_preview;
 mod canvas_plan;
 mod dirty;
-mod layer_group;
+mod layer_dirty;
 mod overlay_plan;
 mod view_geometry;
 
@@ -14,8 +14,8 @@ pub mod test_support;
 
 pub use brush_preview::brush_preview_dirty_rect;
 pub use canvas_plan::CanvasPlan;
-pub use dirty::{union_dirty_rect, union_optional_rect};
-pub use layer_group::LayerGroupDirtyPlan;
+pub use dirty::{accumulate_dirty_rect, union_optional_rect};
+pub use layer_dirty::LayerDirtyAccumulator;
 pub use overlay_plan::{CanvasOverlayState, KomaNavigatorEntry, KomaNavigatorOverlay};
 pub use view_geometry::{
     CanvasViewGeometry, PixelRect, TextureQuad, brush_preview_rect_for_diameter,

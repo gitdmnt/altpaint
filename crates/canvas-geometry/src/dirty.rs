@@ -1,6 +1,7 @@
 use crate::PixelRect;
 
-pub fn union_dirty_rect(target: &mut Option<PixelRect>, rect: PixelRect) {
+/// `target` へ `rect` を in-place で統合 (union) して蓄積する。
+pub fn accumulate_dirty_rect(target: &mut Option<PixelRect>, rect: PixelRect) {
     *target = Some(target.map_or(rect, |existing| existing.union(rect)));
 }
 

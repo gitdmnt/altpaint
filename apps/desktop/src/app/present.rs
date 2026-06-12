@@ -105,7 +105,7 @@ impl DesktopApp {
             };
         }
 
-        let mut layer_dirty = canvas_geometry::LayerGroupDirtyPlan::default();
+        let mut layer_dirty = canvas_geometry::LayerDirtyAccumulator::default();
 
         // ステータス更新 — HtmlPanelEngine 化されたため、毎フレーム
         // status_panel.update() を呼んで snapshot を engine に流す（差分なら no-op）。
