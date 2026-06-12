@@ -111,8 +111,8 @@ impl ToolDefinition {
     }
 }
 
-pub const DEFAULT_DOCUMENT_WIDTH: usize = 2894;
-pub const DEFAULT_DOCUMENT_HEIGHT: usize = 4093;
+pub const DEFAULT_PAGE_WIDTH: usize = 2894;
+pub const DEFAULT_PAGE_HEIGHT: usize = 4093;
 
 /// 外部読込可能な最小ペンプリセットを表す。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -332,11 +332,11 @@ fn default_active_koma_index() -> usize {
 }
 
 fn default_page_width() -> usize {
-    DEFAULT_DOCUMENT_WIDTH
+    DEFAULT_PAGE_WIDTH
 }
 
 fn default_page_height() -> usize {
-    DEFAULT_DOCUMENT_HEIGHT
+    DEFAULT_PAGE_HEIGHT
 }
 
 /// 作品を識別する最小ID型。
@@ -513,7 +513,7 @@ impl KomaBounds {
 
 impl Default for KomaBounds {
     fn default() -> Self {
-        Self::full_page(DEFAULT_DOCUMENT_WIDTH, DEFAULT_DOCUMENT_HEIGHT)
+        Self::full_page(DEFAULT_PAGE_WIDTH, DEFAULT_PAGE_HEIGHT)
     }
 }
 
@@ -540,7 +540,7 @@ pub struct Koma {
 
 impl Default for Koma {
     fn default() -> Self {
-        Self::new_blank(KomaId(1), DEFAULT_DOCUMENT_WIDTH, DEFAULT_DOCUMENT_HEIGHT)
+        Self::new_blank(KomaId(1), DEFAULT_PAGE_WIDTH, DEFAULT_PAGE_HEIGHT)
     }
 }
 
@@ -721,7 +721,7 @@ pub struct CanvasBitmap {
 
 impl Default for Document {
     fn default() -> Self {
-        Self::new(DEFAULT_DOCUMENT_WIDTH, DEFAULT_DOCUMENT_HEIGHT)
+        Self::new(DEFAULT_PAGE_WIDTH, DEFAULT_PAGE_HEIGHT)
     }
 }
 

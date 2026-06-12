@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use app_core::{
-    ColorRgba8, Command, DEFAULT_DOCUMENT_HEIGHT, DEFAULT_DOCUMENT_WIDTH, ToolKind,
+    ColorRgba8, Command, DEFAULT_PAGE_HEIGHT, DEFAULT_PAGE_WIDTH, ToolKind,
     WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
     WorkspacePanelState,
 };
@@ -149,7 +149,7 @@ fn parse_document_size_accepts_common_formats() {
     assert_eq!(parse_document_size("64x64"), Some((64, 64)));
     assert_eq!(
         parse_document_size("2894x4093"),
-        Some((DEFAULT_DOCUMENT_WIDTH, DEFAULT_DOCUMENT_HEIGHT))
+        Some((DEFAULT_PAGE_WIDTH, DEFAULT_PAGE_HEIGHT))
     );
     assert_eq!(parse_document_size("320 240"), Some((320, 240)));
     assert_eq!(parse_document_size("800,600"), Some((800, 600)));

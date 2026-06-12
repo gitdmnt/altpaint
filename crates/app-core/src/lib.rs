@@ -18,8 +18,8 @@ pub use coordinates::{
     PanelSurfaceRect, WindowDirtyRect, WindowPoint, WindowRect,
 };
 pub use document::{
-    BlendMode, CanvasBitmap, CanvasViewTransform, ColorRgba8, DEFAULT_DOCUMENT_HEIGHT,
-    DEFAULT_DOCUMENT_WIDTH, Document, LayerMask, LayerNodeId, Page, PageId, Koma,
+    BlendMode, CanvasBitmap, CanvasViewTransform, ColorRgba8, DEFAULT_PAGE_HEIGHT,
+    DEFAULT_PAGE_WIDTH, Document, LayerMask, LayerNodeId, Page, PageId, Koma,
     KomaBounds, KomaId, PenPreset, PenRuntimeEngine, PenTipBitmap, RasterLayer, ToolDefinition,
     ToolKind, ToolSettingControl, ToolSettingDefinition, Work, WorkId,
 };

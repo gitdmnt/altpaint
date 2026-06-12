@@ -81,11 +81,11 @@ fn default_document_has_single_page_single_koma_single_layer() {
     assert_eq!(document.work.pages[0].komas[0].layers[0].name, "Layer 1");
     assert_eq!(
         document.work.pages[0].komas[0].bitmap.width,
-        DEFAULT_DOCUMENT_WIDTH
+        DEFAULT_PAGE_WIDTH
     );
     assert_eq!(
         document.work.pages[0].komas[0].bitmap.height,
-        DEFAULT_DOCUMENT_HEIGHT
+        DEFAULT_PAGE_HEIGHT
     );
 }
 
