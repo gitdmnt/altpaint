@@ -1,4 +1,4 @@
-//! gpu-canvas クレートのテスト。
+//! gpu-paint クレートのテスト。
 
 /// GPU ありテスト。
 mod gpu_tests {
@@ -26,7 +26,7 @@ mod gpu_tests {
             & wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: Some("gpu-canvas-test-device"),
+                label: Some("gpu-paint-test-device"),
                 required_features: extra,
                 experimental_features: Default::default(),
                 required_limits: adapter.limits(),

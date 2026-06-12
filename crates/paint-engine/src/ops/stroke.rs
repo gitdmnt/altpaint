@@ -9,7 +9,7 @@ use super::{composite, stamp};
 ///
 /// `apps/desktop` からクレート外で呼べるよう `pub` で公開する。
 /// Phase 8B〜8D の暫定措置として GPU ディスパッチ呼び出し側が使用する。
-/// Phase 8E（CPU bitmap 廃止）以降は `gpu-canvas` が直接 dispatch を担うため削除予定。
+/// Phase 8E（CPU bitmap 廃止）以降は `gpu-paint` が直接 dispatch を担うため削除予定。
 pub fn compute_stamp_positions(
     from: KomaLocalPoint,
     to: KomaLocalPoint,

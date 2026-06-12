@@ -108,13 +108,13 @@ pub(crate) struct DesktopApp {
 /// 部分的な初期化状態は存在しないため、各リソースは Option で包まない。
 pub(crate) struct GpuPaintEngine {
     /// GPU レイヤーテクスチャプール。
-    pub(crate) pool: gpu_canvas::GpuCanvasPool,
+    pub(crate) pool: gpu_paint::GpuCanvasPool,
     /// GPU ブラシ計算シェーダーディスパッチャ。
-    pub(crate) brush: gpu_canvas::GpuBrushDispatch,
+    pub(crate) brush: gpu_paint::GpuBrushDispatch,
     /// GPU 塗りつぶしディスパッチャ。
-    pub(crate) fill: gpu_canvas::GpuFillDispatch,
+    pub(crate) fill: gpu_paint::GpuFillDispatch,
     /// GPU レイヤー合成ディスパッチャ。
-    pub(crate) compositor: gpu_canvas::GpuLayerCompositor,
+    pub(crate) compositor: gpu_paint::GpuLayerCompositor,
 }
 
 impl DesktopApp {
@@ -182,10 +182,10 @@ impl DesktopApp {
         queue: std::sync::Arc<wgpu::Queue>,
     ) {
         self.gpu = Some(GpuPaintEngine {
-            pool: gpu_canvas::GpuCanvasPool::new(device.clone(), queue.clone()),
-            brush: gpu_canvas::GpuBrushDispatch::new(device.clone(), queue.clone()),
-            fill: gpu_canvas::GpuFillDispatch::new(device.clone(), queue.clone()),
-            compositor: gpu_canvas::GpuLayerCompositor::new(device, queue),
+            pool: gpu_paint::GpuCanvasPool::new(device.clone(), queue.clone()),
+            brush: gpu_paint::GpuBrushDispatch::new(device.clone(), queue.clone()),
+            fill: gpu_paint::GpuFillDispatch::new(device.clone(), queue.clone()),
+            compositor: gpu_paint::GpuLayerCompositor::new(device, queue),
         });
         self.sync_all_layers_to_gpu();
         self.recomposite_all_komas();
@@ -294,7 +294,7 @@ impl DesktopApp {
     }
 
     /// GPU レイヤーテクスチャプールへの参照を返す。
-    pub(crate) fn gpu_canvas_pool(&self) -> Option<&gpu_canvas::GpuCanvasPool> {
+    pub(crate) fn gpu_canvas_pool(&self) -> Option<&gpu_paint::GpuCanvasPool> {
         self.gpu.as_ref().map(|gpu| &gpu.pool)
     }
 
@@ -338,14 +338,14 @@ impl DesktopApp {
             return;
         }
 
-        let entries: Vec<gpu_canvas::CompositeLayerEntry<'_>> = koma
+        let entries: Vec<gpu_paint::CompositeLayerEntry<'_>> = koma
             .layers
             .iter()
             .enumerate()
             .filter_map(|(idx, layer)| {
                 let color = gpu.pool.get(&pid_str, idx)?;
                 let mask = gpu.pool.get_mask(&pid_str, idx);
-                Some(gpu_canvas::CompositeLayerEntry {
+                Some(gpu_paint::CompositeLayerEntry {
                     color,
                     mask,
                     blend_code: layer.blend_mode.gpu_code(),

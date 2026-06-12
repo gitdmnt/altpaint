@@ -36,7 +36,7 @@ impl GpuLayerTexture {
     /// 指定サイズのテクスチャを GPU 上に生成する。
     pub fn create(ctx: &GpuCanvasContext, width: u32, height: u32) -> Self {
         let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("gpu-canvas-layer"),
+            label: Some("gpu-paint-layer"),
             size: wgpu::Extent3d {
                 width,
                 height,
@@ -166,7 +166,7 @@ impl GpuCanvasPool {
         let (w, h) = (region.width as u32, region.height as u32);
         let src = self.get(koma_id, layer_index)?;
         let dst = self.ctx.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("gpu-canvas-snapshot"),
+            label: Some("gpu-paint-snapshot"),
             size: wgpu::Extent3d {
                 width: w,
                 height: h,
@@ -183,7 +183,7 @@ impl GpuCanvasPool {
             .ctx
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("gpu-canvas-snapshot-encoder"),
+                label: Some("gpu-paint-snapshot-encoder"),
             });
         encoder.copy_texture_to_texture(
             wgpu::TexelCopyTextureInfo {
@@ -228,7 +228,7 @@ impl GpuCanvasPool {
             .ctx
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("gpu-canvas-restore-encoder"),
+                label: Some("gpu-paint-restore-encoder"),
             });
         encoder.copy_texture_to_texture(
             wgpu::TexelCopyTextureInfo {
@@ -342,7 +342,7 @@ impl GpuCanvasPool {
             .flat_map(|&a| [255u8, 255, 255, a])
             .collect();
         let texture = self.ctx.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("gpu-canvas-mask"),
+            label: Some("gpu-paint-mask"),
             size: wgpu::Extent3d {
                 width,
                 height,
@@ -413,7 +413,7 @@ impl GpuCanvasPool {
     /// ストローク before スナップショット用。`COPY_SRC | COPY_DST` を持つ。
     pub fn create_and_upload(&self, w: u32, h: u32, pixels: &[u8]) -> wgpu::Texture {
         let texture = self.ctx.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("gpu-canvas-upload"),
+            label: Some("gpu-paint-upload"),
             size: wgpu::Extent3d {
                 width: w,
                 height: h,
@@ -463,7 +463,7 @@ fn read_back_texture(
     let padded_bpr = unpadded_bpr.div_ceil(align) * align;
     let buf_size = (padded_bpr * h) as wgpu::BufferAddress;
     let readback = ctx.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("gpu-canvas-readback"),
+        label: Some("gpu-paint-readback"),
         size: buf_size,
         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
@@ -471,7 +471,7 @@ fn read_back_texture(
     let mut encoder = ctx
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("gpu-canvas-readback-encoder"),
+            label: Some("gpu-paint-readback-encoder"),
         });
     encoder.copy_texture_to_buffer(
         wgpu::TexelCopyTextureInfo {

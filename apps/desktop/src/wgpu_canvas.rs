@@ -563,10 +563,10 @@ pub struct WgpuPresenter {
     /// ウィンドウへの描画先サーフェス。OS のスワップチェーンに対応する。
     surface: wgpu::Surface<'static>,
     /// 論理 GPU デバイス。テクスチャやバッファの生成・パイプラインの構築に使う。
-    /// Arc でラップして gpu-canvas クレートと共有できるようにする。
+    /// Arc でラップして gpu-paint クレートと共有できるようにする。
     device: Arc<wgpu::Device>,
     /// コマンドキュー。エンコードしたコマンドを GPU へ提出する。
-    /// Arc でラップして gpu-canvas クレートと共有できるようにする。
+    /// Arc でラップして gpu-paint クレートと共有できるようにする。
     queue: Arc<wgpu::Queue>,
     /// サーフェス設定（解像度・フォーマット・プレゼントモードなど）。
     config: wgpu::SurfaceConfiguration,
@@ -1124,7 +1124,7 @@ impl WgpuPresenter {
         // 物理 GPU（adapter）から論理デバイスとコマンドキューを取得。
         // device: リソース生成・パイプライン構築に使う。
         // queue: GPU へ命令を投入するための FIFO キュー。
-        // Rgba8Unorm の STORAGE_READ_WRITE（gpu-canvas composite shader が要求）を
+        // Rgba8Unorm の STORAGE_READ_WRITE（gpu-paint composite shader が要求）を
         // 利用可能な場合は opt-in する。アダプター非対応時は features に含まれず、
         // composite 経路は format_check 経由で CPU フォールバックへ落ちる。
         let storage_format_features =
@@ -1140,12 +1140,12 @@ impl WgpuPresenter {
             })
             .await
             .context("failed to create device")?;
-        // gpu-canvas クレートと共有できるよう Arc でラップする。
+        // gpu-paint クレートと共有できるよう Arc でラップする。
         let device = Arc::new(device);
         let queue = Arc::new(queue);
 
         let srgb_canvas_view_supported =
-            gpu_canvas::format_check::supports_rgba8unorm_storage(&adapter);
+            gpu_paint::format_check::supports_rgba8unorm_storage(&adapter);
 
         let adapter_info = adapter.get_info();
         if srgb_canvas_view_supported {
@@ -1311,14 +1311,14 @@ impl WgpuPresenter {
     /// ウィンドウサイズ変更時にサーフェスを再設定する。
     /// Arc でラップされたデバイスへの参照を返す。
     ///
-    /// gpu-canvas クレートの `GpuCanvasPool` と共有するために使う。
+    /// gpu-paint クレートの `GpuCanvasPool` と共有するために使う。
     pub fn device(&self) -> Arc<wgpu::Device> {
         Arc::clone(&self.device)
     }
 
     /// Arc でラップされたキューへの参照を返す。
     ///
-    /// gpu-canvas クレートの `GpuCanvasPool` と共有するために使う。
+    /// gpu-paint クレートの `GpuCanvasPool` と共有するために使う。
     pub fn queue(&self) -> Arc<wgpu::Queue> {
         Arc::clone(&self.queue)
     }
@@ -1349,7 +1349,7 @@ impl WgpuPresenter {
     pub fn render(
         &mut self,
         scene: PresentScene<'_>,
-        gpu_canvas_pool: Option<&gpu_canvas::GpuCanvasPool>,
+        gpu_canvas_pool: Option<&gpu_paint::GpuCanvasPool>,
     ) -> Result<PresentTimings> {
         // サーフェスが 0 サイズなら描画をスキップ（最小化時など）。
         if self.config.width == 0 || self.config.height == 0 {
@@ -1357,7 +1357,7 @@ impl WgpuPresenter {
         }
 
         // ─── ステップ 1: テクスチャの確保 ────────────────────────────────────
-        // canvas_layer は省略可能。GPU ソース時は ensure をスキップ（gpu-canvas プール管理）。
+        // canvas_layer は省略可能。GPU ソース時は ensure をスキップ（gpu-paint プール管理）。
         if let Some(canvas_layer) = scene
             .canvas_layer
             .filter(|c| c.source.cpu_source().is_some())
@@ -1882,7 +1882,7 @@ impl WgpuPresenter {
         &mut self,
         source: CanvasLayerSource<'_>,
         quad: TextureQuad,
-        pool: Option<&gpu_canvas::GpuCanvasPool>,
+        pool: Option<&gpu_paint::GpuCanvasPool>,
         surface_width: u32,
         surface_height: u32,
     ) {

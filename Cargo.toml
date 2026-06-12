@@ -21,7 +21,7 @@ members = [
   "crates/panel-macros",
   "crates/panel-sdk",
   "crates/panel-wasm-host",
-  "crates/gpu-canvas",
+  "crates/gpu-paint",
   "crates/panel-html",
   "crates/canvas-geometry",
   "crates/storage",

@@ -107,7 +107,7 @@ impl DesktopApp {
                 // resolved は self.document を借用するため、必要な値だけ取り出してスコープを閉じる
                 let stroke_dispatch = build_paint_context(&self.document, &input).map(|resolved| {
                     let color = resolved.context.color;
-                    let params = gpu_canvas::BrushStrokeParams {
+                    let params = gpu_paint::BrushStrokeParams {
                         color_rgba: [
                             color.r as f32 / 255.0,
                             color.g as f32 / 255.0,
@@ -262,7 +262,7 @@ impl DesktopApp {
         };
         // source は composite があればそれ、無ければ active layer 自身。
         let source_is_composite = pool.get_composite(&pid).is_some();
-        let source_ref: &gpu_canvas::GpuLayerTexture = if source_is_composite {
+        let source_ref: &gpu_paint::GpuLayerTexture = if source_is_composite {
             pool.get_composite(&pid).unwrap()
         } else {
             target

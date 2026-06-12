@@ -605,7 +605,7 @@ impl BlendMode {
 
     /// GPU compute shader に渡す blend code。
     ///
-    /// `crates/gpu-canvas/src/shaders/layer_composite.wgsl` の switch と対応する。
+    /// `crates/gpu-paint/src/shaders/layer_composite.wgsl` の switch と対応する。
     pub fn gpu_code(&self) -> u32 {
         match self {
             Self::Normal => 0,

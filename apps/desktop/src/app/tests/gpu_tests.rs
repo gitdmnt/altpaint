@@ -20,7 +20,7 @@ async fn try_init_device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
         })
         .await
         .ok()?;
-    if !gpu_canvas::format_check::supports_rgba8unorm_storage(&adapter) {
+    if !gpu_paint::format_check::supports_rgba8unorm_storage(&adapter) {
         return None;
     }
     let storage_format_features =
