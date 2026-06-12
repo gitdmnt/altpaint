@@ -400,7 +400,7 @@ impl LayerTextureStore {
         self.mask_textures.retain(|(p, _), _| p != &pid);
     }
 
-    /// 合成テクスチャを CPU へ読み戻す（保存経路の `koma.bitmap` 更新用）。
+    /// 合成テクスチャを CPU へ読み戻す（保存経路の `koma.composite_cache` 更新用）。
     pub fn read_back_composite(&self, koma_id: &str) -> Option<(u32, u32, Vec<u8>)> {
         let tex = self.get_composite(koma_id)?;
         let w = tex.width;

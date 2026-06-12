@@ -321,7 +321,7 @@ impl ApplicationHandler for DesktopRuntime {
                             .first()
                             .map(|l| (l.bitmap.width as u32, l.bitmap.height as u32))?,
                         crate::app::GpuCanvasSourceKind::Composite => {
-                            (koma.bitmap.width as u32, koma.bitmap.height as u32)
+                            (koma.composite_cache.width as u32, koma.composite_cache.height as u32)
                         }
                     };
                     Some((koma.id.0.to_string(), kind, w, h))

@@ -244,7 +244,7 @@ impl DesktopApp {
         };
 
         // before スナップショットを CPU bitmap から作る（ストローク前の状態が
-        // koma.bitmap / layer.bitmap に残っているのは GPU パスでも同じ — Paint
+        // koma.composite_cache / layer.bitmap に残っているのは GPU パスでも同じ — Paint
         // Runtime は CPU bitmap を変更しない）。
         let Some(before_region) =
             self.document

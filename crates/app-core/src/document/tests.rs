@@ -14,7 +14,7 @@ fn apply_layer_brush(
         let layer = &mut koma.layers[koma.active_layer_index];
         paint(&mut layer.bitmap, is_background)
     };
-    koma.bitmap = super::layer_ops::composite_koma_bitmap(koma);
+    koma.composite_cache = super::layer_ops::composite_koma_bitmap(koma);
     Some(
         PageDirtyRect {
             x: local_dirty.x.saturating_add(koma_bounds.x),
@@ -80,11 +80,11 @@ fn default_document_has_single_page_single_koma_single_layer() {
     assert_eq!(document.work.pages[0].komas.len(), 1);
     assert_eq!(document.work.pages[0].komas[0].layers[0].name, "Layer 1");
     assert_eq!(
-        document.work.pages[0].komas[0].bitmap.width,
+        document.work.pages[0].komas[0].composite_cache.width,
         DEFAULT_PAGE_WIDTH
     );
     assert_eq!(
-        document.work.pages[0].komas[0].bitmap.height,
+        document.work.pages[0].komas[0].composite_cache.height,
         DEFAULT_PAGE_HEIGHT
     );
 }
@@ -96,7 +96,7 @@ fn draw_point_marks_target_pixel_black() {
 
     let dirty = draw_point(&mut document, 3, 4).expect("koma should exist");
 
-    let bitmap = &document.work.pages[0].komas[0].bitmap;
+    let bitmap = &document.work.pages[0].komas[0].composite_cache;
     let index = (4 * bitmap.width + 3) * 4;
     assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
     assert_eq!(dirty, PageDirtyRect::from_inclusive_points(3, 4, 3, 4));
@@ -109,7 +109,7 @@ fn draw_stroke_draws_continuous_line() {
 
     let dirty = draw_stroke(&mut document, 2, 2, 6, 2).expect("koma should exist");
 
-    let bitmap = &document.work.pages[0].komas[0].bitmap;
+    let bitmap = &document.work.pages[0].komas[0].composite_cache;
     for x in 2..=6 {
         let index = (2 * bitmap.width + x) * 4;
         assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
@@ -125,7 +125,7 @@ fn erase_point_marks_target_pixel_white() {
 
     let dirty = erase_point(&mut document, 3, 4).expect("koma should exist");
 
-    let bitmap = &document.work.pages[0].komas[0].bitmap;
+    let bitmap = &document.work.pages[0].komas[0].composite_cache;
     let index = (4 * bitmap.width + 3) * 4;
     assert_eq!(&bitmap.pixels[index..index + 4], &[255, 255, 255, 255]);
     assert_eq!(dirty, PageDirtyRect::from_inclusive_points(3, 4, 3, 4));
@@ -161,7 +161,7 @@ fn draw_point_uses_active_color() {
 
     let _ = draw_point(&mut document, 3, 4);
 
-    let bitmap = &document.work.pages[0].komas[0].bitmap;
+    let bitmap = &document.work.pages[0].komas[0].composite_cache;
     let index = (4 * bitmap.width + 3) * 4;
     assert_eq!(&bitmap.pixels[index..index + 4], &[0xe5, 0x39, 0x35, 0xff]);
 }
@@ -262,7 +262,7 @@ fn bitmap_edit_style_stroke_returns_dirty_rect() {
         dirty,
         Some(PageDirtyRect::from_inclusive_points(1, 1, 3, 1))
     );
-    let bitmap = &document.work.pages[0].komas[0].bitmap;
+    let bitmap = &document.work.pages[0].komas[0].composite_cache;
     let index = (bitmap.width + 2) * 4;
     assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
 }
@@ -279,7 +279,7 @@ fn pen_draws_wider_than_single_pixel_default_stroke() {
 
     assert!(dirty.width >= 5);
     assert!(dirty.height >= 5);
-    let bitmap = &document.work.pages[0].komas[0].bitmap;
+    let bitmap = &document.work.pages[0].komas[0].composite_cache;
     let center = (10 * bitmap.width + 10) * 4;
     let edge = (10 * bitmap.width + 8) * 4;
     assert_eq!(&bitmap.pixels[center..center + 4], &[0, 0, 0, 255]);
@@ -571,7 +571,7 @@ fn create_koma_command_adds_rectangular_koma_without_relayout() {
             height: 80,
         }
     );
-    assert_eq!((koma.bitmap.width, koma.bitmap.height), (120, 80));
+    assert_eq!((koma.composite_cache.width, koma.composite_cache.height), (120, 80));
 }
 
 #[test]
@@ -617,14 +617,14 @@ fn koma_selection_switches_edit_target() {
 
     let first_koma = &document.work.pages[0].komas[0];
     let second_koma = &document.work.pages[0].komas[1];
-    let first_index = (3 * first_koma.bitmap.width + 2) * 4;
-    let second_index = (3 * second_koma.bitmap.width + 2) * 4;
+    let first_index = (3 * first_koma.composite_cache.width + 2) * 4;
+    let second_index = (3 * second_koma.composite_cache.width + 2) * 4;
     assert_eq!(
-        &first_koma.bitmap.pixels[first_index..first_index + 4],
+        &first_koma.composite_cache.pixels[first_index..first_index + 4],
         &[255, 255, 255, 255]
     );
     assert_eq!(
-        &second_koma.bitmap.pixels[second_index..second_index + 4],
+        &second_koma.composite_cache.pixels[second_index..second_index + 4],
         &[0, 0, 0, 255]
     );
 }

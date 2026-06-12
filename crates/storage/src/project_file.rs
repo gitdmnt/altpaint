@@ -129,7 +129,7 @@ mod tests {
             let _ = koma.layers[0]
                 .bitmap
                 .draw_point_sized_rgba(x, y, color, 1, true);
-            koma.bitmap = koma.layers[0].bitmap.clone();
+            koma.composite_cache = koma.layers[0].bitmap.clone();
         }
     }
 
@@ -151,14 +151,14 @@ mod tests {
         second_koma.layers[0]
             .bitmap
             .set_pixel_rgba(2, 3, [0x22, 0x44, 0xaa, 0xff]);
-        second_koma.bitmap = second_koma.layers[0].bitmap.clone();
+        second_koma.composite_cache = second_koma.layers[0].bitmap.clone();
 
         let mut third_koma = Document::new(8, 8).work.pages[0].komas[0].clone();
         third_koma.id = KomaId(3);
         third_koma.layers[0]
             .bitmap
             .set_pixel_rgba(1, 1, [0x55, 0x99, 0x22, 0xff]);
-        third_koma.bitmap = third_koma.layers[0].bitmap.clone();
+        third_koma.composite_cache = third_koma.layers[0].bitmap.clone();
         third_koma.layers.push(app_core::RasterLayer {
             id: app_core::LayerNodeId(99),
             name: "Overlay".to_string(),
@@ -208,8 +208,8 @@ mod tests {
         assert_eq!(loaded.work.title, document.work.title);
         assert_eq!(loaded.active_color, document.active_color);
         assert_eq!(
-            loaded.work.pages[0].komas[0].bitmap.pixels,
-            document.work.pages[0].komas[0].bitmap.pixels
+            loaded.work.pages[0].komas[0].composite_cache.pixels,
+            document.work.pages[0].komas[0].composite_cache.pixels
         );
 
         let _ = fs::remove_file(path);
@@ -241,7 +241,7 @@ mod tests {
                 assert_eq!(loaded_koma.bounds, koma.bounds);
                 assert_eq!(loaded_koma.active_layer_index, koma.active_layer_index);
                 assert_eq!(loaded_koma.created_layer_count, koma.created_layer_count);
-                assert_eq!(loaded_koma.bitmap.pixels, koma.bitmap.pixels);
+                assert_eq!(loaded_koma.composite_cache.pixels, koma.composite_cache.pixels);
                 assert_eq!(loaded_koma.layers.len(), koma.layers.len());
                 for (layer, loaded_layer) in koma.layers.iter().zip(loaded_koma.layers.iter()) {
                     assert_eq!(loaded_layer.id, layer.id);
@@ -402,7 +402,7 @@ mod tests {
         assert_eq!(page.komas.len(), 1);
         assert_eq!(page.komas[0].id, KomaId(3));
         assert_eq!(
-            page.komas[0].bitmap.pixel_rgba(1, 1),
+            page.komas[0].composite_cache.pixel_rgba(1, 1),
             Some([0x55, 0x99, 0x22, 0xff])
         );
 
@@ -413,7 +413,7 @@ mod tests {
     fn load_koma_composite_restores_current_composited_bitmap() {
         let path = temp_path("composite");
         let document = multi_page_document();
-        let expected = document.work.pages[0].komas[1].bitmap.pixel_rgba(2, 3);
+        let expected = document.work.pages[0].komas[1].composite_cache.pixel_rgba(2, 3);
 
         save_project_to_path_with_options(
             &path,

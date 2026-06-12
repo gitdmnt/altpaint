@@ -525,8 +525,8 @@ pub struct Koma {
     /// ページ内でのコマ矩形。
     #[serde(default)]
     pub bounds: KomaBounds,
-    /// フェーズ2の最小ラスタキャンバス。
-    pub bitmap: CanvasBitmap,
+    /// レイヤー列の合成結果キャッシュ (`layers` から導出される派生データ)。
+    pub composite_cache: CanvasBitmap,
     /// コマを構成するラスタレイヤー列。index 0 が最下層。
     #[serde(default)]
     pub layers: Vec<RasterLayer>,
@@ -555,7 +555,7 @@ impl Koma {
         Self {
             id,
             bounds: KomaBounds::full_page(width, height),
-            bitmap: background.bitmap.clone(),
+            composite_cache: background.bitmap.clone(),
             layers: vec![background],
             active_layer_index: 0,
             created_layer_count: 1,
@@ -811,7 +811,7 @@ impl Document {
     }
 
     pub fn active_bitmap(&self) -> Option<&CanvasBitmap> {
-        self.active_koma().map(|koma| &koma.bitmap)
+        self.active_koma().map(|koma| &koma.composite_cache)
     }
 
     pub fn active_layer_bitmap(&self) -> Option<&CanvasBitmap> {
@@ -1390,7 +1390,7 @@ fn clamp_koma_bounds(
 fn resize_koma_to_bounds(koma: &mut Koma, width: usize, height: usize) {
     let width = width.max(1);
     let height = height.max(1);
-    if koma.bitmap.width == width && koma.bitmap.height == height {
+    if koma.composite_cache.width == width && koma.composite_cache.height == height {
         return;
     }
 
@@ -1401,7 +1401,7 @@ fn resize_koma_to_bounds(koma: &mut Koma, width: usize, height: usize) {
             *mask = resize_mask_nearest(mask, width, height);
         }
     }
-    koma.bitmap = composite_koma_bitmap(koma);
+    koma.composite_cache = composite_koma_bitmap(koma);
 }
 
 fn resize_bitmap_nearest(bitmap: &CanvasBitmap, width: usize, height: usize) -> CanvasBitmap {

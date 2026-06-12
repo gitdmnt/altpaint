@@ -42,7 +42,7 @@ fn write_png(bitmap: &CanvasBitmap, path: &Path) -> Result<(), ExportError> {
 /// `path` に PNG 形式で保存する。コマが存在しない場合は `ExportError::NoActiveKoma` を返す。
 pub fn export_active_koma_as_png(document: &Document, path: &Path) -> Result<(), ExportError> {
     let koma = document.active_koma().ok_or(ExportError::NoActiveKoma)?;
-    write_png(&koma.bitmap, path)
+    write_png(&koma.composite_cache, path)
 }
 
 #[cfg(test)]

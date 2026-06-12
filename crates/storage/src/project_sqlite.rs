@@ -229,8 +229,8 @@ pub(crate) fn save_project_to_sqlite_path(
                 bounds: koma.bounds,
                 active_layer_index: koma.active_layer_index,
                 created_layer_count: koma.created_layer_count,
-                composed_width: koma.bitmap.width,
-                composed_height: koma.bitmap.height,
+                composed_width: koma.composite_cache.width,
+                composed_height: koma.composite_cache.height,
             };
             transaction.execute(
 				"INSERT INTO komas (page_id, koma_id, koma_index, metadata_json) VALUES (?1, ?2, ?3, ?4)",
@@ -288,15 +288,15 @@ pub(crate) fn save_project_to_sqlite_path(
                         koma.id.0 as i64,
                         current_unix_ms()?,
                         options.save_mode.as_str(),
-                        koma.bitmap.width as i64,
-                        koma.bitmap.height as i64,
+                        koma.composite_cache.width as i64,
+                        koma.composite_cache.height as i64,
                         options.chunk_size as i64,
                     ],
                 )?;
                 insert_composite_chunks(
                     &transaction,
                     &current_composite_id(page.id, koma.id),
-                    &koma.bitmap,
+                    &koma.composite_cache,
                     options.chunk_size,
                 )?;
             }
@@ -813,19 +813,20 @@ fn load_koma(
         });
     }
 
-    let bitmap = match load_koma_composite(connection, &current_composite_id(page_id, koma_id))? {
-        Some(composite) => composite.bitmap,
-        None => compose_koma_bitmap(
-            koma_record.composed_width.max(1),
-            koma_record.composed_height.max(1),
-            &layers,
-        ),
-    };
+    let composite_cache =
+        match load_koma_composite(connection, &current_composite_id(page_id, koma_id))? {
+            Some(composite) => composite.bitmap,
+            None => compose_koma_bitmap(
+                koma_record.composed_width.max(1),
+                koma_record.composed_height.max(1),
+                &layers,
+            ),
+        };
 
     Ok(Koma {
         id: koma_id,
         bounds: koma_record.bounds,
-        bitmap,
+        composite_cache,
         layers,
         active_layer_index: koma_record.active_layer_index,
         created_layer_count: koma_record.created_layer_count,

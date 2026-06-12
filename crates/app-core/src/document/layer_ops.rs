@@ -130,7 +130,7 @@ impl Document {
             layer.bitmap = CanvasBitmap::transparent(w, h);
         }
         let new_bitmap = composite_koma_bitmap(&self.work.pages[page_idx].komas[koma_idx]);
-        self.work.pages[page_idx].komas[koma_idx].bitmap = new_bitmap;
+        self.work.pages[page_idx].komas[koma_idx].composite_cache = new_bitmap;
     }
 
     /// 指定 koma の指定 layer に `BitmapEdit` を適用し、コマ合成も更新する。
@@ -167,7 +167,7 @@ impl Document {
             ensure_koma_layers(koma);
             koma.created_layer_count = koma.created_layer_count.saturating_add(1);
             let next_index = koma.created_layer_count;
-            let (width, height) = (koma.bitmap.width, koma.bitmap.height);
+            let (width, height) = (koma.composite_cache.width, koma.composite_cache.height);
             koma.layers.push(RasterLayer::transparent(
                 LayerNodeId(next_index),
                 format!("Layer {next_index}"),
@@ -188,7 +188,7 @@ impl Document {
             koma.active_layer_index = koma
                 .active_layer_index
                 .min(koma.layers.len().saturating_sub(1));
-            koma.bitmap = composite_koma_bitmap(koma);
+            koma.composite_cache = composite_koma_bitmap(koma);
         }
     }
 
@@ -232,7 +232,7 @@ impl Document {
                 index => index,
             };
 
-            koma.bitmap = composite_koma_bitmap(koma);
+            koma.composite_cache = composite_koma_bitmap(koma);
         }
     }
 
@@ -248,7 +248,7 @@ impl Document {
             ensure_koma_layers(koma);
             if let Some(layer) = koma.layers.get_mut(koma.active_layer_index) {
                 layer.blend_mode = layer.blend_mode.next();
-                koma.bitmap = composite_koma_bitmap(koma);
+                koma.composite_cache = composite_koma_bitmap(koma);
             }
         }
     }
@@ -258,7 +258,7 @@ impl Document {
             ensure_koma_layers(koma);
             if let Some(layer) = koma.layers.get_mut(koma.active_layer_index) {
                 layer.blend_mode = mode;
-                koma.bitmap = composite_koma_bitmap(koma);
+                koma.composite_cache = composite_koma_bitmap(koma);
             }
         }
     }
@@ -268,7 +268,7 @@ impl Document {
             ensure_koma_layers(koma);
             if let Some(layer) = koma.layers.get_mut(koma.active_layer_index) {
                 layer.visible = !layer.visible;
-                koma.bitmap = composite_koma_bitmap(koma);
+                koma.composite_cache = composite_koma_bitmap(koma);
             }
         }
     }
@@ -281,11 +281,11 @@ pub(super) fn ensure_koma_layers(koma: &mut Koma) {
         koma.layers.push(RasterLayer::background(
             LayerNodeId(1),
             "Layer 1".to_string(),
-            koma.bitmap.width,
-            koma.bitmap.height,
+            koma.composite_cache.width,
+            koma.composite_cache.height,
         ));
         if let Some(layer) = koma.layers.first_mut() {
-            layer.bitmap = koma.bitmap.clone();
+            layer.bitmap = koma.composite_cache.clone();
         }
         repaired = true;
     }
@@ -297,7 +297,7 @@ pub(super) fn ensure_koma_layers(koma: &mut Koma) {
         .active_layer_index
         .min(koma.layers.len().saturating_sub(1));
     if repaired {
-        koma.bitmap = composite_koma_bitmap(koma);
+        koma.composite_cache = composite_koma_bitmap(koma);
     }
 }
 
@@ -391,12 +391,12 @@ pub(super) fn composite_koma_bitmap(koma: &Koma) -> CanvasBitmap {
         .layers
         .first()
         .map(|layer| layer.bitmap.width.max(1))
-        .unwrap_or_else(|| koma.bitmap.width.max(1));
+        .unwrap_or_else(|| koma.composite_cache.width.max(1));
     let height = koma
         .layers
         .first()
         .map(|layer| layer.bitmap.height.max(1))
-        .unwrap_or_else(|| koma.bitmap.height.max(1));
+        .unwrap_or_else(|| koma.composite_cache.height.max(1));
     let mut result = CanvasBitmap::transparent(width, height);
     for layer in &koma.layers {
         if !layer.visible {
@@ -417,16 +417,16 @@ pub(super) fn composite_koma_bitmap(koma: &Koma) -> CanvasBitmap {
 }
 
 fn composite_koma_bitmap_region(koma: &mut Koma, dirty: PageDirtyRect) {
-    let dirty = dirty.clamp_to_canvas_bounds(koma.bitmap.width.max(1), koma.bitmap.height.max(1));
+    let dirty = dirty.clamp_to_canvas_bounds(koma.composite_cache.width.max(1), koma.composite_cache.height.max(1));
     if let Some(layer_index) = single_passthrough_layer_index(koma) {
-        copy_bitmap_region(&koma.layers[layer_index].bitmap, &mut koma.bitmap, dirty);
+        copy_bitmap_region(&koma.layers[layer_index].bitmap, &mut koma.composite_cache, dirty);
         return;
     }
 
     for y in dirty.y..dirty.y + dirty.height {
         for x in dirty.x..dirty.x + dirty.width {
-            let index = (y * koma.bitmap.width + x) * 4;
-            koma.bitmap.pixels[index..index + 4].copy_from_slice(&[0, 0, 0, 0]);
+            let index = (y * koma.composite_cache.width + x) * 4;
+            koma.composite_cache.pixels[index..index + 4].copy_from_slice(&[0, 0, 0, 0]);
         }
     }
 
@@ -434,7 +434,7 @@ fn composite_koma_bitmap_region(koma: &mut Koma, dirty: PageDirtyRect) {
         if !layer.visible {
             continue;
         }
-        composite_layer_region_into(&mut koma.bitmap, layer, dirty);
+        composite_layer_region_into(&mut koma.composite_cache, layer, dirty);
     }
 }
 
@@ -451,7 +451,7 @@ fn single_passthrough_layer_index(koma: &Koma) -> Option<usize> {
     if layer.mask.is_some() || !matches!(layer.blend_mode, BlendMode::Normal) {
         return None;
     }
-    if layer.bitmap.width != koma.bitmap.width || layer.bitmap.height != koma.bitmap.height {
+    if layer.bitmap.width != koma.composite_cache.width || layer.bitmap.height != koma.composite_cache.height {
         return None;
     }
     Some(index)

@@ -27,21 +27,21 @@ pub(crate) fn build_canvas_frame(document: &Document) -> CanvasFrame {
     };
 
     let copy_width = koma
-        .bitmap
+        .composite_cache
         .width
         .min(koma.bounds.width)
         .min(frame.width.saturating_sub(koma.bounds.x));
     let copy_height = koma
-        .bitmap
+        .composite_cache
         .height
         .min(koma.bounds.height)
         .min(frame.height.saturating_sub(koma.bounds.y));
     for row in 0..copy_height {
-        let src_row_start = row * koma.bitmap.width * 4;
+        let src_row_start = row * koma.composite_cache.width * 4;
         let dst_row_start = ((koma.bounds.y + row) * frame.width + koma.bounds.x) * 4;
         let row_bytes = copy_width * 4;
         frame.pixels[dst_row_start..dst_row_start + row_bytes]
-            .copy_from_slice(&koma.bitmap.pixels[src_row_start..src_row_start + row_bytes]);
+            .copy_from_slice(&koma.composite_cache.pixels[src_row_start..src_row_start + row_bytes]);
     }
 
     frame

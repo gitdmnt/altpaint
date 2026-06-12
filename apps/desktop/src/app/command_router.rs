@@ -119,7 +119,7 @@ impl DesktopApp {
                     (
                         p.id,
                         PageDirtyRect::new(p.bounds.x, p.bounds.y, p.bounds.width, p.bounds.height),
-                        PageDirtyRect::new(0, 0, p.bitmap.width, p.bitmap.height),
+                        PageDirtyRect::new(0, 0, p.composite_cache.width, p.composite_cache.height),
                     )
                 });
                 if let Some((_koma_id, page_dirty, _local_dirty)) = koma_info {

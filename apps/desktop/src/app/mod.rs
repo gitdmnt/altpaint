@@ -227,8 +227,8 @@ impl DesktopApp {
         for page in &self.document.work.pages {
             for koma in &page.komas {
                 let koma_id = koma.id.0.to_string();
-                let koma_w = koma.bitmap.width as u32;
-                let koma_h = koma.bitmap.height as u32;
+                let koma_w = koma.composite_cache.width as u32;
+                let koma_h = koma.composite_cache.height as u32;
                 for (idx, layer) in koma.layers.iter().enumerate() {
                     entries.push(LayerSync {
                         koma_id: koma_id.clone(),
@@ -323,12 +323,12 @@ impl DesktopApp {
         let Some(composite) = gpu.pool.get_composite(&pid_str) else {
             return;
         };
-        let (pw, ph) = (koma.bitmap.width as u32, koma.bitmap.height as u32);
+        let (pw, ph) = (koma.composite_cache.width as u32, koma.composite_cache.height as u32);
         let rect = dirty.unwrap_or(PageDirtyRect {
             x: 0,
             y: 0,
-            width: koma.bitmap.width,
-            height: koma.bitmap.height,
+            width: koma.composite_cache.width,
+            height: koma.composite_cache.height,
         });
         let x0 = (rect.x as u32).min(pw);
         let y0 = (rect.y as u32).min(ph);
