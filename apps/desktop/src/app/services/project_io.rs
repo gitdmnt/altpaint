@@ -44,11 +44,11 @@ impl DesktopApp {
         Some(changed)
     }
 
-    /// 描画入力を実行してドキュメントへ適用し、操作を履歴へ積む。
+    /// 描画入力をドキュメントへ適用し、操作を履歴へ積む。
     ///
     /// Stamp/StrokeSegment はストローク単位でバッチし `commit_stroke_to_history` で確定する。
     /// FloodFill/LassoFill は即座に `BitmapPatch` として確定する。
-    pub(crate) fn execute_paint_input(&mut self, input: PaintInput) -> bool {
+    pub(crate) fn apply_paint_input(&mut self, input: PaintInput) -> bool {
         // ビットマップ差分を取得
         let Some(edits) = self
             .paint_engine

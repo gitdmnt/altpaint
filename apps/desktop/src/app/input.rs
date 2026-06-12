@@ -195,7 +195,7 @@ impl DesktopApp {
         match update {
             CanvasGestureUpdate::None => false,
             CanvasGestureUpdate::Paint(input) => {
-                let changed = self.execute_paint_input(input);
+                let changed = self.apply_paint_input(input);
                 if pointer_action == CanvasPointerAction::Up {
                     self.commit_stroke_to_history();
                 }
