@@ -51,8 +51,8 @@ impl DesktopApp {
     pub(crate) fn execute_paint_input(&mut self, input: PaintInput) -> bool {
         // ビットマップ差分を取得
         let Some(edits) = self
-            .paint_runtime
-            .execute_paint_input(&self.document, &input)
+            .paint_engine
+            .compute_paint_edits(&self.document, &input)
         else {
             return false;
         };

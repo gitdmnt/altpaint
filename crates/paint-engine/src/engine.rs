@@ -4,26 +4,26 @@ use crate::{
     PaintPluginRegistry, STANDARD_BITMAP_PLUGIN_ID, build_paint_context, default_paint_plugins,
 };
 
-/// `Document` の読み取り状態から bitmap 差分を生成する描画ランタイムを表す。
-pub struct CanvasRuntime {
+/// `Document` の読み取り状態から bitmap 差分を計算するペイントエンジンを表す。
+pub struct PaintEngine {
     registry: PaintPluginRegistry,
 }
 
-impl Default for CanvasRuntime {
+impl Default for PaintEngine {
     fn default() -> Self {
         Self::new(default_paint_plugins())
     }
 }
 
-impl CanvasRuntime {
+impl PaintEngine {
     pub fn new(registry: PaintPluginRegistry) -> Self {
         Self { registry }
     }
 
-    /// 描画入力を実行し、レイヤーに適用するビットマップ差分を返す。
+    /// 描画入力からレイヤーに適用するビットマップ差分を計算して返す (適用はしない)。
     ///
     /// コンテキスト解決に失敗した場合は `None` を返す。
-    pub fn execute_paint_input(
+    pub fn compute_paint_edits(
         &self,
         document: &Document,
         input: &PaintInput,

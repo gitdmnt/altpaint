@@ -1,6 +1,6 @@
 use app_core::{ColorRgba8, Document, PaintInput, KomaLocalPoint};
 
-use crate::CanvasRuntime;
+use crate::PaintEngine;
 
 use super::apply_input;
 
@@ -10,11 +10,11 @@ fn flood_fill_recolors_matching_region() {
         active_color: ColorRgba8::new(0xff, 0x00, 0x00, 0xff),
         ..Document::default()
     };
-    let runtime = CanvasRuntime::default();
+    let engine = PaintEngine::default();
 
     let dirty = apply_input(
         &mut document,
-        &runtime,
+        &engine,
         PaintInput::FloodFill {
             at: KomaLocalPoint::new(8, 8),
         },
@@ -36,12 +36,12 @@ fn lasso_fill_triangular_region_diagonal_edges() {
         active_color: ColorRgba8::new(0xff, 0x00, 0x00, 0xff),
         ..Document::default()
     };
-    let runtime = CanvasRuntime::default();
+    let engine = PaintEngine::default();
 
     // 三角形: (0,0), (20,0), (10,20) — 斜め辺を含む
     let dirty = apply_input(
         &mut document,
-        &runtime,
+        &engine,
         PaintInput::LassoFill {
             points: vec![
                 KomaLocalPoint::new(0, 0),
@@ -68,11 +68,11 @@ fn lasso_fill_colors_polygon_area() {
         active_color: ColorRgba8::new(0x00, 0x00, 0xff, 0xff),
         ..Document::default()
     };
-    let runtime = CanvasRuntime::default();
+    let engine = PaintEngine::default();
 
     let dirty = apply_input(
         &mut document,
-        &runtime,
+        &engine,
         PaintInput::LassoFill {
             points: vec![
                 KomaLocalPoint::new(10, 10),

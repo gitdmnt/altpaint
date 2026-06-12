@@ -1,6 +1,6 @@
 use app_core::{ColorRgba8, Document, PaintInput, KomaLocalPoint};
 
-use crate::CanvasRuntime;
+use crate::PaintEngine;
 
 use super::apply_input;
 
@@ -10,11 +10,11 @@ fn stamp_input_paints_selected_color() {
         active_color: ColorRgba8::new(0x43, 0xa0, 0x47, 0xff),
         ..Document::default()
     };
-    let runtime = CanvasRuntime::default();
+    let engine = PaintEngine::default();
 
     let dirty = apply_input(
         &mut document,
-        &runtime,
+        &engine,
         PaintInput::Stamp {
             at: KomaLocalPoint::new(64, 64),
             pressure: 1.0,

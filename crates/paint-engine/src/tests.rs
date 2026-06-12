@@ -6,13 +6,13 @@ mod stroke_tests;
 
 use app_core::{CanvasDirtyRect, Document, PaintInput};
 
-use crate::CanvasRuntime;
+use crate::PaintEngine;
 
 pub(crate) fn apply_input(
     document: &mut Document,
-    runtime: &CanvasRuntime,
+    engine: &PaintEngine,
     input: PaintInput,
 ) -> Option<CanvasDirtyRect> {
-    let edits = runtime.execute_paint_input(document, &input)?;
+    let edits = engine.compute_paint_edits(document, &input)?;
     document.apply_bitmap_edits_to_active_layer(&edits)
 }

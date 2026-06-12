@@ -1,17 +1,17 @@
 use app_core::{Command, Document, PaintInput, KomaLocalPoint, ToolKind};
 
-use crate::CanvasRuntime;
+use crate::PaintEngine;
 
 use super::apply_input;
 
 #[test]
 fn stroke_segment_paints_multiple_pixels() {
     let mut document = Document::default();
-    let runtime = CanvasRuntime::default();
+    let engine = PaintEngine::default();
 
     let dirty = apply_input(
         &mut document,
-        &runtime,
+        &engine,
         PaintInput::StrokeSegment {
             from: KomaLocalPoint::new(32, 32),
             to: KomaLocalPoint::new(64, 32),
@@ -31,13 +31,13 @@ fn stroke_segment_paints_multiple_pixels() {
 }
 
 #[test]
-fn eraser_uses_runtime_composite_to_clear_pixels() {
+fn eraser_uses_engine_composite_to_clear_pixels() {
     let mut document = Document::default();
-    let runtime = CanvasRuntime::default();
+    let engine = PaintEngine::default();
 
     let _ = apply_input(
         &mut document,
-        &runtime,
+        &engine,
         PaintInput::Stamp {
             at: KomaLocalPoint::new(48, 48),
             pressure: 1.0,
@@ -48,7 +48,7 @@ fn eraser_uses_runtime_composite_to_clear_pixels() {
     });
     let _ = apply_input(
         &mut document,
-        &runtime,
+        &engine,
         PaintInput::Stamp {
             at: KomaLocalPoint::new(48, 48),
             pressure: 1.0,
