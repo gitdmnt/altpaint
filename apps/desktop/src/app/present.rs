@@ -63,7 +63,7 @@ impl DesktopApp {
         // HTML パネルの hit / move handle / full rect テーブルを CPU 側で更新する。
         // レイアウト解決は GPU 非依存 (`collect_panel_hits`) のため、GPU 提示の有無
         // (headless テスト含む) にかかわらずフォーカス巡回・キーボード操作・
-        // pointer hit が機能する。GPU ループ (runtime.rs) は quad 組み立てのみを担う。
+        // pointer hit が機能する。GPU ループ (event_loop.rs) は quad 組み立てのみを担う。
         profiler.measure("panel_hits", || {
             self.refresh_panel_hit_tables(window_width, window_height);
         });
@@ -109,7 +109,7 @@ impl DesktopApp {
 
         // ステータス更新 — HtmlPanelView 化されたため、毎フレーム
         // status_bar.update() を呼んで snapshot を view に流す（差分なら no-op）。
-        // 実際の GPU 描画は runtime.rs の RedrawRequested で行う。
+        // 実際の GPU 描画は event_loop.rs の RedrawRequested で行う。
         if self.invalidation.needs_status_refresh {
             self.invalidation.needs_status_refresh = false;
         }

@@ -1,4 +1,4 @@
-//! キーボード入力の正規化を `DesktopRuntime` へ追加する。
+//! キーボード入力の正規化を `DesktopEventLoop` へ追加する。
 //!
 //! ADR 014 以降、テキスト入力 / IME 編集は HTML パネル内部の DOM mutation で完結する。
 //! panel-workspace 側のテキスト editor state はすべて撤去済み。
@@ -8,9 +8,9 @@ use app_core::Command;
 use winit::event::{ElementState, Ime, KeyEvent};
 use winit::keyboard::{Key, NamedKey};
 
-use super::DesktopRuntime;
+use super::DesktopEventLoop;
 
-impl DesktopRuntime {
+impl DesktopEventLoop {
     /// IME イベントは HTML パネル内部で完結するため、winit 経由では消費しない。
     pub(super) fn handle_ime_event(&mut self, _ime: Ime) -> bool {
         false

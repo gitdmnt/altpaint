@@ -1,4 +1,4 @@
-//! ポインタ・ホイール・タッチ入力を `DesktopRuntime` へ追加する。
+//! ポインタ・ホイール・タッチ入力を `DesktopEventLoop` へ追加する。
 //!
 //! 可能な限り座標変換や蓄積ロジックを小さな関数へ分け、
 //! OS イベント処理とドキュメント更新の接点を読みやすく保つ。
@@ -8,7 +8,7 @@ use std::time::Instant;
 use app_core::Command;
 use winit::event::{ElementState, Force, MouseScrollDelta, TouchPhase};
 
-use super::DesktopRuntime;
+use super::DesktopEventLoop;
 
 #[derive(Clone, Copy)]
 pub(super) enum HtmlPointerKind {
@@ -17,7 +17,7 @@ pub(super) enum HtmlPointerKind {
     Move,
 }
 
-impl DesktopRuntime {
+impl DesktopEventLoop {
     fn wheel_delta_lines(delta: MouseScrollDelta) -> (f32, f32) {
         match delta {
             MouseScrollDelta::LineDelta(x, y) => (x, y),

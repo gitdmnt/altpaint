@@ -1,4 +1,4 @@
-//! `winit` のイベントループと `DesktopApp` を接続するランタイム層。
+//! `winit` のイベントループと `DesktopApp` を接続するイベントループ層。
 //!
 //! OS イベントをアプリ本体へ橋渡しし、`wgpu` 提示や IME 制御を含む
 //! 実行時の副作用を一箇所へ閉じ込める。
@@ -26,8 +26,8 @@ use crate::wgpu_canvas::{
     CanvasSurface, CanvasSurfaceSource, PresentFrame, TextureSource, UploadRegion, WgpuPresenter,
 };
 
-/// `winit` アプリケーションとして振る舞う実行時コンテナを表す。
-pub(crate) struct DesktopRuntime {
+/// `winit` アプリケーションとして振る舞うイベントループホストを表す。
+pub(crate) struct DesktopEventLoop {
     app: DesktopApp,
     window: Option<Arc<Window>>,
     presenter: Option<WgpuPresenter>,
@@ -41,7 +41,7 @@ pub(crate) struct DesktopRuntime {
     modifiers: ModifiersState,
 }
 
-impl DesktopRuntime {
+impl DesktopEventLoop {
     const WHEEL_ANIMATION_BLEND: f32 = 0.45;
     const WHEEL_PAN_MIN_STEP: f32 = 0.5;
     const WHEEL_ZOOM_MIN_STEP_LINES: f32 = 0.02;
@@ -64,10 +64,10 @@ impl DesktopRuntime {
 
     pub(crate) fn run(project_path: PathBuf) -> anyhow::Result<()> {
         let event_loop = EventLoop::new().context("failed to create event loop")?;
-        let mut runtime = Self::new(project_path);
+        let mut handler = Self::new(project_path);
         event_loop
-            .run_app(&mut runtime)
-            .context("failed to run desktop runtime")
+            .run_app(&mut handler)
+            .context("failed to run desktop event loop")
     }
 
     /// ADR 014 でテキスト入力は HTML パネル内部完結に統一済みのため、IME 許可は常に false。
@@ -83,7 +83,7 @@ impl DesktopRuntime {
     }
 }
 
-impl ApplicationHandler for DesktopRuntime {
+impl ApplicationHandler for DesktopEventLoop {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
