@@ -1,7 +1,7 @@
 //! GPU キャンバスリソース管理クレート。
 //!
 //! wgpu テクスチャを管理する型を提供する。
-//! `crates/canvas` の wgpu 非依存を維持しつつ、GPU ペイント処理の基盤となる。
+//! `crates/paint-engine` の wgpu 非依存を維持しつつ、GPU ペイント処理の基盤となる。
 
 pub mod format_check;
 pub mod brush;

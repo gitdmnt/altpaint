@@ -1,4 +1,4 @@
-//! `canvas` は入力解釈・描画ランタイム・ビットマップ操作を集約する。
+//! `paint-engine` は入力解釈・描画ランタイム・ビットマップ操作を集約する。
 
 mod context;
 mod context_builder;

@@ -90,7 +90,7 @@ impl GpuBrushDispatch {
     /// 指定スタンプ位置群（コマローカル座標）をレイヤーテクスチャへ描画する。
     ///
     /// - `params.tool_kind == ToolKind::Eraser` なら消去シェーダーを使用する。
-    /// - `positions` は `canvas::compute_stamp_positions` の戻り値をそのまま渡す。
+    /// - `positions` は `paint_engine::compute_stamp_positions` の戻り値をそのまま渡す。
     /// - `positions` が空の場合は何もしない。
     pub fn dispatch_stroke(
         &self,

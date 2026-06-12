@@ -13,7 +13,7 @@ members = [
   "crates/builtin-panels/color-palette",
   "crates/builtin-panels/workspace-layout",
   "crates/panel-api",
-  "crates/canvas",
+  "crates/paint-engine",
   "crates/app-core",
   "crates/desktop-support",
   "crates/panel-runtime",

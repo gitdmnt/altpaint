@@ -9,7 +9,7 @@ authors.workspace = true
 anyhow.workspace = true
 app-core = { path = "../../crates/app-core" }
 gpu-canvas = { path = "../../crates/gpu-canvas" }
-canvas = { path = "../../crates/canvas" }
+paint-engine = { path = "../../crates/paint-engine" }
 desktop-support = { path = "../../crates/desktop-support" }
 panel-runtime = { path = "../../crates/panel-runtime" }
 keyboard-types = "0.7"

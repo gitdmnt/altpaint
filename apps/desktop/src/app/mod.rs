@@ -40,7 +40,7 @@ use self::panel_dispatch::PanelInteractionState;
 use self::present_state::PresentFrameUpdate;
 use self::snapshot_store::DocumentSnapshotStore;
 use crate::frame::DesktopLayout;
-use canvas::CanvasInputState;
+use paint_engine::CanvasInputState;
 
 #[cfg(test)]
 static TEST_SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -82,7 +82,7 @@ pub(crate) struct DesktopApp {
     pub(crate) io_state: DesktopIoState,
     workspace_presets: WorkspacePresetCatalog,
     active_workspace_preset_id: String,
-    paint_runtime: canvas::CanvasRuntime,
+    paint_runtime: paint_engine::CanvasRuntime,
     canvas_input: CanvasInputState,
     pub(crate) layout: Option<DesktopLayout>,
     canvas_frame: Option<CanvasFrame>,
@@ -147,7 +147,7 @@ impl DesktopApp {
             ),
             workspace_presets: bootstrap.workspace_presets,
             active_workspace_preset_id: bootstrap.active_workspace_preset_id,
-            paint_runtime: canvas::CanvasRuntime::default(),
+            paint_runtime: paint_engine::CanvasRuntime::default(),
             canvas_input: CanvasInputState::default(),
             layout: None,
             canvas_frame: None,

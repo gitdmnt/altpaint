@@ -33,7 +33,7 @@ impl DesktopApp {
 
     pub(super) fn koma_creation_preview_bounds(&self) -> Option<app_core::KomaBounds> {
         let (page_width, page_height) = self.document.active_page_dimensions();
-        canvas::koma_creation_preview_bounds(&self.canvas_input, page_width, page_height)
+        paint_engine::koma_creation_preview_bounds(&self.canvas_input, page_width, page_height)
     }
 
     pub(super) fn koma_navigator_overlay(&self) -> Option<KomaNavigatorOverlay> {

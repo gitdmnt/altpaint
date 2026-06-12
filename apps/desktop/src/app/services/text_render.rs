@@ -1,6 +1,6 @@
 //! テキスト描画 service request のハンドラ。
 
-use canvas::ops::text::render_text_to_bitmap_edit;
+use paint_engine::ops::text::render_text_to_bitmap_edit;
 use panel_runtime::{ServiceRequest, services::names};
 
 use super::DesktopApp;

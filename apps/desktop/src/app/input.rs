@@ -4,7 +4,7 @@
 //! ランタイム側が UI 詳細を知らずに済むようにする。
 
 use app_core::{CanvasPoint, Command, ToolKind, WindowPoint};
-use canvas::{
+use paint_engine::{
     CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, CanvasPointerEvent,
     advance_pointer_gesture, map_view_to_canvas_with_transform,
 };
@@ -229,7 +229,7 @@ impl DesktopApp {
                     koma_rect_anchor: Some(anchor),
                 };
                 let created =
-                    canvas::koma_creation_preview_bounds(&preview_state, page_width, page_height)
+                    paint_engine::koma_creation_preview_bounds(&preview_state, page_width, page_height)
                         .filter(|bounds| bounds.width >= 8 && bounds.height >= 8)
                         .is_some_and(|bounds| {
                             self.execute_command(Command::CreateKoma {

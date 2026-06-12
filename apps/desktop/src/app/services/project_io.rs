@@ -103,7 +103,7 @@ impl DesktopApp {
 
             // GPU dispatch (Phase 8B): CPU と並行して GPU レイヤーテクスチャへ描画する
             {
-                use canvas::{build_paint_context, compute_stamp_positions};
+                use paint_engine::{build_paint_context, compute_stamp_positions};
                 // resolved は self.document を借用するため、必要な値だけ取り出してスコープを閉じる
                 let stroke_dispatch = build_paint_context(&self.document, &input).map(|resolved| {
                     let color = resolved.context.color;
@@ -217,7 +217,7 @@ impl DesktopApp {
         input: &PaintInput,
         edits: &[app_core::BitmapEdit],
     ) -> bool {
-        use canvas::build_paint_context;
+        use paint_engine::build_paint_context;
         let edit_dirty = edits.iter().fold(None::<CanvasDirtyRect>, |acc, edit| {
             Some(match acc {
                 Some(existing) => existing.merge(edit.dirty_rect),

@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use app_core::{
     CanvasPoint, CanvasViewportPoint, ColorRgba8, Command, ToolKind, WindowPoint,
 };
-use canvas::{CanvasPointerEvent, map_view_to_canvas_with_transform};
+use paint_engine::{CanvasPointerEvent, map_view_to_canvas_with_transform};
 use desktop_support::{DesktopProfiler, StageStats, ValueStats};
 
 use super::{TestDialogs, test_app_with_dialogs};

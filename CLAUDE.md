@@ -69,7 +69,7 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 
 **起動**: `apps/desktop` が winit + wgpu 初期化 → `DesktopApp::new` がセッション/プロジェクト/ワークスペース復元 → `PanelRuntime` が `crates/builtin-panels/` の HTML+CSS+Wasm パネル 12 個を読み込む → `storage` がツール・ペンを読み込む → 初期レンダリング
 
-**入力 → 描画**: OS入力 → `runtime/pointer.rs` 正規化 → `app/input.rs` がキャンバスかパネルへ振り分け → `canvas::view_mapping` が座標変換 → `canvas::gesture` が `PaintInput` を生成 → `canvas::context_builder` が `Document` からペイントコンテキストを解決 → `gpu-canvas` の compute shader が GPU レイヤーテクスチャへ直接描画（ブラシ/塗りつぶし/合成）→ `wgpu_canvas.rs` が GPU へ提示
+**入力 → 描画**: OS入力 → `runtime/pointer.rs` 正規化 → `app/input.rs` がキャンバスかパネルへ振り分け → `paint_engine::view_mapping` が座標変換 → `paint_engine::gesture` が `PaintInput` を生成 → `paint_engine::context_builder` が `Document` からペイントコンテキストを解決 → `gpu-canvas` の compute shader が GPU レイヤーテクスチャへ直接描画（ブラシ/塗りつぶし/合成）→ `wgpu_canvas.rs` が GPU へ提示
 
 **パネル**: `BuiltinPanelPlugin` が `panel.html` + `panel.css` をロード → `panel-wasm-host`（wasmtime）が Wasm を実行し DOM mutation host function で直接 DOM を書換え → `PanelRuntime` がホストスナップショットを同期 → `PanelEvent`（Activate/Keyboard 等）/`HostAction` → `DesktopApp` が `Command` またはサイドエフェクトとして適用 → `panel-html::HtmlPanelEngine`（Blitz + vello）が GPU テクスチャに直描画 → `wgpu_canvas` が `panel_quads` レイヤーで合成。hit / move handle テーブルは `prepare_present_frame` が GPU 非依存で毎フレーム更新
 
@@ -79,7 +79,7 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 | ------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `apps/desktop`                        | winit + wgpu ホスト、`DesktopApp` 統括、入力ルーティング、提示                            |
 | `crates/app-core`                     | `Document`、ドメインモデル（Work→Page→Panel→RasterLayer）、`Command`、ペイント基本型、`WorkspaceUiState` |
-| `crates/canvas`                       | `CanvasRuntime`、ジェスチャーステートマシン、ビットマップ操作                             |
+| `crates/paint-engine`                 | `CanvasRuntime`、ジェスチャーステートマシン、ビットマップ操作                             |
 | `crates/gpu-canvas`                   | GPU レイヤーテクスチャプール、ブラシ/塗りつぶし/レイヤー合成の compute shader dispatch    |
 | `crates/canvas-geometry`              | `CanvasPlan`、`PixelRect`/`CanvasScene`/`CanvasOverlayState` 等の純データ DTO             |
 | `crates/panel-runtime`                | パネルサブシステム facade。`PanelRuntime`/`BuiltinPanelPlugin`、Wasm ブリッジ、ホストスナップショット同期、永続設定、同梱パネル loader、panel-api/panel-html の再公開 |
