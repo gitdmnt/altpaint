@@ -5,7 +5,7 @@ use crate::ResolvedPaintContext;
 pub fn resolved_size_for_input(document: &Document, input: &PaintInput) -> u32 {
     match input {
         PaintInput::Stamp { pressure, .. } | PaintInput::StrokeSegment { pressure, .. } => {
-            document.resolved_paint_size_with_pressure(*pressure)
+            document.brush_size_for_pressure(*pressure)
         }
         PaintInput::FloodFill { .. } | PaintInput::LassoFill { .. } => {
             document.active_pen_size.max(1)

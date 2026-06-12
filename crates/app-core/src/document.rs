@@ -1117,10 +1117,6 @@ impl Document {
             .unwrap_or(0)
     }
 
-    pub fn resolved_paint_size_with_pressure(&self, pressure: f32) -> u32 {
-        self.active_draw_size_with_pressure(pressure)
-    }
-
     /// ロード後のドキュメント不変条件を修復する。
     ///
     /// ツール状態の整合、空のページ列・コマ列の補完、各 index の clamp、

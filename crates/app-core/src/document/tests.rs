@@ -28,7 +28,7 @@ fn apply_layer_brush(
 
 fn draw_point(document: &mut Document, x: usize, y: usize) -> Option<PageDirtyRect> {
     let color = document.active_color.to_rgba8();
-    let size = document.resolved_paint_size_with_pressure(1.0);
+    let size = document.brush_size_for_pressure(1.0);
     let antialias = document
         .active_pen_preset()
         .map(|preset| preset.antialias)
@@ -46,7 +46,7 @@ fn draw_stroke(
     to_y: usize,
 ) -> Option<PageDirtyRect> {
     let color = document.active_color.to_rgba8();
-    let size = document.resolved_paint_size_with_pressure(1.0);
+    let size = document.brush_size_for_pressure(1.0);
     let antialias = document
         .active_pen_preset()
         .map(|preset| preset.antialias)
@@ -57,7 +57,7 @@ fn draw_stroke(
 }
 
 fn erase_point(document: &mut Document, x: usize, y: usize) -> Option<PageDirtyRect> {
-    let size = document.resolved_paint_size_with_pressure(1.0);
+    let size = document.brush_size_for_pressure(1.0);
     let antialias = document
         .active_pen_preset()
         .map(|preset| preset.antialias)

@@ -68,7 +68,8 @@ impl Document {
         }
     }
 
-    pub(super) fn active_draw_size_with_pressure(&self, pressure: f32) -> u32 {
+    /// 現在ツールと筆圧から実効ブラシサイズを決定する。
+    pub fn brush_size_for_pressure(&self, pressure: f32) -> u32 {
         let clamped_pressure = pressure.clamp(0.0, 1.0);
         match self.active_tool {
             ToolKind::Eraser => self.active_pen_size.max(1),
