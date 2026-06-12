@@ -17,7 +17,7 @@ pub(crate) struct CanvasFrame {
 /// CPU 側キャンバススナップショットを構築する。
 pub(crate) fn build_canvas_frame(document: &Document) -> CanvasFrame {
     let page = document.active_page().unwrap_or(&document.work.pages[0]);
-    let koma = document.active_panel().unwrap_or(&page.panels[0]);
+    let koma = document.active_panel().unwrap_or(&page.komas[0]);
     let width = page.width.max(1);
     let height = page.height.max(1);
     let mut frame = CanvasFrame {

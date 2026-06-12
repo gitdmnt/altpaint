@@ -77,14 +77,14 @@ fn default_document_has_single_page_single_panel_single_layer() {
 
     assert_eq!(document.work.title, "Untitled");
     assert_eq!(document.work.pages.len(), 1);
-    assert_eq!(document.work.pages[0].panels.len(), 1);
-    assert_eq!(document.work.pages[0].panels[0].layers[0].name, "Layer 1");
+    assert_eq!(document.work.pages[0].komas.len(), 1);
+    assert_eq!(document.work.pages[0].komas[0].layers[0].name, "Layer 1");
     assert_eq!(
-        document.work.pages[0].panels[0].bitmap.width,
+        document.work.pages[0].komas[0].bitmap.width,
         DEFAULT_DOCUMENT_WIDTH
     );
     assert_eq!(
-        document.work.pages[0].panels[0].bitmap.height,
+        document.work.pages[0].komas[0].bitmap.height,
         DEFAULT_DOCUMENT_HEIGHT
     );
 }
@@ -96,7 +96,7 @@ fn draw_point_marks_target_pixel_black() {
 
     let dirty = draw_point(&mut document, 3, 4).expect("koma should exist");
 
-    let bitmap = &document.work.pages[0].panels[0].bitmap;
+    let bitmap = &document.work.pages[0].komas[0].bitmap;
     let index = (4 * bitmap.width + 3) * 4;
     assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
     assert_eq!(dirty, CanvasDirtyRect::from_inclusive_points(3, 4, 3, 4));
@@ -109,7 +109,7 @@ fn draw_stroke_draws_continuous_line() {
 
     let dirty = draw_stroke(&mut document, 2, 2, 6, 2).expect("koma should exist");
 
-    let bitmap = &document.work.pages[0].panels[0].bitmap;
+    let bitmap = &document.work.pages[0].komas[0].bitmap;
     for x in 2..=6 {
         let index = (2 * bitmap.width + x) * 4;
         assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
@@ -125,7 +125,7 @@ fn erase_point_marks_target_pixel_white() {
 
     let dirty = erase_point(&mut document, 3, 4).expect("koma should exist");
 
-    let bitmap = &document.work.pages[0].panels[0].bitmap;
+    let bitmap = &document.work.pages[0].komas[0].bitmap;
     let index = (4 * bitmap.width + 3) * 4;
     assert_eq!(&bitmap.pixels[index..index + 4], &[255, 255, 255, 255]);
     assert_eq!(dirty, CanvasDirtyRect::from_inclusive_points(3, 4, 3, 4));
@@ -161,7 +161,7 @@ fn draw_point_uses_active_color() {
 
     let _ = draw_point(&mut document, 3, 4);
 
-    let bitmap = &document.work.pages[0].panels[0].bitmap;
+    let bitmap = &document.work.pages[0].komas[0].bitmap;
     let index = (4 * bitmap.width + 3) * 4;
     assert_eq!(&bitmap.pixels[index..index + 4], &[0xe5, 0x39, 0x35, 0xff]);
 }
@@ -262,7 +262,7 @@ fn bitmap_edit_style_stroke_returns_dirty_rect() {
         dirty,
         Some(CanvasDirtyRect::from_inclusive_points(1, 1, 3, 1))
     );
-    let bitmap = &document.work.pages[0].panels[0].bitmap;
+    let bitmap = &document.work.pages[0].komas[0].bitmap;
     let index = (bitmap.width + 2) * 4;
     assert_eq!(&bitmap.pixels[index..index + 4], &[0, 0, 0, 255]);
 }
@@ -279,7 +279,7 @@ fn pen_draws_wider_than_single_pixel_default_stroke() {
 
     assert!(dirty.width >= 5);
     assert!(dirty.height >= 5);
-    let bitmap = &document.work.pages[0].panels[0].bitmap;
+    let bitmap = &document.work.pages[0].komas[0].bitmap;
     let center = (10 * bitmap.width + 10) * 4;
     let edge = (10 * bitmap.width + 8) * 4;
     assert_eq!(&bitmap.pixels[center..center + 4], &[0, 0, 0, 255]);
@@ -418,7 +418,7 @@ fn add_raster_layer_selects_new_layer() {
 
     document.apply_command(&Command::AddRasterLayer);
 
-    let koma = &document.work.pages[0].panels[0];
+    let koma = &document.work.pages[0].komas[0];
     assert_eq!(koma.layers.len(), 2);
     assert_eq!(koma.active_layer_index, 1);
     assert_eq!(koma.layers[1].name, "Layer 2");
@@ -433,7 +433,7 @@ fn add_raster_layer_uses_created_layer_counter_for_names() {
 
     document.apply_command(&Command::AddRasterLayer);
 
-    let koma = &document.work.pages[0].panels[0];
+    let koma = &document.work.pages[0].komas[0];
     let names = koma
         .layers
         .iter()
@@ -449,7 +449,7 @@ fn remove_active_layer_keeps_at_least_one_layer() {
 
     document.apply_command(&Command::RemoveActiveLayer);
 
-    let koma = &document.work.pages[0].panels[0];
+    let koma = &document.work.pages[0].komas[0];
     assert_eq!(koma.layers.len(), 1);
     assert_eq!(koma.active_layer_index, 0);
 }
@@ -462,7 +462,7 @@ fn remove_active_layer_selects_remaining_layer() {
 
     document.apply_command(&Command::RemoveActiveLayer);
 
-    let koma = &document.work.pages[0].panels[0];
+    let koma = &document.work.pages[0].komas[0];
     assert_eq!(koma.layers.len(), 2);
     assert_eq!(koma.active_layer_index, 1);
     assert_eq!(koma.layers[1].name, "Layer 2");
@@ -479,7 +479,7 @@ fn move_layer_reorders_layers_and_tracks_active_selection() {
         to_index: 0,
     });
 
-    let koma = &document.work.pages[0].panels[0];
+    let koma = &document.work.pages[0].komas[0];
     let names = koma
         .layers
         .iter()
@@ -498,7 +498,7 @@ fn rename_active_layer_updates_selected_layer_name() {
         name: "Ink".to_string(),
     });
 
-    let koma = &document.work.pages[0].panels[0];
+    let koma = &document.work.pages[0].komas[0];
     assert_eq!(koma.layers[1].name, "Ink");
 }
 
@@ -509,7 +509,7 @@ fn set_active_layer_blend_mode_sets_requested_mode() {
         mode: BlendMode::Screen,
     });
 
-    let koma = &document.work.pages[0].panels[0];
+    let koma = &document.work.pages[0].komas[0];
     assert_eq!(koma.layers[0].blend_mode, BlendMode::Screen);
 }
 
@@ -615,8 +615,8 @@ fn panel_selection_switches_edit_target() {
 
     let _ = draw_point(&mut document, 2, 3);
 
-    let first_koma = &document.work.pages[0].panels[0];
-    let second_koma = &document.work.pages[0].panels[1];
+    let first_koma = &document.work.pages[0].komas[0];
+    let second_koma = &document.work.pages[0].komas[1];
     let first_index = (3 * first_koma.bitmap.width + 2) * 4;
     let second_index = (3 * second_koma.bitmap.width + 2) * 4;
     assert_eq!(

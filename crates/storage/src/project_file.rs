@@ -145,7 +145,7 @@ mod tests {
         let mut document = Document::new(16, 16);
         document.work.title = "Phase 11 test".to_string();
 
-        let mut second_panel = Document::new(8, 8).work.pages[0].panels[0].clone();
+        let mut second_panel = Document::new(8, 8).work.pages[0].komas[0].clone();
         second_panel.id = KomaId(2);
         second_panel.layers[0].name = "Blue layer".to_string();
         second_panel.layers[0]
@@ -153,7 +153,7 @@ mod tests {
             .set_pixel_rgba(2, 3, [0x22, 0x44, 0xaa, 0xff]);
         second_panel.bitmap = second_panel.layers[0].bitmap.clone();
 
-        let mut third_panel = Document::new(8, 8).work.pages[0].panels[0].clone();
+        let mut third_panel = Document::new(8, 8).work.pages[0].komas[0].clone();
         third_panel.id = KomaId(3);
         third_panel.layers[0]
             .bitmap
@@ -177,12 +177,12 @@ mod tests {
         });
 
         document.work.pages[0].id = PageId(10);
-        document.work.pages[0].panels.push(second_panel);
+        document.work.pages[0].komas.push(second_panel);
         document.work.pages.push(Page {
             id: PageId(20),
             width: 8,
             height: 8,
-            panels: vec![third_panel],
+            komas: vec![third_panel],
         });
         document
     }
@@ -208,8 +208,8 @@ mod tests {
         assert_eq!(loaded.work.title, document.work.title);
         assert_eq!(loaded.active_color, document.active_color);
         assert_eq!(
-            loaded.work.pages[0].panels[0].bitmap.pixels,
-            document.work.pages[0].panels[0].bitmap.pixels
+            loaded.work.pages[0].komas[0].bitmap.pixels,
+            document.work.pages[0].komas[0].bitmap.pixels
         );
 
         let _ = fs::remove_file(path);
@@ -235,8 +235,8 @@ mod tests {
 
         assert_eq!(loaded.work.pages.len(), document.work.pages.len());
         for (page, loaded_page) in document.work.pages.iter().zip(loaded.work.pages.iter()) {
-            assert_eq!(loaded_page.panels.len(), page.panels.len());
-            for (koma, loaded_koma) in page.panels.iter().zip(loaded_page.panels.iter()) {
+            assert_eq!(loaded_page.komas.len(), page.komas.len());
+            for (koma, loaded_koma) in page.komas.iter().zip(loaded_page.komas.iter()) {
                 assert_eq!(loaded_koma.id, koma.id);
                 assert_eq!(loaded_koma.bounds, koma.bounds);
                 assert_eq!(loaded_koma.active_layer_index, koma.active_layer_index);
@@ -398,10 +398,10 @@ mod tests {
         let page = load_page_from_path(&path, PageId(20)).expect("page load should succeed");
 
         assert_eq!(page.id, PageId(20));
-        assert_eq!(page.panels.len(), 1);
-        assert_eq!(page.panels[0].id, KomaId(3));
+        assert_eq!(page.komas.len(), 1);
+        assert_eq!(page.komas[0].id, KomaId(3));
         assert_eq!(
-            page.panels[0].bitmap.pixel_rgba(1, 1),
+            page.komas[0].bitmap.pixel_rgba(1, 1),
             Some([0x55, 0x99, 0x22, 0xff])
         );
 
@@ -412,7 +412,7 @@ mod tests {
     fn load_panel_snapshot_restores_current_composited_bitmap() {
         let path = temp_path("snapshot");
         let document = multi_page_document();
-        let expected = document.work.pages[0].panels[1].bitmap.pixel_rgba(2, 3);
+        let expected = document.work.pages[0].komas[1].bitmap.pixel_rgba(2, 3);
 
         save_project_to_path_with_options(
             &path,

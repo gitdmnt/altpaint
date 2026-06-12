@@ -205,7 +205,7 @@ impl DesktopApp {
             .work
             .pages
             .iter()
-            .flat_map(|page| page.panels.iter().map(|p| p.id.0.to_string()))
+            .flat_map(|page| page.komas.iter().map(|p| p.id.0.to_string()))
             .collect();
         if let Some(gpu) = self.gpu.as_mut() {
             for pid in &koma_ids {
@@ -225,7 +225,7 @@ impl DesktopApp {
         }
         let mut entries: Vec<LayerSync> = Vec::new();
         for page in &self.document.work.pages {
-            for koma in &page.panels {
+            for koma in &page.komas {
                 let koma_id = koma.id.0.to_string();
                 let koma_w = koma.bitmap.width as u32;
                 let koma_h = koma.bitmap.height as u32;
@@ -315,7 +315,7 @@ impl DesktopApp {
             .work
             .pages
             .iter()
-            .flat_map(|p| &p.panels)
+            .flat_map(|p| &p.komas)
             .find(|p| p.id == koma_id)
         else {
             return;
@@ -365,7 +365,7 @@ impl DesktopApp {
             .work
             .pages
             .iter()
-            .flat_map(|page| page.panels.iter().map(|p| p.id))
+            .flat_map(|page| page.komas.iter().map(|p| p.id))
             .collect();
         for id in ids {
             self.recomposite_panel(id, None);

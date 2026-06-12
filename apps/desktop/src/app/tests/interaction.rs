@@ -132,8 +132,8 @@ fn panel_rect_tool_creates_panel_from_dragged_page_rect() {
     assert!(app.handle_canvas_pointer("up", WindowPoint::new(end_window.0, end_window.1), 1.0,));
 
     let page = app.document.active_page().expect("active page");
-    assert_eq!(page.panels.len(), 2);
-    let created = page.panels.last().expect("created panel");
+    assert_eq!(page.komas.len(), 2);
+    let created = page.komas.last().expect("created panel");
     assert_eq!(created.bounds.x, start.x.min(end.x));
     assert_eq!(created.bounds.y, start.y.min(end.y));
     assert_eq!(

@@ -327,7 +327,7 @@ fn default_active_tool_id() -> String {
         .unwrap_or_else(|| "builtin.pen".to_string())
 }
 
-fn default_active_panel_index() -> usize {
+fn default_active_koma_index() -> usize {
     0
 }
 
@@ -389,8 +389,8 @@ pub struct Document {
     #[serde(default = "default_active_page_index")]
     pub active_page_index: usize,
     /// 現在アクティブなコマ index。
-    #[serde(default = "default_active_panel_index")]
-    pub active_panel_index: usize,
+    #[serde(default = "default_active_koma_index")]
+    pub active_koma_index: usize,
     /// キャンバスの表示変換状態。
     pub view_transform: CanvasViewTransform,
 }
@@ -428,7 +428,7 @@ pub struct Page {
     #[serde(default = "default_page_height")]
     pub height: usize,
     /// ページ内に含まれるコマ列。
-    pub panels: Vec<Koma>,
+    pub komas: Vec<Koma>,
 }
 
 impl Default for Page {
@@ -437,7 +437,7 @@ impl Default for Page {
             id: PageId(1),
             width: default_page_width(),
             height: default_page_height(),
-            panels: vec![Koma::default()],
+            komas: vec![Koma::default()],
         }
     }
 }
@@ -749,7 +749,7 @@ impl Document {
                 pages: vec![Page {
                     width,
                     height,
-                    panels: vec![Koma::new_blank(KomaId(1), width, height)],
+                    komas: vec![Koma::new_blank(KomaId(1), width, height)],
                     ..Page::default()
                 }],
                 ..Work::default()
@@ -763,7 +763,7 @@ impl Document {
             active_pen_preset_id,
             active_pen_size,
             active_page_index: default_active_page_index(),
-            active_panel_index: default_active_panel_index(),
+            active_koma_index: default_active_koma_index(),
             view_transform: CanvasViewTransform::default(),
         }
     }
@@ -776,8 +776,8 @@ impl Document {
     pub fn active_panel_index(&self) -> usize {
         self.active_page()
             .map(|page| {
-                self.active_panel_index
-                    .min(page.panels.len().saturating_sub(1))
+                self.active_koma_index
+                    .min(page.komas.len().saturating_sub(1))
             })
             .unwrap_or(0)
     }
@@ -796,17 +796,17 @@ impl Document {
     pub fn active_panel(&self) -> Option<&Koma> {
         let koma_index = self.active_panel_index();
         self.active_page()
-            .and_then(|page| page.panels.get(koma_index))
+            .and_then(|page| page.komas.get(koma_index))
     }
 
     pub fn active_panel_mut(&mut self) -> Option<&mut Koma> {
         let page_index = self
             .active_page_index
             .min(self.work.pages.len().saturating_sub(1));
-        let koma_index = self.active_panel_index;
+        let koma_index = self.active_koma_index;
         self.work.pages.get_mut(page_index).and_then(|page| {
-            let clamped_index = koma_index.min(page.panels.len().saturating_sub(1));
-            page.panels.get_mut(clamped_index)
+            let clamped_index = koma_index.min(page.komas.len().saturating_sub(1));
+            page.komas.get_mut(clamped_index)
         })
     }
 
@@ -909,7 +909,7 @@ impl Document {
 
     pub fn active_page_panel_count(&self) -> usize {
         self.active_page()
-            .map(|page| page.panels.len())
+            .map(|page| page.komas.len())
             .unwrap_or(0)
     }
 
@@ -922,21 +922,21 @@ impl Document {
     pub fn select_panel(&mut self, index: usize) {
         let page_index = self.active_page_index();
         if let Some(page) = self.work.pages.get(page_index) {
-            self.active_panel_index = index.min(page.panels.len().saturating_sub(1));
+            self.active_koma_index = index.min(page.komas.len().saturating_sub(1));
         }
     }
 
     pub fn select_next_panel(&mut self) {
         if let Some(page) = self.active_page() {
-            let koma_count = page.panels.len().max(1);
-            self.active_panel_index = (self.active_panel_index() + 1) % koma_count;
+            let koma_count = page.komas.len().max(1);
+            self.active_koma_index = (self.active_panel_index() + 1) % koma_count;
         }
     }
 
     pub fn select_previous_panel(&mut self) {
         if let Some(page) = self.active_page() {
-            let koma_count = page.panels.len().max(1);
-            self.active_panel_index = (self.active_panel_index() + koma_count - 1) % koma_count;
+            let koma_count = page.komas.len().max(1);
+            self.active_koma_index = (self.active_panel_index() + koma_count - 1) % koma_count;
         }
     }
 
@@ -947,7 +947,7 @@ impl Document {
             return;
         };
 
-        let next_count = page.panels.len().saturating_add(1);
+        let next_count = page.komas.len().saturating_add(1);
         let next_bounds = default_panel_grid_bounds(page.width, page.height, next_count);
         let new_bounds = next_bounds
             .last()
@@ -955,9 +955,9 @@ impl Document {
             .unwrap_or_else(|| KomaBounds::full_page(page.width, page.height));
         let mut koma = Koma::new_blank(next_id, new_bounds.width, new_bounds.height);
         koma.bounds = new_bounds;
-        page.panels.push(koma);
+        page.komas.push(koma);
         relayout_page_panels(page);
-        self.active_panel_index = page.panels.len().saturating_sub(1);
+        self.active_koma_index = page.komas.len().saturating_sub(1);
         self.focus_active_panel_view();
     }
 
@@ -973,8 +973,8 @@ impl Document {
 
         let mut koma = Koma::new_blank(next_id, bounds.width, bounds.height);
         koma.bounds = bounds;
-        page.panels.push(koma);
-        self.active_panel_index = page.panels.len().saturating_sub(1);
+        page.komas.push(koma);
+        self.active_koma_index = page.komas.len().saturating_sub(1);
         self.focus_active_panel_view();
     }
 
@@ -984,12 +984,12 @@ impl Document {
         let Some(page) = self.work.pages.get_mut(page_index) else {
             return;
         };
-        if page.panels.len() <= 1 {
+        if page.komas.len() <= 1 {
             return;
         }
-        page.panels.remove(active_panel_index);
+        page.komas.remove(active_panel_index);
         relayout_page_panels(page);
-        self.active_panel_index = active_panel_index.min(page.panels.len().saturating_sub(1));
+        self.active_koma_index = active_panel_index.min(page.komas.len().saturating_sub(1));
         self.focus_active_panel_view();
     }
 
@@ -1130,12 +1130,12 @@ impl Document {
         for page in &mut self.work.pages {
             page.width = page.width.max(1);
             page.height = page.height.max(1);
-            if page.panels.is_empty() {
-                page.panels
+            if page.komas.is_empty() {
+                page.komas
                     .push(Koma::new_blank(KomaId(1), page.width, page.height));
             }
-            let needs_relayout = page.panels.iter().any(|koma| koma.bounds.is_empty());
-            for koma in &mut page.panels {
+            let needs_relayout = page.komas.iter().any(|koma| koma.bounds.is_empty());
+            for koma in &mut page.komas {
                 if koma.bounds.is_empty() {
                     koma.bounds = KomaBounds::full_page(page.width, page.height);
                 }
@@ -1145,7 +1145,7 @@ impl Document {
                 relayout_page_panels(page);
             }
         }
-        self.active_panel_index = self.active_panel_index();
+        self.active_koma_index = self.active_panel_index();
     }
 
     /// コマンドをドキュメント状態へ適用する。
@@ -1309,7 +1309,7 @@ impl Document {
 fn next_panel_id(pages: &[Page]) -> KomaId {
     let next = pages
         .iter()
-        .flat_map(|page| page.panels.iter())
+        .flat_map(|page| page.komas.iter())
         .map(|koma| koma.id.0)
         .max()
         .unwrap_or(0)
@@ -1359,8 +1359,8 @@ fn default_panel_grid_bounds(
 }
 
 fn relayout_page_panels(page: &mut Page) {
-    let bounds = default_panel_grid_bounds(page.width, page.height, page.panels.len());
-    for (koma, next_bounds) in page.panels.iter_mut().zip(bounds.into_iter()) {
+    let bounds = default_panel_grid_bounds(page.width, page.height, page.komas.len());
+    for (koma, next_bounds) in page.komas.iter_mut().zip(bounds.into_iter()) {
         resize_panel_to_bounds(koma, next_bounds.width, next_bounds.height);
         koma.bounds = next_bounds;
     }

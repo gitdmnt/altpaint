@@ -19,7 +19,7 @@ impl DesktopApp {
             .work
             .pages
             .iter()
-            .flat_map(|page| &page.panels)
+            .flat_map(|page| &page.komas)
             .flat_map(|koma| {
                 let koma_id = koma.id;
                 let koma_id_str = koma.id.0.to_string();

@@ -50,7 +50,7 @@ impl Document {
     /// 指定 `KomaId` のページ・コマインデックスを返す。
     pub fn find_panel_location(&self, koma_id: KomaId) -> Option<(usize, usize)> {
         for (page_index, page) in self.work.pages.iter().enumerate() {
-            for (koma_index, koma) in page.panels.iter().enumerate() {
+            for (koma_index, koma) in page.komas.iter().enumerate() {
                 if koma.id == koma_id {
                     return Some((page_index, koma_index));
                 }
@@ -66,7 +66,7 @@ impl Document {
         layer_index: usize,
     ) -> Option<CanvasBitmap> {
         let (page_idx, koma_idx) = self.find_panel_location(koma_id)?;
-        let koma = &self.work.pages[page_idx].panels[koma_idx];
+        let koma = &self.work.pages[page_idx].komas[koma_idx];
         koma.layers.get(layer_index).map(|layer| layer.bitmap.clone())
     }
 
@@ -78,7 +78,7 @@ impl Document {
         dirty: CanvasDirtyRect,
     ) -> Option<CanvasBitmap> {
         let (page_idx, koma_idx) = self.find_panel_location(koma_id)?;
-        let koma = &self.work.pages[page_idx].panels[koma_idx];
+        let koma = &self.work.pages[page_idx].komas[koma_idx];
         let layer = koma.layers.get(layer_index)?;
         extract_bitmap_region(&layer.bitmap, dirty.x, dirty.y, dirty.width, dirty.height)
     }
@@ -95,12 +95,12 @@ impl Document {
         bitmap: &CanvasBitmap,
     ) -> Option<CanvasDirtyRect> {
         let (page_idx, koma_idx) = self.find_panel_location(koma_id)?;
-        let koma_bounds = self.work.pages[page_idx].panels[koma_idx].bounds;
+        let koma_bounds = self.work.pages[page_idx].komas[koma_idx].bounds;
         let (page_width, page_height) = {
             let page = &self.work.pages[page_idx];
             (page.width, page.height)
         };
-        let koma = &mut self.work.pages[page_idx].panels[koma_idx];
+        let koma = &mut self.work.pages[page_idx].komas[koma_idx];
         if let Some(layer) = koma.layers.get_mut(layer_index) {
             write_bitmap_region(&mut layer.bitmap, x, y, bitmap);
         }
@@ -124,13 +124,13 @@ impl Document {
         let Some((page_idx, koma_idx)) = self.find_panel_location(koma_id) else {
             return;
         };
-        let koma = &mut self.work.pages[page_idx].panels[koma_idx];
+        let koma = &mut self.work.pages[page_idx].komas[koma_idx];
         if let Some(layer) = koma.layers.get_mut(layer_index) {
             let (w, h) = (layer.bitmap.width, layer.bitmap.height);
             layer.bitmap = CanvasBitmap::transparent(w, h);
         }
-        let new_bitmap = composite_panel_bitmap(&self.work.pages[page_idx].panels[koma_idx]);
-        self.work.pages[page_idx].panels[koma_idx].bitmap = new_bitmap;
+        let new_bitmap = composite_panel_bitmap(&self.work.pages[page_idx].komas[koma_idx]);
+        self.work.pages[page_idx].komas[koma_idx].bitmap = new_bitmap;
     }
 
     /// 指定 koma の指定 layer に `BitmapEdit` を適用し、コマ合成も更新する。
@@ -144,12 +144,12 @@ impl Document {
             return None;
         }
         let (page_idx, koma_idx) = self.find_panel_location(koma_id)?;
-        let koma_bounds = self.work.pages[page_idx].panels[koma_idx].bounds;
+        let koma_bounds = self.work.pages[page_idx].komas[koma_idx].bounds;
         let (page_width, page_height) = {
             let page = &self.work.pages[page_idx];
             (page.width, page.height)
         };
-        let koma = &mut self.work.pages[page_idx].panels[koma_idx];
+        let koma = &mut self.work.pages[page_idx].komas[koma_idx];
         // layer_index override: set active_layer_index temporarily
         let saved_index = koma.active_layer_index;
         koma.active_layer_index = layer_index.min(koma.layers.len().saturating_sub(1));

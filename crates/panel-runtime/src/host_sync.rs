@@ -124,7 +124,7 @@ pub fn build_host_snapshot_cached(
     }
 
     // ---- パネル一覧 ----
-    let page_panel_count = active_page.map(|p| p.panels.len()).unwrap_or(1);
+    let page_panel_count = active_page.map(|p| p.komas.len()).unwrap_or(1);
     let active_panel_index = document.active_panel_index();
     if force_rebuild
         || cache.page_panel_count != page_panel_count
@@ -132,7 +132,7 @@ pub fn build_host_snapshot_cached(
     {
         let panels = active_page
             .map(|page| {
-                page.panels
+                page.komas
                     .iter()
                     .enumerate()
                     .map(|(index, panel)| {
@@ -168,7 +168,7 @@ pub fn build_host_snapshot_cached(
         .work
         .pages
         .iter()
-        .map(|page| page.panels.len())
+        .map(|page| page.komas.len())
         .sum::<usize>();
     let active_layer_name = active_layer
         .map(|layer| layer.name.clone())

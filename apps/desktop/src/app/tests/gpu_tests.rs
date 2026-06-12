@@ -78,7 +78,7 @@ fn sync_all_layers_to_gpu_creates_textures_for_all_layers() {
         // pool が全レイヤーのテクスチャを持つことを確認
         let pool = app.gpu_canvas_pool().unwrap();
         for page in &app.document.work.pages {
-            for koma in &page.panels {
+            for koma in &page.komas {
                 let koma_id_str = koma.id.0.to_string();
                 for layer_index in 0..koma.layers.len() {
                     assert!(

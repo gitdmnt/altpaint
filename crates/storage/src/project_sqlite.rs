@@ -202,7 +202,7 @@ pub(crate) fn save_project_to_sqlite_path(
             active_pen_preset_id: document.active_pen_preset_id.clone(),
             active_pen_size: document.active_pen_size,
             active_page_index: document.active_page_index,
-            active_panel_index: document.active_panel_index,
+            active_panel_index: document.active_koma_index,
             view_transform: document.view_transform,
         },
     )?;
@@ -224,7 +224,7 @@ pub(crate) fn save_project_to_sqlite_path(
             ],
         )?;
 
-        for (panel_index, koma) in page.panels.iter().enumerate() {
+        for (panel_index, koma) in page.komas.iter().enumerate() {
             let panel_record = StoredPanelRecord {
                 bounds: koma.bounds,
                 active_layer_index: koma.active_layer_index,
@@ -330,7 +330,7 @@ pub(crate) fn load_project_from_sqlite_path(
         active_pen_preset_id: document_record.active_pen_preset_id,
         active_pen_size: document_record.active_pen_size,
         active_page_index: document_record.active_page_index,
-        active_panel_index: document_record.active_panel_index,
+        active_koma_index: document_record.active_panel_index,
         view_transform: document_record.view_transform,
         active_child_tool_id: String::new(),
     };
@@ -760,7 +760,7 @@ fn load_page(connection: &Connection, page_id: PageId) -> Result<Page, StorageEr
         id: page_id,
         width: width as usize,
         height: height as usize,
-        panels,
+        komas: panels,
     })
 }
 

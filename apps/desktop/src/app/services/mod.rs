@@ -299,7 +299,7 @@ impl DesktopApp {
                 .work
                 .pages
                 .iter()
-                .map(|page| page.panels.len())
+                .map(|page| page.komas.len())
                 .sum::<usize>(),
             hidden_panels,
         )
