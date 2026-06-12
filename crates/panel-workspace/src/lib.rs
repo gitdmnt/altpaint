@@ -1,4 +1,4 @@
-//! `panel-workspace` は panel presentation と workspace 上の panel UI 制御を提供する。
+//! `panel-workspace` はワークスペース上のパネル配置・focus・hit テーブルを管理する。
 
 mod focus;
 mod workspace;
@@ -16,11 +16,11 @@ use std::collections::BTreeMap;
 // hit-test API の戻り値型。利用側が panel-api へ直接依存しなくて済むよう再公開する。
 pub use panel_api::ResizeEdge;
 
-/// パネルの presentation 状態を保持する。
+/// 全パネルの配置 (workspace layout)・focus・hit テーブルの状態ストア。
 ///
 /// すべてのパネルは GPU 直描画 (`PanelRuntime::render_panels`) で提示され、
 /// panel-workspace は workspace layout・focus・hit table の管理だけを担う。
-pub struct PanelPresentation {
+pub struct PanelWorkspace {
     /// panel 並び順と表示状態。
     workspace_layout: WorkspaceLayout,
     /// 現在 focus 中の node。
@@ -49,7 +49,7 @@ struct HtmlPanelHitItem {
     rect_in_panel: canvas_geometry::PixelRect,
 }
 
-impl PanelPresentation {
+impl PanelWorkspace {
     pub fn new() -> Self {
         Self {
             workspace_layout: WorkspaceLayout::default(),
@@ -190,7 +190,7 @@ impl PanelPresentation {
     }
 }
 
-impl Default for PanelPresentation {
+impl Default for PanelWorkspace {
     fn default() -> Self {
         Self::new()
     }

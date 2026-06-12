@@ -53,7 +53,7 @@ impl DesktopApp {
                 .map(|l| (l.window_rect.width, l.window_rect.height))
                 .unwrap_or((usize::MAX, usize::MAX));
             let Some(start_rect) = self
-                .panel_presentation
+                .panel_workspace
                 .panel_rect_in_viewport(&panel_id, viewport.0, viewport.1)
             else {
                 return false;
@@ -75,7 +75,7 @@ impl DesktopApp {
                 .map(|l| (l.window_rect.width, l.window_rect.height))
                 .unwrap_or((usize::MAX, usize::MAX));
             let Some(panel_rect) = self
-                .panel_presentation
+                .panel_workspace
                 .panel_rect_in_viewport(&panel_id, viewport.0, viewport.1)
             else {
                 return false;
@@ -100,7 +100,7 @@ impl DesktopApp {
         let PanelEvent::Activate { panel_id, node_id } = &event else {
             return false;
         };
-        let changed = self.panel_presentation.focus_panel_node(panel_id, node_id);
+        let changed = self.panel_workspace.focus_panel_node(panel_id, node_id);
         self.panel_interaction.pending_panel_press = Some(PanelPressState {
             panel_id: panel_id.clone(),
             node_id: node_id.clone(),
@@ -129,8 +129,8 @@ impl DesktopApp {
         let (win_w, win_h) = (layout.window_rect.width, layout.window_rect.height);
         let window_x = point.x.max(0) as usize;
         let window_y = point.y.max(0) as usize;
-        let previous_rect = self.panel_presentation.panel_rect(&panel_id);
-        let changed = self.panel_presentation.move_panel_to(
+        let previous_rect = self.panel_workspace.panel_rect(&panel_id);
+        let changed = self.panel_workspace.move_panel_to(
             &panel_id,
             window_x.saturating_sub(grab_offset.x),
             window_y.saturating_sub(grab_offset.y),
@@ -168,9 +168,9 @@ impl DesktopApp {
             (win_w as u32, win_h as u32),
             constraints,
         );
-        let previous_rect = self.panel_presentation.panel_rect(&state.panel_id);
+        let previous_rect = self.panel_workspace.panel_rect(&state.panel_id);
 
-        let applied = self.panel_presentation.resize_panel_keeping_anchor(
+        let applied = self.panel_workspace.resize_panel_keeping_anchor(
             &state.panel_id,
             new_rect,
             (win_w, win_h),
@@ -227,8 +227,8 @@ impl DesktopApp {
                 panel_id,
                 direction,
             } => {
-                let previous_rect = self.panel_presentation.panel_rect(&panel_id);
-                let changed = self.panel_presentation.move_panel(&panel_id, direction);
+                let previous_rect = self.panel_workspace.panel_rect(&panel_id);
+                let changed = self.panel_workspace.move_panel(&panel_id, direction);
                 if changed {
                     self.request_panel_reconcile();
                     self.mark_status_dirty();
@@ -240,9 +240,9 @@ impl DesktopApp {
                 changed
             }
             HostAction::SetPanelVisibility { panel_id, visible } => {
-                let previous_rect = self.panel_presentation.panel_rect(&panel_id);
+                let previous_rect = self.panel_workspace.panel_rect(&panel_id);
                 let changed = self
-                    .panel_presentation
+                    .panel_workspace
                     .set_panel_visibility(&panel_id, visible);
                 if changed {
                     self.request_panel_reconcile();
@@ -272,7 +272,7 @@ impl DesktopApp {
         let mut first_command = None;
         // Activate は focus を更新したうえで常にランタイムへ転送する。
         if let PanelEvent::Activate { panel_id, node_id } = &event {
-            self.panel_presentation.focus_panel_node(panel_id, node_id);
+            self.panel_workspace.focus_panel_node(panel_id, node_id);
         }
 
         let runtime = self.panel_runtime.dispatch_event(&event);
@@ -333,24 +333,24 @@ impl DesktopApp {
     }
 
     pub(crate) fn focus_next_panel_control(&mut self) -> bool {
-        let changed = self.panel_presentation.focus_next();
+        let changed = self.panel_workspace.focus_next();
         self.request_panel_reconcile_if_changed(changed)
     }
 
     pub(crate) fn focus_previous_panel_control(&mut self) -> bool {
-        let changed = self.panel_presentation.focus_previous();
+        let changed = self.panel_workspace.focus_previous();
         self.request_panel_reconcile_if_changed(changed)
     }
 
     pub(crate) fn activate_focused_panel_control(&mut self) -> Option<app_core::Command> {
-        let event = self.panel_presentation.activate_focused()?;
+        let event = self.panel_workspace.activate_focused()?;
         self.dispatch_panel_event_with_command(event).1
     }
 
     /// HTML パネル hit テーブルだけを参照する。Phase 9F で DSL surface 側の hit-test 経路は
     /// 削除済みのため、ここに来るのは HTML パネルのみ。
     pub(super) fn panel_event_from_window(&self, point: WindowPoint) -> Option<PanelEvent> {
-        let (panel_id, node_id) = self.panel_presentation.html_panel_hit_at(point)?;
+        let (panel_id, node_id) = self.panel_workspace.html_panel_hit_at(point)?;
         Some(PanelEvent::Activate { panel_id, node_id })
     }
 
@@ -361,7 +361,7 @@ impl DesktopApp {
 
     /// HTML パネルの move handle (タイトルバー) のみを確認する。
     pub(super) fn panel_move_hit_from_window(&self, point: WindowPoint) -> Option<String> {
-        self.panel_presentation.html_panel_move_handle_at(point)
+        self.panel_workspace.html_panel_move_handle_at(point)
     }
 
     /// Phase 11: パネルリサイズハンドル hit from ウィンドウ。
@@ -370,7 +370,7 @@ impl DesktopApp {
         &self,
         point: WindowPoint,
     ) -> Option<(String, ResizeEdge)> {
-        self.panel_presentation.panel_resize_hit_at(point)
+        self.panel_workspace.panel_resize_hit_at(point)
     }
 }
 

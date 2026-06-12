@@ -13,7 +13,7 @@ fn panel_dispatch_keyboard_path_activates_save_action() {
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
 
     assert!(
-        app.panel_presentation
+        app.panel_workspace
             .focus_panel_node("builtin.app-actions", "app.save")
     );
     // app.save は emit_service 経由で保存を実行するため Command::Noop が返る。
@@ -38,7 +38,7 @@ fn drag_panel_move_marks_canvas_host_dirty() {
 
     // builtin.app-actions パネルが存在する位置を取得
     let panel_id = "builtin.app-actions".to_string();
-    let panel_rect = app.panel_presentation.panel_rect(&panel_id);
+    let panel_rect = app.panel_workspace.panel_rect(&panel_id);
     // パネルが配置されていないとテストにならない
     let Some(rect) = panel_rect else {
         return; // パネルが見つからない場合はスキップ

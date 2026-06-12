@@ -175,7 +175,7 @@ fn overlapping_panel_button_press_takes_priority_over_canvas_input() {
     // 他パネルの chrome / hit 領域との重なりを避けるため tool-palette のみ表示する
     for id in app.panel_runtime.panel_ids_with_gpu() {
         if id != "builtin.tool-palette" {
-            let _ = app.panel_presentation.set_panel_visibility(&id, false);
+            let _ = app.panel_workspace.set_panel_visibility(&id, false);
         }
     }
     // ボタンが body 内に収まるよう十分な高さを確保し、キャンバス上へ移動する
@@ -185,7 +185,7 @@ fn overlapping_panel_button_press_takes_priority_over_canvas_input() {
     );
     let panel_x = layout.canvas_display_rect.x + 24;
     let panel_y = layout.canvas_display_rect.y + 24;
-    assert!(app.panel_presentation.move_panel_to(
+    assert!(app.panel_workspace.move_panel_to(
         "builtin.tool-palette",
         panel_x,
         panel_y,
@@ -197,7 +197,7 @@ fn overlapping_panel_button_press_takes_priority_over_canvas_input() {
 
     // 実 hit テーブルから消しゴムボタンの screen 座標を解決する
     let full_rect = app
-        .panel_presentation
+        .panel_workspace
         .html_panel_full_rect("builtin.tool-palette")
         .expect("tool-palette full rect exists");
     let chrome_h = crate::app::HTML_PANEL_CHROME_HEIGHT as usize;
@@ -240,12 +240,12 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
     // 他パネルの chrome / hit 領域との重なりを避けるため layers のみ表示する
     for id in app.panel_runtime.panel_ids_with_gpu() {
         if id != "builtin.layers" {
-            let _ = app.panel_presentation.set_panel_visibility(&id, false);
+            let _ = app.panel_workspace.set_panel_visibility(&id, false);
         }
     }
     let panel_x = layout.canvas_display_rect.x + 32;
     let panel_y = layout.canvas_display_rect.y + 32;
-    assert!(app.panel_presentation.move_panel_to(
+    assert!(app.panel_workspace.move_panel_to(
         "builtin.layers",
         panel_x,
         panel_y,
@@ -257,12 +257,12 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
 
     // 実 move handle (タイトルバー chrome) は prepare_present_frame が更新済み
     let full_rect = app
-        .panel_presentation
+        .panel_workspace
         .html_panel_full_rect("builtin.layers")
         .expect("layers panel full rect exists");
 
     let before_position = app
-        .panel_presentation
+        .panel_workspace
         .workspace_layout()
         .panels
         .into_iter()
@@ -282,11 +282,11 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
     let after = app
-        .panel_presentation
+        .panel_workspace
         .panel_rect("builtin.layers")
         .expect("panel rect exists");
     let after_position = app
-        .panel_presentation
+        .panel_workspace
         .workspace_layout()
         .panels
         .into_iter()
@@ -322,11 +322,11 @@ fn workspace_manager_panel_can_be_moved() {
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
     let before = app
-        .panel_presentation
+        .panel_workspace
         .panel_rect("builtin.workspace-layout")
         .expect("workspace panel rect exists");
 
-    assert!(app.panel_presentation.move_panel_to(
+    assert!(app.panel_workspace.move_panel_to(
         "builtin.workspace-layout",
         before.x + 80,
         before.y + 24,
@@ -337,7 +337,7 @@ fn workspace_manager_panel_can_be_moved() {
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
 
     let after = app
-        .panel_presentation
+        .panel_workspace
         .panel_rect("builtin.workspace-layout")
         .expect("workspace panel rect exists");
     assert_ne!(after, before);
@@ -514,7 +514,7 @@ fn profile_panel_drag_for_ten_seconds() {
     while started.elapsed() < duration {
         let layout = app.layout.clone().expect("layout exists");
         let (x, y) = positions[position_index % positions.len()];
-        let changed = app.panel_presentation.move_panel_to(
+        let changed = app.panel_workspace.move_panel_to(
             "builtin.layers",
             x,
             y,
@@ -706,7 +706,7 @@ fn focus_refresh_does_not_trigger_ui_update() {
 
     // ADR 014 以降、focus は HTML hit table を辿る経路に統一されたため、
     // テストでは事前に hit を 1 件 inject して focus 対象を用意する。
-    app.panel_presentation.update_html_panel_hits(
+    app.panel_workspace.update_html_panel_hits(
         "builtin.app-actions",
         canvas_geometry::PixelRect {
             x: 100,
@@ -776,7 +776,7 @@ fn panel_release_without_matching_press_does_not_activate_save() {
         width: 64,
         height: 24,
     };
-    app.panel_presentation.update_html_panel_hits(
+    app.panel_workspace.update_html_panel_hits(
         "builtin.app-actions",
         panel_screen_rect,
         vec![("app.save".to_string(), save_button_rect)],
@@ -964,7 +964,7 @@ fn control_points_from_surface(
     for y in 0..layout.window_rect.height {
         for x in 0..layout.window_rect.width {
             let Some((panel_id, node_id)) = app
-                .panel_presentation
+                .panel_workspace
                 .html_panel_hit_at(app_core::WindowPoint::new(x as i32, y as i32))
             else {
                 continue;

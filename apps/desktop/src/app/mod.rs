@@ -30,7 +30,7 @@ use desktop_support::{
     DesktopDialogs, NativeDesktopDialogs, WorkspacePresetCatalog, default_workspace_preset_path,
 };
 use panel_runtime::PanelRuntime;
-use panel_workspace::PanelPresentation;
+use panel_workspace::PanelWorkspace;
 
 pub(crate) use self::canvas_frame::CanvasFrame;
 use self::io_state::DesktopIoState;
@@ -78,7 +78,7 @@ pub(crate) const HTML_PANEL_CHROME_HEIGHT: u32 = 24;
 pub(crate) struct DesktopApp {
     pub(crate) document: Document,
     pub(crate) panel_runtime: PanelRuntime,
-    pub(crate) panel_presentation: PanelPresentation,
+    pub(crate) panel_workspace: PanelWorkspace,
     pub(crate) io_state: DesktopIoState,
     workspace_presets: WorkspacePresetCatalog,
     active_workspace_preset_id: String,
@@ -138,7 +138,7 @@ impl DesktopApp {
         let mut app = Self {
             document: bootstrap.document,
             panel_runtime: bootstrap.panel_runtime,
-            panel_presentation: bootstrap.panel_presentation,
+            panel_workspace: bootstrap.panel_workspace,
             io_state: DesktopIoState::new(
                 bootstrap.project_path,
                 session_path,

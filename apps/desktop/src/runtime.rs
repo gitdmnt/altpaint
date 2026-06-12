@@ -257,7 +257,7 @@ impl ApplicationHandler for DesktopRuntime {
                         .panel_runtime
                         .panel_ids_with_gpu()
                         .into_iter()
-                        .filter(|id| self.app.panel_presentation.is_panel_visible(id))
+                        .filter(|id| self.app.panel_workspace.is_panel_visible(id))
                         .collect();
                     if panel_ids.is_empty() {
                         Vec::new()
@@ -290,7 +290,7 @@ impl ApplicationHandler for DesktopRuntime {
                             .map(|(panel_id, texture_ptr, tex_w, tex_h)| {
                                 let screen_rect = self
                                     .app
-                                    .panel_presentation
+                                    .panel_workspace
                                     .html_panel_full_rect(&panel_id)
                                     .unwrap_or(canvas_geometry::PixelRect {
                                         x: 0,

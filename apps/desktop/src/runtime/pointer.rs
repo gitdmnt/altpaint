@@ -306,7 +306,7 @@ impl DesktopRuntime {
     ) -> bool {
         let Some((panel_id, local)) = self
             .app
-            .panel_presentation
+            .panel_workspace
             .html_panel_at(app_core::WindowPoint::new(x, y))
         else {
             return false;

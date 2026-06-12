@@ -226,7 +226,7 @@ fn builtin_shortcut_can_move_focus_backward() {
     let mut profiler = FrameProfiler::new();
     let _ = runtime.app.prepare_present_frame(1280, 200, &mut profiler);
     // ADR 014 以降、focus は HTML hit table を辿るため事前に hit を 1 件 inject する。
-    runtime.app.panel_presentation.update_html_panel_hits(
+    runtime.app.panel_workspace.update_html_panel_hits(
         "builtin.app-actions",
         canvas_geometry::PixelRect {
             x: 100,

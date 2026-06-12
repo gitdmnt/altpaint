@@ -437,11 +437,11 @@ impl DesktopApp {
                 self.document = project.document;
                 let _ = Self::reload_tool_catalog_into_document(&mut self.document);
                 let _ = self.reload_pen_presets();
-                self.panel_presentation
+                self.panel_workspace
                     .replace_workspace_layout(project.ui_state.workspace_layout);
                 self.panel_runtime
                     .replace_persistent_panel_configs(project.ui_state.panel_configs);
-                self.panel_presentation
+                self.panel_workspace
                     .reconcile_panels(self.panel_runtime.panel_static_ids());
                 self.refresh_new_document_size_presets();
                 self.refresh_workspace_presets();

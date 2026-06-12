@@ -14,7 +14,7 @@ pub(crate) struct FocusTarget {
     pub(crate) node_id: String,
 }
 
-impl PanelPresentation {
+impl PanelWorkspace {
     pub fn focus_panel_node(&mut self, panel_id: &str, node_id: &str) -> bool {
         let exists = self
             .focusable_targets()

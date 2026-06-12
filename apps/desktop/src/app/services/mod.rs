@@ -19,7 +19,7 @@ use super::DesktopApp;
 impl DesktopApp {
     pub(super) fn capture_workspace_ui_state(&self) -> WorkspaceUiState {
         WorkspaceUiState::new(
-            self.panel_presentation.workspace_layout(),
+            self.panel_workspace.workspace_layout(),
             self.panel_runtime.persistent_panel_configs(),
         )
     }
@@ -274,7 +274,7 @@ impl DesktopApp {
             .and_then(|value| value.to_str())
             .unwrap_or(DEFAULT_PROJECT_FILE_NAME);
         let hidden_panels = self
-            .panel_presentation
+            .panel_workspace
             .workspace_layout()
             .panels
             .iter()

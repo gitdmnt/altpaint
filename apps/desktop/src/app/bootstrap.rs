@@ -10,7 +10,7 @@ use desktop_support::{
     save_canvas_size_presets, save_workspace_preset_catalog,
 };
 use panel_runtime::{PanelRuntime, register_builtin_panels};
-use panel_workspace::PanelPresentation;
+use panel_workspace::PanelWorkspace;
 use app_core::WorkspaceUiState;
 
 use super::{DesktopApp, panel_config_sync::selected_workspace_preset_id_from_configs};
@@ -18,7 +18,7 @@ use super::{DesktopApp, panel_config_sync::selected_workspace_preset_id_from_con
 pub(super) struct BootstrapState {
     pub(super) document: Document,
     pub(super) panel_runtime: PanelRuntime,
-    pub(super) panel_presentation: PanelPresentation,
+    pub(super) panel_workspace: PanelWorkspace,
     pub(super) project_path: PathBuf,
     pub(super) workspace_presets: WorkspacePresetCatalog,
     pub(super) active_workspace_preset_id: String,
@@ -39,7 +39,7 @@ impl DesktopApp {
             .unwrap_or_default();
         let workspace_presets = load_workspace_preset_catalog(workspace_preset_path);
         let mut active_workspace_preset_id = workspace_presets.default_preset_id.clone();
-        let (mut panel_runtime, mut panel_presentation) = Self::load_panel_system(
+        let (mut panel_runtime, mut panel_workspace) = Self::load_panel_system(
             &workspace_presets,
             loaded_project.as_ref().map(|project| &project.ui_state),
             session.as_ref().map(|state| &state.ui_state),
@@ -61,12 +61,12 @@ impl DesktopApp {
         Self::reload_pen_presets_into_document(&mut document);
         panel_runtime.mark_all_dirty();
         let _changed_panels = panel_runtime.sync_dirty_panels(&document, false, false, 0, 0);
-        panel_presentation.reconcile_panels(panel_runtime.panel_static_ids());
+        panel_workspace.reconcile_panels(panel_runtime.panel_static_ids());
 
         BootstrapState {
             document,
             panel_runtime,
-            panel_presentation,
+            panel_workspace,
             project_path,
             workspace_presets,
             active_workspace_preset_id,
@@ -77,14 +77,14 @@ impl DesktopApp {
         workspace_presets: &WorkspacePresetCatalog,
         project_ui_state: Option<&WorkspaceUiState>,
         session_ui_state: Option<&WorkspaceUiState>,
-    ) -> (PanelRuntime, PanelPresentation) {
+    ) -> (PanelRuntime, PanelWorkspace) {
         let mut panel_runtime = PanelRuntime::new();
-        let mut panel_presentation = PanelPresentation::new();
+        let mut panel_workspace = PanelWorkspace::new();
         let diags = register_builtin_panels(&mut panel_runtime, &builtin_panels_dir());
         for diag in &diags {
             eprintln!("register_builtin_panels: {diag}");
         }
-        panel_presentation.reconcile_panels(panel_runtime.panel_static_ids());
+        panel_workspace.reconcile_panels(panel_runtime.panel_static_ids());
 
         if let Some(default_preset) = workspace_presets
             .presets
@@ -93,34 +93,34 @@ impl DesktopApp {
         {
             apply_ui_state_to_panel_system(
                 &mut panel_runtime,
-                &mut panel_presentation,
+                &mut panel_workspace,
                 &default_preset.ui_state,
             );
         }
         if let Some(project_ui_state) = project_ui_state {
             apply_ui_state_to_panel_system(
                 &mut panel_runtime,
-                &mut panel_presentation,
+                &mut panel_workspace,
                 project_ui_state,
             );
         }
         if let Some(session_ui_state) = session_ui_state {
             apply_ui_state_to_panel_system(
                 &mut panel_runtime,
-                &mut panel_presentation,
+                &mut panel_workspace,
                 session_ui_state,
             );
         }
-        (panel_runtime, panel_presentation)
+        (panel_runtime, panel_workspace)
     }
 
     pub(super) fn apply_workspace_ui_state(&mut self, ui_state: WorkspaceUiState) {
         let (workspace_layout, panel_configs) = ui_state.into_parts();
-        self.panel_presentation
+        self.panel_workspace
             .replace_workspace_layout(workspace_layout);
         self.panel_runtime
             .replace_persistent_panel_configs(panel_configs);
-        self.panel_presentation
+        self.panel_workspace
             .reconcile_panels(self.panel_runtime.panel_static_ids());
         self.refresh_new_document_size_presets();
         self.refresh_workspace_presets();
@@ -182,25 +182,25 @@ fn resolve_startup_project_path(
 
 fn apply_ui_state_to_panel_system(
     panel_runtime: &mut PanelRuntime,
-    panel_presentation: &mut PanelPresentation,
+    panel_workspace: &mut PanelWorkspace,
     ui_state: &WorkspaceUiState,
 ) {
     if !ui_state.workspace_layout.panels.is_empty() {
-        panel_presentation.replace_workspace_layout(ui_state.workspace_layout.clone());
+        panel_workspace.replace_workspace_layout(ui_state.workspace_layout.clone());
     }
     if !ui_state.panel_configs.is_empty() {
         panel_runtime.replace_persistent_panel_configs(ui_state.panel_configs.clone());
     }
-    panel_presentation.reconcile_panels(panel_runtime.panel_static_ids());
+    panel_workspace.reconcile_panels(panel_runtime.panel_static_ids());
 
     // Phase 11: GPU パネル (HTML) の size を確定する。
     // 1. workspace_layout に永続値があればそれを使う。
     // 2. 無ければ panel.meta.json の default_size を使う。
     // 3. どちらも無ければ (1, 1) を最終 fallback (実質的に到達しない経路)。
-    // 確定値を panel_presentation.set_panel_size で workspace に書き戻し、
+    // 確定値を panel_workspace.set_panel_size で workspace に書き戻し、
     // panel_runtime.restore_panel_size で view の panel_size にも反映する。
     let panel_ids = panel_runtime.panel_ids_with_gpu();
-    let layout_snapshot = panel_presentation.workspace_layout();
+    let layout_snapshot = panel_workspace.workspace_layout();
     for panel_id in panel_ids {
         let persisted = layout_snapshot
             .panels
@@ -211,7 +211,7 @@ fn apply_ui_state_to_panel_system(
         let size = persisted
             .or_else(|| panel_runtime.panel_default_size(&panel_id))
             .unwrap_or((1, 1));
-        let _ = panel_presentation.set_panel_size(&panel_id, size.0 as usize, size.1 as usize);
+        let _ = panel_workspace.set_panel_size(&panel_id, size.0 as usize, size.1 as usize);
         let _ = panel_runtime.restore_panel_size(&panel_id, size);
     }
 }

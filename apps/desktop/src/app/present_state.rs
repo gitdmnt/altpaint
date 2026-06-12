@@ -33,7 +33,7 @@ pub(crate) struct PresentInvalidation {
     pub(crate) deferred_view_panel_sync: bool,
     /// ステータスバー更新をフレーム後段へ遅延しているか。
     pub(crate) deferred_status_refresh: bool,
-    /// presentation の workspace layout を runtime のパネル一覧と再整合させる必要があるか。
+    /// panel_workspace の workspace layout を runtime のパネル一覧と再整合させる必要があるか。
     pub(crate) needs_panel_reconcile: bool,
     /// ステータスバーの再構築が必要か。
     pub(crate) needs_status_refresh: bool,
@@ -63,7 +63,7 @@ impl PresentInvalidation {
 }
 
 impl DesktopApp {
-    /// presentation と runtime のパネル一覧の再整合を予約する。
+    /// panel_workspace と runtime のパネル一覧の再整合を予約する。
     pub(super) fn request_panel_reconcile(&mut self) {
         self.invalidation.needs_panel_reconcile = true;
     }
@@ -222,9 +222,9 @@ impl DesktopApp {
     /// L6 前景 solid quads (アクティブ UI パネル枠線) を組み立てる。
     pub(crate) fn foreground_solid_quads(&self) -> Vec<crate::frame::SolidQuad> {
         let active_rect = self
-            .panel_presentation
+            .panel_workspace
             .focused_target()
-            .and_then(|(panel_id, _)| self.panel_presentation.panel_rect(panel_id));
+            .and_then(|(panel_id, _)| self.panel_workspace.panel_rect(panel_id));
         crate::frame::build_foreground_solid_quads(active_rect)
     }
 
@@ -255,9 +255,9 @@ impl DesktopApp {
             koma_navigator: self.koma_navigator_overlay(),
             panel_creation_preview: self.koma_creation_preview_bounds(),
             active_ui_panel_rect: self
-                .panel_presentation
+                .panel_workspace
                 .focused_target()
-                .and_then(|(panel_id, _)| self.panel_presentation.panel_rect(panel_id)),
+                .and_then(|(panel_id, _)| self.panel_workspace.panel_rect(panel_id)),
         };
         (
             crate::frame::build_overlay_solid_quads(&canvas_plan, &overlay_state),

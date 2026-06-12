@@ -24,7 +24,7 @@ pub(super) fn default_panel_state(panel_id: &str, index: usize) -> WorkspacePane
     }
 }
 
-impl PanelPresentation {
+impl PanelWorkspace {
     pub(super) fn ensure_workspace_manager_entry(&mut self) {
         if self
             .workspace_layout

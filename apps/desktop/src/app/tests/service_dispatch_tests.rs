@@ -99,7 +99,7 @@ fn snapshot_restore_service_restores_document() {
 fn request_service_workspace_layout_set_panel_visibility_toggles_visibility() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
     assert!(
-        app.panel_presentation
+        app.panel_workspace
             .is_panel_visible("builtin.tool-palette"),
         "tool-palette defaults to visible"
     );
@@ -113,7 +113,7 @@ fn request_service_workspace_layout_set_panel_visibility_toggles_visibility() {
     );
 
     assert!(
-        !app.panel_presentation
+        !app.panel_workspace
             .is_panel_visible("builtin.tool-palette"),
         "tool-palette should be hidden after service call"
     );

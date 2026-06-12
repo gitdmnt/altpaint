@@ -33,7 +33,7 @@ fn execute_command_load_project_uses_native_dialog_path() {
     save_project_to_path(
         &path,
         &source_app.document,
-        &source_app.panel_presentation.workspace_layout(),
+        &source_app.panel_workspace.workspace_layout(),
         &BTreeMap::new(),
     )
     .expect("project save should succeed");
@@ -43,7 +43,7 @@ fn execute_command_load_project_uses_native_dialog_path() {
     app.wait_for_pending_save_tasks();
     assert_eq!(app.io_state.project_path, path);
     assert!(
-        !app.panel_presentation
+        !app.panel_workspace
             .is_panel_visible("builtin.tool-palette"),
         "tool-palette visibility was persisted as hidden"
     );
@@ -159,7 +159,7 @@ fn load_project_restores_workspace_layout() {
             visible: false,
         })
     );
-    let expected_layout = source_app.panel_presentation.workspace_layout();
+    let expected_layout = source_app.panel_workspace.workspace_layout();
     save_project_to_path(
         &path,
         &source_app.document,
@@ -174,11 +174,11 @@ fn load_project_restores_workspace_layout() {
     }));
 
     assert!(
-        !app.panel_presentation
+        !app.panel_workspace
             .is_panel_visible("builtin.tool-palette"),
         "tool-palette visibility was persisted as hidden"
     );
-    assert_eq!(app.panel_presentation.workspace_layout(), expected_layout);
+    assert_eq!(app.panel_workspace.workspace_layout(), expected_layout);
 
     let _ = std::fs::remove_file(path);
 }
@@ -231,7 +231,7 @@ fn hiding_panel_clears_previous_overlay_bounds_when_surface_shrinks() {
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
 
-    assert!(app.panel_presentation.move_panel_to(
+    assert!(app.panel_workspace.move_panel_to(
         "builtin.tool-palette",
         940,
         72,
@@ -241,7 +241,7 @@ fn hiding_panel_clears_previous_overlay_bounds_when_surface_shrinks() {
     app.request_panel_reconcile();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let hidden_panel_rect = app
-        .panel_presentation
+        .panel_workspace
         .panel_rect("builtin.tool-palette")
         .expect("hidden panel rect exists");
 
@@ -298,7 +298,7 @@ fn startup_uses_default_workspace_preset_when_project_and_session_are_empty() {
         preset_path.clone(),
     );
     let entry = app
-        .panel_presentation
+        .panel_workspace
         .workspace_layout()
         .panels
         .into_iter()
@@ -375,7 +375,7 @@ fn session_layout_overrides_default_workspace_preset() {
         preset_path.clone(),
     );
     let entry = app
-        .panel_presentation
+        .panel_workspace
         .workspace_layout()
         .panels
         .into_iter()
@@ -437,15 +437,15 @@ fn panel_visibility_round_trip_through_session_save_load() {
             visible: false,
         })
     );
-    let expected_layout = source_app.panel_presentation.workspace_layout();
+    let expected_layout = source_app.panel_workspace.workspace_layout();
 
     let app = test_app_with_dialogs_and_session_path(TestDialogs::default(), session_path.clone());
     assert!(
-        !app.panel_presentation
+        !app.panel_workspace
             .is_panel_visible("builtin.tool-palette"),
         "tool-palette stays hidden after session round-trip"
     );
-    assert_eq!(app.panel_presentation.workspace_layout(), expected_layout);
+    assert_eq!(app.panel_workspace.workspace_layout(), expected_layout);
 
     let _ = std::fs::remove_file(session_path);
 }

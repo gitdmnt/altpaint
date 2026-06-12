@@ -41,7 +41,7 @@ impl DesktopApp {
             ),
         );
         self.panel_runtime.replace_persistent_panel_configs(configs);
-        self.panel_presentation
+        self.panel_workspace
             .reconcile_panels(self.panel_runtime.panel_static_ids());
     }
 
@@ -81,7 +81,7 @@ impl DesktopApp {
         );
         self.active_workspace_preset_id = selected_workspace;
         self.panel_runtime.replace_persistent_panel_configs(configs);
-        self.panel_presentation
+        self.panel_workspace
             .reconcile_panels(self.panel_runtime.panel_static_ids());
     }
 

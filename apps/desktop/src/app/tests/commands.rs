@@ -132,7 +132,7 @@ fn keyboard_panel_focus_can_activate_app_action() {
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
 
     assert!(
-        app.panel_presentation
+        app.panel_workspace
             .focus_panel_node("builtin.app-actions", "app.save")
     );
     // app.save は emit_service 経由で保存を実行するため Command::Noop が返る。
@@ -325,7 +325,7 @@ fn execute_command_applies_selected_workspace_preset() {
     }));
 
     let layout_entry = app
-        .panel_presentation
+        .panel_workspace
         .workspace_layout()
         .panels
         .into_iter()
@@ -411,7 +411,7 @@ fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
     }));
 
     let layout_entry = app
-        .panel_presentation
+        .panel_workspace
         .workspace_layout()
         .panels
         .into_iter()

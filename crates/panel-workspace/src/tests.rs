@@ -3,10 +3,10 @@ use super::*;
 /// `reconcile_panels` が登録パネル全件 + workspace 自身を workspace_layout の panels に追加する。
 #[test]
 fn workspace_panel_entries_include_all_registered_panels() {
-    let mut presentation = PanelPresentation::new();
-    presentation.reconcile_panels(vec!["builtin.mock"]);
+    let mut panel_workspace = PanelWorkspace::new();
+    panel_workspace.reconcile_panels(vec!["builtin.mock"]);
 
-    let layout = presentation.workspace_layout();
+    let layout = panel_workspace.workspace_layout();
     assert!(
         layout
             .panels
@@ -26,8 +26,8 @@ fn workspace_panel_entries_include_all_registered_panels() {
 /// Phase 4: HTML パネルの move handle (タイトルバー) を screen 座標で検索すると panel_id が返る。
 #[test]
 fn html_panel_move_handle_at_resolves_drag_handle_to_panel_id() {
-    let mut presentation = PanelPresentation::new();
-    presentation.update_html_panel_move_handle(
+    let mut panel_workspace = PanelWorkspace::new();
+    panel_workspace.update_html_panel_move_handle(
         "html.test",
         canvas_geometry::PixelRect {
             x: 100,
@@ -39,20 +39,20 @@ fn html_panel_move_handle_at_resolves_drag_handle_to_panel_id() {
 
     // ハンドル内
     assert_eq!(
-        presentation.html_panel_move_handle_at(app_core::WindowPoint::new(120, 60)),
+        panel_workspace.html_panel_move_handle_at(app_core::WindowPoint::new(120, 60)),
         Some("html.test".to_string())
     );
     // ハンドル外 (右下)
-    assert_eq!(presentation.html_panel_move_handle_at(app_core::WindowPoint::new(120, 80)), None);
+    assert_eq!(panel_workspace.html_panel_move_handle_at(app_core::WindowPoint::new(120, 80)), None);
     // ハンドル外 (上端より上)
-    assert_eq!(presentation.html_panel_move_handle_at(app_core::WindowPoint::new(120, 49)), None);
+    assert_eq!(panel_workspace.html_panel_move_handle_at(app_core::WindowPoint::new(120, 49)), None);
 }
 
 /// Phase 4: `remove_html_panel_move_handle` で個別削除できる。
 #[test]
 fn remove_html_panel_move_handle_clears_handle() {
-    let mut presentation = PanelPresentation::new();
-    presentation.update_html_panel_move_handle(
+    let mut panel_workspace = PanelWorkspace::new();
+    panel_workspace.update_html_panel_move_handle(
         "html.test",
         canvas_geometry::PixelRect {
             x: 0,
@@ -61,16 +61,16 @@ fn remove_html_panel_move_handle_clears_handle() {
             height: 24,
         },
     );
-    assert!(presentation.html_panel_move_handle_at(app_core::WindowPoint::new(50, 10)).is_some());
+    assert!(panel_workspace.html_panel_move_handle_at(app_core::WindowPoint::new(50, 10)).is_some());
 
-    presentation.remove_html_panel_move_handle("html.test");
-    assert!(presentation.html_panel_move_handle_at(app_core::WindowPoint::new(50, 10)).is_none());
+    panel_workspace.remove_html_panel_move_handle("html.test");
+    assert!(panel_workspace.html_panel_move_handle_at(app_core::WindowPoint::new(50, 10)).is_none());
 }
 
 /// Phase 3: HTML パネル hit table を screen 座標で検索すると `(panel_id, node_id)` が返る。
 #[test]
 fn html_panel_hit_at_resolves_screen_coordinates_to_panel_event() {
-    let mut presentation = PanelPresentation::new();
+    let mut panel_workspace = PanelWorkspace::new();
     let screen_rect = canvas_geometry::PixelRect {
         x: 100,
         y: 50,
@@ -97,32 +97,32 @@ fn html_panel_hit_at_resolves_screen_coordinates_to_panel_event() {
             },
         ),
     ];
-    presentation.update_html_panel_hits("html.test", screen_rect, hits);
+    panel_workspace.update_html_panel_hits("html.test", screen_rect, hits);
 
     // panel-relative (10,20) → screen (110, 70)。範囲は (110..170, 70..100)
-    let inside_save = presentation.html_panel_hit_at(app_core::WindowPoint::new(120, 80));
+    let inside_save = panel_workspace.html_panel_hit_at(app_core::WindowPoint::new(120, 80));
     assert_eq!(
         inside_save,
         Some(("html.test".to_string(), "save_btn".to_string()))
     );
 
-    let inside_undo = presentation.html_panel_hit_at(app_core::WindowPoint::new(190, 85));
+    let inside_undo = panel_workspace.html_panel_hit_at(app_core::WindowPoint::new(190, 85));
     assert_eq!(
         inside_undo,
         Some(("html.test".to_string(), "undo_btn".to_string()))
     );
 
     // パネル矩形外
-    assert_eq!(presentation.html_panel_hit_at(app_core::WindowPoint::new(50, 50)), None);
+    assert_eq!(panel_workspace.html_panel_hit_at(app_core::WindowPoint::new(50, 50)), None);
     // パネル矩形内だが action 矩形外
-    assert_eq!(presentation.html_panel_hit_at(app_core::WindowPoint::new(110, 200)), None);
+    assert_eq!(panel_workspace.html_panel_hit_at(app_core::WindowPoint::new(110, 200)), None);
 }
 
 /// Phase 3: `remove_html_panel_hits` で hit 情報を消すと、その後の検索は None。
 #[test]
 fn remove_html_panel_hits_clears_hits_for_panel() {
-    let mut presentation = PanelPresentation::new();
-    presentation.update_html_panel_hits(
+    let mut panel_workspace = PanelWorkspace::new();
+    panel_workspace.update_html_panel_hits(
         "html.test",
         canvas_geometry::PixelRect {
             x: 0,
@@ -140,37 +140,37 @@ fn remove_html_panel_hits_clears_hits_for_panel() {
             },
         )],
     );
-    assert!(presentation.html_panel_hit_at(app_core::WindowPoint::new(20, 20)).is_some());
+    assert!(panel_workspace.html_panel_hit_at(app_core::WindowPoint::new(20, 20)).is_some());
 
-    presentation.remove_html_panel_hits("html.test");
-    assert!(presentation.html_panel_hit_at(app_core::WindowPoint::new(20, 20)).is_none());
+    panel_workspace.remove_html_panel_hits("html.test");
+    assert!(panel_workspace.html_panel_hit_at(app_core::WindowPoint::new(20, 20)).is_none());
 }
 
 /// Phase 2: HTML パネル相当の workspace エントリは `set_panel_visibility` で切り替えられ、
 /// `is_panel_visible` で可視判定が外部 crate からも取得できる必要がある。
 #[test]
 fn html_panel_visibility_can_be_toggled_and_queried() {
-    let mut presentation = PanelPresentation::new();
-    presentation.reconcile_panels(vec!["builtin.mock.html"]);
+    let mut panel_workspace = PanelWorkspace::new();
+    panel_workspace.reconcile_panels(vec!["builtin.mock.html"]);
 
-    assert!(presentation.is_panel_visible("builtin.mock.html"));
+    assert!(panel_workspace.is_panel_visible("builtin.mock.html"));
 
-    let changed = presentation.set_panel_visibility("builtin.mock.html", false);
+    let changed = panel_workspace.set_panel_visibility("builtin.mock.html", false);
     assert!(changed, "visibility 変化なら true を返す");
-    assert!(!presentation.is_panel_visible("builtin.mock.html"));
+    assert!(!panel_workspace.is_panel_visible("builtin.mock.html"));
 
-    presentation.set_panel_visibility("builtin.mock.html", true);
-    assert!(presentation.is_panel_visible("builtin.mock.html"));
+    panel_workspace.set_panel_visibility("builtin.mock.html", true);
+    assert!(panel_workspace.is_panel_visible("builtin.mock.html"));
 }
 
 /// Phase 1: HTML パネル相当 (`PanelTree` を経由せず登録した) も `reconcile_panels` で
 /// workspace_layout のエントリを取得する。これが visibility / move のための前提となる。
 #[test]
 fn html_panel_with_empty_tree_gets_workspace_entry_after_reconcile() {
-    let mut presentation = PanelPresentation::new();
-    presentation.reconcile_panels(vec!["builtin.mock.html"]);
+    let mut panel_workspace = PanelWorkspace::new();
+    panel_workspace.reconcile_panels(vec!["builtin.mock.html"]);
 
-    let layout = presentation.workspace_layout();
+    let layout = panel_workspace.workspace_layout();
     let entry = layout
         .panels
         .iter()
@@ -189,8 +189,8 @@ fn resize_panel_keeping_anchor_top_right_keeps_right_edge_fixed() {
     };
     use canvas_geometry::PixelRect;
 
-    let mut presentation = PanelPresentation::new();
-    presentation.replace_workspace_layout(WorkspaceLayout {
+    let mut panel_workspace = PanelWorkspace::new();
+    panel_workspace.replace_workspace_layout(WorkspaceLayout {
         panels: vec![WorkspacePanelState {
             id: "builtin.mock".to_string(),
             visible: true,
@@ -212,7 +212,7 @@ fn resize_panel_keeping_anchor_top_right_keeps_right_edge_fixed() {
         width: 300,
         height: 150,
     };
-    let applied = presentation
+    let applied = panel_workspace
         .resize_panel_keeping_anchor("builtin.mock", new_rect, viewport)
         .expect("applied");
     assert_eq!(applied.x, 980);

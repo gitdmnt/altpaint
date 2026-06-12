@@ -38,7 +38,7 @@ impl DesktopApp {
         // GPU パスで描画した場合は CPU bitmap が古いため、保存前に読み戻して同期する
         self.sync_gpu_bitmaps_to_cpu();
         let document = self.document.clone();
-        let workspace_layout = self.panel_presentation.workspace_layout();
+        let workspace_layout = self.panel_workspace.workspace_layout();
         let panel_configs = self.panel_runtime.persistent_panel_configs();
         let handle = thread::spawn(move || {
             save_project_to_path(&path, &document, &workspace_layout, &panel_configs)

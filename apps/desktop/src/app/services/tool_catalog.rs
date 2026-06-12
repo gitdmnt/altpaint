@@ -134,7 +134,7 @@ impl DesktopApp {
         object.insert("last_import_preview".to_string(), json!(preview));
         object.insert("last_import_issues".to_string(), json!(issues));
         self.panel_runtime.replace_persistent_panel_configs(configs);
-        self.panel_presentation
+        self.panel_workspace
             .reconcile_panels(self.panel_runtime.panel_static_ids());
     }
 

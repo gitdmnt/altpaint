@@ -52,7 +52,7 @@ impl DesktopApp {
             );
             profiler.record("ui_sync_panels", sync_t.elapsed());
             let reconcile_t = Instant::now();
-            self.panel_presentation
+            self.panel_workspace
                 .reconcile_panels(self.panel_runtime.panel_static_ids());
             profiler.record("ui_reconcile", reconcile_t.elapsed());
             if !changed.is_empty() {
@@ -70,7 +70,7 @@ impl DesktopApp {
 
         if self.invalidation.needs_panel_reconcile {
             profiler.measure("panel_reconcile", || {
-                self.panel_presentation
+                self.panel_workspace
                     .reconcile_panels(self.panel_runtime.panel_static_ids());
             });
             self.invalidation.needs_panel_reconcile = false;
@@ -190,12 +190,12 @@ impl DesktopApp {
         let all_panel_ids = self.panel_runtime.panel_ids_with_gpu();
         let (panel_ids, hidden_ids): (Vec<String>, Vec<String>) = all_panel_ids
             .into_iter()
-            .partition(|id| self.panel_presentation.is_panel_visible(id));
+            .partition(|id| self.panel_workspace.is_panel_visible(id));
         // 不可視パネルの hit / move handle / full rect は掃除する
         for id in &hidden_ids {
-            self.panel_presentation.remove_html_panel_hits(id);
-            self.panel_presentation.remove_html_panel_move_handle(id);
-            self.panel_presentation.remove_html_panel_full_rect(id);
+            self.panel_workspace.remove_html_panel_hits(id);
+            self.panel_workspace.remove_html_panel_move_handle(id);
+            self.panel_workspace.remove_html_panel_full_rect(id);
         }
         if panel_ids.is_empty() {
             return;
@@ -213,7 +213,7 @@ impl DesktopApp {
                 .unwrap_or((1, 1));
             // 位置は workspace_layout の position を使う（サイズは measured で上書き）
             let position_rect = self
-                .panel_presentation
+                .panel_workspace
                 .panel_rect_in_viewport(id, window_width, window_height)
                 .unwrap_or(canvas_geometry::PixelRect {
                     x: 0,
@@ -268,11 +268,11 @@ impl DesktopApp {
                     ))
                 })
                 .collect();
-            self.panel_presentation
+            self.panel_workspace
                 .update_html_panel_hits(&panel_id, body_screen_rect, hit_rects);
-            self.panel_presentation
+            self.panel_workspace
                 .update_html_panel_move_handle(&panel_id, chrome_screen_rect);
-            self.panel_presentation
+            self.panel_workspace
                 .update_html_panel_full_rect(&panel_id, panel_rect);
         }
     }

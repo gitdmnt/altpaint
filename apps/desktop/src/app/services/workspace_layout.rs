@@ -2,7 +2,7 @@
 //!
 //! Phase 12 (ADR 014): builtin.workspace-layout パネルが
 //! チェックボックス操作経由で `workspace_layout.set_panel_visibility`
-//! を呼び、panel_presentation の visibility を切り替える。
+//! を呼び、panel_workspace の visibility を切り替える。
 
 use std::collections::BTreeMap;
 
@@ -34,7 +34,7 @@ impl DesktopApp {
     /// 指定パネルの可視性を切り替え、関連 dirty フラグと永続化を発火する。
     fn set_panel_visibility_from_workspace_layout(&mut self, panel_id: &str, visible: bool) -> bool {
         if !self
-            .panel_presentation
+            .panel_workspace
             .set_panel_visibility(panel_id, visible)
         {
             return false;
@@ -53,7 +53,7 @@ impl DesktopApp {
     pub(crate) fn build_workspace_panels_json(&self) -> String {
         let titles: BTreeMap<String, String> =
             self.panel_runtime.panel_id_titles().into_iter().collect();
-        let workspace_layout = self.panel_presentation.workspace_layout();
+        let workspace_layout = self.panel_workspace.workspace_layout();
         let entries: Vec<_> = workspace_layout
             .panels
             .iter()
