@@ -1,5 +1,6 @@
 mod config;
 mod dialogs;
+mod json_store;
 mod profiler;
 mod session;
 mod canvas_size_presets;

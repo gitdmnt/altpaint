@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use app_core::WorkspaceUiState;
 
+use crate::json_store::{JsonLoad, load_json};
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct DesktopSessionState {
     #[serde(default)]
@@ -20,9 +22,12 @@ pub fn default_session_path() -> PathBuf {
 }
 
 pub fn load_session_state(path: impl AsRef<Path>) -> Option<DesktopSessionState> {
-    let path = path.as_ref();
-    let bytes = std::fs::read(path).ok()?;
-    serde_json::from_slice(&bytes).ok()
+    match load_json::<DesktopSessionState>(path, "session") {
+        JsonLoad::Loaded(state) => Some(state),
+        // Missing は初回起動。Corrupt は load_json が診断を出力済みで、既定値
+        // (None) で動作しつつ元ファイルは温存される (この層は書き込まない)。
+        JsonLoad::Missing | JsonLoad::Corrupt => None,
+    }
 }
 
 pub fn save_session_state(
@@ -83,6 +88,28 @@ mod tests {
 
         assert_eq!(load_session_state(&path), Some(state));
 
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn missing_session_returns_none() {
+        let path = unique_test_path("session-missing");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(load_session_state(&path), None);
+    }
+
+    #[test]
+    fn corrupt_session_returns_none_without_overwriting() {
+        let path = unique_test_path("session-corrupt");
+        let raw = b"{ partially written session";
+        std::fs::write(&path, raw).expect("write corrupt");
+
+        // 破損セッションは None を返し、既定状態で起動できる。
+        assert_eq!(load_session_state(&path), None);
+
+        // ローダはファイルを温存する (黙って既定値で上書きしない)。
+        let after = std::fs::read(&path).expect("read back");
+        assert_eq!(after, raw);
         let _ = std::fs::remove_file(path);
     }
 }

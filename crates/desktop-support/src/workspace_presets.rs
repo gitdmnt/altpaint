@@ -7,6 +7,8 @@ use app_core::{
 use serde::{Deserialize, Serialize};
 use app_core::WorkspaceUiState;
 
+use crate::json_store::{JsonLoad, load_json};
+
 const CURRENT_WORKSPACE_PRESET_FORMAT_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -162,18 +164,17 @@ fn panel_state(
 }
 
 pub fn load_workspace_preset_catalog(path: impl AsRef<Path>) -> WorkspacePresetCatalog {
-    let path = path.as_ref();
-    let bytes = match std::fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(_) => return default_workspace_preset_catalog(),
-    };
-    serde_json::from_slice::<WorkspacePresetCatalog>(&bytes)
-        .ok()
-        .filter(|catalog| {
-            catalog.format_version == CURRENT_WORKSPACE_PRESET_FORMAT_VERSION
-                && !catalog.presets.is_empty()
-        })
-        .unwrap_or_else(default_workspace_preset_catalog)
+    // Missing / Corrupt はいずれも既定カタログで動作する。Corrupt は load_json が
+    // 診断を出力済みで、元ファイルはこの層では温存される (書き込まない)。
+    match load_json::<WorkspacePresetCatalog>(path, "workspace presets") {
+        JsonLoad::Loaded(catalog)
+            if catalog.format_version == CURRENT_WORKSPACE_PRESET_FORMAT_VERSION
+                && !catalog.presets.is_empty() =>
+        {
+            catalog
+        }
+        _ => default_workspace_preset_catalog(),
+    }
 }
 
 pub fn save_workspace_preset_catalog(
@@ -232,6 +233,22 @@ mod tests {
 
         assert_eq!(loaded, catalog);
 
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn corrupt_catalog_falls_back_to_defaults_without_overwriting() {
+        let path = unique_test_path("corrupt-workspace-presets");
+        let raw = b"{ user was hand-editing and left it broken";
+        std::fs::write(&path, raw).expect("write corrupt");
+
+        // 破損カタログでも既定値で動作する。
+        let loaded = load_workspace_preset_catalog(&path);
+        assert_eq!(loaded, default_workspace_preset_catalog());
+
+        // 破損ファイルは温存される (黙って既定値で上書きしない)。
+        let after = std::fs::read(&path).expect("read back");
+        assert_eq!(after, raw);
         let _ = std::fs::remove_file(path);
     }
 }
