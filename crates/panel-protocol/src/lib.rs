@@ -57,6 +57,46 @@ impl StatePatch {
     }
 }
 
+/// `StatePatch` 列を `state` JSON へ適用する唯一の実装。
+///
+/// `path` はドット区切りでネストしたオブジェクトを辿る。途中のオブジェクトが
+/// 存在しなければ生成する。`state` がオブジェクトでなければオブジェクトに置換する。
+/// `Set` は値を上書きし、`Toggle` は対象の bool を反転する (未設定は `false` 扱い)。
+pub fn apply_patches(state: &mut Value, patches: &[StatePatch]) {
+    if !state.is_object() {
+        *state = Value::Object(Map::new());
+    }
+    for patch in patches {
+        let mut current = &mut *state;
+        let mut segments = patch.path.split('.').peekable();
+        while let Some(segment) = segments.next() {
+            let is_last = segments.peek().is_none();
+            if !current.is_object() {
+                *current = Value::Object(Map::new());
+            }
+            let object = current.as_object_mut().expect("object ensured");
+            if is_last {
+                match patch.op {
+                    StatePatchOp::Set => {
+                        object.insert(
+                            segment.to_string(),
+                            patch.value.clone().unwrap_or(Value::Null),
+                        );
+                    }
+                    StatePatchOp::Toggle => {
+                        let next = !object.get(segment).and_then(Value::as_bool).unwrap_or(false);
+                        object.insert(segment.to_string(), Value::Bool(next));
+                    }
+                }
+                break;
+            }
+            current = object
+                .entry(segment.to_string())
+                .or_insert_with(|| Value::Object(Map::new()));
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RequestDescriptor {
     pub name: String,
@@ -134,5 +174,46 @@ mod tests {
 
         assert_eq!(descriptor.name, crate::names::tool::SET_ACTIVE);
         assert!(descriptor.payload.is_empty());
+    }
+
+    #[test]
+    fn apply_patches_sets_nested_values_and_creates_objects() {
+        let mut state = json!({});
+        apply_patches(
+            &mut state,
+            &[
+                StatePatch::set("expanded", true),
+                StatePatch::set("layer.opacity", 80),
+                StatePatch::set("layer.name", "background"),
+            ],
+        );
+        assert_eq!(
+            state,
+            json!({
+                "expanded": true,
+                "layer": { "opacity": 80, "name": "background" }
+            })
+        );
+    }
+
+    #[test]
+    fn apply_patches_toggle_flips_bool_defaulting_to_false() {
+        let mut state = json!({ "visible": true });
+        apply_patches(&mut state, &[StatePatch::toggle("visible")]);
+        assert_eq!(state, json!({ "visible": false }));
+
+        apply_patches(&mut state, &[StatePatch::toggle("collapsed")]);
+        assert_eq!(state, json!({ "visible": false, "collapsed": true }));
+    }
+
+    #[test]
+    fn apply_patches_replaces_non_object_state_and_traverses_non_object_segments() {
+        let mut state = json!(42);
+        apply_patches(&mut state, &[StatePatch::set("a.b", 1)]);
+        assert_eq!(state, json!({ "a": { "b": 1 } }));
+
+        let mut scalar_segment = json!({ "a": 7 });
+        apply_patches(&mut scalar_segment, &[StatePatch::set("a.b", 1)]);
+        assert_eq!(scalar_segment, json!({ "a": { "b": 1 } }));
     }
 }

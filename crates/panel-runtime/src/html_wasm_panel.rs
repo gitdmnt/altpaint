@@ -93,7 +93,7 @@ impl HtmlWasmPanel {
 
         // panel_init が返した state_patch を空 state に適用して初期 state を確定する。
         let mut state = json!({});
-        apply_state_patches(&mut state, &init.state_patch);
+        panel_protocol::apply_patches(&mut state, &init.state_patch);
 
         Ok(Self {
             id: Box::leak(meta.id.into_boxed_str()),
@@ -150,7 +150,7 @@ impl HtmlWasmPanel {
             .wasm
             .call_with_dom(self.view.document_mut(), |rt| rt.handle_event(&request))?;
         self.view.mark_mutated();
-        apply_state_patches(&mut self.state, &result.state_patch);
+        panel_protocol::apply_patches(&mut self.state, &result.state_patch);
         Ok(result
             .commands
             .into_iter()
@@ -170,44 +170,6 @@ fn panel_host_request(
         event_payload,
         state_snapshot: state_snapshot.clone(),
         host_state: host_state.clone(),
-    }
-}
-
-fn apply_state_patches(state: &mut Value, patches: &[panel_protocol::StatePatch]) {
-    use panel_protocol::StatePatchOp;
-    use serde_json::Map;
-    if !state.is_object() {
-        *state = Value::Object(Map::new());
-    }
-    for patch in patches {
-        let mut current = &mut *state;
-        let mut segments = patch.path.split('.').peekable();
-        while let Some(segment) = segments.next() {
-            let is_last = segments.peek().is_none();
-            if !current.is_object() {
-                *current = Value::Object(Map::new());
-            }
-            let object = current.as_object_mut().expect("object ensured");
-            if is_last {
-                match patch.op {
-                    StatePatchOp::Set => {
-                        object.insert(
-                            segment.to_string(),
-                            patch.value.clone().unwrap_or(Value::Null),
-                        );
-                    }
-                    StatePatchOp::Toggle => {
-                        let next =
-                            !object.get(segment).and_then(Value::as_bool).unwrap_or(false);
-                        object.insert(segment.to_string(), Value::Bool(next));
-                    }
-                }
-                break;
-            }
-            current = object
-                .entry(segment.to_string())
-                .or_insert_with(|| Value::Object(Map::new()));
-        }
     }
 }
 
@@ -263,7 +225,7 @@ impl PanelPlugin for HtmlWasmPanel {
                 rt.sync_host(state, &host_state)
             });
         if let Ok(result) = outcome {
-            apply_state_patches(&mut self.state, &result.state_patch);
+            panel_protocol::apply_patches(&mut self.state, &result.state_patch);
             self.view.mark_mutated();
         }
     }
