@@ -144,11 +144,15 @@ fn keyboard_panel_focus_can_activate_app_action() {
     assert_eq!(app.background_jobs.len(), 1);
 }
 
+/// BL-063: 新規ドキュメントフォームは app-actions パネルの直接起動で開く。
+/// ドメインサービス経由 (旧 project_io.new_document) は廃止済み。
 #[test]
-fn execute_command_new_document_opens_inline_form() {
+fn new_document_shortcut_opens_inline_form() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
-    assert!(app.execute_service_request(ServiceRequest::new(names::PROJECT_NEW_DOCUMENT)));
+    assert!(app.activate_panel_control("builtin.app-actions", "app.new"));
 }
 
 #[test]

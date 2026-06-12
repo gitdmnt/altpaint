@@ -14,10 +14,6 @@ pub mod project_io {
     use panel_protocol::RequestDescriptor;
     use panel_protocol::names::project_io as wire;
 
-    pub fn new_document() -> RequestDescriptor {
-        descriptor(wire::NEW_DOCUMENT)
-    }
-
     pub fn new_document_sized(width: usize, height: usize) -> RequestDescriptor {
         let mut descriptor = descriptor(wire::NEW_DOCUMENT_SIZED);
         descriptor.payload.insert("width".to_string(), json!(width));

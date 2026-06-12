@@ -57,8 +57,11 @@ impl DesktopEventLoop {
             Key::Character(text)
                 if self.modifiers.control_key() && text.eq_ignore_ascii_case("n") =>
             {
+                // BL-063: 新規ドキュメントは app-actions パネルのインラインフォームを
+                // 開く UI 操作。ドメインサービス経由ではなく入力層が直接パネルを起動する
+                // (ドメインコマンドが特定パネル node_id に依存する逆転の解消)。
                 self.app
-                    .execute_service_request(ServiceRequest::new(names::PROJECT_NEW_DOCUMENT))
+                    .activate_panel_control("builtin.app-actions", "app.new")
             }
             Key::Named(NamedKey::Tab) if self.modifiers.shift_key() => {
                 self.app.focus_previous_panel_control()

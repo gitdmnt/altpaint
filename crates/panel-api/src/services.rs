@@ -7,9 +7,8 @@ use serde_json::{Map, Value};
 pub mod names {
     pub use panel_protocol::names::project_io::{
         LOAD_DIALOG as PROJECT_LOAD_DIALOG, LOAD_FROM_PATH as PROJECT_LOAD_FROM_PATH,
-        NEW_DOCUMENT as PROJECT_NEW_DOCUMENT, NEW_DOCUMENT_SIZED as PROJECT_NEW_DOCUMENT_SIZED,
-        SAVE_AS as PROJECT_SAVE_AS, SAVE_CURRENT as PROJECT_SAVE_CURRENT,
-        SAVE_TO_PATH as PROJECT_SAVE_TO_PATH,
+        NEW_DOCUMENT_SIZED as PROJECT_NEW_DOCUMENT_SIZED, SAVE_AS as PROJECT_SAVE_AS,
+        SAVE_CURRENT as PROJECT_SAVE_CURRENT, SAVE_TO_PATH as PROJECT_SAVE_TO_PATH,
     };
 
     pub use panel_protocol::names::workspace::{

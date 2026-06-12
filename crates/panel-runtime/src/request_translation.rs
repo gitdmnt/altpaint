@@ -259,7 +259,6 @@ pub fn register_default_translators(registry: &mut TranslatorRegistry) {
     registry.register(
         "project_io.",
         passthrough(&[
-            project_io::NEW_DOCUMENT,
             project_io::NEW_DOCUMENT_SIZED,
             project_io::SAVE_CURRENT,
             project_io::SAVE_AS,
@@ -410,7 +409,6 @@ mod tests {
     fn all_wire_names_are_registered() {
         let registry = registry();
         let all_names: &[&str] = &[
-            project_io::NEW_DOCUMENT,
             project_io::NEW_DOCUMENT_SIZED,
             project_io::SAVE_CURRENT,
             project_io::SAVE_AS,

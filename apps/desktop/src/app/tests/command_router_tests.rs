@@ -1,7 +1,6 @@
 //! command_router の経路分岐に関するテストをまとめる。
 
 use app_core::{ColorRgba8, DocumentCommand, SessionCommand, ToolKind};
-use panel_runtime::{ServiceRequest, services::names};
 
 use super::{TestDialogs, test_app_with_dialogs};
 
@@ -40,9 +39,12 @@ fn document_command_route_creates_koma() {
     assert_eq!(app.document.active_page_koma_count(), before + 1);
 }
 
+/// BL-063: 新規ドキュメントフォームは app-actions パネルの直接起動で開く。
 #[test]
-fn io_service_route_can_open_new_document_form() {
+fn new_document_form_opens_via_panel_activation() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = desktop_support::FrameProfiler::new();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
-    assert!(app.execute_service_request(ServiceRequest::new(names::PROJECT_NEW_DOCUMENT)));
+    assert!(app.activate_panel_control("builtin.app-actions", "app.new"));
 }

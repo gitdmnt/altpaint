@@ -190,7 +190,7 @@ impl DesktopApp {
         true
     }
 
-    pub(super) fn activate_panel_control(&mut self, panel_id: &str, node_id: &str) -> bool {
+    pub(crate) fn activate_panel_control(&mut self, panel_id: &str, node_id: &str) -> bool {
         self.dispatch_panel_event(PanelEvent::Activate {
             panel_id: panel_id.to_string(),
             node_id: node_id.to_string(),

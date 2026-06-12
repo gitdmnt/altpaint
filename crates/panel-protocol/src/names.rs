@@ -5,7 +5,6 @@
 
 /// プロジェクト入出力サービス。
 pub mod project_io {
-    pub const NEW_DOCUMENT: &str = "project_io.new_document";
     pub const NEW_DOCUMENT_SIZED: &str = "project_io.new_document_sized";
     pub const SAVE_CURRENT: &str = "project_io.save_current";
     pub const SAVE_AS: &str = "project_io.save_as";
@@ -113,7 +112,6 @@ mod tests {
 
     /// 全 wire 名定数の一覧。新規追加時はここにも追加する。
     const ALL_WIRE_NAMES: &[&str] = &[
-        project_io::NEW_DOCUMENT,
         project_io::NEW_DOCUMENT_SIZED,
         project_io::SAVE_CURRENT,
         project_io::SAVE_AS,
@@ -190,7 +188,6 @@ mod tests {
     /// 意図的な wire 改名時は定数定義と本テストを同時に書き換える。
     #[test]
     fn wire_values_are_pinned() {
-        assert_eq!(project_io::NEW_DOCUMENT, "project_io.new_document");
         assert_eq!(project_io::NEW_DOCUMENT_SIZED, "project_io.new_document_sized");
         assert_eq!(project_io::SAVE_CURRENT, "project_io.save_current");
         assert_eq!(project_io::SAVE_AS, "project_io.save_as");
