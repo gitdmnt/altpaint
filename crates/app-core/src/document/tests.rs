@@ -5,9 +5,9 @@ fn apply_layer_brush(
     document: &mut Document,
     paint: impl FnOnce(&mut CanvasBitmap, bool) -> CanvasDirtyRect,
 ) -> Option<CanvasDirtyRect> {
-    let koma_bounds = document.active_panel_bounds()?;
+    let koma_bounds = document.active_koma_bounds()?;
     let (page_width, page_height) = document.active_page_dimensions();
-    let koma = document.active_panel_mut()?;
+    let koma = document.active_koma_mut()?;
     super::layer_ops::ensure_panel_layers(koma);
     let is_background = koma.active_layer_index == 0;
     let local_dirty = {
@@ -560,8 +560,8 @@ fn create_panel_command_adds_rectangular_panel_without_relayout() {
         height: 80,
     });
 
-    assert_eq!(document.active_page_panel_count(), 2);
-    let koma = document.active_panel().expect("active koma exists");
+    assert_eq!(document.active_page_koma_count(), 2);
+    let koma = document.active_koma().expect("active koma exists");
     assert_eq!(
         koma.bounds,
         KomaBounds {
@@ -599,9 +599,9 @@ fn add_panel_selects_new_active_panel() {
 
     document.apply_command(&Command::AddKoma);
 
-    assert_eq!(document.active_page_panel_count(), 2);
-    assert_eq!(document.active_panel_index(), 1);
-    let active_koma = document.active_panel().expect("active koma exists");
+    assert_eq!(document.active_page_koma_count(), 2);
+    assert_eq!(document.active_koma_index(), 1);
+    let active_koma = document.active_koma().expect("active koma exists");
     assert!(active_koma.bounds.width > 0);
     assert!(active_koma.bounds.height > 0);
 }
@@ -637,25 +637,25 @@ fn select_previous_panel_wraps_to_last_panel() {
 
     document.apply_command(&Command::SelectPreviousKoma);
 
-    assert_eq!(document.active_panel_index(), 1);
+    assert_eq!(document.active_koma_index(), 1);
 }
 
 #[test]
-fn remove_active_panel_keeps_single_panel_minimum() {
+fn remove_active_koma_keeps_single_koma_minimum() {
     let mut document = Document::new(256, 256);
     document.apply_command(&Command::RemoveActiveKoma);
 
-    assert_eq!(document.active_page_panel_count(), 1);
+    assert_eq!(document.active_page_koma_count(), 1);
 
     document.apply_command(&Command::AddKoma);
     document.apply_command(&Command::RemoveActiveKoma);
 
-    assert_eq!(document.active_page_panel_count(), 1);
-    assert_eq!(document.active_panel_index(), 0);
+    assert_eq!(document.active_page_koma_count(), 1);
+    assert_eq!(document.active_koma_index(), 0);
 }
 
 #[test]
-fn focus_active_panel_resets_view_transform() {
+fn focus_active_koma_resets_view_transform() {
     let mut document = Document::new(256, 256);
     document.set_view_transform(CanvasViewTransform {
         zoom: 2.5,

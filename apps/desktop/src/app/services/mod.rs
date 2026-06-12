@@ -292,8 +292,8 @@ impl DesktopApp {
             self.document.active_color.hex_rgb(),
             self.document.view_transform.zoom,
             self.document.active_page_index() + 1,
-            self.document.active_panel_index() + 1,
-            self.document.active_page_panel_count().max(1),
+            self.document.active_koma_index() + 1,
+            self.document.active_page_koma_count().max(1),
             self.document.work.pages.len(),
             self.document
                 .work

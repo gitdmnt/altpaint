@@ -157,18 +157,18 @@ impl DesktopApp {
         };
 
         let active_tool = self.document.active_tool;
-        let active_panel_bounds = self.document.active_panel_bounds();
+        let active_koma_bounds = self.document.active_koma_bounds();
 
         let page_point = if action != "down" && self.canvas_input.is_drawing {
-            active_panel_bounds
+            active_koma_bounds
                 .and_then(|bounds| bounds.clamp_canvas_point(page_point))
                 .unwrap_or(page_point)
         } else {
             page_point
         };
-        let inside_active_panel =
-            active_panel_bounds.is_some_and(|bounds| bounds.contains_canvas_point(page_point));
-        if active_tool != ToolKind::KomaRect && !inside_active_panel {
+        let inside_active_koma =
+            active_koma_bounds.is_some_and(|bounds| bounds.contains_canvas_point(page_point));
+        if active_tool != ToolKind::KomaRect && !inside_active_koma {
             if pointer_action == CanvasPointerAction::Up {
                 self.canvas_input.reset();
             }
@@ -188,7 +188,7 @@ impl DesktopApp {
             pressure,
             stabilization,
             |canvas_point| {
-                active_panel_bounds.and_then(|bounds| bounds.canvas_to_panel_local(canvas_point))
+                active_koma_bounds.and_then(|bounds| bounds.canvas_to_panel_local(canvas_point))
             },
         );
 
@@ -299,7 +299,7 @@ impl DesktopApp {
     }
 
     fn page_position_in_active_panel(&self, point: CanvasPoint) -> Option<CanvasPoint> {
-        let bounds = self.document.active_panel_bounds()?;
+        let bounds = self.document.active_koma_bounds()?;
         bounds.contains_canvas_point(point).then_some(point)
     }
 }

@@ -66,8 +66,8 @@ impl DesktopApp {
         if is_stroke_op {
             // ストローク開始時にレイヤー状態を保存する
             if self.pending_stroke.is_none() {
-                let koma_id = self.document.active_panel().map(|p| p.id);
-                let layer_index = self.document.active_panel().map(|p| p.active_layer_index);
+                let koma_id = self.document.active_koma().map(|p| p.id);
+                let layer_index = self.document.active_koma().map(|p| p.active_layer_index);
                 if let (Some(koma_id), Some(layer_index)) = (koma_id, layer_index) {
                     // GPU パスでは CPU bitmap を書き換えないため before_layer 保存は不要
                     let before_layer = if self.gpu.is_some() {
@@ -129,7 +129,7 @@ impl DesktopApp {
                     (params, positions)
                 });
                 if let Some((params, positions)) = stroke_dispatch
-                    && let Some(koma) = self.document.active_panel()
+                    && let Some(koma) = self.document.active_koma()
                 {
                     let koma_id_str = koma.id.0.to_string();
                     let layer_index = koma.active_layer_index;
@@ -151,7 +151,7 @@ impl DesktopApp {
                 });
                 if let Some(dirty) = edit_dirty {
                     self.append_canvas_dirty_rect(dirty);
-                    if let Some(koma_id) = self.document.active_panel().map(|p| p.id) {
+                    if let Some(koma_id) = self.document.active_koma().map(|p| p.id) {
                         self.recomposite_panel(koma_id, Some(dirty));
                     }
                 }
@@ -161,8 +161,8 @@ impl DesktopApp {
             self.apply_bitmap_edits(edits)
         } else {
             // FloodFill / LassoFill の即時操作。
-            let koma_id = self.document.active_panel().map(|p| p.id);
-            let layer_index = self.document.active_panel().map(|p| p.active_layer_index);
+            let koma_id = self.document.active_koma().map(|p| p.id);
+            let layer_index = self.document.active_koma().map(|p| p.active_layer_index);
 
             if self.gpu.is_some()
                 && let (Some(koma_id), Some(layer_index)) = (koma_id, layer_index)

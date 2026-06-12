@@ -65,7 +65,7 @@ pub fn build_host_snapshot_cached(
 ) -> Value {
     let active_tool_definition = document.active_tool_definition().cloned();
     let active_page = document.active_page();
-    let active_koma = document.active_panel();
+    let active_koma = document.active_koma();
 
     let force_rebuild = !cache.initialized;
 
@@ -125,7 +125,7 @@ pub fn build_host_snapshot_cached(
 
     // ---- コマ一覧 ----
     let page_koma_count = active_page.map(|p| p.komas.len()).unwrap_or(1);
-    let active_koma_index = document.active_panel_index();
+    let active_koma_index = document.active_koma_index();
     if force_rebuild
         || cache.page_koma_count != page_koma_count
         || cache.active_koma_index != active_koma_index
@@ -162,8 +162,8 @@ pub fn build_host_snapshot_cached(
     let active_layer = active_koma.and_then(|p| p.layers.get(p.active_layer_index));
     let page_count = document.work.pages.len();
     let active_page_number = document.active_page_index() + 1;
-    let active_koma_number = document.active_panel_index() + 1;
-    let active_page_koma_count = document.active_page_panel_count();
+    let active_koma_number = document.active_koma_index() + 1;
+    let active_page_koma_count = document.active_page_koma_count();
     let koma_count = document
         .work
         .pages
@@ -206,7 +206,7 @@ pub fn build_host_snapshot_cached(
             "koma_count": koma_count,
             "active_page_number": active_page_number,
             "active_page_koma_count": active_page_koma_count,
-            "active_koma_index": document.active_panel_index(),
+            "active_koma_index": document.active_koma_index(),
             "active_koma_number": active_koma_number,
             "active_koma_label": active_koma_label,
             "active_koma_bounds": active_koma_bounds,

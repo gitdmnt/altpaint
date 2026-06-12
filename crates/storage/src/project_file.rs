@@ -125,7 +125,7 @@ mod tests {
 
     fn draw_test_point(document: &mut Document, x: usize, y: usize) {
         let color = document.active_color.to_rgba8();
-        if let Some(koma) = document.active_panel_mut() {
+        if let Some(koma) = document.active_koma_mut() {
             let _ = koma.layers[0]
                 .bitmap
                 .draw_point_sized_rgba(x, y, color, 1, true);

@@ -23,5 +23,5 @@ pub use project_sqlite::{
     PersistedKomaComposite, PersistedKomaCompositeSummary, ProjectIndex, ProjectPageSummary,
     ProjectKomaSummary, ProjectSaveMode,
 };
-pub use export::{ExportError, export_active_panel_as_png};
+pub use export::{ExportError, export_active_koma_as_png};
 pub use tool_catalog::load_tool_directory;

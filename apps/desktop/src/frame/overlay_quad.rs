@@ -55,13 +55,13 @@ pub(crate) fn build_overlay_solid_quads(
     overlay: &CanvasOverlayState,
 ) -> Vec<SolidQuad> {
     let mut quads = Vec::new();
-    if let Some(bounds) = overlay.active_panel_bounds {
+    if let Some(bounds) = overlay.active_koma_bounds {
         push_active_koma_mask(&mut quads, plan, bounds);
     }
     if let Some(bounds) = overlay.panel_creation_preview {
         push_koma_creation_preview(&mut quads, plan, bounds);
     }
-    if let Some(navigator) = overlay.panel_navigator.as_ref() {
+    if let Some(navigator) = overlay.koma_navigator.as_ref() {
         push_koma_navigator(&mut quads, plan, navigator);
     }
     quads
@@ -319,10 +319,10 @@ mod tests {
     }
 
     #[test]
-    fn active_panel_mask_emits_inside_fill_and_four_borders() {
+    fn active_koma_mask_emits_inside_fill_and_four_borders() {
         let plan = make_plan(64, 64);
         let overlay = CanvasOverlayState {
-            active_panel_bounds: Some(KomaBounds {
+            active_koma_bounds: Some(KomaBounds {
                 x: 0,
                 y: 0,
                 width: 64,
@@ -383,7 +383,7 @@ mod tests {
     fn koma_navigator_emits_background_and_per_koma_quads() {
         let plan = make_plan(120, 120);
         let overlay = CanvasOverlayState {
-            panel_navigator: Some(KomaNavigatorOverlay {
+            koma_navigator: Some(KomaNavigatorOverlay {
                 page_width: 100,
                 page_height: 80,
                 panels: vec![

@@ -10,9 +10,9 @@ use thiserror::Error;
 /// PNG export 時に発生するエラー。
 #[derive(Debug, Error)]
 pub enum ExportError {
-    /// 書き出し対象のアクティブパネルが存在しない。
-    #[error("no active panel to export")]
-    NoActivePanel,
+    /// 書き出し対象のアクティブコマが存在しない。
+    #[error("no active koma to export")]
+    NoActiveKoma,
 
     /// ファイル I/O エラー。
     #[error("I/O error: {0}")]
@@ -36,12 +36,12 @@ fn write_png(bitmap: &CanvasBitmap, path: &Path) -> Result<(), ExportError> {
     Ok(())
 }
 
-/// アクティブパネルの合成ビットマップを PNG ファイルとして書き出す。
+/// アクティブコマの合成ビットマップを PNG ファイルとして書き出す。
 ///
-/// 引数の `document` からアクティブパネルを取得し、そのビットマップを
-/// `path` に PNG 形式で保存する。パネルが存在しない場合は `ExportError::NoActivePanel` を返す。
-pub fn export_active_panel_as_png(document: &Document, path: &Path) -> Result<(), ExportError> {
-    let koma = document.active_panel().ok_or(ExportError::NoActivePanel)?;
+/// 引数の `document` からアクティブコマを取得し、そのビットマップを
+/// `path` に PNG 形式で保存する。コマが存在しない場合は `ExportError::NoActiveKoma` を返す。
+pub fn export_active_koma_as_png(document: &Document, path: &Path) -> Result<(), ExportError> {
+    let koma = document.active_koma().ok_or(ExportError::NoActiveKoma)?;
     write_png(&koma.bitmap, path)
 }
 
@@ -55,12 +55,12 @@ mod tests {
         env::temp_dir().join(name)
     }
 
-    /// アクティブパネルを PNG に書き出すと PNG ヘッダが正しく生成される。
+    /// アクティブコマを PNG に書き出すと PNG ヘッダが正しく生成される。
     #[test]
-    fn export_active_panel_writes_valid_png_header() {
+    fn export_active_koma_writes_valid_png_header() {
         let document = Document::new(4, 4);
         let path = temp_png_path("altpaint_export_test_header.png");
-        export_active_panel_as_png(&document, &path).expect("export should succeed");
+        export_active_koma_as_png(&document, &path).expect("export should succeed");
 
         let bytes = std::fs::read(&path).expect("exported file should be readable");
         // PNG マジックバイトの確認
@@ -71,12 +71,12 @@ mod tests {
 
     /// 書き出した PNG のサイズがドキュメントと一致する。
     #[test]
-    fn export_active_panel_matches_document_size() {
+    fn export_active_koma_matches_document_size() {
         let width = 8usize;
         let height = 6usize;
         let document = Document::new(width, height);
         let path = temp_png_path("altpaint_export_test_size.png");
-        export_active_panel_as_png(&document, &path).expect("export should succeed");
+        export_active_koma_as_png(&document, &path).expect("export should succeed");
 
         // PNG IHDR から幅・高さを取得して検証する（byte 16..20 = width, 20..24 = height）
         let bytes = std::fs::read(&path).expect("exported file should be readable");

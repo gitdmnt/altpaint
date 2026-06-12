@@ -8,8 +8,8 @@ pub struct CanvasOverlayState {
     pub brush_preview: Option<CanvasPoint>,
     pub brush_size: Option<u32>,
     pub lasso_points: Vec<CanvasPoint>,
-    pub active_panel_bounds: Option<KomaBounds>,
-    pub panel_navigator: Option<KomaNavigatorOverlay>,
+    pub active_koma_bounds: Option<KomaBounds>,
+    pub koma_navigator: Option<KomaNavigatorOverlay>,
     pub panel_creation_preview: Option<KomaBounds>,
     /// アクティブ UI パネルの画面座標矩形。Some のとき枠線を描画する。
     pub active_ui_panel_rect: Option<PixelRect>,

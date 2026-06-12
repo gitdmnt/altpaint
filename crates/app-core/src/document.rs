@@ -773,7 +773,7 @@ impl Document {
             .min(self.work.pages.len().saturating_sub(1))
     }
 
-    pub fn active_panel_index(&self) -> usize {
+    pub fn active_koma_index(&self) -> usize {
         self.active_page()
             .map(|page| {
                 self.active_koma_index
@@ -793,13 +793,13 @@ impl Document {
         self.work.pages.get_mut(index)
     }
 
-    pub fn active_panel(&self) -> Option<&Koma> {
-        let koma_index = self.active_panel_index();
+    pub fn active_koma(&self) -> Option<&Koma> {
+        let koma_index = self.active_koma_index();
         self.active_page()
             .and_then(|page| page.komas.get(koma_index))
     }
 
-    pub fn active_panel_mut(&mut self) -> Option<&mut Koma> {
+    pub fn active_koma_mut(&mut self) -> Option<&mut Koma> {
         let page_index = self
             .active_page_index
             .min(self.work.pages.len().saturating_sub(1));
@@ -811,11 +811,11 @@ impl Document {
     }
 
     pub fn active_bitmap(&self) -> Option<&CanvasBitmap> {
-        self.active_panel().map(|koma| &koma.bitmap)
+        self.active_koma().map(|koma| &koma.bitmap)
     }
 
     pub fn active_layer_bitmap(&self) -> Option<&CanvasBitmap> {
-        let koma = self.active_panel()?;
+        let koma = self.active_koma()?;
         koma
             .layers
             .get(
@@ -827,34 +827,34 @@ impl Document {
     }
 
     pub fn active_layer_is_background(&self) -> Option<bool> {
-        let koma = self.active_panel()?;
+        let koma = self.active_koma()?;
         Some(koma.active_layer_index == 0)
     }
 
-    pub fn active_panel_contains_canvas_point(&self, point: crate::CanvasPoint) -> bool {
-        self.active_panel_bounds()
+    pub fn active_koma_contains_canvas_point(&self, point: crate::CanvasPoint) -> bool {
+        self.active_koma_bounds()
             .is_some_and(|bounds| bounds.contains_canvas_point(point))
     }
 
-    pub fn active_panel_contains_local_point(&self, point: KomaLocalPoint) -> bool {
-        self.active_panel_bounds()
+    pub fn active_koma_contains_local_point(&self, point: KomaLocalPoint) -> bool {
+        self.active_koma_bounds()
             .and_then(|bounds| bounds.panel_local_to_canvas(point))
             .is_some()
     }
 
-    pub fn active_panel_canvas_to_local(
+    pub fn active_koma_canvas_to_local(
         &self,
         point: crate::CanvasPoint,
     ) -> Option<KomaLocalPoint> {
-        self.active_panel_bounds()
+        self.active_koma_bounds()
             .and_then(|bounds| bounds.canvas_to_panel_local(point))
     }
 
-    pub fn active_panel_local_to_canvas(
+    pub fn active_koma_local_to_canvas(
         &self,
         point: KomaLocalPoint,
     ) -> Option<crate::CanvasPoint> {
-        self.active_panel_bounds()
+        self.active_koma_bounds()
             .and_then(|bounds| bounds.panel_local_to_canvas(point))
     }
 
@@ -903,11 +903,11 @@ impl Document {
             .unwrap_or(&[])
     }
 
-    pub fn active_panel_bounds(&self) -> Option<KomaBounds> {
-        self.active_panel().map(|koma| koma.bounds)
+    pub fn active_koma_bounds(&self) -> Option<KomaBounds> {
+        self.active_koma().map(|koma| koma.bounds)
     }
 
-    pub fn active_page_panel_count(&self) -> usize {
+    pub fn active_page_koma_count(&self) -> usize {
         self.active_page()
             .map(|page| page.komas.len())
             .unwrap_or(0)
@@ -929,14 +929,14 @@ impl Document {
     pub fn select_next_panel(&mut self) {
         if let Some(page) = self.active_page() {
             let koma_count = page.komas.len().max(1);
-            self.active_koma_index = (self.active_panel_index() + 1) % koma_count;
+            self.active_koma_index = (self.active_koma_index() + 1) % koma_count;
         }
     }
 
     pub fn select_previous_panel(&mut self) {
         if let Some(page) = self.active_page() {
             let koma_count = page.komas.len().max(1);
-            self.active_koma_index = (self.active_panel_index() + koma_count - 1) % koma_count;
+            self.active_koma_index = (self.active_koma_index() + koma_count - 1) % koma_count;
         }
     }
 
@@ -958,7 +958,7 @@ impl Document {
         page.komas.push(koma);
         relayout_page_panels(page);
         self.active_koma_index = page.komas.len().saturating_sub(1);
-        self.focus_active_panel_view();
+        self.focus_active_koma_view();
     }
 
     pub fn create_panel(&mut self, bounds: KomaBounds) {
@@ -975,25 +975,25 @@ impl Document {
         koma.bounds = bounds;
         page.komas.push(koma);
         self.active_koma_index = page.komas.len().saturating_sub(1);
-        self.focus_active_panel_view();
+        self.focus_active_koma_view();
     }
 
     pub fn remove_active_panel(&mut self) {
         let page_index = self.active_page_index();
-        let active_panel_index = self.active_panel_index();
+        let active_koma_index = self.active_koma_index();
         let Some(page) = self.work.pages.get_mut(page_index) else {
             return;
         };
         if page.komas.len() <= 1 {
             return;
         }
-        page.komas.remove(active_panel_index);
+        page.komas.remove(active_koma_index);
         relayout_page_panels(page);
-        self.active_koma_index = active_panel_index.min(page.komas.len().saturating_sub(1));
-        self.focus_active_panel_view();
+        self.active_koma_index = active_koma_index.min(page.komas.len().saturating_sub(1));
+        self.focus_active_koma_view();
     }
 
-    pub fn focus_active_panel_view(&mut self) {
+    pub fn focus_active_koma_view(&mut self) {
         self.view_transform = CanvasViewTransform::default();
     }
 
@@ -1145,7 +1145,7 @@ impl Document {
                 relayout_page_panels(page);
             }
         }
-        self.active_koma_index = self.active_panel_index();
+        self.active_koma_index = self.active_koma_index();
     }
 
     /// コマンドをドキュメント状態へ適用する。
@@ -1269,18 +1269,18 @@ impl Document {
             }
             Command::SelectKoma { index } => {
                 self.select_panel(*index);
-                self.focus_active_panel_view();
+                self.focus_active_koma_view();
             }
             Command::SelectNextKoma => {
                 self.select_next_panel();
-                self.focus_active_panel_view();
+                self.focus_active_koma_view();
             }
             Command::SelectPreviousKoma => {
                 self.select_previous_panel();
-                self.focus_active_panel_view();
+                self.focus_active_koma_view();
             }
             Command::FocusActiveKoma => {
-                self.focus_active_panel_view();
+                self.focus_active_koma_view();
             }
             Command::NewDocument => {
                 *self = Document::default();

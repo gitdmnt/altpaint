@@ -115,7 +115,7 @@ impl DesktopApp {
             }
             Command::SetActiveLayerBlendMode { .. }
             | Command::ToggleActiveLayerVisibility => {
-                let koma_info = self.document.active_panel().map(|p| {
+                let koma_info = self.document.active_koma().map(|p| {
                     (
                         p.id,
                         CanvasDirtyRect::new(p.bounds.x, p.bounds.y, p.bounds.width, p.bounds.height),

@@ -30,9 +30,9 @@ impl Document {
         if edits.is_empty() {
             return None;
         }
-        let koma_bounds = self.active_panel_bounds()?;
+        let koma_bounds = self.active_koma_bounds()?;
         let (page_width, page_height) = self.active_page_dimensions();
-        if let Some(koma) = self.active_panel_mut() {
+        if let Some(koma) = self.active_koma_mut() {
             ensure_panel_layers(koma);
             let dirty = apply_bitmap_edits(koma, edits)?;
             composite_panel_bitmap_region(koma, dirty);
@@ -163,7 +163,7 @@ impl Document {
     }
 
     pub fn add_raster_layer(&mut self) {
-        if let Some(koma) = self.active_panel_mut() {
+        if let Some(koma) = self.active_koma_mut() {
             ensure_panel_layers(koma);
             koma.created_layer_count = koma.created_layer_count.saturating_add(1);
             let next_index = koma.created_layer_count;
@@ -179,7 +179,7 @@ impl Document {
     }
 
     pub fn remove_active_layer(&mut self) {
-        if let Some(koma) = self.active_panel_mut() {
+        if let Some(koma) = self.active_koma_mut() {
             ensure_panel_layers(koma);
             if koma.layers.len() <= 1 {
                 return;
@@ -193,14 +193,14 @@ impl Document {
     }
 
     pub fn select_layer(&mut self, index: usize) {
-        if let Some(koma) = self.active_panel_mut() {
+        if let Some(koma) = self.active_koma_mut() {
             ensure_panel_layers(koma);
             koma.active_layer_index = index.min(koma.layers.len().saturating_sub(1));
         }
     }
 
     pub fn rename_active_layer(&mut self, name: &str) {
-        if let Some(koma) = self.active_panel_mut() {
+        if let Some(koma) = self.active_koma_mut() {
             ensure_panel_layers(koma);
             if let Some(layer) = koma.layers.get_mut(koma.active_layer_index) {
                 layer.name = name.to_string();
@@ -209,7 +209,7 @@ impl Document {
     }
 
     pub fn move_layer(&mut self, from_index: usize, to_index: usize) {
-        if let Some(koma) = self.active_panel_mut() {
+        if let Some(koma) = self.active_koma_mut() {
             ensure_panel_layers(koma);
             if koma.layers.len() <= 1 {
                 return;
@@ -237,14 +237,14 @@ impl Document {
     }
 
     pub fn select_next_layer(&mut self) {
-        if let Some(koma) = self.active_panel_mut() {
+        if let Some(koma) = self.active_koma_mut() {
             ensure_panel_layers(koma);
             koma.active_layer_index = (koma.active_layer_index + 1) % koma.layers.len().max(1);
         }
     }
 
     pub fn cycle_active_layer_blend_mode(&mut self) {
-        if let Some(koma) = self.active_panel_mut() {
+        if let Some(koma) = self.active_koma_mut() {
             ensure_panel_layers(koma);
             if let Some(layer) = koma.layers.get_mut(koma.active_layer_index) {
                 layer.blend_mode = layer.blend_mode.next();
@@ -254,7 +254,7 @@ impl Document {
     }
 
     pub fn set_active_layer_blend_mode(&mut self, mode: BlendMode) {
-        if let Some(koma) = self.active_panel_mut() {
+        if let Some(koma) = self.active_koma_mut() {
             ensure_panel_layers(koma);
             if let Some(layer) = koma.layers.get_mut(koma.active_layer_index) {
                 layer.blend_mode = mode;
@@ -264,7 +264,7 @@ impl Document {
     }
 
     pub fn toggle_active_layer_visibility(&mut self) {
-        if let Some(koma) = self.active_panel_mut() {
+        if let Some(koma) = self.active_koma_mut() {
             ensure_panel_layers(koma);
             if let Some(layer) = koma.layers.get_mut(koma.active_layer_index) {
                 layer.visible = !layer.visible;

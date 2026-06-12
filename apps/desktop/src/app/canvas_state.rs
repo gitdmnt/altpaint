@@ -23,9 +23,9 @@ impl DesktopApp {
         self.canvas_frame = Some(build_canvas_frame(&self.document));
     }
 
-    pub(super) fn active_panel_mask_overlay(&self) -> Option<app_core::KomaBounds> {
+    pub(super) fn active_koma_mask_overlay(&self) -> Option<app_core::KomaBounds> {
         let page = self.document.active_page()?;
-        let bounds = self.document.active_panel_bounds()?;
+        let bounds = self.document.active_koma_bounds()?;
         (page.komas.len() > 1
             || bounds != app_core::KomaBounds::full_page(page.width, page.height))
         .then_some(bounds)
@@ -47,7 +47,7 @@ impl DesktopApp {
                 .enumerate()
                 .map(|(index, koma)| KomaNavigatorEntry {
                     bounds: koma.bounds,
-                    active: index == self.document.active_panel_index(),
+                    active: index == self.document.active_koma_index(),
                 })
                 .collect(),
         })

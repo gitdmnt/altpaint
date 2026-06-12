@@ -314,7 +314,7 @@ impl ApplicationHandler for DesktopRuntime {
                     u32,
                     u32,
                 )> = self.app.canvas_layer_source_kind().and_then(|kind| {
-                    let koma = self.app.document.active_panel()?;
+                    let koma = self.app.document.active_koma()?;
                     let (w, h) = match kind {
                         crate::app::GpuCanvasSourceKind::Single => koma
                             .layers

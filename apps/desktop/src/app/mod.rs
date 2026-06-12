@@ -278,7 +278,7 @@ impl DesktopApp {
     /// - GPU 非対応: `None`
     pub(crate) fn canvas_layer_source_kind(&self) -> Option<GpuCanvasSourceKind> {
         let pool = &self.gpu.as_ref()?.pool;
-        let koma = self.document.active_panel()?;
+        let koma = self.document.active_koma()?;
         let pid = koma.id.0.to_string();
         if koma.layers.len() == 1 {
             if pool.get(&pid, 0).is_some() {

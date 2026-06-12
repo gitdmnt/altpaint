@@ -144,7 +144,7 @@ fn koma_rect_tool_creates_koma_from_dragged_page_rect() {
         created.bounds.height,
         start.y.max(end.y) - start.y.min(end.y) + 1
     );
-    assert_eq!(app.document.active_panel_index(), 1);
+    assert_eq!(app.document.active_koma_index(), 1);
 }
 
 #[test]

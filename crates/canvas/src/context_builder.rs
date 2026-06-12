@@ -17,14 +17,14 @@ pub fn build_paint_context<'a>(
     document: &'a Document,
     input: &PaintInput,
 ) -> Option<ResolvedPaintContext<'a>> {
-    if !points_inside_active_panel(document, input) {
+    if !points_inside_active_koma(document, input) {
         return None;
     }
 
     let resolved_size = resolved_size_for_input(document, input);
     let active_tool = document.active_tool_definition()?;
     let active_pen = document.active_pen_preset()?;
-    let active_koma = document.active_panel()?;
+    let active_koma = document.active_koma()?;
     let active_layer_bitmap = document.active_layer_bitmap()?;
     let composited_bitmap = document.active_bitmap()?;
 
@@ -48,17 +48,17 @@ pub fn build_paint_context<'a>(
     })
 }
 
-fn points_inside_active_panel(document: &Document, input: &PaintInput) -> bool {
+fn points_inside_active_koma(document: &Document, input: &PaintInput) -> bool {
     match input {
         PaintInput::Stamp { at, .. } | PaintInput::FloodFill { at } => {
-            document.active_panel_contains_local_point(*at)
+            document.active_koma_contains_local_point(*at)
         }
         PaintInput::StrokeSegment { from, to, .. } => {
-            document.active_panel_contains_local_point(*from)
-                || document.active_panel_contains_local_point(*to)
+            document.active_koma_contains_local_point(*from)
+                || document.active_koma_contains_local_point(*to)
         }
         PaintInput::LassoFill { points } => points
             .iter()
-            .any(|point| document.active_panel_contains_local_point(*point)),
+            .any(|point| document.active_koma_contains_local_point(*point)),
     }
 }
