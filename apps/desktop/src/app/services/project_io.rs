@@ -30,6 +30,18 @@ pub(crate) fn brush_stroke_params(context: &PaintPluginContext<'_>) -> gpu_paint
     }
 }
 
+/// ビットマップ編集列の dirty rect を 1 つの矩形へ畳み込む。
+///
+/// 編集が空なら `None`。
+pub(crate) fn merged_dirty(edits: &[app_core::BitmapEdit]) -> Option<PageDirtyRect> {
+    edits.iter().fold(None::<PageDirtyRect>, |acc, edit| {
+        Some(match acc {
+            Some(existing) => existing.merge(edit.dirty_rect),
+            None => edit.dirty_rect,
+        })
+    })
+}
+
 /// GPU テクスチャ方式 Undo/Redo スナップショット。
 ///
 /// dirty 領域サイズの小テクスチャを `before` / `after` に保持する。
@@ -109,12 +121,7 @@ impl DesktopApp {
 
             // 前回のストローク状態があれば、今回の編集のdirty rectをマージして更新する
             if let Some(stroke) = &mut self.pending_stroke {
-                let edit_dirty = edits.iter().fold(None::<PageDirtyRect>, |acc, edit| {
-                    Some(match acc {
-                        Some(existing) => existing.merge(edit.dirty_rect),
-                        None => edit.dirty_rect,
-                    })
-                });
+                let edit_dirty = merged_dirty(&edits);
                 if let Some(edit_dirty) = edit_dirty {
                     stroke.dirty = Some(match stroke.dirty {
                         Some(existing) => existing.merge(edit_dirty),
@@ -153,12 +160,7 @@ impl DesktopApp {
 
             // GPU パス: compute shader が GPU テクスチャへ直接書き込むため CPU 書き込みは不要
             if self.gpu.is_some() {
-                let edit_dirty = edits.iter().fold(None::<PageDirtyRect>, |acc, edit| {
-                    Some(match acc {
-                        Some(existing) => existing.merge(edit.dirty_rect),
-                        None => edit.dirty_rect,
-                    })
-                });
+                let edit_dirty = merged_dirty(&edits);
                 if let Some(dirty) = edit_dirty {
                     self.append_canvas_dirty_rect(dirty);
                     if let Some(koma_id) = self.document.active_koma().map(|p| p.id) {
@@ -182,12 +184,7 @@ impl DesktopApp {
             }
 
             if let (Some(koma_id), Some(layer_index)) = (koma_id, layer_index) {
-                let edit_dirty = edits.iter().fold(None::<PageDirtyRect>, |acc, edit| {
-                    Some(match acc {
-                        Some(existing) => existing.merge(edit.dirty_rect),
-                        None => edit.dirty_rect,
-                    })
-                });
+                let edit_dirty = merged_dirty(&edits);
                 let before = edit_dirty.and_then(|dirty| {
                     self.document
                         .capture_koma_layer_region(koma_id, layer_index, dirty)
@@ -228,12 +225,7 @@ impl DesktopApp {
         edits: &[app_core::BitmapEdit],
     ) -> bool {
         use paint_engine::build_paint_context;
-        let edit_dirty = edits.iter().fold(None::<PageDirtyRect>, |acc, edit| {
-            Some(match acc {
-                Some(existing) => existing.merge(edit.dirty_rect),
-                None => edit.dirty_rect,
-            })
-        });
+        let edit_dirty = merged_dirty(edits);
         let Some(dirty) = edit_dirty else {
             return false;
         };
