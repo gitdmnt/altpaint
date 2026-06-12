@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use crate::session::{EditorSession, ToolKind};
-use crate::{DocumentCommand, SessionCommand};
+use crate::DocumentCommand;
+use editor_state::{EditorSession, SessionCommand, ToolKind};
 use geometry::KomaLocalPoint;
 use raster::{BlendMode, RgbaBitmap as CanvasBitmap};
 

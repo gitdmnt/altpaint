@@ -1,4 +1,4 @@
-use crate::{ColorRgba8, PenPreset, ToolKind, ToolSettingDefinition};
+use editor_state::{ColorRgba8, PenPreset, ToolKind, ToolSettingDefinition};
 use geometry::KomaLocalPoint;
 use raster::{BitmapEdit, RgbaBitmap as CanvasBitmap};
 

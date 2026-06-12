@@ -1,5 +1,5 @@
 use super::*;
-use crate::session::{CanvasViewTransform, ColorRgba8, PenPreset, ToolKind};
+use editor_state::{CanvasViewTransform, ColorRgba8, PenPreset, ToolKind};
 use geometry::{ClampToCanvasBounds, MergeInSpace, PageDirtyRect};
 
 fn apply_layer_brush(
@@ -228,7 +228,9 @@ fn active_tool_definition_uses_registered_tool_metadata() {
 
     assert_eq!(tool.kind, ToolKind::Eraser);
     assert_eq!(tool.id, "builtin.eraser");
-    assert_eq!(tool.provider_plugin_id, "plugins/default-erasers-plugin");
+    // provider_plugin_id は desktop 固有の既定値であり editor-state の既定カタログは
+    // 空文字列で持つ (実運用では desktop / tools ディレクトリが注入する)。
+    assert_eq!(tool.provider_plugin_id, "");
     assert_eq!(tool.drawing_plugin_id, "builtin.bitmap");
     assert!(tool.settings.iter().any(|setting| setting.key == "size"));
 }

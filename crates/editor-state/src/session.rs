@@ -1,10 +1,8 @@
 //! エディタの一過性編集状態 (`EditorSession`)。
 //!
 //! アクティブツール・色・ペンプリセット・表示変換など、作品データには属さない
-//! 編集セッション状態と、その整合・適用ロジックをまとめる。`Document` は本セッションを
-//! `session` フィールドとして保持する。
-//!
-//! B5 (BL-073) で `editor-state` クレートへ移設予定。
+//! 編集セッション状態と、その整合・適用ロジックをまとめる。`document-model` の
+//! `Document` が本セッションを `session` フィールドとして保持する。
 
 use serde::{Deserialize, Serialize};
 
@@ -317,17 +315,19 @@ fn default_active_pen_preset_id() -> String {
     PenPreset::default().id
 }
 
-/// アプリ既定のツールカタログ。
+/// editor-state 既定のツールカタログ (構造のみのフォールバック)。
 ///
-/// `provider_plugin_id` のプラグイン配置文字列は本来 desktop の既定値であり、
-/// B5 (BL-073) で desktop 側へ移す予定 (features/tools への最終配置は B7)。
+/// ツールの id / name / kind / settings を定義するが、`provider_plugin_id`
+/// (プラグイン配置文字列) は desktop 固有の既定値であり editor-state は知らない。
+/// 実運用では desktop が `tools/` 配下の定義 (または desktop 既定カタログ) を
+/// `replace_tool_catalog` で注入するため、ここでは空文字列で初期化する。
 pub(crate) fn default_tool_catalog() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
             id: "builtin.pen".to_string(),
             name: "Pen".to_string(),
             kind: ToolKind::Pen,
-            provider_plugin_id: "plugins/default-pens-plugin".to_string(),
+            provider_plugin_id: String::new(),
             drawing_plugin_id: default_bitmap_plugin_id(),
             settings: vec![
                 ToolSettingDefinition::slider("size", "太さ", 1, 10_000),
@@ -341,7 +341,7 @@ pub(crate) fn default_tool_catalog() -> Vec<ToolDefinition> {
             id: "builtin.eraser".to_string(),
             name: "Eraser".to_string(),
             kind: ToolKind::Eraser,
-            provider_plugin_id: "plugins/default-erasers-plugin".to_string(),
+            provider_plugin_id: String::new(),
             drawing_plugin_id: default_bitmap_plugin_id(),
             settings: vec![
                 ToolSettingDefinition::slider("size", "太さ", 1, 10_000),
@@ -354,7 +354,7 @@ pub(crate) fn default_tool_catalog() -> Vec<ToolDefinition> {
             id: "builtin.bucket".to_string(),
             name: "Bucket".to_string(),
             kind: ToolKind::Bucket,
-            provider_plugin_id: "plugins/default-fill-tools-plugin".to_string(),
+            provider_plugin_id: String::new(),
             drawing_plugin_id: default_bitmap_plugin_id(),
             settings: Vec::new(),
             children: Vec::new(),
@@ -363,7 +363,7 @@ pub(crate) fn default_tool_catalog() -> Vec<ToolDefinition> {
             id: "builtin.lasso-bucket".to_string(),
             name: "Lasso Bucket".to_string(),
             kind: ToolKind::LassoBucket,
-            provider_plugin_id: "plugins/default-fill-tools-plugin".to_string(),
+            provider_plugin_id: String::new(),
             drawing_plugin_id: default_bitmap_plugin_id(),
             settings: Vec::new(),
             children: Vec::new(),
@@ -372,7 +372,7 @@ pub(crate) fn default_tool_catalog() -> Vec<ToolDefinition> {
             id: "builtin.koma-rect".to_string(),
             name: "Koma Rect".to_string(),
             kind: ToolKind::KomaRect,
-            provider_plugin_id: "plugins/default-koma-tools-plugin".to_string(),
+            provider_plugin_id: String::new(),
             drawing_plugin_id: default_bitmap_plugin_id(),
             settings: Vec::new(),
             children: Vec::new(),
