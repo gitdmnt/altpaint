@@ -616,8 +616,7 @@ B4 (BL-060) で旧 `Command` enum を 2 分割し、I/O 系 variant (保存・�
 
 - `apps/desktop/src/app/panel_dispatch.rs`
   - `drag_panel_interaction()` の `PanelDragState::Move` ブランチ: `move_panel_to()` の前に `panel_presentation.panel_rect()` で以前の矩形をキャプチャし、変更後に `append_canvas_host_dirty_rect(rect)` を呼ぶ
-  - `execute_host_action()` の `HostAction::MovePanel`: 同様に `panel_rect()` キャプチャ + `append_canvas_host_dirty_rect()`
-  - `execute_host_action()` の `HostAction::SetPanelVisibility`: 同様に `panel_rect()` キャプチャ + `append_canvas_host_dirty_rect()`
+  - BL-062 以降、パネル移動/非表示は `workspace_layout.move_panel` / `workspace_layout.set_panel_visibility` サービス (`services/workspace_layout.rs`) に一本化され、そこで `panel_rect_in_window()` キャプチャ + `append_ui_panel_dirty_rect()` を行う (旧 `execute_host_action()` の `HostAction::MovePanel` / `SetPanelVisibility` 直接処理は撤去)。
 
 - `apps/desktop/src/app/tests/panel_dispatch_tests.rs`
   - `drag_panel_move_marks_canvas_host_dirty`: パネルドラッグ移動後に `pending_canvas_host_dirty_rect` が `Some` になることを検証
