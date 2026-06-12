@@ -26,7 +26,7 @@ impl DesktopApp {
         };
         let (bitmap_width, bitmap_height) = self.canvas_dimensions();
 
-        let transform = self.document.view_transform;
+        let transform = self.document.session.view_transform;
         if let Some(previous) = previous.and_then(|position| {
             canvas_geometry::brush_preview_rect_for_diameter(
                 layout,
@@ -156,7 +156,7 @@ impl DesktopApp {
             return false;
         };
 
-        let active_tool = self.document.active_tool;
+        let active_tool = self.document.session.active_tool();
         let active_koma_bounds = self.document.active_koma_bounds();
 
         let page_point = if action != "down" && self.canvas_input.is_drawing {
@@ -177,6 +177,7 @@ impl DesktopApp {
 
         let stabilization = self
             .document
+            .session
             .active_pen_preset()
             .map(|preset| preset.stabilization)
             .unwrap_or_default();
@@ -265,7 +266,7 @@ impl DesktopApp {
 
     fn hover_canvas_position_from_window(&self, point: WindowPoint) -> Option<PagePoint> {
         let position = self.canvas_position_from_window(point)?;
-        match self.document.active_tool {
+        match self.document.session.active_tool() {
             ToolKind::KomaRect => Some(position),
             ToolKind::Pen | ToolKind::Eraser | ToolKind::Bucket | ToolKind::LassoBucket => self
                 .page_position_in_active_panel(position)
@@ -296,7 +297,7 @@ impl DesktopApp {
             canvas_width,
             canvas_height,
             viewport_point,
-            self.document.view_transform,
+            self.document.session.view_transform,
         )
     }
 

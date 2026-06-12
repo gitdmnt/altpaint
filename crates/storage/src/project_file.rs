@@ -125,7 +125,7 @@ mod tests {
     }
 
     fn draw_test_point(document: &mut Document, x: usize, y: usize) {
-        let color = document.active_color.to_rgba8();
+        let color = document.session.active_color.to_rgba8();
         if let Some(koma) = document.active_koma_mut() {
             let _ = koma.layers[0]
                 .bitmap
@@ -192,7 +192,9 @@ mod tests {
     fn save_and_load_roundtrip_preserves_document() {
         let path = temp_path("roundtrip");
         let mut document = small_document();
-        document.set_active_color(ColorRgba8::new(0x8e, 0x24, 0xaa, 0xff));
+        document
+            .session
+            .set_active_color(ColorRgba8::new(0x8e, 0x24, 0xaa, 0xff));
         draw_test_point(&mut document, 5, 6);
 
         save_project_to_path(
@@ -207,7 +209,7 @@ mod tests {
             .document;
 
         assert_eq!(loaded.work.title, document.work.title);
-        assert_eq!(loaded.active_color, document.active_color);
+        assert_eq!(loaded.session.active_color, document.session.active_color);
         assert_eq!(
             loaded.work.pages[0].komas[0].composite_cache.pixels,
             document.work.pages[0].komas[0].composite_cache.pixels
@@ -327,7 +329,9 @@ mod tests {
     fn save_project_writes_sqlite_header_and_chunk_tables() {
         let path = temp_path("sqlite-format");
         let mut document = Document::new(256, 256);
-        document.set_active_color(ColorRgba8::new(0x12, 0x34, 0x56, 0xff));
+        document
+            .session
+            .set_active_color(ColorRgba8::new(0x12, 0x34, 0x56, 0xff));
         draw_test_point(&mut document, 32, 48);
 
         save_project_to_path(

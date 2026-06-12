@@ -254,16 +254,16 @@ impl DesktopApp {
         if tools.is_empty() {
             return false;
         }
-        document.replace_tool_catalog(tools);
+        document.session.replace_tool_catalog(tools);
         true
     }
 
     /// 9E-4: HtmlPanelView ステータスバー用のスナップショットを組み立てる。
     /// ツール名・ズーム % ・status text を集約して返す。
     pub(crate) fn build_status_snapshot(&self) -> crate::present_quads::status_panel::StatusSnapshot {
-        let tool_name = self.document.active_tool.display_label();
+        let tool_name = self.document.session.active_tool().display_label();
         let zoom_percent =
-            (self.document.view_transform.zoom * 100.0).round().clamp(1.0, 100_000.0) as u32;
+            (self.document.session.view_transform.zoom * 100.0).round().clamp(1.0, 100_000.0) as u32;
         let status_text = self.status_text();
         crate::present_quads::status_panel::StatusSnapshot::new(tool_name, zoom_percent, status_text)
     }
@@ -285,14 +285,15 @@ impl DesktopApp {
         format!(
             "file={} / tool={:?} / pen={} {}px / color={} / zoom={:.2}x / page={} / koma={}/{} / pages={} / komas={} / hidden={}",
             file_name,
-            self.document.active_tool,
+            self.document.session.active_tool(),
             self.document
+                .session
                 .active_pen_preset()
                 .map(|preset| preset.name.as_str())
                 .unwrap_or("Round Pen"),
-            self.document.active_pen_size,
-            self.document.active_color.hex_rgb(),
-            self.document.view_transform.zoom,
+            self.document.session.active_pen_size,
+            self.document.session.active_color.hex_rgb(),
+            self.document.session.view_transform.zoom,
             self.document.active_page_index() + 1,
             self.document.active_koma_index() + 1,
             self.document.active_page_koma_count().max(1),

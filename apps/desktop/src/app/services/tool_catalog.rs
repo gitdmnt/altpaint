@@ -60,7 +60,7 @@ impl DesktopApp {
                     .iter()
                     .map(|pen| pen.to_runtime_preset())
                     .collect::<Vec<_>>();
-                if self.document.merge_pen_presets(runtime_presets) == 0 {
+                if self.document.session.merge_pen_presets(runtime_presets) == 0 {
                     self.io_state
                         .dialogs
                         .show_error("Pen import failed", "no importable pen presets were found");
@@ -156,7 +156,7 @@ impl DesktopApp {
         if presets.is_empty() {
             return false;
         }
-        document.replace_pen_presets(presets);
+        document.session.replace_pen_presets(presets);
         true
     }
 }

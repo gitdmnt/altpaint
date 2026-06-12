@@ -1,4 +1,5 @@
 use super::*;
+use crate::session::{CanvasViewTransform, ColorRgba8, PenPreset, ToolKind};
 use geometry::{ClampToCanvasBounds, MergeInSpace, PageDirtyRect};
 
 fn apply_layer_brush(
@@ -27,9 +28,10 @@ fn apply_layer_brush(
 }
 
 fn draw_point(document: &mut Document, x: usize, y: usize) -> Option<PageDirtyRect> {
-    let color = document.active_color.to_rgba8();
-    let size = document.brush_size_for_pressure(1.0);
+    let color = document.session.active_color.to_rgba8();
+    let size = document.session.brush_size_for_pressure(1.0);
     let antialias = document
+        .session
         .active_pen_preset()
         .map(|preset| preset.antialias)
         .unwrap_or(true);
@@ -45,9 +47,10 @@ fn draw_stroke(
     to_x: usize,
     to_y: usize,
 ) -> Option<PageDirtyRect> {
-    let color = document.active_color.to_rgba8();
-    let size = document.brush_size_for_pressure(1.0);
+    let color = document.session.active_color.to_rgba8();
+    let size = document.session.brush_size_for_pressure(1.0);
     let antialias = document
+        .session
         .active_pen_preset()
         .map(|preset| preset.antialias)
         .unwrap_or(true);
@@ -57,8 +60,9 @@ fn draw_stroke(
 }
 
 fn erase_point(document: &mut Document, x: usize, y: usize) -> Option<PageDirtyRect> {
-    let size = document.brush_size_for_pressure(1.0);
+    let size = document.session.brush_size_for_pressure(1.0);
     let antialias = document
+        .session
         .active_pen_preset()
         .map(|preset| preset.antialias)
         .unwrap_or(true);
@@ -92,7 +96,7 @@ fn default_document_has_single_page_single_koma_single_layer() {
 #[test]
 fn draw_point_marks_target_pixel_black() {
     let mut document = Document::default();
-    document.set_active_pen_size(1);
+    document.session.set_active_pen_size(1);
 
     let dirty = draw_point(&mut document, 3, 4).expect("koma should exist");
 
@@ -105,7 +109,7 @@ fn draw_point_marks_target_pixel_black() {
 #[test]
 fn draw_stroke_draws_continuous_line() {
     let mut document = Document::default();
-    document.set_active_pen_size(1);
+    document.session.set_active_pen_size(1);
 
     let dirty = draw_stroke(&mut document, 2, 2, 6, 2).expect("koma should exist");
 
@@ -120,7 +124,7 @@ fn draw_stroke_draws_continuous_line() {
 #[test]
 fn erase_point_marks_target_pixel_white() {
     let mut document = Document::default();
-    document.set_active_pen_size(1);
+    document.session.set_active_pen_size(1);
     let _ = draw_point(&mut document, 3, 4);
 
     let dirty = erase_point(&mut document, 3, 4).expect("koma should exist");
@@ -135,29 +139,29 @@ fn erase_point_marks_target_pixel_white() {
 fn active_tool_defaults_to_pen() {
     let document = Document::default();
 
-    assert_eq!(document.active_tool, ToolKind::Pen);
+    assert_eq!(document.session.active_tool(), ToolKind::Pen);
 }
 
 #[test]
 fn active_color_defaults_to_black() {
     let document = Document::default();
 
-    assert_eq!(document.active_color, ColorRgba8::new(0, 0, 0, 255));
+    assert_eq!(document.session.active_color, ColorRgba8::new(0, 0, 0, 255));
 }
 
 #[test]
 fn default_document_has_round_pen_preset() {
     let document = Document::default();
 
-    assert_eq!(document.pen_presets.len(), 1);
-    assert_eq!(document.active_pen_preset_id, "builtin.round-pen");
-    assert_eq!(document.active_pen_size, 4);
+    assert_eq!(document.session.pen_presets.len(), 1);
+    assert_eq!(document.session.active_pen_preset_id, "builtin.round-pen");
+    assert_eq!(document.session.active_pen_size, 4);
 }
 
 #[test]
 fn draw_point_uses_active_color() {
     let mut document = Document::default();
-    document.set_active_color(ColorRgba8::new(0xe5, 0x39, 0x35, 0xff));
+    document.session.set_active_color(ColorRgba8::new(0xe5, 0x39, 0x35, 0xff));
 
     let _ = draw_point(&mut document, 3, 4);
 
@@ -197,7 +201,7 @@ fn apply_command_switches_active_tool() {
         tool: ToolKind::Pen,
     });
 
-    assert_eq!(document.active_tool, ToolKind::Pen);
+    assert_eq!(document.session.active_tool(), ToolKind::Pen);
 }
 
 #[test]
@@ -208,16 +212,17 @@ fn apply_command_selects_registered_tool_by_id() {
         tool_id: "builtin.eraser".to_string(),
     });
 
-    assert_eq!(document.active_tool, ToolKind::Eraser);
-    assert_eq!(document.active_tool_id, "builtin.eraser");
+    assert_eq!(document.session.active_tool(), ToolKind::Eraser);
+    assert_eq!(document.session.active_tool_id, "builtin.eraser");
 }
 
 #[test]
 fn active_tool_definition_uses_registered_tool_metadata() {
     let mut document = Document::default();
-    assert!(document.set_active_tool_by_id("builtin.eraser"));
+    assert!(document.session.set_active_tool_by_id("builtin.eraser"));
 
     let tool = document
+        .session
         .active_tool_definition()
         .expect("active tool definition");
 
@@ -234,7 +239,7 @@ fn apply_command_updates_pen_size() {
 
     document.apply_session_command(&SessionCommand::SetActivePenSize { size: 12 });
 
-    assert_eq!(document.active_pen_size, 12);
+    assert_eq!(document.session.active_pen_size, 12);
 }
 
 #[test]
@@ -246,7 +251,7 @@ fn apply_command_switches_active_color() {
     });
 
     assert_eq!(
-        document.active_color,
+        document.session.active_color,
         ColorRgba8::new(0x43, 0xa0, 0x47, 0xff)
     );
 }
@@ -327,7 +332,7 @@ fn wide_diagonal_stroke_marks_midpoint_pixels() {
 #[test]
 fn cycling_pen_presets_updates_active_size() {
     let mut document = Document::default();
-    document.replace_pen_presets(vec![
+    document.session.replace_pen_presets(vec![
         PenPreset {
             id: "fine".to_string(),
             name: "Fine".to_string(),
@@ -348,10 +353,10 @@ fn cycling_pen_presets_updates_active_size() {
         },
     ]);
 
-    document.select_next_pen_preset();
+    document.session.select_next_pen_preset();
 
-    assert_eq!(document.active_pen_preset_id, "bold");
-    assert_eq!(document.active_pen_size, 9);
+    assert_eq!(document.session.active_pen_preset_id, "bold");
+    assert_eq!(document.session.active_pen_size, 9);
 }
 
 #[test]
@@ -407,26 +412,26 @@ fn document_stores_canvas_view_transform() {
         flip_y: false,
     };
 
-    document.set_view_transform(transform);
+    document.session.set_view_transform(transform);
 
-    assert_eq!(document.view_transform, transform);
+    assert_eq!(document.session.view_transform, transform);
 }
 
 /// BL-064: ホイール 1 ノッチ (lines=1) の相対ズームは従来の倍率 (1.1^lines) と一致する。
 #[test]
 fn zoom_view_by_lines_applies_one_point_one_base_multiplier() {
     let mut document = Document::default();
-    document.set_view_transform(CanvasViewTransform {
+    document.session.set_view_transform(CanvasViewTransform {
         zoom: 1.0,
         ..CanvasViewTransform::default()
     });
 
     document.apply_session_command(&SessionCommand::ZoomViewBy { lines: 1.0 });
-    assert!((document.view_transform.zoom - 1.1).abs() < 1e-6);
+    assert!((document.session.view_transform.zoom - 1.1).abs() < 1e-6);
 
     document.apply_session_command(&SessionCommand::ZoomViewBy { lines: 2.0 });
     // 1.1 * 1.1^2 = 1.1^3
-    assert!((document.view_transform.zoom - 1.1_f32.powf(3.0)).abs() < 1e-5);
+    assert!((document.session.view_transform.zoom - 1.1_f32.powf(3.0)).abs() < 1e-5);
 }
 
 /// BL-064: ズーム下限・上限のクランプ (0.25-16) がドメイン側で適用される。
@@ -434,24 +439,24 @@ fn zoom_view_by_lines_applies_one_point_one_base_multiplier() {
 fn zoom_view_by_lines_clamps_to_view_policy_bounds() {
     let mut document = Document::default();
 
-    document.set_view_transform(CanvasViewTransform {
+    document.session.set_view_transform(CanvasViewTransform {
         zoom: 1.0,
         ..CanvasViewTransform::default()
     });
     // 十分に大きく拡大しても上限 16 を超えない。
     document.apply_session_command(&SessionCommand::ZoomViewBy { lines: 1000.0 });
-    assert_eq!(document.view_transform.zoom, 16.0);
+    assert_eq!(document.session.view_transform.zoom, 16.0);
 
     // 十分に縮小しても下限 0.25 を下回らない。
     document.apply_session_command(&SessionCommand::ZoomViewBy { lines: -1000.0 });
-    assert_eq!(document.view_transform.zoom, 0.25);
+    assert_eq!(document.session.view_transform.zoom, 0.25);
 }
 
 /// BL-064: line 単位のパンはドメイン側で 32px/line を適用する。
 #[test]
 fn pan_view_by_lines_uses_32px_per_line() {
     let mut document = Document::default();
-    document.set_view_transform(CanvasViewTransform {
+    document.session.set_view_transform(CanvasViewTransform {
         pan_x: 0.0,
         pan_y: 0.0,
         ..CanvasViewTransform::default()
@@ -461,8 +466,8 @@ fn pan_view_by_lines_uses_32px_per_line() {
         x_lines: 1.0,
         y_lines: -2.0,
     });
-    assert_eq!(document.view_transform.pan_x, 32.0);
-    assert_eq!(document.view_transform.pan_y, -64.0);
+    assert_eq!(document.session.view_transform.pan_x, 32.0);
+    assert_eq!(document.session.view_transform.pan_y, -64.0);
 }
 
 #[test]
@@ -627,7 +632,7 @@ fn koma_local_draw_returns_page_space_dirty_rect() {
         width: 120,
         height: 80,
     });
-    document.set_active_pen_size(1);
+    document.session.set_active_pen_size(1);
 
     let dirty = draw_point(&mut document, 2, 3).expect("dirty rect exists");
 
@@ -655,7 +660,7 @@ fn koma_selection_switches_edit_target() {
     let mut document = Document::new(128, 128);
     document.apply(&DocumentCommand::AddKoma);
     document.apply(&DocumentCommand::SelectKoma { index: 1 });
-    document.set_active_pen_size(1);
+    document.session.set_active_pen_size(1);
 
     let _ = draw_point(&mut document, 2, 3);
 
@@ -701,7 +706,7 @@ fn remove_active_koma_keeps_single_koma_minimum() {
 #[test]
 fn focus_active_koma_resets_view_transform() {
     let mut document = Document::new(256, 256);
-    document.set_view_transform(CanvasViewTransform {
+    document.session.set_view_transform(CanvasViewTransform {
         zoom: 2.5,
         rotation_degrees: 33.0,
         pan_x: 40.0,
@@ -712,7 +717,7 @@ fn focus_active_koma_resets_view_transform() {
 
     document.apply(&DocumentCommand::FocusActiveKoma);
 
-    assert_eq!(document.view_transform, CanvasViewTransform::default());
+    assert_eq!(document.session.view_transform, CanvasViewTransform::default());
 }
 
 // --- BL-032 ゴールデンテスト: CPU 合成の現挙動を固定する ---

@@ -1,5 +1,5 @@
-use crate::document::ColorRgba8;
-use crate::document::ToolKind;
+use crate::session::ColorRgba8;
+use crate::session::ToolKind;
 
 /// `Document` の内容そのものを変える純粋なドキュメント変異コマンド。
 ///

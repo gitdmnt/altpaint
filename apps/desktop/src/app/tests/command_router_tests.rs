@@ -12,7 +12,7 @@ fn session_command_route_updates_tool_state() {
         tool: ToolKind::Eraser,
     }));
 
-    assert_eq!(app.document.active_tool, ToolKind::Eraser);
+    assert_eq!(app.document.session.active_tool(), ToolKind::Eraser);
 }
 
 #[test]
@@ -24,7 +24,7 @@ fn session_command_route_updates_color_state() {
     }));
 
     assert_eq!(
-        app.document.active_color,
+        app.document.session.active_color,
         ColorRgba8::new(0x1e, 0x88, 0xe5, 0xff)
     );
 }

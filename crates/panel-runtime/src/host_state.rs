@@ -48,7 +48,7 @@ pub fn build_host_state(
     cache: &mut HostStateCache,
     workspace_panels_json: &str,
 ) -> Value {
-    let active_tool_definition = document.active_tool_definition().cloned();
+    let active_tool_definition = document.session.active_tool_definition().cloned();
     let active_page = document.active_page();
     let active_koma = document.active_koma();
 
@@ -57,21 +57,21 @@ pub fn build_host_state(
     // ---- pen presets (内容が変化しなければキャッシュを再利用) ----
     // BL-031: 件数 + active index ではプリセット内容の編集を検知できないため、
     // 内容の等値比較で無効化する。
-    let pen_count = document.pen_presets.len();
-    let active_pen_index = document.active_pen_index();
-    if force_rebuild || cache.pen_presets != document.pen_presets {
+    let pen_count = document.session.pen_presets.len();
+    let active_pen_index = document.session.active_pen_index();
+    if force_rebuild || cache.pen_presets != document.session.pen_presets {
         cache.pen_presets_json =
-            serde_json::to_string(&document.pen_presets).unwrap_or_else(|_| "[]".to_string());
-        cache.pen_presets = document.pen_presets.clone();
+            serde_json::to_string(&document.session.pen_presets).unwrap_or_else(|_| "[]".to_string());
+        cache.pen_presets = document.session.pen_presets.clone();
     }
 
     // ---- ツールカタログ・設定 ----
-    let active_tool_id = document.active_tool_id.as_str();
+    let active_tool_id = document.session.active_tool_id.as_str();
     if force_rebuild || cache.active_tool_id != active_tool_id {
         cache.tool_catalog_json =
-            serde_json::to_string(&document.tool_catalog).unwrap_or_else(|_| "[]".to_string());
+            serde_json::to_string(&document.session.tool_catalog).unwrap_or_else(|_| "[]".to_string());
         cache.active_tool_settings_json =
-            serde_json::to_string(document.active_tool_settings()).unwrap_or_else(|_| "[]".to_string());
+            serde_json::to_string(document.session.active_tool_settings()).unwrap_or_else(|_| "[]".to_string());
         cache.child_tools_json = active_tool_definition
             .as_ref()
             .map(|t| serde_json::to_string(&t.children).unwrap_or_else(|_| "[]".to_string()))
@@ -160,9 +160,9 @@ pub fn build_host_state(
             )
         })
         .unwrap_or_else(|| "(0, 0) 0×0".to_string());
-    let active_pen = document.active_pen_preset().cloned().unwrap_or_default();
-    let active_child_tool_id = &document.active_child_tool_id;
-    let active_child_tool = document.active_child_tool_definition();
+    let active_pen = document.session.active_pen_preset().cloned().unwrap_or_default();
+    let active_child_tool_id = &document.session.active_child_tool_id;
+    let active_child_tool = document.session.active_child_tool_definition();
     let active_child_tool_label = active_child_tool
         .map(|c| c.name.clone())
         .unwrap_or_default();
@@ -195,38 +195,38 @@ pub fn build_host_state(
             "layers_json": layers_json,
         },
         "tool": {
-            "active": document.active_tool.as_str(),
-            "active_id": &document.active_tool_id,
+            "active": document.session.active_tool().as_str(),
+            "active_id": &document.session.active_tool_id,
             "active_label": active_tool_definition
                 .as_ref()
                 .map(|tool| tool.name.clone())
-                .unwrap_or_else(|| document.active_tool.as_str().to_string()),
+                .unwrap_or_else(|| document.session.active_tool().as_str().to_string()),
             "catalog_json": cache.tool_catalog_json,
             "active_settings_json": cache.active_tool_settings_json,
             "active_child_tool_id": active_child_tool_id,
             "active_child_tool_label": active_child_tool_label,
             "child_tools_json": cache.child_tools_json,
-            "active_provider_plugin_id": document.active_tool_provider_plugin_id().unwrap_or_default(),
-            "active_drawing_plugin_id": document.active_tool_drawing_plugin_id().unwrap_or_default(),
-            "supports_size": document.active_tool_settings().iter().any(|setting| setting.key == "size"),
-            "supports_pressure_enabled": document.active_tool_settings().iter().any(|setting| setting.key == "pressure_enabled"),
-            "supports_antialias": document.active_tool_settings().iter().any(|setting| setting.key == "antialias"),
-            "supports_stabilization": document.active_tool_settings().iter().any(|setting| setting.key == "stabilization"),
+            "active_provider_plugin_id": document.session.active_tool_provider_plugin_id().unwrap_or_default(),
+            "active_drawing_plugin_id": document.session.active_tool_drawing_plugin_id().unwrap_or_default(),
+            "supports_size": document.session.active_tool_settings().iter().any(|setting| setting.key == "size"),
+            "supports_pressure_enabled": document.session.active_tool_settings().iter().any(|setting| setting.key == "pressure_enabled"),
+            "supports_antialias": document.session.active_tool_settings().iter().any(|setting| setting.key == "antialias"),
+            "supports_stabilization": document.session.active_tool_settings().iter().any(|setting| setting.key == "stabilization"),
             "pen_name": active_pen.name,
             "pen_id": active_pen.id,
             "pen_presets_json": cache.pen_presets_json,
             "pen_index": active_pen_index,
             "pen_count": pen_count,
-            "pen_size": document.active_pen_size,
+            "pen_size": document.session.active_pen_size,
             "pen_pressure_enabled": active_pen.pressure_enabled,
             "pen_antialias": active_pen.antialias,
             "pen_stabilization": active_pen.stabilization,
         },
         "color": {
-            "active": document.active_color.hex_rgb(),
-            "red": document.active_color.r,
-            "green": document.active_color.g,
-            "blue": document.active_color.b,
+            "active": document.session.active_color.hex_rgb(),
+            "red": document.session.active_color.r,
+            "green": document.session.active_color.g,
+            "blue": document.session.active_color.b,
         },
         "history": { "can_undo": can_undo, "can_redo": can_redo },
         "jobs": { "active": active_jobs, "queued": 0, "status": if active_jobs == 0 { format!("idle / work={}", document.work.title) } else { format!("{active_jobs} job(s) running") } },
@@ -235,14 +235,14 @@ pub fn build_host_state(
             "storage_status": if snapshot_count == 0 { "empty" } else { "ok" },
         },
         "view": {
-            "zoom": document.view_transform.zoom,
-            "zoom_milli": (document.view_transform.zoom * 1000.0).round() as i32,
-            "pan_x": document.view_transform.pan_x.round() as i32,
-            "pan_y": document.view_transform.pan_y.round() as i32,
-            "rotation_degrees": document.view_transform.rotation_degrees.round() as i32,
-            "quarter_turns": ((document.view_transform.rotation_degrees / 90.0).round() as i32).rem_euclid(4),
-            "flip_x": document.view_transform.flip_x,
-            "flip_y": document.view_transform.flip_y,
+            "zoom": document.session.view_transform.zoom,
+            "zoom_milli": (document.session.view_transform.zoom * 1000.0).round() as i32,
+            "pan_x": document.session.view_transform.pan_x.round() as i32,
+            "pan_y": document.session.view_transform.pan_y.round() as i32,
+            "rotation_degrees": document.session.view_transform.rotation_degrees.round() as i32,
+            "quarter_turns": ((document.session.view_transform.rotation_degrees / 90.0).round() as i32).rem_euclid(4),
+            "flip_x": document.session.view_transform.flip_x,
+            "flip_y": document.session.view_transform.flip_y,
         },
         "workspace": {
             "panels_json": workspace_panels_json,
@@ -372,7 +372,7 @@ mod tests {
         let mut cache = HostStateCache::default();
         let _ = build(&document, &mut cache);
 
-        document.pen_presets[0].name = "Edited Pen".to_string();
+        document.session.pen_presets[0].name = "Edited Pen".to_string();
 
         let second = build(&document, &mut cache);
         let pen_presets_json = second["tool"]["pen_presets_json"]

@@ -120,11 +120,11 @@ fn pixel_wheel_pan_accepts_sub_line_delta() {
     let (center_x, center_y) = canvas_input_point(&event_loop, 16, 16);
     event_loop.last_cursor_position = Some((center_x, center_y));
 
-    let before = event_loop.app.document.view_transform.pan_y;
+    let before = event_loop.app.document.session.view_transform.pan_y;
     assert!(event_loop.handle_mouse_wheel(MouseScrollDelta::PixelDelta(
         winit::dpi::PhysicalPosition::new(0.0, 1.0),
     )));
-    assert!(event_loop.app.document.view_transform.pan_y > before);
+    assert!(event_loop.app.document.session.view_transform.pan_y > before);
 }
 
 #[test]
@@ -135,16 +135,16 @@ fn wheel_pan_animation_continues_after_initial_event() {
     let (center_x, center_y) = canvas_input_point(&event_loop, 16, 16);
     event_loop.last_cursor_position = Some((center_x, center_y));
 
-    let before = event_loop.app.document.view_transform.pan_y;
+    let before = event_loop.app.document.session.view_transform.pan_y;
     assert!(event_loop.handle_mouse_wheel(MouseScrollDelta::PixelDelta(
         winit::dpi::PhysicalPosition::new(0.0, 16.0),
     )));
-    let after_first = event_loop.app.document.view_transform.pan_y;
+    let after_first = event_loop.app.document.session.view_transform.pan_y;
     assert!(after_first > before);
     assert!(event_loop.has_pending_wheel_animation());
 
     assert!(event_loop.advance_wheel_animation());
-    assert_ne!(event_loop.app.document.view_transform.pan_y, after_first);
+    assert_ne!(event_loop.app.document.session.view_transform.pan_y, after_first);
 }
 
 #[test]
@@ -156,9 +156,9 @@ fn shift_wheel_converts_vertical_scroll_into_horizontal_pan() {
     event_loop.last_cursor_position = Some((center_x, center_y));
     event_loop.modifiers = ModifiersState::SHIFT;
 
-    let before = event_loop.app.document.view_transform.pan_x;
+    let before = event_loop.app.document.session.view_transform.pan_x;
     assert!(event_loop.handle_mouse_wheel(MouseScrollDelta::LineDelta(0.0, 2.0)));
-    assert!(event_loop.app.document.view_transform.pan_x > before);
+    assert!(event_loop.app.document.session.view_transform.pan_x > before);
 }
 
 #[test]
@@ -170,9 +170,9 @@ fn control_wheel_changes_zoom() {
     event_loop.last_cursor_position = Some((center_x, center_y));
     event_loop.modifiers = ModifiersState::CONTROL;
 
-    let before = event_loop.app.document.view_transform.zoom;
+    let before = event_loop.app.document.session.view_transform.zoom;
     assert!(event_loop.handle_mouse_wheel(MouseScrollDelta::LineDelta(0.0, 1.0)));
-    assert!(event_loop.app.document.view_transform.zoom > before);
+    assert!(event_loop.app.document.session.view_transform.zoom > before);
 }
 
 #[test]

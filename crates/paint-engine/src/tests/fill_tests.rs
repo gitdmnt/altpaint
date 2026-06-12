@@ -7,10 +7,10 @@ use super::apply_input;
 
 #[test]
 fn flood_fill_recolors_matching_region() {
-    let mut document = Document {
-        active_color: ColorRgba8::new(0xff, 0x00, 0x00, 0xff),
-        ..Document::default()
-    };
+    let mut document = Document::default();
+    document
+        .session
+        .set_active_color(ColorRgba8::new(0xff, 0x00, 0x00, 0xff));
     let engine = PaintEngine::default();
 
     let dirty = apply_input(
@@ -33,10 +33,10 @@ fn flood_fill_recolors_matching_region() {
 /// 三角形内部のピクセルが外部扱いになっていた。
 #[test]
 fn lasso_fill_triangular_region_diagonal_edges() {
-    let mut document = Document {
-        active_color: ColorRgba8::new(0xff, 0x00, 0x00, 0xff),
-        ..Document::default()
-    };
+    let mut document = Document::default();
+    document
+        .session
+        .set_active_color(ColorRgba8::new(0xff, 0x00, 0x00, 0xff));
     let engine = PaintEngine::default();
 
     // 三角形: (0,0), (20,0), (10,20) — 斜め辺を含む
@@ -65,10 +65,10 @@ fn lasso_fill_triangular_region_diagonal_edges() {
 
 #[test]
 fn lasso_fill_colors_polygon_area() {
-    let mut document = Document {
-        active_color: ColorRgba8::new(0x00, 0x00, 0xff, 0xff),
-        ..Document::default()
-    };
+    let mut document = Document::default();
+    document
+        .session
+        .set_active_color(ColorRgba8::new(0x00, 0x00, 0xff, 0xff));
     let engine = PaintEngine::default();
 
     let dirty = apply_input(

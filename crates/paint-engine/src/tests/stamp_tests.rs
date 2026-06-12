@@ -12,12 +12,12 @@ use super::apply_input;
 #[test]
 fn stamp_diameter_applies_pressure_curve_exactly_once() {
     let mut document = Document::default();
-    document.set_active_pen_size(10);
+    document.session.set_active_pen_size(10);
     let engine = PaintEngine::default();
 
     // カーブ 1 回適用の期待値: round(10 * (0.2 + 0.5 * 0.8)) = 6
     let pressure = 0.5_f32;
-    let expected = document.brush_size_for_pressure(pressure) as usize;
+    let expected = document.session.brush_size_for_pressure(pressure) as usize;
     assert_eq!(expected, 6);
 
     let input = PaintInput::Stamp {
@@ -37,10 +37,10 @@ fn stamp_diameter_applies_pressure_curve_exactly_once() {
 
 #[test]
 fn stamp_input_paints_selected_color() {
-    let mut document = Document {
-        active_color: ColorRgba8::new(0x43, 0xa0, 0x47, 0xff),
-        ..Document::default()
-    };
+    let mut document = Document::default();
+    document
+        .session
+        .set_active_color(ColorRgba8::new(0x43, 0xa0, 0x47, 0xff));
     let engine = PaintEngine::default();
 
     let dirty = apply_input(

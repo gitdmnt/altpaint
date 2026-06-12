@@ -9,9 +9,9 @@ use canvas_geometry::{KomaNavigatorEntry, KomaNavigatorOverlay};
 
 impl DesktopApp {
     pub(super) fn brush_preview_size(&self) -> Option<u32> {
-        match self.document.active_tool {
+        match self.document.session.active_tool() {
             app_core::ToolKind::Pen | app_core::ToolKind::Eraser => {
-                Some(self.document.active_pen_size.max(1))
+                Some(self.document.session.active_pen_size.max(1))
             }
             app_core::ToolKind::Bucket
             | app_core::ToolKind::LassoBucket

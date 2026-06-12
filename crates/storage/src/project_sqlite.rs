@@ -5,8 +5,8 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use app_core::{
-    CanvasViewTransform, ColorRgba8, Document, LayerMask, LayerNodeId, Page, PageId, Koma,
-    KomaBounds, KomaId, PenPreset, RasterLayer, ToolKind, Work, WorkId, WorkspaceLayout,
+    CanvasViewTransform, ColorRgba8, Document, EditorSession, LayerMask, LayerNodeId, Page, PageId,
+    Koma, KomaBounds, KomaId, PenPreset, RasterLayer, ToolKind, Work, WorkId, WorkspaceLayout,
 };
 use raster::{BlendMode, RgbaBitmap};
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Transaction, params};
@@ -196,14 +196,14 @@ pub(crate) fn save_project_to_sqlite_path(
         &SqliteDocumentRecord {
             work_id: document.work.id.0,
             title: document.work.title.clone(),
-            active_tool: document.active_tool,
-            active_color: document.active_color,
-            pen_presets: document.pen_presets.clone(),
-            active_pen_preset_id: document.active_pen_preset_id.clone(),
-            active_pen_size: document.active_pen_size,
+            active_tool: document.session.active_tool(),
+            active_color: document.session.active_color,
+            pen_presets: document.session.pen_presets.clone(),
+            active_pen_preset_id: document.session.active_pen_preset_id.clone(),
+            active_pen_size: document.session.active_pen_size,
             active_page_index: document.active_page_index,
             active_koma_index: document.active_koma_index,
-            view_transform: document.view_transform,
+            view_transform: document.session.view_transform,
         },
     )?;
     put_metadata(
@@ -322,18 +322,25 @@ pub(crate) fn load_project_from_sqlite_path(
             title: document_record.title,
             pages,
         },
-        active_tool: document_record.active_tool,
-        active_tool_id: String::new(),
-        active_color: document_record.active_color,
-        tool_catalog: Vec::new(),
-        pen_presets: document_record.pen_presets,
-        active_pen_preset_id: document_record.active_pen_preset_id,
-        active_pen_size: document_record.active_pen_size,
         active_page_index: document_record.active_page_index,
         active_koma_index: document_record.active_koma_index,
-        view_transform: document_record.view_transform,
-        active_child_tool_id: String::new(),
+        session: EditorSession {
+            // ツール選択は `active_tool` (kind) を種として復元する。
+            // tool_catalog はランタイムで再ロードされるため空で開始し、
+            // `normalize_after_load` が kind フォールバックで active_tool_id を補修する。
+            active_tool_id: String::new(),
+            active_child_tool_id: String::new(),
+            active_color: document_record.active_color,
+            tool_catalog: Vec::new(),
+            pen_presets: document_record.pen_presets,
+            active_pen_preset_id: document_record.active_pen_preset_id,
+            active_pen_size: document_record.active_pen_size,
+            view_transform: document_record.view_transform,
+        },
     };
+    document
+        .session
+        .ensure_tool_state(document_record.active_tool);
     document.normalize_after_load();
 
     Ok(LoadedProject { document, ui_state })

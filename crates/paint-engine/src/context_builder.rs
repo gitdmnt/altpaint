@@ -5,10 +5,10 @@ use crate::ResolvedPaintContext;
 pub fn resolved_size_for_input(document: &Document, input: &PaintInput) -> u32 {
     match input {
         PaintInput::Stamp { pressure, .. } | PaintInput::StrokeSegment { pressure, .. } => {
-            document.brush_size_for_pressure(*pressure)
+            document.session.brush_size_for_pressure(*pressure)
         }
         PaintInput::FloodFill { .. } | PaintInput::LassoFill { .. } => {
-            document.active_pen_size.max(1)
+            document.session.active_pen_size.max(1)
         }
     }
 }
@@ -22,8 +22,8 @@ pub fn build_paint_context<'a>(
     }
 
     let resolved_size = resolved_size_for_input(document, input);
-    let active_tool = document.active_tool_definition()?;
-    let active_pen = document.active_pen_preset()?;
+    let active_tool = document.session.active_tool_definition()?;
+    let active_pen = document.session.active_pen_preset()?;
     let active_koma = document.active_koma()?;
     let active_layer_bitmap = document.active_layer_bitmap()?;
     let composited_bitmap = document.active_bitmap()?;
@@ -36,7 +36,7 @@ pub fn build_paint_context<'a>(
             provider_plugin_id: active_tool.provider_plugin_id.as_str(),
             drawing_plugin_id: active_tool.drawing_plugin_id.as_str(),
             tool_settings: active_tool.settings.as_slice(),
-            color: document.active_color,
+            color: document.session.active_color,
             pen: active_pen,
             resolved_size,
             active_layer_bitmap,

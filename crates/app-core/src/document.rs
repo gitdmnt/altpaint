@@ -1,152 +1,13 @@
 use serde::{Deserialize, Serialize};
 
+use crate::session::{EditorSession, ToolKind};
 use crate::{DocumentCommand, SessionCommand};
 use geometry::KomaLocalPoint;
 use raster::{BlendMode, RgbaBitmap as CanvasBitmap};
 
 mod layer_ops;
-mod tool_state;
 
 use self::layer_ops::{composite_koma_bitmap, ensure_koma_layers};
-
-/// ホストと保存形式の間で共有する最小RGBA色。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ColorRgba8 {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-    pub a: u8,
-}
-
-impl ColorRgba8 {
-    pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
-        Self { r, g, b, a }
-    }
-
-    pub const fn to_rgba8(self) -> [u8; 4] {
-        [self.r, self.g, self.b, self.a]
-    }
-
-    pub fn hex_rgb(self) -> String {
-        format!("#{:02X}{:02X}{:02X}", self.r, self.g, self.b)
-    }
-}
-
-impl Default for ColorRgba8 {
-    fn default() -> Self {
-        Self::new(0, 0, 0, 255)
-    }
-}
-
-/// 現在の描画ツール。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum ToolKind {
-    #[default]
-    Pen,
-    Eraser,
-    Bucket,
-    LassoBucket,
-    KomaRect,
-}
-
-impl ToolKind {
-    /// ホスト↔パネル間で交換する wire 名 (snake_case)。
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            ToolKind::Pen => "pen",
-            ToolKind::Eraser => "eraser",
-            ToolKind::Bucket => "bucket",
-            ToolKind::LassoBucket => "lasso_bucket",
-            ToolKind::KomaRect => "koma_rect",
-        }
-    }
-
-    /// wire 名を `ToolKind` へ解釈する。未知の名前は `None`。
-    pub fn from_wire(name: &str) -> Option<Self> {
-        match name {
-            "pen" => Some(ToolKind::Pen),
-            "eraser" => Some(ToolKind::Eraser),
-            "bucket" => Some(ToolKind::Bucket),
-            "lasso_bucket" => Some(ToolKind::LassoBucket),
-            "koma_rect" => Some(ToolKind::KomaRect),
-            _ => None,
-        }
-    }
-
-    /// ステータスバー等の UI 表示用ラベル (PascalCase)。
-    pub const fn display_label(self) -> &'static str {
-        match self {
-            ToolKind::Pen => "Pen",
-            ToolKind::Eraser => "Eraser",
-            ToolKind::Bucket => "Bucket",
-            ToolKind::LassoBucket => "LassoBucket",
-            ToolKind::KomaRect => "KomaRect",
-        }
-    }
-}
-
-/// ツール設定 UI の入力種別。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum ToolSettingControl {
-    Slider,
-    Checkbox,
-}
-
-/// 描画ツールが公開する設定項目定義。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ToolSettingDefinition {
-    pub key: String,
-    pub label: String,
-    pub control: ToolSettingControl,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub min: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max: Option<i32>,
-}
-
-impl ToolSettingDefinition {
-    pub fn slider(key: impl Into<String>, label: impl Into<String>, min: i32, max: i32) -> Self {
-        Self {
-            key: key.into(),
-            label: label.into(),
-            control: ToolSettingControl::Slider,
-            min: Some(min),
-            max: Some(max),
-        }
-    }
-
-    pub fn checkbox(key: impl Into<String>, label: impl Into<String>) -> Self {
-        Self {
-            key: key.into(),
-            label: label.into(),
-            control: ToolSettingControl::Checkbox,
-            min: None,
-            max: None,
-        }
-    }
-}
-
-/// `tools/` 配下からロードされる描画ツール定義。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ToolDefinition {
-    pub id: String,
-    pub name: String,
-    pub kind: ToolKind,
-    pub provider_plugin_id: String,
-    #[serde(default = "default_bitmap_plugin_id")]
-    pub drawing_plugin_id: String,
-    #[serde(default)]
-    pub settings: Vec<ToolSettingDefinition>,
-    #[serde(default)]
-    pub children: Vec<ToolDefinition>,
-}
-
-impl ToolDefinition {
-    pub fn supports_setting(&self, key: &str) -> bool {
-        self.settings.iter().any(|setting| setting.key == key)
-    }
-}
 
 pub const DEFAULT_PAGE_WIDTH: usize = 2894;
 pub const DEFAULT_PAGE_HEIGHT: usize = 4093;
@@ -184,217 +45,8 @@ pub fn parse_document_size(input: &str) -> Option<(usize, usize)> {
     Some((width, height))
 }
 
-/// 外部読込可能な最小ペンプリセットを表す。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PenPreset {
-    pub id: String,
-    pub name: String,
-    #[serde(default = "default_pen_plugin_id")]
-    pub plugin_id: String,
-    #[serde(default = "default_pen_size")]
-    pub size: u32,
-    #[serde(default = "default_pen_pressure_enabled")]
-    pub pressure_enabled: bool,
-    #[serde(default = "default_pen_antialias")]
-    pub antialias: bool,
-    #[serde(default)]
-    pub stabilization: u8,
-    #[serde(default)]
-    pub engine: PenRuntimeEngine,
-    #[serde(default = "default_spacing_percent")]
-    pub spacing_percent: f32,
-    #[serde(default)]
-    pub rotation_degrees: f32,
-    #[serde(default = "default_pen_opacity")]
-    pub opacity: f32,
-    #[serde(default = "default_pen_flow")]
-    pub flow: f32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tip: Option<PenTipBitmap>,
-}
-
-impl PenPreset {
-    pub fn clamp_size(&self, size: u32) -> u32 {
-        size.clamp(
-            1, 10000, // 将来の拡大に備えて大きな上限を許す
-        )
-    }
-}
-
-impl Default for PenPreset {
-    fn default() -> Self {
-        Self {
-            id: "builtin.round-pen".to_string(),
-            name: "Round Pen".to_string(),
-            plugin_id: default_pen_plugin_id(),
-            size: default_pen_size(),
-            pressure_enabled: default_pen_pressure_enabled(),
-            antialias: default_pen_antialias(),
-            stabilization: 0,
-            engine: PenRuntimeEngine::default(),
-            spacing_percent: default_spacing_percent(),
-            rotation_degrees: 0.0,
-            opacity: default_pen_opacity(),
-            flow: default_pen_flow(),
-            tip: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "kebab-case")]
-pub enum PenRuntimeEngine {
-    #[default]
-    Stamp,
-    Generated,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-pub enum PenTipBitmap {
-    AlphaMask8 {
-        width: u32,
-        height: u32,
-        data: Vec<u8>,
-    },
-    Rgba8 {
-        width: u32,
-        height: u32,
-        data: Vec<u8>,
-    },
-    PngBlob {
-        width: u32,
-        height: u32,
-        png: Vec<u8>,
-    },
-}
-
-impl PenTipBitmap {
-    pub fn width(&self) -> u32 {
-        match self {
-            Self::AlphaMask8 { width, .. }
-            | Self::Rgba8 { width, .. }
-            | Self::PngBlob { width, .. } => *width,
-        }
-    }
-
-    pub fn height(&self) -> u32 {
-        match self {
-            Self::AlphaMask8 { height, .. }
-            | Self::Rgba8 { height, .. }
-            | Self::PngBlob { height, .. } => *height,
-        }
-    }
-}
-
-fn default_pen_size() -> u32 {
-    4
-}
-
-fn default_pen_plugin_id() -> String {
-    "builtin.bitmap".to_string()
-}
-
-fn default_bitmap_plugin_id() -> String {
-    "builtin.bitmap".to_string()
-}
-
-fn default_pen_pressure_enabled() -> bool {
-    true
-}
-
-fn default_pen_antialias() -> bool {
-    true
-}
-
-fn default_spacing_percent() -> f32 {
-    25.0
-}
-
-fn default_pen_opacity() -> f32 {
-    1.0
-}
-
-fn default_pen_flow() -> f32 {
-    1.0
-}
-
-fn default_pen_presets() -> Vec<PenPreset> {
-    vec![PenPreset::default()]
-}
-
-fn default_active_pen_preset_id() -> String {
-    PenPreset::default().id
-}
-
 fn default_active_page_index() -> usize {
     0
-}
-
-fn default_tool_catalog() -> Vec<ToolDefinition> {
-    vec![
-        ToolDefinition {
-            id: "builtin.pen".to_string(),
-            name: "Pen".to_string(),
-            kind: ToolKind::Pen,
-            provider_plugin_id: "plugins/default-pens-plugin".to_string(),
-            drawing_plugin_id: default_bitmap_plugin_id(),
-            settings: vec![
-                ToolSettingDefinition::slider("size", "太さ", 1, 10_000),
-                ToolSettingDefinition::checkbox("pressure_enabled", "筆圧"),
-                ToolSettingDefinition::checkbox("antialias", "なめらか"),
-                ToolSettingDefinition::slider("stabilization", "手ぶれ補正", 0, 100),
-            ],
-            children: Vec::new(),
-        },
-        ToolDefinition {
-            id: "builtin.eraser".to_string(),
-            name: "Eraser".to_string(),
-            kind: ToolKind::Eraser,
-            provider_plugin_id: "plugins/default-erasers-plugin".to_string(),
-            drawing_plugin_id: default_bitmap_plugin_id(),
-            settings: vec![
-                ToolSettingDefinition::slider("size", "太さ", 1, 10_000),
-                ToolSettingDefinition::checkbox("antialias", "なめらか"),
-                ToolSettingDefinition::slider("stabilization", "手ぶれ補正", 0, 100),
-            ],
-            children: Vec::new(),
-        },
-        ToolDefinition {
-            id: "builtin.bucket".to_string(),
-            name: "Bucket".to_string(),
-            kind: ToolKind::Bucket,
-            provider_plugin_id: "plugins/default-fill-tools-plugin".to_string(),
-            drawing_plugin_id: default_bitmap_plugin_id(),
-            settings: Vec::new(),
-            children: Vec::new(),
-        },
-        ToolDefinition {
-            id: "builtin.lasso-bucket".to_string(),
-            name: "Lasso Bucket".to_string(),
-            kind: ToolKind::LassoBucket,
-            provider_plugin_id: "plugins/default-fill-tools-plugin".to_string(),
-            drawing_plugin_id: default_bitmap_plugin_id(),
-            settings: Vec::new(),
-            children: Vec::new(),
-        },
-        ToolDefinition {
-            id: "builtin.koma-rect".to_string(),
-            name: "Koma Rect".to_string(),
-            kind: ToolKind::KomaRect,
-            provider_plugin_id: "plugins/default-koma-tools-plugin".to_string(),
-            drawing_plugin_id: default_bitmap_plugin_id(),
-            settings: Vec::new(),
-            children: Vec::new(),
-        },
-    ]
-}
-
-fn default_active_tool_id() -> String {
-    default_tool_catalog()
-        .first()
-        .map(|tool| tool.id.clone())
-        .unwrap_or_else(|| "builtin.pen".to_string())
 }
 
 fn default_active_koma_index() -> usize {
@@ -425,44 +77,24 @@ pub struct KomaId(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct LayerNodeId(pub u64);
 
-/// アプリケーションの永続状態全体を表すルートドキュメント。
+/// アプリケーションの編集状態全体を表すルートドキュメント。
 ///
-/// 単一の `Work` と、ツール・ペン・表示変換などの編集状態を保持する。
+/// 単一の `Work` (作品コンテンツ) と、ツール・ペン・色・表示変換などの一過性編集状態
+/// (`EditorSession`) を保持する。作品データとセッション状態の責務はここで分離されており、
+/// セッション状態の整合・適用ロジックは [`EditorSession`] が担う。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
     /// 現在編集中の作品。
     pub work: Work,
-    /// 現在の最小ツール状態。
-    pub active_tool: ToolKind,
-    /// 現在アクティブな登録ツール ID。
-    #[serde(default = "default_active_tool_id")]
-    pub active_tool_id: String,
-    /// 現在アクティブな子ツール ID。空文字列は未選択を表す。
-    #[serde(default)]
-    pub active_child_tool_id: String,
-    /// 現在のブラシ色。
-    #[serde(default)]
-    pub active_color: ColorRgba8,
-    /// 起動時に `tools/` から読み込まれるツールカタログ。
-    #[serde(default = "default_tool_catalog")]
-    pub tool_catalog: Vec<ToolDefinition>,
-    /// 現在ロード済みのペンプリセット列。
-    #[serde(default = "default_pen_presets")]
-    pub pen_presets: Vec<PenPreset>,
-    /// 現在アクティブなペンプリセット ID。
-    #[serde(default = "default_active_pen_preset_id")]
-    pub active_pen_preset_id: String,
-    /// 現在の可変幅ペンサイズ。
-    #[serde(default = "default_pen_size")]
-    pub active_pen_size: u32,
     /// 現在アクティブなページ index。
     #[serde(default = "default_active_page_index")]
     pub active_page_index: usize,
     /// 現在アクティブなコマ index。
     #[serde(default = "default_active_koma_index")]
     pub active_koma_index: usize,
-    /// キャンバスの表示変換状態。
-    pub view_transform: CanvasViewTransform,
+    /// エディタの一過性編集状態 (ツール/色/ペン/ビュー)。
+    #[serde(default)]
+    pub session: EditorSession,
 }
 
 /// 漫画作品全体を表す最小単位。
@@ -695,30 +327,6 @@ impl RasterLayer {
     }
 }
 
-/// 将来のズーム・回転・パンに備える表示変換状態。
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct CanvasViewTransform {
-    pub zoom: f32,
-    pub rotation_degrees: f32,
-    pub pan_x: f32,
-    pub pan_y: f32,
-    pub flip_x: bool,
-    pub flip_y: bool,
-}
-
-impl Default for CanvasViewTransform {
-    fn default() -> Self {
-        Self {
-            zoom: 1.0,
-            rotation_degrees: 0.0,
-            pan_x: 0.0,
-            pan_y: 0.0,
-            flip_x: false,
-            flip_y: false,
-        }
-    }
-}
-
 impl Default for Document {
     fn default() -> Self {
         Self::new(DEFAULT_PAGE_WIDTH, DEFAULT_PAGE_HEIGHT)
@@ -729,20 +337,6 @@ impl Document {
     pub fn new(width: usize, height: usize) -> Self {
         let width = width.max(1);
         let height = height.max(1);
-        let tool_catalog = default_tool_catalog();
-        let active_tool_id = tool_catalog
-            .first()
-            .map(|tool| tool.id.clone())
-            .unwrap_or_else(default_active_tool_id);
-        let pen_presets = default_pen_presets();
-        let active_pen_preset_id = pen_presets
-            .first()
-            .map(|preset| preset.id.clone())
-            .unwrap_or_else(default_active_pen_preset_id);
-        let active_pen_size = pen_presets
-            .first()
-            .map(|preset| preset.size)
-            .unwrap_or_else(default_pen_size);
 
         Self {
             work: Work {
@@ -754,17 +348,9 @@ impl Document {
                 }],
                 ..Work::default()
             },
-            active_tool: ToolKind::default(),
-            active_tool_id,
-            active_child_tool_id: String::new(),
-            active_color: ColorRgba8::default(),
-            tool_catalog,
-            pen_presets,
-            active_pen_preset_id,
-            active_pen_size,
             active_page_index: default_active_page_index(),
             active_koma_index: default_active_koma_index(),
-            view_transform: CanvasViewTransform::default(),
+            session: EditorSession::default(),
         }
     }
 
@@ -858,51 +444,6 @@ impl Document {
             .and_then(|bounds| bounds.koma_local_to_canvas(point))
     }
 
-    pub fn tool_definition(&self, tool_id: &str) -> Option<&ToolDefinition> {
-        self.tool_catalog.iter().find(|tool| tool.id == tool_id)
-    }
-
-    pub fn active_tool_definition(&self) -> Option<&ToolDefinition> {
-        self.tool_definition(&self.active_tool_id)
-            .or_else(|| {
-                self.tool_catalog
-                    .iter()
-                    .find(|tool| tool.kind == self.active_tool)
-            })
-            .or_else(|| self.tool_catalog.first())
-    }
-
-    /// アクティブな子ツール definition を返す。
-    pub fn active_child_tool_definition(&self) -> Option<&ToolDefinition> {
-        let parent = self.active_tool_definition()?;
-        if self.active_child_tool_id.is_empty() {
-            return None;
-        }
-        parent.children.iter().find(|c| c.id == self.active_child_tool_id)
-    }
-
-    /// 指定された親・子 ID の子ツール definition を返す。
-    pub fn child_tool_definition(&self, parent_id: &str, child_id: &str) -> Option<&ToolDefinition> {
-        let parent = self.tool_definition(parent_id)?;
-        parent.children.iter().find(|c| c.id == child_id)
-    }
-
-    pub fn active_tool_provider_plugin_id(&self) -> Option<&str> {
-        self.active_tool_definition()
-            .map(|tool| tool.provider_plugin_id.as_str())
-    }
-
-    pub fn active_tool_drawing_plugin_id(&self) -> Option<&str> {
-        self.active_tool_definition()
-            .map(|tool| tool.drawing_plugin_id.as_str())
-    }
-
-    pub fn active_tool_settings(&self) -> &[ToolSettingDefinition] {
-        self.active_tool_definition()
-            .map(|tool| tool.settings.as_slice())
-            .unwrap_or(&[])
-    }
-
     pub fn active_koma_bounds(&self) -> Option<KomaBounds> {
         self.active_koma().map(|koma| koma.bounds)
     }
@@ -994,127 +535,7 @@ impl Document {
     }
 
     pub fn focus_active_koma_view(&mut self) {
-        self.view_transform = CanvasViewTransform::default();
-    }
-
-    pub fn set_view_transform(&mut self, transform: CanvasViewTransform) {
-        self.view_transform = transform;
-    }
-
-    pub fn set_active_tool(&mut self, tool: ToolKind) {
-        self.active_tool = tool;
-        if let Some(tool_definition) = self.tool_catalog.iter().find(|entry| entry.kind == tool) {
-            self.active_tool_id = tool_definition.id.clone();
-        }
-        self.active_child_tool_id = String::new();
-    }
-
-    pub fn set_active_tool_by_id(&mut self, tool_id: &str) -> bool {
-        let Some(tool_definition) = self.tool_definition(tool_id).cloned() else {
-            return false;
-        };
-        self.active_tool = tool_definition.kind;
-        self.active_tool_id = tool_definition.id;
-        self.active_child_tool_id = String::new();
-        true
-    }
-
-    pub fn set_active_pen_size(&mut self, size: u32) {
-        let size = self
-            .active_pen_preset()
-            .map(|preset| preset.clamp_size(size))
-            .unwrap_or_else(|| size.max(1));
-        self.active_pen_size = size;
-    }
-
-    pub fn set_active_pen_pressure_enabled(&mut self, enabled: bool) {
-        if let Some(preset) = self.active_pen_preset_mut() {
-            preset.pressure_enabled = enabled;
-        }
-    }
-
-    pub fn set_active_pen_antialias(&mut self, enabled: bool) {
-        if let Some(preset) = self.active_pen_preset_mut() {
-            preset.antialias = enabled;
-        }
-    }
-
-    pub fn set_active_pen_stabilization(&mut self, amount: u8) {
-        if let Some(preset) = self.active_pen_preset_mut() {
-            preset.stabilization = amount.min(100);
-        }
-    }
-
-    pub fn set_active_color(&mut self, color: ColorRgba8) {
-        self.active_color = color;
-    }
-
-    pub fn replace_pen_presets(&mut self, pen_presets: Vec<PenPreset>) {
-        self.pen_presets = if pen_presets.is_empty() {
-            default_pen_presets()
-        } else {
-            pen_presets
-        };
-        self.ensure_pen_state();
-    }
-
-    pub fn replace_tool_catalog(&mut self, tool_catalog: Vec<ToolDefinition>) {
-        self.tool_catalog = if tool_catalog.is_empty() {
-            default_tool_catalog()
-        } else {
-            tool_catalog
-        };
-        self.ensure_tool_state();
-    }
-
-    pub fn merge_pen_presets(&mut self, pen_presets: Vec<PenPreset>) -> usize {
-        if pen_presets.is_empty() {
-            return 0;
-        }
-
-        let mut merged = 0;
-        for preset in pen_presets {
-            if let Some(existing) = self
-                .pen_presets
-                .iter_mut()
-                .find(|existing| existing.id == preset.id)
-            {
-                *existing = preset;
-            } else {
-                self.pen_presets.push(preset);
-            }
-            merged += 1;
-        }
-
-        self.ensure_pen_state();
-        merged
-    }
-
-    pub fn select_next_pen_preset(&mut self) {
-        self.cycle_pen_preset(1);
-    }
-
-    pub fn select_previous_pen_preset(&mut self) {
-        self.cycle_pen_preset(-1);
-    }
-
-    pub fn active_pen_preset(&self) -> Option<&PenPreset> {
-        self.pen_presets
-            .iter()
-            .find(|preset| preset.id == self.active_pen_preset_id)
-            .or_else(|| self.pen_presets.first())
-    }
-
-    fn active_pen_preset_mut(&mut self) -> Option<&mut PenPreset> {
-        let index = self.active_pen_index();
-        self.pen_presets.get_mut(index)
-    }
-
-    pub fn active_pen_index(&self) -> usize {
-        self.pen_presets
-            .iter()
-            .position(|preset| preset.id == self.active_pen_preset_id)
-            .unwrap_or(0)
+        self.session.reset_view();
     }
 
     /// ロード後のドキュメント不変条件を修復する。
@@ -1122,7 +543,9 @@ impl Document {
     /// ツール状態の整合、空のページ列・コマ列の補完、各 index の clamp、
     /// 空 bounds コマの再レイアウト、レイヤー列の補完を行う。
     pub fn normalize_after_load(&mut self) {
-        self.ensure_tool_state();
+        // セッションのツール整合は `Document` には kind 情報を持たないため、
+        // セッションが保持する `active_tool_id` を真実として既定 (Pen) で補修する。
+        self.session.ensure_tool_state(ToolKind::default());
         if self.work.pages.is_empty() {
             self.work.pages.push(Page::default());
         }
@@ -1225,83 +648,11 @@ impl Document {
         }
     }
 
-    /// エディタセッションコマンド (ツール/色/ペン/ビュー) を適用する。
+    /// エディタセッションコマンド (ツール/色/ペン/ビュー) をセッションへ適用する。
     ///
-    /// 作品データには触れず、`Document` 上のセッション状態のみを更新する。
-    /// B5 (BL-073) で `editor-state` へ移設予定。
+    /// 作品データには触れない。実体は [`EditorSession::apply_session_command`]。
     pub fn apply_session_command(&mut self, command: &SessionCommand) {
-        match command {
-            SessionCommand::SelectTool { tool_id } => {
-                let _ = self.set_active_tool_by_id(tool_id);
-            }
-            SessionCommand::SelectChildTool { child_id } => {
-                if let Some(parent) = self.active_tool_definition()
-                    && parent.children.iter().any(|c| c.id == *child_id)
-                {
-                    self.active_child_tool_id = child_id.clone();
-                }
-            }
-            SessionCommand::SetActiveTool { tool } => {
-                self.set_active_tool(*tool);
-            }
-            SessionCommand::SetActivePenSize { size } => {
-                self.set_active_pen_size(*size);
-            }
-            SessionCommand::SetActivePenPressureEnabled { enabled } => {
-                self.set_active_pen_pressure_enabled(*enabled);
-            }
-            SessionCommand::SetActivePenAntialias { enabled } => {
-                self.set_active_pen_antialias(*enabled);
-            }
-            SessionCommand::SetActivePenStabilization { amount } => {
-                self.set_active_pen_stabilization(*amount);
-            }
-            SessionCommand::SelectNextPenPreset => {
-                self.select_next_pen_preset();
-            }
-            SessionCommand::SelectPreviousPenPreset => {
-                self.select_previous_pen_preset();
-            }
-            SessionCommand::SetActiveColor { color } => {
-                self.set_active_color(*color);
-            }
-            SessionCommand::SetViewZoom { zoom } => {
-                self.view_transform.zoom = crate::view_policy::clamp_zoom(*zoom);
-            }
-            SessionCommand::ZoomViewBy { lines } => {
-                self.view_transform.zoom =
-                    crate::view_policy::zoom_after_lines(self.view_transform.zoom, *lines);
-            }
-            SessionCommand::PanView { delta_x, delta_y } => {
-                self.view_transform.pan_x += delta_x;
-                self.view_transform.pan_y += delta_y;
-            }
-            SessionCommand::PanViewByLines { x_lines, y_lines } => {
-                self.view_transform.pan_x += x_lines * crate::view_policy::PAN_PIXELS_PER_LINE;
-                self.view_transform.pan_y += y_lines * crate::view_policy::PAN_PIXELS_PER_LINE;
-            }
-            SessionCommand::SetViewPan { pan_x, pan_y } => {
-                self.view_transform.pan_x = *pan_x;
-                self.view_transform.pan_y = *pan_y;
-            }
-            SessionCommand::RotateView { quarter_turns } => {
-                self.view_transform.rotation_degrees = (self.view_transform.rotation_degrees
-                    + (*quarter_turns as f32 * 90.0))
-                    .rem_euclid(360.0);
-            }
-            SessionCommand::SetViewRotation { rotation_degrees } => {
-                self.view_transform.rotation_degrees = rotation_degrees.rem_euclid(360.0);
-            }
-            SessionCommand::FlipViewHorizontally => {
-                self.view_transform.flip_x = !self.view_transform.flip_x;
-            }
-            SessionCommand::FlipViewVertically => {
-                self.view_transform.flip_y = !self.view_transform.flip_y;
-            }
-            SessionCommand::ResetView => {
-                self.view_transform = CanvasViewTransform::default();
-            }
-        }
+        self.session.apply_session_command(command);
     }
 }
 

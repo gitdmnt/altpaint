@@ -72,7 +72,7 @@ impl DesktopApp {
 
     /// エディタセッションコマンド (ツール/色/ペン/ビュー) を適用し、関連 UI を同期する。
     pub(crate) fn apply_session_command(&mut self, command: &SessionCommand) -> bool {
-        let previous_transform = self.document.view_transform;
+        let previous_transform = self.document.session.view_transform;
         self.document.apply_session_command(command);
         match command {
             SessionCommand::SetActiveTool { .. }

@@ -258,7 +258,7 @@ impl DesktopApp {
             host_rect: layout.canvas_host_rect,
             source_width: bitmap.map_or(1, |b| b.width),
             source_height: bitmap.map_or(1, |b| b.height),
-            transform: self.document.view_transform,
+            transform: self.document.session.view_transform,
         };
         let overlay_state = canvas_geometry::CanvasOverlayState {
             brush_preview: self.hover_canvas_position,
@@ -295,7 +295,7 @@ impl DesktopApp {
         };
         let canvas_width = bitmap.width;
         let canvas_height = bitmap.height;
-        let transform = self.document.view_transform;
+        let transform = self.document.session.view_transform;
 
         if let Some(ref cache) = self.cached_canvas_view_geometry
             && cache.viewport == viewport

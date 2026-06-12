@@ -169,7 +169,7 @@ fn request_service_koma_nav_add_and_select_changes_active_koma() {
 #[test]
 fn request_service_reload_pen_presets_refreshes_document_state() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    app.document.pen_presets.clear();
+    app.document.session.pen_presets.clear();
 
     assert!(
         app.execute_host_action(HostAction::RequestService(ServiceRequest::new(
@@ -177,5 +177,5 @@ fn request_service_reload_pen_presets_refreshes_document_state() {
         )))
     );
 
-    assert!(!app.document.pen_presets.is_empty());
+    assert!(!app.document.session.pen_presets.is_empty());
 }

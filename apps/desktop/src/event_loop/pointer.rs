@@ -182,7 +182,7 @@ impl DesktopEventLoop {
         if zoom_lines.abs() > f32::EPSILON {
             // BL-064: 倍率 (1.1^lines) と clamp はドメイン側が所有する。入力層は
             // view_policy で飽和 (上下限到達) を検出して pending を打ち切るだけ。
-            let current = self.app.document.view_transform.zoom;
+            let current = self.app.document.session.view_transform.zoom;
             let next_zoom = app_core::view_policy::zoom_after_lines(current, zoom_lines);
             if (next_zoom - current).abs() > f32::EPSILON {
                 let t = Instant::now();

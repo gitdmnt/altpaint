@@ -12,15 +12,19 @@ pub mod document;
 pub mod history;
 pub mod paint_params;
 pub mod painting;
+pub mod session;
 pub mod view_policy;
 pub mod workspace;
 
 pub use command::{DocumentCommand, SessionCommand};
 pub use document::{
-    CanvasViewTransform, ColorRgba8, DEFAULT_PAGE_HEIGHT, DEFAULT_PAGE_WIDTH, Document, LayerMask,
-    LayerNodeId, MAX_PAGE_DIMENSION, MAX_PAGE_PIXELS, Page, PageId, Koma, KomaBounds, KomaId,
-    PenPreset, PenRuntimeEngine, PenTipBitmap, RasterLayer, ToolDefinition, ToolKind,
-    ToolSettingControl, ToolSettingDefinition, Work, WorkId, parse_document_size,
+    DEFAULT_PAGE_HEIGHT, DEFAULT_PAGE_WIDTH, Document, LayerMask, LayerNodeId, MAX_PAGE_DIMENSION,
+    MAX_PAGE_PIXELS, Page, PageId, Koma, KomaBounds, KomaId, RasterLayer, Work, WorkId,
+    parse_document_size,
+};
+pub use session::{
+    CanvasViewTransform, ColorRgba8, EditorSession, PenPreset, PenRuntimeEngine, PenTipBitmap,
+    ToolDefinition, ToolKind, ToolSettingControl, ToolSettingDefinition,
 };
 pub use history::{DEFAULT_HISTORY_CAPACITY, EditHistory, HistoryEntry, OpaqueGpuData};
 pub use painting::{PaintInput, PaintPlugin, PaintPluginContext};

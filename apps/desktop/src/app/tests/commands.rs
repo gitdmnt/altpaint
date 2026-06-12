@@ -40,7 +40,7 @@ fn execute_command_updates_document_tool() {
         tool: ToolKind::Eraser,
     });
 
-    assert_eq!(app.document.active_tool, ToolKind::Eraser);
+    assert_eq!(app.document.session.active_tool(), ToolKind::Eraser);
 }
 
 #[test]
@@ -51,8 +51,8 @@ fn execute_command_select_tool_updates_document_tool_id() {
         tool_id: "builtin.eraser".to_string(),
     });
 
-    assert_eq!(app.document.active_tool, ToolKind::Eraser);
-    assert_eq!(app.document.active_tool_id, "builtin.eraser");
+    assert_eq!(app.document.session.active_tool(), ToolKind::Eraser);
+    assert_eq!(app.document.session.active_tool_id, "builtin.eraser");
 }
 
 #[test]
@@ -65,6 +65,7 @@ fn execute_command_select_child_tool_updates_active_child_tool_id() {
     // Inject a child tool definition into the tool catalog
     if let Some(pen_def) = app
         .document
+        .session
         .tool_catalog
         .iter_mut()
         .find(|t| t.id == "builtin.pen")
@@ -84,7 +85,7 @@ fn execute_command_select_child_tool_updates_active_child_tool_id() {
         child_id: "builtin.pen.test".to_string(),
     });
 
-    assert_eq!(app.document.active_child_tool_id, "builtin.pen.test");
+    assert_eq!(app.document.session.active_child_tool_id, "builtin.pen.test");
 }
 
 #[test]
@@ -96,7 +97,7 @@ fn execute_command_updates_document_color() {
     });
 
     assert_eq!(
-        app.document.active_color,
+        app.document.session.active_color,
         ColorRgba8::new(0x1e, 0x88, 0xe5, 0xff)
     );
 }
@@ -104,14 +105,14 @@ fn execute_command_updates_document_color() {
 #[test]
 fn execute_command_new_document_resets_tool_to_default() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    app.document.set_active_tool(ToolKind::Eraser);
+    app.document.session.set_active_tool(ToolKind::Eraser);
 
     let _ = app.apply_document_command(&DocumentCommand::NewDocumentSized {
         width: 64,
         height: 64,
     });
 
-    assert_eq!(app.document.active_tool, ToolKind::Pen);
+    assert_eq!(app.document.session.active_tool(), ToolKind::Pen);
 }
 
 #[test]
@@ -124,7 +125,7 @@ fn host_action_dispatches_tool_switch_command() {
         },
     ));
 
-    assert_eq!(app.document.active_tool, ToolKind::Eraser);
+    assert_eq!(app.document.session.active_tool(), ToolKind::Eraser);
 }
 
 #[test]
@@ -158,11 +159,11 @@ fn new_document_shortcut_opens_inline_form() {
 #[test]
 fn plugin_keyboard_shortcut_can_switch_tool() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    app.document.set_active_tool(ToolKind::Eraser);
+    app.document.session.set_active_tool(ToolKind::Eraser);
 
     assert!(app.dispatch_keyboard_shortcut("P", "P", false));
 
-    assert_eq!(app.document.active_tool, ToolKind::Pen);
+    assert_eq!(app.document.session.active_tool(), ToolKind::Pen);
 }
 
 #[test]
@@ -241,16 +242,17 @@ fn reload_pen_presets_reads_default_pen_directory() {
     assert!(app.execute_service_request(ServiceRequest::new(
         names::TOOL_CATALOG_RELOAD_PEN_PRESETS
     )));
-    assert!(app.document.pen_presets.len() >= 3);
+    assert!(app.document.session.pen_presets.len() >= 3);
 }
 
 #[test]
 fn startup_loads_tool_catalog_from_default_tool_directory() {
     let app = test_app_with_dialogs(TestDialogs::default());
 
-    assert!(app.document.tool_catalog.len() >= 5);
+    assert!(app.document.session.tool_catalog.len() >= 5);
     assert!(
         app.document
+            .session
             .tool_catalog
             .iter()
             .any(|tool| tool.id == "builtin.pen"
@@ -585,6 +587,7 @@ fn execute_command_imports_pen_file_and_records_report() {
     )));
     assert!(
         app.document
+            .session
             .pen_presets
             .iter()
             .any(|preset| preset.id == "imported.pen")

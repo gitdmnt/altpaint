@@ -219,7 +219,7 @@ fn overlapping_panel_button_press_takes_priority_over_canvas_input() {
 
     assert!(app.handle_pointer_pressed(button_x, button_y));
     assert!(app.handle_pointer_released(button_x, button_y));
-    assert_eq!(app.document.active_tool, ToolKind::Eraser);
+    assert_eq!(app.document.session.active_tool(), ToolKind::Eraser);
 }
 
 /// Phase 13 (ADR 015) 以降、move handle (タイトルバー chrome) は
@@ -555,7 +555,7 @@ fn profile_view_transform_for_ten_seconds() {
         per_case_duration,
         |app, iteration| {
             let zoom = if iteration % 2 == 0 { 1.08 } else { 0.92 };
-            let next = (app.document.view_transform.zoom * zoom).clamp(0.25, 16.0);
+            let next = (app.document.session.view_transform.zoom * zoom).clamp(0.25, 16.0);
             app.apply_session_command(&SessionCommand::SetViewZoom { zoom: next })
         },
     );
@@ -568,7 +568,7 @@ fn profile_view_transform_for_ten_seconds() {
         per_case_duration,
         |app, iteration| {
             let delta = if iteration % 2 == 0 { 7.5 } else { -7.5 };
-            let next = app.document.view_transform.rotation_degrees + delta;
+            let next = app.document.session.view_transform.rotation_degrees + delta;
             app.apply_session_command(&SessionCommand::SetViewRotation {
                 rotation_degrees: next,
             })
@@ -588,7 +588,7 @@ fn zoom_perf_meets_240fps_target() {
 
     for i in 0..iterations {
         let zoom = if i % 2 == 0 { 1.08_f32 } else { 0.92_f32 };
-        let next = (app.document.view_transform.zoom * zoom).clamp(0.25, 16.0);
+        let next = (app.document.session.view_transform.zoom * zoom).clamp(0.25, 16.0);
         app.apply_session_command(&SessionCommand::SetViewZoom { zoom: next });
         let start = std::time::Instant::now();
         let _ = app.prepare_present_frame(1280, 800, &mut profiler);
