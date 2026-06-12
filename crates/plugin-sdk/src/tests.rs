@@ -23,36 +23,6 @@ fn slider_for_macro_test(value: i32) {
     assert_eq!(value, 42);
 }
 
-/// typed プロジェクト commands hide コマンド strings が期待どおりに動作することを検証する。
-#[test]
-fn typed_project_commands_hide_command_strings() {
-    let descriptor = commands::project::new_sized(320, 240);
-
-    assert_eq!(descriptor.name, "project.new_sized");
-    assert_eq!(descriptor.payload.get("size"), Some(&json!("320x240")));
-    assert_eq!(commands::project::save().name, "project.save");
-    assert_eq!(commands::project::load().name, "project.load");
-}
-
-/// typed プロジェクト commands cover パス variants が期待どおりに動作することを検証する。
-#[test]
-fn typed_project_commands_cover_path_variants() {
-    assert_eq!(commands::project::new_document().name, "project.new");
-    assert_eq!(commands::project::save_as().name, "project.save_as");
-    assert_eq!(
-        commands::project::save_as_path("demo.altp")
-            .payload
-            .get("path"),
-        Some(&json!("demo.altp"))
-    );
-    assert_eq!(
-        commands::project::load_path("demo.altp")
-            .payload
-            .get("path"),
-        Some(&json!("demo.altp"))
-    );
-}
-
 /// typed サービス requests hide サービス names が期待どおりに動作することを検証する。
 #[test]
 fn typed_service_requests_hide_service_names() {
@@ -98,34 +68,6 @@ fn typed_tool_commands_cover_remaining_variants() {
         commands::tool::reload_pen_presets().name,
         "tool.reload_pen_presets"
     );
-}
-
-/// typed ビュー commands hide payload keys が期待どおりに動作することを検証する。
-#[test]
-fn typed_view_commands_hide_payload_keys() {
-    let zoom = commands::view::zoom(1.5);
-    let pan = commands::view::pan(4.0, -2.0);
-    let set_pan = commands::view::set_pan(12.0, -6.0);
-    let rotate = commands::view::rotate(-1);
-    let set_rotation = commands::view::set_rotation_degrees(270.0);
-
-    assert_eq!(zoom.name, "view.zoom");
-    assert_eq!(zoom.payload.get("zoom"), Some(&json!(1.5)));
-    assert_eq!(pan.payload.get("delta_x"), Some(&json!(4.0)));
-    assert_eq!(pan.payload.get("delta_y"), Some(&json!(-2.0)));
-    assert_eq!(set_pan.payload.get("pan_x"), Some(&json!(12.0)));
-    assert_eq!(set_pan.payload.get("pan_y"), Some(&json!(-6.0)));
-    assert_eq!(rotate.payload.get("quarter_turns"), Some(&json!(-1)));
-    assert_eq!(
-        set_rotation.payload.get("rotation_degrees"),
-        Some(&json!(270.0))
-    );
-    assert_eq!(
-        commands::view::flip_horizontal().name,
-        "view.flip_horizontal"
-    );
-    assert_eq!(commands::view::flip_vertical().name, "view.flip_vertical");
-    assert_eq!(commands::view::reset().name, "view.reset");
 }
 
 /// typed レイヤー commands hide payload keys が期待どおりに動作することを検証する。

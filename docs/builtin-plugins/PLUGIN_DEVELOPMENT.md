@@ -76,14 +76,14 @@ plugin-sdk = { path = "../../crates/plugin-sdk" }
 最小例:
 
 ```rust
-use plugin_sdk::{commands, runtime::emit_command};
+use plugin_sdk::{runtime::emit_service, services};
 
 #[plugin_sdk::panel_init]
 fn init() {}
 
 #[plugin_sdk::panel_handler]
 fn save_project() {
-  emit_command(&commands::project::save());
+  emit_service(&services::project_io::save_current());
 }
 ```
 

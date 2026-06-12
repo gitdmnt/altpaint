@@ -264,8 +264,8 @@ command("tool.set_active").string("tool", "pen")
 
 ```rust
 plugin_sdk::commands::tool::set_active(plugin_sdk::commands::Tool::Pen)
-plugin_sdk::commands::project::save()
-plugin_sdk::commands::project::new_sized(320, 240)
+plugin_sdk::services::project_io::save_current()
+plugin_sdk::services::project_io::new_document_sized(320, 240)
 ```
 
 これにより、少なくとも Rust 側では command 名・payload key・代表的な enum 値の typo をコンパイル時に減らせる。
@@ -337,8 +337,8 @@ plugin 作者には host 内部 crate を直接依存させない。
 
 - `commands::tool::set_active(Tool::Pen)`
 - `commands::tool::set_color_rgb(RgbColor::new(...))`
-- `commands::project::save()`
-- `commands::project::new_sized(width, height)`
+- `services::project_io::save_current()`
+- `services::project_io::new_document_sized(width, height)`
 - `host::tool::pen_name()`
 - `host::document::title()`
 - `StatePatch::set("selectedTool", "brush")`
