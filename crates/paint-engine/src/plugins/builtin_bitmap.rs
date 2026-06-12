@@ -1,12 +1,12 @@
 use app_core::{BitmapEdit, PaintInput, PaintPlugin, PaintPluginContext};
 
-use crate::{STANDARD_BITMAP_PLUGIN_ID, ops};
+use crate::{BUILTIN_BITMAP_BACKEND_ID, ops};
 
 pub struct BuiltinBitmapPaintPlugin;
 
 impl PaintPlugin for BuiltinBitmapPaintPlugin {
     fn id(&self) -> &'static str {
-        STANDARD_BITMAP_PLUGIN_ID
+        BUILTIN_BITMAP_BACKEND_ID
     }
 
     fn process(&self, input: &PaintInput, context: &PaintPluginContext<'_>) -> Vec<BitmapEdit> {
