@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::{WindowPoint, WindowRect};
 
-/// パネルプラグインごとの永続設定。キーは panel_id。
+/// パネルごとの永続設定。キーは panel_id。
 pub type PanelConfigs = BTreeMap<String, Value>;
 
 /// project / session の双方で共有する panel UI 永続化スナップショット。
