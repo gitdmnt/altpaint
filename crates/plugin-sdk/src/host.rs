@@ -32,28 +32,28 @@ pub mod document {
         host_i32("document.page_count")
     }
 
-    pub fn panel_count() -> i32 {
-        host_i32("document.panel_count")
+    pub fn koma_count() -> i32 {
+        host_i32("document.koma_count")
     }
 
     pub fn active_page_number() -> i32 {
         host_i32("document.active_page_number")
     }
 
-    pub fn active_page_panel_count() -> i32 {
-        host_i32("document.active_page_panel_count")
+    pub fn active_page_koma_count() -> i32 {
+        host_i32("document.active_page_koma_count")
     }
 
-    pub fn active_panel_number() -> i32 {
-        host_i32("document.active_panel_number")
+    pub fn active_koma_number() -> i32 {
+        host_i32("document.active_koma_number")
     }
 
-    pub fn active_panel_index() -> i32 {
-        host_i32("document.active_panel_index")
+    pub fn active_koma_index() -> i32 {
+        host_i32("document.active_koma_index")
     }
 
-    pub fn active_panel_bounds() -> String {
-        host_string("document.active_panel_bounds")
+    pub fn active_koma_bounds() -> String {
+        host_string("document.active_koma_bounds")
     }
 
     pub fn layer_count() -> i32 {
@@ -84,8 +84,8 @@ pub mod document {
         host_string("document.layers_json")
     }
 
-    pub fn panels_json() -> String {
-        host_string("document.panels_json")
+    pub fn komas_json() -> String {
+        host_string("document.komas_json")
     }
 }
 

@@ -26,10 +26,10 @@ pub struct HostSnapshotCache {
     active_layer_index: usize,
     layers_json: String,
 
-    // パネル一覧
-    page_panel_count: usize,
-    active_panel_index: usize,
-    panels_json: String,
+    // コマ一覧
+    page_koma_count: usize,
+    active_koma_index: usize,
+    komas_json: String,
 }
 
 /// `build_host_snapshot_cached` 呼出側が事前に組み立てた workspace パネル一覧 JSON のデフォルト。
@@ -65,7 +65,7 @@ pub fn build_host_snapshot_cached(
 ) -> Value {
     let active_tool_definition = document.active_tool_definition().cloned();
     let active_page = document.active_page();
-    let active_panel = document.active_panel();
+    let active_koma = document.active_panel();
 
     let force_rebuild = !cache.initialized;
 
@@ -94,13 +94,13 @@ pub fn build_host_snapshot_cached(
     }
 
     // ---- レイヤー一覧 ----
-    let layer_count = active_panel.map(|p| p.layers.len()).unwrap_or(1);
-    let active_layer_index = active_panel.map(|p| p.active_layer_index).unwrap_or(0);
+    let layer_count = active_koma.map(|p| p.layers.len()).unwrap_or(1);
+    let active_layer_index = active_koma.map(|p| p.active_layer_index).unwrap_or(0);
     if force_rebuild || cache.layer_count != layer_count || cache.active_layer_index != active_layer_index {
-        let layers = active_panel
-            .map(|panel| {
+        let layers = active_koma
+            .map(|koma| {
                 // index 0 が最下層のため逆順で返す（UI の先頭 = 前面レイヤー）
-                panel
+                koma
                     .layers
                     .iter()
                     .rev()
@@ -123,48 +123,48 @@ pub fn build_host_snapshot_cached(
         cache.active_layer_index = active_layer_index;
     }
 
-    // ---- パネル一覧 ----
-    let page_panel_count = active_page.map(|p| p.komas.len()).unwrap_or(1);
-    let active_panel_index = document.active_panel_index();
+    // ---- コマ一覧 ----
+    let page_koma_count = active_page.map(|p| p.komas.len()).unwrap_or(1);
+    let active_koma_index = document.active_panel_index();
     if force_rebuild
-        || cache.page_panel_count != page_panel_count
-        || cache.active_panel_index != active_panel_index
+        || cache.page_koma_count != page_koma_count
+        || cache.active_koma_index != active_koma_index
     {
-        let panels = active_page
+        let komas = active_page
             .map(|page| {
                 page.komas
                     .iter()
                     .enumerate()
-                    .map(|(index, panel)| {
+                    .map(|(index, koma)| {
                         json!({
                             "name": format!("コマ {}", index + 1),
                             "detail": format!(
                                 "{}×{} / ({}, {})",
-                                panel.bounds.width,
-                                panel.bounds.height,
-                                panel.bounds.x,
-                                panel.bounds.y,
+                                koma.bounds.width,
+                                koma.bounds.height,
+                                koma.bounds.x,
+                                koma.bounds.y,
                             ),
                         })
                     })
                     .collect::<Vec<_>>()
             })
             .unwrap_or_else(|| vec![json!({ "name": "コマ 1", "detail": "0×0 / (0, 0)" })]);
-        cache.panels_json =
-            serde_json::to_string(&panels).unwrap_or_else(|_| "[]".to_string());
-        cache.page_panel_count = page_panel_count;
-        cache.active_panel_index = active_panel_index;
+        cache.komas_json =
+            serde_json::to_string(&komas).unwrap_or_else(|_| "[]".to_string());
+        cache.page_koma_count = page_koma_count;
+        cache.active_koma_index = active_koma_index;
     }
 
     cache.initialized = true;
 
     // ---- 残りのフィールド（毎回計算するが軽量） ----
-    let active_layer = active_panel.and_then(|p| p.layers.get(p.active_layer_index));
+    let active_layer = active_koma.and_then(|p| p.layers.get(p.active_layer_index));
     let page_count = document.work.pages.len();
     let active_page_number = document.active_page_index() + 1;
-    let active_panel_number = document.active_panel_index() + 1;
-    let active_page_panel_count = document.active_page_panel_count();
-    let panel_count = document
+    let active_koma_number = document.active_panel_index() + 1;
+    let active_page_koma_count = document.active_page_panel_count();
+    let koma_count = document
         .work
         .pages
         .iter()
@@ -173,15 +173,15 @@ pub fn build_host_snapshot_cached(
     let active_layer_name = active_layer
         .map(|layer| layer.name.clone())
         .unwrap_or_else(|| "<no layer>".to_string());
-    let active_panel_label = format!(
+    let active_koma_label = format!(
         "ページ {} / コマ {}",
-        active_page_number, active_panel_number
+        active_page_number, active_koma_number
     );
-    let active_panel_bounds = active_panel
-        .map(|panel| {
+    let active_koma_bounds = active_koma
+        .map(|koma| {
             format!(
                 "({}, {}) {}×{}",
-                panel.bounds.x, panel.bounds.y, panel.bounds.width, panel.bounds.height,
+                koma.bounds.x, koma.bounds.y, koma.bounds.width, koma.bounds.height,
             )
         })
         .unwrap_or_else(|| "(0, 0) 0×0".to_string());
@@ -203,20 +203,20 @@ pub fn build_host_snapshot_cached(
         "document": {
             "title": document.work.title,
             "page_count": page_count,
-            "panel_count": panel_count,
+            "koma_count": koma_count,
             "active_page_number": active_page_number,
-            "active_page_panel_count": active_page_panel_count,
-            "active_panel_index": document.active_panel_index(),
-            "active_panel_number": active_panel_number,
-            "active_panel_label": active_panel_label,
-            "active_panel_bounds": active_panel_bounds,
+            "active_page_koma_count": active_page_koma_count,
+            "active_koma_index": document.active_panel_index(),
+            "active_koma_number": active_koma_number,
+            "active_koma_label": active_koma_label,
+            "active_koma_bounds": active_koma_bounds,
             "active_layer_name": active_layer_name,
             "layer_count": layer_count,
             "active_layer_index": active_layer_ui_index,
             "active_layer_blend_mode": active_layer.map(|layer| layer.blend_mode.as_str()).unwrap_or("normal"),
             "active_layer_visible": active_layer.map(|layer| layer.visible).unwrap_or(true),
             "active_layer_masked": active_layer.and_then(|layer| layer.mask.as_ref()).is_some(),
-            "panels_json": cache.panels_json,
+            "komas_json": cache.komas_json,
             "layers_json": cache.layers_json,
         },
         "tool": {

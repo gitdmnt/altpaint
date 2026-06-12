@@ -19,28 +19,28 @@ fn sync_host() {
         set_inner_html(node, &host::document::active_page_number().to_string());
     }
     if let Some(node) = query_selector("#active-panel-number") {
-        set_inner_html(node, &host::document::active_panel_number().to_string());
+        set_inner_html(node, &host::document::active_koma_number().to_string());
     }
     if let Some(node) = query_selector("#active-page-panel-count") {
         set_inner_html(
             node,
-            &host::document::active_page_panel_count().to_string(),
+            &host::document::active_page_koma_count().to_string(),
         );
     }
     if let Some(node) = query_selector("#active-panel-bounds") {
-        set_inner_html(node, &html_escape(&host::document::active_panel_bounds()));
+        set_inner_html(node, &html_escape(&host::document::active_koma_bounds()));
     }
 
     if let Some(list) = query_selector("#panel-list") {
-        let panels_json = host::document::panels_json();
-        let active_index = host::document::active_panel_index();
-        set_inner_html(list, &render_panel_list(&panels_json, active_index));
+        let komas_json = host::document::komas_json();
+        let active_index = host::document::active_koma_index();
+        set_inner_html(list, &render_panel_list(&komas_json, active_index));
     }
 }
 
-fn render_panel_list(panels_json: &str, active_index: i32) -> String {
+fn render_panel_list(komas_json: &str, active_index: i32) -> String {
     let parsed: Vec<PanelEntry> =
-        serde_json::from_str(panels_json).unwrap_or_default();
+        serde_json::from_str(komas_json).unwrap_or_default();
     let mut out = String::new();
     for (idx, panel) in parsed.iter().enumerate() {
         let class = if idx as i32 == active_index {

@@ -60,7 +60,7 @@ fn render_dom() {
         set_inner_html(node, &host::document::page_count().to_string());
     }
     if let Some(node) = query_selector("#panel-count") {
-        set_inner_html(node, &host::document::panel_count().to_string());
+        set_inner_html(node, &host::document::koma_count().to_string());
     }
     if let Some(node) = query_selector("#layer-count") {
         set_inner_html(node, &host::document::layer_count().to_string());

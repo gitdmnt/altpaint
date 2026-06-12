@@ -116,7 +116,7 @@ fn typed_state_keys_can_be_declared_once() {
 fn typed_host_helpers_are_callable_on_native_targets() {
     assert_eq!(host::document::title(), "");
     assert_eq!(host::document::page_count(), 0);
-    assert_eq!(host::document::panel_count(), 0);
+    assert_eq!(host::document::koma_count(), 0);
     assert_eq!(host::document::layer_count(), 0);
     assert_eq!(host::document::active_layer_name(), "");
     assert_eq!(host::document::active_layer_index(), 0);

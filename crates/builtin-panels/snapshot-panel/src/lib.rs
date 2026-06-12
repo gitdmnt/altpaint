@@ -19,7 +19,7 @@ fn sync_host() {
         set_inner_html(node, &host::document::page_count().to_string());
     }
     if let Some(node) = query_selector("#panel-count") {
-        set_inner_html(node, &host::document::panel_count().to_string());
+        set_inner_html(node, &host::document::koma_count().to_string());
     }
     if let Some(node) = query_selector("#active-tool") {
         set_inner_html(node, &html_escape(&host::tool::active_name()));
