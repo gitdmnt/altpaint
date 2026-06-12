@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use crate::{command, commands, handler_result, host, runtime, services, state};
+use crate::{CommandDescriptor, commands, host, runtime, services, state};
 use crate::{panel_handler, panel_init, panel_sync_host};
 
 /// 初期化 for macro test に必要な処理を行う。
@@ -21,31 +21,6 @@ fn sync_host_for_macro_test() {}
 #[panel_handler]
 fn slider_for_macro_test(value: i32) {
     assert_eq!(value, 42);
-}
-
-/// コマンド builder collects payload fields が期待どおりに動作することを検証する。
-#[test]
-fn command_builder_collects_payload_fields() {
-    let descriptor = command("tool.set_active")
-        .string("tool", "pen")
-        .bool("pinned", true)
-        .value("weight", json!(1))
-        .build();
-
-    assert_eq!(descriptor.name, "tool.set_active");
-    assert_eq!(descriptor.payload.get("tool"), Some(&json!("pen")));
-    assert_eq!(descriptor.payload.get("pinned"), Some(&json!(true)));
-    assert_eq!(descriptor.payload.get("weight"), Some(&json!(1)));
-}
-
-/// コマンド builder 色 aliases string payload and ハンドラ 結果 defaults が期待どおりに動作することを検証する。
-#[test]
-fn command_builder_color_aliases_string_payload_and_handler_result_defaults() {
-    let descriptor = command("tool.set_color").color("color", "#112233").build();
-
-    assert_eq!(descriptor.name, "tool.set_color");
-    assert_eq!(descriptor.payload.get("color"), Some(&json!("#112233")));
-    assert_eq!(handler_result(), crate::HandlerResult::default());
 }
 
 /// typed プロジェクト commands hide コマンド strings が期待どおりに動作することを検証する。
@@ -261,8 +236,8 @@ fn native_runtime_helpers_are_safe_noops() {
     runtime::set_state_string("name", "demo");
     runtime::set_state_json("config", json!({"enabled": true}));
     runtime::replace_state_json("config", json!({"enabled": false}));
-    runtime::emit_command(&command("project.save").build());
-    runtime::emit_command_descriptor(&command("project.load").build());
+    runtime::emit_command(&CommandDescriptor::new("project.save"));
+    runtime::emit_command_descriptor(&CommandDescriptor::new("project.load"));
     runtime::emit_service(&services::project_io::save_current());
     runtime::info("info");
     runtime::warn("warn");

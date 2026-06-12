@@ -2,22 +2,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct PanelInitRequest {
-    #[serde(default)]
-    pub initial_state: Value,
-    #[serde(default)]
-    pub host_snapshot: Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub struct PanelInitResponse {
-    #[serde(default)]
-    pub state: Value,
-    #[serde(default)]
-    pub diagnostics: Vec<Diagnostic>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PanelEventRequest {
     pub handler_name: String,
     pub event_kind: String,

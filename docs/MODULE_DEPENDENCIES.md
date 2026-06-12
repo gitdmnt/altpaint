@@ -266,7 +266,6 @@ graph TD
 担当:
 
 - host と Wasm runtime 間でやりとりする DTO
-- `PanelInitRequest/Response`
 - `PanelEventRequest`
 - `HandlerResult`
 - `StatePatch` / `StatePatchOp`

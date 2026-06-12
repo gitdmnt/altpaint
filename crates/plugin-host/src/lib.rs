@@ -7,8 +7,7 @@ use std::sync::OnceLock;
 use blitz_html::HtmlDocument;
 use dom_api::DomCtx;
 use panel_schema::{
-    CommandDescriptor, Diagnostic, DiagnosticLevel, HandlerResult, PanelEventRequest,
-    PanelInitRequest, PanelInitResponse, StatePatch,
+    CommandDescriptor, Diagnostic, DiagnosticLevel, HandlerResult, PanelEventRequest, StatePatch,
 };
 use serde_json::{Map, Value};
 use thiserror::Error;
@@ -54,7 +53,6 @@ impl RuntimeCollector {
 }
 
 pub struct WasmPanelRuntime {
-    path: PathBuf,
     store: Store<RuntimeCollector>,
     instance: Instance,
 }
@@ -700,29 +698,7 @@ impl WasmPanelRuntime {
             }
         })?;
 
-        Ok(Self {
-            path,
-            store,
-            instance,
-        })
-    }
-
-    /// initialize に必要な処理を行う。
-    pub fn initialize(
-        &mut self,
-        request: &PanelInitRequest,
-    ) -> Result<PanelInitResponse, PluginHostError> {
-        self.store.data_mut().clear();
-        if let Some(init) = self.instance.get_func(&mut self.store, PANEL_INIT_EXPORT) {
-            call_export(&mut self.store, init, None).map_err(PluginHostError::Runtime)?;
-        }
-
-        let mut state = request.initial_state.clone();
-        apply_state_patches(&mut state, &self.store.data().result.state_patch);
-        Ok(PanelInitResponse {
-            state,
-            diagnostics: self.store.data().result.diagnostics.clone(),
-        })
+        Ok(Self { store, instance })
     }
 
     /// Host snapshot を読み取り、表示用の状態へ同期する。
@@ -777,11 +753,6 @@ impl WasmPanelRuntime {
         let payload = request.event_payload.get("value").map(|_| numeric_value);
         call_export(&mut self.store, handler, payload).map_err(PluginHostError::Runtime)?;
         Ok(self.store.data().result.clone())
-    }
-
-    /// パス を計算して返す。
-    pub fn path(&self) -> &Path {
-        &self.path
     }
 
     /// Supports 同期 ホスト かどうかを返す。
@@ -874,50 +845,6 @@ fn current_memory(caller: &mut Caller<'_, RuntimeCollector>) -> Option<Memory> {
     match caller.get_export("memory") {
         Some(Extern::Memory(memory)) => Some(memory),
         _ => None,
-    }
-}
-
-/// 状態 patches を現在の状態へ適用する。
-fn apply_state_patches(state: &mut Value, patches: &[StatePatch]) {
-    if !state.is_object() {
-        *state = Value::Object(Map::new());
-    }
-    for patch in patches {
-        apply_state_patch(state, patch);
-    }
-}
-
-/// 現在の値を 状態 patch へ変換する。
-fn apply_state_patch(state: &mut Value, patch: &StatePatch) {
-    let mut current = state;
-    let mut segments = patch.path.split('.').peekable();
-    while let Some(segment) = segments.next() {
-        let is_last = segments.peek().is_none();
-        if !current.is_object() {
-            *current = Value::Object(Map::new());
-        }
-        let object = current.as_object_mut().expect("object ensured");
-        if is_last {
-            match patch.op {
-                panel_schema::StatePatchOp::Set | panel_schema::StatePatchOp::Replace => {
-                    object.insert(
-                        segment.to_string(),
-                        patch.value.clone().unwrap_or(Value::Null),
-                    );
-                }
-                panel_schema::StatePatchOp::Toggle => {
-                    let next = !object
-                        .get(segment)
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false);
-                    object.insert(segment.to_string(), Value::Bool(next));
-                }
-            }
-            return;
-        }
-        current = object
-            .entry(segment.to_string())
-            .or_insert_with(|| Value::Object(Map::new()));
     }
 }
 
@@ -1059,20 +986,16 @@ mod tests {
         let wasm_path = write_temp_wat(SAMPLE_WAT);
         let mut runtime = WasmPanelRuntime::load(&wasm_path).expect("runtime loads");
 
-        let init = runtime
-            .initialize(&PanelInitRequest {
-                initial_state: json!({}),
-                host_snapshot: json!({}),
-            })
-            .expect("runtime initializes");
-        assert_eq!(init.state, json!({"expanded": false}));
+        let init = runtime.panel_init().expect("panel_init runs");
+        assert_eq!(init.state_patch, vec![StatePatch::set("expanded", false)]);
+        let initial_state = json!({"expanded": false});
 
         let toggled = runtime
             .handle_event(&PanelEventRequest {
                 handler_name: "toggle-expanded".to_string(),
                 event_kind: "change".to_string(),
                 event_payload: json!({}),
-                state_snapshot: init.state.clone(),
+                state_snapshot: initial_state.clone(),
                 host_snapshot: json!({}),
             })
             .expect("toggle handler runs");
@@ -1083,7 +1006,7 @@ mod tests {
                 handler_name: "save_project".to_string(),
                 event_kind: "click".to_string(),
                 event_payload: json!({}),
-                state_snapshot: init.state.clone(),
+                state_snapshot: initial_state.clone(),
                 host_snapshot: json!({}),
             })
             .expect("save handler runs");
@@ -1094,7 +1017,7 @@ mod tests {
                 handler_name: "activate_pen".to_string(),
                 event_kind: "click".to_string(),
                 event_payload: json!({}),
-                state_snapshot: init.state,
+                state_snapshot: initial_state,
                 host_snapshot: json!({}),
             })
             .expect("tool handler runs");

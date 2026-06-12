@@ -289,7 +289,6 @@ Wasm panel runtime の実行器である。
 
 host と Wasm panel runtime の共有 DTO である（`src/lib.rs` 単一ファイル）。
 
-- `PanelInitRequest` / `PanelInitResponse`
 - `PanelEventRequest`
 - `HandlerResult`
 - `StatePatch` / `StatePatchOp`
