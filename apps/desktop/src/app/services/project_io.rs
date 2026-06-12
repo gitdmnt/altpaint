@@ -32,7 +32,7 @@ pub(crate) fn brush_stroke_params(context: &PaintPluginContext<'_>) -> gpu_paint
 /// ビットマップ編集列の dirty rect を 1 つの矩形へ畳み込む。
 ///
 /// 編集が空なら `None`。
-pub(crate) fn merged_dirty(edits: &[app_core::BitmapEdit]) -> Option<PageDirtyRect> {
+pub(crate) fn merged_dirty(edits: &[raster::BitmapEdit]) -> Option<PageDirtyRect> {
     edits.iter().fold(None::<PageDirtyRect>, |acc, edit| {
         Some(match acc {
             Some(existing) => existing.merge(edit.dirty_rect),
@@ -220,7 +220,7 @@ impl DesktopApp {
         koma_id: app_core::KomaId,
         layer_index: usize,
         input: &PaintInput,
-        edits: &[app_core::BitmapEdit],
+        edits: &[raster::BitmapEdit],
     ) -> bool {
         use paint_engine::build_paint_context;
         let edit_dirty = merged_dirty(edits);

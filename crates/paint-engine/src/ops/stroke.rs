@@ -1,5 +1,6 @@
-use app_core::{BitmapEdit, CanvasBitmap, PaintPluginContext, paint_params::MAX_STAMP_STEPS};
+use app_core::{PaintPluginContext, paint_params::MAX_STAMP_STEPS};
 use geometry::{KomaLocalPoint, PageDirtyRect};
+use raster::{BitmapEdit, RgbaBitmap};
 
 use super::{composite, stamp};
 
@@ -80,7 +81,7 @@ pub(crate) fn stroke_like_edit(
         width: right - left,
         height: bottom - top,
     };
-    let mut bitmap = CanvasBitmap::transparent(dirty_rect.width, dirty_rect.height);
+    let mut bitmap = RgbaBitmap::transparent(dirty_rect.width, dirty_rect.height);
     for point in points {
         let local_x = point.x.saturating_sub(left);
         let local_y = point.y.saturating_sub(top);
@@ -110,10 +111,11 @@ mod tests {
     /// 大きな距離でもスタンプ数が MAX_STAMP_STEPS を超えないことを検証する。
     #[test]
     fn stroke_segment_steps_capped_at_max() {
-        use app_core::{CanvasBitmap, ColorRgba8, PaintPluginContext, PenPreset, ToolKind};
+        use app_core::{ColorRgba8, PaintPluginContext, PenPreset, ToolKind};
+        use raster::RgbaBitmap;
 
-        let layer = CanvasBitmap::transparent(1000, 1000);
-        let composited = CanvasBitmap::transparent(1000, 1000);
+        let layer = RgbaBitmap::transparent(1000, 1000);
+        let composited = RgbaBitmap::transparent(1000, 1000);
         let pen = PenPreset {
             spacing_percent: 1.0,
             ..Default::default()
@@ -150,10 +152,11 @@ mod tests {
     /// compute_stamp_positions が MAX_STAMP_STEPS 以下の数の座標を返すことを確認する。
     #[test]
     fn compute_stamp_positions_respects_max_steps() {
-        use app_core::{CanvasBitmap, ColorRgba8, PaintPluginContext, PenPreset, ToolKind};
+        use app_core::{ColorRgba8, PaintPluginContext, PenPreset, ToolKind};
+        use raster::RgbaBitmap;
 
-        let layer = CanvasBitmap::transparent(1000, 1000);
-        let composited = CanvasBitmap::transparent(1000, 1000);
+        let layer = RgbaBitmap::transparent(1000, 1000);
+        let composited = RgbaBitmap::transparent(1000, 1000);
         let pen = PenPreset {
             spacing_percent: 1.0,
             ..Default::default()

@@ -25,8 +25,9 @@ use std::path::PathBuf;
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use app_core::{CanvasBitmap, Document, EditHistory, KomaId};
+use app_core::{Document, EditHistory, KomaId};
 use geometry::{PageDirtyRect, PagePoint};
+use raster::RgbaBitmap;
 use desktop_support::{
     DesktopDialogs, NativeDesktopDialogs, WorkspacePresetCatalog, default_workspace_preset_path,
 };
@@ -63,7 +64,7 @@ struct PendingStroke {
     ///
     /// GPU パスでは `None`（commit 時に CPU bitmap がストローク前状態を保持している）。
     /// CPU パスでは `Some`（ストローク中に CPU bitmap が書き換わるため事前に保存）。
-    before_layer: Option<CanvasBitmap>,
+    before_layer: Option<RgbaBitmap>,
     /// ストローク中に蓄積したコマローカル dirty rect の合計。
     dirty: Option<PageDirtyRect>,
 }

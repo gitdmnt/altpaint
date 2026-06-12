@@ -253,7 +253,8 @@ pub fn build_host_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::{BlendMode, Document, KomaBounds};
+    use app_core::{Document, KomaBounds};
+    use raster::BlendMode;
 
     fn build(document: &Document, cache: &mut HostStateCache) -> Value {
         build_host_state(

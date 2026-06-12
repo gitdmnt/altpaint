@@ -220,7 +220,7 @@ fn translate_layer(descriptor: &RequestDescriptor) -> TranslateOutcome {
                 .get("mode")
                 .and_then(Value::as_str)
                 .ok_or_else(|| format!("{} is missing payload.mode", layer::SET_BLEND_MODE))?;
-            let mode = app_core::BlendMode::parse_name(mode)
+            let mode = raster::BlendMode::parse_name(mode)
                 .ok_or_else(|| format!("unsupported layer blend mode: {mode}"))?;
             document(DocumentCommand::SetActiveLayerBlendMode { mode })
         }

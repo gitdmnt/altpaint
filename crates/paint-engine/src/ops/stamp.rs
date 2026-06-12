@@ -1,5 +1,6 @@
-use app_core::{BitmapEdit, CanvasBitmap, PaintPluginContext, PenTipBitmap};
+use app_core::{PaintPluginContext, PenTipBitmap};
 use geometry::KomaLocalPoint;
+use raster::{BitmapEdit, RgbaBitmap};
 
 use super::{composite, stroke};
 
@@ -12,7 +13,7 @@ pub(crate) fn stamp_edit(
 
 /// スタンプ径は context 解決時に筆圧カーブ 1 回適用済みの `resolved_size` を
 /// そのまま使う (BL-030: ここでの再適用は二重適用バグ)。
-pub(crate) fn build_stamp(context: &PaintPluginContext<'_>) -> Option<CanvasBitmap> {
+pub(crate) fn build_stamp(context: &PaintPluginContext<'_>) -> Option<RgbaBitmap> {
     let size = context.resolved_size.max(1) as usize;
     let opacity = (context.pen.opacity * context.pen.flow).clamp(0.0, 1.0);
     let color = composite::stamp_color(context);
@@ -58,11 +59,11 @@ fn generated_round_stamp(
     color: [u8; 4],
     opacity: f32,
     antialias: bool,
-) -> CanvasBitmap {
+) -> RgbaBitmap {
     let size = size.max(1);
     let radius = size as f32 * 0.5;
     let center = radius - 0.5;
-    let mut bitmap = CanvasBitmap::transparent(size, size);
+    let mut bitmap = RgbaBitmap::transparent(size, size);
     for y in 0..size {
         for x in 0..size {
             let dx = x as f32 - center;
@@ -98,7 +99,7 @@ fn resample_alpha_tip(
     target_size: usize,
     color: [u8; 4],
     opacity: f32,
-) -> CanvasBitmap {
+) -> RgbaBitmap {
     let aspect = if source_width == 0 {
         1.0
     } else {
@@ -106,7 +107,7 @@ fn resample_alpha_tip(
     };
     let target_width = target_size.max(1);
     let target_height = ((target_size as f32 * aspect).round() as usize).max(1);
-    let mut bitmap = CanvasBitmap::transparent(target_width, target_height);
+    let mut bitmap = RgbaBitmap::transparent(target_width, target_height);
     for y in 0..target_height {
         for x in 0..target_width {
             let src_x = x * source_width.max(1) / target_width.max(1);
@@ -137,7 +138,7 @@ fn resample_rgba_tip(
     target_size: usize,
     tint: [u8; 4],
     opacity: f32,
-) -> CanvasBitmap {
+) -> RgbaBitmap {
     let aspect = if source_width == 0 {
         1.0
     } else {
@@ -145,7 +146,7 @@ fn resample_rgba_tip(
     };
     let target_width = target_size.max(1);
     let target_height = ((target_size as f32 * aspect).round() as usize).max(1);
-    let mut bitmap = CanvasBitmap::transparent(target_width, target_height);
+    let mut bitmap = RgbaBitmap::transparent(target_width, target_height);
     for y in 0..target_height {
         for x in 0..target_width {
             let src_x = x * source_width.max(1) / target_width.max(1);

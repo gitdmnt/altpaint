@@ -5,10 +5,10 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use app_core::{
-    BlendMode, CanvasBitmap, CanvasViewTransform, ColorRgba8, Document, LayerMask, LayerNodeId,
-    Page, PageId, Koma, KomaBounds, KomaId, PenPreset, RasterLayer, ToolKind, Work, WorkId,
-    WorkspaceLayout,
+    CanvasViewTransform, ColorRgba8, Document, LayerMask, LayerNodeId, Page, PageId, Koma,
+    KomaBounds, KomaId, PenPreset, RasterLayer, ToolKind, Work, WorkId, WorkspaceLayout,
 };
+use raster::{BlendMode, RgbaBitmap};
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -84,7 +84,7 @@ pub struct PersistedKomaCompositeSummary {
 #[derive(Debug, Clone)]
 pub struct PersistedKomaComposite {
     pub summary: PersistedKomaCompositeSummary,
-    pub bitmap: CanvasBitmap,
+    pub bitmap: RgbaBitmap,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -575,7 +575,7 @@ fn insert_layer_chunks(
     transaction: &Transaction<'_>,
     koma_id: KomaId,
     layer_index: usize,
-    bitmap: &CanvasBitmap,
+    bitmap: &RgbaBitmap,
     chunk_size: usize,
 ) -> Result<(), ProjectStoreError> {
     for chunk in chunk_bitmap(bitmap, chunk_size)? {
@@ -610,7 +610,7 @@ fn insert_layer_chunks(
 fn insert_composite_chunks(
     transaction: &Transaction<'_>,
     composite_id: &str,
-    bitmap: &CanvasBitmap,
+    bitmap: &RgbaBitmap,
     chunk_size: usize,
 ) -> Result<(), ProjectStoreError> {
     for chunk in chunk_bitmap(bitmap, chunk_size)? {
@@ -641,7 +641,7 @@ fn insert_composite_chunks(
 }
 
 fn chunk_bitmap(
-    bitmap: &CanvasBitmap,
+    bitmap: &RgbaBitmap,
     chunk_size: usize,
 ) -> Result<Vec<StoredChunk>, ProjectStoreError> {
     let mut chunks = Vec::new();
@@ -681,7 +681,7 @@ fn chunk_bitmap(
 }
 
 fn extract_chunk_pixels(
-    bitmap: &CanvasBitmap,
+    bitmap: &RgbaBitmap,
     chunk_x: usize,
     chunk_y: usize,
     width: usize,
@@ -839,8 +839,8 @@ fn load_layer_bitmap(
     layer_index: usize,
     width: usize,
     height: usize,
-) -> Result<CanvasBitmap, ProjectStoreError> {
-    let mut bitmap = CanvasBitmap::transparent(width.max(1), height.max(1));
+) -> Result<RgbaBitmap, ProjectStoreError> {
+    let mut bitmap = RgbaBitmap::transparent(width.max(1), height.max(1));
     let mut statement = connection.prepare(
         "SELECT chunk_x, chunk_y, width, height, encoding, rgba, data
 		 FROM layer_chunks
@@ -892,7 +892,7 @@ fn load_koma_composite(
         return Ok(None);
     };
 
-    let mut bitmap = CanvasBitmap::transparent(width as usize, height as usize);
+    let mut bitmap = RgbaBitmap::transparent(width as usize, height as usize);
     let mut statement = connection.prepare(
         "SELECT chunk_x, chunk_y, width, height, encoding, rgba, data
 		 FROM koma_composite_chunks
@@ -950,7 +950,7 @@ fn load_composite_summaries(
         .map_err(ProjectStoreError::Sqlite)
 }
 
-fn apply_chunks(bitmap: &mut CanvasBitmap, chunks: &[StoredChunk]) -> Result<(), ProjectStoreError> {
+fn apply_chunks(bitmap: &mut RgbaBitmap, chunks: &[StoredChunk]) -> Result<(), ProjectStoreError> {
     for chunk in chunks {
         match chunk.encoding {
             CHUNK_ENCODING_SOLID => fill_chunk(
@@ -992,7 +992,7 @@ fn apply_chunks(bitmap: &mut CanvasBitmap, chunks: &[StoredChunk]) -> Result<(),
 }
 
 fn fill_chunk(
-    bitmap: &mut CanvasBitmap,
+    bitmap: &mut RgbaBitmap,
     chunk_x: usize,
     chunk_y: usize,
     width: usize,
@@ -1008,7 +1008,7 @@ fn fill_chunk(
 }
 
 fn blit_chunk(
-    bitmap: &mut CanvasBitmap,
+    bitmap: &mut RgbaBitmap,
     chunk_x: usize,
     chunk_y: usize,
     width: usize,

@@ -7,6 +7,7 @@ authors.workspace = true
 
 [dependencies]
 app-core = { path = "../app-core" }
+raster = { path = "../raster" }
 panel-api = { path = "../panel-api" }
 panel-protocol = { path = "../panel-protocol" }
 panel-wasm-host = { path = "../panel-wasm-host" }

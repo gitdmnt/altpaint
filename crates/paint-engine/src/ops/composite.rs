@@ -1,15 +1,14 @@
-use app_core::{
-    BitmapComposite, BitmapCompositor, BlendMode, CanvasBitmap, PaintPluginContext, ToolKind,
-};
+use app_core::{PaintPluginContext, ToolKind};
+use raster::{BitmapComposite, BitmapCompositor, BlendMode, RgbaBitmap, composite_pixel};
 
 #[derive(Clone, Copy)]
 pub(crate) struct EraseComposite;
 
 impl BitmapCompositor for EraseComposite {
-    fn compose(&self, bitmap_a: &CanvasBitmap, bitmap_b: &CanvasBitmap) -> CanvasBitmap {
+    fn compose(&self, bitmap_a: &RgbaBitmap, bitmap_b: &RgbaBitmap) -> RgbaBitmap {
         let width = bitmap_a.width.min(bitmap_b.width);
         let height = bitmap_a.height.min(bitmap_b.height);
-        let mut out = CanvasBitmap::transparent(width, height);
+        let mut out = RgbaBitmap::transparent(width, height);
         for y in 0..height {
             for x in 0..width {
                 let index = (y * width + x) * 4;
@@ -63,8 +62,8 @@ pub(crate) fn edit_composite(context: &PaintPluginContext<'_>) -> BitmapComposit
 }
 
 pub(crate) fn blend_stamp(
-    target: &mut CanvasBitmap,
-    stamp: &CanvasBitmap,
+    target: &mut RgbaBitmap,
+    stamp: &RgbaBitmap,
     offset_x: isize,
     offset_y: isize,
 ) {
@@ -96,7 +95,7 @@ pub(crate) fn blend_stamp(
                 target.pixels[dst_index + 2],
                 target.pixels[dst_index + 3],
             ];
-            target.pixels[dst_index..dst_index + 4].copy_from_slice(&app_core::blend::composite_pixel(
+            target.pixels[dst_index..dst_index + 4].copy_from_slice(&composite_pixel(
                 previous,
                 incoming,
                 &BlendMode::Normal,

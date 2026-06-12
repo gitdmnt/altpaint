@@ -8,4 +8,5 @@ authors.workspace = true
 [dependencies]
 app-core = { path = "../app-core" }
 geometry = { path = "../geometry" }
+raster = { path = "../raster" }
 font8x8 = { workspace = true }

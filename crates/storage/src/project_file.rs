@@ -114,7 +114,8 @@ pub fn load_koma_composite_from_path(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::{BlendMode, ColorRgba8, Document, LayerMask, Page, PageId, KomaId};
+    use app_core::{ColorRgba8, Document, LayerMask, Page, PageId, KomaId};
+    use raster::BlendMode;
     use rusqlite::Connection;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -165,7 +166,7 @@ mod tests {
             visible: true,
             blend_mode: BlendMode::Multiply,
             bitmap: {
-                let mut bitmap = app_core::CanvasBitmap::transparent(8, 8);
+                let mut bitmap = raster::RgbaBitmap::transparent(8, 8);
                 let _ = bitmap.set_pixel_rgba(1, 1, [0x33, 0x66, 0x11, 0x80]);
                 bitmap
             },

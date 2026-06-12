@@ -1,7 +1,7 @@
 //! present 向け dirty 状態と更新指示を扱う。
 
-use app_core::BitmapEdit;
 use geometry::{MergeInSpace, PageDirtyRect, WindowRect};
+use raster::BitmapEdit;
 
 use super::DesktopApp;
 

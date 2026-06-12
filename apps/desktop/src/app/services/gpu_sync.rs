@@ -37,7 +37,7 @@ impl DesktopApp {
                 );
                 continue;
             };
-            let bitmap = app_core::CanvasBitmap {
+            let bitmap = raster::RgbaBitmap {
                 width: width as usize,
                 height: height as usize,
                 pixels,

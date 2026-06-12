@@ -1,6 +1,6 @@
 // Composite one layer onto the running composite texture. Mirrors
-// app_core::blend::composite_pixel. The BlendMode -> blend_code table is
-// defined once in crates/app-core/src/blend.rs (BlendMode::gpu_code /
+// raster::blend::composite_pixel. The BlendMode -> blend_code table is
+// defined once in crates/raster/src/blend.rs (BlendMode::gpu_code /
 // blend_channel); keep the switch below in sync with it.
 
 struct CompositeParams {

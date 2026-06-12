@@ -7,8 +7,9 @@ pub mod text;
 
 pub use stroke::compute_stamp_positions;
 
-use app_core::{BitmapEdit, CanvasBitmap, PaintPluginContext};
+use app_core::PaintPluginContext;
 use geometry::{KomaLocalPoint, PageDirtyRect};
+use raster::{BitmapEdit, RgbaBitmap};
 
 pub(crate) fn bitmap_from_points(
     points: Vec<(usize, usize)>,
@@ -28,7 +29,7 @@ pub(crate) fn bitmap_from_points(
         width: max_x.saturating_sub(min_x).saturating_add(1),
         height: max_y.saturating_sub(min_y).saturating_add(1),
     };
-    let mut bitmap = CanvasBitmap::transparent(dirty_rect.width, dirty_rect.height);
+    let mut bitmap = RgbaBitmap::transparent(dirty_rect.width, dirty_rect.height);
     for (x, y) in points {
         let local_x = x.saturating_sub(min_x);
         let local_y = y.saturating_sub(min_y);

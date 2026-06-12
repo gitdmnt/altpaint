@@ -1,4 +1,5 @@
-use app_core::{BitmapEdit, PaintInput, PaintPlugin, PaintPluginContext};
+use app_core::{PaintInput, PaintPlugin, PaintPluginContext};
+use raster::BitmapEdit;
 
 use crate::{BUILTIN_BITMAP_BACKEND_ID, ops};
 

@@ -4,7 +4,8 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
 
-use app_core::{CanvasBitmap, Document};
+use app_core::Document;
+use raster::RgbaBitmap;
 use thiserror::Error;
 
 /// PNG export 時に発生するエラー。
@@ -24,7 +25,7 @@ pub enum ExportError {
 }
 
 /// ビットマップを PNG ファイルとして書き出す。
-fn write_png(bitmap: &CanvasBitmap, path: &Path) -> Result<(), ExportError> {
+fn write_png(bitmap: &RgbaBitmap, path: &Path) -> Result<(), ExportError> {
     let file = File::create(path)?;
     let writer = BufWriter::new(file);
     let mut encoder =
@@ -91,7 +92,7 @@ mod tests {
     /// write_png はゼロサイズのビットマップでもエラーにならない。
     #[test]
     fn write_png_handles_minimal_bitmap() {
-        let bitmap = CanvasBitmap {
+        let bitmap = RgbaBitmap {
             width: 1,
             height: 1,
             pixels: vec![255, 0, 0, 255],
