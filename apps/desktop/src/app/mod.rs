@@ -263,20 +263,20 @@ impl DesktopApp {
 
     /// GPU テクスチャをキャンバスの表示正本として使えるかどうかを返す。
     ///
-    /// `true` のとき: GPU リソースが揃っており、`canvas_layer_source_kind` が
+    /// `true` のとき: GPU リソースが揃っており、`canvas_surface_source_kind` が
     /// `Gpu` / `GpuComposite` のいずれかを返せる状態。
-    /// 現在はテストからのみ参照される (production コードは `canvas_layer_source_kind()` を直接使う)。
+    /// 現在はテストからのみ参照される (production コードは `canvas_surface_source_kind()` を直接使う)。
     #[cfg(test)]
     pub(crate) fn should_use_gpu_canvas_source(&self) -> bool {
-        self.canvas_layer_source_kind().is_some()
+        self.canvas_surface_source_kind().is_some()
     }
 
     /// アクティブパネルに対してどの GPU ソースを使うべきかを返す。
     ///
-    /// - 単一レイヤー: `Single` → `CanvasLayerSource::Gpu { layer_index: 0 }`
-    /// - 複数レイヤー: `Composite` → `CanvasLayerSource::GpuComposite`
+    /// - 単一レイヤー: `Single` → `CanvasSurfaceSource::Gpu { layer_index: 0 }`
+    /// - 複数レイヤー: `Composite` → `CanvasSurfaceSource::GpuComposite`
     /// - GPU 非対応: `None`
-    pub(crate) fn canvas_layer_source_kind(&self) -> Option<GpuCanvasSourceKind> {
+    pub(crate) fn canvas_surface_source_kind(&self) -> Option<GpuCanvasSourceKind> {
         let pool = &self.gpu.as_ref()?.pool;
         let koma = self.document.active_koma()?;
         let pid = koma.id.0.to_string();

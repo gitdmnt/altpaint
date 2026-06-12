@@ -141,13 +141,13 @@ fn layer_count_change_switches_gpu_source_kind() {
         let mut app = make_test_app();
         app.install_gpu_resources(device, queue);
         assert_eq!(
-            app.canvas_layer_source_kind(),
+            app.canvas_surface_source_kind(),
             Some(GpuCanvasSourceKind::Single)
         );
 
         app.execute_document_command(Command::AddRasterLayer);
         assert_eq!(
-            app.canvas_layer_source_kind(),
+            app.canvas_surface_source_kind(),
             Some(GpuCanvasSourceKind::Composite),
             "multi-layer should switch GPU source to Composite"
         );

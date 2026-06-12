@@ -23,7 +23,7 @@ use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::app::DesktopApp;
 use crate::wgpu_canvas::{
-    CanvasLayer, CanvasLayerSource, PresentFrame, TextureSource, UploadRegion, WgpuPresenter,
+    CanvasSurface, CanvasSurfaceSource, PresentFrame, TextureSource, UploadRegion, WgpuPresenter,
 };
 
 /// `winit` アプリケーションとして振る舞う実行時コンテナを表す。
@@ -313,7 +313,7 @@ impl ApplicationHandler for DesktopRuntime {
                     crate::app::GpuCanvasSourceKind,
                     u32,
                     u32,
-                )> = self.app.canvas_layer_source_kind().and_then(|kind| {
+                )> = self.app.canvas_surface_source_kind().and_then(|kind| {
                     let koma = self.app.document.active_koma()?;
                     let (w, h) = match kind {
                         crate::app::GpuCanvasSourceKind::Single => koma
@@ -336,11 +336,11 @@ impl ApplicationHandler for DesktopRuntime {
                 } else {
                     None
                 };
-                let canvas_layer = if let Some((ref panel_id, kind, w, h)) = gpu_source_spec {
-                    canvas_quad.map(|quad| CanvasLayer {
+                let canvas_surface = if let Some((ref panel_id, kind, w, h)) = gpu_source_spec {
+                    canvas_quad.map(|quad| CanvasSurface {
                         source: match kind {
                             crate::app::GpuCanvasSourceKind::Single => {
-                                CanvasLayerSource::Gpu {
+                                CanvasSurfaceSource::Gpu {
                                     panel_id: panel_id.as_str(),
                                     layer_index: 0,
                                     width: w,
@@ -348,7 +348,7 @@ impl ApplicationHandler for DesktopRuntime {
                                 }
                             }
                             crate::app::GpuCanvasSourceKind::Composite => {
-                                CanvasLayerSource::GpuComposite {
+                                CanvasSurfaceSource::GpuComposite {
                                     panel_id: panel_id.as_str(),
                                     width: w,
                                     height: h,
@@ -360,8 +360,8 @@ impl ApplicationHandler for DesktopRuntime {
                     })
                 } else {
                     cpu_canvas_data.as_ref().and_then(|(w, h, pixels)| {
-                        canvas_quad.map(|quad| CanvasLayer {
-                            source: CanvasLayerSource::Cpu(TextureSource {
+                        canvas_quad.map(|quad| CanvasSurface {
+                            source: CanvasSurfaceSource::Cpu(TextureSource {
                                 width: *w,
                                 height: *h,
                                 pixels: pixels.as_slice(),
@@ -452,7 +452,7 @@ impl ApplicationHandler for DesktopRuntime {
                 let timings = match presenter.render(
                     PresentFrame {
                         background_quads: &background_solid_quads,
-                        canvas_layer,
+                        canvas_surface,
                         overlay_solid_quads: &overlay_solid_quads,
                         overlay_circle_quads: &overlay_circle_quads,
                         overlay_line_quads: &overlay_line_quads,
