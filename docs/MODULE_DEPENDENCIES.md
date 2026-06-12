@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、**2026-06-12 時点の実装コードを正本として**、workspace 内のクレートと主要モジュールの依存関係を整理するための文書である。
+この文書は、**2026-06-13 時点 (ADR 018 B3 完了) の実装コードを正本として**、workspace 内のクレートと主要モジュールの依存関係を整理するための文書である。
 
 主に次を明確にする。
 
@@ -222,6 +222,7 @@ graph TD
 - `FillPipeline`（flood fill / lasso fill。旧 `GpuFillDispatch`）
 - `CompositePipeline`（レイヤー合成。旧 `GpuLayerCompositor`）
 - `src/shaders/` の 7 WGSL compute shader（書込み専用だった `GpuPenTipCache` と孤立 brush_stamp.wgsl は ADR 018 B0 で削除）
+- `pipeline.rs`（build_pipeline の 3 重複 + alpha 展開 2 重複を共通化、dispatcher 全コンストラクタを共有 context 受け取りに統一。矩形は半開矩形型 1 つへ統一し公開 API から無名タプルを排除 — BL-039 / BL-040）
 
 依存の特徴:
 
@@ -267,6 +268,7 @@ graph TD
 - `PanelEventRequest`
 - `HandlerEffects`（旧 `HandlerResult`。副作用バンドル）
 - `StatePatch` / `StatePatchOp`
+- `apply_patches`（`StatePatch` 適用の唯一の実装。BL-035 で host / runtime の二重実装を解消）
 - `RequestDescriptor`（旧 `CommandDescriptor`）
 - `Diagnostic`
 - `names`: host↔panel 間 wire 名（command / service 名）の feature 別定数モジュール
@@ -310,7 +312,8 @@ graph TD
 - `PanelWasmHostError`（旧 `PluginHostError`）
 - host import の定義（state / host_get / event_get / command / diagnostic 系）
 - DOM mutation host functions（`dom_api.rs`: Blitz `DocumentMutator` を Wasm に公開 — Phase 10）
-- Wasm memory 読み書き
+- host import の登録は関心別 register モジュール（`state_api` / `host_state_api` / `request_api` / `dom_api`）に分割（BL-038）
+- Wasm memory 読み書き（`memory.rs` の共通ヘルパ。文字列コピー host fn の 4 重複と read_utf8/current_memory 二重定義を解消 — BL-037）
 - `panel_init` / `panel_handle_event` / `panel_sync_host` / `panel_handle_keyboard` の橋渡し
 
 重要事項:
