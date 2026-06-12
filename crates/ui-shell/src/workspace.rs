@@ -63,16 +63,7 @@ impl PanelPresentation {
             return false;
         };
 
-        let size = self
-            .rendered_panel_rects
-            .get(panel_id)
-            .copied()
-            .map(|rect| WorkspacePanelSize {
-                width: rect.width,
-                height: rect.height,
-            })
-            .or(entry.size)
-            .unwrap_or_default();
+        let size = entry.size.unwrap_or_default();
         let next_position = WorkspacePanelPosition {
             x: x.min(viewport_width.saturating_sub(size.width.max(1))),
             y: y.min(viewport_height.saturating_sub(size.height.max(1))),
@@ -102,10 +93,6 @@ impl PanelPresentation {
     ///
     /// 値を生成できない場合は `None` を返します。
     pub fn panel_rect(&self, panel_id: &str) -> Option<render_types::PixelRect> {
-        if let Some(rect) = self.rendered_panel_rects.get(panel_id) {
-            return Some(*rect);
-        }
-
         let entry = self
             .workspace_layout
             .panels
@@ -188,18 +175,13 @@ impl PanelPresentation {
     }
 
     /// `panel_rect` の viewport 指定版。anchor (TopRight/BottomRight/BottomLeft) で
-    /// `usize::MAX` を使うと座標が画面外に飛ぶため、HTML パネルなど描画前に
-    /// `rendered_panel_rects` を持たないパネルではこちらを使う。
+    /// `usize::MAX` を使うと座標が画面外に飛ぶため、HTML パネルではこちらを使う。
     pub fn panel_rect_in_viewport(
         &self,
         panel_id: &str,
         viewport_width: usize,
         viewport_height: usize,
     ) -> Option<render_types::PixelRect> {
-        if let Some(rect) = self.rendered_panel_rects.get(panel_id) {
-            return Some(*rect);
-        }
-
         let entry = self
             .workspace_layout
             .panels

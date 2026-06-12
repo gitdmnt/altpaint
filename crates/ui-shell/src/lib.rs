@@ -23,8 +23,6 @@ pub use panel_api::ResizeEdge;
 pub struct PanelPresentation {
     /// panel 並び順と表示状態。
     workspace_layout: WorkspaceLayout,
-    /// 直近描画で使った実効パネル矩形。
-    rendered_panel_rects: BTreeMap<String, render_types::PixelRect>,
     /// 現在 focus 中の node。
     focused_target: Option<FocusTarget>,
     /// HTML パネル (GPU 直描画) の hit 情報。`update_html_panel_hits` で毎フレーム更新する。
@@ -56,7 +54,6 @@ impl PanelPresentation {
     pub fn new() -> Self {
         Self {
             workspace_layout: WorkspaceLayout::default(),
-            rendered_panel_rects: BTreeMap::new(),
             focused_target: None,
             html_panel_hits: BTreeMap::new(),
             html_panel_move_handles: BTreeMap::new(),
@@ -77,11 +74,6 @@ impl PanelPresentation {
     /// 指定 panel_id の HTML パネル move handle を削除する。
     pub fn remove_html_panel_move_handle(&mut self, panel_id: &str) {
         self.html_panel_move_handles.remove(panel_id);
-    }
-
-    /// HTML パネル move handle を全削除する。
-    pub fn clear_html_panel_move_handles(&mut self) {
-        self.html_panel_move_handles.clear();
     }
 
     /// window 座標の点にある HTML パネル move handle を検索し、panel_id を返す。
@@ -120,11 +112,6 @@ impl PanelPresentation {
         self.html_panel_hits.remove(panel_id);
     }
 
-    /// HTML パネル hit 情報を全削除する。
-    pub fn clear_html_panel_hits(&mut self) {
-        self.html_panel_hits.clear();
-    }
-
     /// window 座標の点が HTML パネル領域 (body 部分) のいずれかに入っていれば
     /// `(panel_id, パネル原点基準のローカル座標)` を返す。chrome 領域は除く（move handle 経路用）。
     /// `:hover` / `<details>` 開閉などの動的レイアウト追従のための入力転送に使う。
@@ -156,11 +143,6 @@ impl PanelPresentation {
     /// 指定 panel_id の HTML パネル full rect を削除する。
     pub fn remove_html_panel_full_rect(&mut self, panel_id: &str) {
         self.html_panel_full_rects.remove(panel_id);
-    }
-
-    /// HTML パネル full rect を全削除する。
-    pub fn clear_html_panel_full_rects(&mut self) {
-        self.html_panel_full_rects.clear();
     }
 
     /// Phase 11: window 座標の点のリサイズハンドル hit を検索し、
