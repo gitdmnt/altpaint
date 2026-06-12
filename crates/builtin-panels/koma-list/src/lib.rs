@@ -1,4 +1,4 @@
-//! `builtin.panel-list` パネル (Phase 10 DOM mutation 版)。
+//! `builtin.koma-list` パネル (Phase 10 DOM mutation 版)。
 
 use plugin_sdk::{
     dom::{html_escape, query_selector, set_inner_html},
@@ -31,7 +31,7 @@ fn sync_host() {
         set_inner_html(node, &html_escape(&host::document::active_koma_bounds()));
     }
 
-    if let Some(list) = query_selector("#panel-list") {
+    if let Some(list) = query_selector("#koma-list") {
         let komas_json = host::document::komas_json();
         let active_index = host::document::active_koma_index();
         set_inner_html(list, &render_panel_list(&komas_json, active_index));

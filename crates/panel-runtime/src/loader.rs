@@ -41,8 +41,8 @@ const BUILTIN_PANELS: &[BuiltinPanelDef] = &[
         wasm_filename: "builtin_panel_job_progress.wasm",
     },
     BuiltinPanelDef {
-        directory_name: "panel-list",
-        wasm_filename: "builtin_panel_panel_list.wasm",
+        directory_name: "koma-list",
+        wasm_filename: "builtin_panel_koma_list.wasm",
     },
     BuiltinPanelDef {
         directory_name: "tool-palette",

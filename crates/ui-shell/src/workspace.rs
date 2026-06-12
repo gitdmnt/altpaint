@@ -9,7 +9,7 @@ use super::*;
 use panel_api::PanelMoveDirection;
 
 pub(super) const WORKSPACE_PANEL_ID: &str = "builtin.workspace-layout";
-const HIDDEN_BY_DEFAULT_PANEL_IDS: &[&str] = &["builtin.panel-list"];
+const HIDDEN_BY_DEFAULT_PANEL_IDS: &[&str] = &["builtin.koma-list"];
 
 /// Phase 11: `size` は `None` で挿入し、bootstrap 経路で panel.meta.json の
 /// `default_size` を流し込む。`WorkspacePanelSize::default()` には頼らない。

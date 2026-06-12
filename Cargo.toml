@@ -2,7 +2,7 @@
 members = [
   "crates/builtin-panels/view-controls",
   "crates/builtin-panels/job-progress",
-  "crates/builtin-panels/panel-list",
+  "crates/builtin-panels/koma-list",
   "crates/builtin-panels/snapshot-panel",
   "crates/builtin-panels/workspace-presets",
   "crates/builtin-panels/app-actions",

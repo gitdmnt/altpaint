@@ -98,7 +98,7 @@ mod tests {
 
     #[test]
     fn render_panel_list_emits_value_one_for_hidden_panel() {
-        let json = r#"[{"id":"builtin.panel-list","title":"ページ","visible":false}]"#;
+        let json = r#"[{"id":"builtin.koma-list","title":"ページ","visible":false}]"#;
         let out = render_panel_list(json);
         assert!(
             out.contains(r#""value":1"#),

@@ -1,5 +1,5 @@
 [package]
-name = "builtin-panel-panel-list"
+name = "builtin-panel-koma-list"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

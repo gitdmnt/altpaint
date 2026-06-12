@@ -230,7 +230,7 @@ fn builtin_panels_are_registered() {
         "builtin.pen-settings",
         "builtin.color-palette",
         "builtin.view-controls",
-        "builtin.panel-list",
+        "builtin.koma-list",
         "builtin.snapshot-panel",
         "builtin.text-flow",
         "builtin.job-progress",
