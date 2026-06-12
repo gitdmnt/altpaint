@@ -61,12 +61,12 @@
 - `crates/builtin-panels/workspace-presets`
 - `crates/builtin-panels/tool-palette`
 - `crates/builtin-panels/view-controls`
-- `crates/builtin-panels/panel-list`
-- `crates/builtin-panels/layers-panel`
+- `crates/builtin-panels/koma-list`
+- `crates/builtin-panels/layers`
 - `crates/builtin-panels/color-palette`
-- `crates/builtin-panels/pen-settings`
+- `crates/builtin-panels/tool-settings`
 - `crates/builtin-panels/job-progress`
-- `crates/builtin-panels/snapshot-panel`
+- `crates/builtin-panels/snapshots`
 - `crates/builtin-panels/text-flow`
 - `crates/builtin-panels/workspace-layout`（Phase 12 追加）
 

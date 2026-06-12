@@ -1,12 +1,12 @@
-# Pen Settings
+# Tool Settings
 
 ## 概要
 
-Pen Settings は、現在アクティブなツールが公開する設定項目を表示する最小パネルです。
+Tool Settings は、現在アクティブなツールが公開する設定項目を表示する最小パネルです。
 
-- panel id: builtin.pen-settings
-- title: Pen
-- 実装: plugins/pen-settings/
+- panel id: builtin.tool-settings
+- title: ツール設定
+- 実装: crates/builtin-panels/tool-settings/
 
 ## 目的
 

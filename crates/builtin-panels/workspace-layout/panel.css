@@ -24,21 +24,21 @@
   color: #8aa2c0;
   text-transform: uppercase;
 }
-.panel-list {
+.workspace-panels {
   list-style: none;
   padding: 0;
   margin: 6px 0;
   border: 1px solid #2a3140;
   border-radius: 4px;
 }
-.panel-list li {
+.workspace-panels li {
   padding: 6px 8px;
   border-bottom: 1px solid #2a3140;
 }
-.panel-list li:last-child {
+.workspace-panels li:last-child {
   border-bottom: none;
 }
-.panel-list label {
+.workspace-panels label {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -46,11 +46,11 @@
   margin: 0;
   cursor: pointer;
 }
-.panel-list input[type="checkbox"] {
+.workspace-panels input[type="checkbox"] {
   width: 14px;
   height: 14px;
   margin: 0;
 }
-.panel-list span {
+.workspace-panels span {
   flex: 1;
 }

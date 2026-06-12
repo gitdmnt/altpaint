@@ -51,7 +51,7 @@ fn init() {}
 
 #[plugin_sdk::panel_sync_host]
 fn sync_host() {
-    if let Some(list) = query_selector("#workspace-panel-list") {
+    if let Some(list) = query_selector("#workspace-panels") {
         let json = host::workspace::panels_json();
         set_inner_html(list, &render_panel_list(&json));
     }

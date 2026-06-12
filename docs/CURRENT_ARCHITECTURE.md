@@ -315,8 +315,8 @@ panel 作者向け authoring surface である。
 workspace member のパネル crate（12 個）:
 
 - `app-actions` / `workspace-presets` / `tool-palette` / `view-controls`
-- `panel-list` / `layers-panel` / `color-palette` / `pen-settings`
-- `job-progress` / `snapshot-panel` / `text-flow` / `workspace-layout`（Phase 12 追加）
+- `koma-list` / `layers` / `color-palette` / `tool-settings`
+- `job-progress` / `snapshots` / `text-flow` / `workspace-layout`（Phase 12 追加）
 
 補足:
 

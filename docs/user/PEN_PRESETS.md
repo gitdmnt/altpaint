@@ -16,7 +16,7 @@
 - 起動時に既定ペンディレクトリを読み込む
 - `builtin.tool-palette` から `Reload Pens` を押して再読込できる
 - `builtin.tool-palette` から前/次のプリセットへ切り替えられる
-- `builtin.pen-settings` から現在のペン幅を変更できる
+- `builtin.tool-settings` から現在のペン幅を変更できる
 - `Pen` ツールは可変幅ストロークを描ける
 - `storage` に `AltPaintPen` 正規化 IR と parse/export module がある
 - Photoshop `ABR` sampled brush の最小 importer がある

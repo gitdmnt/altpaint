@@ -28,9 +28,9 @@
 - `plugins/app-actions/`
 - `plugins/tool-palette/`
 - `plugins/color-palette/`
-- `plugins/layers-panel/`
+- `plugins/layers/`
 - `plugins/job-progress/`
-- `plugins/snapshot-panel/`
+- `plugins/snapshots/`
 - `tools/experimental/phase6-sample/`
 
 ## なぜ `plugins/` に置くのか

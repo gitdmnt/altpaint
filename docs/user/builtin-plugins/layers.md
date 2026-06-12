@@ -4,9 +4,9 @@
 
 Layers Panel は、現在のドキュメント概要とアクティブレイヤー状態を表示し、最小のレイヤー操作も提供するビルトインパネルです。
 
-- panel id: builtin.layers-panel
-- title: Layers
-- 実装: plugins/layers-panel/
+- panel id: builtin.layers
+- title: レイヤー
+- 実装: crates/builtin-panels/layers/
 
 ## 目的
 

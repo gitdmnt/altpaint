@@ -1,12 +1,12 @@
-# Snapshot Panel
+# Snapshots
 
 ## 概要
 
-Snapshot Panel は、将来のスナップショット機能に向けた読み取り専用のビルトインパネルです。
+Snapshots は、将来のスナップショット機能に向けた読み取り専用のビルトインパネルです。
 
-- panel id: builtin.snapshot-panel
+- panel id: builtin.snapshots
 - title: Snapshots
-- 実装: plugins/snapshot-panel/
+- 実装: crates/builtin-panels/snapshots/
 
 ## 目的
 

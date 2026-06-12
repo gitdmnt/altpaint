@@ -17,7 +17,7 @@
 > - ~~[architecture] 描画レイヤーの物理的分離~~ → L3/L4 分離・LayerGroupDirtyPlan 完了
 > - ~~[improvement] イベント駆動パネル再描画~~ → mark_dirty API 完了
 > - ~~[improvement] パネル枠線・内外表示~~ → compose_active_panel_border 完了
-> - ~~[improvement] pen-settings スライダー横並び・サイズ表示バグ~~ → 完了
+> - ~~[improvement] tool-settings (旧 pen-settings) スライダー横並び・サイズ表示バグ~~ → 完了
 
 ### 実装推奨順序
 
@@ -137,7 +137,7 @@
 - **優先度**: 低
 - **依存**: なし
 - **目的**: ファイル管理・パネル管理・ワークスペース管理などをパネルではなくツールバープラグインとして実装する
-- **背景**: 現状これらの機能は `app-actions` / `workspace-presets` / `panel-list` パネルに混在している
+- **背景**: 現状これらの機能は `app-actions` / `workspace-presets` / `koma-list` パネルに混在している
 - **実装フェーズ**:
   - フェーズA（基盤）: ツールバー種別（`plugin_type: "toolbar"`）を `.altp-panel` DSL に追加し、`ui-shell` にツールバーサーフェスレンダリングとレイアウトを追加する。`panel-runtime` にツールバープラグインの探索・登録経路を追加する
   - フェーズB（移行）: `apps/desktop` の file / panel-management / workspace-management 機能をツールバープラグインへ移行する。フェーズAの動作確認後に着手する
@@ -171,10 +171,10 @@
   - `notify` クレートでプラグインディレクトリを監視する（OS依存のファイル監視は `desktop-support` が担当）
   - ファイル変更イベントで `build-ui-wasm.sh` をバックグラウンドサブプロセスとして実行する（`cfg(debug_assertions)` または feature flag でリリースビルドから除外する）
   - `PanelRuntime` に単一プラグインの再ロード API を追加する（`reload_plugin(name)`）
-  - `panel-list` プラグインに手動リロードボタンを追加する（自動 + 手動の両対応）
+  - `koma-list` プラグインに手動リロードボタンを追加する（自動 + 手動の両対応）
 - **リスク**: サブプロセス実行はプラットフォーム差異が出やすい。初期実装は手動リロードボタンのみでもよい
-- **完了条件**: `panel-list` の手動リロードボタンでプラグインが再ロードされ、アプリ再起動なしに変更が反映される
-- **主な変更箇所**: `crates/panel-runtime/`, `crates/desktop-support/`, `plugins/panel-list/`
+- **完了条件**: `koma-list` の手動リロードボタンでプラグインが再ロードされ、アプリ再起動なしに変更が反映される
+- **主な変更箇所**: `crates/panel-runtime/`, `crates/desktop-support/`, `crates/builtin-panels/koma-list/`
 
 ### [improvement] プラグインUI改善（各パネル）
 
@@ -200,7 +200,7 @@
 - カラーホイール自体を大きくする
 - HSVとカラーコードを並列表示し、クリックでコピーできるようにする
 
-#### 筆設定（`plugins/pen-settings`）
+#### ツール設定（`crates/builtin-panels/tool-settings`）
 
 - ~~「現在のツール」項目にはペン名とストロークプレビューのみ表示し、それ以外は削除~~ — **完了 (2026-03-15)**
 - ~~スライダーと数値入力欄を横並びにする~~ — **完了 (2026-03-15)**
@@ -217,7 +217,7 @@
 - キャンバスプレビューにPowerPoint風の変形ハンドルを付けて操作できるUIに刷新
 - 前コマ / 次コマ / 中央表示を別プラグインとして分離する
 
-#### レイヤー（`plugins/layers-panel`）
+#### レイヤー（`crates/builtin-panels/layers`）
 
 - ページ / パネル番号はパネルタイトル部分に表示する
 - 追加/削除・マスク切り替え・合成モード切り替えを同じ行に並列する

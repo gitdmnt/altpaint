@@ -7,10 +7,10 @@
 - [app-actions.md](app-actions.md)
 - [tool-palette.md](tool-palette.md)
 - [color-palette.md](color-palette.md)
-- [pen-settings.md](pen-settings.md)
-- [layers-panel.md](layers-panel.md)
+- [tool-settings.md](tool-settings.md)
+- [layers.md](layers.md)
 - [job-progress.md](job-progress.md)
-- [snapshot-panel.md](snapshot-panel.md)
+- [snapshots.md](snapshots.md)
 - [keyboard-shortcut-config.md](keyboard-shortcut-config.md)
 
 いずれの文書も、2026-03-09 時点の最小実装を前提にしています。

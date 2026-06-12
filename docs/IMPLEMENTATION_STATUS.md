@@ -85,12 +85,12 @@
 - `crates/builtin-panels/workspace-presets`
 - `crates/builtin-panels/tool-palette`
 - `crates/builtin-panels/view-controls`
-- `crates/builtin-panels/panel-list`
-- `crates/builtin-panels/layers-panel`
+- `crates/builtin-panels/koma-list`
+- `crates/builtin-panels/layers`
 - `crates/builtin-panels/color-palette`
-- `crates/builtin-panels/pen-settings`
+- `crates/builtin-panels/tool-settings`
 - `crates/builtin-panels/job-progress`
-- `crates/builtin-panels/snapshot-panel`
+- `crates/builtin-panels/snapshots`
 - `crates/builtin-panels/text-flow`
 - `crates/builtin-panels/workspace-layout` (Phase 12 で追加、ADR 014)
 
@@ -222,12 +222,12 @@
 - `builtin.workspace-presets`
 - `builtin.tool-palette`
 - `builtin.view-controls`
-- `builtin.panel-list`
-- `builtin.layers-panel`
+- `builtin.koma-list`
+- `builtin.layers`
 - `builtin.color-palette`
-- `builtin.pen-settings`
+- `builtin.tool-settings`
 - `builtin.job-progress`
-- `builtin.snapshot-panel`
+- `builtin.snapshots`
 
 補足:
 
@@ -239,8 +239,8 @@
 
 - `storage::tool_catalog` が `tools/` から tool 定義を読む
 - `Document` が active tool と設定を保持する
-- `tool-palette` と `pen-settings` が host snapshot を読む
-- `app-actions` / `workspace-presets` / `view-controls` / `panel-list` が host service request を発行する
+- `tool-palette` と `tool-settings` が host snapshot を読む
+- `app-actions` / `workspace-presets` / `view-controls` / `koma-list` が host service request を発行する
 - paint plugin 実行は `canvas::CanvasRuntime` が担当する
 - `storage` が外部ペン preset を読み、`AltPaintPen` 正規化 format を扱う
 
