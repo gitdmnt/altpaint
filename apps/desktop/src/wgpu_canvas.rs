@@ -11,7 +11,7 @@
 use anyhow::{Context, Result};
 use desktop_support::APP_BACKGROUND;
 use desktop_support::PresentTimings;
-use crate::app::CanvasFrame;
+use crate::app::CpuCanvasSnapshot;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -30,8 +30,8 @@ pub struct TextureSource<'a> {
     pub pixels: &'a [u8],
 }
 
-impl<'a> From<&'a CanvasFrame> for TextureSource<'a> {
-    fn from(frame: &'a CanvasFrame) -> Self {
+impl<'a> From<&'a CpuCanvasSnapshot> for TextureSource<'a> {
+    fn from(frame: &'a CpuCanvasSnapshot) -> Self {
         Self {
             width: frame.width as u32,
             height: frame.height as u32,

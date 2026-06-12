@@ -327,11 +327,11 @@ impl ApplicationHandler for DesktopRuntime {
                     Some((koma.id.0.to_string(), kind, w, h))
                 });
 
-                // CPU canvas frame は &mut self.app.status_bar と借用が衝突するため、
+                // CPU canvas snapshot は &mut self.app.status_bar と借用が衝突するため、
                 // pixels/サイズを先に Vec へコピーしてから後段で TextureSource を組み立てる。
                 let cpu_canvas_data: Option<(u32, u32, Vec<u8>)> = if gpu_source_spec.is_none() {
                     self.app
-                        .canvas_frame()
+                        .cpu_canvas_snapshot()
                         .map(|b| (b.width as u32, b.height as u32, b.pixels.clone()))
                 } else {
                     None

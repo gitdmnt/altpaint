@@ -83,7 +83,7 @@ impl DesktopApp {
             self.invalidation.canvas_transform_update = false;
             self.invalidation.needs_status_refresh = false;
             self.invalidation.needs_full_present_rebuild = false;
-            let bitmap = self.canvas_frame.as_ref();
+            let bitmap = self.cpu_canvas_snapshot.as_ref();
             let window_rect = canvas_geometry::PixelRect {
                 x: 0,
                 y: 0,

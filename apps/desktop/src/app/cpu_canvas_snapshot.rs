@@ -1,26 +1,26 @@
-//! デスクトップアプリ内で保持する CPU 側のキャンバスフレーム表現。
+//! デスクトップアプリ内で保持する CPU 側のキャンバススナップショット表現。
 //!
 //! Phase 9F で `render::RenderFrame` / `render::RenderContext` を撤去した際に
 //! `apps/desktop` 内へ移管した最小型。GPU キャンバスが標準経路だが、
-//! `canvas_frame` の (width, height) は依然 viewport / 表示幾何 (CanvasViewGeometry) 計算で参照される。
+//! `cpu_canvas_snapshot` の (width, height) は依然 viewport / 表示幾何 (CanvasViewGeometry) 計算で参照される。
 
 use app_core::Document;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CanvasFrame {
+pub(crate) struct CpuCanvasSnapshot {
     pub width: usize,
     pub height: usize,
     pub pixels: Vec<u8>,
 }
 
-/// アクティブページサイズの空フレームへアクティブパネルのビットマップを貼り付けて
+/// アクティブページサイズの空バッファへアクティブコマの合成キャッシュを貼り付けて
 /// CPU 側キャンバススナップショットを構築する。
-pub(crate) fn build_canvas_frame(document: &Document) -> CanvasFrame {
+pub(crate) fn build_cpu_canvas_snapshot(document: &Document) -> CpuCanvasSnapshot {
     let page = document.active_page().unwrap_or(&document.work.pages[0]);
     let koma = document.active_koma().unwrap_or(&page.komas[0]);
     let width = page.width.max(1);
     let height = page.height.max(1);
-    let mut frame = CanvasFrame {
+    let mut frame = CpuCanvasSnapshot {
         width,
         height,
         pixels: vec![255; width * height * 4],

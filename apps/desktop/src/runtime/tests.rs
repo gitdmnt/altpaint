@@ -6,7 +6,7 @@ use winit::event::TouchPhase;
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 
 use crate::app::DesktopApp;
-use crate::app::canvas_frame::build_canvas_frame;
+use crate::app::cpu_canvas_snapshot::build_cpu_canvas_snapshot;
 
 use super::DesktopRuntime;
 use super::keyboard::normalized_key_name;
@@ -67,7 +67,7 @@ fn touch_started_and_moved_draws_black_pixels() {
     assert!(runtime.handle_touch_phase(1, TouchPhase::Moved, center_x + 20, center_y, None));
     let _ = runtime.handle_touch_phase(1, TouchPhase::Ended, center_x + 20, center_y, None);
 
-    let frame = build_canvas_frame(&runtime.app.document);
+    let frame = build_cpu_canvas_snapshot(&runtime.app.document);
     assert!(
         frame
             .pixels
@@ -103,7 +103,7 @@ fn raw_mouse_motion_draws_between_cursor_events() {
     assert!(runtime.handle_raw_mouse_motion(40.0, 0.0));
     let _ = runtime.handle_mouse_button(winit::event::ElementState::Released);
 
-    let frame = build_canvas_frame(&runtime.app.document);
+    let frame = build_cpu_canvas_snapshot(&runtime.app.document);
     assert!(
         frame
             .pixels

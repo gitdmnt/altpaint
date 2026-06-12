@@ -1,10 +1,10 @@
-//! `DesktopApp` のキャンバスフレーム状態 (寸法・ブラシプレビュー・overlay 構築) を集約する。
+//! `DesktopApp` のキャンバス表示状態 (寸法・ブラシプレビュー・overlay 構築) を集約する。
 //!
 //! present 系 (`present.rs` / `present_state.rs`) と入力系 (`input.rs`) の両方から参照される
 //! 読み取り中心の補助メソッド群。
 
 use super::DesktopApp;
-use super::canvas_frame::build_canvas_frame;
+use super::cpu_canvas_snapshot::build_cpu_canvas_snapshot;
 use canvas_geometry::{KomaNavigatorEntry, KomaNavigatorOverlay};
 
 impl DesktopApp {
@@ -19,8 +19,8 @@ impl DesktopApp {
         }
     }
 
-    pub(super) fn refresh_canvas_frame(&mut self) {
-        self.canvas_frame = Some(build_canvas_frame(&self.document));
+    pub(super) fn refresh_cpu_canvas_snapshot(&mut self) {
+        self.cpu_canvas_snapshot = Some(build_cpu_canvas_snapshot(&self.document));
     }
 
     pub(super) fn active_koma_mask_overlay(&self) -> Option<app_core::KomaBounds> {
@@ -54,7 +54,7 @@ impl DesktopApp {
     }
 
     pub(super) fn canvas_dimensions(&self) -> (usize, usize) {
-        self.canvas_frame
+        self.cpu_canvas_snapshot
             .as_ref()
             .map(|bitmap| (bitmap.width, bitmap.height))
             .unwrap_or((1, 1))

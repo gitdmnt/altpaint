@@ -10,7 +10,7 @@ use desktop_support::{FrameProfiler, StageStats, ValueStats};
 
 use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::DesktopApp;
-use crate::app::canvas_frame::build_canvas_frame;
+use crate::app::cpu_canvas_snapshot::build_cpu_canvas_snapshot;
 
 #[test]
 fn canvas_position_maps_view_center_into_bitmap_bounds() {
@@ -45,7 +45,7 @@ fn eraser_drag_clears_existing_pixels() {
     app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
     app.handle_canvas_pointer("up", WindowPoint::new(center_x, center_y), 1.0);
 
-    let frame = build_canvas_frame(&app.document);
+    let frame = build_cpu_canvas_snapshot(&app.document);
     let bitmap_x = frame.width / 2;
     let bitmap_y = frame.height / 2;
     let index = (bitmap_y * frame.width + bitmap_x) * 4;
@@ -65,7 +65,7 @@ fn canvas_drag_draws_black_pixels() {
     app.handle_canvas_pointer("drag", WindowPoint::new(center_x + 20, center_y), 1.0);
     app.handle_canvas_pointer("up", WindowPoint::new(center_x + 20, center_y), 1.0);
 
-    let frame = build_canvas_frame(&app.document);
+    let frame = build_cpu_canvas_snapshot(&app.document);
     assert!(
         frame
             .pixels
@@ -89,7 +89,7 @@ fn canvas_drag_draws_using_selected_color() {
     app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
     app.handle_canvas_pointer("up", WindowPoint::new(center_x, center_y), 1.0);
 
-    let frame = build_canvas_frame(&app.document);
+    let frame = build_cpu_canvas_snapshot(&app.document);
     assert!(
         frame
             .pixels
@@ -1140,7 +1140,7 @@ fn lasso_preview_drag_marks_temp_overlay_dirty() {
 fn toggle_layer_visibility_sets_canvas_dirty_rect_not_full_rebuild() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
     let mut profiler = FrameProfiler::new();
-    // canvas_frame を初期化しておく
+    // cpu_canvas_snapshot を初期化しておく
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     // 初期化後のフラグをリセット
     app.invalidation.needs_full_present_rebuild = false;

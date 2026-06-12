@@ -5,7 +5,7 @@
 
 mod background_tasks;
 mod bootstrap;
-pub(crate) mod canvas_frame;
+pub(crate) mod cpu_canvas_snapshot;
 mod command_router;
 pub(crate) mod cursor;
 mod input;
@@ -32,7 +32,7 @@ use desktop_support::{
 use panel_runtime::PanelRuntime;
 use panel_workspace::PanelWorkspace;
 
-pub(crate) use self::canvas_frame::CanvasFrame;
+pub(crate) use self::cpu_canvas_snapshot::CpuCanvasSnapshot;
 use self::io_state::DesktopIoState;
 #[cfg(test)]
 pub(crate) use self::panel_dispatch::PanelDragState;
@@ -85,7 +85,7 @@ pub(crate) struct DesktopApp {
     paint_engine: paint_engine::PaintEngine,
     canvas_input: CanvasInputState,
     pub(crate) layout: Option<DesktopLayout>,
-    canvas_frame: Option<CanvasFrame>,
+    cpu_canvas_snapshot: Option<CpuCanvasSnapshot>,
     /// Phase 9E-4: ステータスバー (HtmlPanelView GPU 描画)。
     pub(crate) status_bar: crate::frame::status_panel::StatusBar,
     /// 次フレームで消化される提示無効化状態 (保留 dirty rect・再構築フラグ)。
@@ -150,7 +150,7 @@ impl DesktopApp {
             paint_engine: paint_engine::PaintEngine::default(),
             canvas_input: CanvasInputState::default(),
             layout: None,
-            canvas_frame: None,
+            cpu_canvas_snapshot: None,
             status_bar: crate::frame::status_panel::StatusBar::new(),
             invalidation: present_state::PresentInvalidation::at_startup(),
             cached_canvas_view_geometry: None,
@@ -162,7 +162,7 @@ impl DesktopApp {
             background_jobs: Vec::new(),
             gpu: None,
         };
-        app.refresh_canvas_frame();
+        app.refresh_cpu_canvas_snapshot();
         app.ensure_workspace_presets_file(&app.io_state.workspace_preset_path);
         app.ensure_canvas_size_presets_file();
         app.refresh_new_document_size_presets();

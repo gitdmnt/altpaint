@@ -240,7 +240,7 @@ impl DesktopApp {
         let Some(layout) = self.layout.as_ref() else {
             return (Vec::new(), Vec::new(), Vec::new());
         };
-        let bitmap = self.canvas_frame.as_ref();
+        let bitmap = self.cpu_canvas_snapshot.as_ref();
         let canvas_plan = canvas_geometry::CanvasPlan {
             host_rect: layout.canvas_host_rect,
             source_width: bitmap.map_or(1, |b| b.width),
@@ -273,7 +273,7 @@ impl DesktopApp {
     /// 入力が変わらない限りキャッシュした結果を再利用する。
     pub(crate) fn canvas_view_geometry(&mut self) -> Option<canvas_geometry::CanvasViewGeometry> {
         let layout = self.layout.as_ref()?;
-        let bitmap = self.canvas_frame()?;
+        let bitmap = self.cpu_canvas_snapshot()?;
         let viewport = canvas_geometry::PixelRect {
             x: layout.canvas_host_rect.x,
             y: layout.canvas_host_rect.y,
@@ -303,7 +303,7 @@ impl DesktopApp {
         geometry
     }
 
-    pub(crate) fn canvas_frame(&self) -> Option<&super::canvas_frame::CanvasFrame> {
-        self.canvas_frame.as_ref()
+    pub(crate) fn cpu_canvas_snapshot(&self) -> Option<&super::cpu_canvas_snapshot::CpuCanvasSnapshot> {
+        self.cpu_canvas_snapshot.as_ref()
     }
 }
