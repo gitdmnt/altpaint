@@ -54,7 +54,8 @@ impl DesktopApp {
         true
     }
 
-    #[allow(dead_code)]
+    /// テスト専用: 筆圧 1.0 固定の押下ショートカット。
+    #[cfg(test)]
     pub(crate) fn handle_pointer_pressed(&mut self, x: i32, y: i32) -> bool {
         self.handle_pointer_pressed_with_pressure(x, y, 1.0)
     }
@@ -81,7 +82,8 @@ impl DesktopApp {
         false
     }
 
-    #[allow(dead_code)]
+    /// テスト専用: 筆圧 1.0 固定の解放ショートカット。
+    #[cfg(test)]
     pub(crate) fn handle_pointer_released(&mut self, x: i32, y: i32) -> bool {
         self.handle_pointer_released_with_pressure(x, y, 1.0)
     }

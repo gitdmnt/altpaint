@@ -954,7 +954,6 @@ fn profile_view_perf_case(
 /// Phase 9F 以降、HTML パネル hit-test (`html_panel_hit_at`) で (panel_id, node_id) を
 /// 解決する。slider / color-wheel 等の細かいサブ領域分割は DSL surface 経路と一緒に
 /// 撤去されたため、ここでは hit する全ピクセルを stride サンプリングで返す。
-#[allow(dead_code)]
 fn control_points_from_surface(
     app: &DesktopApp,
     target_panel_id: &str,

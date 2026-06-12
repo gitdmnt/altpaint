@@ -127,19 +127,6 @@ impl DesktopApp {
         )
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn new_with_dialogs(
-        project_path: PathBuf,
-        dialogs: Box<dyn DesktopDialogs>,
-    ) -> Self {
-        Self::new_with_dialogs_session_path_and_workspace_preset_path(
-            project_path,
-            dialogs,
-            default_desktop_session_path(),
-            default_workspace_preset_path(),
-        )
-    }
-
     pub(crate) fn new_with_dialogs_session_path_and_workspace_preset_path(
         project_path: PathBuf,
         dialogs: Box<dyn DesktopDialogs>,
