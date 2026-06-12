@@ -59,7 +59,7 @@ impl ProjectSaveMode {
 pub struct ProjectSaveOptions {
     pub chunk_size: usize,
     pub save_mode: ProjectSaveMode,
-    pub persist_current_snapshots: bool,
+    pub persist_current_composites: bool,
 }
 
 impl Default for ProjectSaveOptions {
@@ -67,39 +67,39 @@ impl Default for ProjectSaveOptions {
         Self {
             chunk_size: DEFAULT_PROJECT_CHUNK_SIZE,
             save_mode: ProjectSaveMode::Full,
-            persist_current_snapshots: true,
+            persist_current_composites: true,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PersistedPanelSnapshotSummary {
-    pub snapshot_id: String,
+pub struct PersistedKomaCompositeSummary {
+    pub composite_id: String,
     pub page_id: PageId,
-    pub panel_id: KomaId,
+    pub koma_id: KomaId,
     pub save_mode: ProjectSaveMode,
     pub chunk_size: usize,
 }
 
 #[derive(Debug, Clone)]
-pub struct PersistedPanelSnapshot {
-    pub summary: PersistedPanelSnapshotSummary,
+pub struct PersistedKomaComposite {
+    pub summary: PersistedKomaCompositeSummary,
     pub bitmap: CanvasBitmap,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProjectPanelSummary {
+pub struct ProjectKomaSummary {
     pub id: KomaId,
     pub width: usize,
     pub height: usize,
     pub layer_count: usize,
-    pub snapshot_ids: Vec<String>,
+    pub composite_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectPageSummary {
     pub id: PageId,
-    pub panels: Vec<ProjectPanelSummary>,
+    pub komas: Vec<ProjectKomaSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -112,7 +112,7 @@ pub struct ProjectIndex {
     pub pages: Vec<ProjectPageSummary>,
     pub workspace_layout: WorkspaceLayout,
     pub plugin_configs: PluginConfigs,
-    pub snapshots: Vec<PersistedPanelSnapshotSummary>,
+    pub composites: Vec<PersistedKomaCompositeSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,12 +125,12 @@ struct SqliteDocumentRecord {
     active_pen_preset_id: String,
     active_pen_size: u32,
     active_page_index: usize,
-    active_panel_index: usize,
+    active_koma_index: usize,
     view_transform: CanvasViewTransform,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct StoredPanelRecord {
+struct StoredKomaRecord {
     bounds: KomaBounds,
     active_layer_index: usize,
     created_layer_count: u64,
@@ -202,7 +202,7 @@ pub(crate) fn save_project_to_sqlite_path(
             active_pen_preset_id: document.active_pen_preset_id.clone(),
             active_pen_size: document.active_pen_size,
             active_page_index: document.active_page_index,
-            active_panel_index: document.active_koma_index,
+            active_koma_index: document.active_koma_index,
             view_transform: document.view_transform,
         },
     )?;
@@ -224,8 +224,8 @@ pub(crate) fn save_project_to_sqlite_path(
             ],
         )?;
 
-        for (panel_index, koma) in page.komas.iter().enumerate() {
-            let panel_record = StoredPanelRecord {
+        for (koma_index, koma) in page.komas.iter().enumerate() {
+            let koma_record = StoredKomaRecord {
                 bounds: koma.bounds,
                 active_layer_index: koma.active_layer_index,
                 created_layer_count: koma.created_layer_count,
@@ -233,12 +233,12 @@ pub(crate) fn save_project_to_sqlite_path(
                 composed_height: koma.bitmap.height,
             };
             transaction.execute(
-				"INSERT INTO panels (page_id, panel_id, panel_index, metadata_json) VALUES (?1, ?2, ?3, ?4)",
+				"INSERT INTO komas (page_id, koma_id, koma_index, metadata_json) VALUES (?1, ?2, ?3, ?4)",
 				params![
 					page.id.0 as i64,
 					koma.id.0 as i64,
-					panel_index as i64,
-					encode_json(&panel_record)?
+					koma_index as i64,
+					encode_json(&koma_record)?
 				],
 			)?;
 
@@ -253,7 +253,7 @@ pub(crate) fn save_project_to_sqlite_path(
                     mask: layer.mask.clone(),
                 };
                 transaction.execute(
-                    "INSERT INTO layers (panel_id, layer_index, metadata_json) VALUES (?1, ?2, ?3)",
+                    "INSERT INTO layers (koma_id, layer_index, metadata_json) VALUES (?1, ?2, ?3)",
                     params![
                         koma.id.0 as i64,
                         layer_index as i64,
@@ -269,13 +269,13 @@ pub(crate) fn save_project_to_sqlite_path(
                 )?;
             }
 
-            if options.persist_current_snapshots {
-                let snapshot_id = current_snapshot_id(page.id, koma.id);
+            if options.persist_current_composites {
+                let composite_id = current_composite_id(page.id, koma.id);
                 transaction.execute(
-                    "INSERT INTO panel_snapshots (
-						snapshot_id,
+                    "INSERT INTO koma_composites (
+						composite_id,
 						page_id,
-						panel_id,
+						koma_id,
 						created_at_unix_ms,
 						save_mode,
 						width,
@@ -283,7 +283,7 @@ pub(crate) fn save_project_to_sqlite_path(
 						chunk_size
 					) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                     params![
-                        snapshot_id,
+                        composite_id,
                         page.id.0 as i64,
                         koma.id.0 as i64,
                         current_unix_ms()?,
@@ -293,9 +293,9 @@ pub(crate) fn save_project_to_sqlite_path(
                         options.chunk_size as i64,
                     ],
                 )?;
-                insert_snapshot_chunks(
+                insert_composite_chunks(
                     &transaction,
-                    &current_snapshot_id(page.id, koma.id),
+                    &current_composite_id(page.id, koma.id),
                     &koma.bitmap,
                     options.chunk_size,
                 )?;
@@ -330,7 +330,7 @@ pub(crate) fn load_project_from_sqlite_path(
         active_pen_preset_id: document_record.active_pen_preset_id,
         active_pen_size: document_record.active_pen_size,
         active_page_index: document_record.active_page_index,
-        active_koma_index: document_record.active_panel_index,
+        active_koma_index: document_record.active_koma_index,
         view_transform: document_record.view_transform,
         active_child_tool_id: String::new(),
     };
@@ -348,13 +348,13 @@ pub(crate) fn load_project_index_from_sqlite_path(
     let document_record: SqliteDocumentRecord = get_metadata(&connection, METADATA_DOCUMENT)?;
     let ui_state: WorkspaceUiState = get_metadata(&connection, METADATA_UI_STATE)?;
     let options: ProjectSaveOptions = get_metadata(&connection, METADATA_SAVE_OPTIONS)?;
-    let snapshots = load_snapshot_summaries(&connection)?;
+    let composites = load_composite_summaries(&connection)?;
 
-    let snapshot_ids_by_panel: HashMap<u64, Vec<String>> =
-        snapshots.iter().fold(HashMap::new(), |mut map, snapshot| {
-            map.entry(snapshot.panel_id.0)
+    let composite_ids_by_koma: HashMap<u64, Vec<String>> =
+        composites.iter().fold(HashMap::new(), |mut map, composite| {
+            map.entry(composite.koma_id.0)
                 .or_default()
-                .push(snapshot.snapshot_id.clone());
+                .push(composite.composite_id.clone());
             map
         });
 
@@ -367,32 +367,32 @@ pub(crate) fn load_project_index_from_sqlite_path(
     let mut pages = Vec::with_capacity(page_ids.len());
     for raw_page_id in page_ids {
         let page_id = PageId(raw_page_id as u64);
-        let mut panel_statement = connection.prepare(
-			"SELECT panel_id, metadata_json FROM panels WHERE page_id = ?1 ORDER BY panel_index ASC",
+        let mut koma_statement = connection.prepare(
+			"SELECT koma_id, metadata_json FROM komas WHERE page_id = ?1 ORDER BY koma_index ASC",
 		)?;
-        let panel_rows = panel_statement
+        let koma_rows = koma_statement
             .query_map([raw_page_id], |row| {
-                let panel_id = row.get::<_, i64>(0)?;
+                let koma_id = row.get::<_, i64>(0)?;
                 let metadata_json = row.get::<_, String>(1)?;
-                Ok((panel_id, metadata_json))
+                Ok((koma_id, metadata_json))
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
-        let mut panels = Vec::with_capacity(panel_rows.len());
-        for (raw_panel_id, metadata_json) in panel_rows {
-            let panel_record: StoredPanelRecord = decode_json(&metadata_json)?;
+        let mut komas = Vec::with_capacity(koma_rows.len());
+        for (raw_koma_id, metadata_json) in koma_rows {
+            let koma_record: StoredKomaRecord = decode_json(&metadata_json)?;
             let layer_count = connection.query_row(
-                "SELECT COUNT(*) FROM layers WHERE panel_id = ?1",
-                [raw_panel_id],
+                "SELECT COUNT(*) FROM layers WHERE koma_id = ?1",
+                [raw_koma_id],
                 |row| row.get::<_, i64>(0),
             )?;
-            panels.push(ProjectPanelSummary {
-                id: KomaId(raw_panel_id as u64),
-                width: panel_record.composed_width,
-                height: panel_record.composed_height,
+            komas.push(ProjectKomaSummary {
+                id: KomaId(raw_koma_id as u64),
+                width: koma_record.composed_width,
+                height: koma_record.composed_height,
                 layer_count: layer_count as usize,
-                snapshot_ids: snapshot_ids_by_panel
-                    .get(&(raw_panel_id as u64))
+                composite_ids: composite_ids_by_koma
+                    .get(&(raw_koma_id as u64))
                     .cloned()
                     .unwrap_or_default(),
             });
@@ -400,7 +400,7 @@ pub(crate) fn load_project_index_from_sqlite_path(
 
         pages.push(ProjectPageSummary {
             id: page_id,
-            panels,
+            komas,
         });
     }
 
@@ -413,7 +413,7 @@ pub(crate) fn load_project_index_from_sqlite_path(
         pages,
         workspace_layout: ui_state.workspace_layout,
         plugin_configs: ui_state.plugin_configs,
-        snapshots,
+        composites,
     })
 }
 
@@ -426,13 +426,13 @@ pub(crate) fn load_page_from_sqlite_path(
     load_page(&connection, page_id)
 }
 
-pub(crate) fn load_panel_snapshot_from_sqlite_path(
+pub(crate) fn load_koma_composite_from_sqlite_path(
     path: impl AsRef<Path>,
-    snapshot_id: &str,
-) -> Result<Option<PersistedPanelSnapshot>, StorageError> {
+    composite_id: &str,
+) -> Result<Option<PersistedKomaComposite>, StorageError> {
     let connection = open_read_only(path.as_ref())?;
     validate_format_version(&connection)?;
-    load_panel_snapshot(&connection, snapshot_id)
+    load_koma_composite(&connection, composite_id)
 }
 
 fn normalize_options(options: ProjectSaveOptions) -> ProjectSaveOptions {
@@ -466,22 +466,22 @@ fn initialize_schema(connection: &Connection) -> Result<(), StorageError> {
 			height INTEGER NOT NULL
 		);
 
-		CREATE TABLE panels (
-			panel_id INTEGER PRIMARY KEY,
+		CREATE TABLE komas (
+			koma_id INTEGER PRIMARY KEY,
 			page_id INTEGER NOT NULL,
-			panel_index INTEGER NOT NULL,
+			koma_index INTEGER NOT NULL,
 			metadata_json TEXT NOT NULL
 		);
 
 		CREATE TABLE layers (
-			panel_id INTEGER NOT NULL,
+			koma_id INTEGER NOT NULL,
 			layer_index INTEGER NOT NULL,
 			metadata_json TEXT NOT NULL,
-			PRIMARY KEY (panel_id, layer_index)
+			PRIMARY KEY (koma_id, layer_index)
 		);
 
 		CREATE TABLE layer_chunks (
-			panel_id INTEGER NOT NULL,
+			koma_id INTEGER NOT NULL,
 			layer_index INTEGER NOT NULL,
 			chunk_x INTEGER NOT NULL,
 			chunk_y INTEGER NOT NULL,
@@ -490,13 +490,13 @@ fn initialize_schema(connection: &Connection) -> Result<(), StorageError> {
 			encoding INTEGER NOT NULL,
 			rgba INTEGER,
 			data BLOB,
-			PRIMARY KEY (panel_id, layer_index, chunk_x, chunk_y)
+			PRIMARY KEY (koma_id, layer_index, chunk_x, chunk_y)
 		);
 
-		CREATE TABLE panel_snapshots (
-			snapshot_id TEXT PRIMARY KEY,
+		CREATE TABLE koma_composites (
+			composite_id TEXT PRIMARY KEY,
 			page_id INTEGER NOT NULL,
-			panel_id INTEGER NOT NULL,
+			koma_id INTEGER NOT NULL,
 			created_at_unix_ms INTEGER NOT NULL,
 			save_mode TEXT NOT NULL,
 			width INTEGER NOT NULL,
@@ -504,8 +504,8 @@ fn initialize_schema(connection: &Connection) -> Result<(), StorageError> {
 			chunk_size INTEGER NOT NULL
 		);
 
-		CREATE TABLE panel_snapshot_chunks (
-			snapshot_id TEXT NOT NULL,
+		CREATE TABLE koma_composite_chunks (
+			composite_id TEXT NOT NULL,
 			chunk_x INTEGER NOT NULL,
 			chunk_y INTEGER NOT NULL,
 			width INTEGER NOT NULL,
@@ -513,13 +513,13 @@ fn initialize_schema(connection: &Connection) -> Result<(), StorageError> {
 			encoding INTEGER NOT NULL,
 			rgba INTEGER,
 			data BLOB,
-			PRIMARY KEY (snapshot_id, chunk_x, chunk_y)
+			PRIMARY KEY (composite_id, chunk_x, chunk_y)
 		);
 
 		CREATE INDEX idx_pages_order ON pages(page_index);
-		CREATE INDEX idx_panels_page_order ON panels(page_id, panel_index);
-		CREATE INDEX idx_layers_panel_order ON layers(panel_id, layer_index);
-		CREATE INDEX idx_snapshots_panel ON panel_snapshots(panel_id);
+		CREATE INDEX idx_komas_page_order ON komas(page_id, koma_index);
+		CREATE INDEX idx_layers_koma_order ON layers(koma_id, layer_index);
+		CREATE INDEX idx_composites_koma ON koma_composites(koma_id);
 		",
     )?;
     Ok(())
@@ -573,7 +573,7 @@ fn decode_json<T: DeserializeOwned>(value: &str) -> Result<T, StorageError> {
 
 fn insert_layer_chunks(
     transaction: &Transaction<'_>,
-    panel_id: KomaId,
+    koma_id: KomaId,
     layer_index: usize,
     bitmap: &CanvasBitmap,
     chunk_size: usize,
@@ -581,7 +581,7 @@ fn insert_layer_chunks(
     for chunk in chunk_bitmap(bitmap, chunk_size)? {
         transaction.execute(
             "INSERT INTO layer_chunks (
-				panel_id,
+				koma_id,
 				layer_index,
 				chunk_x,
 				chunk_y,
@@ -592,7 +592,7 @@ fn insert_layer_chunks(
 				data
 			) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
-                panel_id.0 as i64,
+                koma_id.0 as i64,
                 layer_index as i64,
                 chunk.chunk_x as i64,
                 chunk.chunk_y as i64,
@@ -607,16 +607,16 @@ fn insert_layer_chunks(
     Ok(())
 }
 
-fn insert_snapshot_chunks(
+fn insert_composite_chunks(
     transaction: &Transaction<'_>,
-    snapshot_id: &str,
+    composite_id: &str,
     bitmap: &CanvasBitmap,
     chunk_size: usize,
 ) -> Result<(), StorageError> {
     for chunk in chunk_bitmap(bitmap, chunk_size)? {
         transaction.execute(
-            "INSERT INTO panel_snapshot_chunks (
-				snapshot_id,
+            "INSERT INTO koma_composite_chunks (
+				composite_id,
 				chunk_x,
 				chunk_y,
 				width,
@@ -626,7 +626,7 @@ fn insert_snapshot_chunks(
 				data
 			) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
-                snapshot_id,
+                composite_id,
                 chunk.chunk_x as i64,
                 chunk.chunk_y as i64,
                 chunk.width as i64,
@@ -745,48 +745,48 @@ fn load_page(connection: &Connection, page_id: PageId) -> Result<Page, StorageEr
         return Err(StorageError::PageNotFound(page_id.0));
     };
 
-    let mut panel_statement = connection
-        .prepare("SELECT panel_id FROM panels WHERE page_id = ?1 ORDER BY panel_index ASC")?;
-    let panel_ids = panel_statement
+    let mut koma_statement = connection
+        .prepare("SELECT koma_id FROM komas WHERE page_id = ?1 ORDER BY koma_index ASC")?;
+    let koma_ids = koma_statement
         .query_map([page_id.0 as i64], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
 
-    let panels = panel_ids
+    let komas = koma_ids
         .into_iter()
-        .map(|panel_id| load_panel(connection, page_id, KomaId(panel_id as u64)))
+        .map(|koma_id| load_koma(connection, page_id, KomaId(koma_id as u64)))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Page {
         id: page_id,
         width: width as usize,
         height: height as usize,
-        komas: panels,
+        komas,
     })
 }
 
-fn load_panel(
+fn load_koma(
     connection: &Connection,
     page_id: PageId,
-    panel_id: KomaId,
+    koma_id: KomaId,
 ) -> Result<Koma, StorageError> {
     let metadata_json = connection
         .query_row(
-            "SELECT metadata_json FROM panels WHERE page_id = ?1 AND panel_id = ?2",
-            params![page_id.0 as i64, panel_id.0 as i64],
+            "SELECT metadata_json FROM komas WHERE page_id = ?1 AND koma_id = ?2",
+            params![page_id.0 as i64, koma_id.0 as i64],
             |row| row.get::<_, String>(0),
         )
         .optional()?
-        .ok_or(StorageError::PanelNotFound {
+        .ok_or(StorageError::KomaNotFound {
             page_id: page_id.0,
-            panel_id: panel_id.0,
+            koma_id: koma_id.0,
         })?;
-    let panel_record: StoredPanelRecord = decode_json(&metadata_json)?;
+    let koma_record: StoredKomaRecord = decode_json(&metadata_json)?;
 
     let mut layer_statement = connection.prepare(
-		"SELECT layer_index, metadata_json FROM layers WHERE panel_id = ?1 ORDER BY layer_index ASC",
+		"SELECT layer_index, metadata_json FROM layers WHERE koma_id = ?1 ORDER BY layer_index ASC",
 	)?;
     let layer_rows = layer_statement
-        .query_map([panel_id.0 as i64], |row| {
+        .query_map([koma_id.0 as i64], |row| {
             let layer_index = row.get::<_, i64>(0)?;
             let metadata_json = row.get::<_, String>(1)?;
             Ok((layer_index, metadata_json))
@@ -798,7 +798,7 @@ fn load_panel(
         let layer_record: StoredLayerRecord = decode_json(&metadata_json)?;
         let bitmap = load_layer_bitmap(
             connection,
-            panel_id,
+            koma_id,
             layer_index as usize,
             layer_record.width,
             layer_record.height,
@@ -813,28 +813,28 @@ fn load_panel(
         });
     }
 
-    let bitmap = match load_panel_snapshot(connection, &current_snapshot_id(page_id, panel_id))? {
-        Some(snapshot) => snapshot.bitmap,
-        None => compose_panel_bitmap(
-            panel_record.composed_width.max(1),
-            panel_record.composed_height.max(1),
+    let bitmap = match load_koma_composite(connection, &current_composite_id(page_id, koma_id))? {
+        Some(composite) => composite.bitmap,
+        None => compose_koma_bitmap(
+            koma_record.composed_width.max(1),
+            koma_record.composed_height.max(1),
             &layers,
         ),
     };
 
     Ok(Koma {
-        id: panel_id,
-        bounds: panel_record.bounds,
+        id: koma_id,
+        bounds: koma_record.bounds,
         bitmap,
         layers,
-        active_layer_index: panel_record.active_layer_index,
-        created_layer_count: panel_record.created_layer_count,
+        active_layer_index: koma_record.active_layer_index,
+        created_layer_count: koma_record.created_layer_count,
     })
 }
 
 fn load_layer_bitmap(
     connection: &Connection,
-    panel_id: KomaId,
+    koma_id: KomaId,
     layer_index: usize,
     width: usize,
     height: usize,
@@ -843,11 +843,11 @@ fn load_layer_bitmap(
     let mut statement = connection.prepare(
         "SELECT chunk_x, chunk_y, width, height, encoding, rgba, data
 		 FROM layer_chunks
-		 WHERE panel_id = ?1 AND layer_index = ?2
+		 WHERE koma_id = ?1 AND layer_index = ?2
 		 ORDER BY chunk_y ASC, chunk_x ASC",
     )?;
     let chunks = statement
-        .query_map(params![panel_id.0 as i64, layer_index as i64], |row| {
+        .query_map(params![koma_id.0 as i64, layer_index as i64], |row| {
             Ok(StoredChunk {
                 chunk_x: row.get::<_, i64>(0)? as usize,
                 chunk_y: row.get::<_, i64>(1)? as usize,
@@ -864,16 +864,16 @@ fn load_layer_bitmap(
     Ok(bitmap)
 }
 
-fn load_panel_snapshot(
+fn load_koma_composite(
     connection: &Connection,
-    snapshot_id: &str,
-) -> Result<Option<PersistedPanelSnapshot>, StorageError> {
+    composite_id: &str,
+) -> Result<Option<PersistedKomaComposite>, StorageError> {
     let row = connection
         .query_row(
-            "SELECT page_id, panel_id, save_mode, width, height, chunk_size
-			 FROM panel_snapshots
-			 WHERE snapshot_id = ?1",
-            [snapshot_id],
+            "SELECT page_id, koma_id, save_mode, width, height, chunk_size
+			 FROM koma_composites
+			 WHERE composite_id = ?1",
+            [composite_id],
             |row| {
                 Ok((
                     row.get::<_, i64>(0)?,
@@ -887,19 +887,19 @@ fn load_panel_snapshot(
         )
         .optional()?;
 
-    let Some((raw_page_id, raw_panel_id, save_mode, width, height, chunk_size)) = row else {
+    let Some((raw_page_id, raw_koma_id, save_mode, width, height, chunk_size)) = row else {
         return Ok(None);
     };
 
     let mut bitmap = CanvasBitmap::transparent(width as usize, height as usize);
     let mut statement = connection.prepare(
         "SELECT chunk_x, chunk_y, width, height, encoding, rgba, data
-		 FROM panel_snapshot_chunks
-		 WHERE snapshot_id = ?1
+		 FROM koma_composite_chunks
+		 WHERE composite_id = ?1
 		 ORDER BY chunk_y ASC, chunk_x ASC",
     )?;
     let chunks = statement
-        .query_map([snapshot_id], |row| {
+        .query_map([composite_id], |row| {
             Ok(StoredChunk {
                 chunk_x: row.get::<_, i64>(0)? as usize,
                 chunk_y: row.get::<_, i64>(1)? as usize,
@@ -913,11 +913,11 @@ fn load_panel_snapshot(
         .collect::<Result<Vec<_>, _>>()?;
     apply_chunks(&mut bitmap, &chunks)?;
 
-    Ok(Some(PersistedPanelSnapshot {
-        summary: PersistedPanelSnapshotSummary {
-            snapshot_id: snapshot_id.to_string(),
+    Ok(Some(PersistedKomaComposite {
+        summary: PersistedKomaCompositeSummary {
+            composite_id: composite_id.to_string(),
             page_id: PageId(raw_page_id as u64),
-            panel_id: KomaId(raw_panel_id as u64),
+            koma_id: KomaId(raw_koma_id as u64),
             save_mode: ProjectSaveMode::from_db(&save_mode)?,
             chunk_size: chunk_size as usize,
         },
@@ -925,21 +925,21 @@ fn load_panel_snapshot(
     }))
 }
 
-fn load_snapshot_summaries(
+fn load_composite_summaries(
     connection: &Connection,
-) -> Result<Vec<PersistedPanelSnapshotSummary>, StorageError> {
+) -> Result<Vec<PersistedKomaCompositeSummary>, StorageError> {
     let mut statement = connection.prepare(
-        "SELECT snapshot_id, page_id, panel_id, save_mode, chunk_size
-		 FROM panel_snapshots
-		 ORDER BY page_id ASC, panel_id ASC, snapshot_id ASC",
+        "SELECT composite_id, page_id, koma_id, save_mode, chunk_size
+		 FROM koma_composites
+		 ORDER BY page_id ASC, koma_id ASC, composite_id ASC",
     )?;
     statement
         .query_map([], |row| {
             let save_mode = row.get::<_, String>(3)?;
-            Ok(PersistedPanelSnapshotSummary {
-                snapshot_id: row.get(0)?,
+            Ok(PersistedKomaCompositeSummary {
+                composite_id: row.get(0)?,
                 page_id: PageId(row.get::<_, i64>(1)? as u64),
-                panel_id: KomaId(row.get::<_, i64>(2)? as u64),
+                koma_id: KomaId(row.get::<_, i64>(2)? as u64),
                 save_mode: ProjectSaveMode::from_db(&save_mode)
                     .map_err(to_sqlite_conversion_error)?,
                 chunk_size: row.get::<_, i64>(4)? as usize,
@@ -1031,7 +1031,7 @@ fn blit_chunk(
     Ok(())
 }
 
-fn compose_panel_bitmap(width: usize, height: usize, layers: &[RasterLayer]) -> CanvasBitmap {
+fn compose_koma_bitmap(width: usize, height: usize, layers: &[RasterLayer]) -> CanvasBitmap {
     let mut bitmap = CanvasBitmap::transparent(width, height);
     for layer in layers.iter().filter(|layer| layer.visible) {
         composite_layer_region_into(
@@ -1120,8 +1120,8 @@ fn blend_pixel(dst: [u8; 4], src: [u8; 4], mode: &BlendMode) -> [u8; 4] {
     out
 }
 
-fn current_snapshot_id(page_id: PageId, panel_id: KomaId) -> String {
-    format!("page:{}:panel:{}:current", page_id.0, panel_id.0)
+fn current_composite_id(page_id: PageId, koma_id: KomaId) -> String {
+    format!("page:{}:koma:{}:current", page_id.0, koma_id.0)
 }
 
 fn current_unix_ms() -> Result<i64, StorageError> {

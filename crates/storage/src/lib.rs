@@ -16,12 +16,12 @@ pub use pen_format::{
 };
 pub use pen_presets::load_pen_directory;
 pub use project_file::{
-    LoadedProject, StorageError, load_page_from_path, load_panel_snapshot_from_path,
+    LoadedProject, StorageError, load_page_from_path, load_koma_composite_from_path,
     load_project_from_path, load_project_index_from_path, save_project_to_path,
 };
 pub use project_sqlite::{
-    PersistedPanelSnapshot, PersistedPanelSnapshotSummary, ProjectIndex, ProjectPageSummary,
-    ProjectPanelSummary, ProjectSaveMode,
+    PersistedKomaComposite, PersistedKomaCompositeSummary, ProjectIndex, ProjectPageSummary,
+    ProjectKomaSummary, ProjectSaveMode,
 };
 pub use export::{ExportError, export_active_panel_as_png};
 pub use tool_catalog::load_tool_directory;

@@ -7,8 +7,8 @@ use thiserror::Error;
 use app_core::WorkspaceUiState;
 
 use crate::project_sqlite::{
-    PersistedPanelSnapshot, ProjectIndex, ProjectSaveOptions, is_sqlite_project_path,
-    load_page_from_sqlite_path, load_panel_snapshot_from_sqlite_path,
+    PersistedKomaComposite, ProjectIndex, ProjectSaveOptions, is_sqlite_project_path,
+    load_page_from_sqlite_path, load_koma_composite_from_sqlite_path,
     load_project_from_sqlite_path, load_project_index_from_sqlite_path,
     save_project_to_sqlite_path,
 };
@@ -39,8 +39,8 @@ pub enum StorageError {
     InvalidProject(String),
     #[error("page not found in project: {0}")]
     PageNotFound(u64),
-    #[error("panel not found in project: page={page_id}, panel={panel_id}")]
-    PanelNotFound { page_id: u64, panel_id: u64 },
+    #[error("koma not found in project: page={page_id}, koma={koma_id}")]
+    KomaNotFound { page_id: u64, koma_id: u64 },
     #[error("failed to access project file: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -102,13 +102,13 @@ pub fn load_page_from_path(path: impl AsRef<Path>, page_id: PageId) -> Result<Pa
     load_page_from_sqlite_path(path, page_id)
 }
 
-pub fn load_panel_snapshot_from_path(
+pub fn load_koma_composite_from_path(
     path: impl AsRef<Path>,
-    snapshot_id: &str,
-) -> Result<Option<PersistedPanelSnapshot>, StorageError> {
+    composite_id: &str,
+) -> Result<Option<PersistedKomaComposite>, StorageError> {
     let path = path.as_ref();
     ensure_sqlite_project(path)?;
-    load_panel_snapshot_from_sqlite_path(path, snapshot_id)
+    load_koma_composite_from_sqlite_path(path, composite_id)
 }
 
 #[cfg(test)]
@@ -145,21 +145,21 @@ mod tests {
         let mut document = Document::new(16, 16);
         document.work.title = "Phase 11 test".to_string();
 
-        let mut second_panel = Document::new(8, 8).work.pages[0].komas[0].clone();
-        second_panel.id = KomaId(2);
-        second_panel.layers[0].name = "Blue layer".to_string();
-        second_panel.layers[0]
+        let mut second_koma = Document::new(8, 8).work.pages[0].komas[0].clone();
+        second_koma.id = KomaId(2);
+        second_koma.layers[0].name = "Blue layer".to_string();
+        second_koma.layers[0]
             .bitmap
             .set_pixel_rgba(2, 3, [0x22, 0x44, 0xaa, 0xff]);
-        second_panel.bitmap = second_panel.layers[0].bitmap.clone();
+        second_koma.bitmap = second_koma.layers[0].bitmap.clone();
 
-        let mut third_panel = Document::new(8, 8).work.pages[0].komas[0].clone();
-        third_panel.id = KomaId(3);
-        third_panel.layers[0]
+        let mut third_koma = Document::new(8, 8).work.pages[0].komas[0].clone();
+        third_koma.id = KomaId(3);
+        third_koma.layers[0]
             .bitmap
             .set_pixel_rgba(1, 1, [0x55, 0x99, 0x22, 0xff]);
-        third_panel.bitmap = third_panel.layers[0].bitmap.clone();
-        third_panel.layers.push(app_core::RasterLayer {
+        third_koma.bitmap = third_koma.layers[0].bitmap.clone();
+        third_koma.layers.push(app_core::RasterLayer {
             id: app_core::LayerNodeId(99),
             name: "Overlay".to_string(),
             visible: true,
@@ -177,12 +177,12 @@ mod tests {
         });
 
         document.work.pages[0].id = PageId(10);
-        document.work.pages[0].komas.push(second_panel);
+        document.work.pages[0].komas.push(second_koma);
         document.work.pages.push(Page {
             id: PageId(20),
             width: 8,
             height: 8,
-            komas: vec![third_panel],
+            komas: vec![third_koma],
         });
         document
     }
@@ -351,7 +351,7 @@ mod tests {
     }
 
     #[test]
-    fn load_project_index_reports_pages_panels_and_snapshots() {
+    fn load_project_index_reports_pages_komas_and_composites() {
         let path = temp_path("project-index");
         let document = multi_page_document();
 
@@ -368,15 +368,15 @@ mod tests {
         assert_eq!(index.format_version, CURRENT_FORMAT_VERSION);
         assert_eq!(index.pages.len(), 2);
         assert_eq!(index.pages[0].id, PageId(10));
-        assert_eq!(index.pages[0].panels.len(), 2);
+        assert_eq!(index.pages[0].komas.len(), 2);
         assert_eq!(index.pages[1].id, PageId(20));
-        assert_eq!(index.pages[1].panels[0].layer_count, 2);
-        assert_eq!(index.snapshots.len(), 3);
+        assert_eq!(index.pages[1].komas[0].layer_count, 2);
+        assert_eq!(index.composites.len(), 3);
         assert!(
             index
-                .snapshots
+                .composites
                 .iter()
-                .any(|snapshot| snapshot.snapshot_id == "page:10:panel:2:current")
+                .any(|composite| composite.composite_id == "page:10:koma:2:current")
         );
 
         let _ = fs::remove_file(path);
@@ -409,8 +409,8 @@ mod tests {
     }
 
     #[test]
-    fn load_panel_snapshot_restores_current_composited_bitmap() {
-        let path = temp_path("snapshot");
+    fn load_koma_composite_restores_current_composited_bitmap() {
+        let path = temp_path("composite");
         let document = multi_page_document();
         let expected = document.work.pages[0].komas[1].bitmap.pixel_rgba(2, 3);
 
@@ -423,13 +423,13 @@ mod tests {
         )
         .expect("save should succeed");
 
-        let snapshot = load_panel_snapshot_from_path(&path, "page:10:panel:2:current")
-            .expect("snapshot load should succeed")
-            .expect("snapshot should exist");
+        let composite = load_koma_composite_from_path(&path, "page:10:koma:2:current")
+            .expect("composite load should succeed")
+            .expect("composite should exist");
 
-        assert_eq!(snapshot.summary.page_id, PageId(10));
-        assert_eq!(snapshot.summary.panel_id, KomaId(2));
-        assert_eq!(snapshot.bitmap.pixel_rgba(2, 3), expected);
+        assert_eq!(composite.summary.page_id, PageId(10));
+        assert_eq!(composite.summary.koma_id, KomaId(2));
+        assert_eq!(composite.bitmap.pixel_rgba(2, 3), expected);
 
         let _ = fs::remove_file(path);
     }
