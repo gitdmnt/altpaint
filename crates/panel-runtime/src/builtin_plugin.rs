@@ -2,8 +2,8 @@
 //!
 //! 構成要素:
 //! - `HtmlPanelEngine` (Blitz HTML/CSS + parley + vello)
-//! - `WasmPanelRuntime` (wasmtime, panel_init / panel_handle_* / panel_sync_host export を呼ぶ)
-//! - 各 Wasm 呼出は `WasmPanelRuntime::call_with_dom` で engine の document を context にし、
+//! - `PanelWasmInstance` (wasmtime, panel_init / panel_handle_* / panel_sync_host export を呼ぶ)
+//! - 各 Wasm 呼出は `PanelWasmInstance::call_with_dom` で engine の document を context にし、
 //!   Wasm 内 DOM mutation host function (`set_attribute` / `set_inner_html` 等) で直接 DOM を書換える
 //!
 //! `update` (host snapshot 同期) と `handle_event` (UI イベント) のいずれでも DOM mutation を
@@ -23,7 +23,7 @@ use crate::host_sync::{
     EMPTY_WORKSPACE_PANELS_JSON, HostSnapshotCache, build_host_snapshot_cached,
 };
 use crate::meta::PanelMeta;
-use panel_wasm_host::{PluginHostError, WasmPanelRuntime};
+use panel_wasm_host::{PanelWasmHostError, PanelWasmInstance};
 use serde_json::{Value, json};
 
 pub struct BuiltinPanelPlugin {
@@ -31,7 +31,7 @@ pub struct BuiltinPanelPlugin {
     title: &'static str,
     default_size: (u32, u32),
     engine: HtmlPanelEngine,
-    wasm: WasmPanelRuntime,
+    wasm: PanelWasmInstance,
     /// Wasm 側が保持する state (panel_init で初期化、handler 戻り値の patch を蓄積)。
     state: Value,
     /// host snapshot のキャッシュ。
@@ -43,7 +43,7 @@ pub struct BuiltinPanelPlugin {
     /// host snapshot に含められる。builtin.workspace-layout 用。
     workspace_panels_json: String,
     /// Wasm が `panel_handle_keyboard` を export しているか (load 時に確定)。
-    /// `handles_keyboard_event` は `&self` のため、`WasmPanelRuntime::has_handler`
+    /// `handles_keyboard_event` は `&self` のため、`PanelWasmInstance::has_handler`
     /// (`&mut self`) を毎回呼べずキャッシュする。
     has_keyboard_handler: bool,
 }
@@ -55,7 +55,7 @@ pub enum BuiltinPanelError {
     #[error("invalid panel.meta.json: {0}")]
     Meta(#[from] serde_json::Error),
     #[error("panel wasm host: {0}")]
-    Host(#[from] PluginHostError),
+    Host(#[from] PanelWasmHostError),
 }
 
 impl BuiltinPanelPlugin {
@@ -84,7 +84,7 @@ impl BuiltinPanelPlugin {
 
         let mut engine = HtmlPanelEngine::new(&html, &css);
         engine.on_load(restored_size.unwrap_or(default_size));
-        let mut wasm = WasmPanelRuntime::load(directory.join(wasm_filename))?;
+        let mut wasm = PanelWasmInstance::load(directory.join(wasm_filename))?;
 
         // panel_init は DOM context 必須 (Wasm が初期 DOM を mutate する可能性)。
         let init = wasm.call_with_dom(engine.document_mut(), |rt| rt.panel_init())?;
@@ -136,7 +136,7 @@ impl BuiltinPanelPlugin {
         &mut self,
         handler_name: &str,
         event_payload: Value,
-    ) -> Result<Vec<HostAction>, PluginHostError> {
+    ) -> Result<Vec<HostAction>, PanelWasmHostError> {
         if !self.wasm.has_handler(handler_name) {
             return Ok(Vec::new());
         }

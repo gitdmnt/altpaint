@@ -265,7 +265,7 @@ impl HtmlPanelEngine {
 
     /// Wasm DOM mutation API のために `HtmlDocument` への可変借用を返す。
     ///
-    /// 呼び出し側 (panel-runtime) は `WasmPanelRuntime::call_with_dom` のスコープ内でのみ使い、
+    /// 呼び出し側 (panel-runtime) は `PanelWasmInstance::call_with_dom` のスコープ内でのみ使い、
     /// 戻り際に `mark_mutated()` を呼んで dirty を立てる契約。
     pub fn document_mut(&mut self) -> &mut HtmlDocument {
         &mut self.document

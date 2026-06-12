@@ -6,7 +6,7 @@
 use blitz_dom::DocumentConfig;
 use blitz_dom::node::NodeData;
 use blitz_html::{HtmlDocument, HtmlProvider};
-use panel_wasm_host::WasmPanelRuntime;
+use panel_wasm_host::PanelWasmInstance;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -44,12 +44,12 @@ const SET_ATTR_WAT: &str = r##"(module
 #[test]
 fn dom_api_set_attribute_via_wasm_modifies_document() {
     let wasm_path = write_temp_wat(SET_ATTR_WAT);
-    let mut runtime = WasmPanelRuntime::load(&wasm_path).expect("runtime load");
+    let mut instance = PanelWasmInstance::load(&wasm_path).expect("instance load");
 
     let html = r#"<html><body><button id="btn">B</button></body></html>"#;
     let mut document = make_document(html);
 
-    runtime
+    instance
         .call_with_dom(&mut document, |rt| rt.panel_init())
         .expect("panel_init call");
 
@@ -88,12 +88,12 @@ const SET_INNER_HTML_WAT: &str = r##"(module
 #[test]
 fn dom_api_set_inner_html_replaces_children() {
     let wasm_path = write_temp_wat(SET_INNER_HTML_WAT);
-    let mut runtime = WasmPanelRuntime::load(&wasm_path).expect("runtime load");
+    let mut instance = PanelWasmInstance::load(&wasm_path).expect("instance load");
 
     let html = r#"<html><body><ul id="list"><li>old</li></ul></body></html>"#;
     let mut document = make_document(html);
 
-    runtime
+    instance
         .call_with_dom(&mut document, |rt| rt.panel_init())
         .expect("panel_init call");
 

@@ -27,23 +27,23 @@ const PANEL_INIT_EXPORT: &str = "panel_init";
 const PANEL_SYNC_HOST_EXPORT: &str = "panel_sync_host";
 
 #[derive(Debug, Error)]
-pub enum PluginHostError {
-    #[error("failed to load runtime module at {path}: {message}")]
+pub enum PanelWasmHostError {
+    #[error("failed to load panel wasm module at {path}: {message}")]
     Load { path: PathBuf, message: String },
-    #[error("failed to instantiate runtime module at {path}: {message}")]
+    #[error("failed to instantiate panel wasm module at {path}: {message}")]
     Instantiate { path: PathBuf, message: String },
     #[error("runtime handler failed: {0}")]
     Runtime(String),
 }
 
 #[derive(Default)]
-struct RuntimeCollector {
+struct HostCallContext {
     result: HandlerEffects,
     current_request: Option<PanelEventRequest>,
     dom_ctx: DomCtx,
 }
 
-impl RuntimeCollector {
+impl HostCallContext {
     fn clear(&mut self) {
         self.result = HandlerEffects::default();
         self.current_request = None;
@@ -51,16 +51,16 @@ impl RuntimeCollector {
     }
 }
 
-pub struct WasmPanelRuntime {
-    store: Store<RuntimeCollector>,
+pub struct PanelWasmInstance {
+    store: Store<HostCallContext>,
     instance: Instance,
 }
 
-impl WasmPanelRuntime {
-    pub fn load(path: impl AsRef<Path>) -> Result<Self, PluginHostError> {
+impl PanelWasmInstance {
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, PanelWasmHostError> {
         let path = path.as_ref().to_path_buf();
         let engine = shared_engine();
-        let module = Module::from_file(engine, &path).map_err(|error| PluginHostError::Load {
+        let module = Module::from_file(engine, &path).map_err(|error| PanelWasmHostError::Load {
             path: path.clone(),
             message: error.to_string(),
         })?;
@@ -69,7 +69,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "state_toggle",
-                |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| {
+                |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| {
                     if let Some(path) = read_utf8(&mut caller, ptr, len) {
                         caller
                             .data_mut()
@@ -85,7 +85,7 @@ impl WasmPanelRuntime {
                     }
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -93,7 +93,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "state_set_bool",
-                |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32, value: i32| {
+                |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32, value: i32| {
                     if let Some(path) = read_utf8(&mut caller, ptr, len) {
                         caller
                             .data_mut()
@@ -109,7 +109,7 @@ impl WasmPanelRuntime {
                     }
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -117,7 +117,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "state_set_i32",
-                |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32, value: i32| {
+                |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32, value: i32| {
                     if let Some(path) = read_utf8(&mut caller, ptr, len) {
                         caller
                             .data_mut()
@@ -133,7 +133,7 @@ impl WasmPanelRuntime {
                     }
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -141,7 +141,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "state_set_string",
-                |mut caller: Caller<'_, RuntimeCollector>,
+                |mut caller: Caller<'_, HostCallContext>,
                  path_ptr: i32,
                  path_len: i32,
                  value_ptr: i32,
@@ -165,7 +165,7 @@ impl WasmPanelRuntime {
                         .push(StatePatch::set(path, value));
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -173,7 +173,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "state_apply_json",
-                |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| {
+                |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| {
                     let Some(payload_text) = read_utf8(&mut caller, ptr, len) else {
                         caller
                             .data_mut()
@@ -193,7 +193,7 @@ impl WasmPanelRuntime {
                     caller.data_mut().result.state_patch.extend(patches);
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -201,7 +201,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "state_get_bool",
-                |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| -> i32 {
+                |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| -> i32 {
                     let Some(path) = read_utf8(&mut caller, ptr, len) else {
                         caller
                             .data_mut()
@@ -220,7 +220,7 @@ impl WasmPanelRuntime {
                         .unwrap_or_default()
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -228,7 +228,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "state_get_i32",
-                |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| -> i32 {
+                |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| -> i32 {
                     let Some(path) = read_utf8(&mut caller, ptr, len) else {
                         caller
                             .data_mut()
@@ -246,7 +246,7 @@ impl WasmPanelRuntime {
                         .unwrap_or_default() as i32
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -254,7 +254,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "state_get_string_len",
-                |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| -> i32 {
+                |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| -> i32 {
                     let Some(path) = read_utf8(&mut caller, ptr, len) else {
                         caller.data_mut().result.diagnostics.push(Diagnostic::error(
                             "failed to read state path for string len",
@@ -271,7 +271,7 @@ impl WasmPanelRuntime {
                         .unwrap_or_default()
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -279,7 +279,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "state_get_string_copy",
-                |mut caller: Caller<'_, RuntimeCollector>,
+                |mut caller: Caller<'_, HostCallContext>,
                  path_ptr: i32,
                  path_len: i32,
                  buffer_ptr: i32,
@@ -330,7 +330,7 @@ impl WasmPanelRuntime {
                     target[..count].copy_from_slice(&bytes[..count]);
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -338,7 +338,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "host_get_bool",
-                |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| -> i32 {
+                |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| -> i32 {
                     let Some(path) = read_utf8(&mut caller, ptr, len) else {
                         caller
                             .data_mut()
@@ -357,7 +357,7 @@ impl WasmPanelRuntime {
                         .unwrap_or_default()
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -365,7 +365,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "host_get_i32",
-                |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| -> i32 {
+                |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| -> i32 {
                     let Some(path) = read_utf8(&mut caller, ptr, len) else {
                         caller
                             .data_mut()
@@ -383,7 +383,7 @@ impl WasmPanelRuntime {
                         .unwrap_or_default() as i32
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -391,7 +391,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "host_get_string_len",
-                |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| -> i32 {
+                |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| -> i32 {
                     let Some(path) = read_utf8(&mut caller, ptr, len) else {
                         caller
                             .data_mut()
@@ -410,7 +410,7 @@ impl WasmPanelRuntime {
                         .unwrap_or_default()
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -418,7 +418,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "host_get_string_copy",
-                |mut caller: Caller<'_, RuntimeCollector>,
+                |mut caller: Caller<'_, HostCallContext>,
                  path_ptr: i32,
                  path_len: i32,
                  buffer_ptr: i32,
@@ -465,7 +465,7 @@ impl WasmPanelRuntime {
                     target[..count].copy_from_slice(&bytes[..count]);
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -473,7 +473,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "event_get_string_len",
-                |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| -> i32 {
+                |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| -> i32 {
                     let Some(path) = read_utf8(&mut caller, ptr, len) else {
                         caller.data_mut().result.diagnostics.push(Diagnostic::error(
                             "failed to read event path for string len",
@@ -490,7 +490,7 @@ impl WasmPanelRuntime {
                         .unwrap_or_default()
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -498,7 +498,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "event_get_string_copy",
-                |mut caller: Caller<'_, RuntimeCollector>,
+                |mut caller: Caller<'_, HostCallContext>,
                  path_ptr: i32,
                  path_len: i32,
                  buffer_ptr: i32,
@@ -545,7 +545,7 @@ impl WasmPanelRuntime {
                     target[..count].copy_from_slice(&bytes[..count]);
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -553,7 +553,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "command",
-                |mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32| {
+                |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| {
                     if let Some(name) = read_utf8(&mut caller, ptr, len) {
                         caller
                             .data_mut()
@@ -569,7 +569,7 @@ impl WasmPanelRuntime {
                     }
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -577,7 +577,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "command_string",
-                |mut caller: Caller<'_, RuntimeCollector>,
+                |mut caller: Caller<'_, HostCallContext>,
                  name_ptr: i32,
                  name_len: i32,
                  key_ptr: i32,
@@ -612,7 +612,7 @@ impl WasmPanelRuntime {
                     caller.data_mut().result.commands.push(descriptor);
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -620,7 +620,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "command_json",
-                |mut caller: Caller<'_, RuntimeCollector>,
+                |mut caller: Caller<'_, HostCallContext>,
                  name_ptr: i32,
                  name_len: i32,
                  json_ptr: i32,
@@ -652,7 +652,7 @@ impl WasmPanelRuntime {
                     caller.data_mut().result.commands.push(descriptor);
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
@@ -660,7 +660,7 @@ impl WasmPanelRuntime {
             .func_wrap(
                 "host",
                 "diagnostic",
-                |mut caller: Caller<'_, RuntimeCollector>, level: i32, ptr: i32, len: i32| {
+                |mut caller: Caller<'_, HostCallContext>, level: i32, ptr: i32, len: i32| {
                     let diagnostic = read_utf8(&mut caller, ptr, len)
                         .map(|message| Diagnostic {
                             level: match level {
@@ -676,21 +676,21 @@ impl WasmPanelRuntime {
                     caller.data_mut().result.diagnostics.push(diagnostic);
                 },
             )
-            .map_err(|error| PluginHostError::Instantiate {
+            .map_err(|error| PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             })?;
 
         dom_api::register_dom_host_functions(&mut linker).map_err(|error| {
-            PluginHostError::Instantiate {
+            PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             }
         })?;
 
-        let mut store = Store::new(engine, RuntimeCollector::default());
+        let mut store = Store::new(engine, HostCallContext::default());
         let instance = linker.instantiate(&mut store, &module).map_err(|error| {
-            PluginHostError::Instantiate {
+            PanelWasmHostError::Instantiate {
                 path: path.clone(),
                 message: error.to_string(),
             }
@@ -703,7 +703,7 @@ impl WasmPanelRuntime {
         &mut self,
         state_snapshot: &Value,
         host_snapshot: &Value,
-    ) -> Result<HandlerEffects, PluginHostError> {
+    ) -> Result<HandlerEffects, PanelWasmHostError> {
         self.store.data_mut().clear();
         self.store.data_mut().current_request = Some(PanelEventRequest {
             handler_name: "sync_host".to_string(),
@@ -716,18 +716,18 @@ impl WasmPanelRuntime {
             .instance
             .get_func(&mut self.store, PANEL_SYNC_HOST_EXPORT)
             .ok_or_else(|| {
-                PluginHostError::Runtime(format!(
+                PanelWasmHostError::Runtime(format!(
                     "missing lifecycle export: {PANEL_SYNC_HOST_EXPORT}"
                 ))
             })?;
-        call_export(&mut self.store, handler, None).map_err(PluginHostError::Runtime)?;
+        call_export(&mut self.store, handler, None).map_err(PanelWasmHostError::Runtime)?;
         Ok(self.store.data().result.clone())
     }
 
     pub fn handle_event(
         &mut self,
         request: &PanelEventRequest,
-    ) -> Result<HandlerEffects, PluginHostError> {
+    ) -> Result<HandlerEffects, PanelWasmHostError> {
         self.store.data_mut().clear();
         self.store.data_mut().current_request = Some(request.clone());
         let export_name = format!(
@@ -738,7 +738,7 @@ impl WasmPanelRuntime {
             .instance
             .get_func(&mut self.store, &export_name)
             .ok_or_else(|| {
-                PluginHostError::Runtime(format!("missing handler export: {export_name}"))
+                PanelWasmHostError::Runtime(format!("missing handler export: {export_name}"))
             })?;
         let numeric_value = request
             .event_payload
@@ -746,7 +746,7 @@ impl WasmPanelRuntime {
             .and_then(Value::as_i64)
             .unwrap_or_default() as i32;
         let payload = request.event_payload.get("value").map(|_| numeric_value);
-        call_export(&mut self.store, handler, payload).map_err(PluginHostError::Runtime)?;
+        call_export(&mut self.store, handler, payload).map_err(PanelWasmHostError::Runtime)?;
         Ok(self.store.data().result.clone())
     }
 
@@ -785,17 +785,17 @@ impl WasmPanelRuntime {
     ///
     /// 戻り値は handler の `HandlerEffects` (commands / state_patch / diagnostics)。
     /// init 中に Wasm が DOM を mutate するなら `call_with_dom` 内で呼ぶこと。
-    pub fn panel_init(&mut self) -> Result<HandlerEffects, PluginHostError> {
+    pub fn panel_init(&mut self) -> Result<HandlerEffects, PanelWasmHostError> {
         self.store.data_mut().clear();
         if let Some(init) = self.instance.get_func(&mut self.store, PANEL_INIT_EXPORT) {
-            call_export(&mut self.store, init, None).map_err(PluginHostError::Runtime)?;
+            call_export(&mut self.store, init, None).map_err(PanelWasmHostError::Runtime)?;
         }
         Ok(self.store.data().result.clone())
     }
 }
 
 fn call_export(
-    store: &mut Store<RuntimeCollector>,
+    store: &mut Store<HostCallContext>,
     func: Func,
     payload: Option<i32>,
 ) -> Result<(), String> {
@@ -810,7 +810,7 @@ fn call_export(
     }
 }
 
-fn read_utf8(caller: &mut Caller<'_, RuntimeCollector>, ptr: i32, len: i32) -> Option<String> {
+fn read_utf8(caller: &mut Caller<'_, HostCallContext>, ptr: i32, len: i32) -> Option<String> {
     if ptr < 0 || len < 0 {
         return None;
     }
@@ -822,7 +822,7 @@ fn read_utf8(caller: &mut Caller<'_, RuntimeCollector>, ptr: i32, len: i32) -> O
     std::str::from_utf8(bytes).ok().map(ToString::to_string)
 }
 
-fn current_memory(caller: &mut Caller<'_, RuntimeCollector>) -> Option<Memory> {
+fn current_memory(caller: &mut Caller<'_, HostCallContext>) -> Option<Memory> {
     match caller.get_export("memory") {
         Some(Extern::Memory(memory)) => Some(memory),
         _ => None,
@@ -958,15 +958,15 @@ mod tests {
         call $state_set_i32))"#;
 
     #[test]
-    fn runtime_initializes_state_and_emits_commands() {
+    fn instance_initializes_state_and_emits_commands() {
         let wasm_path = write_temp_wat(SAMPLE_WAT);
-        let mut runtime = WasmPanelRuntime::load(&wasm_path).expect("runtime loads");
+        let mut instance = PanelWasmInstance::load(&wasm_path).expect("instance loads");
 
-        let init = runtime.panel_init().expect("panel_init runs");
+        let init = instance.panel_init().expect("panel_init runs");
         assert_eq!(init.state_patch, vec![StatePatch::set("expanded", false)]);
         let initial_state = json!({"expanded": false});
 
-        let toggled = runtime
+        let toggled = instance
             .handle_event(&PanelEventRequest {
                 handler_name: "toggle-expanded".to_string(),                event_payload: json!({}),
                 state_snapshot: initial_state.clone(),
@@ -975,7 +975,7 @@ mod tests {
             .expect("toggle handler runs");
         assert_eq!(toggled.state_patch, vec![StatePatch::toggle("expanded")]);
 
-        let saved = runtime
+        let saved = instance
             .handle_event(&PanelEventRequest {
                 handler_name: "save_project".to_string(),                event_payload: json!({}),
                 state_snapshot: initial_state.clone(),
@@ -984,7 +984,7 @@ mod tests {
             .expect("save handler runs");
         assert_eq!(saved.commands, vec![RequestDescriptor::new("project.save")]);
 
-        let pen = runtime
+        let pen = instance
             .handle_event(&PanelEventRequest {
                 handler_name: "activate_pen".to_string(),                event_payload: json!({}),
                 state_snapshot: initial_state,
@@ -997,7 +997,7 @@ mod tests {
             .insert("tool".to_string(), Value::String("pen".to_string()));
         assert_eq!(pen.commands, vec![expected]);
 
-        let string_len = runtime
+        let string_len = instance
             .handle_event(&PanelEventRequest {
                 handler_name: "save_path_len".to_string(),                event_payload: json!({}),
                 state_snapshot: json!({"save_path": "project.altp.json"}),
@@ -1006,7 +1006,7 @@ mod tests {
             .expect("string state handler runs");
         assert!(string_len.diagnostics.is_empty());
 
-        let moved = runtime
+        let moved = instance
             .handle_event(&PanelEventRequest {
                 handler_name: "move_layer".to_string(),                event_payload: json!({}),
                 state_snapshot: json!({}),
@@ -1022,7 +1022,7 @@ mod tests {
             .insert("to_index".to_string(), json!(0));
         assert_eq!(moved.commands, vec![expected_move]);
 
-        let batched = runtime
+        let batched = instance
             .handle_event(&PanelEventRequest {
                 handler_name: "apply_batch".to_string(),                event_payload: json!({}),
                 state_snapshot: json!({}),
@@ -1039,13 +1039,13 @@ mod tests {
     }
 
     #[test]
-    fn runtime_reads_host_snapshot_through_host_imports() {
+    fn instance_reads_host_snapshot_through_host_imports() {
         let wasm_path = write_temp_wat(HOST_SYNC_WAT);
-        let mut runtime = WasmPanelRuntime::load(&wasm_path).expect("runtime loads");
+        let mut instance = PanelWasmInstance::load(&wasm_path).expect("instance loads");
 
-        assert!(runtime.supports_sync_host());
+        assert!(instance.supports_sync_host());
 
-        let synced = runtime
+        let synced = instance
             .sync_host(
                 &json!({}),
                 &json!({

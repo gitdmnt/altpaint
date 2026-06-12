@@ -3,14 +3,14 @@
 //! 設計方針 (Phase 10):
 //! - 関数名・責務は Blitz `DocumentMutator` / `BaseDocument` と同じにする (合成 API は提供しない)
 //! - DOM への借用は呼出単位で完結 (1 host call = 1 `DocumentMutator`)
-//! - DOM context は `RuntimeCollector::dom_ctx` に raw pointer で持たせ、
-//!   `WasmPanelRuntime::call_with_dom` のスコープ内でのみ有効
+//! - DOM context は `HostCallContext::dom_ctx` に raw pointer で持たせ、
+//!   `PanelWasmInstance::call_with_dom` のスコープ内でのみ有効
 //!
 //! NodeId エンコーディング:
 //! - blitz NodeId (`usize`) を u64 として ABI に渡す
 //! - `query_selector` の Option 返却は u64 で表現 (0 = None, それ以外は NodeId + 1)
 
-use crate::RuntimeCollector;
+use crate::HostCallContext;
 use blitz_dom::{LocalName, Namespace, QualName};
 use blitz_html::HtmlDocument;
 use panel_protocol::{Diagnostic, DiagnosticLevel};
@@ -19,7 +19,7 @@ use wasmtime::{Caller, Extern, Linker, Memory};
 
 /// Wasm 呼出スコープ内のみ有効な DOM コンテキスト。
 ///
-/// `WasmPanelRuntime::call_with_dom` が NonNull を立て、戻り際に None に戻す。
+/// `PanelWasmInstance::call_with_dom` が NonNull を立て、戻り際に None に戻す。
 /// DOM API の host function はこれを deref して `HtmlDocument` を mutate する。
 ///
 /// SAFETY 原則:
@@ -42,7 +42,7 @@ const DOM_HOST_MODULE: &str = "dom";
 
 /// `DocumentMutator` / `BaseDocument` を Wasm に公開する host function 群を linker に登録する。
 pub(crate) fn register_dom_host_functions(
-    linker: &mut Linker<RuntimeCollector>,
+    linker: &mut Linker<HostCallContext>,
 ) -> wasmtime::Result<()> {
     linker.func_wrap(DOM_HOST_MODULE, "query_selector", host_query_selector)?;
     linker.func_wrap(DOM_HOST_MODULE, "set_attribute", host_set_attribute)?;
@@ -51,7 +51,7 @@ pub(crate) fn register_dom_host_functions(
     Ok(())
 }
 
-fn host_query_selector(mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: i32) -> i64 {
+fn host_query_selector(mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32) -> i64 {
     let Some(selector) = read_utf8(&mut caller, ptr, len) else {
         push_err(&mut caller, "query_selector: invalid selector ptr/len");
         return 0;
@@ -72,7 +72,7 @@ fn host_query_selector(mut caller: Caller<'_, RuntimeCollector>, ptr: i32, len: 
 }
 
 fn host_set_attribute(
-    mut caller: Caller<'_, RuntimeCollector>,
+    mut caller: Caller<'_, HostCallContext>,
     node_id: i64,
     name_ptr: i32,
     name_len: i32,
@@ -104,7 +104,7 @@ fn host_set_attribute(
 }
 
 fn host_clear_attribute(
-    mut caller: Caller<'_, RuntimeCollector>,
+    mut caller: Caller<'_, HostCallContext>,
     node_id: i64,
     name_ptr: i32,
     name_len: i32,
@@ -130,7 +130,7 @@ fn host_clear_attribute(
 }
 
 fn host_set_inner_html(
-    mut caller: Caller<'_, RuntimeCollector>,
+    mut caller: Caller<'_, HostCallContext>,
     node_id: i64,
     html_ptr: i32,
     html_len: i32,
@@ -164,17 +164,17 @@ fn decode_node_id(raw: i64) -> Option<usize> {
     Some((raw - 1) as usize)
 }
 
-fn current_document(caller: &Caller<'_, RuntimeCollector>) -> Option<NonNull<HtmlDocument>> {
+fn current_document(caller: &Caller<'_, HostCallContext>) -> Option<NonNull<HtmlDocument>> {
     caller.data().dom_ctx.document
 }
 
 fn current_document_mut(
-    caller: &mut Caller<'_, RuntimeCollector>,
+    caller: &mut Caller<'_, HostCallContext>,
 ) -> Option<NonNull<HtmlDocument>> {
     caller.data_mut().dom_ctx.document
 }
 
-fn read_utf8(caller: &mut Caller<'_, RuntimeCollector>, ptr: i32, len: i32) -> Option<String> {
+fn read_utf8(caller: &mut Caller<'_, HostCallContext>, ptr: i32, len: i32) -> Option<String> {
     if ptr < 0 || len < 0 {
         return None;
     }
@@ -186,14 +186,14 @@ fn read_utf8(caller: &mut Caller<'_, RuntimeCollector>, ptr: i32, len: i32) -> O
     std::str::from_utf8(bytes).ok().map(ToString::to_string)
 }
 
-fn current_memory(caller: &mut Caller<'_, RuntimeCollector>) -> Option<Memory> {
+fn current_memory(caller: &mut Caller<'_, HostCallContext>) -> Option<Memory> {
     match caller.get_export("memory") {
         Some(Extern::Memory(memory)) => Some(memory),
         _ => None,
     }
 }
 
-fn push_err(caller: &mut Caller<'_, RuntimeCollector>, msg: &str) {
+fn push_err(caller: &mut Caller<'_, HostCallContext>, msg: &str) {
     caller.data_mut().result.diagnostics.push(Diagnostic {
         level: DiagnosticLevel::Error,
         message: msg.to_string(),
