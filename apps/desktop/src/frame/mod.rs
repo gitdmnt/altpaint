@@ -7,12 +7,10 @@ pub(crate) mod status_panel;
 use desktop_support::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
 
 pub(crate) use geometry::fit_rect;
-#[allow(unused_imports)]
 pub(crate) use overlay_quad::{
     CircleQuad, LineQuad, build_overlay_circle_quads, build_overlay_line_quads,
     build_overlay_solid_quads,
 };
-#[allow(unused_imports)]
 pub(crate) use solid_quad::{
     SolidQuad, build_background_solid_quads, build_foreground_solid_quads, pixel_rect_to_ndc,
 };
