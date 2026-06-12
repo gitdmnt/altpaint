@@ -32,7 +32,7 @@ pub enum DocumentCommand {
     /// アクティブレイヤーの合成モードを循環させる。
     CycleActiveLayerBlendMode,
     /// アクティブレイヤーの合成モードを明示設定する。
-    SetActiveLayerBlendMode { mode: crate::document::BlendMode },
+    SetActiveLayerBlendMode { mode: crate::BlendMode },
     /// アクティブレイヤーの表示状態を切り替える。
     ToggleActiveLayerVisibility,
     /// 新しいコマを現在ページへ追加する。

@@ -853,7 +853,7 @@ fn brush_blend_golden_on_transparent_and_opaque_bitmap() {
         ],
     );
 
-    let mut white = CanvasBitmap::new(5, 5);
+    let mut white = CanvasBitmap::opaque_white(5, 5);
     let _ = white.draw_point_sized_rgba(2, 2, [200, 40, 40, 128], 3, true);
     assert_eq!(
         white.pixels,

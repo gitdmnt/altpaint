@@ -15,6 +15,7 @@ members = [
   "crates/panel-api",
   "crates/paint-engine",
   "crates/geometry",
+  "crates/raster",
   "crates/app-core",
   "crates/desktop-support",
   "crates/panel-runtime",

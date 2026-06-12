@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{DocumentCommand, SessionCommand};
 use geometry::KomaLocalPoint;
+use raster::{BlendMode, RgbaBitmap as CanvasBitmap};
 
-mod bitmap;
 mod layer_ops;
 mod tool_state;
 
@@ -637,52 +637,6 @@ const fn default_created_layer_count() -> u64 {
     1
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum BlendMode {
-    #[default]
-    Normal,
-    Multiply,
-    Screen,
-    Add,
-}
-
-impl BlendMode {
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::Normal => "normal",
-            Self::Multiply => "multiply",
-            Self::Screen => "screen",
-            Self::Add => "add",
-        }
-    }
-
-    /// 空文字列は `None` を返す。未知の文字列は後方互換として `Normal` にフォールバック
-    /// する（旧 `Custom(String)` variant の保存値はここで破棄される）。
-    pub fn parse_name(value: &str) -> Option<Self> {
-        let trimmed = value.trim();
-        if trimmed.is_empty() {
-            return None;
-        }
-
-        match trimmed.to_ascii_lowercase().as_str() {
-            "normal" => Some(Self::Normal),
-            "multiply" => Some(Self::Multiply),
-            "screen" => Some(Self::Screen),
-            "add" => Some(Self::Add),
-            _ => Some(Self::Normal),
-        }
-    }
-
-    fn next(&self) -> Self {
-        match self {
-            Self::Normal => Self::Multiply,
-            Self::Multiply => Self::Screen,
-            Self::Screen => Self::Add,
-            Self::Add => Self::Normal,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayerMask {
     pub width: usize,
@@ -724,7 +678,7 @@ impl RasterLayer {
             name,
             visible: true,
             blend_mode: BlendMode::Normal,
-            bitmap: CanvasBitmap::new(width, height),
+            bitmap: CanvasBitmap::opaque_white(width, height),
             mask: None,
         }
     }
@@ -763,19 +717,6 @@ impl Default for CanvasViewTransform {
             flip_y: false,
         }
     }
-}
-
-/// RGBA8 のラスタビットマップ。
-///
-/// レイヤー画素・合成キャッシュ・履歴 patch が共有する汎用バッファ。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CanvasBitmap {
-    /// 横幅ピクセル数。
-    pub width: usize,
-    /// 高さピクセル数。
-    pub height: usize,
-    /// RGBA8 の生ピクセル列。
-    pub pixels: Vec<u8>,
 }
 
 impl Default for Document {

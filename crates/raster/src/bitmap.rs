@@ -1,14 +1,34 @@
-//! `CanvasBitmap` の画素操作ロジックをまとめる。
+//! `RgbaBitmap` とラスタライズプリミティブ。
 //!
-//! ドメイン型定義から描画アルゴリズムを分離し、`Document` 本体の責務を
-//! 状態遷移に集中させる。
+//! RGBA8 の汎用ピクセルバッファと、その上で動く点・線・カプセル (太線) の
+//! ラスタライズアルゴリズムを定義する。レイヤー画素・合成キャッシュ・履歴 patch が
+//! 共有する水平土台の語彙。
 
 use geometry::{ClampToCanvasBounds, PageDirtyRect};
+use serde::{Deserialize, Serialize};
 
-use super::CanvasBitmap;
+/// RGBA8 のラスタビットマップ。
+///
+/// レイヤー画素・合成キャッシュ・履歴 patch が共有する汎用バッファ。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RgbaBitmap {
+    /// 横幅ピクセル数。
+    pub width: usize,
+    /// 高さピクセル数。
+    pub height: usize,
+    /// RGBA8 の生ピクセル列。
+    pub pixels: Vec<u8>,
+}
 
-impl CanvasBitmap {
-    pub fn new(width: usize, height: usize) -> Self {
+impl Default for RgbaBitmap {
+    fn default() -> Self {
+        Self::opaque_white(64, 64)
+    }
+}
+
+impl RgbaBitmap {
+    /// 白不透明で初期化したビットマップを返す。
+    pub fn opaque_white(width: usize, height: usize) -> Self {
         let mut pixels = vec![0; width * height * 4];
         for chunk in pixels.chunks_exact_mut(4) {
             chunk[0] = 255;
@@ -209,7 +229,7 @@ impl CanvasBitmap {
         )
     }
 
-    /// 指定領域を複製した新しい `CanvasBitmap` を返す。
+    /// 指定領域を複製した新しい `RgbaBitmap` を返す。
     pub fn extract_region(
         &self,
         start_x: usize,
@@ -574,12 +594,6 @@ impl CanvasBitmap {
         let blended = crate::blend::source_over_coverage_pixel(dst, rgba, coverage);
         self.pixels[index..index + 4].copy_from_slice(&blended);
         PageDirtyRect::from_inclusive_points(x, y, x, y)
-    }
-}
-
-impl Default for CanvasBitmap {
-    fn default() -> Self {
-        Self::new(64, 64)
     }
 }
 
