@@ -242,8 +242,6 @@ impl DesktopApp {
     /// 戻り値: (AABB 単色, 円リング, 線分カプセル)
     pub(crate) fn overlay_quads(
         &self,
-        window_width: usize,
-        window_height: usize,
     ) -> (
         Vec<crate::frame::SolidQuad>,
         Vec<crate::frame::CircleQuad>,
@@ -253,19 +251,12 @@ impl DesktopApp {
             return (Vec::new(), Vec::new(), Vec::new());
         };
         let bitmap = self.canvas_frame.as_ref();
-        let canvas_source = render_types::CanvasCompositeSource {
-            width: bitmap.map_or(1, |b| b.width),
-            height: bitmap.map_or(1, |b| b.height),
-            pixels: bitmap.map_or(&[][..], |b| b.pixels.as_slice()),
+        let canvas_plan = render_types::CanvasPlan {
+            host_rect: layout.canvas_host_rect,
+            source_width: bitmap.map_or(1, |b| b.width),
+            source_height: bitmap.map_or(1, |b| b.height),
+            transform: self.document.view_transform,
         };
-        let frame_plan = render_types::FramePlan::new(
-            window_width,
-            window_height,
-            layout.canvas_host_rect,
-            canvas_source,
-            self.document.view_transform,
-            "",
-        );
         let overlay_state = render_types::CanvasOverlayState {
             brush_preview: self.hover_canvas_position,
             brush_size: self.brush_preview_size(),
@@ -279,9 +270,9 @@ impl DesktopApp {
                 .and_then(|(panel_id, _)| self.panel_presentation.panel_rect(panel_id)),
         };
         (
-            crate::frame::build_overlay_solid_quads(&frame_plan, &overlay_state),
-            crate::frame::build_overlay_circle_quads(&frame_plan, &overlay_state),
-            crate::frame::build_overlay_line_quads(&frame_plan, &overlay_state),
+            crate::frame::build_overlay_solid_quads(&canvas_plan, &overlay_state),
+            crate::frame::build_overlay_circle_quads(&canvas_plan, &overlay_state),
+            crate::frame::build_overlay_line_quads(&canvas_plan, &overlay_state),
         )
     }
 

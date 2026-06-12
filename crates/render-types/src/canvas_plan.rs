@@ -4,14 +4,6 @@ use crate::{
     CanvasScene, PixelRect, map_canvas_dirty_to_display_with_transform, prepare_canvas_scene,
 };
 
-/// キャンバス合成元を `RenderFrame` に依存させずに渡すための軽量ビュー。
-#[derive(Clone, Copy)]
-pub struct CanvasCompositeSource<'a> {
-    pub width: usize,
-    pub height: usize,
-    pub pixels: &'a [u8],
-}
-
 /// `render` が扱うキャンバス表示計画を表す。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CanvasPlan {

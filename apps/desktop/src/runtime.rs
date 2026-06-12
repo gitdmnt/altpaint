@@ -408,7 +408,7 @@ impl ApplicationHandler for DesktopRuntime {
                 let background_solid_quads = self.app.background_solid_quads();
                 let foreground_solid_quads = self.app.foreground_solid_quads();
                 let (overlay_solid_quads, overlay_circle_quads, overlay_line_quads) =
-                    self.app.overlay_quads(size.width as usize, size.height as usize);
+                    self.app.overlay_quads();
 
                 // 9E-4: ステータスバーを HtmlPanelEngine で GPU 描画する。
                 // panel_runtime の gpu_ctx (device/queue/renderer/scene_scratch) を共有借用する。
