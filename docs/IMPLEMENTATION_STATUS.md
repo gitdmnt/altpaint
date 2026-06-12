@@ -58,25 +58,43 @@
 - **Phase 16 / B0 完了 (2026-06-12)**: ADR 018 — 大規模リファクタリング (設計書 `docs/refactor/2026-06-naming-and-boundaries.md`) のバッチ B0「死コード一掃と文書浄化」(挙動不変)。28 コミット、145 ファイル / +412 −5,143 行。主な削除: (1) `LayerNode` / `Panel.root_layer` / `sync_root_layer_summary` と SQLite 該当カラム (BL-003、保全は保存→読込ラウンドトリップテスト先行で担保)。(2) プロジェクトのレガシー読込 (JSON / ALTPBIN フォールバック) とペン形式 v1 受理の全廃 — SQLite / pen v2 のみ受理し旧形式は明示的拒否 (BL-008)。(3) `FramePlan` / `CanvasCompositeSource` を削除し `CanvasPlan` 直渡しへ (BL-007)、exposed background 機構と render-types 死 API 一掃 (BL-005/006)、デモ用レイヤーマスク切替経路 (BL-004)、`apply_command` 返値の `()` 化 (BL-002)。(4) gpu-canvas の書込み専用 `GpuPenTipCache` 一式 + 孤立 brush_stamp.wgsl (BL-018)。(5) パネル系: 旧 init プロトコル (`PanelInitRequest/Response`、`WasmPanelRuntime::initialize` ほか) (BL-012)、`StatePatchOp::Replace` (BL-013)、`PanelEventRequest.event_kind` (BL-014)、SDK commands 第 2 経路 (project/workspace/view/panel) + dom 未使用 5 関数 + iterator handle 機構 + host 未使用 getter (BL-019)、panel-api の `InvokePanelHandler` / `commands()` / `debug_summary()` (BL-011)、panel-html 死 API と `on_input` 返値の `()` 化 (BL-015/024)、ui-shell の一度も書かれない `rendered_panel_rects` (BL-016)、host state の Value 版二重埋め込み (BL-017)。(6) storage / desktop-support の死 public API 削除・crate 内部化 (BL-009/010)、`CoreError` (BL-001)、workspace 依存掃除 (BL-020)。(7) 機械生成テンプレ doc コメント 1065 ブロックと生成スクリプト `tools/rewrite_rust_function_docs.py` の全廃 (BL-022)。skip: BL-023 (`paint_params` 削除) は `MAX_STAMP_STEPS` が gpu-canvas からも参照されるため B8 の PaintPlan 化と同時に解決、BL-009 の一部公開 API (manifest 系ほか) は live 設計要素のため B7 で再判断。検証: workspace テスト 415 → 405 passed / 0 failed / 7 ignored (減少は死 API 専用テストの削除によるもの。ラウンドトリップ/旧形式拒否テストを新規追加した上での正味 −10)、clippy 警告 0、wasm ビルド成功。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
 - **Phase 17 / B1 完了 (2026-06-12)**: ADR 018 — バッチ B1「用語統一第 1 波 — Koma」(挙動不変、wire/スキーマ変更含む)。コミット 17b20cc..6139d36 の 23 コミット (118 ファイル / +1,785 −1,477 行)。最大の両義 (コマ義 `Panel` と UI パネルの衝突) を解消: (1) **BL-036 (冒頭で先行実施)**: wire 名定数を `panel-schema::names` の feature 別モジュールへ一元化し、panel-api 定数 / SDK リテラル / runtime match の 3 重複を単一定義点参照に置換 (probe フォールバックの silent no-op リスクを構造的に排除)。(2) **K1〜K13** (K11 は引数名改名のみ、型付き `KomaId` キー化は B8): `app_core::Panel` → `Koma` と派生型 (`KomaId` / `KomaBounds` / `KomaLocalPoint`)、`Page.panels` / `Document.active_panel_index` → `komas` / `active_koma_index` (serde キー含む)、`Command` のコマ操作 variant → `{Create,Add,RemoveActive,Select,SelectNext,SelectPrevious,FocusActive}Koma`、`ToolKind::PanelRect` → `KomaRect` (SDK `Tool::KomaRect` / wire `koma_rect` / カタログ id `builtin.koma-rect` 追随)、サービス wire `panel_nav.*` → `koma_nav.*`、host state キー → `document.komas_json` / `page_koma_count` / `active_koma_*`、SQLite スキーマ → `komas` / `koma_composites` / `layers.koma_id` (マイグレーションなし = alpha 方針で旧プロジェクトファイル非互換)、永続化型 → `ProjectKomaSummary` / `PersistedKomaComposite`、`KomaNavigatorOverlay` 系、コマ用色定数 → `ACTIVE_KOMA_*` / `KOMA_PREVIEW_*` / `KOMA_NAVIGATOR_*`、paint 系派生 → `koma_creation_preview_bounds` / `KomaRectCommitted`。(3) **C14〜C17**: ビルトインパネル改名 `panel-list` → `koma-list` / `layers-panel` → `layers` / `snapshot-panel` → `snapshots` / `pen-settings` → `tool-settings` (id も `builtin.koma-list` 等へ)。(4) **D16**: `SnapshotStore` → `DocumentSnapshotStore` (snapshot 多義解消)。(5) **検証修正**: バッチ検証 grep で app-core ドメインモジュール (document.rs / layer_ops.rs / history.rs) に残存していたコマ義 panel 識別子 (`select_panel` 系コマ操作・`*_panel_layer_*` 系レイヤー操作・`HistoryEntry.panel_id` ほか) と desktop 呼出側 (`PendingStroke` / `recomposite_koma` / status_text) を一掃。検証: workspace テスト 408 passed / 0 failed / 7 ignored (B0 比 +3 は wire 名定数モジュールのテスト追加)、clippy 警告 0、wasm ビルド成功、起動スモーク確認 (パニックなし)、`koma_nav.*` 操作経路はサービス dispatch テスト (`request_service_koma_nav_add_and_select_changes_active_koma`) で生存確認。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
 
+- **Phase 18 / B2 完了 (2026-06-12)**: ADR 018 — バッチ B2「用語統一第 2 波 — クレート・型・モジュール機械改名」(挙動不変・改名のみ。コード移動/分割なし)。コミット 7f71efe..59a4272 の 50 コミット。クレート改名 (C1〜C8/C13) の新旧対応:
+
+  | 旧クレート名 | 新クレート名 | 根拠 |
+  | --- | --- | --- |
+  | `canvas` | `paint-engine` | 実責務は入力解釈 + ペイント差分生成 |
+  | `gpu-canvas` | `gpu-paint` | brush/fill/composite を含む GPU ペイントエンジン |
+  | `render-types` | `canvas-geometry` | 実体はキャンバス表示幾何 (「types」は虚偽) |
+  | `plugin-host` | `panel-wasm-host` | パネル専用 Wasm 実行器。「plugin」予約語化 |
+  | `plugin-sdk` | `panel-sdk` | 内容は 100% パネル作成用 |
+  | `plugin-macros` | `panel-macros` | 3 マクロすべて panel_* |
+  | `panel-schema` | `panel-protocol` | 実態は host↔Wasm プロトコル契約 |
+  | `ui-shell` | `panel-workspace` | 実責務はパネルの配置・focus・hit テスト |
+  | `desktop` (package) | `altpaint-desktop` (bin `altpaint`) | 成果物バイナリにアプリ名を含める |
+
+  主な型・関数・モジュール改名 (R/P/D 系 40 項目): `CanvasRuntime`→`PaintEngine`・`execute_paint_input`→`compute_paint_edits` (desktop 側は `apply_paint_input`)、`CanvasPoint`/`CanvasPointF`/`CanvasDirtyRect`→`PagePoint`/`PagePointF`/`PageDirtyRect`、`CanvasScene`→`CanvasViewGeometry` (`prepare_canvas_scene`→`CanvasViewGeometry::compute`)、`GpuCanvasPool`→`LayerTextureStore`・`GpuLayerTexture`→`GpuRgbaTexture`・`Gpu{Brush,Fill}Dispatch`/`GpuLayerCompositor`→`{Brush,Fill,Composite}Pipeline`、`CommandHistory`→`EditHistory`、`normalize_phase9_state`→`normalize_after_load`、`StorageError`→`ProjectStoreError`・`ProjectIndex`→`ProjectManifest`・`pen_presets`→`pen_catalog`・`PenEngine`→`StoredPenEngine`、`DesktopProfiler`→`FrameProfiler`・`CanvasTemplate`→`CanvasSizePreset`、`PluginConfigs`→`PanelConfigs`、`pen_state`→`tool_state`・描画サイズ関数を `brush_size_for_pressure` へ一本化、`Koma.bitmap`→`Koma.composite_cache`、`BuiltinPanelPlugin`→`HtmlWasmPanel`、`CommandDescriptor`→`RequestDescriptor`・`HandlerResult`→`HandlerEffects`、`WasmPanelRuntime`→`PanelWasmInstance`・`RuntimeCollector`→`HostCallContext`・`PluginHostError`→`PanelWasmHostError`、host snapshot 用語→host state (`host_sync`→`host_state`・`HostSnapshotCache`→`HostStateCache`)、`PanelPresentation`→`PanelWorkspace`・`html_panel_*` 接頭辞除去・`ResizeEdge`→`ResizeHandle`、`HtmlPanelEngine`→`HtmlPanelView`・`RenderedPanelHit`→`ActionRect`・`measured_size`/`on_load`→`panel_size`/`set_panel_size`、`Runtime{Dispatch,Keyboard}Result`→`Panel{Dispatch,Keyboard}Result`・`PanelGpuFrame`→`RenderedPanelTexture`、desktop の `runtime.rs`/`DesktopRuntime`→`event_loop.rs`/`DesktopEventLoop`・`PresentScene`→`PresentFrame`・`frame/`→`present_quads/`・`StatusPanel`→`StatusBar`・`CanvasFrame`→`CpuCanvasSnapshot`・`CanvasLayer` 系→`CanvasSurface` 系・`present_state.rs`→`invalidation.rs`。計画どおりの保留: R11/R12 (`CanvasBitmap`→`RgbaBitmap`) は B5、R21/R22 は B8、D2/D12/D13/D15 は B7、P6 は B6。検証: workspace テスト 408 passed / 0 failed / 7 ignored (B1 と同数 = 改名のみ)、clippy 警告 0、wasm ビルド成功、起動スモーク 22 秒パニックなし、旧名残存 grep 0 件。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+
+  注: 本文書のフェーズ完了履歴・過去フェーズの記録セクション、および「実装済みの主要領域」以下の B2 以前に書かれた現況節に現れる旧クレート名・旧型名は、当時の記述としてそのまま残す (本表で新名に読み替える。全面改稿は B10 = BL-160〜165。最新の依存関係と名称は `docs/MODULE_DEPENDENCIES.md` が正本)。
+
 ## 現在の workspace 構成
 
 ### 中核 crate
 
 - `app-core`
-- `canvas`
-- `gpu-canvas`
-- `render-types`
+- `paint-engine`（旧 `canvas`、ADR 018 B2 で改名）
+- `gpu-paint`（旧 `gpu-canvas`、ADR 018 B2 で改名）
+- `canvas-geometry`（旧 `render-types`、ADR 018 B2 で改名）
 - `storage`
 - `desktop-support`
 - `panel-api`
 - `panel-runtime`
-- `ui-shell`
-- `plugin-host`
-- `panel-schema`
-- `plugin-macros`
-- `plugin-sdk`
+- `panel-workspace`（旧 `ui-shell`、ADR 018 B2 で改名）
+- `panel-wasm-host`（旧 `plugin-host`、ADR 018 B2 で改名）
+- `panel-protocol`（旧 `panel-schema`、ADR 018 B2 で改名）
+- `panel-macros`（旧 `plugin-macros`、ADR 018 B2 で改名）
+- `panel-sdk`（旧 `plugin-sdk`、ADR 018 B2 で改名）
 - `panel-html`
-- `apps/desktop`
+- `apps/desktop`（package `altpaint-desktop`、bin `altpaint`、ADR 018 B2 で改名）
 
 補足: 旧 `builtin-panels` umbrella crate は Phase 15 (ADR 017) で `panel-runtime::loader` へ統合し削除した。
 
