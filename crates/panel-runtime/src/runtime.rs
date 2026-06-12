@@ -11,7 +11,7 @@ use std::sync::Arc;
 /// パネル毎の GPU 描画結果をまとめて返す。
 ///
 /// hit 矩形は GPU 描画から分離済み (`collect_panel_hits`)。
-pub struct PanelGpuFrame<'a> {
+pub struct RenderedPanelTexture<'a> {
     pub panel_id: String,
     pub texture: &'a wgpu::Texture,
     pub width: u32,
@@ -35,14 +35,14 @@ fn panel_view_mut(panel: &mut Box<dyn PanelPlugin>) -> Option<&mut HtmlPanelView
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct RuntimeDispatchResult {
+pub struct PanelDispatchResult {
     pub actions: Vec<HostAction>,
     pub changed_panel_ids: BTreeSet<String>,
     pub config_changed: bool,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct RuntimeKeyboardResult {
+pub struct PanelKeyboardResult {
     pub handled: bool,
     pub actions: Vec<HostAction>,
     pub changed_panel_ids: BTreeSet<String>,
@@ -260,13 +260,13 @@ impl PanelRuntime {
         sized: &[(String, u32, u32)],
         scale: f32,
         chrome_height: u32,
-    ) -> Vec<PanelGpuFrame<'_>> {
+    ) -> Vec<RenderedPanelTexture<'_>> {
         let Some(gpu_ctx) = self.gpu_ctx.as_mut() else {
             return Vec::new();
         };
         // ループ内で self.panels を可変借用するため、まず ID → 描画情報 のメタを集める
-        type FrameTuple = (String, *const wgpu::Texture, u32, u32);
-        let mut frames: Vec<FrameTuple> = Vec::new();
+        type TextureTuple = (String, *const wgpu::Texture, u32, u32);
+        let mut textures: Vec<TextureTuple> = Vec::new();
         for (panel_id, width, height) in sized {
             // 該当パネルを mutable で取得
             let Some(panel) = self.panels.iter_mut().find(|p| p.id() == panel_id.as_str()) else {
@@ -286,15 +286,15 @@ impl PanelRuntime {
             );
             let target = outcome.target();
             let ptr: *const wgpu::Texture = &target.texture;
-            frames.push((panel_id.clone(), ptr, target.width, target.height));
+            textures.push((panel_id.clone(), ptr, target.width, target.height));
         }
         // SAFETY: 各 *const wgpu::Texture は self.panels 内の Box<dyn PanelPlugin> 内
         // view が保持するテクスチャを指す。Box は heap に固定されており、戻り値の
-        // PanelGpuFrame は &mut self に紐付くので、戻り値存在中は self.panels が
+        // RenderedPanelTexture は &mut self に紐付くので、戻り値存在中は self.panels が
         // 不変に保たれる。テクスチャの寿命も同期する。
-        frames
+        textures
             .into_iter()
-            .map(|(panel_id, ptr, w, h)| PanelGpuFrame {
+            .map(|(panel_id, ptr, w, h)| RenderedPanelTexture {
                 panel_id,
                 texture: unsafe { &*ptr },
                 width: w,
@@ -414,21 +414,21 @@ impl PanelRuntime {
     ///
     /// ADR 014 以降、HTML パネル経路では GPU 側 `render_dirty` が真の dirty 判定を持つため、
     /// runtime 側ではイベントを受けたパネルを無条件で `changed_panel_ids` に入れる。
-    pub fn dispatch_event(&mut self, event: &PanelEvent) -> RuntimeDispatchResult {
+    pub fn dispatch_event(&mut self, event: &PanelEvent) -> PanelDispatchResult {
         let previous_configs = collect_persistent_panel_configs(&self.panels);
         let Some(panel) = self
             .panels
             .iter_mut()
             .find(|panel| panel.id() == event_panel_id(event))
         else {
-            return RuntimeDispatchResult::default();
+            return PanelDispatchResult::default();
         };
 
         let actions = panel.handle_event(event);
         let mut changed_panel_ids = BTreeSet::new();
         changed_panel_ids.insert(panel.id().to_string());
         let config_changed = collect_persistent_panel_configs(&self.panels) != previous_configs;
-        RuntimeDispatchResult {
+        PanelDispatchResult {
             actions,
             changed_panel_ids,
             config_changed,
@@ -444,7 +444,7 @@ impl PanelRuntime {
         shortcut: &str,
         key: &str,
         repeat: bool,
-    ) -> RuntimeKeyboardResult {
+    ) -> PanelKeyboardResult {
         let previous_configs = collect_persistent_panel_configs(&self.panels);
         let mut handled = false;
         let mut actions = Vec::new();
@@ -469,7 +469,7 @@ impl PanelRuntime {
             actions.extend(panel_actions);
         }
         let config_changed = collect_persistent_panel_configs(&self.panels) != previous_configs;
-        RuntimeKeyboardResult {
+        PanelKeyboardResult {
             handled,
             actions,
             changed_panel_ids,

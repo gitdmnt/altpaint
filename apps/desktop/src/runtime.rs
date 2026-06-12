@@ -267,25 +267,25 @@ impl ApplicationHandler for DesktopRuntime {
                             .iter()
                             .map(|id| (id.clone(), size.width, size.height))
                             .collect();
-                        let frames = self.app.panel_runtime.render_panels(
+                        let textures = self.app.panel_runtime.render_panels(
                             &sized,
                             1.0,
                             crate::app::HTML_PANEL_CHROME_HEIGHT,
                         );
                         // quad の screen rect は hit テーブルと同じ full rect を共有する
-                        // (frames は &mut panel_runtime に紐付くため、この間 panel_runtime は再借用しない)
-                        let frame_meta: Vec<(String, *const wgpu::Texture, u32, u32)> = frames
+                        // (textures は &mut panel_runtime に紐付くため、この間 panel_runtime は再借用しない)
+                        let texture_meta: Vec<(String, *const wgpu::Texture, u32, u32)> = textures
                             .iter()
-                            .map(|frame| {
+                            .map(|rendered| {
                                 (
-                                    frame.panel_id.clone(),
-                                    frame.texture as *const wgpu::Texture,
-                                    frame.width,
-                                    frame.height,
+                                    rendered.panel_id.clone(),
+                                    rendered.texture as *const wgpu::Texture,
+                                    rendered.width,
+                                    rendered.height,
                                 )
                             })
                             .collect();
-                        frame_meta
+                        texture_meta
                             .into_iter()
                             .map(|(panel_id, texture_ptr, tex_w, tex_h)| {
                                 let screen_rect = self

@@ -13,7 +13,7 @@ pub use host_state::{
 };
 pub use loader::{BuiltinPanelDef, BuiltinPanelLoadError, register_builtin_panels};
 pub use meta::{PanelMeta, PanelSizeMeta};
-pub use runtime::{PanelGpuFrame, PanelRuntime, RuntimeDispatchResult, RuntimeKeyboardResult};
+pub use runtime::{RenderedPanelTexture, PanelRuntime, PanelDispatchResult, PanelKeyboardResult};
 
 // パネルサブシステムの facade 再公開。
 // desktop はパネル関連の型を panel-runtime 経由でのみ参照する (Phase 15 / ADR 017)。
