@@ -215,7 +215,8 @@ impl DesktopApp {
     }
 
     pub(crate) fn execute_host_action(&mut self, action: HostAction) -> bool {
-        self.poll_background_tasks();
+        // BL-065: バックグラウンドジョブの回収は prepare_present_frame に一本化する。
+        // host action ごとの二重回収は廃止 (毎フレーム冒頭で 1 回だけ回収される)。
         match action {
             HostAction::DispatchDocumentCommand(command) => {
                 self.apply_document_command(&command)
