@@ -443,7 +443,7 @@ impl DesktopApp {
                     .replace_persistent_panel_configs(project.ui_state.plugin_configs);
                 self.panel_presentation
                     .reconcile_panels(self.panel_runtime.panel_static_ids());
-                self.refresh_new_document_templates();
+                self.refresh_new_document_size_presets();
                 self.refresh_workspace_presets();
                 self.reset_active_interactions();
                 self.sync_ui_from_document();

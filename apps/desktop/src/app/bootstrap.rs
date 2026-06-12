@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use app_core::Document;
 use desktop_support::{
     DEFAULT_PROJECT_FILE_NAME, DesktopSessionState, WorkspacePresetCatalog,
-    default_canvas_template_path, default_canvas_templates, builtin_panels_dir,
+    default_canvas_size_preset_path, default_canvas_size_presets, builtin_panels_dir,
     default_workspace_preset_catalog, load_session_state, load_workspace_preset_catalog,
-    save_canvas_templates, save_workspace_preset_catalog,
+    save_canvas_size_presets, save_workspace_preset_catalog,
 };
 use panel_runtime::{PanelRuntime, register_builtin_panels};
 use panel_workspace::PanelPresentation;
@@ -122,7 +122,7 @@ impl DesktopApp {
             .replace_persistent_panel_configs(plugin_configs);
         self.panel_presentation
             .reconcile_panels(self.panel_runtime.panel_static_ids());
-        self.refresh_new_document_templates();
+        self.refresh_new_document_size_presets();
         self.refresh_workspace_presets();
         self.reset_active_interactions();
         self.request_panel_reconcile();
@@ -131,14 +131,14 @@ impl DesktopApp {
         self.persist_session_state();
     }
 
-    pub(super) fn ensure_canvas_templates_file(&self) {
-        let path = default_canvas_template_path();
+    pub(super) fn ensure_canvas_size_presets_file(&self) {
+        let path = default_canvas_size_preset_path();
         if path.exists() {
             return;
         }
 
-        if let Err(error) = save_canvas_templates(&path, &default_canvas_templates()) {
-            eprintln!("failed to create canvas templates file: {error}");
+        if let Err(error) = save_canvas_size_presets(&path, &default_canvas_size_presets()) {
+            eprintln!("failed to create canvas size presets file: {error}");
         }
     }
 

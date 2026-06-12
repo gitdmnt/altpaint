@@ -2,7 +2,7 @@ mod config;
 mod dialogs;
 mod profiler;
 mod session;
-mod templates;
+mod canvas_size_presets;
 mod workspace_presets;
 
 pub use config::{
@@ -20,9 +20,9 @@ pub use session::{
     DesktopSessionState, default_session_path, load_session_state, save_session_state,
     startup_project_path,
 };
-pub use templates::{
-    CanvasTemplate, default_canvas_template_path, default_canvas_templates, load_canvas_templates,
-    save_canvas_templates,
+pub use canvas_size_presets::{
+    CanvasSizePreset, default_canvas_size_preset_path, default_canvas_size_presets, load_canvas_size_presets,
+    save_canvas_size_presets,
 };
 pub use workspace_presets::{
     WorkspacePreset, WorkspacePresetCatalog, default_workspace_preset_catalog,

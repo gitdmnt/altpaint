@@ -164,8 +164,8 @@ impl DesktopApp {
         };
         app.refresh_canvas_frame();
         app.ensure_workspace_presets_file(&app.io_state.workspace_preset_path);
-        app.ensure_canvas_templates_file();
-        app.refresh_new_document_templates();
+        app.ensure_canvas_size_presets_file();
+        app.refresh_new_document_size_presets();
         app.refresh_workspace_presets();
         app
     }

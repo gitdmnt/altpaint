@@ -3,22 +3,22 @@
 use serde_json::{Map, Value, json};
 
 use desktop_support::{
-    default_canvas_template_path, default_canvas_templates, load_canvas_templates,
+    default_canvas_size_preset_path, default_canvas_size_presets, load_canvas_size_presets,
     load_workspace_preset_catalog,
 };
 
 use super::{DesktopApp, WORKSPACE_PRESET_PANEL_ID};
 
 impl DesktopApp {
-    pub(crate) fn refresh_new_document_templates(&mut self) {
-        let templates = load_canvas_templates(default_canvas_template_path());
-        let default_template = templates
+    pub(crate) fn refresh_new_document_size_presets(&mut self) {
+        let presets = load_canvas_size_presets(default_canvas_size_preset_path());
+        let default_preset = presets
             .first()
             .cloned()
-            .or_else(|| default_canvas_templates().into_iter().next());
-        let options = templates
+            .or_else(|| default_canvas_size_presets().into_iter().next());
+        let options = presets
             .iter()
-            .map(|template| template.dropdown_option())
+            .map(|preset| preset.dropdown_option())
             .collect::<Vec<_>>()
             .join("|");
 
@@ -34,9 +34,9 @@ impl DesktopApp {
         object.insert(
             "default_template_size".to_string(),
             json!(
-                default_template
+                default_preset
                     .as_ref()
-                    .map(|template| template.size_string())
+                    .map(|preset| preset.size_string())
                     .unwrap_or_else(|| "2894x4093".to_string())
             ),
         );
