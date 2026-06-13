@@ -14,7 +14,7 @@ impl DesktopApp {
             return;
         };
         let pool = &gpu.pool;
-        let layer_keys: Vec<(app_core::KomaId, String, usize)> = self
+        let layer_keys: Vec<(document_model::KomaId, String, usize)> = self
             .document
             .work
             .pages

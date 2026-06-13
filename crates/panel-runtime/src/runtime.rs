@@ -3,7 +3,7 @@ use crate::persistent_config::{collect_persistent_panel_configs, restore_persist
 use crate::request_translation::register_default_translators;
 use crate::translator_registry::TranslatorRegistry;
 use crate::host_state::EMPTY_WORKSPACE_PANELS_JSON;
-use app_core::Document;
+use document_model::Document;
 use panel_api::{HostAction, PanelEvent, PanelPlugin};
 use panel_html::{vello, wgpu, HtmlPanelView, PanelSizeConstraints, ActionRect};
 use serde_json::Value;

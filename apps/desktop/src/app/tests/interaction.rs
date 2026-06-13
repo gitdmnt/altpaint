@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use app_core::DocumentCommand;
+use document_model::DocumentCommand;
 use editor_state::{ColorRgba8, SessionCommand, ToolKind};
 use geometry::{CanvasViewportPoint, PagePoint, WindowPoint, WindowRect};
 use desktop_support::{FrameProfiler, StageStats, ValueStats};

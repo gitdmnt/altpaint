@@ -4,9 +4,10 @@ use std::io::{Cursor, Read};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use app_core::{
-    Document, LayerMask, LayerNodeId, Page, PageId, Koma, KomaBounds, KomaId, RasterLayer, Work,
-    WorkId, WorkspaceLayout,
+use app_core::WorkspaceLayout;
+use document_model::{
+    Document, Koma, KomaBounds, KomaId, LayerMask, LayerNodeId, Page, PageId, RasterLayer, Work,
+    WorkId,
 };
 use editor_state::{CanvasViewTransform, ColorRgba8, EditorSession, PenPreset, ToolKind};
 use raster::{BlendMode, RgbaBitmap};
@@ -824,7 +825,7 @@ fn load_koma(
     let composite_cache =
         match load_koma_composite(connection, &current_composite_id(page_id, koma_id))? {
             Some(composite) => composite.bitmap,
-            None => app_core::blend::composite_layers(
+            None => document_model::blend::composite_layers(
                 koma_record.composed_width.max(1),
                 koma_record.composed_height.max(1),
                 &layers,

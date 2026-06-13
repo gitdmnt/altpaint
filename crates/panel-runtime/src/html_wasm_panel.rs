@@ -13,7 +13,7 @@ use std::any::Any;
 use std::path::Path;
 use std::sync::Arc;
 
-use app_core::{Document, DocumentCommand};
+use document_model::{Document, DocumentCommand};
 use panel_api::{HostAction, PanelEvent, PanelPlugin, ServiceRequest};
 use panel_html::{
     ActionDescriptor, HtmlPanelView, blitz_dom::LocalName, blitz_dom::node::NodeData,

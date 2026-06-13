@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use app_core::Document;
+use document_model::Document;
 use desktop_support::{builtin_panels_dir, default_pen_dir};
 use panel_runtime::{ServiceRequest, services::names};
 use serde_json::{Map, Value, json};

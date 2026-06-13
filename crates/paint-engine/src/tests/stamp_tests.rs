@@ -1,4 +1,5 @@
-use app_core::{Document, PaintInput};
+use app_core::PaintInput;
+use document_model::Document;
 use editor_state::ColorRgba8;
 use geometry::KomaLocalPoint;
 

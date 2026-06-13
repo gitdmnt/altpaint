@@ -1,4 +1,5 @@
-use app_core::{Document, PaintInput, PaintPluginContext};
+use app_core::{PaintInput, PaintPluginContext};
+use document_model::Document;
 
 use crate::ResolvedPaintContext;
 

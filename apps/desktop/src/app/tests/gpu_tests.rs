@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use app_core::DocumentCommand;
+use document_model::DocumentCommand;
 
 use super::{TestDialogs, unique_test_path};
 use super::super::DesktopApp;

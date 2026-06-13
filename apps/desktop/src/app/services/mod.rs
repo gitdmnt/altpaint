@@ -9,7 +9,8 @@ mod tool_catalog;
 mod workspace_io;
 mod workspace_layout;
 
-use app_core::{Document, DocumentCommand, HistoryEntry};
+use app_core::HistoryEntry;
+use document_model::{Document, DocumentCommand};
 use editor_state::SessionCommand;
 use desktop_support::DEFAULT_PROJECT_FILE_NAME;
 use panel_runtime::{ServiceRequest, services::names};

@@ -5,9 +5,10 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use app_core::{
-    DocumentCommand, WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition,
-    WorkspacePanelSize, WorkspacePanelState,
+    WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
+    WorkspacePanelState,
 };
+use document_model::DocumentCommand;
 use editor_state::{ColorRgba8, SessionCommand, ToolKind};
 use desktop_support::{
     FrameProfiler, WorkspacePreset, WorkspacePresetCatalog,

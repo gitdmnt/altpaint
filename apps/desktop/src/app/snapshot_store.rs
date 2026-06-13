@@ -1,6 +1,6 @@
 //! インメモリのドキュメントスナップショット管理。
 
-use app_core::Document;
+use document_model::Document;
 
 /// スナップショットの最大保持件数。
 pub(crate) const MAX_SNAPSHOTS: usize = 20;
@@ -52,7 +52,7 @@ impl DocumentSnapshotStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::Document;
+    use document_model::Document;
 
     fn make_doc() -> Document {
         // MAX_SNAPSHOTS 分のクローンを保持するため、メモリを節約して最小サイズを使う。

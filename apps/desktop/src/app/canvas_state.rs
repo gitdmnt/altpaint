@@ -23,15 +23,15 @@ impl DesktopApp {
         self.cpu_canvas_snapshot = Some(build_cpu_canvas_snapshot(&self.document));
     }
 
-    pub(super) fn active_koma_mask_overlay(&self) -> Option<app_core::KomaBounds> {
+    pub(super) fn active_koma_mask_overlay(&self) -> Option<document_model::KomaBounds> {
         let page = self.document.active_page()?;
         let bounds = self.document.active_koma_bounds()?;
         (page.komas.len() > 1
-            || bounds != app_core::KomaBounds::full_page(page.width, page.height))
+            || bounds != document_model::KomaBounds::full_page(page.width, page.height))
         .then_some(bounds)
     }
 
-    pub(super) fn koma_creation_preview_bounds(&self) -> Option<app_core::KomaBounds> {
+    pub(super) fn koma_creation_preview_bounds(&self) -> Option<document_model::KomaBounds> {
         let (page_width, page_height) = self.document.active_page_dimensions();
         paint_engine::koma_creation_preview_bounds(&self.canvas_input, page_width, page_height)
     }

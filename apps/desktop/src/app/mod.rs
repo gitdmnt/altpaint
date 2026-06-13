@@ -26,7 +26,8 @@ use std::path::PathBuf;
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use app_core::{Document, EditHistory, KomaId};
+use app_core::EditHistory;
+use document_model::{Document, KomaId};
 use geometry::{PageDirtyRect, PagePoint};
 use raster::RgbaBitmap;
 use desktop_support::{

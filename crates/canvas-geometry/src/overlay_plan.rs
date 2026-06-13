@@ -1,4 +1,4 @@
-use app_core::KomaBounds;
+use document_model::KomaBounds;
 use geometry::{PagePoint, WindowRect};
 
 /// キャンバス上の一時オーバーレイ状態を保持する。

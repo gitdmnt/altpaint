@@ -13,7 +13,7 @@
 //!
 //! [`TranslatorRegistry`]: crate::translator_registry::TranslatorRegistry
 
-use app_core::DocumentCommand;
+use document_model::DocumentCommand;
 use editor_state::{SessionCommand, ToolKind};
 use panel_protocol::RequestDescriptor;
 use panel_protocol::names::{

@@ -6,7 +6,7 @@ mod session;
 mod canvas_size_presets;
 mod workspace_presets;
 
-pub use app_core::parse_document_size;
+pub use document_model::parse_document_size;
 pub use config::{
     ACTIVE_KOMA_BORDER, ACTIVE_KOMA_FILL, ACTIVE_KOMA_MASK, ACTIVE_PANEL_BORDER,
     APP_BACKGROUND, BRUSH_PREVIEW_RING, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND,

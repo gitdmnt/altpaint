@@ -121,7 +121,7 @@ pub(crate) fn build_overlay_line_quads(
 fn push_active_koma_mask(
     out: &mut Vec<SolidQuad>,
     plan: &CanvasPlan,
-    bounds: app_core::KomaBounds,
+    bounds: document_model::KomaBounds,
 ) {
     let source_width = plan.source_width;
     let source_height = plan.source_height;
@@ -188,7 +188,7 @@ fn push_active_koma_mask(
 fn push_koma_creation_preview(
     out: &mut Vec<SolidQuad>,
     plan: &CanvasPlan,
-    bounds: app_core::KomaBounds,
+    bounds: document_model::KomaBounds,
 ) {
     if plan.source_width == 0 || plan.source_height == 0 || bounds.width == 0 || bounds.height == 0
     {
@@ -291,7 +291,7 @@ fn push_koma_navigator(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::KomaBounds;
+    use document_model::KomaBounds;
     use editor_state::CanvasViewTransform;
     use ::geometry::{PagePoint, WindowRect};
     use canvas_geometry::KomaNavigatorEntry;

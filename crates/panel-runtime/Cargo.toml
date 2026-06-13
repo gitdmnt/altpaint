@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-app-core = { path = "../app-core" }
+document-model = { path = "../document-model" }
 editor-state = { path = "../editor-state" }
 raster = { path = "../raster" }
 panel-api = { path = "../panel-api" }

@@ -1,6 +1,6 @@
 //! command_router の経路分岐に関するテストをまとめる。
 
-use app_core::DocumentCommand;
+use document_model::DocumentCommand;
 use editor_state::{ColorRgba8, SessionCommand, ToolKind};
 
 use super::{TestDialogs, test_app_with_dialogs};

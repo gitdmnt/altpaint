@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
 
-use app_core::Document;
+use document_model::Document;
 use raster::RgbaBitmap;
 use thiserror::Error;
 
@@ -49,7 +49,7 @@ pub fn export_active_koma_as_png(document: &Document, path: &Path) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::Document;
+    use document_model::Document;
     use std::env;
 
     fn temp_png_path(name: &str) -> std::path::PathBuf {

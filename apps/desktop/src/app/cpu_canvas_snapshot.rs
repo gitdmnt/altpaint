@@ -4,7 +4,7 @@
 //! `apps/desktop` 内へ移管した最小型。GPU キャンバスが標準経路だが、
 //! `cpu_canvas_snapshot` の (width, height) は依然 viewport / 表示幾何 (CanvasViewGeometry) 計算で参照される。
 
-use app_core::Document;
+use document_model::Document;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CpuCanvasSnapshot {

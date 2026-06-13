@@ -1,4 +1,4 @@
-use app_core::Document;
+use document_model::Document;
 use editor_state::PenPreset;
 use serde_json::{Value, json};
 
@@ -254,7 +254,7 @@ pub fn build_host_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::{Document, KomaBounds};
+    use document_model::{Document, KomaBounds};
     use raster::BlendMode;
 
     fn build(document: &Document, cache: &mut HostStateCache) -> Value {

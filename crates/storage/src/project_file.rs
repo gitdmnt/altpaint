@@ -1,6 +1,7 @@
 use std::path::Path;
 
-use app_core::{Document, Page, PageId, WorkspaceLayout};
+use app_core::WorkspaceLayout;
+use document_model::{Document, Page, PageId};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use thiserror::Error;
@@ -114,7 +115,7 @@ pub fn load_koma_composite_from_path(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::{Document, LayerMask, Page, PageId, KomaId};
+    use document_model::{Document, KomaId, LayerMask, Page, PageId};
     use editor_state::ColorRgba8;
     use raster::BlendMode;
     use rusqlite::Connection;
@@ -161,8 +162,8 @@ mod tests {
             .bitmap
             .set_pixel_rgba(1, 1, [0x55, 0x99, 0x22, 0xff]);
         third_koma.composite_cache = third_koma.layers[0].bitmap.clone();
-        third_koma.layers.push(app_core::RasterLayer {
-            id: app_core::LayerNodeId(99),
+        third_koma.layers.push(document_model::RasterLayer {
+            id: document_model::LayerNodeId(99),
             name: "Overlay".to_string(),
             visible: true,
             blend_mode: BlendMode::Multiply,

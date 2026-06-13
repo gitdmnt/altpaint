@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use app_core::{DocumentCommand, HistoryEntry, PaintInput, PaintPluginContext};
+use app_core::{HistoryEntry, PaintInput, PaintPluginContext};
+use document_model::DocumentCommand;
 use geometry::{MergeInSpace, PageDirtyRect};
 use desktop_support::normalize_project_path;
 use panel_runtime::{ServiceRequest, services::names};
@@ -217,7 +218,7 @@ impl DesktopApp {
     /// `capture_koma_layer_region` → `create_snapshot_texture` (before) で構築する。
     fn execute_gpu_fill(
         &mut self,
-        koma_id: app_core::KomaId,
+        koma_id: document_model::KomaId,
         layer_index: usize,
         input: &PaintInput,
         edits: &[raster::BitmapEdit],
@@ -461,7 +462,8 @@ impl DesktopApp {
 
 #[cfg(test)]
 mod tests {
-    use app_core::{Document, PaintInput};
+    use app_core::PaintInput;
+    use document_model::Document;
     use geometry::KomaLocalPoint;
     use paint_engine::{PaintEngine, build_paint_context};
 

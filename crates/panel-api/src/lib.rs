@@ -2,7 +2,7 @@
 
 pub mod services;
 
-use app_core::{Document, DocumentCommand};
+use document_model::{Document, DocumentCommand};
 use editor_state::SessionCommand;
 use serde_json::Value;
 

@@ -1,4 +1,5 @@
-use app_core::{Document, PaintInput};
+use app_core::PaintInput;
+use document_model::Document;
 use geometry::KomaLocalPoint;
 
 use crate::{build_paint_context, resolved_size_for_input};

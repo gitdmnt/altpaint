@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use app_core::Document;
+use document_model::Document;
 use desktop_support::{
     DEFAULT_PROJECT_FILE_NAME, DesktopSessionState, WorkspacePresetCatalog,
     default_canvas_size_preset_path, default_canvas_size_presets, builtin_panels_dir,
