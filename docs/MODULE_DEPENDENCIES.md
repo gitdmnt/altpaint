@@ -224,7 +224,7 @@ graph TD
 - `RgbaBitmap`（旧 `CanvasBitmap`、R11/R12 を B5 で実施）とラスタライズプリミティブ
 - ピクセルブレンドの単一実装（`BlendMode` / `composite_pixel` / `source_over_coverage_pixel`。BlendMode→GPU code 対応表の単一定義）
 - ビットマップ編集差分（`BitmapEdit` / `BitmapComposite` / `BitmapCompositor`）
-- `MAX_STAMP_STEPS`（CPU 経路 `paint_engine::ops::stroke` と GPU 経路 `gpu_paint::brush` が共通参照。最終的な paint-engine 移設は B8）
+- `MAX_STAMP_STEPS`（CPU 経路 `paint_engine::ops::stroke` と GPU 経路 `gpu_paint::brush` が共通参照。B8 で旧 `paint_params` モジュール = BL-023 を撤去し定数は `raster` のみに定義。両経路がここを共通参照する）
 
 主要モジュール:
 
@@ -733,11 +733,12 @@ ADR 018 B5 で旧 `app-core` を解体した後も、以下は維持したい。
 
 `gpu-paint` は compute shader の実装を持つが、次は `apps/desktop` 側にある。
 
-- どの入力で GPU dispatch するかの判断（`services/project_io.rs::apply_paint_input`）
+- 計画 (`PaintPlan`) を生成し GPU/CPU いずれの `PaintBackend` へ委譲するかの判断（`features/paint/execute.rs::apply_paint_input`。GPU 有効時 `GpuPaintBackend`、不在時 `CpuPaintBackend`。BL-131）
+- `PaintPlan` から `BrushStrokeParams` / fill パラメータへの機械変換と encoder 集約 dispatch（`features/paint/backend/gpu.rs`。BL-133）
 - GPU リソースの所有と初期化（`app/mod.rs::install_gpu_resources`）
-- 保存前 readback の起動（`services/gpu_sync.rs`）
+- 保存前 readback の起動（`features/`/`gpu_sync` 経路）
 
-従って、ペイント経路を読むときは「実装は `gpu-paint` 側」「結合と判断は `apps/desktop` 側」という二層で理解する必要がある。
+従って、ペイント経路を読むときは「画素適用の実装は `gpu-paint` 側」「計画生成は `paint-engine::plan_paint`」「backend 選択・結合・dispatch 判断は `apps/desktop/src/features/paint` 側」という三層で理解する必要がある。
 
 ## 今後も守るべき依存ルール
 

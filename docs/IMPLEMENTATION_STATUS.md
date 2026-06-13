@@ -148,6 +148,16 @@
   - **DesktopApp 縮小 (BL-110)**: フィールドはすべて `pub(crate)` 以下 (fully-`pub` フィールドゼロ)。feature が co-own する状態は `pub(crate)`、app 内部状態 (koma_gesture / status_bar / invalidation / background_jobs) は可視性指定なし。`event_loop` はメソッド境界経由でアクセスし直接フィールド参照ゼロ。DesktopApp は subsystem を保持・配線する composition root に縮小。
   - バッチ検証: cargo test --workspace 504 passed / 0 failed / 7 ignored、clippy 警告 0 (全ターゲット)、wasm ビルド成功 (12 パネル)、起動スモーク 20 秒パニックなし、構造検証 (desktop-support/storage 消滅・features/ 11 スライス・registry・presenter 分割・wgpu_canvas.rs 消滅・DesktopApp フィールド private) 全通過、B7 コミット 29 件 (`refactor(B7):` / `docs(B7):` 形式統一)。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
 
+- **Phase 24 / B8 完了 (2026-06-14)**: ADR 018 — バッチ B8「描画パイプライン再設計」。コミット b4c7f97..774af16 の 11 コミット + 検証修正 1 件。**CPU/GPU 混在を解消し `PaintPlan` / `PaintBackend` 境界を確立、GPU 専用経路を完成**させた:
+  - **PaintPlan 導入 (BL-130)**: `paint-engine::plan_paint` が `PaintInput` を解決し **画素を一切作らずに** 純データ計画 `PaintPlan`（`PaintOp::{Stroke{stamps,radius,color,mode}, FloodFill{seed,color,target_layer}, LassoFill{polygon,color,target_layer}}` + `dirty`）を生成する。GPU 経路の「全画素 CPU 生成→捨てる」と flood fill の計画段階での全面 visited 走査を廃止 (visited 解決は GPU ピンポンマスク)。`crates/paint-engine/src/plan.rs`。
+  - **PaintBackend 体系 (BL-131 / R5)**: `apps/desktop/src/features/paint/backend/` に `PaintBackend` trait + `CpuPaintBackend`（CPU ops 参照実装）/ `GpuPaintBackend`（`gpu-paint` の `BrushPipeline`/`FillPipeline` へ機械変換し compute shader dispatch）を実装。CPU/GPU 二重実装 (旧 `execute_paint_input` 3 分岐 / `execute_gpu_fill` / `commit_stroke`) を 1 境界へ閉じた。登録 1 個固定の形骸 `PaintPlugin` trait + registry は撤去 (R5)。
+  - **CPU/GPU 統合 + encoder 集約 (BL-133)**: `BrushPipeline::dispatch_stroke(&mut encoder, ...)` は compute pass を積むだけで submit せず、ストローク区間の brush + composite を 1 encoder へまとめ 1 submit へ集約 (params/positions バッファをストローク区間で使い回す)。lasso fill も mark+apply を 1 submit へ統合。
+  - **StrokeMode (R21)**: `BrushStrokeParams.tool_kind`（アプリ層 ToolKind の GPU 漏出）を `mode: StrokeMode { Paint, Erase }` へ置換。
+  - **gpu モジュール分割 (BL-135 / R22 / K11後段)**: `gpu-paint` の `gpu` モジュールを `context` / `texture` / `store` / `snapshot` / `readback` / `mask` の 6 モジュールへ分割、キーを `KomaTextureId(pub u64)` 型付き化。
+  - **ToolDescriptor (BL-134)**: `editor-state::ToolDescriptor` がツール種別から gesture 種別 / 合成モード / サイズ解決を導出し、paint-engine / desktop の `ToolKind` クローズド match 散在を吸収。
+  - **GPU 非必須を維持 (BL-136)**: `CpuPaintBackend` を GPU 初期化失敗時のフォールバックとして残し、`CpuCanvasSnapshot`（旧 `CanvasFrame`）を表示経路へ統合。GPU 必須化はしない。`paint_params` モジュール撤去 (BL-023) で `MAX_STAMP_STEPS` は `raster` のみに定義。
+  - 検証 (claude-opus-4-8[1m] によるバッチ検証): cargo test --workspace 0 failed (desktop 197+1 / paint-engine 54 / gpu-paint 23 / 他)、clippy 警告 0 (全ターゲット)、wasm ビルド成功 (12 パネル)、起動スモーク 25 秒パニックなし、gpu-paint 実 GPU テスト 23 passed (NVIDIA/Vulkan)、CPU/GPU ゴールデン等価テスト green、ストローク中 CPU 画素非生成テスト (flood fill 含む) green。ストロークレイテンシは構造的に悪化しない (CPU 全画素生成廃止 + submit 集約 + GPU 同期差分化)。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+
 ## 現在の workspace 構成
 
 ### 中核 crate
