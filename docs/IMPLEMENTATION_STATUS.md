@@ -91,14 +91,31 @@
   - **BL-065 バックグラウンドジョブ二重回収の一本化**: `poll_background_tasks` の host action ごとの二重回収を `prepare_present_frame` 側 (毎フレーム冒頭 1 回) へ一本化。
   - 検証: workspace テスト 462 passed / 0 failed / 7 ignored (B3 の 438 から +24)、clippy 警告 0、wasm ビルド成功 (12 パネル)、起動スモーク 22 秒パニックなし。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
 
+- **Phase 21 / B5 完了 (2026-06-13)**: ADR 018 — バッチ B5「土台再編 — app-core 解体」(挙動不変)。コミット a7c153b..710137d。**God オブジェクト `app-core` を完全解体しワークスペースから削除**し、責務別の水平土台 4 クレートへ分割 (workspace 27 → 30 メンバー: app-core 削除 −1、geometry/raster/document-model/editor-state 追加 +4 = 正味 +3)。各クレートは「再エクスポート段で新設 → 参照付け替え → 再エクスポート削除」の段階移行で導入した:
+  - **`geometry`** (BL-070): 座標型 (`WindowPoint` / `PagePoint` / `KomaLocalPoint` / `PanelSurfacePoint` 等) と矩形 (`WindowRect` / `PanelSurfaceRect`)、dirty rect 演算 (`accumulate_dirty_rect` / `union_optional_rect`) を提供。**ローカルクレート依存ゼロ** (`serde` のみ)。
+  - **`raster`** (BL-071): 汎用 RGBA8 ビットマップ `RgbaBitmap` (旧 `CanvasBitmap`、R11/R12 をここで実施)、ピクセルブレンドの単一実装 (`BlendMode` / `composite_pixel` / `source_over_coverage_pixel`)、ラスタライズ、ビットマップ編集差分 (`BitmapEdit` / `BitmapCompositor`)、`MAX_STAMP_STEPS` を提供。**依存は `geometry` のみ** (ドメインモデル・GPU 非依存)。
+  - **`document-model`** (BL-072): 作品ドメイン `Work` / `Page` / `Koma` / `RasterLayer` / `LayerMask`、変更入口 `DocumentCommand`、ロード後不変条件修復 `normalize_after_load`、コマグリッドレイアウト、レイヤー合成を提供。依存は `editor-state` / `geometry` / `raster`。
+  - **`editor-state`** (BL-073): エディタの一過性編集状態 `EditorSession`、ツール/ペン定義 (`ToolDefinition` / `PenPreset` / `ToolKind` 等)、`SessionCommand`、`tool_state`、ビュー操作ポリシー `view_policy` を提供。作品データに依存しない (循環回避のため document-model 非依存、`serde` のみ)。
+  - **Document↔EditorSession 分割** (BL-072): `Document` を作品コンテンツ (`Work` 中心) と編集セッション (`EditorSession`) に分離。
+  - **保存境界の分離** (BL-079): project ファイルは `Document` (作品) のみを保存し、`EditorSession` は session 永続化 (`desktop-support`) へ移す。
+  - **`canvas-geometry` の縮約**: `CanvasViewGeometry` 単一経路 (view↔page 座標写像 + `TextureQuad`) へ縮約し、`CanvasPlan` / overlay DTO は desktop へ移管 (依存は `geometry` / `editor-state` のみ)。
+  - **履歴の desktop 移管** (`apps/desktop/src/app/paint/`): 履歴を desktop へ移し `PaintPatch` enum (`Cpu` / `Gpu`) で型付き化、`OpaqueGpuData` (`Arc<dyn Any>`) + downcast を全廃。
+  - **`WorkspaceUiState` / `WorkspacePanelState` を `panel-workspace` へ移設** (BL-075)。
+  - **`composite_cache` 再計算をレイヤー変異の単一入口に集約** (BL-080)。
+  - コマ作成ジェスチャ・テキストラスタライズを paint-engine から desktop へ分離 (BL-081/082)、painting (`PaintInput` / `PaintPluginContext` / `PaintPlugin`) を paint-engine へ移設。
+  - 検証: workspace テスト 465 passed / 0 failed / 7 ignored (B4 の 462 から +3)、clippy 警告 0、wasm ビルド成功、依存制約クリア (document-model/editor-state は wgpu/winit/wasmtime/blitz 非依存、geometry はローカル依存ゼロ、raster は geometry のみ)。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+
 ## 現在の workspace 構成
 
 ### 中核 crate
 
-- `app-core`
+- `geometry`（ADR 018 B5 で app-core から分割。座標型・矩形・dirty rect 演算、ローカル依存ゼロ）
+- `raster`（ADR 018 B5 で app-core から分割。`RgbaBitmap`・ブレンド・ラスタライズ・`BitmapEdit`、`geometry` のみ依存）
+- `document-model`（ADR 018 B5 で app-core から分割。`Work`/`Page`/`Koma`/`RasterLayer`・`DocumentCommand`・`normalize_after_load`）
+- `editor-state`（ADR 018 B5 で app-core から分割。`EditorSession`・`ToolDefinition`/`PenPreset`・`SessionCommand`・`view_policy`）
 - `paint-engine`（旧 `canvas`、ADR 018 B2 で改名）
 - `gpu-paint`（旧 `gpu-canvas`、ADR 018 B2 で改名）
-- `canvas-geometry`（旧 `render-types`、ADR 018 B2 で改名）
+- `canvas-geometry`（旧 `render-types`、ADR 018 B2 で改名。B5 で `CanvasViewGeometry` 単一経路へ縮約）
 - `storage`
 - `desktop-support`
 - `panel-api`
@@ -111,7 +128,10 @@
 - `panel-html`
 - `apps/desktop`（package `altpaint-desktop`、bin `altpaint`、ADR 018 B2 で改名）
 
-補足: 旧 `builtin-panels` umbrella crate は Phase 15 (ADR 017) で `panel-runtime::loader` へ統合し削除した。
+補足:
+
+- 旧 `app-core` クレートは Phase 21 (ADR 018 B5) で完全解体し、`geometry` / `raster` / `document-model` / `editor-state` の水平土台 4 クレートへ分割してワークスペースから削除した。本文書の B5 以前の現況節 (「実装済みの主要領域」以下) に現れる `app-core` / `Command` / `CanvasBitmap` / `CanvasRuntime` などの旧名は当時の記述としてそのまま残す (最新の依存関係と名称は `docs/MODULE_DEPENDENCIES.md` が正本)。
+- 旧 `builtin-panels` umbrella crate は Phase 15 (ADR 017) で `panel-runtime::loader` へ統合し削除した。
 
 ### workspace member の built-in panel plugin (Phase 10 で `crates/builtin-panels/` 配下に移行)
 

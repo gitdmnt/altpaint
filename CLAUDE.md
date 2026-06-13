@@ -63,7 +63,7 @@ bash scripts/build-ui-wasm.sh          # Linux / WSL2
 
 ## アーキテクチャ概要
 
-altpaint はデスクトップ向けデジタルペイントアプリ。Rust 2024-edition Cargo workspace（27 メンバー: ライブラリ 14、ビルトインパネル 12、デスクトップアプリ 1）。
+altpaint はデスクトップ向けデジタルペイントアプリ。Rust 2024-edition Cargo workspace（30 メンバー: ライブラリ 17、ビルトインパネル 12、デスクトップアプリ 1）。
 
 ### Runtime Flow
 
@@ -71,17 +71,20 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 
 **入力 → 描画**: OS入力 → `event_loop/pointer.rs` 正規化 → `app/input.rs` がキャンバスかパネルへ振り分け → `canvas-geometry::map_view_to_canvas_with_transform` が座標変換 → `paint_engine::gesture` が `PaintInput` を生成 → `paint_engine::context_builder` が `Document` からペイントコンテキストを解決 → `gpu-paint` の compute shader が GPU レイヤーテクスチャへ直接描画（ブラシ/塗りつぶし/合成）→ `wgpu_canvas.rs` が GPU へ提示
 
-**パネル**: `HtmlWasmPanel` が `panel.html` + `panel.css` をロード → `panel-wasm-host`（wasmtime）が Wasm を実行し DOM mutation host function で直接 DOM を書換え → `PanelRuntime` が host state を同期 → `PanelEvent`（Activate/Keyboard 等）/`HostAction` → `DesktopApp` が `Command` またはサイドエフェクトとして適用 → `panel-html::HtmlPanelView`（Blitz + vello）が GPU テクスチャに直描画 → `wgpu_canvas` が `panel_quads` レイヤーで合成。hit / move handle テーブルは `prepare_present_frame` が GPU 非依存で毎フレーム更新
+**パネル**: `HtmlWasmPanel` が `panel.html` + `panel.css` をロード → `panel-wasm-host`（wasmtime）が Wasm を実行し DOM mutation host function で直接 DOM を書換え → `PanelRuntime` が host state を同期 → `PanelEvent`（Activate/Keyboard 等）/`HostAction` → `DesktopApp` が `DocumentCommand`/`SessionCommand` またはサイドエフェクトとして適用 → `panel-html::HtmlPanelView`（Blitz + vello）が GPU テクスチャに直描画 → `wgpu_canvas` が `panel_quads` レイヤーで合成。hit / move handle テーブルは `prepare_present_frame` が GPU 非依存で毎フレーム更新
 
 ### 主要クレート
 
 | クレート                              | 責務                                                                                      |
 | ------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `apps/desktop`                        | winit + wgpu ホスト、`DesktopApp` 統括、入力ルーティング、提示                            |
-| `crates/app-core`                     | `Document`、ドメインモデル（Work→Page→Koma→RasterLayer）、`Command`、ペイント基本型、`WorkspaceUiState` |
-| `crates/paint-engine`                 | `PaintEngine`、ジェスチャーステートマシン、ビットマップ操作                               |
+| `apps/desktop`                        | winit + wgpu ホスト、`DesktopApp` 統括、入力ルーティング、提示、`EditHistory`（`PaintPatch` Cpu/Gpu）、`CanvasPlan`/overlay DTO |
+| `crates/geometry`                     | 座標型・矩形・dirty rect 演算（ローカル依存ゼロ）                                          |
+| `crates/raster`                       | `RgbaBitmap`、ピクセルブレンド、ラスタライズ、`BitmapEdit`（`geometry` のみ依存）          |
+| `crates/document-model`               | `Document`、作品ドメインモデル（Work→Page→Koma→RasterLayer）、`DocumentCommand`、`normalize_after_load` |
+| `crates/editor-state`                 | `EditorSession`、`ToolDefinition`/`PenPreset`、`SessionCommand`、`view_policy`、`tool_state` |
+| `crates/paint-engine`                 | `PaintEngine`、ジェスチャーステートマシン、ビットマップ操作、`PaintInput`/`PaintPlugin`    |
 | `crates/gpu-paint`                    | `LayerTextureStore`、ブラシ/塗りつぶし/レイヤー合成の compute shader dispatch（`BrushPipeline`/`FillPipeline`/`CompositePipeline`） |
-| `crates/canvas-geometry`              | `CanvasPlan`、`PixelRect`/`CanvasViewGeometry`/`CanvasOverlayState` 等のキャンバス表示幾何 |
+| `crates/canvas-geometry`              | `CanvasViewGeometry` 単一経路（view↔page 座標写像 + `TextureQuad`）のキャンバス表示幾何     |
 | `crates/panel-runtime`                | パネルサブシステム facade。`PanelRuntime`/`HtmlWasmPanel`、Wasm ブリッジ、host state 同期、永続設定、同梱パネル loader、panel-api/panel-html の再公開 |
 | `crates/panel-html`                   | `HtmlPanelView`（Blitz HTML/CSS + parley + vello GPU 直描画、hit 矩形収集）               |
 | `crates/panel-workspace`              | パネルワークスペースレイアウト、フォーカス、ヒットテスト                                  |
