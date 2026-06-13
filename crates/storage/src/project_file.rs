@@ -1,11 +1,11 @@
 use std::path::Path;
 
-use app_core::WorkspaceLayout;
+use panel_workspace::WorkspaceLayout;
 use document_model::{Document, Page, PageId};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use thiserror::Error;
-use app_core::WorkspaceUiState;
+use panel_workspace::WorkspaceUiState;
 
 use crate::project_sqlite::{
     PersistedKomaComposite, ProjectManifest, ProjectSaveOptions, file_has_sqlite_header,
@@ -277,17 +277,17 @@ mod tests {
         let document = small_document();
         let workspace_layout = WorkspaceLayout {
             panels: vec![
-                app_core::WorkspacePanelState {
+                panel_workspace::WorkspacePanelState {
                     id: "builtin.layers".to_string(),
                     visible: true,
-                    anchor: app_core::WorkspacePanelAnchor::TopLeft,
+                    anchor: panel_workspace::WorkspacePanelAnchor::TopLeft,
                     position: None,
                     size: None,
                 },
-                app_core::WorkspacePanelState {
+                panel_workspace::WorkspacePanelState {
                     id: "builtin.tool-palette".to_string(),
                     visible: false,
-                    anchor: app_core::WorkspacePanelAnchor::TopLeft,
+                    anchor: panel_workspace::WorkspacePanelAnchor::TopLeft,
                     position: None,
                     size: None,
                 },

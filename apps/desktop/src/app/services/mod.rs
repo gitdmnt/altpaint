@@ -14,7 +14,7 @@ use document_model::{Document, DocumentCommand};
 use editor_state::SessionCommand;
 use desktop_support::DEFAULT_PROJECT_FILE_NAME;
 use panel_runtime::{ServiceRequest, services::names};
-use app_core::WorkspaceUiState;
+use panel_workspace::WorkspaceUiState;
 
 use super::DesktopApp;
 

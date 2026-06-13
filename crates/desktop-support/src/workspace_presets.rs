@@ -1,11 +1,11 @@
 use std::path::{Path, PathBuf};
 
-use app_core::{
+use panel_workspace::{
     WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
     WorkspacePanelState,
 };
 use serde::{Deserialize, Serialize};
-use app_core::WorkspaceUiState;
+use panel_workspace::WorkspaceUiState;
 
 use crate::json_store::{JsonLoad, load_json};
 

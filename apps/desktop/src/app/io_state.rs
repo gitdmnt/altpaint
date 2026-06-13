@@ -34,7 +34,7 @@ impl DesktopApp {
     pub(super) fn session_state(&self) -> DesktopSessionState {
         DesktopSessionState {
             last_project_path: Some(self.io_state.project_path.clone()),
-            ui_state: app_core::WorkspaceUiState::new(
+            ui_state: panel_workspace::WorkspaceUiState::new(
                 self.panel_workspace.workspace_layout(),
                 self.panel_runtime.persistent_panel_configs(),
             ),

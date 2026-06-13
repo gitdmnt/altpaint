@@ -10,8 +10,7 @@ use desktop_support::{
     save_canvas_size_presets, save_workspace_preset_catalog,
 };
 use panel_runtime::{PanelRuntime, register_builtin_panels};
-use panel_workspace::PanelWorkspace;
-use app_core::WorkspaceUiState;
+use panel_workspace::{PanelWorkspace, WorkspaceUiState};
 
 use super::{DesktopApp, panel_config_sync::selected_workspace_preset_id_from_configs};
 

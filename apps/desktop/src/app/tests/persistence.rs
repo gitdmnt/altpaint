@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use app_core::{
+use panel_workspace::{
     WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState,
 };
 use desktop_support::{
@@ -272,8 +272,8 @@ fn startup_uses_default_workspace_preset_when_project_and_session_are_empty() {
             presets: vec![WorkspacePreset {
                 id: "test-preset".to_string(),
                 label: "Test preset".to_string(),
-                ui_state: app_core::WorkspaceUiState::new(
-                    app_core::WorkspaceLayout {
+                ui_state: panel_workspace::WorkspaceUiState::new(
+                    panel_workspace::WorkspaceLayout {
                         panels: vec![WorkspacePanelState {
                             id: "builtin.layers".to_string(),
                             visible: true,
@@ -328,8 +328,8 @@ fn session_layout_overrides_default_workspace_preset() {
             presets: vec![WorkspacePreset {
                 id: "test-preset".to_string(),
                 label: "Test preset".to_string(),
-                ui_state: app_core::WorkspaceUiState::new(
-                    app_core::WorkspaceLayout {
+                ui_state: panel_workspace::WorkspaceUiState::new(
+                    panel_workspace::WorkspaceLayout {
                         panels: vec![WorkspacePanelState {
                             id: "builtin.layers".to_string(),
                             visible: true,
@@ -352,8 +352,8 @@ fn session_layout_overrides_default_workspace_preset() {
         &session_path,
         &desktop_support::DesktopSessionState {
             last_project_path: None,
-            ui_state: app_core::WorkspaceUiState::new(
-                app_core::WorkspaceLayout {
+            ui_state: panel_workspace::WorkspaceUiState::new(
+                panel_workspace::WorkspaceLayout {
                     panels: vec![WorkspacePanelState {
                         id: "builtin.layers".to_string(),
                         visible: true,
@@ -465,13 +465,13 @@ fn startup_preserves_last_selected_workspace_preset_id() {
                 WorkspacePreset {
                     id: "default".to_string(),
                     label: "Default".to_string(),
-                    ui_state: app_core::WorkspaceUiState::default(),
+                    ui_state: panel_workspace::WorkspaceUiState::default(),
                 },
                 WorkspacePreset {
                     id: "review".to_string(),
                     label: "Review".to_string(),
-                    ui_state: app_core::WorkspaceUiState::new(
-                        app_core::WorkspaceLayout {
+                    ui_state: panel_workspace::WorkspaceUiState::new(
+                        panel_workspace::WorkspaceLayout {
                             panels: vec![WorkspacePanelState {
                                 id: "builtin.layers".to_string(),
                                 visible: true,

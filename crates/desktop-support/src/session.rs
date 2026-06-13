@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use app_core::WorkspaceUiState;
+use panel_workspace::WorkspaceUiState;
 
 use crate::json_store::{JsonLoad, load_json};
 
@@ -48,7 +48,7 @@ pub fn startup_project_path(default_project_path: impl Into<PathBuf>) -> PathBuf
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::WorkspacePanelAnchor;
+    use panel_workspace::WorkspacePanelAnchor;
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -68,8 +68,8 @@ mod tests {
         let state = DesktopSessionState {
             last_project_path: Some(PathBuf::from("custom.altp.json")),
             ui_state: WorkspaceUiState {
-                workspace_layout: app_core::WorkspaceLayout {
-                    panels: vec![app_core::WorkspacePanelState {
+                workspace_layout: panel_workspace::WorkspaceLayout {
+                    panels: vec![panel_workspace::WorkspacePanelState {
                         id: "builtin.tool-palette".to_string(),
                         visible: false,
                         anchor: WorkspacePanelAnchor::TopLeft,

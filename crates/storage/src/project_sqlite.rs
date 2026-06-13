@@ -4,7 +4,7 @@ use std::io::{Cursor, Read};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use app_core::WorkspaceLayout;
+use panel_workspace::WorkspaceLayout;
 use document_model::{
     Document, Koma, KomaBounds, KomaId, LayerMask, LayerNodeId, Page, PageId, RasterLayer, Work,
     WorkId,
@@ -14,7 +14,7 @@ use raster::{BlendMode, RgbaBitmap};
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use app_core::{PanelConfigs, WorkspaceUiState};
+use panel_workspace::{PanelConfigs, WorkspaceUiState};
 
 use crate::project_file::{CURRENT_PROJECT_FORMAT_VERSION, LoadedProject, ProjectStoreError};
 

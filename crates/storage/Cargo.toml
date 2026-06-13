@@ -6,9 +6,9 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-app-core = { path = "../app-core" }
 document-model = { path = "../document-model" }
 editor-state = { path = "../editor-state" }
+panel-workspace = { path = "../panel-workspace" }
 raster = { path = "../raster" }
 base64 = "0.22"
 rusqlite = { version = "0.33", features = ["bundled"] }

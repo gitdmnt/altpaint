@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use app_core::{
+use panel_workspace::{
     WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
     WorkspacePanelState,
 };
@@ -16,7 +16,7 @@ use desktop_support::{
 };
 use panel_runtime::{HostAction, PanelEvent, ServiceRequest, services::names};
 use serde_json::json;
-use app_core::WorkspaceUiState;
+use panel_workspace::WorkspaceUiState;
 
 use super::{
     TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_workspace_preset_path,
