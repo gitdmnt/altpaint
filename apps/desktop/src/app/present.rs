@@ -12,12 +12,35 @@ use super::{DesktopApp, PresentFrameUpdate};
 use crate::present_quads::DesktopLayout;
 
 impl DesktopApp {
+    /// 提示フレーム更新指示を組み立てる。
+    ///
+    /// 処理を 4 フェーズに分割する (BL-118):
+    /// 1. `present_phase_layout` — 背景タスク回収 + レイアウト再計算。
+    /// 2. `present_phase_panel_sync` — workspace パネル一覧注入 + dirty パネル同期。
+    /// 3. `present_phase_hit_tables` — HTML パネルの hit / move handle テーブル更新 +
+    ///    パネル再整合の消化。
+    /// 4. `present_phase_invalidation_drain` — 保留 dirty rect / 再構築フラグを消化し
+    ///    `PresentFrameUpdate` を確定する。
     pub(crate) fn prepare_present_frame(
         &mut self,
         window_width: usize,
         window_height: usize,
         profiler: &mut FrameProfiler,
     ) -> PresentFrameUpdate {
+        self.present_phase_layout(window_width, window_height, profiler);
+        self.present_phase_panel_sync(profiler);
+        self.present_phase_hit_tables(window_width, window_height, profiler);
+        self.present_phase_invalidation_drain(window_width, window_height, profiler)
+    }
+
+    /// フェーズ 1: 背景タスクを回収し、ウィンドウ/キャンバス寸法からレイアウトを
+    /// 再計算する。レイアウトが変化していればパネル再整合とフレーム全再構築を予約する。
+    fn present_phase_layout(
+        &mut self,
+        window_width: usize,
+        window_height: usize,
+        profiler: &mut FrameProfiler,
+    ) {
         self.poll_background_tasks();
         let (canvas_width, canvas_height) = self.canvas_dimensions();
         let next_layout = profiler.measure("layout", || {
@@ -29,7 +52,11 @@ impl DesktopApp {
             self.request_panel_reconcile();
             self.rebuild_present_frame();
         }
+    }
 
+    /// フェーズ 2: workspace_layout パネル用の登録パネル一覧を runtime に注入し、
+    /// dirty なパネルがあれば host state を構築して再描画同期を行う。
+    fn present_phase_panel_sync(&mut self, profiler: &mut FrameProfiler) {
         // workspace_layout パネル用に、登録パネル一覧 (id/title/visible) を JSON 化して runtime に注入。
         // 値が変わっていれば workspace-layout が dirty 扱いとなり次の sync_dirty_panels で再描画される。
         let workspace_panels_json = self.build_workspace_panels_json();
@@ -57,7 +84,16 @@ impl DesktopApp {
                 self.request_panel_reconcile();
             }
         }
+    }
 
+    /// フェーズ 3: HTML パネルの hit / move handle / full rect テーブルを更新し、
+    /// 予約済みのパネル再整合を消化する。
+    fn present_phase_hit_tables(
+        &mut self,
+        window_width: usize,
+        window_height: usize,
+        profiler: &mut FrameProfiler,
+    ) {
         // HTML パネルの hit / move handle / full rect テーブルを CPU 側で更新する。
         // レイアウト解決は GPU 非依存 (`collect_panel_hits`) のため、GPU 提示の有無
         // (headless テスト含む) にかかわらずフォーカス巡回・キーボード操作・
@@ -73,6 +109,16 @@ impl DesktopApp {
             });
             self.invalidation.needs_panel_reconcile = false;
         }
+    }
+
+    /// フェーズ 4: 保留 dirty rect と再構築フラグを消化し、提示フレーム更新指示を確定する。
+    fn present_phase_invalidation_drain(
+        &mut self,
+        window_width: usize,
+        window_height: usize,
+        profiler: &mut FrameProfiler,
+    ) -> PresentFrameUpdate {
+        let (canvas_width, canvas_height) = self.canvas_dimensions();
 
         if self.invalidation.needs_full_present_rebuild {
             self.invalidation.canvas_dirty_rect = None;
