@@ -8,10 +8,17 @@ use crate::host_state::{
 use crate::panel_input::PanelPointerInput;
 use document_model::Document;
 use crate::host_request::{HostRequest, PanelEvent};
-use panel_html::{vello, wgpu, PanelSizeConstraints, ActionRect};
+use panel_html::{vello, wgpu, ChromeStyle, PanelSizeConstraints, ActionRect};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
+
+/// HTML パネル上端のホスト描画タイトルバー (chrome) の塗り色 (RGBA, sRGB)。
+///
+/// BL-099: panel-html はテーマ色を知らないため、chrome の見た目は panel-runtime
+/// (パネル基盤) が所有する。render_panels がこの色で [`ChromeStyle`] を組み立てて
+/// view へ注入する。
+pub const PANEL_CHROME_FILL_RGBA: [u8; 4] = [40, 60, 90, 255];
 
 /// パネル毎の GPU 描画結果をまとめて返す。
 ///
@@ -269,6 +276,11 @@ impl PanelRuntime {
         let Some(gpu_ctx) = self.gpu_ctx.as_mut() else {
             return Vec::new();
         };
+        // chrome 高さ > 0 のときだけ panel-runtime 所有のテーマ色で chrome を重ねる。
+        let chrome = (chrome_height > 0).then_some(ChromeStyle {
+            height: chrome_height,
+            fill_rgba: PANEL_CHROME_FILL_RGBA,
+        });
         // 各パネルを描画し、所有テクスチャハンドル (`Arc<wgpu::Texture>`) を集める。
         // `texture_handle()` の複製は refcount ハンドルなので安価で、戻り値が
         // self.panels の借用と独立するため raw pointer + unsafe は不要 (BL-092)。
@@ -285,7 +297,7 @@ impl PanelRuntime {
                 &mut gpu_ctx.scene_scratch,
                 (*width, *height),
                 scale,
-                chrome_height,
+                chrome,
             );
             let target = outcome.target();
             textures.push(RenderedPanelTexture {

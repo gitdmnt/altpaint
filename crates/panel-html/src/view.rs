@@ -50,6 +50,19 @@ pub enum RenderOutcome<'a> {
     Skipped(&'a crate::gpu::PanelGpuTarget),
 }
 
+/// パネル上端に重ねる chrome (タイトルバー) の描画スタイル。
+///
+/// panel-html は **テーマを知らない** (§1.4)。chrome の高さと塗り色は呼出側
+/// (panel-runtime / desktop のテーマ) が決め、本 DTO で注入する (BL-099)。
+/// `height == 0` または `None` 指定なら chrome を描画しない。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChromeStyle {
+    /// chrome の高さ (px)。body はこの分だけ下にオフセットして描画される。
+    pub height: u32,
+    /// chrome 矩形の塗り色 (RGBA, sRGB)。
+    pub fill_rgba: [u8; 4],
+}
+
 /// Phase 11: パネル root 要素の CSS `min-width` / `max-width` / `min-height` /
 /// `max-height` を px 単位で取り出した制約。`%` や `auto` は `None` として扱う。
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -212,6 +225,9 @@ impl HtmlPanelView {
     /// 2. layout_dirty なら local size で `resolve_layout` を走らせる (content size の自動再測定はしない)。
     /// 3. render_dirty なら scene 構築 + chrome 描画 + render_to_texture。
     ///
+    /// `chrome` が `Some` なら上端にその高さ・色で chrome 矩形を重ねる。色は呼出側
+    /// (テーマ) が決める (BL-099: panel-html はテーマ色をハードコードしない)。
+    ///
     /// 戻り値: `RenderOutcome::Rendered(target)` か `Skipped(target)`。
     /// `target` は `gpu_target()` でも取得可能。
     #[allow(clippy::too_many_arguments)]
@@ -223,8 +239,9 @@ impl HtmlPanelView {
         scene_buf: &mut vello::Scene,
         viewport: (u32, u32),
         scale: f32,
-        chrome_height: u32,
+        chrome: Option<ChromeStyle>,
     ) -> RenderOutcome<'a> {
+        let chrome_height = chrome.map(|c| c.height).unwrap_or(0);
         // viewport クランプ: 描画用 local 変数のみで行い panel_size は変更しない。
         let LocalRenderSize {
             width: local_w,
@@ -253,11 +270,11 @@ impl HtmlPanelView {
             return RenderOutcome::Skipped(self.gpu_target.as_ref().expect("target ensured"));
         }
 
-        // scene 構築 + chrome 描画
+        // scene 構築 + chrome 描画 (色は呼出側注入の chrome.fill_rgba)
         scene_buf.reset();
         self.build_scene_with_offset(scene_buf, local_w, body_h, scale, 0, chrome_height);
-        if chrome_height > 0 {
-            paint_chrome_rect(scene_buf, local_w, chrome_height);
+        if let Some(chrome) = chrome.filter(|c| c.height > 0) {
+            paint_chrome_rect(scene_buf, local_w, chrome.height, chrome.fill_rgba);
         }
 
         let target = self.gpu_target.as_ref().expect("target ensured");
@@ -316,15 +333,15 @@ impl HtmlPanelView {
     /// HTML / CSS を差し替えて document を再構築する。
     ///
     /// - 同一 `(html, css)` ならスキップ (idle frame 最適化、`render_dirty` も立てない)。
-    /// - 異なる場合は新しい `HtmlDocument` を構築し、開いていた `<details>` の状態を
-    ///   element id で再適用する (DSL state には details の open/close が無いため)。
+    /// - 異なる場合は新しい `HtmlDocument` を構築する。
     /// - `gpu_target` は維持する (size 不変ならそのまま使える)。
-    /// - フォーカスは現状維持できないため呼び出し側で `preserve_focus` を利用すること。
+    /// - フォーカスや `<details>` 開閉などの要素状態は現状維持できない。保持が必要なら
+    ///   呼出側が [`Self::snapshot_marker_identities`] / [`Self::clear_marker_for_unlisted`]
+    ///   で囲んで保存・復元する (BL-099: details/data-altp-id 規約は panel-html が持たない)。
     pub fn replace_document(&mut self, html: &str, css: &str) {
         if self.last_html.as_deref() == Some(html) && self.user_css == css {
             return;
         }
-        let opened_details = self.collect_open_details_ids();
         let mut config = blitz_dom::DocumentConfig::default();
         if !css.is_empty() {
             config.ua_stylesheets = Some(vec![css.to_string()]);
@@ -337,55 +354,67 @@ impl HtmlPanelView {
         self.pending_mutation = true;
         self.layout_dirty = true;
         self.render_dirty = true;
-
-        if !opened_details.is_empty() {
-            self.reapply_open_details(&opened_details);
-        }
     }
 
-    fn collect_open_details_ids(&self) -> Vec<String> {
-        let Ok(ids) = self.document.query_selector_all("details[open]") else {
+    /// `selector` にマッチする要素のうち、属性 `marker_attr` を持つものの identity を集める
+    /// (汎用 要素状態 snapshot, BL-099)。
+    ///
+    /// identity は `identity_attrs` を先頭から探して最初に見つかった属性値。どの規約属性
+    /// (`data-altp-id` / `id` 等) を identity に使うかは **呼出側が指定する** — panel-html は
+    /// 規約名をハードコードしない。`replace_document` の前に呼んで保存し、後で
+    /// [`Self::clear_marker_for_unlisted`] へ渡す。
+    pub fn snapshot_marker_identities(
+        &self,
+        selector: &str,
+        identity_attrs: &[&str],
+    ) -> Vec<String> {
+        let Ok(ids) = self.document.query_selector_all(selector) else {
             return Vec::new();
         };
         ids.into_iter()
-            .filter_map(|node_id| {
-                let node = self.document.get_node(node_id)?;
-                let NodeData::Element(element) = &node.data else {
-                    return None;
-                };
-                element
-                    .attr(LocalName::from("data-altp-id"))
-                    .or_else(|| element.attr(local_name!("id")))
-                    .map(str::to_string)
-            })
+            .filter_map(|node_id| self.element_identity(node_id, identity_attrs))
             .collect()
     }
 
-    fn reapply_open_details(&mut self, ids: &[String]) {
-        let Ok(all_details) = self.document.query_selector_all("details") else {
+    /// `selector` にマッチする要素のうち identity が `keep` に無いものから属性 `marker_attr`
+    /// を取り除く (汎用 要素状態 restore, BL-099)。
+    ///
+    /// 「再構築 HTML は常に `marker_attr` 付きで出力されるが、保存時に無かった要素は
+    /// ユーザー操作で外された状態」という復元ポリシーは呼出側が `keep` と `marker_attr` を
+    /// 与えて表現する。
+    pub fn clear_marker_for_unlisted(
+        &mut self,
+        selector: &str,
+        marker_attr: &str,
+        identity_attrs: &[&str],
+        keep: &[String],
+    ) {
+        let Ok(matched) = self.document.query_selector_all(selector) else {
             return;
         };
-        for node_id in all_details {
-            let Some(node) = self.document.get_node(node_id) else {
+        for node_id in matched {
+            let Some(identity) = self.element_identity(node_id, identity_attrs) else {
                 continue;
             };
-            let NodeData::Element(element) = &node.data else {
+            if keep.iter().any(|id| id == &identity) {
                 continue;
-            };
-            let identity = element
-                .attr(LocalName::from("data-altp-id"))
-                .or_else(|| element.attr(local_name!("id")))
-                .map(str::to_string);
-            let Some(identity) = identity else { continue };
-            if ids.iter().any(|id| id == &identity) {
-                continue; // すでに open 属性付き翻訳結果なら無視
             }
-            // 翻訳器は常に `<details open>` を出力するため、ids リストに無いものは
-            // 「ユーザーが閉じた」状態。open 属性を取り除く。
             let mut mutator = self.document.mutate();
-            mutator.clear_attribute(node_id, qual_name("open"));
+            mutator.clear_attribute(node_id, qual_name(marker_attr));
             self.pending_mutation = true;
         }
+    }
+
+    /// `identity_attrs` を先頭から探し、最初に見つかった属性値を要素の identity として返す。
+    fn element_identity(&self, node_id: usize, identity_attrs: &[&str]) -> Option<String> {
+        let node = self.document.get_node(node_id)?;
+        let NodeData::Element(element) = &node.data else {
+            return None;
+        };
+        identity_attrs
+            .iter()
+            .find_map(|attr| element.attr(LocalName::from(*attr)))
+            .map(str::to_string)
     }
 
     /// viewport を設定し layout を解決する。同サイズかつ未変更ならスキップ。
@@ -466,7 +495,7 @@ impl HtmlPanelView {
 
     /// `data-action` 属性を持つ全要素の絶対矩形を返す（要 `resolve_layout` 済み）。
     pub fn collect_action_rects(&self) -> Vec<ActionRect> {
-        let ids = match self.document.query_selector_all("[data-action]") {
+        let ids = match self.document.query_selector_all(ACTION_SELECTOR) {
             Ok(ids) => ids,
             Err(_) => return Vec::new(),
         };
@@ -475,14 +504,50 @@ impl HtmlPanelView {
             .collect()
     }
 
-    fn action_rect_for(&self, node_id: usize) -> Option<ActionRect> {
+    /// DOM id (`#<id>`) で要素を引き、その `data-action`/`data-args` を [`ActionDescriptor`]
+    /// に解釈して返す (BL-099: data-action 属性規約の単一定義点)。
+    ///
+    /// `id` 文字列の CSS エスケープ (`.` / `:` を含む id 対応) も本メソッドが行うため、
+    /// 呼出側 (panel-runtime) は属性名規約もエスケープ規約も持たない。
+    pub fn action_descriptor_for_element_id(
+        &self,
+        element_id: &str,
+    ) -> Option<crate::action::ActionDescriptor> {
+        let selector = format!("#{}", css_escape_id(element_id));
+        let node_id = self.document.query_selector(&selector).ok().flatten()?;
+        self.action_descriptor_for_element(node_id)
+    }
+
+    /// node の `data-action`/`data-args` 属性を読み、[`ActionDescriptor`] へ解釈する
+    /// (BL-099: data-action / data-args の属性名規約を集約)。`data-action` が無い、
+    /// または解釈に失敗したら `None`。
+    pub fn action_descriptor_for_element(
+        &self,
+        node_id: usize,
+    ) -> Option<crate::action::ActionDescriptor> {
+        let (data_action, data_args) = self.action_attrs_for(node_id)?;
+        crate::action::parse_data_action(&data_action, data_args.as_deref()).ok()
+    }
+
+    /// node の `data-action` (必須) と `data-args` (任意) 生文字列を返す。
+    /// `data-action` が無い / 要素でない場合は `None`。
+    fn action_attrs_for(&self, node_id: usize) -> Option<(String, Option<String>)> {
         let node = self.document.get_node(node_id)?;
         let NodeData::Element(element) = &node.data else {
             return None;
         };
-        let data_action = element.attr(LocalName::from("data-action"))?.to_string();
+        let data_action = element.attr(LocalName::from(DATA_ACTION_ATTR))?.to_string();
+        let data_args = element.attr(LocalName::from(DATA_ARGS_ATTR)).map(str::to_string);
+        Some((data_action, data_args))
+    }
+
+    fn action_rect_for(&self, node_id: usize) -> Option<ActionRect> {
+        let (data_action, data_args) = self.action_attrs_for(node_id)?;
+        let node = self.document.get_node(node_id)?;
+        let NodeData::Element(element) = &node.data else {
+            return None;
+        };
         let element_id = element.attr(local_name!("id")).map(str::to_string);
-        let data_args = element.attr(LocalName::from("data-args")).map(str::to_string);
         let (x, y) = compute_absolute_position(&self.document, node_id)?;
         let size = node.final_layout.size;
         let rect = PanelActionRect {
@@ -502,6 +567,28 @@ impl HtmlPanelView {
             rect,
         })
     }
+}
+
+/// `data-action` 属性名 (アクション要素の規約マーカー)。
+const DATA_ACTION_ATTR: &str = "data-action";
+/// `data-args` 属性名 (アクション payload の JSON)。
+const DATA_ARGS_ATTR: &str = "data-args";
+/// `data-action` を持つ要素を選択する CSS セレクタ。
+const ACTION_SELECTOR: &str = "[data-action]";
+
+/// CSS セレクタ用に id をエスケープする (`.` や `:` を含む id 対応)。
+/// 旧 panel-runtime `css_escape_id` を panel-html へ集約 (BL-099)。
+fn css_escape_id(id: &str) -> String {
+    let mut out = String::with_capacity(id.len());
+    for ch in id.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            out.push(ch);
+        } else {
+            out.push('\\');
+            out.push(ch);
+        }
+    }
+    out
 }
 
 /// Phase 11: パネル root 要素 (body 直下の最初の Element ノード) の NodeId を返す。
@@ -526,15 +613,16 @@ fn dimension_to_px(d: taffy::Dimension) -> Option<u32> {
 }
 
 /// HTML パネル上端のタイトルバー (chrome) を vello シーンに矩形で描画する。
-/// テキスト描画は将来追加。Plugin 側から View に移管された描画ロジック。
-fn paint_chrome_rect(scene: &mut vello::Scene, width: u32, chrome_height: u32) {
+/// 塗り色 `fill_rgba` は呼出側 (テーマ) が決める — panel-html はテーマ色を
+/// 知らない (BL-099)。テキスト描画は将来追加。
+fn paint_chrome_rect(scene: &mut vello::Scene, width: u32, chrome_height: u32, fill_rgba: [u8; 4]) {
     use vello::kurbo::{Affine, Rect};
     use vello::peniko::{Color, Fill};
     let rect = Rect::new(0.0, 0.0, width as f64, chrome_height as f64);
     scene.fill(
         Fill::NonZero,
         Affine::IDENTITY,
-        Color::from_rgba8(40, 60, 90, 255),
+        Color::from_rgba8(fill_rgba[0], fill_rgba[1], fill_rgba[2], fill_rgba[3]),
         None,
         &rect,
     );
@@ -677,6 +765,33 @@ mod tests {
         );
     }
 
+    /// BL-099: action_descriptor_for_element_id が data-action/data-args を解釈する
+    /// (属性名規約・CSS エスケープ・パースの単一定義点)。
+    #[test]
+    fn action_descriptor_for_element_id_parses_data_action_and_args() {
+        use crate::action::ActionDescriptor;
+        let html = r#"<html><body>
+            <button id="tool.pen" data-action="altp:activate:tool.pen" data-args='{"k":1}'>P</button>
+            <button id="plain">x</button>
+        </body></html>"#;
+        let view = view(html);
+        // `.` を含む id でも CSS エスケープして引ける。
+        let desc = view
+            .action_descriptor_for_element_id("tool.pen")
+            .expect("descriptor parsed");
+        match desc {
+            ActionDescriptor::Altp { node_id, payload } => {
+                assert_eq!(node_id, "tool.pen");
+                assert_eq!(payload.get("k").and_then(|v| v.as_i64()), Some(1));
+            }
+            other => panic!("expected altp descriptor, got {other:?}"),
+        }
+        // data-action の無い要素は None。
+        assert!(view.action_descriptor_for_element_id("plain").is_none());
+        // 存在しない id も None。
+        assert!(view.action_descriptor_for_element_id("missing").is_none());
+    }
+
     /// S2: collect_action_rects が CSS padding を反映する
     #[test]
     fn html_engine_collect_action_rects_returns_buttons_with_padding() {
@@ -812,19 +927,59 @@ mod tests {
         assert!(!view.layout_dirty(), "no-op when html unchanged");
     }
 
+    /// BL-099: 汎用 snapshot API は selector マッチ要素の identity を identity_attrs
+    /// (呼出側指定) から集める。details/data-altp-id の規約は引数で表現される。
     #[test]
-    fn replace_document_keeps_open_details_when_id_was_open() {
-        // 初期: 開いている details が 1 つ
+    fn snapshot_marker_identities_collects_by_caller_supplied_convention() {
+        let html = r#"<html><body>
+            <details open data-altp-id="s1"><summary>A</summary>x</details>
+            <details data-altp-id="s2"><summary>B</summary>y</details>
+        </body></html>"#;
+        let view = view(html);
+        let open = view.snapshot_marker_identities("details[open]", &["data-altp-id", "id"]);
+        assert_eq!(open, vec!["s1".to_string()]);
+    }
+
+    /// BL-099: 汎用 restore API は keep に無い要素から marker_attr を取り除く
+    /// (open/details/data-altp-id の規約は呼出側が引数で渡す = panel-html は持たない)。
+    #[test]
+    fn clear_marker_for_unlisted_removes_marker_only_for_unlisted_identities() {
+        let html = r#"<html><body>
+            <details open data-altp-id="s1"><summary>A</summary>x</details>
+            <details open data-altp-id="s2"><summary>B</summary>y</details>
+        </body></html>"#;
+        let mut view = view(html);
+        // s1 のみ「開いたまま保持」。s2 は open を外す。
+        view.clear_marker_for_unlisted(
+            "details",
+            "open",
+            &["data-altp-id", "id"],
+            &["s1".to_string()],
+        );
+        let s1 = view.find_element_id_by_altp("s1").expect("s1 exists");
+        let s2 = view.find_element_id_by_altp("s2").expect("s2 exists");
+        assert!(view.element_has_attribute(s1, "open"), "s1 kept open");
+        assert!(!view.element_has_attribute(s2, "open"), "s2 open removed");
+    }
+
+    /// BL-099: replace_document は details/open 規約を自動適用しない (純粋な差し替え)。
+    /// 状態保持は呼出側が snapshot/restore API で囲んで行う。
+    #[test]
+    fn replace_document_with_snapshot_restore_preserves_open_details() {
         let initial = r#"<html><body><details open data-altp-id="s"><summary>S</summary>x</details></body></html>"#;
         let mut view = view(initial);
         view.set_panel_size((400, 200));
-        // 翻訳結果も open: そのまま open を維持すべき
+        // 呼出側ポリシー: 差し替え前に開いている details の identity を保存。
+        let opened = view.snapshot_marker_identities("details[open]", &["data-altp-id", "id"]);
+        // 再構築 HTML も open 付き。
         let next = r#"<html><body><details open data-altp-id="s"><summary>S</summary>y</details></body></html>"#;
         view.replace_document(next, "");
+        // 保存済みに含まれない details の open を外す (s は保存済みなので維持)。
+        view.clear_marker_for_unlisted("details", "open", &["data-altp-id", "id"], &opened);
         let details_id = view.find_element_id_by_altp("s").expect("details exists");
         assert!(
             view.element_has_attribute(details_id, "open"),
-            "previously open details should remain open after replace"
+            "previously open details remains open via caller-driven snapshot/restore"
         );
     }
 

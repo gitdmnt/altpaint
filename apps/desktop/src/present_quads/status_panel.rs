@@ -113,9 +113,9 @@ impl StatusBar {
         if self.view.panel_size() != viewport {
             self.view.set_panel_size(viewport);
         }
-        // chrome_height = 0（タイトルバー無し、純粋な status row）
+        // chrome なし（タイトルバー無し、純粋な status row）
         self.view
-            .on_render(device, queue, renderer, scene_buf, viewport, 1.0, 0)
+            .on_render(device, queue, renderer, scene_buf, viewport, 1.0, None)
     }
 
     /// 直近 render 後の GPU テクスチャ。

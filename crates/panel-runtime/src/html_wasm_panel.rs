@@ -15,10 +15,7 @@ use std::sync::Arc;
 use document_model::DocumentCommand;
 use crate::host_request::{HostRequest, PanelEvent};
 use crate::services::ServiceRequest;
-use panel_html::{
-    ActionDescriptor, HtmlPanelView, blitz_dom::LocalName, blitz_dom::node::NodeData,
-    parse_data_action,
-};
+use panel_html::{ActionDescriptor, HtmlPanelView};
 use crate::request_translation::TranslatedRequest;
 use crate::translator_registry::TranslatorRegistry;
 use crate::host_state::HostStateBuild;
@@ -386,17 +383,13 @@ impl HtmlWasmPanel {
 }
 
 impl HtmlWasmPanel {
+    /// パネルローカル node id (DOM `id`) の `data-action`/`data-args` を解釈する。
+    ///
+    /// 属性名規約・CSS エスケープ・パースは panel-html の
+    /// `action_descriptor_for_element_id` に集約済み (BL-099)。panel-runtime は
+    /// 属性名規約を持たない。
     fn lookup_action_descriptor(&self, node_id: &str) -> Option<ActionDescriptor> {
-        let document = self.view.document();
-        let id_selector = format!("#{}", css_escape_id(node_id));
-        let id = document.query_selector(&id_selector).ok().flatten()?;
-        let node = document.get_node(id)?;
-        let NodeData::Element(element) = &node.data else {
-            return None;
-        };
-        let raw_action = element.attr(LocalName::from("data-action"))?;
-        let raw_args = element.attr(LocalName::from("data-args"));
-        parse_data_action(raw_action, raw_args).ok()
+        self.view.action_descriptor_for_element_id(node_id)
     }
 
     fn descriptor_to_actions(
@@ -440,20 +433,6 @@ fn command_id_to_host_request(command_id: &str) -> Option<HostRequest> {
         "noop" => Some(HostRequest::DispatchDocumentCommand(DocumentCommand::Noop)),
         _ => None,
     }
-}
-
-/// CSS セレクタ用に id をエスケープする (`.` や `:` を含む id 対応)。
-fn css_escape_id(id: &str) -> String {
-    let mut out = String::with_capacity(id.len());
-    for ch in id.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
-            out.push(ch);
-        } else {
-            out.push('\\');
-            out.push(ch);
-        }
-    }
-    out
 }
 
 /// テスト用パネルディレクトリ生成 (registry テストとも共有)。

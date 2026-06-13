@@ -22,7 +22,7 @@ pub mod gpu;
 
 pub use action::{ActionDescriptor, ActionParseError, parse_data_action};
 pub use view::{
-    ActionRect, HtmlPanelView, PanelActionRect, PanelSizeConstraints, RenderOutcome,
+    ActionRect, ChromeStyle, HtmlPanelView, PanelActionRect, PanelSizeConstraints, RenderOutcome,
 };
 pub use gpu::PanelGpuTarget;
 

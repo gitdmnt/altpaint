@@ -40,6 +40,7 @@ pub use services::ServiceRequest;
 // 要求する `vello` / `wgpu` を再公開する。blitz_traits / blitz_dom / blitz_html は
 // ホスト側に晒さない (入力は PanelPointerInput、出力は RenderedPanelTexture で受け渡す)。
 pub mod html {
-    pub use panel_html::{HtmlPanelView, PanelGpuTarget, RenderOutcome, vello, wgpu};
+    pub use panel_html::{ChromeStyle, HtmlPanelView, PanelGpuTarget, RenderOutcome, vello, wgpu};
 }
-pub use panel_html::PanelSizeConstraints;
+pub use panel_html::{ChromeStyle, PanelSizeConstraints};
+pub use runtime::PANEL_CHROME_FILL_RGBA;
