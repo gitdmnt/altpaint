@@ -14,7 +14,8 @@ fn context_builder_resolves_active_tool_and_layer_metadata() {
 
     let resolved = build_paint_context(&document, &input).expect("paint context");
 
-    assert_eq!(resolved.plugin_id, "builtin.bitmap");
+    // 描画バックエンド id (R6: 旧 STANDARD_BITMAP_PLUGIN_ID) はツール定義側に持つ。
+    assert_eq!(resolved.context.drawing_plugin_id, "builtin.bitmap");
     assert_eq!(resolved.context.tool_id, "builtin.pen");
     assert_eq!(resolved.context.active_layer_index, 0);
     assert_eq!(resolved.context.layer_count, 1);

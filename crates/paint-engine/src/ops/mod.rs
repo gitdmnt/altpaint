@@ -8,9 +8,34 @@ pub use stroke::compute_stamp_positions;
 pub(crate) use stamp::stamp_dimensions;
 pub(crate) use stroke::stroke_dirty_rect;
 
-use crate::painting::PaintPluginContext;
+use crate::painting::{PaintInput, PaintPluginContext};
 use geometry::{KomaLocalPoint, PageDirtyRect};
 use raster::{BitmapEdit, RgbaBitmap};
+
+/// ペイント入力と解決済みコンテキストからビットマップ差分列を生成する (CPU 参照実装)。
+///
+/// R5 で `PaintPlugin` trait + registry を撤去し、この直接ディスパッチへ置換した。
+/// 描画バックエンドは `BUILTIN_BITMAP_BACKEND_ID` ただ 1 つであり、ツール種別ごとの
+/// 分岐は入力 variant の match で完結する。
+pub(crate) fn compute_bitmap_edits(
+    input: &PaintInput,
+    context: &PaintPluginContext<'_>,
+) -> Vec<BitmapEdit> {
+    match input {
+        PaintInput::Stamp { at, .. } => stamp::stamp_edit(*at, context).into_iter().collect(),
+        PaintInput::StrokeSegment { from, to, .. } => {
+            stroke::stroke_segment_edit(*from, *to, context)
+                .into_iter()
+                .collect()
+        }
+        PaintInput::FloodFill { at } => flood_fill::flood_fill_edit(*at, context)
+            .into_iter()
+            .collect(),
+        PaintInput::LassoFill { points } => lasso_fill::lasso_fill_edit(points, context)
+            .into_iter()
+            .collect(),
+    }
+}
 
 pub(crate) fn bitmap_from_points(
     points: Vec<(usize, usize)>,

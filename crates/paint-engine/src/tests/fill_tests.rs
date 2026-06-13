@@ -13,7 +13,7 @@ fn flood_fill_recolors_matching_region() {
     document
         .session
         .set_active_color(ColorRgba8::new(0xff, 0x00, 0x00, 0xff));
-    let engine = PaintEngine::default();
+    let engine = PaintEngine::new();
 
     let dirty = apply_input(
         &mut document,
@@ -39,7 +39,7 @@ fn lasso_fill_triangular_region_diagonal_edges() {
     document
         .session
         .set_active_color(ColorRgba8::new(0xff, 0x00, 0x00, 0xff));
-    let engine = PaintEngine::default();
+    let engine = PaintEngine::new();
 
     // 三角形: (0,0), (20,0), (10,20) — 斜め辺を含む
     let dirty = apply_input(
@@ -71,7 +71,7 @@ fn lasso_fill_colors_polygon_area() {
     document
         .session
         .set_active_color(ColorRgba8::new(0x00, 0x00, 0xff, 0xff));
-    let engine = PaintEngine::default();
+    let engine = PaintEngine::new();
 
     let dirty = apply_input(
         &mut document,

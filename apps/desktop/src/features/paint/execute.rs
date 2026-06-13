@@ -385,7 +385,7 @@ mod tests {
     fn cpu_stamp_radius_matches_gpu_brush_radius() {
         let mut document = Document::default();
         document.session.set_active_pen_size(10);
-        let engine = PaintEngine::default();
+        let engine = PaintEngine::new();
 
         for pressure in [0.0_f32, 0.25, 0.5, 0.75, 1.0] {
             let input = PaintInput::Stamp {

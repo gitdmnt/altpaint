@@ -83,7 +83,7 @@ pub(crate) struct PaintState {
 impl PaintState {
     fn new() -> Self {
         Self {
-            paint_engine: paint_engine::PaintEngine::default(),
+            paint_engine: paint_engine::PaintEngine::new(),
             canvas_input: CanvasInputState::default(),
             pending_stroke: None,
             history: EditHistory::new(),

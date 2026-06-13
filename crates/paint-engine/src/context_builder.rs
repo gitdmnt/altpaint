@@ -30,7 +30,6 @@ pub fn build_paint_context<'a>(
     let composited_bitmap = document.active_bitmap()?;
 
     Some(ResolvedPaintContext {
-        plugin_id: active_tool.drawing_plugin_id.as_str(),
         context: PaintPluginContext {
             tool: active_tool.kind,
             tool_id: active_tool.id.as_str(),

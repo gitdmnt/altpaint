@@ -2,24 +2,19 @@ use crate::painting::PaintInput;
 use document_model::Document;
 use raster::BitmapEdit;
 
-use crate::{
-    BUILTIN_BITMAP_BACKEND_ID, PaintPluginRegistry, build_paint_context, default_paint_plugins,
-};
+use crate::build_paint_context;
+use crate::ops::compute_bitmap_edits;
 
 /// `Document` の読み取り状態から bitmap 差分を計算するペイントエンジンを表す。
-pub struct PaintEngine {
-    registry: PaintPluginRegistry,
-}
-
-impl Default for PaintEngine {
-    fn default() -> Self {
-        Self::new(default_paint_plugins())
-    }
-}
+///
+/// R5 で `PaintPlugin` registry を撤去し、唯一の描画バックエンド
+/// (`BUILTIN_BITMAP_BACKEND_ID`) の CPU op を直接呼ぶ。状態は持たない純計算機。
+#[derive(Default)]
+pub struct PaintEngine;
 
 impl PaintEngine {
-    pub fn new(registry: PaintPluginRegistry) -> Self {
-        Self { registry }
+    pub fn new() -> Self {
+        Self
     }
 
     /// 描画入力からレイヤーに適用するビットマップ差分を計算して返す (適用はしない)。
@@ -30,17 +25,7 @@ impl PaintEngine {
         document: &Document,
         input: &PaintInput,
     ) -> Option<Vec<BitmapEdit>> {
-        // コンテキストを取得
         let resolved = build_paint_context(document, input)?;
-
-        // レジストリから描画プラグインを取得する。プラグインを用いて入力操作からビットマップ差分のベクトルを生成する。
-        let edits = self
-            .registry
-            .get(resolved.plugin_id)
-            .or_else(|| self.registry.get(BUILTIN_BITMAP_BACKEND_ID))
-            .map(|plugin| plugin.process(input, &resolved.context))
-            .unwrap_or_default();
-
-        Some(edits)
+        Some(compute_bitmap_edits(input, &resolved.context))
     }
 }

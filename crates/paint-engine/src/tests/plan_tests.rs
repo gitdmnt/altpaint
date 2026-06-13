@@ -20,7 +20,7 @@ fn stamp_plans_single_stroke_with_matching_dirty() {
     document
         .session
         .set_active_color(ColorRgba8::new(0x12, 0x34, 0x56, 0xff));
-    let engine = PaintEngine::default();
+    let engine = PaintEngine::new();
 
     let input = PaintInput::Stamp {
         at: KomaLocalPoint::new(64, 64),
@@ -57,7 +57,7 @@ fn stamp_plans_single_stroke_with_matching_dirty() {
 #[test]
 fn stroke_segment_plans_stamp_positions_with_matching_dirty() {
     let document = Document::default();
-    let engine = PaintEngine::default();
+    let engine = PaintEngine::new();
 
     let from = KomaLocalPoint::new(32, 32);
     let to = KomaLocalPoint::new(64, 32);

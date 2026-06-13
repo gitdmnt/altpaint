@@ -1,12 +1,18 @@
-//! ペイント入力イベントと描画プラグイン契約。
+//! ペイント入力イベントと描画コンテキスト。
 //!
-//! 旧 `app-core::painting` から `paint-engine` へ移設した (BL-074/B5)。型名 (`PaintInput`
-//! / `PaintPluginContext` / `PaintPlugin`) は R5 の `PaintBackend` 体系への置換 (B8) まで
-//! 現名のまま維持する。
+//! 旧 `app-core::painting` から `paint-engine` へ移設した (BL-074/B5)。R5 で
+//! `PaintPlugin` trait + registry を撤去し、ペイント実行は `PaintBackend` 体系
+//! (desktop features/paint) と CPU 参照実装 (`ops::compute_bitmap_edits`) に分離した。
 
 use editor_state::{ColorRgba8, PenPreset, ToolKind, ToolSettingDefinition};
 use geometry::KomaLocalPoint;
-use raster::{BitmapEdit, RgbaBitmap as CanvasBitmap};
+use raster::RgbaBitmap as CanvasBitmap;
+
+/// 唯一の組み込み描画バックエンド id (R6: 旧 `STANDARD_BITMAP_PLUGIN_ID`)。
+///
+/// ツール定義の `drawing_plugin_id` がこの値を指す。registry lookup は撤去済み
+/// (R5) で、現状は単一バックエンドの識別子としてのみ存在する。
+pub const BUILTIN_BITMAP_BACKEND_ID: &str = "builtin.bitmap";
 
 /// 描画プラグインが受け取る最小入力イベント。
 #[derive(Debug, Clone, PartialEq)]
@@ -43,11 +49,4 @@ pub struct PaintPluginContext<'a> {
     pub active_layer_is_background: bool,
     pub active_layer_index: usize,
     pub layer_count: usize,
-}
-
-/// ペン入力からビットマップ差分を生成する描画プラグイン契約。
-pub trait PaintPlugin {
-    fn id(&self) -> &'static str;
-
-    fn process(&self, input: &PaintInput, context: &PaintPluginContext<'_>) -> Vec<BitmapEdit>;
 }

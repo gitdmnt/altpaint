@@ -10,7 +10,7 @@ use super::apply_input;
 #[test]
 fn stroke_segment_paints_multiple_pixels() {
     let mut document = Document::default();
-    let engine = PaintEngine::default();
+    let engine = PaintEngine::new();
 
     let dirty = apply_input(
         &mut document,
@@ -36,7 +36,7 @@ fn stroke_segment_paints_multiple_pixels() {
 #[test]
 fn eraser_uses_engine_composite_to_clear_pixels() {
     let mut document = Document::default();
-    let engine = PaintEngine::default();
+    let engine = PaintEngine::new();
 
     let _ = apply_input(
         &mut document,
