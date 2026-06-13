@@ -38,18 +38,16 @@ impl DesktopApp {
 
         if self.panel_runtime.has_dirty_panels() {
             profiler.record_value("ui_update_panels", self.panel_runtime.dirty_panel_count() as f64);
-            let can_undo = self.history.can_undo();
-            let can_redo = self.history.can_redo();
-            let active_jobs = self.background_jobs.len();
-            let snapshot_count = self.snapshots.len();
+            let host_state = panel_runtime::HostState {
+                can_undo: self.history.can_undo(),
+                can_redo: self.history.can_redo(),
+                active_jobs: self.background_jobs.len(),
+                snapshot_count: self.snapshots.len(),
+            };
             let sync_t = Instant::now();
-            let changed = self.panel_runtime.sync_dirty_panels(
-                &self.document,
-                can_undo,
-                can_redo,
-                active_jobs,
-                snapshot_count,
-            );
+            let changed = self
+                .panel_runtime
+                .sync_dirty_panels(&self.document, host_state);
             profiler.record("ui_sync_panels", sync_t.elapsed());
             let reconcile_t = Instant::now();
             self.panel_workspace

@@ -13,7 +13,7 @@ pub use translator_registry::{
     TranslationDiagnostic, TranslatorFn, TranslatorRegistry,
 };
 pub use host_state::{
-    EMPTY_WORKSPACE_PANELS_JSON, HostStateCache, build_host_state,
+    EMPTY_WORKSPACE_PANELS_JSON, HostState, HostStateCache, build_host_state,
 };
 pub use loader::{BuiltinPanelDef, BuiltinPanelLoadError, register_builtin_panels};
 pub use meta::{PanelMeta, PanelSizeMeta};

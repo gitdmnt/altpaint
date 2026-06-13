@@ -65,7 +65,8 @@ impl DesktopApp {
         Self::reload_tool_catalog_into_document(&mut document);
         Self::reload_pen_presets_into_document(&mut document);
         panel_runtime.mark_all_dirty();
-        let _changed_panels = panel_runtime.sync_dirty_panels(&document, false, false, 0, 0);
+        let _changed_panels =
+            panel_runtime.sync_dirty_panels(&document, panel_runtime::HostState::default());
         panel_workspace.reconcile_panels(panel_runtime.panel_static_ids());
 
         BootstrapState {

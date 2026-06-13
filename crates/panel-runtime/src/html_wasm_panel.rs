@@ -21,7 +21,7 @@ use panel_html::{
 use crate::request_translation::TranslatedRequest;
 use crate::translator_registry::TranslatorRegistry;
 use crate::host_state::{
-    EMPTY_WORKSPACE_PANELS_JSON, HostStateCache, build_host_state,
+    EMPTY_WORKSPACE_PANELS_JSON, HostState, HostStateCache, build_host_state,
 };
 use crate::meta::PanelMeta;
 use panel_wasm_host::{PanelWasmHostError, PanelWasmInstance};
@@ -233,20 +233,10 @@ impl HtmlWasmPanel {
         self.title
     }
 
-    pub fn update(
-        &mut self,
-        document: &Document,
-        can_undo: bool,
-        can_redo: bool,
-        active_jobs: usize,
-        snapshot_count: usize,
-    ) {
+    pub fn update(&mut self, document: &Document, host_state: HostState) {
         let host_state = build_host_state(
             document,
-            can_undo,
-            can_redo,
-            active_jobs,
-            snapshot_count,
+            host_state,
             &mut self.host_state_cache,
             &self.workspace_panels_json,
         );

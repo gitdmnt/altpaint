@@ -2,7 +2,7 @@ use crate::html_wasm_panel::HtmlWasmPanel;
 use crate::persistent_config::{collect_persistent_panel_configs, restore_persistent_panel_configs};
 use crate::request_translation::register_default_translators;
 use crate::translator_registry::TranslatorRegistry;
-use crate::host_state::EMPTY_WORKSPACE_PANELS_JSON;
+use crate::host_state::{EMPTY_WORKSPACE_PANELS_JSON, HostState};
 use document_model::Document;
 use panel_api::{HostAction, PanelEvent};
 use panel_html::{vello, wgpu, PanelSizeConstraints, ActionRect};
@@ -343,16 +343,13 @@ impl PanelRuntime {
     pub fn sync_dirty_panels(
         &mut self,
         document: &Document,
-        can_undo: bool,
-        can_redo: bool,
-        active_jobs: usize,
-        snapshot_count: usize,
+        host_state: HostState,
     ) -> BTreeSet<String> {
         if self.dirty_panels.is_empty() {
             return BTreeSet::new();
         }
         let dirty = std::mem::take(&mut self.dirty_panels);
-        self.sync_document_subset(document, Some(&dirty), can_undo, can_redo, active_jobs, snapshot_count)
+        self.sync_document_subset(document, Some(&dirty), host_state)
     }
 
     pub fn panel_count(&self) -> usize {
@@ -458,10 +455,7 @@ impl PanelRuntime {
         &mut self,
         document: &Document,
         panel_ids: Option<&BTreeSet<String>>,
-        can_undo: bool,
-        can_redo: bool,
-        active_jobs: usize,
-        snapshot_count: usize,
+        host_state: HostState,
     ) -> BTreeSet<String> {
         let workspace_json = self.workspace_panels_json.clone();
         let mut changed_panels = BTreeSet::new();
@@ -471,7 +465,7 @@ impl PanelRuntime {
             }
             // host state 組立用の workspace 情報を注入する。
             panel.set_workspace_panels_json(workspace_json.clone());
-            panel.update(document, can_undo, can_redo, active_jobs, snapshot_count);
+            panel.update(document, host_state);
             changed_panels.insert(panel.id().to_string());
         }
         changed_panels
@@ -555,7 +549,7 @@ mod tests {
     /// register_panel が runtime 共有の translator registry を各パネルへ注入する (BL-061)。
     #[test]
     fn register_panel_injects_shared_translator_registry() {
-        let mut runtime = runtime_with_panel("registry-share", NO_KEYBOARD_WAT);
+        let runtime = runtime_with_panel("registry-share", NO_KEYBOARD_WAT);
         let runtime_ptr = Arc::as_ptr(runtime.translator_registry());
         let panel = runtime
             .panels

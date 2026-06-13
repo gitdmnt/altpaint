@@ -31,6 +31,19 @@ pub struct HostStateCache {
 /// 未設定時は空配列を返す。
 pub const EMPTY_WORKSPACE_PANELS_JSON: &str = "[]";
 
+/// `Document` から導出できない host 側の付随状態 (BL-090)。
+///
+/// 履歴の undo/redo 可否・実行中ジョブ件数・スナップショット件数を 1 つの DTO に
+/// まとめる。旧来 `build_host_state` / `HtmlWasmPanel::update` / `sync_dirty_panels`
+/// が個別引数 (`can_undo` / `can_redo` / `active_jobs` / `snapshot_count`) で
+/// 受けていたものを集約する。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct HostState {
+    pub can_undo: bool,
+    pub can_redo: bool,
+    pub active_jobs: usize,
+    pub snapshot_count: usize,
+}
 
 /// キャッシュを利用してhost state を構築する。
 ///
@@ -42,13 +55,16 @@ pub const EMPTY_WORKSPACE_PANELS_JSON: &str = "[]";
 /// `workspace.panels_json` キーに格納され、`host::workspace::panels_json()` から参照される。
 pub fn build_host_state(
     document: &Document,
-    can_undo: bool,
-    can_redo: bool,
-    active_jobs: usize,
-    snapshot_count: usize,
+    host_state: HostState,
     cache: &mut HostStateCache,
     workspace_panels_json: &str,
 ) -> Value {
+    let HostState {
+        can_undo,
+        can_redo,
+        active_jobs,
+        snapshot_count,
+    } = host_state;
     let active_tool_definition = document.session.active_tool_definition().cloned();
     let active_page = document.active_page();
     let active_koma = document.active_koma();
@@ -260,10 +276,7 @@ mod tests {
     fn build(document: &Document, cache: &mut HostStateCache) -> Value {
         build_host_state(
             document,
-            false,
-            false,
-            0,
-            0,
+            HostState::default(),
             cache,
             EMPTY_WORKSPACE_PANELS_JSON,
         )
@@ -394,10 +407,7 @@ mod tests {
 
         let host_state = build_host_state(
             &document,
-            false,
-            false,
-            0,
-            0,
+            HostState::default(),
             &mut cache,
             workspace_panels_json,
         );
@@ -418,10 +428,7 @@ mod tests {
 
         let host_state = build_host_state(
             &document,
-            false,
-            false,
-            0,
-            0,
+            HostState::default(),
             &mut cache,
             EMPTY_WORKSPACE_PANELS_JSON,
         );
