@@ -2,9 +2,8 @@
 
 pub mod services;
 
-use document_model::{Document, DocumentCommand};
+use document_model::DocumentCommand;
 use editor_state::SessionCommand;
-use serde_json::Value;
 
 pub use services::ServiceRequest;
 
@@ -140,46 +139,3 @@ pub enum PanelEvent {
     },
 }
 
-/// パネル型プラグインの最小インターフェース。
-///
-/// ADR 014 (Phase 12) で PanelTree/PanelNode/PanelView/`panel_tree()` / `view()` を撤去し、
-/// HTML パネル経路 (`HtmlWasmPanel`) の DOM mutation に統一した。
-/// ここでは識別子・表示名・ドキュメント同期・イベント受理・persistent 設定の保存だけを契約する。
-pub trait PanelPlugin {
-    fn id(&self) -> &'static str;
-
-    fn title(&self) -> &'static str;
-
-    fn update(
-        &mut self,
-        _document: &Document,
-        _can_undo: bool,
-        _can_redo: bool,
-        _active_jobs: usize,
-        _snapshot_count: usize,
-    ) {
-    }
-
-    /// プラグイン具体型へのダウンキャスト用ハンドル。
-    /// `HtmlWasmPanel` がパネル間共通の workspace 情報注入に使う。
-    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
-        None
-    }
-
-    fn handles_keyboard_event(&self) -> bool {
-        false
-    }
-
-    fn persistent_config(&self) -> Option<Value> {
-        None
-    }
-
-    fn restore_persistent_config(&mut self, _config: &Value) {}
-
-    /// 既定実装は何も発行しない (DSL 時代の tree walker は撤去済み)。
-    /// HTML パネル経路は `HtmlWasmPanel::handle_event` で
-    /// data-action を直接見る経路を持つ。
-    fn handle_event(&mut self, _event: &PanelEvent) -> Vec<HostAction> {
-        Vec::new()
-    }
-}

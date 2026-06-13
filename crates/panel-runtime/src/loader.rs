@@ -101,7 +101,7 @@ pub fn register_builtin_panels(
     for def in BUILTIN_PANELS {
         let directory = assets_root.join(def.directory_name);
         match HtmlWasmPanel::load(&directory, def.wasm_filename, None) {
-            Ok(panel) => runtime.register_panel(Box::new(panel)),
+            Ok(panel) => runtime.register_panel(panel),
             Err(error) => diagnostics.push(format!("{}: {error}", directory.display())),
         }
     }

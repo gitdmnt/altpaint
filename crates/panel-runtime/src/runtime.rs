@@ -4,8 +4,8 @@ use crate::request_translation::register_default_translators;
 use crate::translator_registry::TranslatorRegistry;
 use crate::host_state::EMPTY_WORKSPACE_PANELS_JSON;
 use document_model::Document;
-use panel_api::{HostAction, PanelEvent, PanelPlugin};
-use panel_html::{vello, wgpu, HtmlPanelView, PanelSizeConstraints, ActionRect};
+use panel_api::{HostAction, PanelEvent};
+use panel_html::{vello, wgpu, PanelSizeConstraints, ActionRect};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -28,14 +28,6 @@ struct PanelGpuContext {
     scene_scratch: vello::Scene,
 }
 
-/// パネルから可変 `HtmlPanelView` を取り出すための共通アクセサ。
-/// `HtmlWasmPanel` のみが GPU 描画 (HtmlPanelView) を持つので downcast する。
-fn panel_view_mut(panel: &mut Box<dyn PanelPlugin>) -> Option<&mut HtmlPanelView> {
-    let any = panel.as_any_mut()?;
-    any.downcast_mut::<HtmlWasmPanel>()
-        .map(|p| p.view_mut())
-}
-
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct PanelDispatchResult {
     pub actions: Vec<HostAction>,
@@ -53,7 +45,8 @@ pub struct PanelKeyboardResult {
 
 /// パネル runtime と registry を保持する。
 pub struct PanelRuntime {
-    panels: Vec<Box<dyn PanelPlugin>>,
+    /// 登録済みパネル。実装は `HtmlWasmPanel` 1 種のみなので具象保持する (P1)。
+    panels: Vec<HtmlWasmPanel>,
     persistent_panel_configs: BTreeMap<String, Value>,
     /// イベント駆動再描画のための dirty パネル集合。
     dirty_panels: BTreeSet<String>,
@@ -159,43 +152,31 @@ impl PanelRuntime {
     }
 
     /// GPU 直描画対応パネル (HtmlWasmPanel) の ID 一覧。
+    ///
+    /// 実装は `HtmlWasmPanel` 1 種のみなので、全登録パネルが対象 (P1)。
     pub fn panel_ids_with_gpu(&mut self) -> Vec<String> {
-        let mut ids = Vec::new();
-        for panel in &mut self.panels {
-            let panel_id = panel.id().to_string();
-            if let Some(any) = panel.as_any_mut()
-                && any.downcast_mut::<HtmlWasmPanel>().is_some() {
-                    ids.push(panel_id);
-                }
-        }
-        ids
+        self.panels.iter().map(|panel| panel.id().to_string()).collect()
     }
 
     /// パネル毎の現在の権威サイズを返す。
     /// 戻り値: `Vec<(panel_id, width, height)>`。
     pub fn panel_sizes(&mut self) -> Vec<(String, u32, u32)> {
-        let mut out = Vec::new();
-        for panel in &mut self.panels {
-            let panel_id = panel.id().to_string();
-            if let Some(view) = panel_view_mut(panel) {
-                let (w, h) = view.panel_size();
-                out.push((panel_id, w, h));
-            }
-        }
-        out
+        self.panels
+            .iter_mut()
+            .map(|panel| {
+                let panel_id = panel.id().to_string();
+                let (w, h) = panel.view_mut().panel_size();
+                (panel_id, w, h)
+            })
+            .collect()
     }
 
-    /// 指定パネル (DSL/HTML) の panel_size を返す。該当無しの場合は `(1, 1)`。
+    /// 指定パネルの panel_size を返す。該当無しの場合は `(1, 1)`。
     pub fn panel_size(&mut self, panel_id: &str) -> (u32, u32) {
-        for panel in &mut self.panels {
-            if panel.id() != panel_id {
-                continue;
-            }
-            if let Some(view) = panel_view_mut(panel) {
-                return view.panel_size();
-            }
+        match self.panels.iter_mut().find(|panel| panel.id() == panel_id) {
+            Some(panel) => panel.view_mut().panel_size(),
+            None => (1, 1),
         }
-        (1, 1)
     }
 
     /// 指定パネルに UI 入力イベントを転送する。`:hover` / `<details>` 開閉等の動的レイアウトを動かす。
@@ -205,64 +186,44 @@ impl PanelRuntime {
         panel_id: &str,
         event: panel_html::blitz_traits::events::UiEvent,
     ) -> bool {
-        for panel in &mut self.panels {
-            if panel.id() != panel_id {
-                continue;
+        match self.panels.iter_mut().find(|panel| panel.id() == panel_id) {
+            Some(panel) => {
+                panel.view_mut().on_input(event);
+                true
             }
-            if let Some(view) = panel_view_mut(panel) {
-                view.on_input(event);
-                return true;
-            }
-            return false;
+            None => false,
         }
-        false
     }
 
     /// Phase 11: 指定パネル root 要素の CSS `min/max-width/height` 制約を返す。
     /// リサイズ時のクランプ値として `compute_resized_rect` で使う。
-    /// GPU パネルでない or 未登録の場合は `None` (= 制約なし)。
+    /// 未登録の場合は `None` (= 制約なし)。
     pub fn panel_size_constraints(&mut self, panel_id: &str) -> Option<PanelSizeConstraints> {
-        for panel in &mut self.panels {
-            if panel.id() != panel_id {
-                continue;
-            }
-            if let Some(view) = panel_view_mut(panel) {
-                return Some(view.root_size_constraints());
-            }
-            return None;
-        }
-        None
+        self.panels
+            .iter_mut()
+            .find(|panel| panel.id() == panel_id)
+            .map(|panel| panel.view_mut().root_size_constraints())
     }
 
-    /// 指定パネルの meta.json `default_size` を返す。`None` は GPU パネルでないか未登録。
+    /// 指定パネルの meta.json `default_size` を返す。`None` は未登録。
     /// 起動時に workspace に未記録のパネルへ初期サイズとして注入する用途。
     pub fn panel_default_size(&mut self, panel_id: &str) -> Option<(u32, u32)> {
-        for panel in &mut self.panels {
-            if panel.id() != panel_id {
-                continue;
-            }
-            let any = panel.as_any_mut()?;
-            return any
-                .downcast_ref::<HtmlWasmPanel>()
-                .map(|p| p.default_size());
-        }
-        None
+        self.panels
+            .iter()
+            .find(|panel| panel.id() == panel_id)
+            .map(|panel| panel.default_size())
     }
 
     /// 起動時 restore 用：指定 panel_id に永続化された panel_size を流し込む。
     /// 戻り値: 該当パネルが見つかった場合 true。
     pub fn restore_panel_size(&mut self, panel_id: &str, size: (u32, u32)) -> bool {
-        for panel in &mut self.panels {
-            if panel.id() != panel_id {
-                continue;
+        match self.panels.iter_mut().find(|panel| panel.id() == panel_id) {
+            Some(panel) => {
+                panel.view_mut().set_panel_size(size);
+                true
             }
-            if let Some(view) = panel_view_mut(panel) {
-                view.set_panel_size(size);
-                return true;
-            }
-            return false;
+            None => false,
         }
-        false
     }
 
     /// 指定された (panel_id, width, height) リストの GPU パネルを描画する。
@@ -285,9 +246,7 @@ impl PanelRuntime {
             let Some(panel) = self.panels.iter_mut().find(|p| p.id() == panel_id.as_str()) else {
                 continue;
             };
-            let Some(view) = panel_view_mut(panel) else {
-                continue;
-            };
+            let view = panel.view_mut();
             let outcome = view.on_render(
                 &gpu_ctx.device,
                 &gpu_ctx.queue,
@@ -332,25 +291,20 @@ impl PanelRuntime {
             let Some(panel) = self.panels.iter_mut().find(|p| p.id() == panel_id.as_str()) else {
                 continue;
             };
-            let Some(view) = panel_view_mut(panel) else {
-                continue;
-            };
-            let hits = view.resolve_action_rects((*width, *height), scale, chrome_height);
+            let hits = panel
+                .view_mut()
+                .resolve_action_rects((*width, *height), scale, chrome_height);
             out.push((panel_id.clone(), hits));
         }
         out
     }
 
-    pub fn register_panel(&mut self, mut panel: Box<dyn PanelPlugin>) {
+    pub fn register_panel(&mut self, mut panel: HtmlWasmPanel) {
         if let Some(config) = self.persistent_panel_configs.get(panel.id()) {
             panel.restore_persistent_config(config);
         }
         // 共有 translator registry を注入する (BL-061)。
-        if let Some(any) = panel.as_any_mut()
-            && let Some(builtin) = any.downcast_mut::<HtmlWasmPanel>()
-        {
-            builtin.set_translator_registry(Arc::clone(&self.translator_registry));
-        }
+        panel.set_translator_registry(Arc::clone(&self.translator_registry));
         self.panels
             .retain(|registered| registered.id() != panel.id());
         self.dirty_panels.insert(panel.id().to_string());
@@ -515,12 +469,8 @@ impl PanelRuntime {
             if panel_ids.is_some_and(|panel_ids| !panel_ids.contains(panel.id())) {
                 continue;
             }
-            // HtmlWasmPanel にはhost state 組立用の workspace 情報を注入する。
-            if let Some(any) = panel.as_any_mut()
-                && let Some(builtin) = any.downcast_mut::<HtmlWasmPanel>()
-            {
-                builtin.set_workspace_panels_json(workspace_json.clone());
-            }
+            // host state 組立用の workspace 情報を注入する。
+            panel.set_workspace_panels_json(workspace_json.clone());
             panel.update(document, can_undo, can_redo, active_jobs, snapshot_count);
             changed_panels.insert(panel.id().to_string());
         }
@@ -550,7 +500,7 @@ mod tests {
         let dir = write_panel_fixture(name, wat);
         let panel = HtmlWasmPanel::load(&dir, "panel.wasm", None).expect("panel loads");
         let mut runtime = PanelRuntime::new();
-        runtime.register_panel(Box::new(panel));
+        runtime.register_panel(panel);
         runtime
     }
 
@@ -609,12 +559,7 @@ mod tests {
         let runtime_ptr = Arc::as_ptr(runtime.translator_registry());
         let panel = runtime
             .panels
-            .iter_mut()
-            .find_map(|panel| {
-                panel
-                    .as_any_mut()
-                    .and_then(|any| any.downcast_ref::<HtmlWasmPanel>())
-            })
+            .first()
             .expect("registered HtmlWasmPanel");
         assert_eq!(
             panel.translator_registry_ptr(),

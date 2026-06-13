@@ -1,9 +1,9 @@
-use panel_api::PanelPlugin;
+use crate::html_wasm_panel::HtmlWasmPanel;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
 pub(crate) fn collect_persistent_panel_configs(
-    panels: &[Box<dyn PanelPlugin>],
+    panels: &[HtmlWasmPanel],
 ) -> BTreeMap<String, Value> {
     panels
         .iter()
@@ -16,7 +16,7 @@ pub(crate) fn collect_persistent_panel_configs(
 }
 
 pub(crate) fn restore_persistent_panel_configs(
-    panels: &mut [Box<dyn PanelPlugin>],
+    panels: &mut [HtmlWasmPanel],
     configs: &BTreeMap<String, Value>,
 ) {
     for panel in panels {

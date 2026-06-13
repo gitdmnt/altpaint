@@ -9,12 +9,11 @@
 //! `update` (host state 同期) と `handle_event` (UI イベント) のいずれでも DOM mutation を
 //! 行う可能性があるため、両経路で `call_with_dom` を必ず通すこと。
 
-use std::any::Any;
 use std::path::Path;
 use std::sync::Arc;
 
 use document_model::{Document, DocumentCommand};
-use panel_api::{HostAction, PanelEvent, PanelPlugin, ServiceRequest};
+use panel_api::{HostAction, PanelEvent, ServiceRequest};
 use panel_html::{
     ActionDescriptor, HtmlPanelView, blitz_dom::LocalName, blitz_dom::node::NodeData,
     parse_data_action,
@@ -223,16 +222,18 @@ fn request_descriptor_to_host_action(
     }
 }
 
-impl PanelPlugin for HtmlWasmPanel {
-    fn id(&self) -> &'static str {
+/// パネルのライフサイクルメソッド (旧 `PanelPlugin` trait。P1 で trait を撤去し
+/// `HtmlWasmPanel` の inherent メソッドに統合した)。
+impl HtmlWasmPanel {
+    pub fn id(&self) -> &'static str {
         self.id
     }
 
-    fn title(&self) -> &'static str {
+    pub fn title(&self) -> &'static str {
         self.title
     }
 
-    fn update(
+    pub fn update(
         &mut self,
         document: &Document,
         can_undo: bool,
@@ -265,15 +266,11 @@ impl PanelPlugin for HtmlWasmPanel {
         }
     }
 
-    fn as_any_mut(&mut self) -> Option<&mut dyn Any> {
-        Some(self)
-    }
-
-    fn persistent_config(&self) -> Option<Value> {
+    pub fn persistent_config(&self) -> Option<Value> {
         self.state.get("config").cloned()
     }
 
-    fn restore_persistent_config(&mut self, config: &Value) {
+    pub fn restore_persistent_config(&mut self, config: &Value) {
         if !self.state.is_object() {
             self.state = json!({});
         }
@@ -282,11 +279,11 @@ impl PanelPlugin for HtmlWasmPanel {
         }
     }
 
-    fn handles_keyboard_event(&self) -> bool {
+    pub fn handles_keyboard_event(&self) -> bool {
         self.has_keyboard_handler
     }
 
-    fn handle_event(&mut self, event: &PanelEvent) -> Vec<HostAction> {
+    pub fn handle_event(&mut self, event: &PanelEvent) -> Vec<HostAction> {
         match event {
             PanelEvent::Keyboard {
                 panel_id,
