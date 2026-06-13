@@ -50,9 +50,9 @@ impl DesktopApp {
         {
             return false;
         }
-        self.panel_runtime
-            .mark_dirty("builtin.workspace-layout");
-        self.request_panel_reconcile();
+        // BL-095: workspace セクション購読パネル (= パネル管理) を dirty にする。
+        // ビルトイン ID 直書きを subscribes 解決へ置換。
+        self.sync_ui_from_section("workspace");
         self.mark_status_dirty();
         self.persist_session_state();
         if let Some(rect) = previous_rect {
@@ -71,8 +71,8 @@ impl DesktopApp {
         if !self.panel_workspace.move_panel(panel_id, direction) {
             return false;
         }
-        self.panel_runtime.mark_dirty("builtin.workspace-layout");
-        self.request_panel_reconcile();
+        // BL-095: workspace セクション購読パネル (= パネル管理) を dirty にする。
+        self.sync_ui_from_section("workspace");
         self.mark_status_dirty();
         self.persist_session_state();
         if let Some(rect) = previous_rect {
