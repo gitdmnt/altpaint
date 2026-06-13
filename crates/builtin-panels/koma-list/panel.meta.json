@@ -1,5 +1,6 @@
 {
   "id": "builtin.koma-list",
   "title": "コマ一覧",
-  "default_size": { "width": 240, "height": 320 }
+  "default_size": { "width": 240, "height": 320 },
+  "subscribes": ["document"]
 }

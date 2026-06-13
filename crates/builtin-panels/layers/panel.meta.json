@@ -1,5 +1,6 @@
 {
   "id": "builtin.layers",
   "title": "レイヤー",
-  "default_size": { "width": 320, "height": 360 }
+  "default_size": { "width": 320, "height": 360 },
+  "subscribes": ["document"]
 }

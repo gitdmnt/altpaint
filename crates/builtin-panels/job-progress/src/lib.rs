@@ -10,14 +10,26 @@ fn init() {}
 
 #[panel_sdk::panel_sync_host]
 fn sync_host() {
+    let active = host::jobs::active();
     if let Some(node) = query_selector("#active") {
-        set_inner_html(node, &host::jobs::active().to_string());
+        set_inner_html(node, &active.to_string());
     }
     if let Some(node) = query_selector("#queued") {
         set_inner_html(node, &host::jobs::queued().to_string());
     }
     if let Some(node) = query_selector("#status") {
-        set_inner_html(node, &html_escape(&host::jobs::status()));
+        // BL-094: host state は生データのみ。status 文字列の整形はパネル側で行う。
+        let status = format_status(active, &host::document::title());
+        set_inner_html(node, &html_escape(&status));
+    }
+}
+
+/// アクティブジョブ数と作品タイトルから status 文字列を整形する (BL-094)。
+fn format_status(active: i32, work_title: &str) -> String {
+    if active <= 0 {
+        format!("idle / work={work_title}")
+    } else {
+        format!("{active} job(s) running")
     }
 }
 
@@ -29,5 +41,15 @@ mod tests {
     fn entrypoints_callable_on_native() {
         init();
         sync_host();
+    }
+
+    #[test]
+    fn format_status_idle_includes_work_title() {
+        assert_eq!(format_status(0, "untitled"), "idle / work=untitled");
+    }
+
+    #[test]
+    fn format_status_running_counts_jobs() {
+        assert_eq!(format_status(3, "untitled"), "3 job(s) running");
     }
 }

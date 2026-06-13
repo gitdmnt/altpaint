@@ -52,8 +52,20 @@ pub mod document {
         host_i32("document.active_koma_index")
     }
 
-    pub fn active_koma_bounds() -> String {
-        host_string("document.active_koma_bounds")
+    pub fn active_koma_x() -> i32 {
+        host_i32("document.active_koma_x")
+    }
+
+    pub fn active_koma_y() -> i32 {
+        host_i32("document.active_koma_y")
+    }
+
+    pub fn active_koma_width() -> i32 {
+        host_i32("document.active_koma_width")
+    }
+
+    pub fn active_koma_height() -> i32 {
+        host_i32("document.active_koma_height")
     }
 
     pub fn layer_count() -> i32 {
@@ -255,7 +267,7 @@ pub mod view {
 
 /// ジョブ関連 host 値を読む。
 pub mod jobs {
-    use crate::runtime::{host_i32, host_string};
+    use crate::runtime::host_i32;
 
     pub fn active() -> i32 {
         host_i32("jobs.active")
@@ -263,10 +275,6 @@ pub mod jobs {
 
     pub fn queued() -> i32 {
         host_i32("jobs.queued")
-    }
-
-    pub fn status() -> String {
-        host_string("jobs.status")
     }
 }
 

@@ -298,26 +298,22 @@ impl HostStateSection for DocumentSection {
             });
         let layers_json = serde_json::to_string(&layers).unwrap_or_else(|_| "[]".to_string());
 
+        // コマ一覧は bounds の生データのみ (ラベル整形はパネル側 = BL-094)。
         let komas = active_page
             .map(|page| {
                 page.komas
                     .iter()
-                    .enumerate()
-                    .map(|(index, koma)| {
+                    .map(|koma| {
                         json!({
-                            "name": format!("コマ {}", index + 1),
-                            "detail": format!(
-                                "{}×{} / ({}, {})",
-                                koma.bounds.width,
-                                koma.bounds.height,
-                                koma.bounds.x,
-                                koma.bounds.y,
-                            ),
+                            "x": koma.bounds.x,
+                            "y": koma.bounds.y,
+                            "width": koma.bounds.width,
+                            "height": koma.bounds.height,
                         })
                     })
                     .collect::<Vec<_>>()
             })
-            .unwrap_or_else(|| vec![json!({ "name": "コマ 1", "detail": "0×0 / (0, 0)" })]);
+            .unwrap_or_else(|| vec![json!({ "x": 0, "y": 0, "width": 0, "height": 0 })]);
         let komas_json = serde_json::to_string(&komas).unwrap_or_else(|_| "[]".to_string());
 
         let page_count = document.work.pages.len();
@@ -333,15 +329,8 @@ impl HostStateSection for DocumentSection {
         let active_layer_name = active_layer
             .map(|layer| layer.name.clone())
             .unwrap_or_else(|| "<no layer>".to_string());
-        let active_koma_label = format!("ページ {active_page_number} / コマ {active_koma_number}");
-        let active_koma_bounds = active_koma
-            .map(|koma| {
-                format!(
-                    "({}, {}) {}×{}",
-                    koma.bounds.x, koma.bounds.y, koma.bounds.width, koma.bounds.height,
-                )
-            })
-            .unwrap_or_else(|| "(0, 0) 0×0".to_string());
+        // BL-094: bounds は生データで配り、ラベル整形はパネル側 (Wasm) で行う。
+        let active_koma_bounds = active_koma.map(|koma| koma.bounds);
 
         // UI インデックス: UI の先頭が前面なので実モデル index を逆変換する。
         let active_layer_ui_index = if layer_count > 0 {
@@ -358,8 +347,10 @@ impl HostStateSection for DocumentSection {
             "active_page_koma_count": active_page_koma_count,
             "active_koma_index": document.active_koma_index(),
             "active_koma_number": active_koma_number,
-            "active_koma_label": active_koma_label,
-            "active_koma_bounds": active_koma_bounds,
+            "active_koma_x": active_koma_bounds.map(|b| b.x).unwrap_or(0),
+            "active_koma_y": active_koma_bounds.map(|b| b.y).unwrap_or(0),
+            "active_koma_width": active_koma_bounds.map(|b| b.width).unwrap_or(0),
+            "active_koma_height": active_koma_bounds.map(|b| b.height).unwrap_or(0),
             "active_layer_name": active_layer_name,
             "layer_count": layer_count,
             "active_layer_index": active_layer_ui_index,
@@ -503,20 +494,13 @@ impl HostStateSection for JobsSection {
     fn revision(&self, ctx: &HostStateContext<'_>) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         ctx.host_state.active_jobs.hash(&mut hasher);
-        // status 文字列が work title を含むため、title もキーに含める。
-        ctx.document.work.title.hash(&mut hasher);
         hasher.finish()
     }
     fn build(&self, ctx: &HostStateContext<'_>) -> Value {
-        let active = ctx.host_state.active_jobs;
+        // 生データのみ (status 文字列整形はパネル側 = BL-094)。
         json!({
-            "active": active,
+            "active": ctx.host_state.active_jobs,
             "queued": 0,
-            "status": if active == 0 {
-                format!("idle / work={}", ctx.document.work.title)
-            } else {
-                format!("{active} job(s) running")
-            },
         })
     }
 }
@@ -668,9 +652,13 @@ mod tests {
         let komas_json = second["document"]["komas_json"]
             .as_str()
             .expect("komas_json is string");
+        // BL-094: 生データのみ (ラベル整形はパネル側)。
         assert!(
-            komas_json.contains("123×45 / (7, 9)"),
-            "komas_json must reflect bounds change: {komas_json}"
+            komas_json.contains(r#""x":7"#)
+                && komas_json.contains(r#""y":9"#)
+                && komas_json.contains(r#""width":123"#)
+                && komas_json.contains(r#""height":45"#),
+            "komas_json must reflect bounds change as raw data: {komas_json}"
         );
     }
 
@@ -780,5 +768,40 @@ mod tests {
             .as_str()
             .expect("workspace.panels_json must be present");
         assert_eq!(emitted, "[]");
+    }
+
+    /// BL-094: プレゼンテーション文字列が host state に含まれず、生データのみが出る。
+    #[test]
+    fn host_state_has_no_presentation_strings() {
+        let document = Document::default();
+        let mut registry = HostStateRegistry::default();
+        let value = build(&mut registry, &document);
+
+        assert!(
+            value["document"].get("active_koma_label").is_none(),
+            "active_koma_label (presentation string) must be removed"
+        );
+        assert!(
+            value["document"].get("active_koma_bounds").is_none(),
+            "active_koma_bounds (presentation string) must be removed"
+        );
+        assert!(
+            value["jobs"].get("status").is_none(),
+            "jobs.status (presentation string) must be removed"
+        );
+
+        // 生データは存在する。
+        assert!(value["document"]["active_koma_width"].is_number());
+        assert!(value["document"]["active_koma_x"].is_number());
+        assert!(value["jobs"]["active"].is_number());
+
+        // komas_json も生データ (name/detail の整形文字列を含まない)。
+        let komas_json = value["document"]["komas_json"]
+            .as_str()
+            .expect("komas_json is string");
+        assert!(
+            !komas_json.contains("コマ ") && !komas_json.contains('×'),
+            "komas_json must not contain formatted labels: {komas_json}"
+        );
     }
 }

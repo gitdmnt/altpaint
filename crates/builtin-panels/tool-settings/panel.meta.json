@@ -1,5 +1,6 @@
 {
   "id": "builtin.tool-settings",
   "title": "ツール設定",
-  "default_size": { "width": 280, "height": 360 }
+  "default_size": { "width": 280, "height": 360 },
+  "subscribes": ["tool"]
 }

@@ -28,7 +28,14 @@ fn sync_host() {
         );
     }
     if let Some(node) = query_selector("#active-panel-bounds") {
-        set_inner_html(node, &html_escape(&host::document::active_koma_bounds()));
+        // BL-094: host state は bounds 生データのみ。ラベル整形はパネル側で行う。
+        let bounds = format_bounds(
+            host::document::active_koma_x(),
+            host::document::active_koma_y(),
+            host::document::active_koma_width(),
+            host::document::active_koma_height(),
+        );
+        set_inner_html(node, &html_escape(&bounds));
     }
 
     if let Some(list) = query_selector("#koma-list") {
@@ -36,6 +43,11 @@ fn sync_host() {
         let active_index = host::document::active_koma_index();
         set_inner_html(list, &render_panel_list(&komas_json, active_index));
     }
+}
+
+/// `(x, y) w×h` 形式へ整形する (BL-094: 旧 host state の文字列契約をパネル側へ移管)。
+fn format_bounds(x: i32, y: i32, width: i32, height: i32) -> String {
+    format!("({x}, {y}) {width}×{height}")
 }
 
 fn render_panel_list(komas_json: &str, active_index: i32) -> String {
@@ -48,12 +60,18 @@ fn render_panel_list(komas_json: &str, active_index: i32) -> String {
         } else {
             ""
         };
+        // BL-094: name / detail のラベル整形はパネル側で行う (生データから組み立て)。
+        let name = format!("コマ {}", idx + 1);
+        let detail = format!(
+            "{}×{} / ({}, {})",
+            panel.width, panel.height, panel.x, panel.y
+        );
         out.push_str(&format!(
             r#"<li class="{class}" data-action="altp:activate:handle_panel_list" data-args='{{"value":{idx}}}'><span>{name}</span><span class="detail">{detail}</span></li>"#,
             class = class,
             idx = idx,
-            name = html_escape(&panel.name),
-            detail = html_escape(&panel.detail),
+            name = html_escape(&name),
+            detail = html_escape(&detail),
         ));
     }
     out
@@ -62,9 +80,13 @@ fn render_panel_list(komas_json: &str, active_index: i32) -> String {
 #[derive(Default, serde::Deserialize)]
 struct PanelEntry {
     #[serde(default)]
-    name: String,
+    x: i32,
     #[serde(default)]
-    detail: String,
+    y: i32,
+    #[serde(default)]
+    width: i32,
+    #[serde(default)]
+    height: i32,
 }
 
 #[panel_sdk::panel_handler]
@@ -114,10 +136,16 @@ mod tests {
     }
 
     #[test]
-    fn render_panel_list_escapes_html() {
-        let payload = r#"[{"name":"<script>","detail":"a"}]"#;
+    fn render_panel_list_formats_labels_from_raw_bounds() {
+        // BL-094: 生データ (x/y/width/height) からラベルを組み立てる。
+        let payload = r#"[{"x":7,"y":9,"width":123,"height":45}]"#;
         let html = render_panel_list(payload, 0);
-        assert!(!html.contains("<script>"));
-        assert!(html.contains("&lt;script&gt;"));
+        assert!(html.contains("コマ 1"), "html: {html}");
+        assert!(html.contains("123×45 / (7, 9)"), "html: {html}");
+    }
+
+    #[test]
+    fn format_bounds_renders_parenthesized_size() {
+        assert_eq!(format_bounds(7, 9, 123, 45), "(7, 9) 123×45");
     }
 }

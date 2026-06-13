@@ -142,9 +142,12 @@ fn typed_host_helpers_are_callable_on_native_targets() {
     assert_eq!(host::view::pan_y(), 0);
     assert!(!host::view::flipped_x());
     assert!(!host::view::flipped_y());
+    assert_eq!(host::document::active_koma_x(), 0);
+    assert_eq!(host::document::active_koma_y(), 0);
+    assert_eq!(host::document::active_koma_width(), 0);
+    assert_eq!(host::document::active_koma_height(), 0);
     assert_eq!(host::jobs::active(), 0);
     assert_eq!(host::jobs::queued(), 0);
-    assert_eq!(host::jobs::status(), "");
     assert_eq!(host::snapshot::storage_status(), "");
 }
 

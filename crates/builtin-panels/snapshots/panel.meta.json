@@ -1,5 +1,6 @@
 {
   "id": "builtin.snapshots",
   "title": "Snapshots",
-  "default_size": { "width": 320, "height": 320 }
+  "default_size": { "width": 320, "height": 320 },
+  "subscribes": ["document", "snapshot", "tool"]
 }
