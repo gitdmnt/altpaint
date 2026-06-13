@@ -26,7 +26,7 @@
 
 ## workspace パッケージ一覧
 
-2026-06-13 時点 (ADR 018 B6 完了) の workspace package は次の通り（計 29 メンバー: 中核 17 + 組み込みパネル 12。B6 で `panel-api` を解体）。
+2026-06-13 時点 (ADR 018 B7-part1 完了) の workspace package は次の通り（計 30 メンバー: 中核 18 + 組み込みパネル 12。B7-part1 で `storage` / `desktop-support` を解体し `project-store` / `pen-io` / `frame-profiler` を新設）。
 
 ### 中核クレート（水平土台）
 
@@ -42,8 +42,9 @@ ADR 018 B5 で旧 `app-core` を責務別の 4 クレートへ解体した:
 - `paint-engine`（旧 `canvas`）
 - `gpu-paint`（旧 `gpu-canvas`）
 - `canvas-geometry`（旧 `render-types`。B5 で `CanvasViewGeometry` 単一経路へ縮約）
-- `storage`
-- `desktop-support`
+- `project-store`（B7-part1 で旧 `storage` から SQLite project save/load を切り出したもの）
+- `pen-io`（B7-part1 で旧 `storage` からペンプリセット読込 / import/export を切り出したもの）
+- `frame-profiler`（B7-part1 で旧 `desktop-support` からフレーム計測を切り出したもの。整形は desktop 側）
 - `panel-workspace`（旧 `ui-shell`。B6 で `ResizeHandle` / `PanelMoveDirection` を旧 panel-api から移設）
 - `panel-wasm-host`（旧 `plugin-host`）
 - `panel-protocol`（旧 `panel-schema`）
@@ -61,6 +62,8 @@ ADR 018 B5 で旧 `app-core` を責務別の 4 クレートへ解体した:
 - `crates/workspace-persistence` は ADR 016 で旧 `app-core::workspace` へ統合し削除済み。`WorkspaceUiState` / `WorkspacePanelState` は B5 (BL-075) で `panel-workspace` へ移設した。
 - `crates/panel-html` は旧名 `panel-html-experiment` を ADR 016 で正式名称化したもの。
 - `crates/panel-api` は ADR 018 B6 (C9) で解体しワークスペースから削除済み。host 向け契約型 (`HostRequest` / `PanelEvent` / `ServiceRequest`) は `panel-runtime`、配置ジオメトリ型 (`ResizeHandle` / `PanelMoveDirection`) は `panel-workspace`、wire 名定数・ABI 定数・`HostState` DTO は `panel-protocol` へ分配した。これにより旧 panel-api が抱えていた document-model / editor-state への契約依存を解消し、パネル基盤の水平土台化が完成した。
+- `crates/storage` は ADR 018 B7-part1 (2026-06-13) で解体しワークスペースから削除済み。SQLite project save/load は `project-store`、ペンプリセット I/O は `pen-io` へ切り出し、PNG export とツールカタログ読込は desktop の `features/export` / `features/tools` へ移管した。
+- `crates/desktop-support` は ADR 018 B7-part1 で解体しワークスペースから削除済み。フレーム計測は `frame-profiler` クレートへ切り出し（整形責務は desktop 側）、native dialog / テーマ / パス解決は desktop の `platform/`、session / canvas size preset / workspace preset は desktop の `features/` へ移管した。永続化パスは CWD / `CARGO_MANIFEST_DIR` 相対から `dirs` ベース（`dirs::data_dir()/altpaint`）へ変更し、同梱アセットは実行ファイル隣接優先・開発時のみソースツリー相対フォールバックとした。
 - `panel-sdk` を作者向け正面名とし、proc-macro は `panel-macros` として物理分離する。
 
 ### 組み込みパネル crate（`crates/builtin-panels/` 配下、12 個）
@@ -102,8 +105,9 @@ graph TD
     desktop --> canvasgeo[canvas-geometry]
     desktop --> panelruntime[panel-runtime]
     desktop --> panelws[panel-workspace]
-    desktop --> storage[storage]
-    desktop --> dsupport[desktop-support]
+    desktop --> projectstore[project-store]
+    desktop --> penio[pen-io]
+    desktop --> profiler[frame-profiler]
 
     paintengine --> docmodel
     paintengine --> editorstate
@@ -114,13 +118,10 @@ graph TD
     gpupaint --> raster
     canvasgeo --> geometry
     canvasgeo --> editorstate
-    storage --> docmodel
-    storage --> editorstate
-    storage --> raster
-    storage --> panelws
-    dsupport --> docmodel
-    dsupport --> editorstate
-    dsupport --> panelws
+    projectstore --> docmodel
+    projectstore --> raster
+    projectstore --> panelws
+    penio --> editorstate
 
     panelws --> geometry
 
@@ -482,46 +483,50 @@ graph TD
 - DSL 時代の `tree_query.rs` / `TextInputEditorState` / winit IME 編集経路は Phase 12 で、
   CPU 合成時代の `PanelSurface` / scroll offset / no-op スタブ群は ADR 016 で削除済み
 
-### `storage`
+### `project-store`
+
+ADR 018 B7-part1 (2026-06-13) で旧 `storage` から切り出した SQLite project 永続化クレート。ローカル依存は `document-model` / `panel-workspace` / `raster`（`winit` / `wgpu` 非依存）。
 
 担当:
 
-- SQLite ベース project save/load（`rusqlite` bundled、エラー型は `ProjectStoreError`（旧 `StorageError`）、
-  要約は `ProjectManifest`（旧 `ProjectIndex`））
-- `CURRENT_PROJECT_FORMAT_VERSION` 管理（旧 `CURRENT_FORMAT_VERSION`）
+- SQLite ベース project save/load（`rusqlite` bundled、エラー型は `ProjectStoreError`、要約は `ProjectManifest`）
+- `CURRENT_PROJECT_FORMAT_VERSION` 管理
 - page / koma 単位の部分読込、layer chunk 保存（`zstd` 圧縮チャンク）
 - コマ合成キャッシュ永続化（SQLite テーブルは `komas` / `koma_composites`、ADR 018 B1 で改名）
-- PNG export
-- ペンプリセット読込と import/export（保存 DTO は `StoredPenEngine`、旧 `PenEngine`）
-- `tools/` カタログ読込
 
-主要モジュール:
+### `pen-io`
 
-- `project_file.rs`
-- `project_sqlite.rs`
-- `pen_exchange.rs` / `pen_format.rs` / `pen_catalog.rs`（旧 `pen_presets.rs`）
-- `tool_catalog.rs`
-- `export.rs`
-
-### `desktop-support`
+ADR 018 B7-part1 で旧 `storage` から切り出したペンプリセット I/O クレート。ローカル依存は `editor-state` のみ（`winit` / `wgpu` 非依存）。
 
 担当:
 
-- 配色・寸法・既定パスなどの desktop config（`builtin_panels_dir()`（旧 `default_panel_dir()`）は `crates/builtin-panels` を指す）
-- native dialog 境界
-- session save/load
-- `FrameProfiler`（旧 `DesktopProfiler`）
-- canvas size preset 読込（`CanvasSizePreset`、旧 `CanvasTemplate`）
-- workspace preset catalog の読込 / 保存
+- ペンプリセット読込と import/export（保存 DTO は `StoredPenEngine`、`pen_format.rs` の runtime↔storage 変換）
 
-主要モジュール:
+### `frame-profiler`
 
-- `config.rs`
-- `dialogs.rs`
-- `session.rs`
-- `profiler/`
-- `canvas_size_presets.rs`（旧 `templates.rs`）
-- `workspace_presets.rs`
+ADR 018 B7-part1 で旧 `desktop-support` から切り出したフレーム計測クレート。ローカル依存ゼロ。整形（レポート文字列化）責務は desktop 側へ分離した。
+
+担当:
+
+- `FrameProfiler`（旧 `DesktopProfiler`）によるフレーム実行時間計測
+
+### `apps/desktop` の `platform/` と `features/`
+
+ADR 018 B7-part1 で旧 `desktop-support` を解体し、残りの責務を desktop 内部へ移管した。
+
+`apps/desktop/src/platform/`:
+
+- `dialogs.rs`（native dialog 境界）
+- `paths.rs`（永続化パス・同梱アセットディレクトリ解決。`dirs::data_dir()/altpaint` ベース。配布形態では実行ファイル隣接アセットを優先し、開発時のみソースツリー相対へフォールバック。CWD / `CARGO_MANIFEST_DIR` 相対の永続化パスは廃止）
+
+`apps/desktop/src/features/`（垂直スライス）:
+
+- `export/`（PNG export。旧 `storage::export`）
+- `tools/`（`tools/` カタログ読込。旧 `storage::tool_catalog`）
+- `project/`（session save/load、canvas size preset 読込 = `CanvasSizePreset`）
+- `workspace/`（workspace preset catalog の読込 / 保存）
+- `json_store.rs`（Loaded / Missing / Corrupt 区別の共通 JSON 設定ローダ）
+- `status_bar/`
 
 ### `apps/desktop`（package `altpaint-desktop`、bin `altpaint`）
 
@@ -621,11 +626,11 @@ crates/builtin-panels/<name>/{panel.html, panel.css, panel.meta.json, *.wasm}
 ```text
 DesktopApp
   -> (保存前) services/gpu_sync.rs::sync_gpu_bitmaps_to_cpu
-  -> storage::save_project_to_path / load_project_from_path
+  -> project_store::save_project_to_path / load_project_from_path
   -> Document (作品) + WorkspaceLayout + panel_configs
 
 DesktopApp
-  -> desktop-support::save_session_state / load_session_state
+  -> features/project/session.rs::save_session_state / load_session_state
   -> EditorSession (編集セッション)
 ```
 
@@ -673,9 +678,9 @@ project file と session file は役割が異なる（B5 BL-079 で保存境界�
 1. 保存/読込は `ServiceRequest` (`project_io.*`) としてパネル/入力層から発行され、`apps/desktop/src/app/services/project_io.rs` のサービスハンドラが受ける (B4 / BL-060 で旧 `command_router` の「Command → ServiceRequest 再変換」経路を撤去し、I/O は最初から service 経路を流れる)
 2. 保存前に `services/gpu_sync.rs` が GPU テクスチャを readback して `Document` の CPU bitmap を最新化する
 3. `apps/desktop/src/app/background_tasks.rs` が project save task を起動または回収する
-4. project 保存は `storage` へ委譲する
+4. project 保存は `project-store` へ委譲する
 5. workspace layout は `PanelWorkspace`、panel config は `PanelRuntime` から取り出して一緒に保存する
-6. session 保存は `apps/desktop/src/app/io_state.rs` 経由で `desktop-support` へ委譲する
+6. session 保存は `apps/desktop/src/app/io_state.rs` 経由で desktop の `features/project/session.rs` へ委譲する
 
 ## 現在の境界で重要なこと
 
@@ -713,8 +718,8 @@ ADR 018 B5 で旧 `app-core` を解体した後も、以下は維持したい。
 2. 水平土台 4 クレートから `apps/desktop` / `panel-wasm-host` を参照しない。`editor-state` は `document-model` に依存させない（循環回避）
 3. `crates/builtin-panels/*` のパネル crate から host 内部クレートへ直接依存させない（`panel-sdk` のみ）
 4. panel の ABI DTO は `panel-protocol` に閉じ込める
-5. desktop 固有の I/O や dialog は `desktop-support` に寄せる
-6. project 永続化は `storage`、session 永続化は `desktop-support` に分ける
+5. desktop 固有の I/O や dialog は `apps/desktop` の `platform/` に寄せる
+6. project 永続化は `project-store`、ペンプリセット I/O は `pen-io` に分け、session / preset 永続化は desktop の `features/` に置く（永続化パスは `dirs` ベース）
 7. `apps/desktop` だけが OS window と GPU presenter を所有する
 8. `canvas-geometry` に project / workspace I/O の意味論や GPU 実装を入れない
 9. `panel-workspace` 配置側へ Wasm runtime 詳細を持ち込まない

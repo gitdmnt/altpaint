@@ -63,11 +63,11 @@ bash scripts/build-ui-wasm.sh          # Linux / WSL2
 
 ## アーキテクチャ概要
 
-altpaint はデスクトップ向けデジタルペイントアプリ。Rust 2024-edition Cargo workspace（30 メンバー: ライブラリ 17、ビルトインパネル 12、デスクトップアプリ 1）。
+altpaint はデスクトップ向けデジタルペイントアプリ。Rust 2024-edition Cargo workspace（30 メンバー: ライブラリ 18、ビルトインパネル 12、デスクトップアプリ 1）。
 
 ### Runtime Flow
 
-**起動**: `apps/desktop` が winit + wgpu 初期化 → `DesktopApp::new` がセッション/プロジェクト/ワークスペース復元 → `PanelRuntime` が `crates/builtin-panels/` の HTML+CSS+Wasm パネル 12 個を読み込む → `storage` がツール・ペンを読み込む → 初期レンダリング
+**起動**: `apps/desktop` が winit + wgpu 初期化 → `DesktopApp::new` がセッション/プロジェクト/ワークスペース復元 → `PanelRuntime` が `crates/builtin-panels/` の HTML+CSS+Wasm パネル 12 個を読み込む → desktop の `features/tools` と `pen-io` がツール・ペンを読み込む → 初期レンダリング
 
 **入力 → 描画**: OS入力 → `event_loop/pointer.rs` 正規化 → `app/input.rs` がキャンバスかパネルへ振り分け → `canvas-geometry::map_view_to_canvas_with_transform` が座標変換 → `paint_engine::gesture` が `PaintInput` を生成 → `paint_engine::context_builder` が `Document` からペイントコンテキストを解決 → `gpu-paint` の compute shader が GPU レイヤーテクスチャへ直接描画（ブラシ/塗りつぶし/合成）→ `wgpu_canvas.rs` が GPU へ提示
 
@@ -91,8 +91,9 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 | `crates/panel-wasm-host`              | wasmtime ベースの Wasm パネルランタイム + DOM mutation host functions                     |
 | `crates/panel-protocol`               | ホスト↔Wasm 共有 DTO・ABI 定数・wire 名定数・`HostState`/`HostCallInput`/`HandlerEffects`（ローカル依存ゼロ、serde/serde_json のみ） |
 | `crates/panel-sdk` + `panel-macros`   | パネル作者向け SDK と proc-macro                                                          |
-| `crates/storage`                      | SQLite プロジェクト永続化、ペン/ツールカタログ                                            |
-| `crates/desktop-support`              | セッション、ダイアログ、パス、プロファイラー、キャンバスサイズプリセット                  |
+| `crates/project-store`                | SQLite プロジェクト永続化（旧 `storage` から B7-part1 で切り出し。`document-model`/`panel-workspace`/`raster` 依存、wgpu/winit 非依存） |
+| `crates/pen-io`                       | ペンプリセット読込 / import/export（旧 `storage` から B7-part1 で切り出し。`editor-state` のみ依存、wgpu/winit 非依存） |
+| `crates/frame-profiler`               | `FrameProfiler` フレーム計測（旧 `desktop-support` から B7-part1 で切り出し。整形は desktop 側、ローカル依存ゼロ） |
 | `crates/builtin-panels/*`             | 12 個のビルトインパネル（各々 `panel.html` + `panel.css` + `panel.meta.json` + Rust/Wasm ソース） |
 
 ### ファイル配置規則
@@ -100,6 +101,8 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 - `runtime/` — 外部ランタイム・ステートフルブリッジ
 - `presentation/` — レイアウト、ヒットテスト、フォーカス、テキスト入力、サーフェス生成
 - `services/` — I/O 統括（プロジェクト、ワークスペース、エクスポート、カタログ）
+- `platform/`（apps/desktop）— native dialog 境界、パス解決（`dirs` ベース。B7-part1 で旧 desktop-support から移管）
+- `features/`（apps/desktop）— 垂直スライス（export / tools / project=session・preset / workspace / status_bar。B7-part1 で旧 desktop-support / storage から移管）
 - `ops/` — 高頻度なキャンバス/レンダリング操作
 - `tests/` — クレート/モジュール境界テスト
 - `lib.rs` — モジュール宣言、再エクスポート、薄い公開 API のみ（大きな実装は置かない）

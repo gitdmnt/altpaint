@@ -118,6 +118,14 @@
   - **BL-051 回帰テスト**: 右/下アンカーパネルの矩形解決テスト (`panel_rect_resolves_bottom_right_anchor_within_viewport` ほか panel-workspace tests) が green (旧 viewport なし版の usize::MAX フォールバックによる画面外座標バグの回帰防止)。BL-095 ゴールデンテスト (`reconcile_applies_declared_layout_defaults`) と bootstrap 既定配置ゴールデン (`bootstrap_tests.rs`) が green。
   - 検証: workspace テスト 493 passed / 0 failed / 7 ignored (B5 の 465 から +28)、clippy 警告 0、wasm ビルド成功 (12 パネル)、起動スモーク 22 秒パニックなし (12 パネル既定配置で表示)、依存制約クリア (panel-protocol は serde/serde_json のみ、panel-runtime の document-model/editor-state 依存は host_state/translator の正当な参照)。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
 
+- **Phase 23 / B7-part1 完了 (2026-06-13)**: ADR 018 — バッチ B7「desktop 垂直分割」の前半 (クレート解体)。コミット 51a8844..0ba85da。**God クレート `storage` / `desktop-support` を解体しワークスペースから削除**し、再利用可能な永続化/計測コアを独立クレートへ、desktop 固有の I/O・ダイアログ・パス・session/preset を desktop 内部の `platform/` / `features/` 垂直スライスへ移管した (workspace 29 → 30 メンバー: storage 削除 −1・desktop-support 削除 −1・project-store/pen-io 追加 +2・frame-profiler 追加 +1 = 正味 +1):
+  - **`project-store` 切り出し**: 旧 `storage` の SQLite project save/load (`save_project_to_path` / `load_project_from_path` / `ProjectManifest` / `ProjectStoreError` / koma 部分読込 / zstd チャンク / `koma_composites`) を独立クレート化。ローカル依存は `document-model` / `panel-workspace` / `raster` のみで **wgpu/winit 非依存**。
+  - **`pen-io` 切り出し**: 旧 `storage` のペンプリセット読込 / import/export (`StoredPenEngine` / `pen_format.rs` の runtime↔storage 変換) を独立クレート化。ローカル依存は `editor-state` のみで **wgpu/winit 非依存**。
+  - **`frame-profiler` 切り出し**: 旧 `desktop-support` のフレーム計測 (`FrameProfiler`) を独立クレート化 (ローカル依存ゼロ)。レポート文字列の整形責務は desktop 側へ分離。
+  - **desktop-support 解体 → desktop 内部へ**: PNG export → `features/export`、ツールカタログ読込 → `features/tools`、session save/load・canvas size preset → `features/project`、workspace preset → `features/workspace`、共通 JSON 設定ローダ → `features/json_store.rs`、native dialog / テーマ → `platform/`。
+  - **パス解決の dirs 化 (BL-113)**: 永続化パスを CWD 相対 (session/preset) と `CARGO_MANIFEST_DIR` 相対 (同梱アセット) から **`dirs::data_dir()/altpaint` ベース**へ変更 (配布バイナリで書込み不能/不在ディレクトリを指す破綻を解消)。同梱アセットは実行ファイル隣接を優先し、開発時のみソースツリー相対へフォールバック (OS 固有 cfg は書かず `dirs` が OS 差異を吸収)。`platform/paths.rs::resolve_user_data_dir` / `resolve_asset_dir` を純関数化してユニットテスト。
+  - 検証: workspace テスト 500 passed / 0 failed / 7 ignored、clippy 警告 0、wasm ビルド成功 (12 パネル)、起動スモーク 約 22 秒パニックなし、構造検証 (storage/desktop-support クレート消滅・コード内 `storage`/`desktop-support` 参照 0 件 [docs 除く]・`platform/` と `features/` 存在)、cargo tree 確認 (project-store / pen-io ともに wgpu/winit 非依存)。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+
 ## 現在の workspace 構成
 
 ### 中核 crate
@@ -129,9 +137,9 @@
 - `paint-engine`（旧 `canvas`、ADR 018 B2 で改名）
 - `gpu-paint`（旧 `gpu-canvas`、ADR 018 B2 で改名）
 - `canvas-geometry`（旧 `render-types`、ADR 018 B2 で改名。B5 で `CanvasViewGeometry` 単一経路へ縮約）
-- `storage`
-- `desktop-support`
-- `panel-api`
+- `project-store`（ADR 018 B7-part1 で旧 `storage` から SQLite project 永続化を切り出し。`document-model`/`panel-workspace`/`raster` 依存、wgpu/winit 非依存）
+- `pen-io`（ADR 018 B7-part1 で旧 `storage` からペンプリセット I/O を切り出し。`editor-state` のみ依存、wgpu/winit 非依存）
+- `frame-profiler`（ADR 018 B7-part1 で旧 `desktop-support` からフレーム計測を切り出し。ローカル依存ゼロ）
 - `panel-runtime`
 - `panel-workspace`（旧 `ui-shell`、ADR 018 B2 で改名）
 - `panel-wasm-host`（旧 `plugin-host`、ADR 018 B2 で改名）
@@ -260,6 +268,8 @@ B4 (BL-060) で旧 `Command` enum を 2 分割し、I/O 系 variant (保存・�
 - `ui-shell`: panel presentation / workspace layout / focus / hit-test
 
 ### 5. 永続化
+
+注 (ADR 018 B7-part1, 2026-06-13): 下記の `storage` / `desktop-support` は解体済みで、本節は B2 以前に書かれた旧スナップショットである (全面改稿は B10)。現在の正本は `docs/MODULE_DEPENDENCIES.md`。project 永続化は `project-store`、ペンプリセット I/O は `pen-io`、フレーム計測は `frame-profiler` が担い、session / canvas size preset / workspace preset / native dialog / パス解決は desktop の `features/` / `platform/` へ移管した (パス解決は `dirs` ベース)。
 
 `storage` には次がある。
 
