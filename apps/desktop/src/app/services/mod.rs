@@ -4,6 +4,7 @@ mod export;
 mod gpu_sync;
 mod project_io;
 mod snapshot;
+mod text_raster;
 mod text_render;
 mod tool_catalog;
 mod workspace_io;

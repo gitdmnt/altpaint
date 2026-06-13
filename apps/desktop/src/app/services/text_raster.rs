@@ -1,7 +1,12 @@
-//! テキストラスタライズと BitmapEdit 生成。
+//! テキストラスタライズと `BitmapEdit` 生成。
 //!
 //! `TextRenderer` trait により実装を差し替え可能にする。
 //! 既定実装 `Font8x8Renderer` は `font8x8` クレートを使ったビットマップフォントレンダラ。
+//!
+//! NOTE: BL-082 で paint-engine の `ops/text.rs` からここへ移動。
+//! テキストはペイント入力解釈ではなく desktop feature の責務であり、
+//! paint-engine の font8x8 依存を切るために分離した。
+//! 最終配置 (features/text) は B7 で確定する。
 
 use geometry::PageDirtyRect;
 use raster::{BitmapComposite, BitmapEdit, RgbaBitmap};
@@ -92,9 +97,7 @@ impl TextRenderer for Font8x8Renderer {
 /// ASCII 範囲外は空白として扱う。
 fn glyph_rows_for(ch: char) -> [u8; 8] {
     use font8x8::UnicodeFonts;
-    font8x8::BASIC_FONTS
-        .get(ch)
-        .unwrap_or([0u8; 8])
+    font8x8::BASIC_FONTS.get(ch).unwrap_or([0u8; 8])
 }
 
 // ─── Canvas Op ───────────────────────────────────────────────────────────────
@@ -140,7 +143,11 @@ pub fn render_text_to_bitmap_edit_with(
         height: output.height,
         pixels: output.pixels,
     };
-    Some(BitmapEdit::new(dirty_rect, bitmap, BitmapComposite::SourceOver))
+    Some(BitmapEdit::new(
+        dirty_rect,
+        bitmap,
+        BitmapComposite::SourceOver,
+    ))
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -162,8 +169,8 @@ mod tests {
     fn font8x8_renderer_scales_with_font_size() {
         let renderer = Font8x8Renderer;
         let out = renderer.render("AB", 16, [255, 0, 0, 255]);
-        assert_eq!(out.width, 32);   // 2文字 × 8px × scale(2)
-        assert_eq!(out.height, 16);  // 8px × scale(2)
+        assert_eq!(out.width, 32); // 2文字 × 8px × scale(2)
+        assert_eq!(out.height, 16); // 8px × scale(2)
     }
 
     #[test]
@@ -172,7 +179,7 @@ mod tests {
         let edit = edit.expect("should return Some");
         assert_eq!(edit.dirty_rect.x, 10);
         assert_eq!(edit.dirty_rect.y, 20);
-        assert_eq!(edit.dirty_rect.width, 8 * 5);   // 5 chars × 8px
+        assert_eq!(edit.dirty_rect.width, 8 * 5); // 5 chars × 8px
         assert_eq!(edit.dirty_rect.height, 8);
     }
 
@@ -194,7 +201,11 @@ mod tests {
                     let idx = i * 4;
                     pixels[idx..idx + 4].copy_from_slice(&color);
                 }
-                TextRenderOutput { pixels, width: w, height: h }
+                TextRenderOutput {
+                    pixels,
+                    width: w,
+                    height: h,
+                }
             }
         }
         let edit = render_text_to_bitmap_edit_with("Hi", 8, [1, 2, 3, 4], 0, 0, &StubRenderer);
