@@ -21,12 +21,8 @@ use wasmtime::{Caller, Linker};
 /// Wasm 呼出スコープ内のみ有効な DOM コンテキスト。
 ///
 /// `PanelWasmInstance::call_with_dom` が NonNull を立て、戻り際に None に戻す。
-/// DOM API の host function はこれを deref して `HtmlDocument` を mutate する。
-///
-/// SAFETY 原則:
-/// - `dom_ctx.is_some()` のときに限って deref してよい
-/// - deref 期間は host function 1 回分の呼出に閉じる (Wasm に再制御を渡さない)
-/// - call_with_dom スコープ外では絶対に dereference しない
+/// DOM API の host function は raw pointer を直接 deref せず、必ず [`with_document`]
+/// 経由で `HtmlDocument` を借用する (BL-104: unsafe 不変条件を 1 箇所に集約)。
 #[derive(Default)]
 pub(crate) struct DomCtx {
     pub(crate) document: Option<NonNull<HtmlDocument>>,
@@ -54,12 +50,12 @@ fn host_query_selector(mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i
         push_error(&mut caller, "query_selector: invalid selector ptr/len");
         return 0;
     };
-    let Some(doc) = current_document(&caller) else {
+    let result = with_document(&mut caller, |doc| doc.query_selector(&selector));
+    let Some(query_result) = result else {
         push_error(&mut caller, "query_selector: no DOM context");
         return 0;
     };
-    let doc_ref = unsafe { doc.as_ref() };
-    match doc_ref.query_selector(&selector) {
+    match query_result {
         Ok(Some(id)) => (id as i64) + 1,
         Ok(None) => 0,
         Err(_) => {
@@ -85,10 +81,6 @@ fn host_set_attribute(
         push_error(&mut caller, "set_attribute: invalid value ptr/len");
         return;
     };
-    let Some(mut doc) = current_document_mut(&mut caller) else {
-        push_error(&mut caller, "set_attribute: no DOM context");
-        return;
-    };
     let id = match decode_node_id(node_id) {
         Some(id) => id,
         None => {
@@ -96,9 +88,12 @@ fn host_set_attribute(
             return;
         }
     };
-    let doc_mut = unsafe { doc.as_mut() };
-    let mut mutator = doc_mut.mutate();
-    mutator.set_attribute(id, qual_name(&name), &value);
+    let applied = with_document(&mut caller, |doc| {
+        doc.mutate().set_attribute(id, qual_name(&name), &value);
+    });
+    if applied.is_none() {
+        push_error(&mut caller, "set_attribute: no DOM context");
+    }
 }
 
 fn host_clear_attribute(
@@ -111,10 +106,6 @@ fn host_clear_attribute(
         push_error(&mut caller, "clear_attribute: invalid name ptr/len");
         return;
     };
-    let Some(mut doc) = current_document_mut(&mut caller) else {
-        push_error(&mut caller, "clear_attribute: no DOM context");
-        return;
-    };
     let id = match decode_node_id(node_id) {
         Some(id) => id,
         None => {
@@ -122,9 +113,12 @@ fn host_clear_attribute(
             return;
         }
     };
-    let doc_mut = unsafe { doc.as_mut() };
-    let mut mutator = doc_mut.mutate();
-    mutator.clear_attribute(id, qual_name(&name));
+    let applied = with_document(&mut caller, |doc| {
+        doc.mutate().clear_attribute(id, qual_name(&name));
+    });
+    if applied.is_none() {
+        push_error(&mut caller, "clear_attribute: no DOM context");
+    }
 }
 
 fn host_set_inner_html(
@@ -137,10 +131,6 @@ fn host_set_inner_html(
         push_error(&mut caller, "set_inner_html: invalid html ptr/len");
         return;
     };
-    let Some(mut doc) = current_document_mut(&mut caller) else {
-        push_error(&mut caller, "set_inner_html: no DOM context");
-        return;
-    };
     let id = match decode_node_id(node_id) {
         Some(id) => id,
         None => {
@@ -148,9 +138,12 @@ fn host_set_inner_html(
             return;
         }
     };
-    let doc_mut = unsafe { doc.as_mut() };
-    let mut mutator = doc_mut.mutate();
-    mutator.set_inner_html(id, &html);
+    let applied = with_document(&mut caller, |doc| {
+        doc.mutate().set_inner_html(id, &html);
+    });
+    if applied.is_none() {
+        push_error(&mut caller, "set_inner_html: no DOM context");
+    }
 }
 
 // === ヘルパ ===
@@ -162,14 +155,27 @@ fn decode_node_id(raw: i64) -> Option<usize> {
     Some((raw - 1) as usize)
 }
 
-fn current_document(caller: &Caller<'_, HostCallContext>) -> Option<NonNull<HtmlDocument>> {
-    caller.data().dom_ctx.document
-}
-
-fn current_document_mut(
+/// DOM context が有効なら `&mut HtmlDocument` を `f` に渡し、結果を `Some` で返す。
+/// context 未設定 (`call_with_dom` スコープ外) なら `None`。
+///
+/// 本クレートで `dom_ctx.document` (raw pointer) を dereference する **唯一の箇所**
+/// (BL-104)。各 DOM host function は raw pointer を直接触らず本ヘルパ経由で document を
+/// 借用する。
+///
+/// SAFETY (この 1 箇所に閉じる不変条件):
+/// - `dom_ctx.document` は `PanelWasmInstance::call_with_dom` が `&mut HtmlDocument`
+///   から立てた `NonNull` であり、スコープ内では生存し alias していない。
+/// - deref 期間は `f` の実行 1 回分に閉じ、Wasm に再制御を渡す前に終わる。
+/// - context 未設定 (`None`) のときは deref しない。
+fn with_document<R>(
     caller: &mut Caller<'_, HostCallContext>,
-) -> Option<NonNull<HtmlDocument>> {
-    caller.data_mut().dom_ctx.document
+    f: impl FnOnce(&mut HtmlDocument) -> R,
+) -> Option<R> {
+    let mut document = caller.data().dom_ctx.document?;
+    // SAFETY: 上記の不変条件により、call_with_dom スコープ内でのみ `with_document` が
+    // 呼ばれ、`document` は生存しており排他借用できる。
+    let doc = unsafe { document.as_mut() };
+    Some(f(doc))
 }
 
 fn qual_name(local: &str) -> QualName {
