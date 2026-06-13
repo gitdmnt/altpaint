@@ -7,10 +7,10 @@ mod app;
 mod features;
 mod platform;
 mod present_quads;
+mod presenter;
 mod event_loop;
 mod profiling;
 mod theme;
-mod wgpu_canvas;
 
 use anyhow::Result;
 

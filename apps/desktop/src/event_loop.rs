@@ -22,10 +22,11 @@ use winit::keyboard::ModifiersState;
 use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::app::DesktopApp;
-use crate::theme::{WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
-use crate::wgpu_canvas::{
-    CanvasSurface, CanvasSurfaceSource, PresentFrame, TextureSource, UploadRegion, WgpuPresenter,
+use crate::presenter::{
+    CanvasSurface, CanvasSurfaceSource, GpuPanelQuad, PresentFrame, TextureSource, UploadRegion,
+    WgpuPresenter,
 };
+use crate::theme::{WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
 
 /// `winit` アプリケーションとして振る舞うイベントループホストを表す。
 pub(crate) struct DesktopEventLoop {
@@ -309,19 +310,17 @@ impl ApplicationHandler for DesktopEventLoop {
                 };
                 let present_started = Instant::now();
 
-                // 上で組み立てた html_quad_entries を `GpuPanelQuad<'_>` に変換する。
+                // 上で組み立てた html_quad_entries を `GpuPanelQuad` に変換する。
                 // texture は `Arc<wgpu::Texture>` の所有ハンドルなので unsafe 不要 (BL-092)。
-                let panel_quads_owned: Vec<crate::wgpu_canvas::GpuPanelQuad<'_>> =
-                    html_quad_entries
-                        .iter()
-                        .map(|e| crate::wgpu_canvas::GpuPanelQuad {
-                            panel_id: e.panel_id.as_str(),
-                            texture: std::sync::Arc::clone(&e.texture),
-                            screen_rect: e.screen_rect,
-                        })
-                        .collect();
-                let panel_quads_slice: &[crate::wgpu_canvas::GpuPanelQuad<'_>] =
-                    &panel_quads_owned;
+                let panel_quads_owned: Vec<GpuPanelQuad> = html_quad_entries
+                    .iter()
+                    .map(|e| GpuPanelQuad {
+                        panel_id: e.panel_id.clone(),
+                        texture: std::sync::Arc::clone(&e.texture),
+                        screen_rect: e.screen_rect,
+                    })
+                    .collect();
+                let panel_quads_slice: &[GpuPanelQuad] = &panel_quads_owned;
 
                 let background_solid_quads = self.app.background_solid_quads();
                 let foreground_solid_quads = self.app.foreground_solid_quads();
@@ -336,13 +335,11 @@ impl ApplicationHandler for DesktopEventLoop {
                 let status_entry =
                     self.app
                         .render_status_bar(size.width, FOOTER_HEIGHT, size.height);
-                let status_quad: Option<crate::wgpu_canvas::GpuPanelQuad<'_>> = status_entry
-                    .as_ref()
-                    .map(|e| crate::wgpu_canvas::GpuPanelQuad {
-                        panel_id: "__status__",
-                        texture: std::sync::Arc::clone(&e.texture),
-                        screen_rect: e.screen_rect,
-                    });
+                let status_quad: Option<GpuPanelQuad> = status_entry.as_ref().map(|e| GpuPanelQuad {
+                    panel_id: "__status__".to_string(),
+                    texture: std::sync::Arc::clone(&e.texture),
+                    screen_rect: e.screen_rect,
+                });
 
                 let timings = match presenter.render(
                     PresentFrame {
@@ -353,7 +350,7 @@ impl ApplicationHandler for DesktopEventLoop {
                         overlay_line_quads: &overlay_line_quads,
                         panel_quads: panel_quads_slice,
                         foreground_quads: &foreground_solid_quads,
-                        status_quad,
+                        status_quad: status_quad.as_ref(),
                     },
                     self.app.layer_texture_store(),
                 ) {
