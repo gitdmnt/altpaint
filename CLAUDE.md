@@ -67,11 +67,11 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 
 ### Runtime Flow
 
-**起動**: `apps/desktop` が winit + wgpu 初期化 → `DesktopApp::new` がセッション/プロジェクト/ワークスペース復元 → `PanelRuntime` が `crates/builtin-panels/` の HTML+CSS+Wasm パネル 12 個を読み込む → desktop の `features/tools` と `pen-io` がツール・ペンを読み込む → 初期レンダリング
+**起動**: `apps/desktop` が winit + wgpu 初期化 → `DesktopApp::with_options` がセッション/プロジェクト/ワークスペース復元 → `PanelRuntime` が `crates/builtin-panels/` の HTML+CSS+Wasm パネル 12 個を読み込む → desktop の `features/tools` と `pen-io` がツール・ペンを読み込む → 初期レンダリング
 
-**入力 → 描画**: OS入力 → `event_loop/pointer.rs` 正規化 → `app/input.rs` がキャンバスかパネルへ振り分け → `canvas-geometry::map_view_to_canvas_with_transform` が座標変換 → `paint_engine::gesture` が `PaintInput` を生成 → `paint_engine::context_builder` が `Document` からペイントコンテキストを解決 → `gpu-paint` の compute shader が GPU レイヤーテクスチャへ直接描画（ブラシ/塗りつぶし/合成）→ `wgpu_canvas.rs` が GPU へ提示
+**入力 → 描画**: OS入力 → `event_loop/pointer.rs` 正規化 → `app/input.rs` がキャンバスかパネルへ振り分け → `canvas-geometry::map_view_to_canvas_with_transform` が座標変換 → `paint_engine::gesture` が `PaintInput` を生成 → `paint_engine::context_builder` が `Document` からペイントコンテキストを解決 → `features/paint` が `gpu-paint` の compute shader で GPU レイヤーテクスチャへ直接描画（ブラシ/塗りつぶし/合成）→ desktop `presenter/`（旧 `wgpu_canvas.rs`）が GPU へ提示
 
-**パネル**: `HtmlWasmPanel` が `panel.html` + `panel.css` をロード → `panel-wasm-host`（wasmtime）が Wasm を実行し DOM mutation host function で直接 DOM を書換え → `PanelRuntime` が host state を同期 → `PanelEvent`（Activate/Keyboard 等）/`HostRequest`（`RequestDescriptor` ベース） → `DesktopApp` が translator registry 経由で `DocumentCommand`/`SessionCommand`/`ServiceRequest` またはサイドエフェクトとして適用 → `panel-html::HtmlPanelView`（Blitz + vello）が GPU テクスチャに直描画 → `wgpu_canvas` が `panel_quads` レイヤーで合成。hit / move handle テーブルは `prepare_present_frame` が GPU 非依存で毎フレーム更新
+**パネル**: `HtmlWasmPanel` が `panel.html` + `panel.css` をロード → `panel-wasm-host`（wasmtime）が Wasm を実行し DOM mutation host function で直接 DOM を書換え → `PanelRuntime` が host state を同期 → `PanelEvent`（Activate/Keyboard 等）/`HostRequest`（`RequestDescriptor` ベース） → `DesktopApp` が `app/host_request_router.rs` で translator registry 経由の `DocumentCommand`/`SessionCommand`/`ServiceRequest` またはサイドエフェクトとして適用 → `panel-html::HtmlPanelView`（Blitz + vello）が GPU テクスチャに直描画 → `presenter/` が `panel_quads` レイヤーで合成。hit / move handle テーブルは `prepare_present_frame` が GPU 非依存で毎フレーム更新
 
 ### 主要クレート
 
@@ -98,12 +98,16 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 
 ### ファイル配置規則
 
-- `runtime/` — 外部ランタイム・ステートフルブリッジ
-- `presentation/` — レイアウト、ヒットテスト、フォーカス、テキスト入力、サーフェス生成
-- `services/` — I/O 統括（プロジェクト、ワークスペース、エクスポート、カタログ）
-- `platform/`（apps/desktop）— native dialog 境界、パス解決（`dirs` ベース。B7-part1 で旧 desktop-support から移管）
-- `features/`（apps/desktop）— 垂直スライス（export / tools / project=session・preset / workspace / status_bar。B7-part1 で旧 desktop-support / storage から移管）
-- `ops/` — 高頻度なキャンバス/レンダリング操作
+**原則 (B7 以降)**: desktop の機能コードは「所属する feature 垂直スライス」に置く。`desktop-support` のような水平バケツに寄せない。新しいサービスハンドラ・状態・翻訳器は対応する `features/<feature>/` に追加し、`app/services/registry.rs` の `SERVICE_HANDLERS` へ 1 行登録する（水平ファイルの横断編集を発生させない）。どの feature にも属さない真に横断的なものだけを `app/` 直下や `platform/` に置く。
+
+- `features/`（apps/desktop）— 垂直スライス。各スライスが「サービスハンドラ + サブ状態 + 翻訳器 + テスト」を所有する。現状 11 スライス: `paint`（ペイント実行・履歴・プレビュー）/ `project`（save/load・session・canvas size preset）/ `export`（PNG）/ `workspace`（preset catalog・layout service）/ `tools`（tool catalog・ペン import）/ `koma`（コマ作成ジェスチャ・ナビゲーション）/ `view`（zoom/pan/rotate）/ `snapshots`（`DocumentSnapshotStore`）/ `text`（テキストラスタライズ）/ `panel_interaction`（パネル drag/resize/press 幾何）/ `status_bar`。横断 JSON ローダは `features/json_store.rs`
+- `app/`（apps/desktop）— composition root（`DesktopApp` = subsystem の保持・配線のみ）。`services/registry.rs`（service registry）/ `command_router.rs` + `command_effects.rs`（ルーティングと宣言的副作用表）/ `host_request_router.rs`（パネル発アクションのルータ）/ `present.rs` + `present_api.rs`（提示パイプラインとメソッド境界）/ `project_paths.rs`
+- `platform/`（apps/desktop）— OS 境界。native dialog、パス解決（`dirs` ベース）
+- `presenter/`（apps/desktop）— wgpu presenter（旧 `wgpu_canvas.rs` を分割: `frame` / `pipelines` / `shaders` / `textures` / `theme`）
+- `present_quads/`（apps/desktop）— presenter 入力の quad DTO とレイアウト
+- `runtime/` — 外部ランタイム・ステートフルブリッジ（クレート内）
+- `presentation/` — レイアウト、ヒットテスト、フォーカス、サーフェス生成（クレート内）
+- `ops/` — 高頻度なキャンバス/レンダリング操作（クレート内）
 - `tests/` — クレート/モジュール境界テスト
 - `lib.rs` — モジュール宣言、再エクスポート、薄い公開 API のみ（大きな実装は置かない）
 

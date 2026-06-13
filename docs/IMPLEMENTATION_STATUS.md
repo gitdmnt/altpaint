@@ -139,6 +139,15 @@
   - **BL-117 GPU 同期粒度の宣言化**: 「選択変更で全ページ全コマ全転送が走る」性能問題を解消。`GpuSyncGranularity` enum (None / RecompositeActiveKoma / ActiveKomaLayers / Full) を導入し、`command_effects` で `DocumentCommand` 種別ごとに必要な GPU 同期粒度を宣言的に分類 — コマ/レイヤー選択・リネームは None (テクスチャ不変・同期不要)、blend mode 循環は RecompositeActiveKoma、レイヤー追加/削除/並べ替えは ActiveKomaLayers (当該コマだけ差分同期)、コマ集合変更・新規ドキュメントのみ Full。gpu-paint に差分同期 API (`LayerTextureStore::sync_koma_layers` + `LayerUpload` DTO + `layer_count_for_koma`) を追加し、desktop の `sync_all_layers_to_gpu` を per-koma の `sync_koma_layers_to_gpu` へ分解 + `sync_active_koma_layers_to_gpu` (差分) を新設。frame-profiler 計測下地として `gpu_sync_full_count` / `gpu_sync_differential_count` をフレーム区間ごとに記録 (B8 前後比較用)。挙動は同値 (GPU 転送量のみ削減)、選択変更後の GPU テクスチャ不変・差分同期が別コマに触れないことを実 GPU 回帰テストで担保。
   - 検証: desktop テスト 193 passed / 0 failed / 6 ignored、gpu-paint 23 passed (差分同期テスト +1)、workspace 505 passed / 0 failed / 7 ignored、clippy 警告 0 (全ターゲット)、挙動不変 (BL-117 は GPU 転送量のみ改善)。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
 
+- **Phase 23 / B7 バッチ完了 (part1 + part2) (2026-06-14)**: ADR 018 — バッチ B7「desktop 垂直分割と残存クレート解体」を全体として完了。設計書 §4 B7 完了条件を満たすことをバッチ検証で確認した:
+  - **垂直スライス確立**: `apps/desktop/src/features/` 配下に 11 スライス (`paint` / `project` / `export` / `workspace` / `tools` / `koma` / `view` / `snapshots` / `text` / `panel_interaction` / `status_bar`) + 横断ローダ `json_store.rs` が存在。各スライスが「サービスハンドラ + サブ状態 + 翻訳器」を所有し、新 feature 追加時の水平横断編集を不要化。
+  - **残存 God クレート解体完了**: `crates/desktop-support` / `crates/storage` がワークスペースから消滅 (part1 で実施、本バッチで再確認)。永続化/計測コアは `project-store` / `pen-io` / `frame-profiler` の独立クレートへ、desktop 固有 I/O は `platform/` / `features/` へ移管済み。
+  - **service registry 化**: `app/services/registry.rs` の `SERVICE_HANDLERS` (10 feature ハンドラの fn ポインタ表) + `execute_service_request` の単一ループにより、旧 10 連 if-let チェーンが構造的に消滅。
+  - **presenter 分割 (D2 / BL-116)**: 旧 2218 行単一ファイル `wgpu_canvas.rs` が消滅し、`presenter/` (`frame.rs` 558 行 / `mod.rs` / `shaders.rs` / `textures.rs` / `theme.rs` / `pipelines/`) へ分割。
+  - **event_loop 縮小 (BL-115)**: `event_loop.rs` (287 行) の `RedrawRequested` アームは `render_frame` (compose_frame + presenter.render) への委譲 7 行へ縮小 (旧 270 行アームを抽出)。
+  - **DesktopApp 縮小 (BL-110)**: フィールドはすべて `pub(crate)` 以下 (fully-`pub` フィールドゼロ)。feature が co-own する状態は `pub(crate)`、app 内部状態 (koma_gesture / status_bar / invalidation / background_jobs) は可視性指定なし。`event_loop` はメソッド境界経由でアクセスし直接フィールド参照ゼロ。DesktopApp は subsystem を保持・配線する composition root に縮小。
+  - バッチ検証: cargo test --workspace 504 passed / 0 failed / 7 ignored、clippy 警告 0 (全ターゲット)、wasm ビルド成功 (12 パネル)、起動スモーク 20 秒パニックなし、構造検証 (desktop-support/storage 消滅・features/ 11 スライス・registry・presenter 分割・wgpu_canvas.rs 消滅・DesktopApp フィールド private) 全通過、B7 コミット 29 件 (`refactor(B7):` / `docs(B7):` 形式統一)。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+
 ## 現在の workspace 構成
 
 ### 中核 crate

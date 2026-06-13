@@ -26,7 +26,7 @@
 
 ## workspace パッケージ一覧
 
-2026-06-13 時点 (ADR 018 B7-part1 完了) の workspace package は次の通り（計 30 メンバー: 中核 18 + 組み込みパネル 12。B7-part1 で `storage` / `desktop-support` を解体し `project-store` / `pen-io` / `frame-profiler` を新設）。
+2026-06-14 時点 (ADR 018 B7 完了 = part1 + part2) の workspace package は次の通り（計 30 メンバー: 中核 18 + 組み込みパネル 12。B7-part1 で `storage` / `desktop-support` を解体し `project-store` / `pen-io` / `frame-profiler` を新設。part2 は desktop 内部の features/ 垂直スライス化のためメンバー数は不変）。
 
 ### 中核クレート（水平土台）
 
@@ -335,7 +335,7 @@ graph TD
 
 意味:
 
-- GPU 経路（`gpu-paint` / `wgpu_canvas.rs`）への入力となる幾何計算
+- GPU 経路（`gpu-paint` / desktop `presenter/`、旧 `wgpu_canvas.rs`）への入力となる幾何計算
 - B5 で `CanvasViewGeometry` 単一経路へ縮約した。`CanvasPlan` / `LayerDirtyAccumulator` / `CanvasOverlayState` / `KomaNavigatorOverlay` などの overlay DTO は `apps/desktop` へ移管した（旧 `crates/render` は Phase 9F で物理削除済み。`RenderFrame` 後継は `apps/desktop/src/app/cpu_canvas_snapshot.rs::CpuCanvasSnapshot`、旧 `CanvasFrame`。詳細は `docs/adr/010-render-crate-removal.md`）
 
 ### `panel-api`（ADR 018 B6 / C9 で解体済み）
@@ -556,15 +556,21 @@ if-let チェーンを解消した）:
 主要モジュール:
 
 - `main.rs`
-- `event_loop.rs`（+ `event_loop/{pointer,keyboard}.rs`。旧 `runtime.rs`）
-- `app/mod.rs`
+- `event_loop.rs`（+ `event_loop/{pointer,keyboard}.rs`。旧 `runtime.rs`。`RedrawRequested` アームは `render_frame` への委譲に縮小 = B7-part2 / BL-115）
+- `app/mod.rs`（`DesktopApp` = subsystem を保持・配線する composition root。フィールドは全て `pub(crate)` 以下で fully-`pub` ゼロ = B7-part2 / BL-110）
 - `app/input.rs`
-- `app/present.rs`
+- `app/present.rs`（`prepare_present_frame` は layout / panel_sync / hit_tables / invalidation_drain の 4 フェーズに分割 = B7-part2 / BL-118）
+- `app/present_api.rs`（`event_loop` から呼ぶ提示系メソッド境界 = B7-part2 / BL-110）
 - `app/invalidation.rs`（旧 `present_state.rs`）
 - `app/cpu_canvas_snapshot.rs`（旧 `canvas_frame.rs`）
-- `app/services/*`
-- `present_quads/{mod,geometry,solid_quad,overlay_quad,status_panel}.rs`（旧 `frame/`。`StatusBar`、旧 `StatusPanel`）
-- `wgpu_canvas.rs`
+- `app/services/*`（`registry.rs` の `SERVICE_HANDLERS` + `gpu_sync.rs`。旧 10 連 if-let チェーンは消滅 = B7-part2 / BL-111）
+- `app/command_router.rs` + `app/command_effects.rs`（ルーティングと宣言的副作用表に分離 = B7-part2 / D10。`GpuSyncGranularity` で GPU 同期粒度を分類 = BL-117）
+- `app/host_request_router.rs`（パネル発のホストアクション/イベントのルータ = B7-part2 / D14）
+- `app/project_paths.rs`（`ProjectPaths` = パス状態 / D12）
+- `features/*`（11 垂直スライス。前述「`apps/desktop` の `platform/` と `features/`」を参照）
+- `platform/{dialogs,paths}.rs`
+- `present_quads/{mod,geometry,solid_quad,overlay_quad}.rs`（旧 `frame/`。ステータスバーは `features/status_bar` へ移管 = B7 / D4）
+- `presenter/{frame,mod,shaders,textures,theme}.rs` + `presenter/pipelines/{mod,present,quad}.rs`（旧 `wgpu_canvas.rs` 2218 行を分割 = B7-part2 / D2 / BL-116。テーマは `presenter/theme.rs`）
 
 ### `crates/builtin-panels/*`（12 パネル）
 
@@ -584,13 +590,17 @@ if-let チェーンを解消した）:
 
 ```text
 apps/desktop/main.rs
-  -> event_loop.rs
-     -> app/mod.rs
+  -> event_loop.rs               (RedrawRequested -> render_frame -> compose_frame + presenter.render)
+     -> app/mod.rs               (DesktopApp = composition root)
         -> app/input.rs
-        -> app/present.rs
-        -> app/services/*
-     -> present_quads/mod.rs (+ solid_quad / overlay_quad / status_panel)
-     -> wgpu_canvas.rs
+        -> app/present.rs        (prepare_present_frame: layout / panel_sync / hit_tables / invalidation_drain)
+        -> app/command_router.rs (+ command_effects.rs)
+        -> app/host_request_router.rs
+        -> app/services/*        (registry.rs SERVICE_HANDLERS)
+        -> features/*            (11 垂直スライス: paint / project / export / workspace / tools / koma / view / snapshots / text / panel_interaction / status_bar)
+        -> platform/*            (dialogs / paths)
+     -> present_quads/mod.rs     (+ solid_quad / overlay_quad)
+     -> presenter/*              (frame / pipelines / shaders / textures / theme。旧 wgpu_canvas.rs を分割)
 
 crates/paint-engine/src/lib.rs
   -> engine.rs
@@ -611,8 +621,8 @@ crates/gpu-paint/src/lib.rs
 - `app/*`: 状態変化と副作用、GPU dispatch
 - `crates/paint-engine/src/*`: gesture / paint engine / bitmap op / view mapping
 - `crates/gpu-paint/src/*`: ブラシ / 塗り / 合成の compute shader 実行
-- `present_quads/*`: desktop レイアウトと quad DTO、ステータスバー
-- `wgpu_canvas.rs`: 実 GPU 提示
+- `present_quads/*`: desktop レイアウトと quad DTO（ステータスバーは `features/status_bar` へ移管 = B7 / D4）
+- `presenter/*`: 実 GPU 提示（旧 `wgpu_canvas.rs` を分割 = B7-part2 / D2）
 
 ### 2. パネルランタイム側
 
@@ -668,11 +678,11 @@ project file と session file は役割が異なる（B5 BL-079 で保存境界�
 2. `DesktopApp::handle_pointer_*` が panel/canvas を振り分ける
 3. `canvas-geometry::map_view_to_canvas_with_transform` が view 座標を page 座標へ変換する（desktop が直接呼ぶ）
 4. `paint_engine::gesture` が down / drag / up を `PaintInput` やコマ矩形 preview へ変換する
-5. `services/project_io.rs::apply_paint_input` が `paint_engine::PaintEngine::compute_paint_edits` で `BitmapEdit` 差分（dirty rect の典拠）を計算する
+5. `features/paint/execute.rs::apply_paint_input`（旧 `services/project_io.rs` のペイント部 / D9）が `paint_engine::PaintEngine::compute_paint_edits` で `BitmapEdit` 差分（dirty rect の典拠）を計算する
 6. `BrushPipeline` / `FillPipeline` が compute shader で GPU レイヤーテクスチャへ直接書き込み、`CompositePipeline` が合成する（ストローク中は CPU bitmap を書き換えない）
 7. dirty rect / transform 更新 / UI 再同期要求は `apps/desktop/src/app/invalidation.rs` に蓄積される
 8. `prepare_present_frame(...)` が dirty panel sync・hit テーブル更新・差分計画を組み立てる
-9. `wgpu_canvas.rs` が `PresentFrame` を提示する
+9. `presenter/`（旧 `wgpu_canvas.rs` を分割 = B7-part2 / D2）が `PresentFrame` を提示する
 
 ### パネルイベントフロー
 
@@ -683,7 +693,7 @@ project file と session file は役割が異なる（B5 BL-079 で保存境界�
 5. `StatePatch` を panel local state に適用する
 6. `panel-runtime` の translator registry が `RequestDescriptor` を名前空間 prefix で振り分け、`HostRequest::DispatchDocumentCommand(...)`（`DocumentCommand`）/ `DispatchSessionCommand(...)`（`SessionCommand`）/ `RequestService(...)`（`ServiceRequest`）のいずれかへ変換する。未登録 prefix/name は黙殺せず `TranslationDiagnostic` としてログ出力する（B4 / BL-061）
 7. `apps/desktop/src/app/host_request_router.rs` の `DesktopApp::execute_host_request(...)` が `apply_document_command` / `apply_session_command` / `execute_service_request` へ振り分けて実行する。`execute_service_request` は `app/services/registry.rs` の `SERVICE_HANDLERS`（各 feature ハンドラ）を順に試行する（BL-111）
-8. `HtmlPanelView` が vello で GPU テクスチャへ再描画し、`wgpu_canvas` が `panel_quads` 層で合成する
+8. `HtmlPanelView` が vello で GPU テクスチャへ再描画し、`presenter/`（旧 `wgpu_canvas`）が `panel_quads` 層で合成する
 
 ### 保存・読込フロー
 
