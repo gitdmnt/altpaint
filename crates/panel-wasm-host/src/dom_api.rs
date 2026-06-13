@@ -14,6 +14,7 @@ use crate::HostCallContext;
 use crate::memory::{push_error, read_utf8};
 use blitz_dom::{LocalName, Namespace, QualName};
 use blitz_html::HtmlDocument;
+use panel_protocol::abi::DOM_IMPORT_MODULE;
 use std::ptr::NonNull;
 use wasmtime::{Caller, Linker};
 
@@ -37,17 +38,14 @@ impl DomCtx {
     }
 }
 
-/// Phase 10 で公開される host module 名。
-const DOM_HOST_MODULE: &str = "dom";
-
 /// `DocumentMutator` / `BaseDocument` を Wasm に公開する host function 群を linker に登録する。
 pub(crate) fn register_dom_host_functions(
     linker: &mut Linker<HostCallContext>,
 ) -> wasmtime::Result<()> {
-    linker.func_wrap(DOM_HOST_MODULE, "query_selector", host_query_selector)?;
-    linker.func_wrap(DOM_HOST_MODULE, "set_attribute", host_set_attribute)?;
-    linker.func_wrap(DOM_HOST_MODULE, "clear_attribute", host_clear_attribute)?;
-    linker.func_wrap(DOM_HOST_MODULE, "set_inner_html", host_set_inner_html)?;
+    linker.func_wrap(DOM_IMPORT_MODULE, "query_selector", host_query_selector)?;
+    linker.func_wrap(DOM_IMPORT_MODULE, "set_attribute", host_set_attribute)?;
+    linker.func_wrap(DOM_IMPORT_MODULE, "clear_attribute", host_clear_attribute)?;
+    linker.func_wrap(DOM_IMPORT_MODULE, "set_inner_html", host_set_inner_html)?;
     Ok(())
 }
 

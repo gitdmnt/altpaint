@@ -13,6 +13,7 @@
 
 use crate::HostCallContext;
 use crate::memory::{push_error, read_utf8, write_str_to_buffer};
+use panel_protocol::abi::HOST_IMPORT_MODULE;
 use serde_json::Value;
 use wasmtime::{Caller, Linker};
 
@@ -65,7 +66,7 @@ fn register_source_readers(
     source: StateSource,
 ) -> wasmtime::Result<()> {
     linker.func_wrap(
-        "host",
+        HOST_IMPORT_MODULE,
         &format!("{prefix}_get_bool"),
         move |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| -> i32 {
             let Some(path) = read_path(&mut caller, ptr, len, source, "bool get") else {
@@ -78,7 +79,7 @@ fn register_source_readers(
         },
     )?;
     linker.func_wrap(
-        "host",
+        HOST_IMPORT_MODULE,
         &format!("{prefix}_get_i32"),
         move |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| -> i32 {
             let Some(path) = read_path(&mut caller, ptr, len, source, "i32 get") else {
@@ -100,7 +101,7 @@ fn register_event_string_readers(
     source: StateSource,
 ) -> wasmtime::Result<()> {
     linker.func_wrap(
-        "host",
+        HOST_IMPORT_MODULE,
         &format!("{prefix}_get_string_len"),
         move |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| -> i32 {
             let Some(path) = read_path(&mut caller, ptr, len, source, "string len") else {
@@ -113,7 +114,7 @@ fn register_event_string_readers(
         },
     )?;
     linker.func_wrap(
-        "host",
+        HOST_IMPORT_MODULE,
         &format!("{prefix}_get_string_copy"),
         move |mut caller: Caller<'_, HostCallContext>,
               path_ptr: i32,

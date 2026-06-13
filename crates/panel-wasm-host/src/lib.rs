@@ -10,6 +10,9 @@ use std::sync::OnceLock;
 
 use blitz_html::HtmlDocument;
 use dom_api::DomCtx;
+use panel_protocol::abi::{
+    PANEL_INIT_EXPORT, PANEL_SYNC_HOST_EXPORT, PAYLOAD_VALUE_KEY, handler_export_name,
+};
 use panel_protocol::{HandlerEffects, PanelEventRequest};
 use serde_json::{Map, Value};
 use thiserror::Error;
@@ -24,9 +27,6 @@ fn shared_engine() -> &'static Engine {
         Engine::new(&config).expect("failed to create wasmtime engine")
     })
 }
-
-const PANEL_INIT_EXPORT: &str = "panel_init";
-const PANEL_SYNC_HOST_EXPORT: &str = "panel_sync_host";
 
 #[derive(Debug, Error)]
 pub enum PanelWasmHostError {
@@ -116,10 +116,7 @@ impl PanelWasmInstance {
     ) -> Result<HandlerEffects, PanelWasmHostError> {
         self.store.data_mut().clear();
         self.store.data_mut().current_request = Some(request.clone());
-        let export_name = format!(
-            "panel_handle_{}",
-            sanitize_handler_name(&request.handler_name)
-        );
+        let export_name = handler_export_name(&request.handler_name);
         let handler = self
             .instance
             .get_func(&mut self.store, &export_name)
@@ -128,10 +125,10 @@ impl PanelWasmInstance {
             })?;
         let numeric_value = request
             .event_payload
-            .get("value")
+            .get(PAYLOAD_VALUE_KEY)
             .and_then(Value::as_i64)
             .unwrap_or_default() as i32;
-        let payload = request.event_payload.get("value").map(|_| numeric_value);
+        let payload = request.event_payload.get(PAYLOAD_VALUE_KEY).map(|_| numeric_value);
         call_export(&mut self.store, handler, payload).map_err(PanelWasmHostError::Runtime)?;
         Ok(self.store.data().result.clone())
     }
@@ -143,7 +140,7 @@ impl PanelWasmInstance {
     }
 
     pub fn has_handler(&mut self, handler_name: &str) -> bool {
-        let export_name = format!("panel_handle_{}", sanitize_handler_name(handler_name));
+        let export_name = handler_export_name(handler_name);
         self.instance
             .get_func(&mut self.store, &export_name)
             .is_some()
@@ -209,16 +206,6 @@ fn register_host_functions(linker: &mut Linker<HostCallContext>) -> wasmtime::Re
     request_api::register_request_emitters(linker)?;
     dom_api::register_dom_host_functions(linker)?;
     Ok(())
-}
-
-fn sanitize_handler_name(handler_name: &str) -> String {
-    handler_name
-        .chars()
-        .map(|character| match character {
-            'a'..='z' | 'A'..='Z' | '0'..='9' => character,
-            _ => '_',
-        })
-        .collect()
 }
 
 #[cfg(test)]

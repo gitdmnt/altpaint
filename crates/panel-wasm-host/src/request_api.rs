@@ -5,6 +5,7 @@
 
 use crate::HostCallContext;
 use crate::memory::{push_error, read_utf8};
+use panel_protocol::abi::HOST_IMPORT_MODULE;
 use panel_protocol::{Diagnostic, DiagnosticLevel, RequestDescriptor};
 use serde_json::Value;
 use wasmtime::{Caller, Linker};
@@ -14,7 +15,7 @@ pub(crate) fn register_request_emitters(
     linker: &mut Linker<HostCallContext>,
 ) -> wasmtime::Result<()> {
     linker.func_wrap(
-        "host",
+        HOST_IMPORT_MODULE,
         "command",
         |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| {
             let Some(name) = read_utf8(&mut caller, ptr, len) else {
@@ -25,7 +26,7 @@ pub(crate) fn register_request_emitters(
         },
     )?;
     linker.func_wrap(
-        "host",
+        HOST_IMPORT_MODULE,
         "command_string",
         |mut caller: Caller<'_, HostCallContext>,
          name_ptr: i32,
@@ -52,7 +53,7 @@ pub(crate) fn register_request_emitters(
         },
     )?;
     linker.func_wrap(
-        "host",
+        HOST_IMPORT_MODULE,
         "command_json",
         |mut caller: Caller<'_, HostCallContext>,
          name_ptr: i32,
@@ -77,16 +78,12 @@ pub(crate) fn register_request_emitters(
         },
     )?;
     linker.func_wrap(
-        "host",
+        HOST_IMPORT_MODULE,
         "diagnostic",
         |mut caller: Caller<'_, HostCallContext>, level: i32, ptr: i32, len: i32| {
             let diagnostic = read_utf8(&mut caller, ptr, len)
                 .map(|message| Diagnostic {
-                    level: match level {
-                        0 => DiagnosticLevel::Info,
-                        1 => DiagnosticLevel::Warning,
-                        _ => DiagnosticLevel::Error,
-                    },
+                    level: DiagnosticLevel::from_abi(level),
                     message,
                 })
                 .unwrap_or_else(|| {

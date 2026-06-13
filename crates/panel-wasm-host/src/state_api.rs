@@ -6,6 +6,7 @@
 use crate::HostCallContext;
 use crate::memory::{push_error, read_utf8};
 use panel_protocol::StatePatch;
+use panel_protocol::abi::HOST_IMPORT_MODULE;
 use wasmtime::{Caller, Linker};
 
 /// `state_toggle` / `state_set_*` / `state_apply_json` を登録する。
@@ -13,7 +14,7 @@ pub(crate) fn register_state_writers(
     linker: &mut Linker<HostCallContext>,
 ) -> wasmtime::Result<()> {
     linker.func_wrap(
-        "host",
+        HOST_IMPORT_MODULE,
         "state_toggle",
         |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| {
             let Some(path) = read_utf8(&mut caller, ptr, len) else {
@@ -24,7 +25,7 @@ pub(crate) fn register_state_writers(
         },
     )?;
     linker.func_wrap(
-        "host",
+        HOST_IMPORT_MODULE,
         "state_set_bool",
         |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32, value: i32| {
             let Some(path) = read_utf8(&mut caller, ptr, len) else {
@@ -35,7 +36,7 @@ pub(crate) fn register_state_writers(
         },
     )?;
     linker.func_wrap(
-        "host",
+        HOST_IMPORT_MODULE,
         "state_set_i32",
         |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32, value: i32| {
             let Some(path) = read_utf8(&mut caller, ptr, len) else {
@@ -46,7 +47,7 @@ pub(crate) fn register_state_writers(
         },
     )?;
     linker.func_wrap(
-        "host",
+        HOST_IMPORT_MODULE,
         "state_set_string",
         |mut caller: Caller<'_, HostCallContext>,
          path_ptr: i32,
@@ -65,7 +66,7 @@ pub(crate) fn register_state_writers(
         },
     )?;
     linker.func_wrap(
-        "host",
+        HOST_IMPORT_MODULE,
         "state_apply_json",
         |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| {
             let Some(payload_text) = read_utf8(&mut caller, ptr, len) else {

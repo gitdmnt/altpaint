@@ -280,7 +280,8 @@ pub fn emit_service(descriptor: &RequestDescriptor) {
 
 #[cfg(target_arch = "wasm32")]
 pub fn info(message: &str) {
-    with_bytes(message, |ptr, len| unsafe { diagnostic(0, ptr, len) });
+    let level = panel_protocol::DiagnosticLevel::Info.to_abi();
+    with_bytes(message, |ptr, len| unsafe { diagnostic(level, ptr, len) });
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -288,7 +289,8 @@ pub fn info(_message: &str) {}
 
 #[cfg(target_arch = "wasm32")]
 pub fn warn(message: &str) {
-    with_bytes(message, |ptr, len| unsafe { diagnostic(1, ptr, len) });
+    let level = panel_protocol::DiagnosticLevel::Warning.to_abi();
+    with_bytes(message, |ptr, len| unsafe { diagnostic(level, ptr, len) });
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -296,7 +298,8 @@ pub fn warn(_message: &str) {}
 
 #[cfg(target_arch = "wasm32")]
 pub fn error(message: &str) {
-    with_bytes(message, |ptr, len| unsafe { diagnostic(2, ptr, len) });
+    let level = panel_protocol::DiagnosticLevel::Error.to_abi();
+    with_bytes(message, |ptr, len| unsafe { diagnostic(level, ptr, len) });
 }
 
 #[cfg(not(target_arch = "wasm32"))]
