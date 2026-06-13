@@ -13,13 +13,13 @@ use crate::app::cpu_canvas_snapshot::build_cpu_canvas_snapshot;
 
 #[test]
 fn canvas_position_maps_view_center_into_bitmap_bounds() {
-    let position = canvas_geometry::map_view_to_canvas_with_transform(
+    let position = canvas_geometry::CanvasViewGeometry::compute(
         WindowRect::new(0, 0, 640, 640),
         64,
         64,
-        CanvasViewportPoint::new(320, 320),
         editor_state::CanvasViewTransform::default(),
-    );
+    )
+    .and_then(|geometry| geometry.map_view_to_canvas(CanvasViewportPoint::new(320, 320)));
 
     assert_eq!(position, Some(PagePoint::new(32, 32)));
 }

@@ -28,27 +28,24 @@ impl DesktopApp {
         let (bitmap_width, bitmap_height) = self.canvas_dimensions();
 
         let transform = self.document.session.view_transform;
+        let geometry = canvas_geometry::CanvasViewGeometry::compute(
+            layout,
+            bitmap_width,
+            bitmap_height,
+            transform,
+        );
+        let brush_diameter = self.brush_preview_size().unwrap_or(1) as f32;
         if let Some(previous) = previous.and_then(|position| {
-            canvas_geometry::brush_preview_rect_for_diameter(
-                layout,
-                bitmap_width,
-                bitmap_height,
-                transform,
-                position,
-                self.brush_preview_size().unwrap_or(1) as f32,
-            )
+            geometry.and_then(|geometry| {
+                geometry.brush_preview_rect_for_diameter(position, brush_diameter)
+            })
         }) {
             self.append_temp_overlay_dirty_rect(previous);
         }
         if let Some(next) = next.and_then(|position| {
-            canvas_geometry::brush_preview_rect_for_diameter(
-                layout,
-                bitmap_width,
-                bitmap_height,
-                transform,
-                position,
-                self.brush_preview_size().unwrap_or(1) as f32,
-            )
+            geometry.and_then(|geometry| {
+                geometry.brush_preview_rect_for_diameter(position, brush_diameter)
+            })
         }) {
             self.append_temp_overlay_dirty_rect(next);
         }
@@ -288,7 +285,7 @@ impl DesktopApp {
         );
         let viewport_point = window_rect.clamp_to_canvas_viewport_point(point)?;
         let (canvas_width, canvas_height) = self.canvas_dimensions();
-        canvas_geometry::map_view_to_canvas_with_transform(
+        canvas_geometry::CanvasViewGeometry::compute(
             WindowRect::new(
                 0,
                 0,
@@ -297,9 +294,9 @@ impl DesktopApp {
             ),
             canvas_width,
             canvas_height,
-            viewport_point,
             self.document.session.view_transform,
         )
+        .and_then(|geometry| geometry.map_view_to_canvas(viewport_point))
     }
 
     fn page_position_in_active_panel(&self, point: PagePoint) -> Option<PagePoint> {

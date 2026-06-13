@@ -1,7 +1,7 @@
 use editor_state::CanvasViewTransform;
 use geometry::{PageDirtyRect, WindowRect};
 
-use crate::{CanvasViewGeometry, map_canvas_dirty_to_display_with_transform};
+use crate::CanvasViewGeometry;
 
 /// `render` が扱うキャンバス表示計画を表す。
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -23,13 +23,13 @@ impl CanvasPlan {
     }
 
     pub fn map_dirty_rect(&self, dirty: PageDirtyRect) -> WindowRect {
-        map_canvas_dirty_to_display_with_transform(
-            dirty,
-            self.host_rect,
-            self.source_width,
-            self.source_height,
-            self.transform,
-        )
+        self.view_geometry()
+            .map(|geometry| geometry.map_canvas_dirty_rect(dirty))
+            .unwrap_or(WindowRect {
+                x: self.host_rect.x,
+                y: self.host_rect.y,
+                width: 0,
+                height: 0,
+            })
     }
-
 }
