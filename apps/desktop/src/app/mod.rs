@@ -6,6 +6,7 @@
 mod background_tasks;
 mod bootstrap;
 pub(crate) mod cpu_canvas_snapshot;
+mod command_effects;
 mod command_router;
 pub(crate) mod cursor;
 mod input;
