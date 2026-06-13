@@ -3,7 +3,7 @@
 //! `EditHistory` は操作記録（`HistoryEntry`）のスタックを管理する。
 //! undo 方式はビットマップ前後スナップショット（`BitmapPatch`）の保存・復元方式。
 
-use crate::KomaId;
+use document_model::KomaId;
 use geometry::PageDirtyRect;
 use raster::RgbaBitmap;
 
