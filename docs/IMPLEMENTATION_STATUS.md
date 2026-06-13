@@ -126,6 +126,16 @@
   - **パス解決の dirs 化 (BL-113)**: 永続化パスを CWD 相対 (session/preset) と `CARGO_MANIFEST_DIR` 相対 (同梱アセット) から **`dirs::data_dir()/altpaint` ベース**へ変更 (配布バイナリで書込み不能/不在ディレクトリを指す破綻を解消)。同梱アセットは実行ファイル隣接を優先し、開発時のみソースツリー相対へフォールバック (OS 固有 cfg は書かず `dirs` が OS 差異を吸収)。`platform/paths.rs::resolve_user_data_dir` / `resolve_asset_dir` を純関数化してユニットテスト。
   - 検証: workspace テスト 500 passed / 0 failed / 7 ignored、clippy 警告 0、wasm ビルド成功 (12 パネル)、起動スモーク 約 22 秒パニックなし、構造検証 (storage/desktop-support クレート消滅・コード内 `storage`/`desktop-support` 参照 0 件 [docs 除く]・`platform/` と `features/` 存在)、cargo tree 確認 (project-store / pen-io ともに wgpu/winit 非依存)。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
 
+- **Phase 23 / B7-part2 (features 完全移行) (2026-06-14)**: ADR 018 — バッチ B7「desktop 垂直分割」の後半 (features/ スライス完成)。**`app/services/*` の 10 連 if-let チェーンを名前空間 registry へ置換**し、各サービスハンドラを feature 垂直スライスへ移設した (挙動不変):
+  - **BL-111 service registry 化**: `app/services/registry.rs` の `SERVICE_HANDLERS` (各 feature ハンドラの fn ポインタ表) を導入し、`execute_service_request` を registry 順次試行へ置換。新 feature 追加は registry へ 1 行追加するだけで済む。
+  - **feature 移設**: text (`features/text/` = raster + service / BL-082)、snapshots (`features/snapshots/` = store + service / D16)、export (`features/export/` = png + service)、tools (`features/tools/` = catalog + default_catalog + service)、view (`features/view/`)、koma (`features/koma/` = gesture + service / BL-081)、workspace (`features/workspace/` = presets + service + layout_service)、project (`features/project/service.rs` = I/O 部) を移設。
+  - **D9 ペイント/I/O 分離**: `services/project_io.rs` のペイント実行+履歴部 (8 割) を `features/paint/execute.rs` へ、I/O 部 (save/load、2 割) を `features/project/service.rs` へ分離。`PendingStroke` は paint feature が所有。`app/paint/`・`app/paint_preview.rs` も `features/paint/` へ。
+  - **D10 command_router 分離**: `command_router.rs` を「ルーティング」(apply 入口) と「宣言的副作用表」(`command_effects.rs` の `document_command_effects` / `session_command_effects`) に分離。
+  - **D14 panel_dispatch 分割**: `panel_dispatch.rs` を幾何ステートマシン (`features/panel_interaction/state.rs` = drag/resize/press) とルータ (`app/host_request_router.rs`) に分割。
+  - **D12 io_state 分離**: `DesktopIoState` を `ProjectPaths` (`app/project_paths.rs`、パス状態) と `DesktopApp` 直下の `dialogs` ポートに分離。
+  - **能力境界の pub(crate) 化**: DirtyMarker (append_*_dirty_rect / sync_ui_* / rebuild_present_frame / mark_status_dirty / request_panel_reconcile* / invalidate_document_structure)・SessionPersister (persist_session_state / session_state)・GpuLayers 系・paint 系 (apply_bitmap_edits / refresh_cpu_canvas_snapshot / clear_edit_history) を features から呼べるよう pub(super) → pub(crate) に拡張 (能力 trait の正式導入は後続)。
+  - 検証: desktop テスト 190 passed / 0 failed / 6 ignored、clippy 警告 0 (全ターゲット)、挙動不変。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+
 ## 現在の workspace 構成
 
 ### 中核 crate

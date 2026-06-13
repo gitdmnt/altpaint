@@ -519,14 +519,26 @@ ADR 018 B7-part1 で旧 `desktop-support` を解体し、残りの責務を desk
 - `dialogs.rs`（native dialog 境界）
 - `paths.rs`（永続化パス・同梱アセットディレクトリ解決。`dirs::data_dir()/altpaint` ベース。配布形態では実行ファイル隣接アセットを優先し、開発時のみソースツリー相対へフォールバック。CWD / `CARGO_MANIFEST_DIR` 相対の永続化パスは廃止）
 
-`apps/desktop/src/features/`（垂直スライス）:
+`apps/desktop/src/features/`（垂直スライス。各スライスは「サービスハンドラ + 状態 + 翻訳器」を所有。
+ADR 018 B7-part2 / BL-111 で service ハンドラを名前空間 registry 化し、旧 `app/services/*` の
+if-let チェーンを解消した）:
 
-- `export/`（PNG export。旧 `storage::export`）
-- `tools/`（`tools/` カタログ読込。旧 `storage::tool_catalog`）
-- `project/`（session save/load、canvas size preset 読込 = `CanvasSizePreset`）
-- `workspace/`（workspace preset catalog の読込 / 保存）
+- `paint/`（ペイント実行 `execute.rs` = 旧 `services/project_io.rs` のペイント部 8 割 / D9、`EditHistory` `history.rs`、ブラシプレビュー `preview.rs`）
+- `project/`（`project_io.*` save/load `service.rs` = I/O 部 2 割 / D9、session save/load `session.rs`、canvas size preset 読込 = `CanvasSizePreset`）
+- `export/`（PNG export `png.rs` 旧 `storage::export` + `export.*` ハンドラ `service.rs`）
+- `workspace/`（workspace preset catalog `workspace_presets.rs` + `workspace_io.*` `service.rs` + `workspace_layout.*` `layout_service.rs`）
+- `tools/`（`tools/` カタログ読込 `catalog.rs` 旧 `storage::tool_catalog`、desktop 既定カタログ `default_catalog.rs`、`tool_catalog.*` ハンドラ + ペン import `service.rs`）
+- `koma/`（コマ作成ジェスチャ `gesture.rs` / BL-081 + `koma_nav.*` ハンドラ `service.rs`）
+- `view/`（`view_service.*` ハンドラ `service.rs`）
+- `snapshots/`（`DocumentSnapshotStore` `store.rs` / D16 + `snapshot.*` ハンドラ `service.rs`）
+- `text/`（テキストラスタライズ `raster.rs` / BL-082 + `text_render.*` ハンドラ `service.rs`）
+- `panel_interaction/`（パネル drag/resize/press 幾何ステートマシン `state.rs` / D14）
+- `status_bar/`（ステータスバー描画 + スナップショット組み立て `snapshot_builder.rs`）
 - `json_store.rs`（Loaded / Missing / Corrupt 区別の共通 JSON 設定ローダ）
-- `status_bar/`
+
+サービス registry は `app/services/registry.rs`（`SERVICE_HANDLERS` = 各 feature ハンドラの fn ポインタ表）。
+パネル発のホストアクション/イベントのルータは `app/host_request_router.rs`（D14）。
+パス状態は `app/project_paths.rs` の `ProjectPaths`、ダイアログポートは `DesktopApp` 直下フィールド（D12）。
 
 ### `apps/desktop`（package `altpaint-desktop`、bin `altpaint`）
 
@@ -536,7 +548,7 @@ ADR 018 B7-part1 で旧 `desktop-support` を解体し、残りの責務を desk
 - `wgpu` presenter（`WgpuPresenter` + solid / circle / line quad パイプライン）
 - GPU ペイントリソースの所有と dispatch（`LayerTextureStore` / `BrushPipeline` / `FillPipeline` / `CompositePipeline`）
 - canvas pointer input から `DocumentCommand` / `SessionCommand` / `PaintInput` への変換（ビュー操作は `SessionCommand::ZoomViewBy` 等の相対コマンドを発行し、倍率・clamp は `editor_state::view_policy` が所有 = B4 / BL-064、B5 BL-073 で editor-state へ移設）
-- `EditHistory` による undo/redo（`PaintPatch` enum = `Cpu` / `Gpu` の型付きスナップショット。`OpaqueGpuData` + downcast は B5 で全廃。`apps/desktop/src/app/paint/`）
+- `EditHistory` による undo/redo（`PaintPatch` enum = `Cpu` / `Gpu` の型付きスナップショット。`OpaqueGpuData` + downcast は B5 で全廃。`apps/desktop/src/features/paint/`）
 - コマ作成ジェスチャ・テキストラスタライズ（B5 BL-081/082 で paint-engine から移設）と `CanvasPlan` / overlay DTO（B5 で canvas-geometry から移管）
 - `DesktopApp` による状態遷移と副作用統合
 - `PresentFrame`（旧 `PresentScene`。背景 / canvas / overlay / panel / status quad）の組み立てと提示
@@ -665,22 +677,22 @@ project file と session file は役割が異なる（B5 BL-079 で保存境界�
 ### パネルイベントフロー
 
 1. pointer / keyboard event が `DesktopApp` に届く
-2. `apps/desktop/src/app/panel_dispatch.rs` が hit テーブル（`PanelRuntime::collect_panel_hits` が `prepare_present_frame` で CPU 更新）を使って panel hit-test / drag / resize / host action 適用を中継する
+2. `apps/desktop/src/features/panel_interaction/state.rs`（drag / resize / press 幾何）と `app/host_request_router.rs`（ホストアクション/イベントのルータ）が hit テーブル（`PanelRuntime::collect_panel_hits` が `prepare_present_frame` で CPU 更新）を使って panel hit-test / drag / resize / host action 適用を中継する（D14）
 3. 対象 panel へ `PanelEvent` が forward され、`HtmlWasmPanel::handle_event(...)` が呼ばれる
 4. `panel-wasm-host` を通じて Wasm handler（`panel_handle_event` / `panel_handle_keyboard`）を実行する。handler は DOM mutation host functions で自パネルの DOM を更新できる
 5. `StatePatch` を panel local state に適用する
 6. `panel-runtime` の translator registry が `RequestDescriptor` を名前空間 prefix で振り分け、`HostRequest::DispatchDocumentCommand(...)`（`DocumentCommand`）/ `DispatchSessionCommand(...)`（`SessionCommand`）/ `RequestService(...)`（`ServiceRequest`）のいずれかへ変換する。未登録 prefix/name は黙殺せず `TranslationDiagnostic` としてログ出力する（B4 / BL-061）
-7. `apps/desktop/src/app/panel_dispatch.rs` の `DesktopApp::execute_host_action(...)` が `apply_document_command` / `apply_session_command` / `execute_service_request` へ振り分けて実行する
+7. `apps/desktop/src/app/host_request_router.rs` の `DesktopApp::execute_host_request(...)` が `apply_document_command` / `apply_session_command` / `execute_service_request` へ振り分けて実行する。`execute_service_request` は `app/services/registry.rs` の `SERVICE_HANDLERS`（各 feature ハンドラ）を順に試行する（BL-111）
 8. `HtmlPanelView` が vello で GPU テクスチャへ再描画し、`wgpu_canvas` が `panel_quads` 層で合成する
 
 ### 保存・読込フロー
 
-1. 保存/読込は `ServiceRequest` (`project_io.*`) としてパネル/入力層から発行され、`apps/desktop/src/app/services/project_io.rs` のサービスハンドラが受ける (B4 / BL-060 で旧 `command_router` の「Command → ServiceRequest 再変換」経路を撤去し、I/O は最初から service 経路を流れる)
+1. 保存/読込は `ServiceRequest` (`project_io.*`) としてパネル/入力層から発行され、`apps/desktop/src/features/project/service.rs` のサービスハンドラが受ける (B4 / BL-060 で旧 `command_router` の「Command → ServiceRequest 再変換」経路を撤去し、I/O は最初から service 経路を流れる)
 2. 保存前に `services/gpu_sync.rs` が GPU テクスチャを readback して `Document` の CPU bitmap を最新化する
 3. `apps/desktop/src/app/background_tasks.rs` が project save task を起動または回収する
 4. project 保存は `project-store` へ委譲する
 5. workspace layout は `PanelWorkspace`、panel config は `PanelRuntime` から取り出して一緒に保存する
-6. session 保存は `apps/desktop/src/app/io_state.rs` 経由で desktop の `features/project/session.rs` へ委譲する
+6. session 保存は `apps/desktop/src/app/project_paths.rs`（`ProjectPaths` の `persist_session_state`、D12）経由で desktop の `features/project/session.rs` へ委譲する
 
 ## 現在の境界で重要なこと
 
