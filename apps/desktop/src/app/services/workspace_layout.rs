@@ -12,35 +12,35 @@ use serde_json::json;
 
 use super::DesktopApp;
 
-impl DesktopApp {
-    /// `workspace_layout.*` サービス要求を振り分ける。該当しない場合は `None`。
-    pub(super) fn handle_workspace_layout_service_request(
-        &mut self,
-        request: &ServiceRequest,
-    ) -> Option<bool> {
-        let changed = match request.name.as_str() {
-            names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY => {
-                let panel_id = request.string("panel_id")?;
-                let visible = request
-                    .payload
-                    .get("visible")
-                    .and_then(|value| value.as_bool())?;
-                self.set_panel_visibility_from_workspace_layout(panel_id, visible)
-            }
-            names::WORKSPACE_LAYOUT_MOVE_PANEL => {
-                let panel_id = request.string("panel_id")?;
-                let direction = match request.string("direction")? {
-                    "up" => PanelMoveDirection::Up,
-                    "down" => PanelMoveDirection::Down,
-                    _ => return None,
-                };
-                self.move_panel_from_workspace_layout(panel_id, direction)
-            }
-            _ => return None,
-        };
-        Some(changed)
-    }
+/// `workspace_layout.*` サービス要求を振り分ける。該当しない場合は `None`。
+pub(crate) fn handle_workspace_layout_service_request(
+    app: &mut DesktopApp,
+    request: &ServiceRequest,
+) -> Option<bool> {
+    let changed = match request.name.as_str() {
+        names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY => {
+            let panel_id = request.string("panel_id")?;
+            let visible = request
+                .payload
+                .get("visible")
+                .and_then(|value| value.as_bool())?;
+            app.set_panel_visibility_from_workspace_layout(panel_id, visible)
+        }
+        names::WORKSPACE_LAYOUT_MOVE_PANEL => {
+            let panel_id = request.string("panel_id")?;
+            let direction = match request.string("direction")? {
+                "up" => PanelMoveDirection::Up,
+                "down" => PanelMoveDirection::Down,
+                _ => return None,
+            };
+            app.move_panel_from_workspace_layout(panel_id, direction)
+        }
+        _ => return None,
+    };
+    Some(changed)
+}
 
+impl DesktopApp {
     /// 指定パネルの可視性を切り替え、関連 dirty フラグと永続化を発火する。
     fn set_panel_visibility_from_workspace_layout(&mut self, panel_id: &str, visible: bool) -> bool {
         let previous_rect = self.panel_rect_in_window(panel_id);

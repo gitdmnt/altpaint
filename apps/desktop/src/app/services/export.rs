@@ -6,19 +6,19 @@ use panel_runtime::{ServiceRequest, services::names};
 
 use super::DesktopApp;
 
-impl DesktopApp {
-    /// export service request を処理する。
-    pub(super) fn handle_export_service_request(
-        &mut self,
-        request: &ServiceRequest,
-    ) -> Option<bool> {
-        let changed = match request.name.as_str() {
-            names::EXPORT_IMAGE => self.export_image(request.string("path").map(PathBuf::from)),
-            _ => return None,
-        };
-        Some(changed)
-    }
+/// export service request を処理する。
+pub(crate) fn handle_export_service_request(
+    app: &mut DesktopApp,
+    request: &ServiceRequest,
+) -> Option<bool> {
+    let changed = match request.name.as_str() {
+        names::EXPORT_IMAGE => app.export_image(request.string("path").map(PathBuf::from)),
+        _ => return None,
+    };
+    Some(changed)
+}
 
+impl DesktopApp {
     /// アクティブパネルを PNG として書き出す。
     ///
     /// `path` が `None` の場合はダイアログでパスを選択する。

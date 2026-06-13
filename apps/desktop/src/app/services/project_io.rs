@@ -43,32 +43,33 @@ pub(crate) fn merged_dirty(edits: &[raster::BitmapEdit]) -> Option<PageDirtyRect
     })
 }
 
-impl DesktopApp {
-    pub(super) fn handle_project_service_request(
-        &mut self,
-        request: &ServiceRequest,
-    ) -> Option<bool> {
-        let changed = match request.name.as_str() {
-            names::PROJECT_NEW_DOCUMENT_SIZED => {
-                self.apply_document_command(&DocumentCommand::NewDocumentSized {
-                    width: request.u64("width")? as usize,
-                    height: request.u64("height")? as usize,
-                })
-            }
-            names::PROJECT_SAVE_CURRENT => self.save_project_to_current_path(),
-            names::PROJECT_SAVE_AS => self.save_project_as(),
-            names::PROJECT_SAVE_TO_PATH => {
-                self.save_project_to_path(PathBuf::from(request.string("path")?))
-            }
-            names::PROJECT_LOAD_DIALOG => self.open_project(),
-            names::PROJECT_LOAD_FROM_PATH => {
-                self.load_project(PathBuf::from(request.string("path")?))
-            }
-            _ => return None,
-        };
-        Some(changed)
-    }
+/// project service request を処理する。
+pub(crate) fn handle_project_service_request(
+    app: &mut DesktopApp,
+    request: &ServiceRequest,
+) -> Option<bool> {
+    let changed = match request.name.as_str() {
+        names::PROJECT_NEW_DOCUMENT_SIZED => {
+            app.apply_document_command(&DocumentCommand::NewDocumentSized {
+                width: request.u64("width")? as usize,
+                height: request.u64("height")? as usize,
+            })
+        }
+        names::PROJECT_SAVE_CURRENT => app.save_project_to_current_path(),
+        names::PROJECT_SAVE_AS => app.save_project_as(),
+        names::PROJECT_SAVE_TO_PATH => {
+            app.save_project_to_path(PathBuf::from(request.string("path")?))
+        }
+        names::PROJECT_LOAD_DIALOG => app.open_project(),
+        names::PROJECT_LOAD_FROM_PATH => {
+            app.load_project(PathBuf::from(request.string("path")?))
+        }
+        _ => return None,
+    };
+    Some(changed)
+}
 
+impl DesktopApp {
     /// 描画入力をドキュメントへ適用し、操作を履歴へ積む。
     ///
     /// Stamp/StrokeSegment はストローク単位でバッチし `commit_stroke_to_history` で確定する。

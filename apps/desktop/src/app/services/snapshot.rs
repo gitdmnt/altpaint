@@ -4,23 +4,23 @@ use panel_runtime::{ServiceRequest, services::names};
 
 use super::DesktopApp;
 
-impl DesktopApp {
-    /// snapshot service request を処理する。
-    pub(super) fn handle_snapshot_service_request(
-        &mut self,
-        request: &ServiceRequest,
-    ) -> Option<bool> {
-        let changed = match request.name.as_str() {
-            names::SNAPSHOT_CREATE => self.snapshot_create(),
-            names::SNAPSHOT_RESTORE => {
-                let id = request.string("snapshot_id")?;
-                self.snapshot_restore(id.to_string())
-            }
-            _ => return None,
-        };
-        Some(changed)
-    }
+/// snapshot service request を処理する。
+pub(crate) fn handle_snapshot_service_request(
+    app: &mut DesktopApp,
+    request: &ServiceRequest,
+) -> Option<bool> {
+    let changed = match request.name.as_str() {
+        names::SNAPSHOT_CREATE => app.snapshot_create(),
+        names::SNAPSHOT_RESTORE => {
+            let id = request.string("snapshot_id")?;
+            app.snapshot_restore(id.to_string())
+        }
+        _ => return None,
+    };
+    Some(changed)
+}
 
+impl DesktopApp {
     /// 現在の Document クローンをスナップショットとして保存する。
     fn snapshot_create(&mut self) -> bool {
         let document = self.document.clone();

@@ -11,23 +11,24 @@ use pen_io::{ImportedPenSet, load_pen_directory, parse_pen_file};
 
 use super::DesktopApp;
 
-impl DesktopApp {
-    pub(super) fn handle_tool_catalog_service_request(
-        &mut self,
-        request: &ServiceRequest,
-    ) -> Option<bool> {
-        let changed = match request.name.as_str() {
-            names::TOOL_CATALOG_RELOAD_TOOLS => self.reload_tool_catalog(),
-            names::TOOL_CATALOG_RELOAD_PEN_PRESETS => self.reload_pen_presets(),
-            names::TOOL_CATALOG_IMPORT_PEN_PRESETS => self.import_pen_presets(),
-            names::TOOL_CATALOG_IMPORT_PEN_PATH => {
-                self.import_pen_presets_from_path(PathBuf::from(request.string("path")?))
-            }
-            _ => return None,
-        };
-        Some(changed)
-    }
+/// tool_catalog service request を処理する。
+pub(crate) fn handle_tool_catalog_service_request(
+    app: &mut DesktopApp,
+    request: &ServiceRequest,
+) -> Option<bool> {
+    let changed = match request.name.as_str() {
+        names::TOOL_CATALOG_RELOAD_TOOLS => app.reload_tool_catalog(),
+        names::TOOL_CATALOG_RELOAD_PEN_PRESETS => app.reload_pen_presets(),
+        names::TOOL_CATALOG_IMPORT_PEN_PRESETS => app.import_pen_presets(),
+        names::TOOL_CATALOG_IMPORT_PEN_PATH => {
+            app.import_pen_presets_from_path(PathBuf::from(request.string("path")?))
+        }
+        _ => return None,
+    };
+    Some(changed)
+}
 
+impl DesktopApp {
     pub(crate) fn reload_tool_catalog(&mut self) -> bool {
         let changed = Self::reload_tool_catalog_into_document(&mut self.document);
         if changed {

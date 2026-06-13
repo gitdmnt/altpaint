@@ -7,32 +7,31 @@ use panel_runtime::{ServiceRequest, services::names};
 
 use super::DesktopApp;
 
-impl DesktopApp {
-    pub(super) fn handle_workspace_service_request(
-        &mut self,
-        request: &ServiceRequest,
-    ) -> Option<bool> {
-        let changed = match request.name.as_str() {
-            names::WORKSPACE_RELOAD_PRESETS => self.reload_workspace_presets(),
-            names::WORKSPACE_APPLY_PRESET => {
-                self.apply_workspace_preset(request.string("preset_id")?)
-            }
-            names::WORKSPACE_SAVE_PRESET => {
-                self.save_workspace_preset(request.string("preset_id")?, request.string("label")?)
-            }
-            names::WORKSPACE_EXPORT_PRESET => {
-                self.export_workspace_preset(request.string("preset_id")?, request.string("label")?)
-            }
-            names::WORKSPACE_EXPORT_PRESET_TO_PATH => self.export_workspace_preset_to_path(
-                request.string("preset_id")?,
-                request.string("label")?,
-                PathBuf::from(request.string("path")?),
-            ),
-            _ => return None,
-        };
-        Some(changed)
-    }
+/// workspace preset service request を処理する。
+pub(crate) fn handle_workspace_service_request(
+    app: &mut DesktopApp,
+    request: &ServiceRequest,
+) -> Option<bool> {
+    let changed = match request.name.as_str() {
+        names::WORKSPACE_RELOAD_PRESETS => app.reload_workspace_presets(),
+        names::WORKSPACE_APPLY_PRESET => app.apply_workspace_preset(request.string("preset_id")?),
+        names::WORKSPACE_SAVE_PRESET => {
+            app.save_workspace_preset(request.string("preset_id")?, request.string("label")?)
+        }
+        names::WORKSPACE_EXPORT_PRESET => {
+            app.export_workspace_preset(request.string("preset_id")?, request.string("label")?)
+        }
+        names::WORKSPACE_EXPORT_PRESET_TO_PATH => app.export_workspace_preset_to_path(
+            request.string("preset_id")?,
+            request.string("label")?,
+            PathBuf::from(request.string("path")?),
+        ),
+        _ => return None,
+    };
+    Some(changed)
+}
 
+impl DesktopApp {
     pub(crate) fn apply_workspace_preset(&mut self, preset_id: &str) -> bool {
         let Some(preset) = self
             .workspace

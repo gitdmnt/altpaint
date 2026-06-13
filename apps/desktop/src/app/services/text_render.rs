@@ -6,40 +6,37 @@ use super::text_raster::render_text_to_bitmap_edit;
 
 use super::DesktopApp;
 
-impl DesktopApp {
-    /// text_render service request を処理する。
-    pub(super) fn handle_text_render_service_request(
-        &mut self,
-        request: &ServiceRequest,
-    ) -> Option<bool> {
-        match request.name.as_str() {
-            names::TEXT_RENDER_TO_LAYER => {
-                let text = request.string("text").unwrap_or("").to_string();
-                let font_size = request
-                    .payload
-                    .get("font_size")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(32) as u32;
-                let color_hex = request
-                    .string("color_hex")
-                    .unwrap_or("#000000")
-                    .to_string();
-                let x = request
-                    .payload
-                    .get("x")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0) as usize;
-                let y = request
-                    .payload
-                    .get("y")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0) as usize;
-                Some(self.render_text_to_active_layer(text, font_size, color_hex, x, y))
-            }
-            _ => None,
+/// text_render service request を処理する。
+pub(crate) fn handle_text_render_service_request(
+    app: &mut DesktopApp,
+    request: &ServiceRequest,
+) -> Option<bool> {
+    match request.name.as_str() {
+        names::TEXT_RENDER_TO_LAYER => {
+            let text = request.string("text").unwrap_or("").to_string();
+            let font_size = request
+                .payload
+                .get("font_size")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(32) as u32;
+            let color_hex = request.string("color_hex").unwrap_or("#000000").to_string();
+            let x = request
+                .payload
+                .get("x")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as usize;
+            let y = request
+                .payload
+                .get("y")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as usize;
+            Some(app.render_text_to_active_layer(text, font_size, color_hex, x, y))
         }
+        _ => None,
     }
+}
 
+impl DesktopApp {
     /// テキストをアクティブレイヤーへ描画する。
     pub(super) fn render_text_to_active_layer(
         &mut self,
