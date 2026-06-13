@@ -6,6 +6,7 @@ use document_model::DocumentCommand;
 use editor_state::{ColorRgba8, SessionCommand, ToolKind};
 use geometry::{CanvasViewportPoint, PagePoint, WindowPoint, WindowRect};
 use frame_profiler::{FrameProfiler, StageStats, ValueStats};
+use paint_engine::CanvasPointerAction;
 
 use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::DesktopApp;
@@ -33,13 +34,13 @@ fn eraser_drag_clears_existing_pixels() {
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
-    app.handle_canvas_pointer("up", WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Down, WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Up, WindowPoint::new(center_x, center_y), 1.0);
     let _ = app.apply_session_command(&SessionCommand::SetActiveTool {
         tool: ToolKind::Eraser,
     });
-    app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
-    app.handle_canvas_pointer("up", WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Down, WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Up, WindowPoint::new(center_x, center_y), 1.0);
 
     let frame = build_cpu_canvas_snapshot(&app.document);
     let bitmap_x = frame.width / 2;
@@ -57,9 +58,9 @@ fn canvas_drag_draws_black_pixels() {
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
-    app.handle_canvas_pointer("drag", WindowPoint::new(center_x + 20, center_y), 1.0);
-    app.handle_canvas_pointer("up", WindowPoint::new(center_x + 20, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Down, WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Drag, WindowPoint::new(center_x + 20, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Up, WindowPoint::new(center_x + 20, center_y), 1.0);
 
     let frame = build_cpu_canvas_snapshot(&app.document);
     assert!(
@@ -82,8 +83,8 @@ fn canvas_drag_draws_using_selected_color() {
     let _ = app.apply_session_command(&SessionCommand::SetActiveColor {
         color: ColorRgba8::new(0x43, 0xa0, 0x47, 0xff),
     });
-    app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
-    app.handle_canvas_pointer("up", WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Down, WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Up, WindowPoint::new(center_x, center_y), 1.0);
 
     let frame = build_cpu_canvas_snapshot(&app.document);
     assert!(
@@ -120,12 +121,12 @@ fn koma_rect_tool_creates_koma_from_dragged_page_rect() {
         .expect("end page position");
 
     assert!(app.handle_canvas_pointer(
-        "down",
+        CanvasPointerAction::Down,
         WindowPoint::new(start_window.0, start_window.1),
         1.0,
     ));
-    assert!(app.handle_canvas_pointer("drag", WindowPoint::new(end_window.0, end_window.1), 1.0,));
-    assert!(app.handle_canvas_pointer("up", WindowPoint::new(end_window.0, end_window.1), 1.0,));
+    assert!(app.handle_canvas_pointer(CanvasPointerAction::Drag, WindowPoint::new(end_window.0, end_window.1), 1.0,));
+    assert!(app.handle_canvas_pointer(CanvasPointerAction::Up, WindowPoint::new(end_window.0, end_window.1), 1.0,));
 
     let page = app.document.active_page().expect("active page");
     assert_eq!(page.komas.len(), 2);
@@ -653,19 +654,19 @@ fn profile_canvas_brush_sizes_for_ten_seconds() {
             } else {
                 (end_x, start_x)
             };
-            app.handle_canvas_pointer("down", WindowPoint::new(down_x, center_y), 1.0);
+            app.handle_canvas_pointer(CanvasPointerAction::Down, WindowPoint::new(down_x, center_y), 1.0);
             let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
 
             for step in 1..=8 {
                 let x = down_x + ((up_x - down_x) * step / 8);
-                app.handle_canvas_pointer("drag", WindowPoint::new(x, center_y), 1.0);
+                app.handle_canvas_pointer(CanvasPointerAction::Drag, WindowPoint::new(x, center_y), 1.0);
                 let update = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
                 if update.canvas_dirty_rect.is_some() {
                     iterations += 1;
                 }
             }
 
-            app.handle_canvas_pointer("up", WindowPoint::new(up_x, center_y), 1.0);
+            app.handle_canvas_pointer(CanvasPointerAction::Up, WindowPoint::new(up_x, center_y), 1.0);
             let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
             forward = !forward;
         }
@@ -1046,7 +1047,7 @@ fn new_document_sized_resets_active_interactions() {
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    assert!(app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0));
+    assert!(app.handle_canvas_pointer(CanvasPointerAction::Down, WindowPoint::new(center_x, center_y), 1.0));
     assert!(app.update_canvas_hover(center_x, center_y));
     assert!(app.canvas_input.is_drawing);
     assert!(app.hover_canvas_position.is_some());
@@ -1114,11 +1115,11 @@ fn lasso_preview_drag_marks_temp_overlay_dirty() {
 
     // handle_canvas_pointer を直接呼んでパネルインタラクションをバイパス
     // down でラッソ開始 → LassoPreviewChanged
-    app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Down, WindowPoint::new(center_x, center_y), 1.0);
     app.invalidation.temp_overlay_dirty_rect = None;
 
     // drag でラッソ点を追加 → LassoPreviewChanged → temp overlay dirty になる
-    let dragged = app.handle_canvas_pointer("drag", WindowPoint::new(center_x + 20, center_y + 10), 1.0);
+    let dragged = app.handle_canvas_pointer(CanvasPointerAction::Drag, WindowPoint::new(center_x + 20, center_y + 10), 1.0);
     assert!(dragged, "lasso drag should request redraw");
     assert!(
         app.invalidation.temp_overlay_dirty_rect.is_some(),

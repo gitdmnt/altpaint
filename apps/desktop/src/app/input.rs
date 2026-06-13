@@ -69,11 +69,11 @@ impl DesktopApp {
         }
 
         if self.canvas_display_contains_window(point) {
-            return self.handle_canvas_pointer("down", point, pressure);
+            return self.handle_canvas_pointer(CanvasPointerAction::Down, point, pressure);
         }
 
         if self.canvas_position_from_window(point).is_some() {
-            return self.handle_canvas_pointer("down", point, pressure);
+            return self.handle_canvas_pointer(CanvasPointerAction::Down, point, pressure);
         }
 
         false
@@ -93,7 +93,7 @@ impl DesktopApp {
     ) -> bool {
         let point = WindowPoint::new(x, y);
         if self.is_canvas_interacting() {
-            return self.handle_canvas_pointer("up", point, pressure);
+            return self.handle_canvas_pointer(CanvasPointerAction::Up, point, pressure);
         }
         if self.panel_interaction.active_panel_resize.take().is_some() {
             self.panel_interaction.pending_panel_press = None;
@@ -120,7 +120,7 @@ impl DesktopApp {
     ) -> bool {
         let point = WindowPoint::new(x, y);
         if self.is_canvas_interacting() {
-            return self.handle_canvas_pointer("drag", point, pressure);
+            return self.handle_canvas_pointer(CanvasPointerAction::Drag, point, pressure);
         }
 
         if self.panel_interaction.active_panel_drag.is_some()
@@ -134,20 +134,17 @@ impl DesktopApp {
 
     pub(crate) fn handle_canvas_pointer(
         &mut self,
-        action: &str,
+        action: CanvasPointerAction,
         point: WindowPoint,
         pressure: f32,
     ) -> bool {
-        let Some(pointer_action) = pointer_action(action) else {
-            return false;
-        };
         let canvas_position = self.canvas_position_from_window(point).or_else(|| {
-            (action != "down" && self.is_canvas_interacting())
+            (action != CanvasPointerAction::Down && self.is_canvas_interacting())
                 .then(|| self.canvas_position_from_window_clamped(point))
                 .flatten()
         });
         let Some(page_point) = canvas_position else {
-            if pointer_action == CanvasPointerAction::Up {
+            if action == CanvasPointerAction::Up {
                 self.reset_canvas_gestures();
             }
             return false;
@@ -159,17 +156,17 @@ impl DesktopApp {
         // コマ作成 (KomaRect) は別経路で処理する (BL-081)。ジェスチャ進行中の
         // drag/up はアクティブコマ境界へクランプする (分離前の挙動を維持)。
         if active_tool == ToolKind::KomaRect {
-            let page_point = if action != "down" && self.koma_gesture.is_drawing {
+            let page_point = if action != CanvasPointerAction::Down && self.koma_gesture.is_drawing {
                 active_koma_bounds
                     .and_then(|bounds| bounds.clamp_canvas_point(page_point))
                     .unwrap_or(page_point)
             } else {
                 page_point
             };
-            return self.handle_koma_rect_pointer(pointer_action, page_point);
+            return self.handle_koma_rect_pointer(action, page_point);
         }
 
-        let page_point = if action != "down" && self.canvas_input.is_drawing {
+        let page_point = if action != CanvasPointerAction::Down && self.canvas_input.is_drawing {
             active_koma_bounds
                 .and_then(|bounds| bounds.clamp_canvas_point(page_point))
                 .unwrap_or(page_point)
@@ -179,7 +176,7 @@ impl DesktopApp {
         let inside_active_koma =
             active_koma_bounds.is_some_and(|bounds| bounds.contains_canvas_point(page_point));
         if !inside_active_koma {
-            if pointer_action == CanvasPointerAction::Up {
+            if action == CanvasPointerAction::Up {
                 self.canvas_input.reset();
             }
             return false;
@@ -193,7 +190,7 @@ impl DesktopApp {
             .unwrap_or_default();
         let update = advance_pointer_gesture(
             &mut self.canvas_input,
-            pointer_action,
+            action,
             page_point,
             active_tool,
             pressure,
@@ -207,11 +204,11 @@ impl DesktopApp {
             CanvasGestureUpdate::None => false,
             CanvasGestureUpdate::Paint(input) => {
                 let changed = self.apply_paint_input(input);
-                if pointer_action == CanvasPointerAction::Up {
+                if action == CanvasPointerAction::Up {
                     self.commit_stroke_to_history();
                 }
                 if active_tool == ToolKind::LassoBucket
-                    && pointer_action == CanvasPointerAction::Up
+                    && action == CanvasPointerAction::Up
                     && let Some(layout) = self.layout.as_ref()
                 {
                     self.append_temp_overlay_dirty_rect(layout.canvas_host_rect);
@@ -332,14 +329,5 @@ impl DesktopApp {
     fn page_position_in_active_panel(&self, point: PagePoint) -> Option<PagePoint> {
         let bounds = self.document.active_koma_bounds()?;
         bounds.contains_canvas_point(point).then_some(point)
-    }
-}
-
-fn pointer_action(action: &str) -> Option<CanvasPointerAction> {
-    match action {
-        "down" => Some(CanvasPointerAction::Down),
-        "drag" => Some(CanvasPointerAction::Drag),
-        "up" => Some(CanvasPointerAction::Up),
-        _ => None,
     }
 }
