@@ -5,7 +5,7 @@ use paint_engine::{PaintInput, PaintPluginContext};
 use geometry::{MergeInSpace, PageDirtyRect};
 use desktop_support::normalize_project_path;
 use panel_runtime::{ServiceRequest, services::names};
-use storage::load_project_from_path;
+use project_store::load_project_from_path;
 
 use super::super::paint::{BitmapPatch, GpuRegionPatch, PaintPatch};
 use super::super::PendingStroke;

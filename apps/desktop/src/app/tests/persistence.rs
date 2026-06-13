@@ -13,7 +13,7 @@ use editor_state::{ColorRgba8, EditorSession, SessionCommand};
 use panel_runtime::{ServiceRequest, services::names};
 use serde_json::json;
 use std::collections::BTreeMap;
-use storage::{load_project_from_path, save_project_to_path};
+use project_store::{load_project_from_path, save_project_to_path};
 
 use super::{
     TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_session_path, unique_test_path,

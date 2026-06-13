@@ -36,7 +36,7 @@ impl DesktopApp {
     ) -> BootstrapState {
         let session = load_session_state(session_path);
         let project_path = resolve_startup_project_path(project_path, session.as_ref());
-        let loaded_project = storage::load_project_from_path(&project_path).ok();
+        let loaded_project = project_store::load_project_from_path(&project_path).ok();
         let document = loaded_project
             .as_ref()
             .map(|project| project.document.clone())

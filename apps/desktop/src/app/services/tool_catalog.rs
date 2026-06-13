@@ -7,7 +7,7 @@ use panel_runtime::{
     services::names::{self, config_keys, panel_ids},
 };
 use serde_json::json;
-use storage::{ImportedPenSet, load_pen_directory, parse_pen_file};
+use pen_io::{ImportedPenSet, load_pen_directory, parse_pen_file};
 
 use super::DesktopApp;
 
@@ -93,11 +93,11 @@ impl DesktopApp {
         imported_names: &[String],
     ) {
         let source_label = match imported.report.source {
-            storage::PenSourceKind::AltPaint => "AltPaint",
-            storage::PenSourceKind::PhotoshopAbr => "Photoshop ABR",
-            storage::PenSourceKind::ClipStudioSut => "Clip Studio SUT",
-            storage::PenSourceKind::GimpGbr => "GIMP GBR",
-            storage::PenSourceKind::Unknown => "Unknown",
+            pen_io::PenSourceKind::AltPaint => "AltPaint",
+            pen_io::PenSourceKind::PhotoshopAbr => "Photoshop ABR",
+            pen_io::PenSourceKind::ClipStudioSut => "Clip Studio SUT",
+            pen_io::PenSourceKind::GimpGbr => "GIMP GBR",
+            pen_io::PenSourceKind::Unknown => "Unknown",
         };
         let preview = imported_names
             .iter()

@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::thread::{self, JoinHandle};
 
-use storage::save_project_to_path;
+use project_store::save_project_to_path;
 
 use super::DesktopApp;
 
@@ -57,7 +57,7 @@ impl DesktopApp {
         let document = self.document.clone();
         let path_display = path.display().to_string();
         let handle = thread::spawn(move || {
-            storage::export_active_koma_as_png(&document, &path)
+            project_store::export_active_koma_as_png(&document, &path)
                 .map_err(|error| error.to_string())
         });
         self.background_jobs.push(BackgroundJob {

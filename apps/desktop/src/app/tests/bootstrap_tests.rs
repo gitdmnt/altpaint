@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use desktop_support::DEFAULT_PROJECT_FILE_NAME;
 use panel_runtime::{ServiceRequest, services::names};
-use storage::load_project_from_path;
+use project_store::load_project_from_path;
 
 use super::{
     TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_session_path, unique_test_path,

@@ -26,7 +26,6 @@ members = [
   "crates/gpu-paint",
   "crates/panel-html",
   "crates/canvas-geometry",
-  "crates/storage",
   "crates/pen-io",
   "crates/project-store",
   "crates/panel-workspace",
