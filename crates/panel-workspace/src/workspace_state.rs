@@ -1,3 +1,10 @@
+//! パネル配置・サイズ・アンカーの永続化状態とアンカー解決幾何。
+//!
+//! `WorkspaceUiState` / `WorkspaceLayout` / `WorkspacePanelState` とその
+//! アンカー基準オフセット解決ロジックを保持する。project / session の双方で
+//! 共有する panel UI 永続化スナップショットであり、データ (配置状態) と振る舞い
+//! (アンカー解決) を同じ責務クレートに置く。
+
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};

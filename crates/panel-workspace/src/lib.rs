@@ -2,19 +2,22 @@
 
 mod focus;
 mod workspace;
+mod workspace_state;
 
 #[cfg(test)]
 mod tests;
 
-use app_core::{
-    WorkspaceLayout, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState,
-};
 use geometry::{PanelSurfacePoint, WindowPoint};
 use focus::FocusTarget;
 use std::collections::BTreeMap;
 
 // hit-test API の戻り値型。利用側が panel-api へ直接依存しなくて済むよう再公開する。
 pub use panel_api::ResizeHandle;
+// パネル配置の永続化状態とアンカー解決幾何 (旧 app-core::workspace)。
+pub use workspace_state::{
+    PanelConfigs, WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
+    WorkspacePanelState, WorkspaceUiState,
+};
 
 /// 全パネルの配置 (workspace layout)・focus・hit テーブルの状態ストア。
 ///

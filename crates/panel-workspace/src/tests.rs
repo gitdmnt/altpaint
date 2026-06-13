@@ -184,7 +184,7 @@ fn panel_with_empty_tree_gets_workspace_entry_after_reconcile() {
 /// (旧 viewport なし版は usize::MAX フォールバックで画面外座標を返す実バグがあった)
 #[test]
 fn panel_rect_resolves_bottom_right_anchor_within_viewport() {
-    use app_core::{
+    use crate::{
         WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
         WorkspacePanelState,
     };
@@ -216,7 +216,7 @@ fn panel_rect_resolves_bottom_right_anchor_within_viewport() {
 /// Phase 11: TopRight anchor のパネルで W ハンドルドラッグ → 右辺の screen 座標が固定される。
 #[test]
 fn resize_panel_keeping_anchor_top_right_keeps_right_edge_fixed() {
-    use app_core::{
+    use crate::{
         WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
         WorkspacePanelState,
     };

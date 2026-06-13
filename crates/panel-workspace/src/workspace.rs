@@ -288,30 +288,30 @@ impl PanelWorkspace {
 fn default_panel_anchor_and_position(
     panel_id: &str,
     index: usize,
-) -> (app_core::WorkspacePanelAnchor, WorkspacePanelPosition) {
+) -> (WorkspacePanelAnchor, WorkspacePanelPosition) {
     match panel_id {
         WORKSPACE_PANEL_ID => (
-            app_core::WorkspacePanelAnchor::TopLeft,
+            WorkspacePanelAnchor::TopLeft,
             WorkspacePanelPosition { x: 24, y: 72 },
         ),
         "builtin.layers" => (
-            app_core::WorkspacePanelAnchor::TopRight,
+            WorkspacePanelAnchor::TopRight,
             WorkspacePanelPosition { x: 24, y: 72 },
         ),
         "builtin.color-palette" => (
-            app_core::WorkspacePanelAnchor::BottomLeft,
+            WorkspacePanelAnchor::BottomLeft,
             WorkspacePanelPosition { x: 24, y: 24 },
         ),
         "builtin.tool-settings" => (
-            app_core::WorkspacePanelAnchor::BottomRight,
+            WorkspacePanelAnchor::BottomRight,
             WorkspacePanelPosition { x: 24, y: 24 },
         ),
         "builtin.view-controls" => (
-            app_core::WorkspacePanelAnchor::BottomRight,
+            WorkspacePanelAnchor::BottomRight,
             WorkspacePanelPosition { x: 376, y: 24 },
         ),
         _ => (
-            app_core::WorkspacePanelAnchor::TopLeft,
+            WorkspacePanelAnchor::TopLeft,
             WorkspacePanelPosition {
                 x: 24 + index * 28,
                 y: 72 + index * 36,
