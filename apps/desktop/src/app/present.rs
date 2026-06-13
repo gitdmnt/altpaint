@@ -105,7 +105,7 @@ impl DesktopApp {
             };
         }
 
-        let mut layer_dirty = canvas_geometry::LayerDirtyAccumulator::default();
+        let mut layer_dirty = crate::present_quads::LayerDirtyAccumulator::default();
 
         // ステータス更新 — HtmlPanelView 化されたため、毎フレーム
         // status_bar.update() を呼んで snapshot を view に流す（差分なら no-op）。

@@ -1,17 +1,23 @@
 //! デスクトップ固有の固定レイアウト計算と presenter 入力変換をまとめる。
 
+mod canvas_plan;
 mod geometry;
+mod layer_dirty;
 mod overlay_quad;
+mod overlay_state;
 mod solid_quad;
 pub(crate) mod status_panel;
 use ::geometry::WindowRect;
 use desktop_support::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
 
+pub(crate) use canvas_plan::CanvasPlan;
 pub(crate) use geometry::fit_rect;
+pub(crate) use layer_dirty::LayerDirtyAccumulator;
 pub(crate) use overlay_quad::{
     CircleQuad, LineQuad, build_overlay_circle_quads, build_overlay_line_quads,
     build_overlay_solid_quads,
 };
+pub(crate) use overlay_state::{CanvasOverlayState, KomaNavigatorEntry, KomaNavigatorOverlay};
 pub(crate) use solid_quad::{
     SolidQuad, build_background_solid_quads, build_foreground_solid_quads, pixel_rect_to_ndc,
 };

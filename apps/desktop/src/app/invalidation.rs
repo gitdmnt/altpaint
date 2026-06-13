@@ -205,7 +205,7 @@ impl DesktopApp {
             self.cached_canvas_view_geometry = None;
             let current_geometry = self.canvas_view_geometry();
             if let Some(dirty) = self.hover_canvas_position.and_then(|hover_position| {
-                canvas_geometry::brush_preview_dirty_rect(
+                super::paint_preview::brush_preview_dirty_rect(
                     previous_geometry,
                     current_geometry,
                     hover_position,
@@ -254,13 +254,13 @@ impl DesktopApp {
             return (Vec::new(), Vec::new(), Vec::new());
         };
         let bitmap = self.cpu_canvas_snapshot.as_ref();
-        let canvas_plan = canvas_geometry::CanvasPlan {
+        let canvas_plan = crate::present_quads::CanvasPlan {
             host_rect: layout.canvas_host_rect,
             source_width: bitmap.map_or(1, |b| b.width),
             source_height: bitmap.map_or(1, |b| b.height),
             transform: self.document.session.view_transform,
         };
-        let overlay_state = canvas_geometry::CanvasOverlayState {
+        let overlay_state = crate::present_quads::CanvasOverlayState {
             brush_preview: self.hover_canvas_position,
             brush_size: self.brush_preview_size(),
             lasso_points: self.canvas_input.lasso_points.clone(),

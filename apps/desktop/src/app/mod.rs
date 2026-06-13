@@ -11,6 +11,7 @@ mod default_tool_catalog;
 pub(crate) mod cursor;
 mod input;
 mod io_state;
+mod paint_preview;
 mod panel_config_sync;
 mod panel_dispatch;
 mod present;

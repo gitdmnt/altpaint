@@ -11,8 +11,8 @@ use desktop_support::{
     KOMA_NAVIGATOR_ACTIVE, KOMA_NAVIGATOR_BACKGROUND, KOMA_NAVIGATOR_BORDER,
     KOMA_NAVIGATOR_KOMA, KOMA_PREVIEW_BORDER, KOMA_PREVIEW_FILL,
 };
-use canvas_geometry::{CanvasOverlayState, CanvasPlan, KomaNavigatorOverlay};
-
+use super::canvas_plan::CanvasPlan;
+use super::overlay_state::{CanvasOverlayState, KomaNavigatorOverlay};
 use super::solid_quad::{SolidQuad, push_border_quads};
 
 /// ブラシプレビュー円リングの線幅 (px)。
@@ -291,10 +291,10 @@ fn push_koma_navigator(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::overlay_state::KomaNavigatorEntry;
     use document_model::KomaBounds;
     use editor_state::CanvasViewTransform;
     use ::geometry::{PagePoint, WindowRect};
-    use canvas_geometry::KomaNavigatorEntry;
 
     fn make_plan(canvas_width: usize, canvas_height: usize) -> CanvasPlan {
         CanvasPlan {

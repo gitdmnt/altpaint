@@ -1,33 +1,7 @@
 use editor_state::CanvasViewTransform;
 use geometry::{CanvasViewportPoint, PageDirtyRect, PagePoint, WindowRect};
 
-use crate::{CanvasViewGeometry, brush_preview_dirty_rect};
-
-#[test]
-fn brush_preview_dirty_rect_unions_previous_and_current_preview() {
-    let viewport = WindowRect {
-        x: 0,
-        y: 0,
-        width: 400,
-        height: 300,
-    };
-    let previous = CanvasViewGeometry::compute(viewport, 64, 64, CanvasViewTransform::default());
-    let current = CanvasViewGeometry::compute(
-        viewport,
-        64,
-        64,
-        CanvasViewTransform {
-            pan_x: 20.0,
-            ..CanvasViewTransform::default()
-        },
-    );
-
-    let dirty = brush_preview_dirty_rect(previous, current, PagePoint::new(20, 20), 12.0)
-        .expect("dirty rect exists");
-
-    assert!(dirty.width > 0);
-    assert!(dirty.height > 0);
-}
+use crate::CanvasViewGeometry;
 
 #[test]
 fn transformed_canvas_dirty_rect_tracks_zoom_and_pan() {

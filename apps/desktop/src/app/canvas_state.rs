@@ -5,7 +5,7 @@
 
 use super::DesktopApp;
 use super::cpu_canvas_snapshot::build_cpu_canvas_snapshot;
-use canvas_geometry::{KomaNavigatorEntry, KomaNavigatorOverlay};
+use crate::present_quads::{KomaNavigatorEntry, KomaNavigatorOverlay};
 
 impl DesktopApp {
     pub(super) fn brush_preview_size(&self) -> Option<u32> {

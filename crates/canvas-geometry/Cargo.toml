@@ -6,6 +6,5 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-document-model = { path = "../document-model" }
 editor-state = { path = "../editor-state" }
 geometry = { path = "../geometry" }
