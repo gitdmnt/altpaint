@@ -5,7 +5,7 @@
 //! - `data-action="command:<command_id>"` → `ActionDescriptor::Command { id, payload }`
 //! - `data-args` が JSON オブジェクトなら payload として添付。不正なら無視。
 //!
-//! 本 crate は `panel-api` に依存しないため、`HostAction` への最終変換は
+//! 本 crate はパネル契約型に依存しないため、`HostRequest` への最終変換は
 //! `panel-runtime::html_wasm_panel` 側で行う。
 
 use serde_json::{Map, Value};

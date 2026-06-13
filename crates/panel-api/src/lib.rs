@@ -90,23 +90,20 @@ mod resize_edge_tests {
     }
 }
 
+/// パネル (Wasm) → ホストへの要求。
+///
+/// P3: パネル可視性/並び替えは workspace_layout サービス経路 (`RequestService`)
+/// に一本化済みのため、専用 variant (`MovePanel` / `SetPanelVisibility`) は削除した。
+/// translator が `RequestDescriptor` を 3 経路へ振り分けた結果を搬送する。
 #[derive(Debug, Clone, PartialEq)]
-pub enum HostAction {
+pub enum HostRequest {
     /// 純粋なドキュメント変異コマンドを適用する。
-    /// B4〜B6 の中間状態では `DocumentCommand` のみを搬送する (設計書 §4 B4 手順 (5))。
     DispatchDocumentCommand(DocumentCommand),
     /// エディタセッション (ツール/色/ペン/ビュー) を変更する。
     /// translator が namespace から振り分けるセッション経路。
     DispatchSessionCommand(SessionCommand),
+    /// I/O を伴うホストサービス要求。
     RequestService(ServiceRequest),
-    MovePanel {
-        panel_id: String,
-        direction: PanelMoveDirection,
-    },
-    SetPanelVisibility {
-        panel_id: String,
-        visible: bool,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

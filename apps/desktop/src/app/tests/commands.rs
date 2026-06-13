@@ -14,7 +14,7 @@ use desktop_support::{
     FrameProfiler, WorkspacePreset, WorkspacePresetCatalog,
     save_workspace_preset_catalog,
 };
-use panel_runtime::{HostAction, PanelEvent, ServiceRequest, services::names};
+use panel_runtime::{HostRequest, PanelEvent, ServiceRequest, services::names};
 use serde_json::json;
 use panel_workspace::WorkspaceUiState;
 
@@ -120,7 +120,7 @@ fn execute_command_new_document_resets_tool_to_default() {
 fn host_action_dispatches_tool_switch_command() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
 
-    let _ = app.execute_host_action(HostAction::DispatchSessionCommand(
+    let _ = app.execute_host_request(HostRequest::DispatchSessionCommand(
         SessionCommand::SetActiveTool {
             tool: ToolKind::Eraser,
         },
@@ -139,7 +139,7 @@ fn keyboard_panel_focus_can_activate_app_action() {
         app.panel_workspace
             .focus_panel_node("builtin.app-actions", "app.save")
     );
-    // app.save は emit_service 経由で保存サービスを発行するため、HostAction が
+    // app.save は emit_service 経由で保存サービスを発行するため、HostRequest が
     // 生成され activate_focused_panel_control は true を返す。
     // pending_jobs でジョブがキューされていることを確認する。
     assert!(app.activate_focused_panel_control());

@@ -13,7 +13,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use document_model::{Document, DocumentCommand};
-use panel_api::{HostAction, PanelEvent, ServiceRequest};
+use panel_api::{HostRequest, PanelEvent, ServiceRequest};
 use panel_html::{
     ActionDescriptor, HtmlPanelView, blitz_dom::LocalName, blitz_dom::node::NodeData,
     parse_data_action,
@@ -154,7 +154,7 @@ impl HtmlWasmPanel {
         &mut self,
         handler_name: &str,
         event_payload: Value,
-    ) -> Result<Vec<HostAction>, PanelWasmHostError> {
+    ) -> Result<Vec<HostRequest>, PanelWasmHostError> {
         if !self.wasm.has_handler(handler_name) {
             return Ok(Vec::new());
         }
@@ -173,7 +173,7 @@ impl HtmlWasmPanel {
         Ok(result
             .commands
             .into_iter()
-            .filter_map(|descriptor| request_descriptor_to_host_action(registry, descriptor))
+            .filter_map(|descriptor| request_descriptor_to_host_request(registry, descriptor))
             .collect())
     }
 }
@@ -202,18 +202,18 @@ fn panel_host_request(
     }
 }
 
-fn request_descriptor_to_host_action(
+fn request_descriptor_to_host_request(
     registry: &TranslatorRegistry,
     descriptor: panel_protocol::RequestDescriptor,
-) -> Option<HostAction> {
+) -> Option<HostRequest> {
     match registry.translate(&descriptor) {
         Ok(TranslatedRequest::Document(command)) => {
-            Some(HostAction::DispatchDocumentCommand(command))
+            Some(HostRequest::DispatchDocumentCommand(command))
         }
         Ok(TranslatedRequest::Session(command)) => {
-            Some(HostAction::DispatchSessionCommand(command))
+            Some(HostRequest::DispatchSessionCommand(command))
         }
-        Ok(TranslatedRequest::Service(request)) => Some(HostAction::RequestService(request)),
+        Ok(TranslatedRequest::Service(request)) => Some(HostRequest::RequestService(request)),
         Err(diagnostic) => {
             // 黙殺禁止 (BL-061): 未登録名・翻訳失敗いずれも診断ログへ流す。
             eprintln!("{diagnostic}");
@@ -273,7 +273,7 @@ impl HtmlWasmPanel {
         self.has_keyboard_handler
     }
 
-    pub fn handle_event(&mut self, event: &PanelEvent) -> Vec<HostAction> {
+    pub fn handle_event(&mut self, event: &PanelEvent) -> Vec<HostRequest> {
         match event {
             PanelEvent::Keyboard {
                 panel_id,
@@ -341,10 +341,10 @@ impl HtmlWasmPanel {
         &mut self,
         descriptor: Option<ActionDescriptor>,
         extra_payload: Value,
-    ) -> Vec<HostAction> {
+    ) -> Vec<HostRequest> {
         match descriptor {
             Some(ActionDescriptor::Command { id, .. }) => {
-                command_id_to_host_action(&id).map(|a| vec![a]).unwrap_or_default()
+                command_id_to_host_request(&id).map(|a| vec![a]).unwrap_or_default()
             }
             Some(ActionDescriptor::Service { name, mut payload }) => {
                 if let Some(extra_obj) = extra_payload.as_object() {
@@ -356,7 +356,7 @@ impl HtmlWasmPanel {
                 for (k, v) in payload {
                     request = request.with_value(k, v);
                 }
-                vec![HostAction::RequestService(request)]
+                vec![HostRequest::RequestService(request)]
             }
             Some(ActionDescriptor::Altp { node_id: handler, mut payload }) => {
                 if let Some(extra_obj) = extra_payload.as_object() {
@@ -373,9 +373,9 @@ impl HtmlWasmPanel {
     }
 }
 
-fn command_id_to_host_action(command_id: &str) -> Option<HostAction> {
+fn command_id_to_host_request(command_id: &str) -> Option<HostRequest> {
     match command_id {
-        "noop" => Some(HostAction::DispatchDocumentCommand(DocumentCommand::Noop)),
+        "noop" => Some(HostRequest::DispatchDocumentCommand(DocumentCommand::Noop)),
         _ => None,
     }
 }
@@ -461,15 +461,15 @@ mod tests {
     use panel_protocol::RequestDescriptor;
     use panel_protocol::names::{layer, tool};
 
-    /// 既知の command 名は registry 経由で HostAction へ翻訳される。
+    /// 既知の command 名は registry 経由で HostRequest へ翻訳される。
     #[test]
-    fn known_command_translates_to_host_action() {
+    fn known_command_translates_to_host_request() {
         let registry = default_translator_registry();
         let action =
-            request_descriptor_to_host_action(&registry, RequestDescriptor::new(layer::ADD));
+            request_descriptor_to_host_request(&registry, RequestDescriptor::new(layer::ADD));
         assert!(matches!(
             action,
-            Some(HostAction::DispatchDocumentCommand(
+            Some(HostRequest::DispatchDocumentCommand(
                 DocumentCommand::AddRasterLayer
             ))
         ));
@@ -477,9 +477,9 @@ mod tests {
 
     /// 未登録名は黙殺せず None を返す (diagnostics は registry 側でテスト済み)。
     #[test]
-    fn unregistered_name_yields_no_host_action() {
+    fn unregistered_name_yields_no_host_request() {
         let registry = default_translator_registry();
-        let action = request_descriptor_to_host_action(
+        let action = request_descriptor_to_host_request(
             &registry,
             RequestDescriptor::new("totally.unknown_request"),
         );
@@ -488,10 +488,10 @@ mod tests {
 
     /// payload 欠落の翻訳失敗も None を返す (diagnostics へ流れる)。
     #[test]
-    fn translation_failure_yields_no_host_action() {
+    fn translation_failure_yields_no_host_request() {
         let registry = default_translator_registry();
         // tool.set_active without payload.tool は翻訳失敗。
-        let action = request_descriptor_to_host_action(
+        let action = request_descriptor_to_host_request(
             &registry,
             RequestDescriptor::new(tool::SET_ACTIVE),
         );

@@ -22,7 +22,7 @@ pub use runtime::{RenderedPanelTexture, PanelRuntime, PanelDispatchResult, Panel
 // パネルサブシステムの facade 再公開。
 // desktop はパネル関連の型を panel-runtime 経由でのみ参照する (Phase 15 / ADR 017)。
 pub use panel_api::{
-    HostAction, PanelEvent, PanelMoveDirection, ResizeHandle, ServiceRequest, services,
+    HostRequest, PanelEvent, PanelMoveDirection, ResizeHandle, ServiceRequest, services,
 };
 pub use panel_html as html;
 pub use panel_html::PanelSizeConstraints;

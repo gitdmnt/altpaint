@@ -4,7 +4,7 @@ use crate::request_translation::register_default_translators;
 use crate::translator_registry::TranslatorRegistry;
 use crate::host_state::{EMPTY_WORKSPACE_PANELS_JSON, HostState};
 use document_model::Document;
-use panel_api::{HostAction, PanelEvent};
+use panel_api::{HostRequest, PanelEvent};
 use panel_html::{vello, wgpu, PanelSizeConstraints, ActionRect};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -30,7 +30,7 @@ struct PanelGpuContext {
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct PanelDispatchResult {
-    pub actions: Vec<HostAction>,
+    pub actions: Vec<HostRequest>,
     pub changed_panel_ids: BTreeSet<String>,
     pub config_changed: bool,
 }
@@ -38,7 +38,7 @@ pub struct PanelDispatchResult {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct PanelKeyboardResult {
     pub handled: bool,
-    pub actions: Vec<HostAction>,
+    pub actions: Vec<HostRequest>,
     pub changed_panel_ids: BTreeSet<String>,
     pub config_changed: bool,
 }

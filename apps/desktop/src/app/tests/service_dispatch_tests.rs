@@ -1,7 +1,7 @@
 //! service request から desktop host service handler へ届く経路を検証する。
 
 use desktop_support::{WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog};
-use panel_runtime::{HostAction, ServiceRequest, services::names};
+use panel_runtime::{HostRequest, ServiceRequest, services::names};
 use panel_workspace::WorkspaceUiState;
 
 use super::{
@@ -14,7 +14,7 @@ fn request_service_new_document_sized_updates_bitmap() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
 
     assert!(
-        app.execute_host_action(HostAction::RequestService(
+        app.execute_host_request(HostRequest::RequestService(
             ServiceRequest::new(names::PROJECT_NEW_DOCUMENT_SIZED)
                 .with_value("width", 128)
                 .with_value("height", 96),
@@ -30,7 +30,7 @@ fn request_service_save_project_enqueues_background_task() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
 
     assert!(
-        app.execute_host_action(HostAction::RequestService(ServiceRequest::new(
+        app.execute_host_request(HostRequest::RequestService(ServiceRequest::new(
             names::PROJECT_SAVE_CURRENT,
         )))
     );
@@ -57,7 +57,7 @@ fn request_service_save_workspace_preset_persists_catalog() {
     );
 
     assert!(
-        app.execute_host_action(HostAction::RequestService(
+        app.execute_host_request(HostRequest::RequestService(
             ServiceRequest::new(names::WORKSPACE_SAVE_PRESET)
                 .with_value("preset_id", "review")
                 .with_value("label", "Review"),
@@ -74,7 +74,7 @@ fn snapshot_create_service_increases_snapshot_count() {
     assert_eq!(app.snapshots.len(), 0);
 
     assert!(
-        app.execute_host_action(HostAction::RequestService(
+        app.execute_host_request(HostRequest::RequestService(
             ServiceRequest::new(names::SNAPSHOT_CREATE).with_value("label", "test-snap"),
         ))
     );
@@ -88,7 +88,7 @@ fn snapshot_restore_service_restores_document() {
     let id = app.snapshots.push(app.document.clone());
 
     assert!(
-        app.execute_host_action(HostAction::RequestService(
+        app.execute_host_request(HostRequest::RequestService(
             ServiceRequest::new(names::SNAPSHOT_RESTORE).with_value("snapshot_id", id),
         ))
     );
@@ -105,7 +105,7 @@ fn request_service_workspace_layout_set_panel_visibility_toggles_visibility() {
     );
 
     assert!(
-        app.execute_host_action(HostAction::RequestService(
+        app.execute_host_request(HostRequest::RequestService(
             ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
                 .with_value("panel_id", "builtin.tool-palette")
                 .with_value("visible", false),
@@ -134,7 +134,7 @@ fn request_service_workspace_layout_move_panel_reorders_layout() {
     assert!(before > 0, "前提: layers は先頭ではない (上に移動できる)");
 
     assert!(
-        app.execute_host_action(HostAction::RequestService(
+        app.execute_host_request(HostRequest::RequestService(
             ServiceRequest::new(names::WORKSPACE_LAYOUT_MOVE_PANEL)
                 .with_value("panel_id", "builtin.layers")
                 .with_value("direction", "up"),
@@ -152,14 +152,14 @@ fn request_service_koma_nav_add_and_select_changes_active_koma() {
     assert_eq!(app.document.active_koma_index(), 0);
 
     assert!(
-        app.execute_host_action(HostAction::RequestService(ServiceRequest::new(
+        app.execute_host_request(HostRequest::RequestService(ServiceRequest::new(
             names::KOMA_NAV_ADD,
         )))
     );
     assert_eq!(app.document.active_koma_index(), 1);
 
     assert!(
-        app.execute_host_action(HostAction::RequestService(
+        app.execute_host_request(HostRequest::RequestService(
             ServiceRequest::new(names::KOMA_NAV_SELECT).with_value("index", 0),
         ))
     );
@@ -172,7 +172,7 @@ fn request_service_reload_pen_presets_refreshes_document_state() {
     app.document.session.pen_presets.clear();
 
     assert!(
-        app.execute_host_action(HostAction::RequestService(ServiceRequest::new(
+        app.execute_host_request(HostRequest::RequestService(ServiceRequest::new(
             names::TOOL_CATALOG_RELOAD_PEN_PRESETS,
         )))
     );

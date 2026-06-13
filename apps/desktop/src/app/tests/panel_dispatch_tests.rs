@@ -17,7 +17,7 @@ fn panel_dispatch_keyboard_path_activates_save_action() {
         app.panel_workspace
             .focus_panel_node("builtin.app-actions", "app.save")
     );
-    // app.save は emit_service 経由で保存サービスを発行するため、HostAction が
+    // app.save は emit_service 経由で保存サービスを発行するため、HostRequest が
     // 生成され activate_focused_panel_control は true を返す。
     // pending_jobs でジョブがキューされていることを確認する。
     assert!(app.activate_focused_panel_control());

@@ -1,9 +1,7 @@
 //! パネル入力中継とホストアクション適用を集約する。
 
 use geometry::{PanelSurfacePoint, WindowPoint, WindowRect};
-use panel_runtime::{
-    HostAction, PanelEvent, PanelMoveDirection, ResizeHandle, ServiceRequest, services::names,
-};
+use panel_runtime::{HostRequest, PanelEvent, ResizeHandle};
 
 use super::DesktopApp;
 /// パネル移動ドラッグ中の被操作パネル情報を保持する。
@@ -211,41 +209,23 @@ impl DesktopApp {
         }
         changed |= !runtime.changed_panel_ids.is_empty();
         for action in runtime.actions {
-            changed |= self.execute_host_action(action);
+            changed |= self.execute_host_request(action);
         }
         self.request_panel_reconcile_if_changed(changed)
     }
 
-    pub(crate) fn execute_host_action(&mut self, action: HostAction) -> bool {
+    pub(crate) fn execute_host_request(&mut self, request: HostRequest) -> bool {
         // BL-065: バックグラウンドジョブの回収は prepare_present_frame に一本化する。
-        // host action ごとの二重回収は廃止 (毎フレーム冒頭で 1 回だけ回収される)。
-        match action {
-            HostAction::DispatchDocumentCommand(command) => {
+        // host request ごとの二重回収は廃止 (毎フレーム冒頭で 1 回だけ回収される)。
+        //
+        // P3: パネル可視性/並び替えは translator 経由で workspace_layout サービス
+        // (`RequestService`) に一本化済み。専用 variant は廃止した。
+        match request {
+            HostRequest::DispatchDocumentCommand(command) => {
                 self.apply_document_command(&command)
             }
-            HostAction::DispatchSessionCommand(command) => self.apply_session_command(&command),
-            HostAction::RequestService(request) => self.execute_service_request(request),
-            // BL-062: パネル可視性/並び替えは workspace_layout サービス経路に一本化する。
-            // panel-api の専用 variant は B6 (P3) で削除予定だが、B4 では service へ流す。
-            HostAction::MovePanel {
-                panel_id,
-                direction,
-            } => {
-                let direction = match direction {
-                    PanelMoveDirection::Up => "up",
-                    PanelMoveDirection::Down => "down",
-                };
-                self.execute_service_request(
-                    ServiceRequest::new(names::WORKSPACE_LAYOUT_MOVE_PANEL)
-                        .with_value("panel_id", panel_id)
-                        .with_value("direction", direction),
-                )
-            }
-            HostAction::SetPanelVisibility { panel_id, visible } => self.execute_service_request(
-                ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
-                    .with_value("panel_id", panel_id)
-                    .with_value("visible", visible),
-            ),
+            HostRequest::DispatchSessionCommand(command) => self.apply_session_command(&command),
+            HostRequest::RequestService(request) => self.execute_service_request(request),
         }
     }
 
@@ -254,7 +234,7 @@ impl DesktopApp {
     }
 
     /// パネルイベントを dispatch し、`(changed, produced_action)` を返す。
-    /// `produced_action` は何らかの `HostAction` が発行されたかを示す
+    /// `produced_action` は何らかの `HostRequest` が発行されたかを示す
     /// (`activate_focused_panel_control` の戻り値判定に使う)。
     fn dispatch_panel_event_tracking_actions(&mut self, event: PanelEvent) -> (bool, bool) {
         let mut changed = false;
@@ -278,7 +258,7 @@ impl DesktopApp {
 
         for action in actions {
             produced_action = true;
-            needs_redraw |= self.execute_host_action(action);
+            needs_redraw |= self.execute_host_request(action);
         }
 
         if self.panel_runtime.persistent_panel_configs() != previous_configs {
@@ -324,7 +304,7 @@ impl DesktopApp {
         self.request_panel_reconcile_if_changed(changed)
     }
 
-    /// フォーカス中のパネルコントロールを起動し、`HostAction` が発行されたら `true` を返す。
+    /// フォーカス中のパネルコントロールを起動し、`HostRequest` が発行されたら `true` を返す。
     pub(crate) fn activate_focused_panel_control(&mut self) -> bool {
         let Some(event) = self.panel_workspace.activate_focused() else {
             return false;
