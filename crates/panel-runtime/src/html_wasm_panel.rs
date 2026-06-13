@@ -12,7 +12,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use document_model::{Document, DocumentCommand};
+use document_model::DocumentCommand;
 use crate::host_request::{HostRequest, PanelEvent};
 use crate::services::ServiceRequest;
 use panel_html::{
@@ -21,9 +21,7 @@ use panel_html::{
 };
 use crate::request_translation::TranslatedRequest;
 use crate::translator_registry::TranslatorRegistry;
-use crate::host_state::{
-    EMPTY_WORKSPACE_PANELS_JSON, HostState, HostStateCache, build_host_state,
-};
+use crate::host_state::HostStateBuild;
 use crate::meta::PanelMeta;
 use panel_wasm_host::{PanelWasmHostError, PanelWasmInstance};
 use serde_json::{Value, json};
@@ -36,14 +34,18 @@ pub struct HtmlWasmPanel {
     wasm: PanelWasmInstance,
     /// Wasm 側が保持する state (panel_init で初期化、handler 戻り値の patch を蓄積)。
     state: Value,
-    /// host state のキャッシュ。
-    host_state_cache: HostStateCache,
     /// 最新の host state (handler 内 host_get_* で利用される)。
+    /// `update` が呼ばれるたびに最新値へ更新される (DOM 再 render の有無に関わらず)。
     last_host_state: Value,
-    /// ワークスペースに登録されたパネル一覧 (id / title / visible) を JSON 化したもの。
-    /// `PanelRuntime::set_workspace_panels_json` 経由で更新され、次回 `update` で
-    /// host state に含められる。builtin.workspace-layout 用。
-    workspace_panels_json: String,
+    /// meta.json で宣言された購読 host state セクション (BL-093)。
+    /// 空の場合は全セクション購読 (どれか変われば再 render)。
+    subscribes: Vec<String>,
+    /// 初回 `update` を購読 delta に関わらず必ず render させるフラグ (BL-093)。
+    ///
+    /// section registry の revision キャッシュはパネル横断で共有されるため、
+    /// 後から登録されたパネルでは「購読セクションに変化なし」と判定され得る。
+    /// 初回だけは last_host_state が空 (`{}`) で DOM が未同期のため、必ず render する。
+    needs_initial_render: bool,
     /// Wasm が `panel_handle_keyboard` を export しているか (load 時に確定)。
     /// `handles_keyboard_event` は `&self` のため、`PanelWasmInstance::has_handler`
     /// (`&mut self`) を毎回呼べずキャッシュする。
@@ -108,9 +110,9 @@ impl HtmlWasmPanel {
             view,
             wasm,
             state,
-            host_state_cache: HostStateCache::default(),
             last_host_state: json!({}),
-            workspace_panels_json: EMPTY_WORKSPACE_PANELS_JSON.to_string(),
+            subscribes: meta.subscribes,
+            needs_initial_render: true,
             has_keyboard_handler,
             translator_registry: Arc::new(default_translator_registry()),
         })
@@ -128,10 +130,9 @@ impl HtmlWasmPanel {
         Arc::as_ptr(&self.translator_registry)
     }
 
-    /// ワークスペースに登録されたパネル一覧 JSON を更新する。
-    /// 次回 `update` で host state に反映される。
-    pub fn set_workspace_panels_json(&mut self, json: String) {
-        self.workspace_panels_json = json;
+    /// meta.json で宣言された購読セクション (BL-093)。空 = 全セクション購読。
+    pub fn subscribes(&self) -> &[String] {
+        &self.subscribes
     }
 
     /// panel.meta.json の `default_size` を返す。
@@ -234,26 +235,37 @@ impl HtmlWasmPanel {
         &self.title
     }
 
-    pub fn update(&mut self, document: &Document, host_state: HostState) {
-        let host_state = build_host_state(
-            document,
-            host_state,
-            &mut self.host_state_cache,
-            &self.workspace_panels_json,
-        );
-        self.last_host_state = host_state.clone();
+    /// 合成済み host state を受け取り、購読セクションが変化していれば再 render する。
+    ///
+    /// `last_host_state` は再 render の有無に関わらず常に最新値へ更新する
+    /// (handler 内 `host_get_*` が最新データを読めるように)。DOM mutation
+    /// (`sync_host`) は購読セクション (`subscribes`) のいずれかが今回変化した
+    /// 時のみ実行する (BL-093: revision ベース購読)。
+    ///
+    /// 戻り値: DOM を再 render した場合 true。
+    pub fn update(&mut self, host_state: &HostStateBuild) -> bool {
+        self.last_host_state = host_state.value.clone();
+        let force = self.needs_initial_render;
+        self.needs_initial_render = false;
+        if !force && !host_state.affects(&self.subscribes) {
+            return false;
+        }
         if !self.wasm.supports_sync_host() {
-            return;
+            return false;
         }
         let state = &self.state;
+        let host_state_value = &self.last_host_state;
         let outcome = self
             .wasm
             .call_with_dom(self.view.document_mut(), |rt| {
-                rt.sync_host(state, &host_state)
+                rt.sync_host(state, host_state_value)
             });
         if let Ok(result) = outcome {
             panel_protocol::apply_patches(&mut self.state, &result.state_patch);
             self.view.mark_mutated();
+            true
+        } else {
+            false
         }
     }
 

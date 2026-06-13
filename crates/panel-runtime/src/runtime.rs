@@ -2,7 +2,9 @@ use crate::html_wasm_panel::HtmlWasmPanel;
 use crate::persistent_config::{collect_persistent_panel_configs, restore_persistent_panel_configs};
 use crate::request_translation::register_default_translators;
 use crate::translator_registry::TranslatorRegistry;
-use crate::host_state::{EMPTY_WORKSPACE_PANELS_JSON, HostState};
+use crate::host_state::{
+    EMPTY_WORKSPACE_PANELS_JSON, HostState, HostStateContext, HostStateRegistry,
+};
 use crate::panel_input::PanelPointerInput;
 use document_model::Document;
 use crate::host_request::{HostRequest, PanelEvent};
@@ -70,9 +72,13 @@ pub struct PanelRuntime {
     /// GPU コンテキスト（device/queue/renderer/scene scratch）。
     gpu_ctx: Option<PanelGpuContext>,
     /// `workspace_layout` の登録パネル一覧 (id / title / visible) を表現する JSON。
-    /// `sync_document_subset` の前に各 `HtmlWasmPanel` へ注入され、
-    /// host state の `workspace.panels_json` フィールドに反映される。
+    /// host state の `workspace` セクションへ供給され、`workspace.panels_json`
+    /// フィールドに反映される。builtin.workspace-layout 用。
     workspace_panels_json: String,
+    /// host state の section registry + revision キャッシュ (BL-093)。
+    /// `sync_document_subset` が 1 回だけ全セクションを合成し、変化したセクションを
+    /// 各パネルの購読判定に使う。
+    host_state_registry: HostStateRegistry,
     /// `RequestDescriptor` → host 経路の翻訳に使う共有 registry (BL-061)。
     /// 登録は一箇所 (`PanelRuntime::new`) で行い、登録した各パネルへ注入する。
     translator_registry: Arc<TranslatorRegistry>,
@@ -94,6 +100,7 @@ impl PanelRuntime {
             dirty_panels: BTreeSet::new(),
             gpu_ctx: None,
             workspace_panels_json: EMPTY_WORKSPACE_PANELS_JSON.to_string(),
+            host_state_registry: HostStateRegistry::default(),
             translator_registry: Arc::new(translator_registry),
         }
     }
@@ -101,6 +108,11 @@ impl PanelRuntime {
     /// 共有 translator registry への参照を返す (起動時 assert / 診断用)。
     pub fn translator_registry(&self) -> &Arc<TranslatorRegistry> {
         &self.translator_registry
+    }
+
+    /// host state registry に登録されたセクションキー一覧 (起動時 assert / 診断用)。
+    pub fn host_state_section_keys(&self) -> Vec<&'static str> {
+        self.host_state_registry.section_keys()
     }
 
     /// ワークスペース登録パネル一覧 JSON を更新する。
@@ -458,26 +470,34 @@ impl PanelRuntime {
         }
     }
 
-    /// 現在の値を ドキュメント subset へ変換する。
+    /// dirty パネルへ合成済み host state を配り、購読セクションが変化したパネルのみ
+    /// 再 render する (BL-093)。
     ///
-    /// ADR 014 以降、HTML パネル経路では GPU 側 `render_dirty` が真の dirty 判定を持つため、
-    /// `update` が呼ばれたパネルは無条件で `changed_panels` に入れる。
+    /// host state は section registry が 1 回だけ全セクションを合成する
+    /// (revision キャッシュにより変化したセクションのみ再シリアライズ)。各パネルは
+    /// `subscribes` (meta.json) で宣言した購読セクションの revision が変化した
+    /// 時のみ DOM を再 render する。
+    ///
+    /// `changed_panels` には「実際に DOM を再 render したパネル」のみを入れる。
     fn sync_document_subset(
         &mut self,
         document: &Document,
         panel_ids: Option<&BTreeSet<String>>,
         host_state: HostState,
     ) -> BTreeSet<String> {
-        let workspace_json = self.workspace_panels_json.clone();
+        let build = self.host_state_registry.build(&HostStateContext {
+            document,
+            host_state,
+            workspace_panels_json: &self.workspace_panels_json,
+        });
         let mut changed_panels = BTreeSet::new();
         for panel in &mut self.panels {
             if panel_ids.is_some_and(|panel_ids| !panel_ids.contains(panel.id())) {
                 continue;
             }
-            // host state 組立用の workspace 情報を注入する。
-            panel.set_workspace_panels_json(workspace_json.clone());
-            panel.update(document, host_state);
-            changed_panels.insert(panel.id().to_string());
+            if panel.update(&build) {
+                changed_panels.insert(panel.id().to_string());
+            }
         }
         changed_panels
     }
