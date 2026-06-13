@@ -78,7 +78,7 @@ impl BrushPipeline {
     /// 指定スタンプ位置群（コマローカル座標）をレイヤーテクスチャへ描画する。
     ///
     /// - `params.mode == StrokeMode::Erase` なら消去シェーダーを使用する。
-    /// - `positions` は `paint_engine::compute_stamp_positions` の戻り値をそのまま渡す。
+    /// - `positions` は `PaintPlan::Stroke.stamps` (コマローカル座標列) をそのまま渡す。
     /// - `positions` が空の場合は何もしない。
     pub fn dispatch_stroke(
         &self,

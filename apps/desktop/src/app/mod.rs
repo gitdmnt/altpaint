@@ -41,7 +41,7 @@ pub(crate) use crate::features::panel_interaction::PanelDragState;
 use crate::features::panel_interaction::PanelInteractionState;
 use self::invalidation::PresentFrameUpdate;
 use crate::features::koma::KomaGesture;
-use crate::features::paint::{EditHistory, PendingStroke};
+use crate::features::paint::{CpuPaintBackend, EditHistory, GpuPaintBackend};
 use crate::features::snapshots::DocumentSnapshotStore;
 use crate::present_quads::DesktopLayout;
 use paint_engine::CanvasInputState;
@@ -64,12 +64,12 @@ pub(crate) struct CachedCanvasViewGeometry {
 /// まとめる。`cpu_canvas_snapshot` / `hover_canvas_position` / `cached_canvas_view_geometry`
 /// は CPU 表示経路 (BL-136) の派生キャッシュであり paint feature が正本を所有する。
 pub(crate) struct PaintState {
-    /// ペイント計算機 (状態を持たない純計算)。
-    pub(crate) paint_engine: paint_engine::PaintEngine,
     /// ペイント系ジェスチャの進行中状態。
     pub(crate) canvas_input: CanvasInputState,
-    /// ストローク中のビットマップ差分追跡状態。
-    pub(crate) pending_stroke: Option<PendingStroke>,
+    /// CPU 参照バックエンド (GPU 不在時の描画経路。BL-131 / BL-136)。
+    pub(crate) cpu_backend: CpuPaintBackend,
+    /// GPU バックエンド (GPU 有効時の描画経路。BL-131)。
+    pub(crate) gpu_backend: GpuPaintBackend,
     /// 型付き patch (Cpu/Gpu) を積む編集履歴 (BL-076)。
     pub(crate) history: EditHistory,
     /// CPU 表示用のキャンバス合成スナップショット (BL-136)。
@@ -83,9 +83,9 @@ pub(crate) struct PaintState {
 impl PaintState {
     fn new() -> Self {
         Self {
-            paint_engine: paint_engine::PaintEngine::new(),
             canvas_input: CanvasInputState::default(),
-            pending_stroke: None,
+            cpu_backend: CpuPaintBackend::new(),
+            gpu_backend: GpuPaintBackend::new(),
             history: EditHistory::new(),
             cpu_canvas_snapshot: None,
             hover_canvas_position: None,

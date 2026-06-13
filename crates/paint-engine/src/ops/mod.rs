@@ -4,7 +4,7 @@ pub(crate) mod lasso_fill;
 pub(crate) mod stamp;
 pub(crate) mod stroke;
 
-pub use stroke::compute_stamp_positions;
+pub(crate) use stroke::compute_stamp_positions;
 pub(crate) use stamp::stamp_dimensions;
 pub(crate) use stroke::stroke_dirty_rect;
 

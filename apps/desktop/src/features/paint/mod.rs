@@ -8,12 +8,13 @@
 //! D9: `app/services/project_io.rs` のペイント実行+履歴部 (8 割) を
 //! `execute` へ分離した。I/O 部 (2 割) は features/project へ。
 
+mod backend;
 mod execute;
 mod history;
 mod history_service;
 mod preview;
 
-pub(crate) use execute::PendingStroke;
+pub(crate) use backend::{CpuPaintBackend, GpuPaintBackend};
 pub(crate) use history::{BitmapPatch, EditHistory, GpuRegionPatch, PaintPatch};
 pub(crate) use history_service::handle_history_service_request;
 pub(crate) use preview::brush_preview_dirty_rect;

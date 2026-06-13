@@ -75,7 +75,7 @@ fn stroke_segment_plans_stamp_positions_with_matching_dirty() {
 
     let expected_positions = {
         let resolved = crate::build_paint_context(&document, &input).expect("context");
-        crate::compute_stamp_positions(from, to, &resolved.context)
+        crate::ops::compute_stamp_positions(from, to, &resolved.context)
     };
 
     match plan.op {

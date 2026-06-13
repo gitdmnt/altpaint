@@ -9,10 +9,9 @@ use super::{composite, stamp};
 /// スタンプ間隔の基準サイズは context 解決時に筆圧カーブ 1 回適用済みの
 /// `resolved_size` を使う (BL-030)。
 ///
-/// `apps/desktop` からクレート外で呼べるよう `pub` で公開する。
-/// Phase 8B〜8D の暫定措置として GPU ディスパッチ呼び出し側が使用する。
-/// Phase 8E（CPU bitmap 廃止）以降は `gpu-paint` が直接 dispatch を担うため削除予定。
-pub fn compute_stamp_positions(
+/// BL-132: クレート内専用。スタンプ列は `PaintPlan::Stroke.stamps` として DTO 化済みで、
+/// `apps/desktop` は計画の `stamps` を読むだけ (この関数を直接呼ばない)。
+pub(crate) fn compute_stamp_positions(
     from: KomaLocalPoint,
     to: KomaLocalPoint,
     context: &PaintPluginContext<'_>,

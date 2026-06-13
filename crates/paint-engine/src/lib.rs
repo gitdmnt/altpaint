@@ -17,5 +17,4 @@ pub use painting::{BUILTIN_BITMAP_BACKEND_ID, PaintInput, PaintPluginContext};
 pub use plan::{PaintOp, PaintPlan, StampPoint, plan_paint};
 pub use gesture::{CanvasGestureUpdate, CanvasPointerAction, advance_pointer_gesture};
 pub use input_state::CanvasInputState;
-pub use ops::compute_stamp_positions;
 pub use engine::PaintEngine;

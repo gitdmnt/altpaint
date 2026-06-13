@@ -1,7 +1,6 @@
 //! present 向け dirty 状態と更新指示を扱う。
 
 use geometry::{MergeInSpace, PageDirtyRect, WindowRect};
-use raster::BitmapEdit;
 
 use super::DesktopApp;
 
@@ -204,12 +203,6 @@ impl DesktopApp {
                 .map_or(dirty, |existing| existing.merge(dirty)),
         );
         true
-    }
-
-    pub(crate) fn apply_bitmap_edits(&mut self, edits: Vec<BitmapEdit>) -> bool {
-        self.document
-            .apply_bitmap_edits_to_active_layer(&edits)
-            .is_some_and(|dirty| self.append_canvas_dirty_rect(dirty))
     }
 
     /// temp オーバーレイ (L3) の dirty rect を蓄積する。
