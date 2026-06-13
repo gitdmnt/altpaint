@@ -5,9 +5,13 @@ mod gpu_tests {
     use std::sync::Arc;
 
     use crate::{
-        CompositeLayerEntry, BrushPipeline, LayerTextureStore, FillPipeline,
+        CompositeLayerEntry, BrushPipeline, KomaTextureId, LayerTextureStore, FillPipeline,
         CompositePipeline,
     };
+
+    /// テスト用のコマキー (任意の u64 値)。
+    const KOMA_A: KomaTextureId = KomaTextureId(1);
+    const KOMA_B: KomaTextureId = KomaTextureId(2);
 
     /// wgpu アダプターとデバイスを生成するヘルパー。GPU がない CI では `None` を返す。
     /// TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES をアダプターがサポートする場合は要求する。
@@ -46,10 +50,10 @@ mod gpu_tests {
                 return;
             };
             let mut pool = LayerTextureStore::new(device, queue);
-            pool.create_layer_texture("koma-1", 0, 4, 4);
+            pool.create_layer_texture(KOMA_A, 0, 4, 4);
             let pixels = vec![128u8; 4 * 4 * 4];
-            pool.upload_cpu_bitmap("koma-1", 0, &pixels);
-            assert!(pool.get("koma-1", 0).is_some());
+            pool.upload_cpu_bitmap(KOMA_A, 0, &pixels);
+            assert!(pool.get(KOMA_A, 0).is_some());
         });
     }
 
@@ -61,10 +65,10 @@ mod gpu_tests {
                 return;
             };
             let mut pool = LayerTextureStore::new(device, queue);
-            assert!(pool.get("p1", 0).is_none());
-            pool.create_layer_texture("p1", 0, 8, 8);
-            assert!(pool.get("p1", 0).is_some());
-            assert!(pool.get("p1", 1).is_none());
+            assert!(pool.get(KOMA_A, 0).is_none());
+            pool.create_layer_texture(KOMA_A, 0, 8, 8);
+            assert!(pool.get(KOMA_A, 0).is_some());
+            assert!(pool.get(KOMA_A, 1).is_none());
         });
     }
 
@@ -165,26 +169,26 @@ mod gpu_tests {
                 return;
             };
             let mut pool = LayerTextureStore::new(device, queue);
-            pool.create_layer_texture("p", 0, 4, 4);
+            pool.create_layer_texture(KOMA_A, 0, 4, 4);
             let mut pixels = vec![0u8; 4 * 4 * 4];
             for (i, px) in pixels.iter_mut().enumerate() {
                 *px = (i % 251) as u8;
             }
-            pool.upload_cpu_bitmap("p", 0, &pixels);
+            pool.upload_cpu_bitmap(KOMA_A, 0, &pixels);
 
             // dirty 領域 (1,1)-(2x2) をスナップショット
             let snap = pool
-                .snapshot_region("p", 0, geometry::PageDirtyRect::new(1, 1, 2, 2))
+                .snapshot_region(KOMA_A, 0, geometry::PageDirtyRect::new(1, 1, 2, 2))
                 .expect("snapshot");
 
             // レイヤーを別のピクセルで上書き
             let zeros = vec![0u8; 4 * 4 * 4];
-            pool.upload_cpu_bitmap("p", 0, &zeros);
+            pool.upload_cpu_bitmap(KOMA_A, 0, &zeros);
 
             // snap を元の位置へ復元
-            pool.restore_region("p", 0, geometry::KomaLocalPoint::new(1, 1), &snap);
+            pool.restore_region(KOMA_A, 0, geometry::KomaLocalPoint::new(1, 1), &snap);
 
-            let (w, h, out) = pool.read_back_full("p", 0).expect("readback");
+            let (w, h, out) = pool.read_back_full(KOMA_A, 0).expect("readback");
             assert_eq!((w, h), (4, 4));
             // (1,1)-(2x2) は元のピクセル、それ以外は 0 であること
             for y in 0..4 {
@@ -209,13 +213,13 @@ mod gpu_tests {
                 return;
             };
             let mut pool = LayerTextureStore::new(device, queue);
-            pool.create_layer_texture("p", 0, 4, 4);
-            pool.upload_cpu_bitmap("p", 0, &[0u8; 4 * 4 * 4]);
+            pool.create_layer_texture(KOMA_A, 0, 4, 4);
+            pool.upload_cpu_bitmap(KOMA_A, 0, &[0u8; 4 * 4 * 4]);
 
             let region = vec![255u8; 2 * 2 * 4];
-            pool.upload_region("p", 0, geometry::PageDirtyRect::new(1, 1, 2, 2), &region);
+            pool.upload_region(KOMA_A, 0, geometry::PageDirtyRect::new(1, 1, 2, 2), &region);
 
-            let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
+            let (_, _, out) = pool.read_back_full(KOMA_A, 0).expect("readback");
             for y in 0..4 {
                 for x in 0..4 {
                     let idx = (y * 4 + x) * 4;
@@ -237,14 +241,14 @@ mod gpu_tests {
                 return;
             };
             let mut pool = LayerTextureStore::new(device, queue);
-            pool.create_layer_texture("p", 0, 4, 4);
-            pool.upload_cpu_bitmap("p", 0, &[0u8; 4 * 4 * 4]);
+            pool.create_layer_texture(KOMA_A, 0, 4, 4);
+            pool.upload_cpu_bitmap(KOMA_A, 0, &[0u8; 4 * 4 * 4]);
 
             let region = vec![128u8; 2 * 2 * 4];
             let tex = pool.create_snapshot_texture(2, 2, &region);
-            pool.restore_region("p", 0, geometry::KomaLocalPoint::new(1, 1), &tex);
+            pool.restore_region(KOMA_A, 0, geometry::KomaLocalPoint::new(1, 1), &tex);
 
-            let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
+            let (_, _, out) = pool.read_back_full(KOMA_A, 0).expect("readback");
             for y in 0..4 {
                 for x in 0..4 {
                     let idx = (y * 4 + x) * 4;
@@ -267,8 +271,8 @@ mod gpu_tests {
             };
             let pool = LayerTextureStore::new(device, queue);
             let pixels = vec![0u8; 4 * 4 * 4];
-            pool.upload_cpu_bitmap("nonexistent", 0, &pixels);
-            assert!(pool.get("nonexistent", 0).is_none());
+            pool.upload_cpu_bitmap(KOMA_A, 0, &pixels);
+            assert!(pool.get(KOMA_A, 0).is_none());
         });
     }
 
@@ -286,7 +290,7 @@ mod gpu_tests {
                 // 4x4 キャンバス: 左 2 列が透明の連結領域、右 2 列は非連結で別色で埋める。
                 // 期待: 左 2 列のみが赤 (255,0,0,255) に塗られる。
                 let mut pool = LayerTextureStore::new(device.clone(), queue.clone());
-                pool.create_layer_texture("p", 0, 4, 4);
+                pool.create_layer_texture(KOMA_A, 0, 4, 4);
                 let mut pixels = vec![0u8; 4 * 4 * 4];
                 for y in 0..4 {
                     for x in 2..4 {
@@ -297,11 +301,11 @@ mod gpu_tests {
                         pixels[idx + 3] = 255;
                     }
                 }
-                pool.upload_cpu_bitmap("p", 0, &pixels);
+                pool.upload_cpu_bitmap(KOMA_A, 0, &pixels);
 
                 let ctx = crate::GpuCanvasContext::new(device, queue);
                 let fill = FillPipeline::new(&ctx);
-                let target = pool.get("p", 0).unwrap();
+                let target = pool.get(KOMA_A, 0).unwrap();
                 fill.dispatch_flood_fill(
                     target,
                     target,
@@ -309,7 +313,7 @@ mod gpu_tests {
                     [1.0, 0.0, 0.0, 1.0],
                 );
 
-                let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
+                let (_, _, out) = pool.read_back_full(KOMA_A, 0).expect("readback");
                 // Left column (x=0, x=1) should be filled red; right columns unchanged.
                 for y in 0..4 {
                     for x in 0..2 {
@@ -339,13 +343,13 @@ mod gpu_tests {
                     return None;
                 }
                 let mut pool = LayerTextureStore::new(device.clone(), queue.clone());
-                pool.create_layer_texture("p", 0, 8, 8);
+                pool.create_layer_texture(KOMA_A, 0, 8, 8);
                 let pixels = vec![0u8; 8 * 8 * 4];
-                pool.upload_cpu_bitmap("p", 0, &pixels);
+                pool.upload_cpu_bitmap(KOMA_A, 0, &pixels);
 
                 let ctx = crate::GpuCanvasContext::new(device, queue);
                 let fill = FillPipeline::new(&ctx);
-                let target = pool.get("p", 0).unwrap();
+                let target = pool.get(KOMA_A, 0).unwrap();
                 // 三角形 (0,0), (7,0), (0,7) — 左上半分が内側。
                 // 半開矩形 (0, 0, 8, 8) は包括 AABB (0, 0, 7, 7) に対応。
                 let polygon = vec![(0.0, 0.0), (7.0, 0.0), (0.0, 7.0)];
@@ -356,7 +360,7 @@ mod gpu_tests {
                     [0.0, 1.0, 0.0, 1.0],
                 );
 
-                let (_, _, out) = pool.read_back_full("p", 0).expect("readback");
+                let (_, _, out) = pool.read_back_full(KOMA_A, 0).expect("readback");
                 // (1,1) は内部 → 緑。(6,6) は外部 → 変更なし。
                 let idx_in = (8 + 1) * 4;
                 assert_eq!(out[idx_in + 1], 255, "interior green channel");
@@ -379,8 +383,8 @@ mod gpu_tests {
                     return None;
                 }
                 let mut pool = LayerTextureStore::new(device.clone(), queue.clone());
-                pool.ensure_composite_texture("p", 4, 4);
-                pool.create_layer_texture("p", 0, 4, 4);
+                pool.ensure_composite_texture(KOMA_A, 4, 4);
+                pool.create_layer_texture(KOMA_A, 0, 4, 4);
                 let mut pixels = vec![0u8; 4 * 4 * 4];
                 for y in 0..4 {
                     for x in 0..4 {
@@ -391,12 +395,12 @@ mod gpu_tests {
                         pixels[idx + 3] = 255;
                     }
                 }
-                pool.upload_cpu_bitmap("p", 0, &pixels);
+                pool.upload_cpu_bitmap(KOMA_A, 0, &pixels);
 
                 let ctx = crate::GpuCanvasContext::new(device, queue);
                 let compositor = CompositePipeline::new(&ctx);
-                let composite = pool.get_composite("p").unwrap();
-                let layer = pool.get("p", 0).unwrap();
+                let composite = pool.get_composite(KOMA_A).unwrap();
+                let layer = pool.get(KOMA_A, 0).unwrap();
                 compositor.recomposite(
                     composite,
                     &[CompositeLayerEntry {
@@ -408,7 +412,7 @@ mod gpu_tests {
                     geometry::PageDirtyRect::new(0, 0, 4, 4),
                 );
 
-                let (_, _, out) = pool.read_back_composite("p").expect("readback");
+                let (_, _, out) = pool.read_back_composite(KOMA_A).expect("readback");
                 let idx = (4 + 1) * 4;
                 assert_eq!(out[idx], 100);
                 assert_eq!(out[idx + 1], 150);
@@ -431,16 +435,16 @@ mod gpu_tests {
                     return None;
                 }
                 let mut pool = LayerTextureStore::new(device.clone(), queue.clone());
-                pool.ensure_composite_texture("p", 4, 4);
-                pool.create_layer_texture("p", 0, 4, 4);
+                pool.ensure_composite_texture(KOMA_A, 4, 4);
+                pool.create_layer_texture(KOMA_A, 0, 4, 4);
                 // Fill with solid red.
                 let pixels: Vec<u8> = (0..16).flat_map(|_| [255u8, 0, 0, 255]).collect();
-                pool.upload_cpu_bitmap("p", 0, &pixels);
+                pool.upload_cpu_bitmap(KOMA_A, 0, &pixels);
 
                 let ctx = crate::GpuCanvasContext::new(device, queue);
                 let compositor = CompositePipeline::new(&ctx);
-                let composite = pool.get_composite("p").unwrap();
-                let layer = pool.get("p", 0).unwrap();
+                let composite = pool.get_composite(KOMA_A).unwrap();
+                let layer = pool.get(KOMA_A, 0).unwrap();
                 compositor.recomposite(
                     composite,
                     &[CompositeLayerEntry {
@@ -452,7 +456,7 @@ mod gpu_tests {
                     geometry::PageDirtyRect::new(0, 0, 4, 4),
                 );
 
-                let (_, _, out) = pool.read_back_composite("p").expect("readback");
+                let (_, _, out) = pool.read_back_composite(KOMA_A).expect("readback");
                 // All pixels should be cleared (alpha = 0) since the only layer is invisible.
                 for a in out.chunks(4).map(|c| c[3]) {
                     assert_eq!(a, 0, "invisible layer should leave composite transparent");
@@ -473,15 +477,15 @@ mod gpu_tests {
             };
             let mut pool = LayerTextureStore::new(device, queue);
 
-            // 別コマ "other" を 2 レイヤーで登録しておく (差分同期で触られないこと)。
-            pool.create_layer_texture("other", 0, 4, 4);
-            pool.create_layer_texture("other", 1, 4, 4);
-            assert_eq!(pool.layer_count_for_koma("other"), 2);
+            // 別コマ KOMA_B を 2 レイヤーで登録しておく (差分同期で触られないこと)。
+            pool.create_layer_texture(KOMA_B, 0, 4, 4);
+            pool.create_layer_texture(KOMA_B, 1, 4, 4);
+            assert_eq!(pool.layer_count_for_koma(KOMA_B), 2);
 
-            // 対象コマ "target" に 1 レイヤーを差分同期。
+            // 対象コマ KOMA_A に 1 レイヤーを差分同期。
             let pixels0 = vec![64u8; 4 * 4 * 4];
             pool.sync_koma_layers(
-                "target",
+                KOMA_A,
                 (4, 4),
                 &[crate::LayerUpload {
                     width: 4,
@@ -490,10 +494,10 @@ mod gpu_tests {
                     mask: None,
                 }],
             );
-            assert_eq!(pool.layer_count_for_koma("target"), 1);
-            assert!(pool.get_composite("target").is_some());
+            assert_eq!(pool.layer_count_for_koma(KOMA_A), 1);
+            assert!(pool.get_composite(KOMA_A).is_some());
             // 別コマは不変。
-            assert_eq!(pool.layer_count_for_koma("other"), 2);
+            assert_eq!(pool.layer_count_for_koma(KOMA_B), 2);
 
             // 同じコマを 2 レイヤー + マスク付きで再同期すると、古いエントリが
             // 置き換わりレイヤー数が更新される。
@@ -501,7 +505,7 @@ mod gpu_tests {
             let pixels2 = vec![16u8; 4 * 4 * 4];
             let mask = vec![200u8; 4 * 4];
             pool.sync_koma_layers(
-                "target",
+                KOMA_A,
                 (4, 4),
                 &[
                     crate::LayerUpload {
@@ -518,14 +522,14 @@ mod gpu_tests {
                     },
                 ],
             );
-            assert_eq!(pool.layer_count_for_koma("target"), 2);
-            assert!(pool.get_mask("target", 1).is_some());
-            assert!(pool.get_mask("target", 0).is_none());
+            assert_eq!(pool.layer_count_for_koma(KOMA_A), 2);
+            assert!(pool.get_mask(KOMA_A, 1).is_some());
+            assert!(pool.get_mask(KOMA_A, 0).is_none());
             // 別コマは依然不変。
-            assert_eq!(pool.layer_count_for_koma("other"), 2);
+            assert_eq!(pool.layer_count_for_koma(KOMA_B), 2);
 
             // レイヤー本体のピクセルが反映されていること。
-            let (_, _, out) = pool.read_back_full("target", 0).expect("readback");
+            let (_, _, out) = pool.read_back_full(KOMA_A, 0).expect("readback");
             assert!(out.iter().all(|&b| b == 32));
         });
     }

@@ -15,5 +15,5 @@ pub(crate) mod store;
 pub(crate) mod texture;
 
 pub use context::GpuCanvasContext;
-pub use store::{LayerTextureStore, LayerUpload};
+pub use store::{KomaTextureId, LayerTextureStore, LayerUpload};
 pub use texture::GpuRgbaTexture;

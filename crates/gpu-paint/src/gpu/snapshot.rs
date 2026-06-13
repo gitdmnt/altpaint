@@ -6,7 +6,7 @@
 
 use geometry::{KomaLocalPoint, PageDirtyRect};
 
-use crate::gpu::store::LayerTextureStore;
+use crate::gpu::store::{KomaTextureId, LayerTextureStore};
 
 impl LayerTextureStore {
     /// レイヤーテクスチャの指定矩形（コマローカル座標）を GPU-to-GPU でコピーして返す。
@@ -14,7 +14,7 @@ impl LayerTextureStore {
     /// ストローク前/後スナップショット作成用。返却テクスチャは `COPY_SRC | COPY_DST` を持つ。
     pub fn snapshot_region(
         &self,
-        koma_id: &str,
+        koma_id: KomaTextureId,
         layer_index: usize,
         region: PageDirtyRect,
     ) -> Option<wgpu::Texture> {
@@ -69,7 +69,7 @@ impl LayerTextureStore {
     /// Undo/Redo 用。`src` の `width/height` 全体をレイヤーへコピーする。
     pub fn restore_region(
         &self,
-        koma_id: &str,
+        koma_id: KomaTextureId,
         layer_index: usize,
         origin: KomaLocalPoint,
         src: &wgpu::Texture,

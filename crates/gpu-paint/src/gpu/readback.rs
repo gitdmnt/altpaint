@@ -4,7 +4,7 @@
 //! 保存経路でのみ呼ぶ (readback コストが大きいため)。
 
 use crate::gpu::context::GpuCanvasContext;
-use crate::gpu::store::LayerTextureStore;
+use crate::gpu::store::{KomaTextureId, LayerTextureStore};
 
 impl LayerTextureStore {
     /// レイヤーテクスチャ全体を CPU へ読み戻す（保存時のみ呼ぶ）。
@@ -13,7 +13,7 @@ impl LayerTextureStore {
     /// パディングバッファを介して読み戻し、パック済み RGBA8 列に詰め直して返す。
     pub fn read_back_full(
         &self,
-        koma_id: &str,
+        koma_id: KomaTextureId,
         layer_index: usize,
     ) -> Option<(u32, u32, Vec<u8>)> {
         let tex = self.get(koma_id, layer_index)?;
@@ -21,7 +21,7 @@ impl LayerTextureStore {
     }
 
     /// 合成テクスチャを CPU へ読み戻す（保存経路の `koma.composite_cache` 更新用）。
-    pub fn read_back_composite(&self, koma_id: &str) -> Option<(u32, u32, Vec<u8>)> {
+    pub fn read_back_composite(&self, koma_id: KomaTextureId) -> Option<(u32, u32, Vec<u8>)> {
         let tex = self.get_composite(koma_id)?;
         let w = tex.width;
         let h = tex.height;

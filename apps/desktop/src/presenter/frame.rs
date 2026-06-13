@@ -58,14 +58,14 @@ pub enum CanvasSurfaceSource<'a> {
     Cpu(TextureSource<'a>),
     /// 単一レイヤーの GPU テクスチャを直接 Present するパス。
     Gpu {
-        panel_id: &'a str,
+        koma_key: gpu_paint::KomaTextureId,
         layer_index: usize,
         width: u32,
         height: u32,
     },
     /// 多レイヤー合成済み GPU テクスチャ（composite texture）を Present するパス。
     GpuComposite {
-        panel_id: &'a str,
+        koma_key: gpu_paint::KomaTextureId,
         width: u32,
         height: u32,
     },
@@ -481,25 +481,25 @@ impl WgpuPresenter {
         surface_width: u32,
         surface_height: u32,
     ) {
-        let (panel_id, kind, layer_index, width, height) = match source {
+        let (koma_key, kind, layer_index, width, height) = match source {
             CanvasSurfaceSource::Gpu {
-                panel_id,
+                koma_key,
                 layer_index,
                 width,
                 height,
-            } => (panel_id, GpuBindGroupKind::Single, layer_index, width, height),
+            } => (koma_key, GpuBindGroupKind::Single, layer_index, width, height),
             CanvasSurfaceSource::GpuComposite {
-                panel_id,
+                koma_key,
                 width,
                 height,
-            } => (panel_id, GpuBindGroupKind::Composite, usize::MAX, width, height),
+            } => (koma_key, GpuBindGroupKind::Composite, usize::MAX, width, height),
             CanvasSurfaceSource::Cpu(_) => return,
         };
         let Some(pool) = pool else {
             return;
         };
         let needs_rebuild = self.canvas_gpu_bind_group_cache.as_ref().is_none_or(|c| {
-            c.panel_id != panel_id
+            c.koma_key != koma_key
                 || c.kind != kind
                 || c.layer_index != layer_index
                 || c.width != width
@@ -507,8 +507,8 @@ impl WgpuPresenter {
         });
         if needs_rebuild {
             let view = match kind {
-                GpuBindGroupKind::Single => pool.get_view(panel_id, layer_index),
-                GpuBindGroupKind::Composite => pool.get_composite_view(panel_id),
+                GpuBindGroupKind::Single => pool.get_view(koma_key, layer_index),
+                GpuBindGroupKind::Composite => pool.get_composite_view(koma_key),
             };
             let Some(view) = view else {
                 return;
@@ -540,7 +540,7 @@ impl WgpuPresenter {
             self.canvas_gpu_bind_group_cache = Some(GpuBindGroupCache {
                 bind_group,
                 uniform_buffer,
-                panel_id: panel_id.to_string(),
+                koma_key,
                 kind,
                 layer_index,
                 width,

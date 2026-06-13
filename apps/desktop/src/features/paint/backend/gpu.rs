@@ -53,10 +53,10 @@ fn build_region_patch(
     before_pixels: &raster::RgbaBitmap,
 ) -> Option<PaintPatch> {
     let gpu = target.gpu.as_ref()?;
-    let koma_str = target.koma_id.0.to_string();
+    let koma_key = gpu_paint::KomaTextureId(target.koma_id.0);
     let after = gpu
         .pool
-        .snapshot_region(&koma_str, target.layer_index, dirty)?;
+        .snapshot_region(koma_key, target.layer_index, dirty)?;
     let before = gpu.pool.create_snapshot_texture(
         dirty.width as u32,
         dirty.height as u32,
@@ -81,7 +81,7 @@ impl PaintBackend for GpuPaintBackend {
         let Some(gpu) = target.gpu.as_ref() else {
             return AppliedPaint::default();
         };
-        let koma_str = target.koma_id.0.to_string();
+        let koma_key = gpu_paint::KomaTextureId(target.koma_id.0);
 
         match &plan.op {
             PaintOp::Stroke {
@@ -90,7 +90,7 @@ impl PaintBackend for GpuPaintBackend {
                 color,
                 mode,
             } => {
-                let Some(texture) = gpu.pool.get(&koma_str, target.layer_index) else {
+                let Some(texture) = gpu.pool.get(koma_key, target.layer_index) else {
                     return AppliedPaint::default();
                 };
                 // ペン不透明度/アンチエイリアスは現コンテキストから取得する。
@@ -126,7 +126,7 @@ impl PaintBackend for GpuPaintBackend {
             }
             PaintOp::FloodFill { seed, color, .. } => {
                 // flood fill の dirty はレイヤー全域 (plan.dirty が保守的境界)。
-                self.apply_fill(target, &koma_str, plan.dirty, |gpu, source, dst| {
+                self.apply_fill(target, koma_key, plan.dirty, |gpu, source, dst| {
                     gpu.fill.dispatch_flood_fill(
                         source,
                         dst,
@@ -146,7 +146,7 @@ impl PaintBackend for GpuPaintBackend {
                 let aabb = lasso_aabb(polygon);
                 // lasso の dirty は polygon AABB (plan.dirty と同一)。スナップショット
                 // 領域もこれに絞る。
-                self.apply_fill(target, &koma_str, plan.dirty, move |gpu, _source, dst| {
+                self.apply_fill(target, koma_key, plan.dirty, move |gpu, _source, dst| {
                     gpu.fill.dispatch_lasso_fill(
                         dst,
                         &poly,
@@ -183,7 +183,7 @@ impl GpuPaintBackend {
     fn apply_fill(
         &mut self,
         target: &mut PaintTarget<'_>,
-        koma_str: &str,
+        koma_key: gpu_paint::KomaTextureId,
         dirty: PageDirtyRect,
         dispatch: impl FnOnce(
             &super::GpuPaintResources<'_>,
@@ -200,12 +200,12 @@ impl GpuPaintBackend {
         let Some(gpu) = target.gpu.as_ref() else {
             return AppliedPaint::default();
         };
-        let Some(dst) = gpu.pool.get(koma_str, target.layer_index) else {
+        let Some(dst) = gpu.pool.get(koma_key, target.layer_index) else {
             return AppliedPaint::default();
         };
         // source は composite があればそれ、無ければ active layer 自身。
         let source: &gpu_paint::GpuRgbaTexture =
-            gpu.pool.get_composite(koma_str).unwrap_or(dst);
+            gpu.pool.get_composite(koma_key).unwrap_or(dst);
         dispatch(gpu, source, dst);
 
         // after スナップショットを撮り GpuRegionPatch を作る。

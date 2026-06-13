@@ -49,7 +49,7 @@ impl DesktopApp {
                                 .capture_koma_layer_region(koma_id, layer_index, page_dirty)
                     {
                         pool.upload_region(
-                            &koma_id.0.to_string(),
+                            gpu_paint::KomaTextureId(koma_id.0),
                             layer_index,
                             page_dirty,
                             &region.pixels,
@@ -68,7 +68,7 @@ impl DesktopApp {
             })) => {
                 if let Some(pool) = self.layer_texture_store() {
                     pool.restore_region(
-                        &koma_id.0.to_string(),
+                        gpu_paint::KomaTextureId(koma_id.0),
                         layer_index,
                         geometry::KomaLocalPoint::new(dirty.x, dirty.y),
                         &before,
@@ -109,7 +109,7 @@ impl DesktopApp {
                                 .capture_koma_layer_region(koma_id, layer_index, page_dirty)
                     {
                         pool.upload_region(
-                            &koma_id.0.to_string(),
+                            gpu_paint::KomaTextureId(koma_id.0),
                             layer_index,
                             page_dirty,
                             &region.pixels,
@@ -128,7 +128,7 @@ impl DesktopApp {
             })) => {
                 if let Some(pool) = self.layer_texture_store() {
                     pool.restore_region(
-                        &koma_id.0.to_string(),
+                        gpu_paint::KomaTextureId(koma_id.0),
                         layer_index,
                         geometry::KomaLocalPoint::new(dirty.x, dirty.y),
                         &after,

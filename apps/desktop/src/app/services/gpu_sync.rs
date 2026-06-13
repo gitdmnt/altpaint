@@ -14,7 +14,7 @@ impl DesktopApp {
             return;
         };
         let pool = &gpu.pool;
-        let layer_keys: Vec<(document_model::KomaId, String, usize)> = self
+        let layer_keys: Vec<(document_model::KomaId, usize)> = self
             .document
             .work
             .pages
@@ -22,14 +22,13 @@ impl DesktopApp {
             .flat_map(|page| &page.komas)
             .flat_map(|koma| {
                 let koma_id = koma.id;
-                let koma_id_str = koma.id.0.to_string();
-                (0..koma.layers.len())
-                    .map(move |idx| (koma_id, koma_id_str.clone(), idx))
+                (0..koma.layers.len()).map(move |idx| (koma_id, idx))
             })
             .collect();
 
-        for (koma_id, koma_id_str, layer_index) in layer_keys {
-            let Some((width, height, pixels)) = pool.read_back_full(&koma_id_str, layer_index)
+        for (koma_id, layer_index) in layer_keys {
+            let Some((width, height, pixels)) =
+                pool.read_back_full(gpu_paint::KomaTextureId(koma_id.0), layer_index)
             else {
                 eprintln!(
                     "sync_gpu_bitmaps_to_cpu: GPU readback failed, CPU bitmap may be stale \

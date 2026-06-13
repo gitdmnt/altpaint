@@ -43,7 +43,7 @@ pub(crate) struct ComposedFrame {
 enum CanvasSurfaceData {
     /// GPU テクスチャを直接 Present するパス。
     Gpu {
-        koma_id: String,
+        koma_key: gpu_paint::KomaTextureId,
         kind: GpuCanvasSourceKind,
         width: u32,
         height: u32,
@@ -64,7 +64,7 @@ impl ComposedFrame {
     pub(crate) fn present_frame(&self) -> PresentFrame<'_> {
         let canvas_surface = self.canvas.as_ref().map(|canvas| match canvas {
             CanvasSurfaceData::Gpu {
-                koma_id,
+                koma_key,
                 kind,
                 width,
                 height,
@@ -72,13 +72,13 @@ impl ComposedFrame {
             } => CanvasSurface {
                 source: match kind {
                     GpuCanvasSourceKind::Single => CanvasSurfaceSource::Gpu {
-                        panel_id: koma_id.as_str(),
+                        koma_key: *koma_key,
                         layer_index: 0,
                         width: *width,
                         height: *height,
                     },
                     GpuCanvasSourceKind::Composite => CanvasSurfaceSource::GpuComposite {
-                        panel_id: koma_id.as_str(),
+                        koma_key: *koma_key,
                         width: *width,
                         height: *height,
                     },
@@ -198,7 +198,7 @@ impl DesktopApp {
         let quad = canvas_quad?;
         if let Some(spec) = self.canvas_gpu_source_spec() {
             return Some(CanvasSurfaceData::Gpu {
-                koma_id: spec.koma_id,
+                koma_key: spec.koma_key,
                 kind: spec.kind,
                 width: spec.width,
                 height: spec.height,

@@ -271,7 +271,7 @@ impl DesktopApp {
         if self.gpu.is_none() {
             return;
         }
-        let koma_id_str = koma_id.0.to_string();
+        let koma_key = gpu_paint::KomaTextureId(koma_id.0);
         let Some(koma) = self
             .document
             .work
@@ -300,7 +300,7 @@ impl DesktopApp {
             })
             .collect();
         let pool = &mut self.gpu.as_mut().unwrap().pool;
-        pool.sync_koma_layers(&koma_id_str, composite_size, &layers);
+        pool.sync_koma_layers(koma_key, composite_size, &layers);
     }
 
     /// アクティブコマのレイヤーを GPU へ差分同期し、当該コマを再合成する (BL-117)。
@@ -333,14 +333,14 @@ impl DesktopApp {
     pub(crate) fn canvas_surface_source_kind(&self) -> Option<GpuCanvasSourceKind> {
         let pool = &self.gpu.as_ref()?.pool;
         let koma = self.document.active_koma()?;
-        let pid = koma.id.0.to_string();
+        let koma_key = gpu_paint::KomaTextureId(koma.id.0);
         if koma.layers.len() == 1 {
-            if pool.get(&pid, 0).is_some() {
+            if pool.get(koma_key, 0).is_some() {
                 Some(GpuCanvasSourceKind::Single)
             } else {
                 None
             }
-        } else if pool.get_composite(&pid).is_some() {
+        } else if pool.get_composite(koma_key).is_some() {
             Some(GpuCanvasSourceKind::Composite)
         } else {
             None
@@ -363,7 +363,7 @@ impl DesktopApp {
         let Some(gpu) = self.gpu.as_ref() else {
             return;
         };
-        let pid_str = koma_id.0.to_string();
+        let koma_key = gpu_paint::KomaTextureId(koma_id.0);
         let Some(koma) = self
             .document
             .work
@@ -374,7 +374,7 @@ impl DesktopApp {
         else {
             return;
         };
-        let Some(composite) = gpu.pool.get_composite(&pid_str) else {
+        let Some(composite) = gpu.pool.get_composite(koma_key) else {
             return;
         };
         let (pw, ph) = (koma.composite_cache.width as u32, koma.composite_cache.height as u32);
@@ -400,8 +400,8 @@ impl DesktopApp {
             .iter()
             .enumerate()
             .filter_map(|(idx, layer)| {
-                let color = gpu.pool.get(&pid_str, idx)?;
-                let mask = gpu.pool.get_mask(&pid_str, idx);
+                let color = gpu.pool.get(koma_key, idx)?;
+                let mask = gpu.pool.get_mask(koma_key, idx);
                 Some(gpu_paint::CompositeLayerEntry {
                     color,
                     mask,

@@ -80,11 +80,11 @@ fn sync_all_layers_to_gpu_creates_textures_for_all_layers() {
         let pool = app.layer_texture_store().unwrap();
         for page in &app.document.work.pages {
             for koma in &page.komas {
-                let koma_id_str = koma.id.0.to_string();
+                let koma_key = gpu_paint::KomaTextureId(koma.id.0);
                 for layer_index in 0..koma.layers.len() {
                     assert!(
-                        pool.get(&koma_id_str, layer_index).is_some(),
-                        "koma={koma_id_str} layer={layer_index} should have a texture"
+                        pool.get(koma_key, layer_index).is_some(),
+                        "koma={koma_key:?} layer={layer_index} should have a texture"
                     );
                 }
             }
@@ -151,14 +151,14 @@ fn selecting_koma_preserves_gpu_layer_pixels() {
         // コマ 0 を選択し直してアクティブにする。
         app.apply_document_command(&DocumentCommand::SelectKoma { index: 0 });
 
-        let koma0_id = app.document.active_koma().unwrap().id.0.to_string();
+        let koma0_key = gpu_paint::KomaTextureId(app.document.active_koma().unwrap().id.0);
 
         // アクティブコマ (0) のレイヤー 0 テクスチャへ識別ピクセルを書き込む。
         let marker = vec![123u8; 2 * 2 * 4];
         {
             let pool = app.layer_texture_store().unwrap();
             pool.upload_region(
-                &koma0_id,
+                koma0_key,
                 0,
                 geometry::PageDirtyRect::new(0, 0, 2, 2),
                 &marker,
@@ -167,7 +167,7 @@ fn selecting_koma_preserves_gpu_layer_pixels() {
         let before = app
             .layer_texture_store()
             .unwrap()
-            .read_back_full(&koma0_id, 0)
+            .read_back_full(koma0_key, 0)
             .expect("readback before");
 
         // 別コマへ移って戻す (どちらも GpuSyncGranularity::None のはず)。
@@ -177,7 +177,7 @@ fn selecting_koma_preserves_gpu_layer_pixels() {
         let after = app
             .layer_texture_store()
             .unwrap()
-            .read_back_full(&koma0_id, 0)
+            .read_back_full(koma0_key, 0)
             .expect("readback after");
 
         assert_eq!(
@@ -201,16 +201,16 @@ fn selecting_layer_preserves_gpu_layer_pixels() {
         // 2 レイヤーにする (ActiveKomaLayers 同期)。
         app.apply_document_command(&DocumentCommand::AddRasterLayer);
 
-        let koma_id = app.document.active_koma().unwrap().id.0.to_string();
+        let koma_key = gpu_paint::KomaTextureId(app.document.active_koma().unwrap().id.0);
         let marker = vec![77u8; 2 * 2 * 4];
         {
             let pool = app.layer_texture_store().unwrap();
-            pool.upload_region(&koma_id, 0, geometry::PageDirtyRect::new(0, 0, 2, 2), &marker);
+            pool.upload_region(koma_key, 0, geometry::PageDirtyRect::new(0, 0, 2, 2), &marker);
         }
         let before = app
             .layer_texture_store()
             .unwrap()
-            .read_back_full(&koma_id, 0)
+            .read_back_full(koma_key, 0)
             .expect("readback before");
 
         // レイヤー選択を動かして戻す (None 同期)。
@@ -220,7 +220,7 @@ fn selecting_layer_preserves_gpu_layer_pixels() {
         let after = app
             .layer_texture_store()
             .unwrap()
-            .read_back_full(&koma_id, 0)
+            .read_back_full(koma_key, 0)
             .expect("readback after");
         assert_eq!(before, after, "レイヤー選択変更でテクスチャが変化してはならない");
         assert_eq!(after.2[0], 77);
@@ -241,12 +241,12 @@ fn add_layer_differential_sync_creates_all_active_koma_textures() {
         app.apply_document_command(&DocumentCommand::AddRasterLayer);
 
         let koma = app.document.active_koma().unwrap();
-        let koma_id = koma.id.0.to_string();
+        let koma_key = gpu_paint::KomaTextureId(koma.id.0);
         let layer_count = koma.layers.len();
         let pool = app.layer_texture_store().unwrap();
-        assert_eq!(pool.layer_count_for_koma(&koma_id), layer_count);
+        assert_eq!(pool.layer_count_for_koma(koma_key), layer_count);
         for idx in 0..layer_count {
-            assert!(pool.get(&koma_id, idx).is_some(), "layer {idx} missing");
+            assert!(pool.get(koma_key, idx).is_some(), "layer {idx} missing");
         }
     });
 }
@@ -264,11 +264,11 @@ fn add_layer_differential_sync_leaves_other_komas_untouched() {
         app.apply_document_command(&DocumentCommand::AddKoma);
 
         // コマ 0 のレイヤー 0 テクスチャへマーカーを書き込む。
-        let koma0_id = app.document.work.pages[0].komas[0].id.0.to_string();
+        let koma0_key = gpu_paint::KomaTextureId(app.document.work.pages[0].komas[0].id.0);
         let marker = vec![200u8; 2 * 2 * 4];
         {
             let pool = app.layer_texture_store().unwrap();
-            pool.upload_region(&koma0_id, 0, geometry::PageDirtyRect::new(0, 0, 2, 2), &marker);
+            pool.upload_region(koma0_key, 0, geometry::PageDirtyRect::new(0, 0, 2, 2), &marker);
         }
 
         // アクティブコマ (1) にレイヤー追加 → ActiveKomaLayers 差分同期。
@@ -278,7 +278,7 @@ fn add_layer_differential_sync_leaves_other_komas_untouched() {
         let after = app
             .layer_texture_store()
             .unwrap()
-            .read_back_full(&koma0_id, 0)
+            .read_back_full(koma0_key, 0)
             .expect("readback");
         assert_eq!(after.2[0], 200, "別コマのテクスチャが差分同期で変化した");
     });

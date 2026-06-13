@@ -197,12 +197,12 @@ pub(crate) struct LayerUploadStats {
 
 /// GPU キャンバステクスチャ用のバインドグループキャッシュ。
 ///
-/// キー `(panel_id, kind, layer_index, width, height)` が変化したときのみ再生成する。
+/// キー `(koma_key, kind, layer_index, width, height)` が変化したときのみ再生成する。
 /// `kind == Composite` のとき `layer_index` は意味を持たない（`usize::MAX` を入れる）。
 pub(crate) struct GpuBindGroupCache {
     pub(crate) bind_group: wgpu::BindGroup,
     pub(crate) uniform_buffer: wgpu::Buffer,
-    pub(crate) panel_id: String,
+    pub(crate) koma_key: gpu_paint::KomaTextureId,
     pub(crate) kind: GpuBindGroupKind,
     pub(crate) layer_index: usize,
     pub(crate) width: u32,

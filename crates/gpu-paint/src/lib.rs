@@ -13,7 +13,7 @@ mod pipeline;
 pub use brush::{BrushStrokeParams, BrushPipeline};
 pub use composite::{CompositeLayerEntry, CompositePipeline};
 pub use fill::{FloodFillOutcome, FillPipeline};
-pub use gpu::{GpuCanvasContext, LayerTextureStore, GpuRgbaTexture, LayerUpload};
+pub use gpu::{GpuCanvasContext, KomaTextureId, LayerTextureStore, GpuRgbaTexture, LayerUpload};
 
 #[cfg(test)]
 mod tests;

@@ -191,9 +191,9 @@ mod golden_equivalence {
 
             // --- GPU 側: 同一初期レイヤーをアップロードして適用 ---
             let mut pool = gpu_paint::LayerTextureStore::new(device.clone(), queue.clone());
-            let koma_str = koma_id.0.to_string();
-            pool.create_layer_texture(&koma_str, layer_index, lw, lh);
-            pool.upload_cpu_bitmap(&koma_str, layer_index, &initial.pixels);
+            let koma_key = gpu_paint::KomaTextureId(koma_id.0);
+            pool.create_layer_texture(koma_key, layer_index, lw, lh);
+            pool.upload_cpu_bitmap(koma_key, layer_index, &initial.pixels);
             let ctx = gpu_paint::GpuCanvasContext::new(device, queue);
             let brush = gpu_paint::BrushPipeline::new(&ctx);
             let fill = gpu_paint::FillPipeline::new(&ctx);
@@ -218,7 +218,7 @@ mod golden_equivalence {
                 gpu_backend.apply(&plan, &input, &mut target);
             }
             let (_, _, gpu_pixels) =
-                pool.read_back_full(&koma_str, layer_index).expect("readback");
+                pool.read_back_full(koma_key, layer_index).expect("readback");
 
             let center = ((32u32 * lw + 32) * 4 + 3) as usize;
             Some((cpu_layer.pixels[center], gpu_pixels[center]))

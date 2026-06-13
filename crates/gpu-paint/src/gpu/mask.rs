@@ -3,14 +3,14 @@
 //! 合成時に `CompositePipeline` がレイヤー色とマスクを掛け合わせる。マスクは
 //! `R=G=B=255, A=mask` の RGBA8 テクスチャへ展開して保持する。
 
-use crate::gpu::store::LayerTextureStore;
+use crate::gpu::store::{KomaTextureId, LayerTextureStore};
 
 impl LayerTextureStore {
     /// レイヤーマスク（1 ch alpha）を RGBA8（R=G=B=255, A=mask）に展開して
     /// アップロードする。既存マスクは上書きする。
     pub fn upload_mask(
         &mut self,
-        koma_id: &str,
+        koma_id: KomaTextureId,
         layer_index: usize,
         width: u32,
         height: u32,
@@ -57,12 +57,12 @@ impl LayerTextureStore {
     }
 
     /// 登録済みマスクテクスチャを取得する。
-    pub fn get_mask(&self, koma_id: &str, layer_index: usize) -> Option<&wgpu::Texture> {
+    pub fn get_mask(&self, koma_id: KomaTextureId, layer_index: usize) -> Option<&wgpu::Texture> {
         self.mask_texture(koma_id, layer_index)
     }
 
     /// 登録済みマスクテクスチャを削除する。
-    pub fn remove_mask(&mut self, koma_id: &str, layer_index: usize) {
+    pub fn remove_mask(&mut self, koma_id: KomaTextureId, layer_index: usize) {
         self.remove_mask_texture(koma_id, layer_index);
     }
 }

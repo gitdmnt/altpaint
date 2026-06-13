@@ -21,7 +21,7 @@ pub(crate) struct PanelRenderEntry {
 
 /// キャンバスを GPU テクスチャから提示する際のソース指定。
 pub(crate) struct CanvasGpuSourceSpec {
-    pub(crate) koma_id: String,
+    pub(crate) koma_key: gpu_paint::KomaTextureId,
     pub(crate) kind: GpuCanvasSourceKind,
     pub(crate) width: u32,
     pub(crate) height: u32,
@@ -158,7 +158,7 @@ impl DesktopApp {
             ),
         };
         Some(CanvasGpuSourceSpec {
-            koma_id: koma.id.0.to_string(),
+            koma_key: gpu_paint::KomaTextureId(koma.id.0),
             kind,
             width,
             height,
