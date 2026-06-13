@@ -4,6 +4,7 @@
 //! このファイルは起動順序の宣言だけを担う。
 
 mod app;
+mod features;
 mod platform;
 mod present_quads;
 mod event_loop;

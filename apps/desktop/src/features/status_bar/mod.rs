@@ -1,7 +1,8 @@
-//! ステータスバー専用 `HtmlPanelView` ラッパ。
+//! ステータスバー feature スライス。専用 `HtmlPanelView` ラッパ (D4)。
 //!
 //! Phase 9E-4 で `crates/render/src/{text,status}.rs` を撤去し、ステータステキストも
 //! GPU 直描画 (`HtmlPanelView` + Blitz HTML/CSS + `vello::Renderer`) で描画する。
+//! B7 で `present_quads/status_panel.rs` から `features/status_bar/` へ移管した。
 //!
 //! - HTML テンプレート: 1 行の flex レイアウト（tool / zoom / status text）
 //! - スケール: 1.0 固定（HiDPI はスコープ外）

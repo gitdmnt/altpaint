@@ -263,12 +263,12 @@ impl DesktopApp {
 
     /// 9E-4: HtmlPanelView ステータスバー用のスナップショットを組み立てる。
     /// ツール名・ズーム % ・status text を集約して返す。
-    pub(crate) fn build_status_snapshot(&self) -> crate::present_quads::status_panel::StatusSnapshot {
+    pub(crate) fn build_status_snapshot(&self) -> crate::features::status_bar::StatusSnapshot {
         let tool_name = self.document.session.active_tool().display_label();
         let zoom_percent =
             (self.document.session.view_transform.zoom * 100.0).round().clamp(1.0, 100_000.0) as u32;
         let status_text = self.status_text();
-        crate::present_quads::status_panel::StatusSnapshot::new(tool_name, zoom_percent, status_text)
+        crate::features::status_bar::StatusSnapshot::new(tool_name, zoom_percent, status_text)
     }
 
     pub(crate) fn status_text(&self) -> String {

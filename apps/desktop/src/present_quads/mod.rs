@@ -6,7 +6,6 @@ mod layer_dirty;
 mod overlay_quad;
 mod overlay_state;
 mod solid_quad;
-pub(crate) mod status_panel;
 use ::geometry::WindowRect;
 use crate::theme::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
 

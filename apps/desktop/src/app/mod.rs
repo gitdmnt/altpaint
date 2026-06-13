@@ -93,7 +93,7 @@ pub(crate) struct DesktopApp {
     pub(crate) layout: Option<DesktopLayout>,
     cpu_canvas_snapshot: Option<CpuCanvasSnapshot>,
     /// Phase 9E-4: ステータスバー (HtmlPanelView GPU 描画)。
-    pub(crate) status_bar: crate::present_quads::status_panel::StatusBar,
+    pub(crate) status_bar: crate::features::status_bar::StatusBar,
     /// 次フレームで消化される提示無効化状態 (保留 dirty rect・再構築フラグ)。
     pub(crate) invalidation: invalidation::PresentInvalidation,
     cached_canvas_view_geometry: Option<CachedCanvasViewGeometry>,
@@ -158,7 +158,7 @@ impl DesktopApp {
             koma_gesture: KomaGesture::default(),
             layout: None,
             cpu_canvas_snapshot: None,
-            status_bar: crate::present_quads::status_panel::StatusBar::new(),
+            status_bar: crate::features::status_bar::StatusBar::new(),
             invalidation: invalidation::PresentInvalidation::at_startup(),
             cached_canvas_view_geometry: None,
             history: EditHistory::new(),
