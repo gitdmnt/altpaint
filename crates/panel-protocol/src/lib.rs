@@ -1,4 +1,5 @@
 pub mod abi;
+pub mod keyboard;
 pub mod names;
 
 use serde::{Deserialize, Serialize};

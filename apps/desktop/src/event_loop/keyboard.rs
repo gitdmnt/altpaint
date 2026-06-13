@@ -4,6 +4,9 @@
 //! panel-workspace 側のテキスト editor state はすべて撤去済み。
 //! ここではアプリ全体のグローバルショートカットだけを扱う。
 
+use panel_runtime::keyboard::{
+    MODIFIER_ALT, MODIFIER_CTRL, MODIFIER_META, MODIFIER_SHIFT, join_shortcut, normalize_key_name,
+};
 use panel_runtime::{ServiceRequest, services::names};
 use winit::event::{ElementState, Ime, KeyEvent};
 use winit::keyboard::{Key, NamedKey};
@@ -88,32 +91,32 @@ impl DesktopEventLoop {
 
     pub(super) fn normalized_shortcut(&self, key: &Key) -> Option<(String, String)> {
         let key_name = normalized_key_name(key)?;
-        let mut parts = Vec::new();
+        // 修飾キーは panel-protocol 規約の順序 (Ctrl → Alt → Meta → Shift) で並べる。
+        let mut modifiers = Vec::new();
         if self.modifiers.control_key() {
-            parts.push("Ctrl".to_string());
+            modifiers.push(MODIFIER_CTRL);
         }
         if self.modifiers.alt_key() {
-            parts.push("Alt".to_string());
+            modifiers.push(MODIFIER_ALT);
         }
         if self.modifiers.super_key() {
-            parts.push("Meta".to_string());
+            modifiers.push(MODIFIER_META);
         }
         if self.modifiers.shift_key() {
-            parts.push("Shift".to_string());
+            modifiers.push(MODIFIER_SHIFT);
         }
-        parts.push(key_name.clone());
-        Some((parts.join("+"), key_name))
+        Some((join_shortcut(&modifiers, &key_name), key_name))
     }
 }
 
 pub(super) fn normalized_key_name(key: &Key) -> Option<String> {
     match key {
         Key::Character(text) => {
-            let trimmed = text.trim();
-            if trimmed.is_empty() {
+            if text.trim().is_empty() {
                 None
             } else {
-                Some(trimmed.to_uppercase())
+                // 文字キーは panel-protocol 規約 (大文字化) で正規化する。
+                Some(normalize_key_name(text))
             }
         }
         Key::Named(named) => match named {

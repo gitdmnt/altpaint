@@ -27,6 +27,11 @@ pub use runtime::{
     PanelKeyboardResult,
 };
 
+// キーボードショートカット文字列の正規化規約 (BL-152)。
+// desktop の入力層がショートカット文字列を組み立てる際、パネルとの共有規約を
+// panel-protocol の単一定義点から参照する。
+pub use panel_protocol::keyboard;
+
 // パネル契約型 (旧 panel-api、C9 で本クレートへ移設)。
 // desktop はパネルイベント/要求型を panel-runtime 経由で参照する。
 pub use host_request::{HostRequest, PanelEvent};

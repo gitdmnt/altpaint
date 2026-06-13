@@ -7,6 +7,7 @@ pub mod runtime;
 pub mod services;
 pub mod state;
 
+pub use panel_protocol::keyboard;
 pub use panel_protocol::names;
 pub use panel_protocol::{
     RequestDescriptor, Diagnostic, DiagnosticLevel, HandlerEffects, StatePatch, StatePatchOp,
