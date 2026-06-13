@@ -22,11 +22,8 @@ use winit::keyboard::ModifiersState;
 use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::app::DesktopApp;
-use crate::presenter::{
-    CanvasSurface, CanvasSurfaceSource, GpuPanelQuad, PresentFrame, TextureSource, UploadRegion,
-    WgpuPresenter,
-};
-use crate::theme::{WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
+use crate::presenter::WgpuPresenter;
+use crate::theme::{FOOTER_HEIGHT, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
 
 /// `winit` アプリケーションとして振る舞うイベントループホストを表す。
 pub(crate) struct DesktopEventLoop {
@@ -85,6 +82,70 @@ impl DesktopEventLoop {
     fn active_window_id(&self) -> Option<WindowId> {
         self.window.as_ref().map(|window| window.id())
     }
+
+    /// 1 フレームを提示する (BL-115)。
+    ///
+    /// OS 由来の前処理 (ホイールアニメーション前進・遅延同期のフラッシュ) を行い、
+    /// `app.compose_frame()` で提示フレームを所有形に組み立て、`presenter.render()`
+    /// へ渡す。`PresentFrame` の構成データ取得・借用順序はすべて `compose_frame`
+    /// 内部に閉じ込められている。
+    fn render_frame(&mut self, window: &Window) -> FrameOutcome {
+        let wheel_t = Instant::now();
+        let _ = self.advance_wheel_animation();
+        self.profiler.record("wheel_animation", wheel_t.elapsed());
+        if !self.app.is_canvas_interacting() && !self.has_pending_wheel_animation() {
+            let sync_t = Instant::now();
+            let _ = self.app.flush_deferred_view_panel_sync();
+            let _ = self.app.flush_deferred_status_refresh();
+            self.profiler.record("deferred_view_sync", sync_t.elapsed());
+        }
+        if self.presenter.is_none() {
+            return FrameOutcome::Continue;
+        }
+
+        let size = window.inner_size();
+        let frame_started = Instant::now();
+        let composed = self.app.compose_frame(
+            size.width,
+            size.height,
+            FOOTER_HEIGHT as u32,
+            &mut self.profiler,
+        );
+
+        // presenter (&mut) と app.layer_texture_store() (&) は disjoint フィールドのため
+        // 借用を分割して同時に渡せる。
+        let present_started = Instant::now();
+        let presenter = self.presenter.as_mut().expect("presenter checked above");
+        let timings = match presenter.render(composed.present_frame(), self.app.layer_texture_store())
+        {
+            Ok(timings) => timings,
+            Err(error) => {
+                eprintln!("render failed: {error}");
+                return FrameOutcome::Exit;
+            }
+        };
+        self.profiler
+            .record_stage(frame_profiler::FrameStage::PresentTotal, present_started.elapsed());
+        self.profiler.record_present(timings);
+        if composed.canvas_updated {
+            self.profiler.record_canvas_present();
+        }
+        if let Some(report) = self.profiler.finish_frame(frame_started.elapsed()) {
+            crate::profiling::print_frame_report(&report);
+        }
+        window.set_title(&crate::profiling::window_title(self.profiler.latest_snapshot()));
+        if self.app.is_canvas_interacting() || self.has_pending_wheel_animation() {
+            self.request_redraw();
+        }
+        FrameOutcome::Continue
+    }
+}
+
+/// `render_frame` の結果。提示失敗時はイベントループ終了を要求する。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FrameOutcome {
+    Continue,
+    Exit,
 }
 
 impl ApplicationHandler for DesktopEventLoop {
@@ -216,165 +277,8 @@ impl ApplicationHandler for DesktopEventLoop {
                 let Some(window) = self.window.clone() else {
                     return;
                 };
-                let wheel_t = Instant::now();
-                let _ = self.advance_wheel_animation();
-                self.profiler.record("wheel_animation", wheel_t.elapsed());
-                if !self.app.is_canvas_interacting() && !self.has_pending_wheel_animation() {
-                    let sync_t = Instant::now();
-                    let _ = self.app.flush_deferred_view_panel_sync();
-                    let _ = self.app.flush_deferred_status_refresh();
-                    self.profiler.record("deferred_view_sync", sync_t.elapsed());
-                }
-                let Some(presenter) = &mut self.presenter else {
-                    return;
-                };
-
-                let size = window.inner_size();
-                let frame_started = Instant::now();
-                let prepare_started = Instant::now();
-                let update = self.app.prepare_present_frame(
-                    size.width as usize,
-                    size.height as usize,
-                    &mut self.profiler,
-                );
-                self.profiler.record_stage(
-                    frame_profiler::FrameStage::PrepareFrame,
-                    prepare_started.elapsed(),
-                );
-                // canvas_texture_quad は &mut self を必要とするため frame 参照の取得より先に呼ぶ
-                let quad_t = Instant::now();
-                let canvas_quad = self.app.canvas_texture_quad();
-                self.profiler.record("canvas_texture_quad", quad_t.elapsed());
-
-                // HTML パネル描画も先に処理（&mut panel_runtime を必要とするため、
-                // 続く &self.app 借用と衝突しない順序で実施）。
-                let html_quad_entries = self.app.render_visible_panels(
-                    size.width,
-                    size.height,
-                    crate::app::PANEL_CHROME_HEIGHT,
-                );
-
-                let gpu_source_spec = self.app.canvas_gpu_source_spec();
-
-                // CPU canvas snapshot はステータスバー描画 (render_status_bar の &mut 借用)
-                // と衝突するため、pixels/サイズを先に Vec へコピーしてから
-                // 後段で TextureSource を組み立てる。
-                let cpu_canvas_data: Option<(u32, u32, Vec<u8>)> = if gpu_source_spec.is_none() {
-                    self.app
-                        .cpu_canvas_snapshot()
-                        .map(|b| (b.width as u32, b.height as u32, b.pixels.clone()))
-                } else {
-                    None
-                };
-                let canvas_surface = if let Some(spec) = &gpu_source_spec {
-                    let panel_id = spec.koma_id.as_str();
-                    let (w, h) = (spec.width, spec.height);
-                    canvas_quad.map(|quad| CanvasSurface {
-                        source: match spec.kind {
-                            crate::app::GpuCanvasSourceKind::Single => {
-                                CanvasSurfaceSource::Gpu {
-                                    panel_id,
-                                    layer_index: 0,
-                                    width: w,
-                                    height: h,
-                                }
-                            }
-                            crate::app::GpuCanvasSourceKind::Composite => {
-                                CanvasSurfaceSource::GpuComposite {
-                                    panel_id,
-                                    width: w,
-                                    height: h,
-                                }
-                            }
-                        },
-                        upload_region: None,
-                        quad,
-                    })
-                } else {
-                    cpu_canvas_data.as_ref().and_then(|(w, h, pixels)| {
-                        canvas_quad.map(|quad| CanvasSurface {
-                            source: CanvasSurfaceSource::Cpu(TextureSource {
-                                width: *w,
-                                height: *h,
-                                pixels: pixels.as_slice(),
-                            }),
-                            upload_region: update.canvas_dirty_rect.map(|rect| UploadRegion {
-                                x: rect.x as u32,
-                                y: rect.y as u32,
-                                width: rect.width as u32,
-                                height: rect.height as u32,
-                            }),
-                            quad,
-                        })
-                    })
-                };
-                let present_started = Instant::now();
-
-                // 上で組み立てた html_quad_entries を `GpuPanelQuad` に変換する。
-                // texture は `Arc<wgpu::Texture>` の所有ハンドルなので unsafe 不要 (BL-092)。
-                let panel_quads_owned: Vec<GpuPanelQuad> = html_quad_entries
-                    .iter()
-                    .map(|e| GpuPanelQuad {
-                        panel_id: e.panel_id.clone(),
-                        texture: std::sync::Arc::clone(&e.texture),
-                        screen_rect: e.screen_rect,
-                    })
-                    .collect();
-                let panel_quads_slice: &[GpuPanelQuad] = &panel_quads_owned;
-
-                let background_solid_quads = self.app.background_solid_quads();
-                let foreground_solid_quads = self.app.foreground_solid_quads();
-                let (overlay_solid_quads, overlay_circle_quads, overlay_line_quads) =
-                    self.app.overlay_quads();
-
-                // 9E-4: ステータスバーを HtmlPanelView で GPU 描画する。
-                // panel_runtime の gpu_ctx (device/queue/renderer/scene_scratch) を
-                // HtmlSurfaceRenderer ハンドルとして共有借用する (BL-092)。
-                // フッター位置 (画面下端) に幅 = window 幅で配置する。
-                const FOOTER_HEIGHT: u32 = crate::theme::FOOTER_HEIGHT as u32;
-                let status_entry =
-                    self.app
-                        .render_status_bar(size.width, FOOTER_HEIGHT, size.height);
-                let status_quad: Option<GpuPanelQuad> = status_entry.as_ref().map(|e| GpuPanelQuad {
-                    panel_id: "__status__".to_string(),
-                    texture: std::sync::Arc::clone(&e.texture),
-                    screen_rect: e.screen_rect,
-                });
-
-                let timings = match presenter.render(
-                    PresentFrame {
-                        background_quads: &background_solid_quads,
-                        canvas_surface,
-                        overlay_solid_quads: &overlay_solid_quads,
-                        overlay_circle_quads: &overlay_circle_quads,
-                        overlay_line_quads: &overlay_line_quads,
-                        panel_quads: panel_quads_slice,
-                        foreground_quads: &foreground_solid_quads,
-                        status_quad: status_quad.as_ref(),
-                    },
-                    self.app.layer_texture_store(),
-                ) {
-                    Ok(timings) => timings,
-                    Err(error) => {
-                        eprintln!("render failed: {error}");
-                        event_loop.exit();
-                        return;
-                    }
-                };
-                self.profiler.record_stage(
-                    frame_profiler::FrameStage::PresentTotal,
-                    present_started.elapsed(),
-                );
-                self.profiler.record_present(timings);
-                if update.canvas_updated {
-                    self.profiler.record_canvas_present();
-                }
-                if let Some(report) = self.profiler.finish_frame(frame_started.elapsed()) {
-                    crate::profiling::print_frame_report(&report);
-                }
-                window.set_title(&crate::profiling::window_title(self.profiler.latest_snapshot()));
-                if self.app.is_canvas_interacting() || self.has_pending_wheel_animation() {
-                    self.request_redraw();
+                if self.render_frame(&window) == FrameOutcome::Exit {
+                    event_loop.exit();
                 }
             }
             _ => {}
