@@ -9,7 +9,4 @@ authors.workspace = true
 document-model = { path = "../document-model" }
 editor-state = { path = "../editor-state" }
 geometry = { path = "../geometry" }
-panel-workspace = { path = "../panel-workspace" }
 raster = { path = "../raster" }
-serde.workspace = true
-serde_json.workspace = true

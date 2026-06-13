@@ -15,9 +15,3 @@ pub mod painting;
 
 pub use history::{DEFAULT_HISTORY_CAPACITY, EditHistory, HistoryEntry, OpaqueGpuData};
 pub use painting::{PaintInput, PaintPlugin, PaintPluginContext};
-// ワークスペース UI 状態は panel-workspace へ移設済み (BL-075)。
-// 参照付け替え完了までの暫定再エクスポート。
-pub use panel_workspace::{
-    PanelConfigs, WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition,
-    WorkspacePanelSize, WorkspacePanelState, WorkspaceUiState,
-};
