@@ -66,6 +66,21 @@ impl LayerTextureStore {
         &self.ctx
     }
 
+    /// ペイント dispatch 用の空 command encoder を生成する (BL-133)。
+    ///
+    /// `dispatch_stroke` / `recomposite` / `dispatch_lasso_fill` の pass を 1 つの
+    /// encoder にまとめて積み、`submit` で 1 回だけ submit するために使う。
+    pub fn create_paint_encoder(&self, label: &str) -> wgpu::CommandEncoder {
+        self.ctx
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some(label) })
+    }
+
+    /// 積んだ encoder を 1 回で submit する (BL-133)。
+    pub fn submit(&self, encoder: wgpu::CommandEncoder) {
+        self.ctx.queue.submit(std::iter::once(encoder.finish()));
+    }
+
     /// 指定コマ・レイヤーインデックスのテクスチャを生成・登録する。
     ///
     /// 同じキーが既に存在する場合は上書きする。

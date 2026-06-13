@@ -181,11 +181,19 @@ impl FillPipeline {
         //   swap_flag == true  → bg_ba (src=b, dst=a) を使う → 書き込み先は a
         // 各 iter の dispatch 後に swap_flag をトグルする。
         // ループ終了後、直近の書き込み先は: swap_flag==true なら b、false なら a。
+        //
+        // BL-133 submit 統合: step pass を 1 iter 1 submit から CONVERGENCE_CHECK_INTERVAL
+        // iter ごと 1 submit へまとめる。1 ウィンドウの先頭でカウンタを 0 にし、ウィンドウ
+        // 内の step pass を 1 encoder に積む (pass 間は wgpu が mask テクスチャの read-after-write
+        // ハザードへバリアを挿入するため、伝播は per-submit 版と同一)。ウィンドウ末尾で
+        // カウンタを readback し、ウィンドウ全体の変化合計が 0 なら収束とみなす。
+        // (合計 0 ⟺ ウィンドウ内の各 iter が 0 変化 ⟹ 収束。塗り結果は per-iter 版と同値。)
         let mut swap_flag = false;
-        for iter in 0..max_iter {
-            iterations += 1;
+        let mut iter = 0u32;
+        'outer: while iter < max_iter {
+            let window_end = (iter + CONVERGENCE_CHECK_INTERVAL).min(max_iter);
 
-            // Reset atomic counter.
+            // ウィンドウ先頭でカウンタをリセットする。
             self.queue.write_buffer(&counter_buf, 0, &0u32.to_le_bytes());
 
             let mut encoder = self
@@ -193,55 +201,56 @@ impl FillPipeline {
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("flood-fill-step-encoder"),
                 });
-            {
-                let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                    label: Some("flood-fill-step-pass"),
-                    timestamp_writes: None,
-                });
-                cpass.set_pipeline(&self.flood_step_pipeline);
-                let bg = if swap_flag { &bg_ba } else { &bg_ab };
-                cpass.set_bind_group(0, bg, &[]);
-                cpass.dispatch_workgroups(wg_x, wg_y, 1);
+            while iter < window_end {
+                iterations += 1;
+                {
+                    let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                        label: Some("flood-fill-step-pass"),
+                        timestamp_writes: None,
+                    });
+                    cpass.set_pipeline(&self.flood_step_pipeline);
+                    let bg = if swap_flag { &bg_ba } else { &bg_ab };
+                    cpass.set_bind_group(0, bg, &[]);
+                    cpass.dispatch_workgroups(wg_x, wg_y, 1);
+                }
+                swap_flag = !swap_flag;
+                iter += 1;
             }
-
-            // Copy counter → readback buffer.
-            let needs_check = iter % CONVERGENCE_CHECK_INTERVAL == CONVERGENCE_CHECK_INTERVAL - 1;
-            if needs_check {
-                encoder.copy_buffer_to_buffer(&counter_buf, 0, &readback_buf, 0, 4);
-            }
+            encoder.copy_buffer_to_buffer(&counter_buf, 0, &readback_buf, 0, 4);
             self.queue.submit(std::iter::once(encoder.finish()));
 
-            if needs_check {
-                let slice = readback_buf.slice(..);
-                let (tx, rx) = std::sync::mpsc::channel();
-                slice.map_async(wgpu::MapMode::Read, move |r| {
-                    let _ = tx.send(r);
-                });
-                let _ = self.device.poll(wgpu::PollType::Wait {
-                    submission_index: None,
-                    timeout: None,
-                });
-                if rx.recv().ok().and_then(|r| r.ok()).is_some() {
-                    let data = slice.get_mapped_range();
-                    let changed =
-                        u32::from_le_bytes(data[0..4].try_into().unwrap_or([0u8; 4]));
-                    drop(data);
-                    readback_buf.unmap();
-                    total_changed += changed;
-                    if changed == 0 {
-                        // Converged.
-                        swap_flag = !swap_flag;
-                        break;
-                    }
+            let slice = readback_buf.slice(..);
+            let (tx, rx) = std::sync::mpsc::channel();
+            slice.map_async(wgpu::MapMode::Read, move |r| {
+                let _ = tx.send(r);
+            });
+            let _ = self.device.poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: None,
+            });
+            if rx.recv().ok().and_then(|r| r.ok()).is_some() {
+                let data = slice.get_mapped_range();
+                let changed = u32::from_le_bytes(data[0..4].try_into().unwrap_or([0u8; 4]));
+                drop(data);
+                readback_buf.unmap();
+                total_changed += changed;
+                if changed == 0 {
+                    // ウィンドウ全体で変化なし = 収束。
+                    break 'outer;
                 }
             }
-            swap_flag = !swap_flag;
         }
 
         // 直近の書き込み先マスクを選ぶ。swap_flag==true のとき最後の dst は mark_b。
         let final_mark = if swap_flag { &mark_b } else { &mark_a };
 
-        self.apply_mark_to_layer(final_mark, target, fill_rgba);
+        let mut apply_encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("flood-fill-apply-encoder"),
+            });
+        self.apply_mark_to_layer(&mut apply_encoder, final_mark, target, fill_rgba);
+        self.queue.submit(std::iter::once(apply_encoder.finish()));
 
         FloodFillOutcome {
             iterations,
@@ -249,10 +258,15 @@ impl FillPipeline {
         }
     }
 
-    /// 指定ポリゴン内ピクセルを塗りつぶす。`polygon_aabb` はポリゴンの
-    /// バウンディングボックスを表す半開矩形 (dispatch 範囲の culling にのみ使う)。
+    /// 指定ポリゴン内ピクセルを塗りつぶす compute pass を `encoder` に積む (BL-133)。
+    ///
+    /// mark pass と apply pass を 1 encoder にまとめる。pass 間は wgpu が mark
+    /// テクスチャの write→read ハザードへバリアを挿入する。submit は呼び出し側。
+    /// `polygon_aabb` はポリゴンのバウンディングボックスを表す半開矩形
+    /// (dispatch 範囲の culling にのみ使う)。
     pub fn dispatch_lasso_fill(
         &self,
+        encoder: &mut wgpu::CommandEncoder,
         active_layer: &GpuRgbaTexture,
         polygon: &[(f32, f32)],
         polygon_aabb: PageDirtyRect,
@@ -317,11 +331,6 @@ impl FillPipeline {
 
         let wg_x = w.div_ceil(8);
         let wg_y = h.div_ceil(8);
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("lasso-mark-encoder"),
-            });
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("lasso-mark-pass"),
@@ -331,13 +340,15 @@ impl FillPipeline {
             cpass.set_bind_group(0, &bg, &[]);
             cpass.dispatch_workgroups(wg_x, wg_y, 1);
         }
-        self.queue.submit(std::iter::once(encoder.finish()));
 
-        self.apply_mark_to_layer(&mark, active_layer, fill_rgba);
+        self.apply_mark_to_layer(encoder, &mark, active_layer, fill_rgba);
     }
 
+    /// マスク済みピクセルへ fill color を source-over で書き込む compute pass を
+    /// `encoder` に積む (submit はしない)。
     fn apply_mark_to_layer(
         &self,
+        encoder: &mut wgpu::CommandEncoder,
         mark: &wgpu::Texture,
         active_layer: &GpuRgbaTexture,
         fill_rgba: [f32; 4],
@@ -388,21 +399,13 @@ impl FillPipeline {
 
         let wg_x = w.div_ceil(8);
         let wg_y = h.div_ceil(8);
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("fill-apply-encoder"),
-            });
-        {
-            let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("fill-apply-pass"),
-                timestamp_writes: None,
-            });
-            cpass.set_pipeline(&self.apply_pipeline);
-            cpass.set_bind_group(0, &bg, &[]);
-            cpass.dispatch_workgroups(wg_x, wg_y, 1);
-        }
-        self.queue.submit(std::iter::once(encoder.finish()));
+        let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("fill-apply-pass"),
+            timestamp_writes: None,
+        });
+        cpass.set_pipeline(&self.apply_pipeline);
+        cpass.set_bind_group(0, &bg, &[]);
+        cpass.dispatch_workgroups(wg_x, wg_y, 1);
     }
 
     fn create_mask_texture(&self, w: u32, h: u32, label: &str) -> wgpu::Texture {

@@ -88,7 +88,12 @@ mod gpu_tests {
                 texture.upload_pixels(&ctx, &[0u8; 4 * 4 * 4]);
 
                 let brush = BrushPipeline::new(&ctx);
+                let mut stroke_encoder =
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("test-brush-encoder"),
+                    });
                 brush.dispatch_stroke(
+                    &mut stroke_encoder,
                     &texture,
                     &[geometry::KomaLocalPoint::new(2, 2)],
                     &crate::BrushStrokeParams {
@@ -99,6 +104,7 @@ mod gpu_tests {
                         mode: editor_state::StrokeMode::Paint,
                     },
                 );
+                queue.submit(std::iter::once(stroke_encoder.finish()));
 
                 let buf_size = (4 * 4 * 4) as wgpu::BufferAddress;
                 let readback_buf = device.create_buffer(&wgpu::BufferDescriptor {
@@ -347,18 +353,24 @@ mod gpu_tests {
                 let pixels = vec![0u8; 8 * 8 * 4];
                 pool.upload_cpu_bitmap(KOMA_A, 0, &pixels);
 
-                let ctx = crate::GpuCanvasContext::new(device, queue);
+                let ctx = crate::GpuCanvasContext::new(device.clone(), queue.clone());
                 let fill = FillPipeline::new(&ctx);
                 let target = pool.get(KOMA_A, 0).unwrap();
                 // 三角形 (0,0), (7,0), (0,7) — 左上半分が内側。
                 // 半開矩形 (0, 0, 8, 8) は包括 AABB (0, 0, 7, 7) に対応。
                 let polygon = vec![(0.0, 0.0), (7.0, 0.0), (0.0, 7.0)];
+                let mut lasso_encoder =
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("test-lasso-encoder"),
+                    });
                 fill.dispatch_lasso_fill(
+                    &mut lasso_encoder,
                     target,
                     &polygon,
                     geometry::PageDirtyRect::new(0, 0, 8, 8),
                     [0.0, 1.0, 0.0, 1.0],
                 );
+                queue.submit(std::iter::once(lasso_encoder.finish()));
 
                 let (_, _, out) = pool.read_back_full(KOMA_A, 0).expect("readback");
                 // (1,1) は内部 → 緑。(6,6) は外部 → 変更なし。
@@ -397,11 +409,16 @@ mod gpu_tests {
                 }
                 pool.upload_cpu_bitmap(KOMA_A, 0, &pixels);
 
-                let ctx = crate::GpuCanvasContext::new(device, queue);
+                let ctx = crate::GpuCanvasContext::new(device.clone(), queue.clone());
                 let compositor = CompositePipeline::new(&ctx);
                 let composite = pool.get_composite(KOMA_A).unwrap();
                 let layer = pool.get(KOMA_A, 0).unwrap();
+                let mut comp_encoder =
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("test-composite-encoder"),
+                    });
                 compositor.recomposite(
+                    &mut comp_encoder,
                     composite,
                     &[CompositeLayerEntry {
                         color: layer,
@@ -411,6 +428,7 @@ mod gpu_tests {
                     }],
                     geometry::PageDirtyRect::new(0, 0, 4, 4),
                 );
+                queue.submit(std::iter::once(comp_encoder.finish()));
 
                 let (_, _, out) = pool.read_back_composite(KOMA_A).expect("readback");
                 let idx = (4 + 1) * 4;
@@ -441,11 +459,16 @@ mod gpu_tests {
                 let pixels: Vec<u8> = (0..16).flat_map(|_| [255u8, 0, 0, 255]).collect();
                 pool.upload_cpu_bitmap(KOMA_A, 0, &pixels);
 
-                let ctx = crate::GpuCanvasContext::new(device, queue);
+                let ctx = crate::GpuCanvasContext::new(device.clone(), queue.clone());
                 let compositor = CompositePipeline::new(&ctx);
                 let composite = pool.get_composite(KOMA_A).unwrap();
                 let layer = pool.get(KOMA_A, 0).unwrap();
+                let mut comp_encoder =
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("test-composite-encoder"),
+                    });
                 compositor.recomposite(
+                    &mut comp_encoder,
                     composite,
                     &[CompositeLayerEntry {
                         color: layer,
@@ -455,6 +478,7 @@ mod gpu_tests {
                     }],
                     geometry::PageDirtyRect::new(0, 0, 4, 4),
                 );
+                queue.submit(std::iter::once(comp_encoder.finish()));
 
                 let (_, _, out) = pool.read_back_composite(KOMA_A).expect("readback");
                 // All pixels should be cleared (alpha = 0) since the only layer is invisible.

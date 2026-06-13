@@ -355,13 +355,32 @@ impl DesktopApp {
     /// 指定コマに対し、現在のレイヤー構成を composite テクスチャへ再合成する。
     ///
     /// `dirty` はコマローカル座標系の矩形。None の場合はコマ全体。
-    pub(crate) fn recomposite_koma(
-        &self,
-        koma_id: KomaId,
-        dirty: Option<PageDirtyRect>,
-    ) {
+    /// 単体の再合成経路 (undo/redo・コマンド適用後など)。専用 encoder を作って
+    /// 1 submit する。ストローク区間では `recomposite_koma_into` で brush と同一
+    /// encoder へまとめる (BL-133)。
+    pub(crate) fn recomposite_koma(&self, koma_id: KomaId, dirty: Option<PageDirtyRect>) {
         let Some(gpu) = self.gpu.as_ref() else {
             return;
+        };
+        let mut encoder = gpu.pool.create_paint_encoder("recomposite-koma-encoder");
+        if self.recomposite_koma_into(&mut encoder, koma_id, dirty) {
+            gpu.pool.submit(encoder);
+        }
+    }
+
+    /// 指定コマの再合成 compute pass を `encoder` に積む (submit はしない)。
+    ///
+    /// pass を積んだ (= submit が必要) なら `true`、対象なし/空矩形で何も積まな
+    /// かったなら `false` を返す。ストローク区間では brush dispatch と同一 encoder
+    /// へまとめて 1 submit に集約するために使う (BL-133)。
+    pub(crate) fn recomposite_koma_into(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        koma_id: KomaId,
+        dirty: Option<PageDirtyRect>,
+    ) -> bool {
+        let Some(gpu) = self.gpu.as_ref() else {
+            return false;
         };
         let koma_key = gpu_paint::KomaTextureId(koma_id.0);
         let Some(koma) = self
@@ -372,10 +391,10 @@ impl DesktopApp {
             .flat_map(|p| &p.komas)
             .find(|p| p.id == koma_id)
         else {
-            return;
+            return false;
         };
         let Some(composite) = gpu.pool.get_composite(koma_key) else {
-            return;
+            return false;
         };
         let (pw, ph) = (koma.composite_cache.width as u32, koma.composite_cache.height as u32);
         let rect = dirty.unwrap_or(PageDirtyRect {
@@ -392,7 +411,7 @@ impl DesktopApp {
         let x1 = ((rect.x + rect.width) as u32).min(pw);
         let y1 = ((rect.y + rect.height) as u32).min(ph);
         if x0 >= x1 || y0 >= y1 {
-            return;
+            return false;
         }
 
         let entries: Vec<gpu_paint::CompositeLayerEntry<'_>> = koma
@@ -411,7 +430,8 @@ impl DesktopApp {
             })
             .collect();
 
-        gpu.compositor.recomposite(composite, &entries, rect);
+        gpu.compositor.recomposite(encoder, composite, &entries, rect);
+        true
     }
 
     /// 全コマの composite テクスチャを再合成する。`install_gpu_resources` や

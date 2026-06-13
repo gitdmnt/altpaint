@@ -39,7 +39,7 @@ fn cpu_backend_flood_fill_applies_and_produces_patch() {
 
     let mut backend = CpuPaintBackend::new();
     let mut target = cpu_target(&mut document);
-    let applied = backend.apply(&plan, &input, &mut target);
+    let applied = backend.apply(&plan, &input, &mut target, None);
 
     assert!(applied.changed, "flood fill が画素を変える");
     assert!(matches!(applied.patch, Some(PaintPatch::Cpu(_))));
@@ -76,7 +76,7 @@ fn cpu_backend_stroke_commits_patch() {
     }
     {
         let mut target = cpu_target(&mut document);
-        let applied = backend.apply(&plan, &input, &mut target);
+        let applied = backend.apply(&plan, &input, &mut target, None);
         assert!(applied.changed);
         // ストローク中は patch を確定しない (commit でまとめる)。
         assert!(applied.patch.is_none());
@@ -183,7 +183,7 @@ mod golden_equivalence {
                     gpu: None,
                 };
                 let mut cpu_backend = CpuPaintBackend::new();
-                cpu_backend.apply(&plan, &input, &mut target);
+                cpu_backend.apply(&plan, &input, &mut target, None);
             }
             let cpu_layer = cpu_doc
                 .clone_koma_layer_bitmap(koma_id, layer_index)
@@ -215,7 +215,10 @@ mod golden_equivalence {
                     }),
                 };
                 let mut gpu_backend = GpuPaintBackend::new();
-                gpu_backend.apply(&plan, &input, &mut target);
+                // Stamp はストロークのため encoder を要求する (BL-133)。
+                let mut encoder = pool.create_paint_encoder("test-paint-encoder");
+                gpu_backend.apply(&plan, &input, &mut target, Some(&mut encoder));
+                pool.submit(encoder);
             }
             let (_, _, gpu_pixels) =
                 pool.read_back_full(koma_key, layer_index).expect("readback");

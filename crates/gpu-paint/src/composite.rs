@@ -65,13 +65,18 @@ impl CompositePipeline {
         }
     }
 
-    /// dirty 範囲内で composite テクスチャを再合成する。
+    /// dirty 範囲内で composite テクスチャを再合成する compute pass を `encoder`
+    /// へ積む (BL-133)。
     ///
     /// `layers` は bottom → top 順。`visible == false` のエントリはスキップする。
     /// `dirty` は半開矩形 (`x + width`, `y + height` は範囲外の最初の座標)。
     /// テクスチャ境界へクランプされ、範囲外は書き換えない。
+    ///
+    /// submit は呼び出し側が行う。clear pass と各レイヤー pass を 1 encoder に
+    /// 積み、レイヤー間 pass の順序 (bottom → top) はエンコード順で保たれる。
     pub fn recomposite(
         &self,
+        encoder: &mut wgpu::CommandEncoder,
         composite: &GpuRgbaTexture,
         layers: &[CompositeLayerEntry<'_>],
         dirty: PageDirtyRect,
@@ -121,11 +126,6 @@ impl CompositePipeline {
         let wg_x = dirty_w.div_ceil(8);
         let wg_y = dirty_h.div_ceil(8);
 
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("composite-clear-encoder"),
-            });
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("composite-clear-pass"),
@@ -135,9 +135,8 @@ impl CompositePipeline {
             cpass.set_bind_group(0, &clear_bg, &[]);
             cpass.dispatch_workgroups(wg_x, wg_y, 1);
         }
-        self.queue.submit(std::iter::once(encoder.finish()));
 
-        // 2. Iterative composite passes (bottom → top).
+        // 2. Iterative composite passes (bottom → top)。同一 encoder に積む。
         let dummy_view = self.dummy_mask.create_view(&wgpu::TextureViewDescriptor {
             label: Some("composite-dummy-mask-view"),
             ..Default::default()
@@ -195,21 +194,13 @@ impl CompositePipeline {
                 ],
             });
 
-            let mut encoder = self
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("composite-layer-encoder"),
-                });
-            {
-                let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                    label: Some("composite-layer-pass"),
-                    timestamp_writes: None,
-                });
-                cpass.set_pipeline(&self.composite_pipeline);
-                cpass.set_bind_group(0, &bg, &[]);
-                cpass.dispatch_workgroups(wg_x, wg_y, 1);
-            }
-            self.queue.submit(std::iter::once(encoder.finish()));
+            let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("composite-layer-pass"),
+                timestamp_writes: None,
+            });
+            cpass.set_pipeline(&self.composite_pipeline);
+            cpass.set_bind_group(0, &bg, &[]);
+            cpass.dispatch_workgroups(wg_x, wg_y, 1);
         }
     }
 }

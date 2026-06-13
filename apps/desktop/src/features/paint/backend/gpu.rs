@@ -77,6 +77,7 @@ impl PaintBackend for GpuPaintBackend {
         plan: &PaintPlan,
         _input: &PaintInput,
         target: &mut PaintTarget<'_>,
+        encoder: Option<&mut wgpu::CommandEncoder>,
     ) -> AppliedPaint {
         let Some(gpu) = target.gpu.as_ref() else {
             return AppliedPaint::default();
@@ -90,6 +91,9 @@ impl PaintBackend for GpuPaintBackend {
                 color,
                 mode,
             } => {
+                let Some(encoder) = encoder else {
+                    return AppliedPaint::default();
+                };
                 let Some(texture) = gpu.pool.get(koma_key, target.layer_index) else {
                     return AppliedPaint::default();
                 };
@@ -107,7 +111,9 @@ impl PaintBackend for GpuPaintBackend {
                     antialias,
                     mode: *mode,
                 };
-                gpu.brush.dispatch_stroke(texture, stamps, &params);
+                // brush pass を呼び出し側 encoder に積む (submit しない、BL-133)。
+                // ストローク区間の composite と 1 submit にまとめる。
+                gpu.brush.dispatch_stroke(encoder, texture, stamps, &params);
 
                 // ストローク中の dirty を蓄積する (commit_stroke でスナップショット)。
                 if let Some(pending) = self.pending.as_mut() {
@@ -125,6 +131,7 @@ impl PaintBackend for GpuPaintBackend {
                 }
             }
             PaintOp::FloodFill { seed, color, .. } => {
+                // flood fill は ping-pong 反復で内部 submit を持つ即時操作。
                 // flood fill の dirty はレイヤー全域 (plan.dirty が保守的境界)。
                 self.apply_fill(target, koma_key, plan.dirty, |gpu, source, dst| {
                     gpu.fill.dispatch_flood_fill(
@@ -144,15 +151,18 @@ impl PaintBackend for GpuPaintBackend {
                 let poly: Vec<(f32, f32)> =
                     polygon.iter().map(|p| (p.x as f32, p.y as f32)).collect();
                 let aabb = lasso_aabb(polygon);
-                // lasso の dirty は polygon AABB (plan.dirty と同一)。スナップショット
-                // 領域もこれに絞る。
+                // lasso は即時操作。mark + apply pass を専用 encoder にまとめ 1 submit
+                // する (BL-133)。dirty は polygon AABB (plan.dirty と同一)。
                 self.apply_fill(target, koma_key, plan.dirty, move |gpu, _source, dst| {
+                    let mut enc = gpu.pool.create_paint_encoder("lasso-fill-encoder");
                     gpu.fill.dispatch_lasso_fill(
+                        &mut enc,
                         dst,
                         &poly,
                         aabb,
                         color_to_rgba_f32(*color),
                     );
+                    gpu.pool.submit(enc);
                 })
             }
         }

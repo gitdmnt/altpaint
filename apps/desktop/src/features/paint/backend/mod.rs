@@ -75,11 +75,16 @@ pub(crate) trait PaintBackend {
     /// ストローク以外 (FloodFill / LassoFill) の即時操作、または 1 ストローク
     /// セグメントを適用する。`input` は CPU 参照実装がコンテキスト (ペン先など) を
     /// 再解決するために使う。`plan` は GPU 経路が画素なしで dispatch するために使う。
+    ///
+    /// `encoder` は GPU バックエンドが compute pass を積む先 (BL-133)。GPU 経路では
+    /// 呼び出し側が brush/fill + composite を 1 encoder にまとめ 1 submit する。
+    /// CPU バックエンドは `encoder` を無視する (`None` でよい)。
     fn apply(
         &mut self,
         plan: &PaintPlan,
         input: &PaintInput,
         target: &mut PaintTarget<'_>,
+        encoder: Option<&mut wgpu::CommandEncoder>,
     ) -> AppliedPaint;
 
     /// ストローク開始時に before スナップショットを準備する。

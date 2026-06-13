@@ -32,12 +32,21 @@ const STAMP_POSITIONS_SIZE: u64 = (MAX_STAMP_STEPS as u64 + 1) * 8;
 /// GPU ブラシ/消しゴム計算シェーダーのパイプラインを保持する。
 ///
 /// `new` でパイプラインを一度構築し、`dispatch_stroke` を繰り返し呼び出す。
+///
+/// `dispatch_stroke` は呼び出し側 encoder に compute pass を積むだけで submit
+/// しない (BL-133)。ストローク区間内の brush + composite を 1 encoder へまとめて
+/// 1 submit に集約できる。param/positions の uniform/storage バッファは
+/// ストローク区間で使い回す (毎 dispatch のバッファ確保を避ける)。
 pub struct BrushPipeline {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     stroke_pipeline: wgpu::ComputePipeline,
     erase_pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
+    /// 使い回す params uniform バッファ (BL-133 頻用バッファ再利用)。
+    params_buf: wgpu::Buffer,
+    /// 使い回す stamp positions storage バッファ。
+    positions_buf: wgpu::Buffer,
 }
 
 impl BrushPipeline {
@@ -66,22 +75,47 @@ impl BrushPipeline {
             "erase_stamp",
         );
 
+        // ストローク区間で使い回す固定長バッファ (BL-133 頻用バッファ再利用)。
+        let params_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("brush-stroke-params"),
+            size: BRUSH_STROKE_PARAMS_SIZE,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let positions_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("brush-stamp-positions"),
+            size: STAMP_POSITIONS_SIZE,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
             device,
             queue,
             stroke_pipeline,
             erase_pipeline,
             bind_group_layout,
+            params_buf,
+            positions_buf,
         }
     }
 
-    /// 指定スタンプ位置群（コマローカル座標）をレイヤーテクスチャへ描画する。
+    /// 指定スタンプ位置群（コマローカル座標）をレイヤーテクスチャへ描画する
+    /// compute pass を `encoder` に積む (BL-133)。
     ///
+    /// - submit は呼び出し側が行う。ストローク区間内の brush + composite を
+    ///   1 encoder にまとめて 1 submit に集約できる。
     /// - `params.mode == StrokeMode::Erase` なら消去シェーダーを使用する。
     /// - `positions` は `PaintPlan::Stroke.stamps` (コマローカル座標列) をそのまま渡す。
     /// - `positions` が空の場合は何もしない。
+    ///
+    /// 注意: params/positions バッファは使い回すため、1 つの `encoder` に積んだ
+    /// pass を submit する前に同じ `BrushPipeline` で次の `dispatch_stroke` を
+    /// 呼んではならない (バッファ内容が上書きされる)。desktop は 1 ストローク
+    /// セグメント = 1 encoder = 1 submit で運用するためこの制約を満たす。
     pub fn dispatch_stroke(
         &self,
+        encoder: &mut wgpu::CommandEncoder,
         layer_texture: &GpuRgbaTexture,
         positions: &[KomaLocalPoint],
         params: &BrushStrokeParams,
@@ -102,21 +136,8 @@ impl BrushPipeline {
         );
         let positions_bytes = build_positions_bytes(positions, MAX_STAMP_STEPS + 1);
 
-        let params_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("brush-stroke-params"),
-            size: BRUSH_STROKE_PARAMS_SIZE,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        self.queue.write_buffer(&params_buf, 0, &params_bytes);
-
-        let positions_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("brush-stamp-positions"),
-            size: STAMP_POSITIONS_SIZE,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        self.queue.write_buffer(&positions_buf, 0, &positions_bytes);
+        self.queue.write_buffer(&self.params_buf, 0, &params_bytes);
+        self.queue.write_buffer(&self.positions_buf, 0, &positions_bytes);
 
         let texture_view = layer_texture
             .texture
@@ -131,7 +152,7 @@ impl BrushPipeline {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: params_buf.as_entire_binding(),
+                    resource: self.params_buf.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -139,7 +160,7 @@ impl BrushPipeline {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: positions_buf.as_entire_binding(),
+                    resource: self.positions_buf.as_entire_binding(),
                 },
             ],
         });
@@ -152,21 +173,13 @@ impl BrushPipeline {
         let wg_x = layer_texture.width.div_ceil(8);
         let wg_y = layer_texture.height.div_ceil(8);
 
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("brush-stroke-encoder"),
-            });
-        {
-            let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("brush-stroke-pass"),
-                timestamp_writes: None,
-            });
-            cpass.set_pipeline(pipeline);
-            cpass.set_bind_group(0, &bind_group, &[]);
-            cpass.dispatch_workgroups(wg_x, wg_y, 1);
-        }
-        self.queue.submit(std::iter::once(encoder.finish()));
+        let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("brush-stroke-pass"),
+            timestamp_writes: None,
+        });
+        cpass.set_pipeline(pipeline);
+        cpass.set_bind_group(0, &bind_group, &[]);
+        cpass.dispatch_workgroups(wg_x, wg_y, 1);
     }
 
     fn create_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {

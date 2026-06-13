@@ -53,6 +53,7 @@ impl PaintBackend for CpuPaintBackend {
         _plan: &PaintPlan,
         input: &PaintInput,
         target: &mut PaintTarget<'_>,
+        _encoder: Option<&mut wgpu::CommandEncoder>,
     ) -> AppliedPaint {
         let Some(edits) = self.engine.compute_paint_edits(target.document, input) else {
             return AppliedPaint::default();

@@ -34,6 +34,17 @@ impl DesktopApp {
         );
         let use_gpu = self.gpu.is_some();
 
+        // GPU + ストロークは brush pass と composite pass を 1 つの encoder に積み
+        // 1 submit に集約する (BL-133)。その他 (CPU 経路、GPU の即時 fill) は
+        // backend 内で submit するため encoder は不要。
+        let mut stroke_encoder: Option<wgpu::CommandEncoder> = if use_gpu && is_stroke {
+            self.gpu
+                .as_ref()
+                .map(|gpu| gpu.pool.create_paint_encoder("paint-stroke-encoder"))
+        } else {
+            None
+        };
+
         // バックエンド適用は disjoint なフィールド借用 (document / paint / gpu) を
         // 同時に握るため、self のメソッドを呼ばずローカル参照で分割する。結果
         // (AppliedPaint) を取り出してから dirty/再合成の配線を行う。
@@ -56,17 +67,18 @@ impl DesktopApp {
                 if is_stroke {
                     backend.begin_stroke(&target);
                 }
-                backend.apply(&plan, &input, &mut target)
+                backend.apply(&plan, &input, &mut target, stroke_encoder.as_mut())
             } else {
                 let backend = &mut self.paint.cpu_backend;
                 if is_stroke {
                     backend.begin_stroke(&target);
                 }
-                backend.apply(&plan, &input, &mut target)
+                backend.apply(&plan, &input, &mut target, None)
             }
         };
 
         if !applied.changed {
+            // brush を積んでいない (空ストローク等) ならば encoder は破棄する。
             return false;
         }
 
@@ -79,10 +91,21 @@ impl DesktopApp {
             self.append_canvas_dirty_rect(dirty);
             if let Some(koma_id) = applied.koma_id {
                 // GPU 経路では composite テクスチャを再合成する。CPU 経路では
-                // recomposite_koma は GPU 不在で no-op となり、CpuCanvasSnapshot 側が
-                // 表示を担う (BL-136)。
-                self.recomposite_koma(koma_id, Some(dirty));
+                // recomposite_koma_into は GPU 不在で何も積まず、CpuCanvasSnapshot
+                // 側が表示を担う (BL-136)。
+                if let Some(encoder) = stroke_encoder.as_mut() {
+                    // GPU + ストローク: brush と同一 encoder に composite を積み 1 submit。
+                    self.recomposite_koma_into(encoder, koma_id, Some(dirty));
+                } else {
+                    // CPU、または GPU の即時 fill (backend が submit 済み)。
+                    self.recomposite_koma(koma_id, Some(dirty));
+                }
             }
+        }
+
+        // ストローク区間の brush + composite を 1 回で submit する (BL-133)。
+        if let (Some(encoder), Some(gpu)) = (stroke_encoder, self.gpu.as_ref()) {
+            gpu.pool.submit(encoder);
         }
         true
     }

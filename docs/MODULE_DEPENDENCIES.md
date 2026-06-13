@@ -321,6 +321,9 @@ graph TD
 - `CompositePipeline`（レイヤー合成。旧 `GpuLayerCompositor`）
 - `src/shaders/` の 7 WGSL compute shader（書込み専用だった `GpuPenTipCache` と孤立 brush_stamp.wgsl は ADR 018 B0 で削除）
 - `pipeline.rs`（build_pipeline の 3 重複 + alpha 展開 2 重複を共通化、dispatcher 全コンストラクタを共有 context 受け取りに統一。矩形は半開矩形型 1 つへ統一し公開 API から無名タプルを排除 — BL-039 / BL-040）
+- `gpu/` モジュール（R22 / BL-135 で旧 `gpu.rs` を `context` / `texture` / `store` / `snapshot` / `mask` / `readback` へ責務別分割）。`create_snapshot_texture` は `snapshot` モジュールへ実体移動（R23）
+- テクスチャキーは `KomaTextureId(u64)`（K11 後段）。`&str` キーを廃止し毎フレーム String アロケーションと UI パネル ID 混線を排除
+- dispatch API は呼び出し側 encoder に compute pass を積む方式（`dispatch_stroke(&mut encoder, ...)` / `recomposite(&mut encoder, ...)` / `dispatch_lasso_fill(&mut encoder, ...)`、BL-133）。submit は呼び出し側が行い、ストローク区間の brush + composite を 1 submit に集約する。flood fill は収束ウィンドウ単位で submit 統合。`LayerTextureStore::create_paint_encoder` / `submit` が encoder 境界を提供
 
 依存の特徴:
 
@@ -611,8 +614,9 @@ crates/paint-engine/src/lib.rs
   -> ops/*
 
 crates/gpu-paint/src/lib.rs
-  -> gpu.rs (LayerTextureStore)
-  -> brush.rs / fill.rs / composite.rs
+  -> gpu/ (context / texture / store / snapshot / mask / readback。LayerTextureStore + KomaTextureId)
+  -> brush.rs / fill.rs / composite.rs (encoder へ pass を積む dispatch、BL-133)
+  -> pipeline.rs (compute パイプライン生成の共通ヘルパ)
   -> shaders/*.wgsl
 ```
 
