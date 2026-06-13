@@ -1,14 +1,22 @@
-//! ペイント実行・履歴に関わる desktop 内モジュール群。
+//! paint feature スライス (BL-111 / D9)。
+//!
+//! ペイント実行 (`execute`)、編集履歴 (`history`)、ブラシプレビュー dirty rect
+//! 演算 (`preview`) を所有する。
 //!
 //! 履歴 (`EditHistory` / `PaintPatch`) は `app-core` から移管され、
 //! `document-model` / `gpu-paint` の具体型を直接保持する (BL-076)。
-//! `features/paint` への最終配置は B7。
+//! D9: `app/services/project_io.rs` のペイント実行+履歴部 (8 割) を
+//! `execute` へ分離した。I/O 部 (2 割) は features/project へ。
 
-pub(crate) mod history;
+mod execute;
+mod history;
+mod preview;
 
+pub(crate) use execute::PendingStroke;
 pub(crate) use history::{BitmapPatch, EditHistory, GpuRegionPatch, PaintPatch};
+pub(crate) use preview::brush_preview_dirty_rect;
 
-use super::DesktopApp;
+use crate::app::DesktopApp;
 
 impl DesktopApp {
     /// 編集履歴を全消去する。スナップショット復元後など、履歴と文書の整合が

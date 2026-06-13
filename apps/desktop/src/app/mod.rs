@@ -10,8 +10,6 @@ mod command_router;
 pub(crate) mod cursor;
 mod input;
 mod io_state;
-mod paint;
-mod paint_preview;
 mod panel_config_sync;
 mod panel_dispatch;
 mod present;
@@ -28,7 +26,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use document_model::{Document, KomaId};
 use geometry::{PageDirtyRect, PagePoint};
-use raster::RgbaBitmap;
 use crate::features::workspace::WorkspaceState;
 use crate::platform::{DesktopDialogs, NativeDesktopDialogs, default_workspace_preset_path};
 use panel_runtime::PanelRuntime;
@@ -41,7 +38,7 @@ pub(crate) use self::panel_dispatch::PanelDragState;
 use self::panel_dispatch::PanelInteractionState;
 use self::invalidation::PresentFrameUpdate;
 use crate::features::koma::KomaGesture;
-use self::paint::EditHistory;
+use crate::features::paint::{EditHistory, PendingStroke};
 use crate::features::snapshots::DocumentSnapshotStore;
 use crate::present_quads::DesktopLayout;
 use paint_engine::CanvasInputState;
@@ -50,7 +47,7 @@ use paint_engine::CanvasInputState;
 static TEST_SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// canvas_view_geometry のキャッシュエントリ。入力が同じなら再計算を省略するために使う。
-struct CachedCanvasViewGeometry {
+pub(crate) struct CachedCanvasViewGeometry {
     viewport: geometry::WindowRect,
     canvas_width: usize,
     canvas_height: usize,
@@ -58,39 +55,26 @@ struct CachedCanvasViewGeometry {
     geometry: Option<canvas_geometry::CanvasViewGeometry>,
 }
 
-/// ストローク中のビットマップ差分追跡状態。
-struct PendingStroke {
-    koma_id: KomaId,
-    layer_index: usize,
-    /// ストローク開始前のレイヤービットマップ全体。
-    ///
-    /// GPU パスでは `None`（commit 時に CPU bitmap がストローク前状態を保持している）。
-    /// CPU パスでは `Some`（ストローク中に CPU bitmap が書き換わるため事前に保存）。
-    before_layer: Option<RgbaBitmap>,
-    /// ストローク中に蓄積したコマローカル dirty rect の合計。
-    dirty: Option<PageDirtyRect>,
-}
-
 /// paint feature のサブ状態 (BL-110)。
 ///
 /// DesktopApp に散在していたペイント実行・履歴・CPU 表示キャッシュの各フィールドを
 /// まとめる。`cpu_canvas_snapshot` / `hover_canvas_position` / `cached_canvas_view_geometry`
 /// は CPU 表示経路 (BL-136) の派生キャッシュであり paint feature が正本を所有する。
-struct PaintState {
+pub(crate) struct PaintState {
     /// ペイント計算機 (状態を持たない純計算)。
-    paint_engine: paint_engine::PaintEngine,
+    pub(crate) paint_engine: paint_engine::PaintEngine,
     /// ペイント系ジェスチャの進行中状態。
-    canvas_input: CanvasInputState,
+    pub(crate) canvas_input: CanvasInputState,
     /// ストローク中のビットマップ差分追跡状態。
-    pending_stroke: Option<PendingStroke>,
+    pub(crate) pending_stroke: Option<PendingStroke>,
     /// 型付き patch (Cpu/Gpu) を積む編集履歴 (BL-076)。
-    history: EditHistory,
+    pub(crate) history: EditHistory,
     /// CPU 表示用のキャンバス合成スナップショット (BL-136)。
-    cpu_canvas_snapshot: Option<CpuCanvasSnapshot>,
+    pub(crate) cpu_canvas_snapshot: Option<CpuCanvasSnapshot>,
     /// ブラシプレビュー描画用の現在のホバー位置 (ページ座標)。
-    hover_canvas_position: Option<PagePoint>,
+    pub(crate) hover_canvas_position: Option<PagePoint>,
     /// canvas_view_geometry の再計算を省くキャッシュ。
-    cached_canvas_view_geometry: Option<CachedCanvasViewGeometry>,
+    pub(crate) cached_canvas_view_geometry: Option<CachedCanvasViewGeometry>,
 }
 
 impl PaintState {
@@ -119,7 +103,7 @@ pub(crate) struct DesktopApp {
     pub(crate) io_state: DesktopIoState,
     pub(crate) workspace: WorkspaceState,
     /// paint feature のサブ状態 (ペイント実行・履歴・CPU 表示キャッシュ)。
-    paint: PaintState,
+    pub(crate) paint: PaintState,
     /// コマ作成 (KomaRect) ジェスチャの進行中状態 (BL-081)。
     koma_gesture: KomaGesture,
     pub(crate) layout: Option<DesktopLayout>,

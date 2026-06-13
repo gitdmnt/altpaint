@@ -34,7 +34,7 @@ impl BackgroundJob {
 
 impl DesktopApp {
     /// プロジェクト保存ジョブをキューへ追加する。
-    pub(super) fn enqueue_save_project(&mut self, path: PathBuf) -> bool {
+    pub(crate) fn enqueue_save_project(&mut self, path: PathBuf) -> bool {
         // GPU パスで描画した場合は CPU bitmap が古いため、保存前に読み戻して同期する
         self.sync_gpu_bitmaps_to_cpu();
         let document = self.document.clone();

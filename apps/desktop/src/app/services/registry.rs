@@ -21,9 +21,9 @@ pub(crate) type ServiceHandler = fn(&mut DesktopApp, &ServiceRequest) -> Option<
 ///
 /// 登録順は探索順だが、wire 名の名前空間は互いに素なので順序に挙動依存はない。
 pub(crate) const SERVICE_HANDLERS: &[ServiceHandler] = &[
-    super::project_io::handle_project_service_request,
-    super::workspace_io::handle_workspace_service_request,
-    super::workspace_layout::handle_workspace_layout_service_request,
+    crate::features::project::handle_project_service_request,
+    crate::features::workspace::handle_workspace_service_request,
+    crate::features::workspace::handle_workspace_layout_service_request,
     crate::features::tools::handle_tool_catalog_service_request,
     crate::features::view::handle_view_service_request,
     crate::features::koma::handle_koma_navigation_service_request,

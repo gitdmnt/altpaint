@@ -1,11 +1,9 @@
 use std::path::PathBuf;
 
-use crate::features::workspace::{
-    WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog,
-};
+use super::{WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog};
 use panel_runtime::{ServiceRequest, services::names};
 
-use super::DesktopApp;
+use crate::app::DesktopApp;
 
 /// workspace preset service request を処理する。
 pub(crate) fn handle_workspace_service_request(
@@ -32,6 +30,14 @@ pub(crate) fn handle_workspace_service_request(
 }
 
 impl DesktopApp {
+    /// 現在のワークスペース UI 状態 (レイアウト + パネル config) を採取する。
+    pub(crate) fn capture_workspace_ui_state(&self) -> panel_workspace::WorkspaceUiState {
+        panel_workspace::WorkspaceUiState::new(
+            self.panel_workspace.workspace_layout(),
+            self.panel_runtime.persistent_panel_configs(),
+        )
+    }
+
     pub(crate) fn apply_workspace_preset(&mut self, preset_id: &str) -> bool {
         let Some(preset) = self
             .workspace

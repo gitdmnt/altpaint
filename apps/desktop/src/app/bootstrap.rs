@@ -141,7 +141,7 @@ impl DesktopApp {
         }
     }
 
-    pub(super) fn apply_workspace_ui_state(&mut self, ui_state: WorkspaceUiState) {
+    pub(crate) fn apply_workspace_ui_state(&mut self, ui_state: WorkspaceUiState) {
         let (workspace_layout, panel_configs) = ui_state.into_parts();
         self.panel_workspace
             .replace_workspace_layout(workspace_layout);
@@ -171,7 +171,7 @@ impl DesktopApp {
 
     /// 現在登録されているパネルの meta から同梱 default-floating プリセットカタログを
     /// 構築する (BL-095)。on-disk カタログ欠落/破損時のフォールバックに使う。
-    pub(super) fn default_workspace_preset_catalog(&self) -> WorkspacePresetCatalog {
+    pub(crate) fn default_workspace_preset_catalog(&self) -> WorkspacePresetCatalog {
         default_workspace_preset_catalog_from(&self.panel_runtime)
     }
 
@@ -186,7 +186,7 @@ impl DesktopApp {
         }
     }
 
-    pub(super) fn persist_workspace_preset_catalog(&self) {
+    pub(crate) fn persist_workspace_preset_catalog(&self) {
         if let Err(error) = save_workspace_preset_catalog(
             &self.io_state.workspace_preset_path,
             &self.workspace.presets,

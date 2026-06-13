@@ -135,7 +135,7 @@ impl DesktopApp {
         self.recomposite_all_komas();
     }
 
-    pub(super) fn reset_active_interactions(&mut self) {
+    pub(crate) fn reset_active_interactions(&mut self) {
         self.paint.canvas_input.reset();
         self.koma_gesture.reset();
         self.invalidation.clear_pending();
@@ -159,7 +159,7 @@ impl DesktopApp {
         true
     }
 
-    pub(super) fn apply_bitmap_edits(&mut self, edits: Vec<BitmapEdit>) -> bool {
+    pub(crate) fn apply_bitmap_edits(&mut self, edits: Vec<BitmapEdit>) -> bool {
         self.document
             .apply_bitmap_edits_to_active_layer(&edits)
             .is_some_and(|dirty| self.append_canvas_dirty_rect(dirty))
@@ -209,7 +209,7 @@ impl DesktopApp {
             self.paint.cached_canvas_view_geometry = None;
             let current_geometry = self.canvas_view_geometry();
             if let Some(dirty) = self.paint.hover_canvas_position.and_then(|hover_position| {
-                super::paint_preview::brush_preview_dirty_rect(
+                crate::features::paint::brush_preview_dirty_rect(
                     previous_geometry,
                     current_geometry,
                     hover_position,

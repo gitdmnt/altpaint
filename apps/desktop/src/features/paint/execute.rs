@@ -1,15 +1,28 @@
-use std::path::PathBuf;
+//! ペイント入力の適用・ストローク確定・履歴積みを行う (D9)。
+//!
+//! `app/services/project_io.rs` のペイント実行+履歴部 (8 割) をここへ分離した。
+//! GPU 経路では CPU bitmap を書き換えず、compute shader が GPU テクスチャへ直接描画する。
 
-use document_model::DocumentCommand;
-use paint_engine::{PaintInput, PaintPluginContext};
+use document_model::KomaId;
 use geometry::{MergeInSpace, PageDirtyRect};
-use crate::platform::normalize_project_path;
-use panel_runtime::{ServiceRequest, services::names};
-use project_store::load_project_from_path;
+use paint_engine::{PaintInput, PaintPluginContext};
+use raster::RgbaBitmap;
 
-use super::super::paint::{BitmapPatch, GpuRegionPatch, PaintPatch};
-use super::super::PendingStroke;
-use super::DesktopApp;
+use super::{BitmapPatch, GpuRegionPatch, PaintPatch};
+use crate::app::DesktopApp;
+
+/// ストローク中のビットマップ差分追跡状態。
+pub(crate) struct PendingStroke {
+    pub(crate) koma_id: KomaId,
+    pub(crate) layer_index: usize,
+    /// ストローク開始前のレイヤービットマップ全体。
+    ///
+    /// GPU パスでは `None`（commit 時に CPU bitmap がストローク前状態を保持している）。
+    /// CPU パスでは `Some`（ストローク中に CPU bitmap が書き換わるため事前に保存）。
+    pub(crate) before_layer: Option<RgbaBitmap>,
+    /// ストローク中に蓄積したコマローカル dirty rect の合計。
+    pub(crate) dirty: Option<PageDirtyRect>,
+}
 
 /// 解決済みペイントコンテキストから GPU ブラシ描画パラメータを組み立てる。
 ///
@@ -41,32 +54,6 @@ pub(crate) fn merged_dirty(edits: &[raster::BitmapEdit]) -> Option<PageDirtyRect
             None => edit.dirty_rect,
         })
     })
-}
-
-/// project service request を処理する。
-pub(crate) fn handle_project_service_request(
-    app: &mut DesktopApp,
-    request: &ServiceRequest,
-) -> Option<bool> {
-    let changed = match request.name.as_str() {
-        names::PROJECT_NEW_DOCUMENT_SIZED => {
-            app.apply_document_command(&DocumentCommand::NewDocumentSized {
-                width: request.u64("width")? as usize,
-                height: request.u64("height")? as usize,
-            })
-        }
-        names::PROJECT_SAVE_CURRENT => app.save_project_to_current_path(),
-        names::PROJECT_SAVE_AS => app.save_project_as(),
-        names::PROJECT_SAVE_TO_PATH => {
-            app.save_project_to_path(PathBuf::from(request.string("path")?))
-        }
-        names::PROJECT_LOAD_DIALOG => app.open_project(),
-        names::PROJECT_LOAD_FROM_PATH => {
-            app.load_project(PathBuf::from(request.string("path")?))
-        }
-        _ => return None,
-    };
-    Some(changed)
 }
 
 impl DesktopApp {
@@ -212,7 +199,7 @@ impl DesktopApp {
     /// `capture_koma_layer_region` → `create_snapshot_texture` (before) で構築する。
     fn execute_gpu_fill(
         &mut self,
-        koma_id: document_model::KomaId,
+        koma_id: KomaId,
         layer_index: usize,
         input: &PaintInput,
         edits: &[raster::BitmapEdit],
@@ -380,77 +367,6 @@ impl DesktopApp {
             after,
         }));
         self.sync_ui_from_document();
-    }
-
-    pub(super) fn save_project_to_current_path(&mut self) -> bool {
-        self.enqueue_save_project(self.io_state.project_path.clone())
-    }
-
-    pub(super) fn save_project_as(&mut self) -> bool {
-        let Some(path) = self
-            .io_state
-            .dialogs
-            .pick_save_project_path(&self.io_state.project_path)
-        else {
-            return false;
-        };
-        self.save_project_to_path(path)
-    }
-
-    pub(super) fn save_project_to_path(&mut self, path: PathBuf) -> bool {
-        self.io_state.project_path = normalize_project_path(path);
-        self.mark_status_dirty();
-        self.persist_session_state();
-        self.save_project_to_current_path()
-    }
-
-    pub(super) fn open_project(&mut self) -> bool {
-        let Some(path) = self
-            .io_state
-            .dialogs
-            .pick_open_project_path(&self.io_state.project_path)
-        else {
-            return false;
-        };
-        self.load_project(path)
-    }
-
-    pub(super) fn load_project(&mut self, path: PathBuf) -> bool {
-        let path = normalize_project_path(path);
-        match load_project_from_path(&path) {
-            Ok(project) => {
-                self.io_state.project_path = path;
-                // BL-079: project ファイルは作品コンテンツのみを保持する。読込時は
-                // 現在のエディタセッション (ツール/色/ペン/ビュー) を温存し、作品
-                // データだけを差し替える。
-                let mut loaded = project.document;
-                loaded.session = std::mem::take(&mut self.document.session);
-                self.document = loaded;
-                let _ = Self::reload_tool_catalog_into_document(&mut self.document);
-                let _ = self.reload_pen_presets();
-                self.panel_workspace
-                    .replace_workspace_layout(project.ui_state.workspace_layout);
-                self.panel_runtime
-                    .replace_persistent_panel_configs(project.ui_state.panel_configs);
-                self.panel_workspace
-                    .reconcile_panels(self.panel_runtime.panel_ids());
-                self.refresh_new_document_size_presets();
-                self.refresh_workspace_presets();
-                self.reset_active_interactions();
-                self.sync_ui_from_document();
-                self.mark_status_dirty();
-                self.rebuild_present_frame();
-                self.persist_session_state();
-                self.sync_all_layers_to_gpu();
-                true
-            }
-            Err(error) => {
-                let message = format!("failed to load project: {error}");
-                eprintln!("{message}");
-                self.io_state.dialogs.show_error("Open failed", &message);
-                false
-            }
-        }
     }
 }
 

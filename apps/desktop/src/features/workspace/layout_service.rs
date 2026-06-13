@@ -10,7 +10,7 @@ use panel_runtime::{ServiceRequest, services::names};
 use panel_workspace::PanelMoveDirection;
 use serde_json::json;
 
-use super::DesktopApp;
+use crate::app::DesktopApp;
 
 /// `workspace_layout.*` サービス要求を振り分ける。該当しない場合は `None`。
 pub(crate) fn handle_workspace_layout_service_request(

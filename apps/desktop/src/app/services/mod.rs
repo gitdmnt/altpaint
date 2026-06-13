@@ -2,24 +2,13 @@
 
 mod gpu_sync;
 mod history;
-mod project_io;
 mod registry;
-mod workspace_io;
-mod workspace_layout;
 
 use crate::platform::DEFAULT_PROJECT_FILE_NAME;
-use panel_workspace::WorkspaceUiState;
 
 use super::DesktopApp;
 
 impl DesktopApp {
-    pub(super) fn capture_workspace_ui_state(&self) -> WorkspaceUiState {
-        WorkspaceUiState::new(
-            self.panel_workspace.workspace_layout(),
-            self.panel_runtime.persistent_panel_configs(),
-        )
-    }
-
     /// 9E-4: HtmlPanelView ステータスバー用のスナップショットを組み立てる。
     /// ツール名・ズーム % ・status text を集約して返す。
     pub(crate) fn build_status_snapshot(&self) -> crate::features::status_bar::StatusSnapshot {

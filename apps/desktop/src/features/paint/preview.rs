@@ -1,7 +1,6 @@
-//! ブラシプレビュー dirty rect 演算 (provisional)。
+//! ブラシプレビュー dirty rect 演算。
 //!
-//! 最終配置は B7 の `features/paint` だが、現状は paint 関連の dirty rect 計算として
-//! desktop アプリ層に暫定配置する。
+//! B7 で `app/paint_preview.rs` から features/paint へ移設した。
 
 use canvas_geometry::CanvasViewGeometry;
 use geometry::{PagePoint, WindowRect, union_optional_rect};
