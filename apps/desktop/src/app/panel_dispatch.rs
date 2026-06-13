@@ -1,7 +1,8 @@
 //! パネル入力中継とホストアクション適用を集約する。
 
 use geometry::{PanelSurfacePoint, WindowPoint, WindowRect};
-use panel_runtime::{HostRequest, PanelEvent, ResizeHandle};
+use panel_runtime::{HostRequest, PanelEvent};
+use panel_workspace::ResizeHandle;
 
 use super::DesktopApp;
 /// パネル移動ドラッグ中の被操作パネル情報を保持する。
@@ -306,9 +307,10 @@ impl DesktopApp {
 
     /// フォーカス中のパネルコントロールを起動し、`HostRequest` が発行されたら `true` を返す。
     pub(crate) fn activate_focused_panel_control(&mut self) -> bool {
-        let Some(event) = self.panel_workspace.activate_focused() else {
+        let Some((panel_id, node_id)) = self.panel_workspace.activate_focused() else {
             return false;
         };
+        let event = PanelEvent::Activate { panel_id, node_id };
         self.dispatch_panel_event_tracking_actions(event).1
     }
 

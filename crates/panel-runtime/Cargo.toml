@@ -9,7 +9,6 @@ authors.workspace = true
 document-model = { path = "../document-model" }
 editor-state = { path = "../editor-state" }
 raster = { path = "../raster" }
-panel-api = { path = "../panel-api" }
 panel-protocol = { path = "../panel-protocol" }
 panel-wasm-host = { path = "../panel-wasm-host" }
 panel-html = { path = "../panel-html" }

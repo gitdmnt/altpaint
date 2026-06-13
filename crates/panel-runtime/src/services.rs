@@ -1,9 +1,8 @@
-//! host 側サービス要求の名前と搬送型を定義する。
+//! host 側サービス要求の名前と搬送型 (旧 `panel-api::services`、C9 で panel-runtime へ移設)。
 
 use serde_json::{Map, Value};
 
-/// wire 名定数の互換表面。定義の正本は `panel_protocol::names` (BL-036)。
-/// panel-api 解体 (B6) までフラット名の再エクスポートとして維持する。
+/// wire 名定数のフラット互換表面。定義の正本は `panel_protocol::names` (BL-036)。
 pub mod names {
     pub use panel_protocol::names::project_io::{
         LOAD_DIALOG as PROJECT_LOAD_DIALOG, LOAD_FROM_PATH as PROJECT_LOAD_FROM_PATH,
@@ -52,6 +51,7 @@ pub mod names {
     };
 }
 
+/// I/O を伴うホストサービス要求。`name` は `panel_protocol::names` の wire 名。
 #[derive(Debug, Clone, PartialEq)]
 pub struct ServiceRequest {
     pub name: String,

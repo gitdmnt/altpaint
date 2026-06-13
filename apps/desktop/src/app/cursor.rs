@@ -9,7 +9,7 @@
 //! - 右上 / 左下角: `NeswResize`
 //! - リサイズハンドル外: `Default`
 
-use panel_runtime::ResizeHandle;
+use panel_workspace::ResizeHandle;
 use winit::window::CursorIcon;
 
 /// 与えられた handle (None = リサイズハンドル外) に対応する OS カーソルアイコンを返す。

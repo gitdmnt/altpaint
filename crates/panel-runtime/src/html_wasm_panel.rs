@@ -13,7 +13,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use document_model::{Document, DocumentCommand};
-use panel_api::{HostRequest, PanelEvent, ServiceRequest};
+use crate::host_request::{HostRequest, PanelEvent};
+use crate::services::ServiceRequest;
 use panel_html::{
     ActionDescriptor, HtmlPanelView, blitz_dom::LocalName, blitz_dom::node::NodeData,
     parse_data_action,

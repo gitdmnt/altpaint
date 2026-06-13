@@ -1,12 +1,6 @@
-//! `panel-api` は、標準パネルや将来の拡張機能が従う最小インターフェースを定義する。
+//! パネル配置操作のジオメトリ型 (旧 `panel-api`、C9 で panel-workspace へ移設)。
 
-pub mod services;
-
-use document_model::DocumentCommand;
-use editor_state::SessionCommand;
-
-pub use services::ServiceRequest;
-
+/// パネル並び替えの方向。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PanelMoveDirection {
     Up,
@@ -50,7 +44,7 @@ impl ResizeHandle {
 }
 
 #[cfg(test)]
-mod resize_edge_tests {
+mod resize_handle_tests {
     use super::ResizeHandle::*;
 
     #[test]
@@ -89,50 +83,3 @@ mod resize_edge_tests {
         assert!(!North.touches_bottom());
     }
 }
-
-/// パネル (Wasm) → ホストへの要求。
-///
-/// P3: パネル可視性/並び替えは workspace_layout サービス経路 (`RequestService`)
-/// に一本化済みのため、専用 variant (`MovePanel` / `SetPanelVisibility`) は削除した。
-/// translator が `RequestDescriptor` を 3 経路へ振り分けた結果を搬送する。
-#[derive(Debug, Clone, PartialEq)]
-pub enum HostRequest {
-    /// 純粋なドキュメント変異コマンドを適用する。
-    DispatchDocumentCommand(DocumentCommand),
-    /// エディタセッション (ツール/色/ペン/ビュー) を変更する。
-    /// translator が namespace から振り分けるセッション経路。
-    DispatchSessionCommand(SessionCommand),
-    /// I/O を伴うホストサービス要求。
-    RequestService(ServiceRequest),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PanelEvent {
-    Activate {
-        panel_id: String,
-        node_id: String,
-    },
-    SetValue {
-        panel_id: String,
-        node_id: String,
-        value: i32,
-    },
-    DragValue {
-        panel_id: String,
-        node_id: String,
-        from: i32,
-        to: i32,
-    },
-    SetText {
-        panel_id: String,
-        node_id: String,
-        value: String,
-    },
-    Keyboard {
-        panel_id: String,
-        shortcut: String,
-        key: String,
-        repeat: bool,
-    },
-}
-

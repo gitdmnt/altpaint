@@ -1,6 +1,7 @@
 //! `panel-workspace` はワークスペース上のパネル配置・focus・hit テーブルを管理する。
 
 mod focus;
+mod handles;
 mod workspace;
 mod workspace_state;
 
@@ -11,8 +12,8 @@ use geometry::{PanelSurfacePoint, WindowPoint};
 use focus::FocusTarget;
 use std::collections::BTreeMap;
 
-// hit-test API の戻り値型。利用側が panel-api へ直接依存しなくて済むよう再公開する。
-pub use panel_api::ResizeHandle;
+// パネル配置操作のジオメトリ型 (旧 panel-api、C9 で本クレートへ移設)。
+pub use handles::{PanelMoveDirection, ResizeHandle};
 // パネル配置の永続化状態とアンカー解決幾何 (旧 app-core::workspace)。
 pub use workspace_state::{
     PanelConfigs, WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
@@ -151,7 +152,7 @@ impl PanelWorkspace {
     pub fn panel_resize_hit_at(
         &self,
         point: WindowPoint,
-    ) -> Option<(String, panel_api::ResizeHandle)> {
+    ) -> Option<(String, ResizeHandle)> {
         self.panel_full_rects
             .iter()
             .find_map(|(panel_id, rect)| {
@@ -202,9 +203,7 @@ const RESIZE_HANDLE_CORNER_PX: usize = 12;
 fn resize_hit_in_rect(
     point: WindowPoint,
     rect: geometry::WindowRect,
-) -> Option<panel_api::ResizeHandle> {
-    use panel_api::ResizeHandle;
-
+) -> Option<ResizeHandle> {
     if rect.width == 0 || rect.height == 0 {
         return None;
     }
@@ -266,7 +265,6 @@ fn resize_hit_in_rect(
 mod resize_hit_tests {
     use super::*;
     use geometry::WindowRect;
-    use panel_api::ResizeHandle;
 
     fn rect(x: usize, y: usize, w: usize, h: usize) -> WindowRect {
         WindowRect {

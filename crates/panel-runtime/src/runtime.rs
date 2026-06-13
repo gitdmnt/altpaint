@@ -4,7 +4,7 @@ use crate::request_translation::register_default_translators;
 use crate::translator_registry::TranslatorRegistry;
 use crate::host_state::{EMPTY_WORKSPACE_PANELS_JSON, HostState};
 use document_model::Document;
-use panel_api::{HostRequest, PanelEvent};
+use crate::host_request::{HostRequest, PanelEvent};
 use panel_html::{vello, wgpu, PanelSizeConstraints, ActionRect};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -260,10 +260,11 @@ impl PanelRuntime {
             let ptr: *const wgpu::Texture = &target.texture;
             textures.push((panel_id.clone(), ptr, target.width, target.height));
         }
-        // SAFETY: 各 *const wgpu::Texture は self.panels 内の Box<dyn PanelPlugin> 内
-        // view が保持するテクスチャを指す。Box は heap に固定されており、戻り値の
-        // RenderedPanelTexture は &mut self に紐付くので、戻り値存在中は self.panels が
-        // 不変に保たれる。テクスチャの寿命も同期する。
+        // SAFETY: 各 *const wgpu::Texture は self.panels 内の HtmlWasmPanel の
+        // view が保持するテクスチャを指す。Vec 要素のテクスチャは heap 上の
+        // wgpu リソースを参照しており、戻り値の RenderedPanelTexture は
+        // &mut self に紐付くので、戻り値存在中は self.panels が不変に保たれる。
+        // テクスチャの寿命も同期する。(raw pointer + unsafe の撤去は BL-092)
         textures
             .into_iter()
             .map(|(panel_id, ptr, w, h)| RenderedPanelTexture {

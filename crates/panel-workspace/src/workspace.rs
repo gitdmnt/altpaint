@@ -6,7 +6,7 @@
 //! ここでは「workspace 自身」に対する特別扱いは行わない (生成・配置だけ管理)。
 
 use super::*;
-use panel_api::PanelMoveDirection;
+use crate::handles::PanelMoveDirection;
 
 pub(super) const WORKSPACE_PANEL_ID: &str = "builtin.workspace-layout";
 const HIDDEN_BY_DEFAULT_PANEL_IDS: &[&str] = &["builtin.koma-list"];

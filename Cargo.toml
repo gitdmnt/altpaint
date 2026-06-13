@@ -12,7 +12,6 @@ members = [
   "crates/builtin-panels/layers",
   "crates/builtin-panels/color-palette",
   "crates/builtin-panels/workspace-layout",
-  "crates/panel-api",
   "crates/paint-engine",
   "crates/geometry",
   "crates/raster",

@@ -5,7 +5,6 @@
 //! `focused_target` (panel_id, node_id) の保持と HTML hit table ベースの巡回のみを担う。
 
 use super::*;
-use panel_api::PanelEvent;
 
 /// 現在 focus 中の panel node。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,12 +43,12 @@ impl PanelWorkspace {
         self.move_focus(-1)
     }
 
-    pub fn activate_focused(&mut self) -> Option<PanelEvent> {
+    /// 現在 focus 中の `(panel_id, node_id)` を返す。
+    /// 利用側 (desktop) が `PanelEvent::Activate` を組み立てて dispatch する。
+    /// パネルイベント protocol 型に依存しないため、戻り値は素の id ペア。
+    pub fn activate_focused(&mut self) -> Option<(String, String)> {
         let target = self.focused_target.clone()?;
-        Some(PanelEvent::Activate {
-            panel_id: target.panel_id,
-            node_id: target.node_id,
-        })
+        Some((target.panel_id, target.node_id))
     }
 
     /// HTML hit table をフラットな FocusTarget 列に変換する。
