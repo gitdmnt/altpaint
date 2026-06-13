@@ -33,7 +33,7 @@ impl DesktopIoState {
 }
 
 impl DesktopApp {
-    pub(super) fn session_state(&self) -> DesktopSessionState {
+    pub(crate) fn session_state(&self) -> DesktopSessionState {
         DesktopSessionState {
             last_project_path: Some(self.io_state.project_path.clone()),
             ui_state: panel_workspace::WorkspaceUiState::new(
@@ -46,7 +46,7 @@ impl DesktopApp {
         }
     }
 
-    pub(super) fn persist_session_state(&self) {
+    pub(crate) fn persist_session_state(&self) {
         if let Err(error) = save_session_state(&self.io_state.session_path, &self.session_state()) {
             eprintln!("failed to persist desktop session: {error}");
         }

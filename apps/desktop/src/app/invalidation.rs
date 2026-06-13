@@ -64,11 +64,11 @@ impl PresentInvalidation {
 
 impl DesktopApp {
     /// panel_workspace と runtime のパネル一覧の再整合を予約する。
-    pub(super) fn request_panel_reconcile(&mut self) {
+    pub(crate) fn request_panel_reconcile(&mut self) {
         self.invalidation.needs_panel_reconcile = true;
     }
 
-    pub(super) fn mark_status_dirty(&mut self) {
+    pub(crate) fn mark_status_dirty(&mut self) {
         self.invalidation.needs_status_refresh = true;
     }
 
@@ -77,7 +77,7 @@ impl DesktopApp {
     }
 
     /// 全パネルを dirty としてマークし、ドキュメント同期をスケジュールする。
-    pub(super) fn sync_ui_from_document(&mut self) {
+    pub(crate) fn sync_ui_from_document(&mut self) {
         self.panel_runtime.mark_all_dirty();
         self.request_panel_reconcile();
     }
@@ -85,7 +85,7 @@ impl DesktopApp {
     /// 指定 host state セクション (トピック) を購読するパネルを dirty としてマークする
     /// (BL-095)。ビルトイン ID のハードコードリストに代わり、パネルが meta.json で
     /// 宣言した `subscribes` から購読パネルを解決する。
-    pub(super) fn sync_ui_from_section(&mut self, section: &str) {
+    pub(crate) fn sync_ui_from_section(&mut self, section: &str) {
         let panel_ids = self.panel_runtime.panel_ids_subscribing(section);
         if panel_ids.is_empty() {
             return;
@@ -118,7 +118,7 @@ impl DesktopApp {
         true
     }
 
-    pub(super) fn rebuild_present_frame(&mut self) {
+    pub(crate) fn rebuild_present_frame(&mut self) {
         self.invalidation.needs_full_present_rebuild = true;
     }
 
@@ -126,7 +126,7 @@ impl DesktopApp {
     ///
     /// CPU スナップショット再生成・UI 同期・ステータス更新・present 再構築・
     /// GPU レイヤー同期・全コマ再合成を順に行う。
-    pub(super) fn invalidate_document_structure(&mut self) {
+    pub(crate) fn invalidate_document_structure(&mut self) {
         self.refresh_cpu_canvas_snapshot();
         self.sync_ui_from_document();
         self.mark_status_dirty();
@@ -144,14 +144,14 @@ impl DesktopApp {
     }
 
     /// 変更があった場合のみパネル再整合を予約する。
-    pub(super) fn request_panel_reconcile_if_changed(&mut self, changed: bool) -> bool {
+    pub(crate) fn request_panel_reconcile_if_changed(&mut self, changed: bool) -> bool {
         if changed {
             self.request_panel_reconcile();
         }
         changed
     }
 
-    pub(super) fn append_canvas_dirty_rect(&mut self, dirty: PageDirtyRect) -> bool {
+    pub(crate) fn append_canvas_dirty_rect(&mut self, dirty: PageDirtyRect) -> bool {
         self.invalidation.canvas_dirty_rect = Some(
             self.invalidation.canvas_dirty_rect
                 .map_or(dirty, |existing| existing.merge(dirty)),
@@ -166,7 +166,7 @@ impl DesktopApp {
     }
 
     /// temp オーバーレイ (L3) の dirty rect を蓄積する。
-    pub(super) fn append_temp_overlay_dirty_rect(&mut self, dirty: WindowRect) -> bool {
+    pub(crate) fn append_temp_overlay_dirty_rect(&mut self, dirty: WindowRect) -> bool {
         self.invalidation.temp_overlay_dirty_rect = Some(
             self.invalidation.temp_overlay_dirty_rect
                 .map_or(dirty, |existing| existing.union(dirty)),
@@ -175,7 +175,7 @@ impl DesktopApp {
     }
 
     /// UI パネル (L4) の dirty rect を蓄積する。
-    pub(super) fn append_ui_panel_dirty_rect(&mut self, dirty: WindowRect) -> bool {
+    pub(crate) fn append_ui_panel_dirty_rect(&mut self, dirty: WindowRect) -> bool {
         self.invalidation.ui_panel_dirty_rect = Some(
             self.invalidation.ui_panel_dirty_rect
                 .map_or(dirty, |existing| existing.union(dirty)),

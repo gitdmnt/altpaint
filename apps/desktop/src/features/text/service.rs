@@ -2,9 +2,9 @@
 
 use panel_runtime::{ServiceRequest, services::names};
 
-use super::text_raster::render_text_to_bitmap_edit;
+use super::raster::render_text_to_bitmap_edit;
 
-use super::DesktopApp;
+use crate::app::DesktopApp;
 
 /// text_render service request を処理する。
 pub(crate) fn handle_text_render_service_request(

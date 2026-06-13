@@ -9,5 +9,6 @@ pub(crate) mod export;
 mod json_store;
 pub(crate) mod project;
 pub(crate) mod status_bar;
+pub(crate) mod text;
 pub(crate) mod tools;
 pub(crate) mod workspace;

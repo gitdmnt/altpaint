@@ -30,7 +30,7 @@ pub(crate) const SERVICE_HANDLERS: &[ServiceHandler] = &[
     super::history::handle_history_service_request,
     super::snapshot::handle_snapshot_service_request,
     super::export::handle_export_service_request,
-    super::text_render::handle_text_render_service_request,
+    crate::features::text::handle_text_render_service_request,
 ];
 
 impl DesktopApp {
