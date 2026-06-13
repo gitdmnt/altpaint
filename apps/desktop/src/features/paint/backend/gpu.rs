@@ -109,12 +109,11 @@ impl PaintBackend for GpuPaintBackend {
                 };
                 gpu.brush.dispatch_stroke(texture, stamps, &params);
 
-                if let (Some(pending), Some(dirty)) =
-                    (self.pending.as_mut(), Some(plan.dirty))
-                {
+                // ストローク中の dirty を蓄積する (commit_stroke でスナップショット)。
+                if let Some(pending) = self.pending.as_mut() {
                     pending.dirty = Some(match pending.dirty {
-                        Some(existing) => existing.merge(dirty),
-                        None => dirty,
+                        Some(existing) => existing.merge(plan.dirty),
+                        None => plan.dirty,
                     });
                 }
 
