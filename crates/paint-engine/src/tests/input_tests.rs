@@ -54,7 +54,7 @@ fn lasso_gesture_collects_points_and_emits_fill_on_release() {
 
     assert!(matches!(
         update,
-        CanvasGestureUpdate::Paint(app_core::PaintInput::LassoFill { .. })
+        CanvasGestureUpdate::Paint(crate::painting::PaintInput::LassoFill { .. })
     ));
     assert_eq!(state, CanvasInputState::default());
 }

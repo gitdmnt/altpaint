@@ -12,7 +12,6 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 font8x8 = { workspace = true }
-app-core = { path = "../../crates/app-core" }
 document-model = { path = "../../crates/document-model" }
 editor-state = { path = "../../crates/editor-state" }
 geometry = { path = "../../crates/geometry" }

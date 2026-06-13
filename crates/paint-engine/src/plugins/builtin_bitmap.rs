@@ -1,4 +1,4 @@
-use app_core::{PaintInput, PaintPlugin, PaintPluginContext};
+use crate::painting::{PaintInput, PaintPlugin, PaintPluginContext};
 use raster::BitmapEdit;
 
 use crate::{BUILTIN_BITMAP_BACKEND_ID, ops};

@@ -6,7 +6,7 @@ pub(crate) mod stroke;
 
 pub use stroke::compute_stamp_positions;
 
-use app_core::PaintPluginContext;
+use crate::painting::PaintPluginContext;
 use geometry::{KomaLocalPoint, PageDirtyRect};
 use raster::{BitmapEdit, RgbaBitmap};
 

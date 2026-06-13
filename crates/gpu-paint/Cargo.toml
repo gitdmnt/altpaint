@@ -6,9 +6,9 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-app-core = { path = "../app-core" }
 editor-state = { path = "../editor-state" }
 geometry = { path = "../geometry" }
+raster = { path = "../raster" }
 wgpu = { workspace = true }
 
 [dev-dependencies]

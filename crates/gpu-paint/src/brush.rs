@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use app_core::paint_params::MAX_STAMP_STEPS;
+use raster::MAX_STAMP_STEPS;
 use editor_state::ToolKind;
 use geometry::KomaLocalPoint;
 

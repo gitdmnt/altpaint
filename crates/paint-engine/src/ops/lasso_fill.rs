@@ -1,4 +1,4 @@
-use app_core::PaintPluginContext;
+use crate::painting::PaintPluginContext;
 use geometry::KomaLocalPoint;
 use raster::BitmapEdit;
 

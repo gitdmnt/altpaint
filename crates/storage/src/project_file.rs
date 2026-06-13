@@ -509,9 +509,9 @@ mod tests {
     }
 
     /// BL-032 ゴールデン: composite を永続化しない保存からの読込が、
-    /// app-core のレイヤー合成と同一の composite を再計算することを検証する。
+    /// document-model のレイヤー合成と同一の composite を再計算することを検証する。
     #[test]
-    fn load_recomputes_composite_equal_to_app_core_compositing() {
+    fn load_recomputes_composite_equal_to_document_model_compositing() {
         let path = temp_path("recompute-composite");
         let mut document = Document::new(8, 8);
         {
@@ -531,7 +531,7 @@ mod tests {
                 alpha: vec![128; 64],
             });
         }
-        // set_active_layer_blend_mode が app-core 側の合成で composite_cache を再計算する。
+        // set_active_layer_blend_mode が document-model 側の合成で composite_cache を再計算する。
         document.set_active_layer_blend_mode(BlendMode::Multiply);
 
         save_project_to_path_with_options(

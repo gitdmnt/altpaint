@@ -1,3 +1,9 @@
+//! ペイント入力イベントと描画プラグイン契約。
+//!
+//! 旧 `app-core::painting` から `paint-engine` へ移設した (BL-074/B5)。型名 (`PaintInput`
+//! / `PaintPluginContext` / `PaintPlugin`) は R5 の `PaintBackend` 体系への置換 (B8) まで
+//! 現名のまま維持する。
+
 use editor_state::{ColorRgba8, PenPreset, ToolKind, ToolSettingDefinition};
 use geometry::KomaLocalPoint;
 use raster::{BitmapEdit, RgbaBitmap as CanvasBitmap};

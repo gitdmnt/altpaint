@@ -18,7 +18,6 @@ members = [
   "crates/raster",
   "crates/editor-state",
   "crates/document-model",
-  "crates/app-core",
   "crates/desktop-support",
   "crates/panel-runtime",
   "crates/panel-protocol",

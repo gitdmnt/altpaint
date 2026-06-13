@@ -73,7 +73,7 @@ impl<'a> RenderOutcome<'a> {
 
 /// `data-action` 要素のレイアウト矩形 (パネルローカル座標、u32 ピクセル)。
 ///
-/// panel-html はローカルクレート依存を持たない (§1.4) ため、`app-core::WindowRect`
+/// panel-html はローカルクレート依存を持たない (§1.4) ため、`geometry::WindowRect`
 /// (usize) には統合せず、本クレート固有の型として保持する。ホスト側 (desktop) が
 /// `WindowRect` へ変換して使う。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,6 +1,6 @@
-use app_core::{PaintPluginContext, paint_params::MAX_STAMP_STEPS};
+use crate::painting::PaintPluginContext;
 use geometry::{KomaLocalPoint, PageDirtyRect};
-use raster::{BitmapEdit, RgbaBitmap};
+use raster::{BitmapEdit, MAX_STAMP_STEPS, RgbaBitmap};
 
 use super::{composite, stamp};
 
@@ -111,7 +111,7 @@ mod tests {
     /// 大きな距離でもスタンプ数が MAX_STAMP_STEPS を超えないことを検証する。
     #[test]
     fn stroke_segment_steps_capped_at_max() {
-        use app_core::PaintPluginContext;
+        use crate::painting::PaintPluginContext;
         use editor_state::{ColorRgba8, PenPreset, ToolKind};
         use raster::RgbaBitmap;
 
@@ -153,7 +153,7 @@ mod tests {
     /// compute_stamp_positions が MAX_STAMP_STEPS 以下の数の座標を返すことを確認する。
     #[test]
     fn compute_stamp_positions_respects_max_steps() {
-        use app_core::PaintPluginContext;
+        use crate::painting::PaintPluginContext;
         use editor_state::{ColorRgba8, PenPreset, ToolKind};
         use raster::RgbaBitmap;
 

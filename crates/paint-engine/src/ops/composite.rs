@@ -1,4 +1,4 @@
-use app_core::PaintPluginContext;
+use crate::painting::PaintPluginContext;
 use editor_state::ToolKind;
 use raster::{BitmapComposite, BitmapCompositor, BlendMode, RgbaBitmap, composite_pixel};
 

@@ -2,7 +2,7 @@ pub mod builtin_bitmap;
 
 use std::collections::BTreeMap;
 
-use app_core::PaintPlugin;
+use crate::painting::PaintPlugin;
 
 use builtin_bitmap::BuiltinBitmapPaintPlugin;
 

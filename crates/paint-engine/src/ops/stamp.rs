@@ -1,4 +1,4 @@
-use app_core::PaintPluginContext;
+use crate::painting::PaintPluginContext;
 use editor_state::PenTipBitmap;
 use geometry::KomaLocalPoint;
 use raster::{BitmapEdit, RgbaBitmap};

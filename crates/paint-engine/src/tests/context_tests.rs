@@ -1,4 +1,4 @@
-use app_core::PaintInput;
+use crate::painting::PaintInput;
 use document_model::Document;
 use geometry::KomaLocalPoint;
 

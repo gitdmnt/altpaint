@@ -1,4 +1,4 @@
-use app_core::PaintInput;
+use crate::painting::PaintInput;
 use editor_state::ToolKind;
 use geometry::{KomaLocalPoint, PagePoint};
 
