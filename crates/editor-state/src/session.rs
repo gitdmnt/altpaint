@@ -49,7 +49,30 @@ pub enum ToolKind {
     KomaRect,
 }
 
+/// ブラシ系ストロークの合成モード。
+///
+/// GPU/CPU バックエンドが「描画 (source-over)」と「消去」を分岐するための最小判別子。
+/// アプリ層の `ToolKind` を GPU 層へ漏らさないために `ToolKind` から導出して使う (R21)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StrokeMode {
+    #[default]
+    Paint,
+    Erase,
+}
+
 impl ToolKind {
+    /// このツールのストローク合成モードを返す。
+    ///
+    /// 消しゴムだけが `Erase`、その他はすべて `Paint`。
+    pub const fn stroke_mode(self) -> StrokeMode {
+        match self {
+            ToolKind::Eraser => StrokeMode::Erase,
+            ToolKind::Pen | ToolKind::Bucket | ToolKind::LassoBucket | ToolKind::KomaRect => {
+                StrokeMode::Paint
+            }
+        }
+    }
+
     /// ホスト↔パネル間で交換する wire 名 (snake_case)。
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -780,6 +803,28 @@ impl EditorSession {
             SessionCommand::ResetView => {
                 self.view_transform = CanvasViewTransform::default();
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tool_kind_tests {
+    use super::{StrokeMode, ToolKind};
+
+    #[test]
+    fn eraser_maps_to_erase_mode() {
+        assert_eq!(ToolKind::Eraser.stroke_mode(), StrokeMode::Erase);
+    }
+
+    #[test]
+    fn non_eraser_tools_map_to_paint_mode() {
+        for tool in [
+            ToolKind::Pen,
+            ToolKind::Bucket,
+            ToolKind::LassoBucket,
+            ToolKind::KomaRect,
+        ] {
+            assert_eq!(tool.stroke_mode(), StrokeMode::Paint, "tool={tool:?}");
         }
     }
 }

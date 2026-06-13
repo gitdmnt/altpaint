@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use raster::MAX_STAMP_STEPS;
-use editor_state::ToolKind;
+use editor_state::StrokeMode;
 use geometry::KomaLocalPoint;
 
 use crate::gpu::{GpuCanvasContext, GpuRgbaTexture};
@@ -19,7 +19,7 @@ pub struct BrushStrokeParams {
     pub radius: f32,
     pub opacity: f32,
     pub antialias: bool,
-    pub tool_kind: ToolKind,
+    pub mode: StrokeMode,
 }
 
 /// BrushStrokeParams uniform buffer の固定バイトサイズ（48 bytes）。
@@ -77,7 +77,7 @@ impl BrushPipeline {
 
     /// 指定スタンプ位置群（コマローカル座標）をレイヤーテクスチャへ描画する。
     ///
-    /// - `params.tool_kind == ToolKind::Eraser` なら消去シェーダーを使用する。
+    /// - `params.mode == StrokeMode::Erase` なら消去シェーダーを使用する。
     /// - `positions` は `paint_engine::compute_stamp_positions` の戻り値をそのまま渡す。
     /// - `positions` が空の場合は何もしない。
     pub fn dispatch_stroke(
@@ -144,9 +144,9 @@ impl BrushPipeline {
             ],
         });
 
-        let pipeline = match params.tool_kind {
-            ToolKind::Eraser => &self.erase_pipeline,
-            _ => &self.stroke_pipeline,
+        let pipeline = match params.mode {
+            StrokeMode::Erase => &self.erase_pipeline,
+            StrokeMode::Paint => &self.stroke_pipeline,
         };
 
         let wg_x = layer_texture.width.div_ceil(8);

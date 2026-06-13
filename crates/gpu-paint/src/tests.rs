@@ -92,7 +92,7 @@ mod gpu_tests {
                         radius: 2.0,
                         opacity: 1.0,
                         antialias: false,
-                        tool_kind: editor_state::ToolKind::Pen,
+                        mode: editor_state::StrokeMode::Paint,
                     },
                 );
 

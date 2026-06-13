@@ -14,5 +14,5 @@ pub mod view_policy;
 pub use command::SessionCommand;
 pub use session::{
     CanvasViewTransform, ColorRgba8, EditorSession, PenPreset, PenRuntimeEngine, PenTipBitmap,
-    ToolDefinition, ToolKind, ToolSettingControl, ToolSettingDefinition,
+    StrokeMode, ToolDefinition, ToolKind, ToolSettingControl, ToolSettingDefinition,
 };

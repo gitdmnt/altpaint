@@ -40,7 +40,7 @@ pub(crate) fn brush_stroke_params(context: &PaintPluginContext<'_>) -> gpu_paint
         radius: context.resolved_size as f32 * 0.5,
         opacity: context.pen.opacity,
         antialias: context.pen.antialias,
-        tool_kind: context.tool,
+        mode: context.tool.stroke_mode(),
     }
 }
 
