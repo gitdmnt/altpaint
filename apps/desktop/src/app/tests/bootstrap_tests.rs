@@ -34,6 +34,57 @@ fn startup_restores_last_project_from_session_path() {
     let _ = std::fs::remove_file(project_path);
 }
 
+/// BL-095: meta 由来の default-floating カタログが、従来ハードコードされていた
+/// 既定レイアウトと同一の anchor / position / size を再現することを担保するゴールデン
+/// テスト (配置不変)。
+#[test]
+fn meta_derived_default_preset_matches_golden_layout() {
+    use panel_workspace::{WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize};
+
+    let app = test_app_with_dialogs(TestDialogs::default());
+    let catalog = app.default_workspace_preset_catalog();
+    assert_eq!(catalog.default_preset_id, "default-floating");
+    let preset = catalog
+        .presets
+        .iter()
+        .find(|preset| preset.id == "default-floating")
+        .expect("default preset exists");
+    let panels = &preset.ui_state.workspace_layout.panels;
+
+    // 期待値: (id, anchor, x, y, width, height) — 旧 default_workspace_preset_catalog と同値。
+    let golden: &[(&str, WorkspacePanelAnchor, usize, usize, usize, usize)] = &[
+        ("builtin.workspace-layout", WorkspacePanelAnchor::TopLeft, 24, 72, 320, 280),
+        ("builtin.tool-palette", WorkspacePanelAnchor::TopLeft, 24, 384, 300, 280),
+        ("builtin.app-actions", WorkspacePanelAnchor::TopLeft, 356, 72, 320, 240),
+        ("builtin.workspace-presets", WorkspacePanelAnchor::TopRight, 24, 616, 320, 180),
+        ("builtin.layers", WorkspacePanelAnchor::TopRight, 24, 72, 320, 320),
+        ("builtin.color-palette", WorkspacePanelAnchor::BottomLeft, 24, 24, 320, 320),
+        ("builtin.tool-settings", WorkspacePanelAnchor::BottomRight, 24, 24, 320, 260),
+        ("builtin.view-controls", WorkspacePanelAnchor::BottomRight, 376, 24, 320, 260),
+        ("builtin.job-progress", WorkspacePanelAnchor::BottomLeft, 376, 24, 280, 180),
+        ("builtin.snapshots", WorkspacePanelAnchor::TopRight, 24, 424, 280, 180),
+    ];
+
+    for (id, anchor, x, y, w, h) in golden {
+        let panel = panels
+            .iter()
+            .find(|p| p.id == *id)
+            .unwrap_or_else(|| panic!("{id} must be in default preset"));
+        assert_eq!(panel.anchor, *anchor, "{id} anchor");
+        assert_eq!(panel.position, Some(WorkspacePanelPosition { x: *x, y: *y }), "{id} position");
+        assert_eq!(
+            panel.size,
+            Some(WorkspacePanelSize { width: *w, height: *h }),
+            "{id} size"
+        );
+        assert!(panel.visible, "{id} visible");
+    }
+
+    // koma-list / text-flow は既定プリセットに含まれない (従来と同じ)。
+    assert!(!panels.iter().any(|p| p.id == "builtin.koma-list"));
+    assert!(!panels.iter().any(|p| p.id == "builtin.text-flow"));
+}
+
 #[test]
 fn bootstrap_saved_project_can_be_loaded_again() {
     let project_path = unique_test_path("bootstrap-roundtrip-project");

@@ -16,8 +16,8 @@ use std::collections::BTreeMap;
 pub use handles::{PanelMoveDirection, ResizeHandle};
 // パネル配置の永続化状態とアンカー解決幾何 (旧 app-core::workspace)。
 pub use workspace_state::{
-    PanelConfigs, WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
-    WorkspacePanelState, WorkspaceUiState,
+    PanelConfigs, PanelLayoutDefaults, WorkspaceLayout, WorkspacePanelAnchor,
+    WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState, WorkspaceUiState,
 };
 
 /// 全パネルの配置 (workspace layout)・focus・hit テーブルの状態ストア。
@@ -36,6 +36,9 @@ pub struct PanelWorkspace {
     /// Phase 11: HTML パネル全体 (chrome + body) の screen 座標矩形。
     /// `update_panel_full_rect` で毎フレーム更新し、リサイズハンドルの hit テストに使う。
     panel_full_rects: BTreeMap<String, geometry::WindowRect>,
+    /// パネルが meta.json で宣言した既定配置 (BL-095)。desktop から注入される。
+    /// ビルトイン ID のハードコードに代わり、配置・既定表示・常時表示を解決する。
+    panel_layout_defaults: BTreeMap<String, PanelLayoutDefaults>,
 }
 
 /// HTML パネル 1 枚分の hit 情報。screen 座標の矩形と panel-relative の hit 群。
@@ -61,7 +64,37 @@ impl PanelWorkspace {
             panel_hits: BTreeMap::new(),
             panel_move_handles: BTreeMap::new(),
             panel_full_rects: BTreeMap::new(),
+            panel_layout_defaults: BTreeMap::new(),
         }
+    }
+
+    /// パネルの既定配置 (anchor / position / hidden_by_default / always_visible) を
+    /// 注入する (BL-095)。desktop が panel-runtime の meta から構築して渡す。
+    ///
+    /// `reconcile_panels` より前に呼ぶこと。注入されたパネルは宣言された既定値で、
+    /// 未注入のパネルは index ベースのフォールバックで配置される。
+    pub fn set_panel_layout_defaults(
+        &mut self,
+        defaults: BTreeMap<String, PanelLayoutDefaults>,
+    ) {
+        self.panel_layout_defaults = defaults;
+    }
+
+    /// 指定パネルの既定配置を返す (未注入なら空既定)。
+    pub(crate) fn layout_defaults_for(&self, panel_id: &str) -> PanelLayoutDefaults {
+        self.panel_layout_defaults
+            .get(panel_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// 常に表示する (ユーザーが非表示にできない) パネル ID 一覧を登録順で返す。
+    pub(crate) fn always_visible_panel_ids(&self) -> Vec<String> {
+        self.panel_layout_defaults
+            .iter()
+            .filter(|(_, defaults)| defaults.always_visible)
+            .map(|(id, _)| id.clone())
+            .collect()
     }
 
     /// HTML パネルのタイトルバー (move handle) 領域を screen 座標で更新する。
@@ -177,7 +210,7 @@ impl PanelWorkspace {
 
     pub fn replace_workspace_layout(&mut self, workspace_layout: WorkspaceLayout) {
         self.workspace_layout = workspace_layout;
-        self.ensure_workspace_layout_panel_entry();
+        self.ensure_always_visible_panel_entries();
     }
 
     pub fn focused_target(&self) -> Option<(&str, &str)> {

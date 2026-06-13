@@ -6,5 +6,10 @@
   "layout": {
     "anchor": "bottom-right",
     "position": { "x": 24, "y": 24 }
+  },
+  "preset": {
+    "anchor": "bottom-right",
+    "position": { "x": 24, "y": 24 },
+    "size": { "width": 320, "height": 260 }
   }
 }

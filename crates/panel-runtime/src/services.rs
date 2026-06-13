@@ -49,6 +49,10 @@ pub mod names {
         MOVE_PANEL as WORKSPACE_LAYOUT_MOVE_PANEL,
         SET_PANEL_VISIBILITY as WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY,
     };
+
+    // BL-101: config 注入先パネル ID / config キーの契約。ホストの分散ハードコードを
+    // 単一定義点 (panel-protocol) へ集約する。
+    pub use panel_protocol::names::{config_keys, panel_ids};
 }
 
 /// I/O を伴うホストサービス要求。`name` は `panel_protocol::names` の wire 名。

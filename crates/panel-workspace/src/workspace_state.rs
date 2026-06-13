@@ -79,6 +79,37 @@ pub enum WorkspacePanelAnchor {
     BottomRight,
 }
 
+impl WorkspacePanelAnchor {
+    /// meta.json の kebab-case 文字列 (`"top-left"` 等) からアンカーを解決する。
+    /// 未知の文字列は `None`。
+    pub fn from_kebab(value: &str) -> Option<Self> {
+        match value {
+            "top-left" => Some(Self::TopLeft),
+            "top-right" => Some(Self::TopRight),
+            "bottom-left" => Some(Self::BottomLeft),
+            "bottom-right" => Some(Self::BottomRight),
+            _ => None,
+        }
+    }
+}
+
+/// パネルが meta.json で宣言する既定ワークスペース配置 (BL-095)。
+///
+/// panel-workspace はビルトイン ID をハードコードせず、この既定値マップ
+/// (panel_id → defaults) を外部 (desktop) から注入してもらい、reconcile・配置・
+/// 表示制御を解決する。
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PanelLayoutDefaults {
+    /// 既定アンカー。`None` の場合は index ベースのフォールバックを使う。
+    pub anchor: Option<WorkspacePanelAnchor>,
+    /// 既定オフセット。`None` の場合は index ベースのフォールバックを使う。
+    pub position: Option<WorkspacePanelPosition>,
+    /// 起動直後に非表示にするか。
+    pub hidden_by_default: bool,
+    /// 常に表示し、ユーザーが非表示にできないか。
+    pub always_visible: bool,
+}
+
 /// 浮動パネルのサイズ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspacePanelSize {

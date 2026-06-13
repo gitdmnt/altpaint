@@ -22,7 +22,7 @@ use panel_html::{
 use crate::request_translation::TranslatedRequest;
 use crate::translator_registry::TranslatorRegistry;
 use crate::host_state::HostStateBuild;
-use crate::meta::{PanelLayoutMeta, PanelMeta};
+use crate::meta::{PanelLayoutMeta, PanelMeta, PanelPresetMeta};
 use panel_wasm_host::{PanelWasmHostError, PanelWasmInstance};
 use serde_json::{Value, json};
 
@@ -42,6 +42,8 @@ pub struct HtmlWasmPanel {
     subscribes: Vec<String>,
     /// meta.json で宣言された既定ワークスペース配置 (BL-095)。
     layout: PanelLayoutMeta,
+    /// meta.json で宣言された default-floating プリセット配置 (BL-095)。
+    preset: Option<PanelPresetMeta>,
     /// 初回 `update` を購読 delta に関わらず必ず render させるフラグ (BL-093)。
     ///
     /// section registry の revision キャッシュはパネル横断で共有されるため、
@@ -115,6 +117,7 @@ impl HtmlWasmPanel {
             last_host_state: json!({}),
             subscribes: meta.subscribes,
             layout: meta.layout,
+            preset: meta.preset,
             needs_initial_render: true,
             has_keyboard_handler,
             translator_registry: Arc::new(default_translator_registry()),
@@ -141,6 +144,11 @@ impl HtmlWasmPanel {
     /// meta.json で宣言された既定ワークスペース配置 (BL-095)。
     pub fn layout(&self) -> &PanelLayoutMeta {
         &self.layout
+    }
+
+    /// meta.json で宣言された default-floating プリセット配置 (BL-095)。
+    pub fn preset(&self) -> Option<&PanelPresetMeta> {
+        self.preset.as_ref()
     }
 
     /// panel.meta.json の `default_size` を返す。

@@ -2,12 +2,14 @@ use std::path::PathBuf;
 
 use document_model::Document;
 use desktop_support::{builtin_panels_dir, default_pen_dir};
-use panel_runtime::{ServiceRequest, services::names};
-use serde_json::{Map, Value, json};
+use panel_runtime::{
+    ServiceRequest,
+    services::names::{self, config_keys, panel_ids},
+};
+use serde_json::json;
 use storage::{ImportedPenSet, load_pen_directory, parse_pen_file};
 
 use super::DesktopApp;
-use crate::app::TOOL_PALETTE_PANEL_ID;
 
 impl DesktopApp {
     pub(super) fn handle_tool_catalog_service_request(
@@ -111,31 +113,20 @@ impl DesktopApp {
             .collect::<Vec<_>>()
             .join(" / ");
 
-        let mut configs = self.panel_runtime.persistent_panel_configs();
-        let entry = configs
-            .entry(TOOL_PALETTE_PANEL_ID.to_string())
-            .or_insert_with(|| Value::Object(Map::new()));
-        if !entry.is_object() {
-            *entry = Value::Object(Map::new());
-        }
-        let object = entry.as_object_mut().expect("config object created");
-        object.insert(
-            "last_import_summary".to_string(),
-            json!(format!(
-                "{} / imported={} / skipped={} / file={}",
-                source_label,
-                imported.report.imported_count,
-                imported.report.skipped_count,
-                path.file_name()
-                    .and_then(|value| value.to_str())
-                    .unwrap_or("<unknown>")
-            )),
+        let summary = format!(
+            "{} / imported={} / skipped={} / file={}",
+            source_label,
+            imported.report.imported_count,
+            imported.report.skipped_count,
+            path.file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("<unknown>")
         );
-        object.insert("last_import_preview".to_string(), json!(preview));
-        object.insert("last_import_issues".to_string(), json!(issues));
-        self.panel_runtime.replace_persistent_panel_configs(configs);
-        self.panel_workspace
-            .reconcile_panels(self.panel_runtime.panel_ids());
+        self.update_panel_config(panel_ids::TOOL_PALETTE, |object| {
+            object.insert(config_keys::LAST_IMPORT_SUMMARY.to_string(), json!(summary));
+            object.insert(config_keys::LAST_IMPORT_PREVIEW.to_string(), json!(preview));
+            object.insert(config_keys::LAST_IMPORT_ISSUES.to_string(), json!(issues));
+        });
     }
 
     pub(crate) fn reload_pen_presets(&mut self) -> bool {

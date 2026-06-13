@@ -1,18 +1,25 @@
 use super::*;
+use std::collections::BTreeMap;
 
-/// `reconcile_panels` が登録パネル全件 + workspace 自身を workspace_layout の panels に追加する。
+/// always_visible を宣言した既定値を注入し、`reconcile_panels` で常時表示パネルが
+/// workspace_layout の先頭に自動挿入され、登録パネルも追加されることを確認する (BL-095)。
 #[test]
 fn workspace_panel_entries_include_all_registered_panels() {
     let mut panel_workspace = PanelWorkspace::new();
+    panel_workspace.set_panel_layout_defaults(BTreeMap::from([(
+        "builtin.always".to_string(),
+        PanelLayoutDefaults {
+            always_visible: true,
+            ..Default::default()
+        },
+    )]));
     panel_workspace.reconcile_panels(vec!["builtin.mock"]);
 
     let layout = panel_workspace.workspace_layout();
-    assert!(
-        layout
-            .panels
-            .iter()
-            .any(|entry| entry.id == workspace::WORKSPACE_PANEL_ID),
-        "workspace-layout self entry must be present"
+    assert_eq!(
+        layout.panels.first().map(|entry| entry.id.as_str()),
+        Some("builtin.always"),
+        "always_visible panel must be inserted at the front"
     );
     assert!(
         layout
@@ -21,6 +28,67 @@ fn workspace_panel_entries_include_all_registered_panels() {
             .any(|entry| entry.id == "builtin.mock"),
         "registered panel must be present in workspace layout"
     );
+}
+
+/// BL-095: meta 宣言の既定値 (anchor / position / hidden_by_default / always_visible) が
+/// reconcile 後の workspace_layout に正しく反映され、配置が宣言通りに固定されることを担保する
+/// ゴールデンテスト。
+#[test]
+fn reconcile_applies_declared_layout_defaults() {
+    let mut panel_workspace = PanelWorkspace::new();
+    panel_workspace.set_panel_layout_defaults(BTreeMap::from([
+        (
+            "builtin.workspace-layout".to_string(),
+            PanelLayoutDefaults {
+                anchor: Some(WorkspacePanelAnchor::TopLeft),
+                position: Some(WorkspacePanelPosition { x: 24, y: 72 }),
+                always_visible: true,
+                ..Default::default()
+            },
+        ),
+        (
+            "builtin.layers".to_string(),
+            PanelLayoutDefaults {
+                anchor: Some(WorkspacePanelAnchor::TopRight),
+                position: Some(WorkspacePanelPosition { x: 24, y: 72 }),
+                ..Default::default()
+            },
+        ),
+        (
+            "builtin.koma-list".to_string(),
+            PanelLayoutDefaults {
+                hidden_by_default: true,
+                ..Default::default()
+            },
+        ),
+    ]));
+    panel_workspace.reconcile_panels(vec![
+        "builtin.workspace-layout",
+        "builtin.layers",
+        "builtin.koma-list",
+    ]);
+
+    let layout = panel_workspace.workspace_layout();
+    let find = |id: &str| {
+        layout
+            .panels
+            .iter()
+            .find(|entry| entry.id == id)
+            .cloned()
+            .unwrap_or_else(|| panic!("{id} must exist"))
+    };
+
+    let layers = find("builtin.layers");
+    assert_eq!(layers.anchor, WorkspacePanelAnchor::TopRight);
+    assert_eq!(layers.position, Some(WorkspacePanelPosition { x: 24, y: 72 }));
+    assert!(layers.visible);
+
+    let koma_list = find("builtin.koma-list");
+    assert!(!koma_list.visible, "koma-list must be hidden by default");
+
+    // always_visible パネルは visibility off できない。
+    assert!(!panel_workspace.set_panel_visibility("builtin.workspace-layout", false));
+    assert!(panel_workspace.is_panel_visible("builtin.workspace-layout"));
 }
 
 /// Phase 4: HTML パネルの move handle (タイトルバー) を screen 座標で検索すると panel_id が返る。

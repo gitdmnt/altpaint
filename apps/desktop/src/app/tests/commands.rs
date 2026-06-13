@@ -181,7 +181,7 @@ fn plugin_keyboard_capture_updates_persistent_config() {
         Some(&json!({
             "default_template_size": "2894x4093",
             "new_shortcut": "Ctrl+Alt+N",
-            "template_options": "2894x4093:A4 350dpi (2894×4093)|2480x3508:A4 300dpi (2480×3508)|2048x2048:Square 2048 (2048×2048)|1920x1080:HD Landscape (1920×1080)",
+            "template_options": "[{\"label\":\"A4 350dpi (2894×4093)\",\"size\":\"2894x4093\"},{\"label\":\"A4 300dpi (2480×3508)\",\"size\":\"2480x3508\"},{\"label\":\"Square 2048 (2048×2048)\",\"size\":\"2048x2048\"},{\"label\":\"HD Landscape (1920×1080)\",\"size\":\"1920x1080\"}]",
             "save_shortcut": "Ctrl+S",
             "save_as_shortcut": "Ctrl+Shift+S",
             "open_shortcut": "Ctrl+O"
@@ -425,7 +425,7 @@ fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
         Some("illustration")
     );
 
-    let saved = desktop_support::load_workspace_preset_catalog(&preset_path);
+    let saved = desktop_support::load_workspace_preset_catalog(&preset_path, app.default_workspace_preset_catalog());
     assert_eq!(saved.default_preset_id, "illustration");
 
     let _ = std::fs::remove_file(preset_path);
@@ -485,7 +485,7 @@ fn execute_command_reloads_workspace_presets_into_workspace_panel_config() {
         config
             .get("workspace_options")
             .and_then(|value| value.as_str()),
-        Some("review:Review|compact:Compact")
+        Some(r#"[{"id":"review","label":"Review"},{"id":"compact","label":"Compact"}]"#)
     );
     assert_eq!(
         config
@@ -522,7 +522,7 @@ fn execute_command_saves_current_workspace_preset_into_catalog() {
             .with_value("label", "Review"),
     ));
 
-    let saved = desktop_support::load_workspace_preset_catalog(&preset_path);
+    let saved = desktop_support::load_workspace_preset_catalog(&preset_path, app.default_workspace_preset_catalog());
     let preset = saved
         .presets
         .iter()
@@ -551,7 +551,7 @@ fn execute_command_exports_workspace_preset_to_dialog_path() {
             .with_value("label", "Exported"),
     ));
 
-    let exported = desktop_support::load_workspace_preset_catalog(&export_path);
+    let exported = desktop_support::load_workspace_preset_catalog(&export_path, app.default_workspace_preset_catalog());
     assert_eq!(exported.default_preset_id, "exported");
     assert_eq!(exported.presets.len(), 1);
     assert_eq!(exported.presets[0].label, "Exported");

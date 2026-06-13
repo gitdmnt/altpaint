@@ -1,7 +1,7 @@
 //! `builtin.workspace-presets` パネル (Phase 10 DOM mutation 版)。
 
 use panel_sdk::{
-    dom::{html_escape, query_selector, set_attribute, set_inner_html},
+    dom::{html_escape, parse_option_list, query_selector, set_attribute, set_inner_html},
     runtime::{
         emit_service, error, event_string, set_state_string, state_string,
     },
@@ -21,11 +21,9 @@ fn selected_workspace_label() -> String {
     state_string(SELECTED_WORKSPACE_LABEL)
 }
 
+// BL-105: 構造化 JSON 配列 [{id,label}] をパースする (旧 "id:label" パイプ区切りを置換)。
 fn parse_options(raw: &str) -> Vec<(String, String)> {
-    raw.split('|')
-        .filter_map(|entry| entry.split_once(':'))
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect()
+    parse_option_list(raw, "id", "label")
 }
 
 fn option_label_for_id(options: &[(String, String)], id: &str) -> Option<String> {
@@ -167,7 +165,7 @@ mod tests {
     #[test]
     fn parse_options_handles_empty_and_pairs() {
         assert!(parse_options("").is_empty());
-        let v = parse_options("a:A|b:B");
+        let v = parse_options(r#"[{"id":"a","label":"A"},{"id":"b","label":"B"}]"#);
         assert_eq!(v.len(), 2);
         assert_eq!(v[0], ("a".to_string(), "A".to_string()));
     }

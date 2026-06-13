@@ -16,10 +16,6 @@ impl CanvasSizePreset {
     pub fn size_string(&self) -> String {
         format!("{}x{}", self.width, self.height)
     }
-
-    pub fn dropdown_option(&self) -> String {
-        format!("{}:{}", self.size_string(), self.label)
-    }
 }
 
 pub fn default_canvas_size_preset_path() -> PathBuf {
@@ -85,7 +81,7 @@ mod tests {
     }
 
     #[test]
-    fn dropdown_option_embeds_size_and_label() {
+    fn size_string_formats_width_by_height() {
         let preset = CanvasSizePreset {
             id: "demo".to_string(),
             label: "Demo".to_string(),
@@ -93,7 +89,7 @@ mod tests {
             height: 240,
         };
 
-        assert_eq!(preset.dropdown_option(), "320x240:Demo");
+        assert_eq!(preset.size_string(), "320x240");
     }
 
     fn unique_path(name: &str) -> PathBuf {

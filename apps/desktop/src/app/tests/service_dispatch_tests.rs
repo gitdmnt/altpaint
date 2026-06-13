@@ -64,7 +64,7 @@ fn request_service_save_workspace_preset_persists_catalog() {
         ))
     );
 
-    let reloaded = desktop_support::load_workspace_preset_catalog(&preset_path);
+    let reloaded = desktop_support::load_workspace_preset_catalog(&preset_path, app.default_workspace_preset_catalog());
     assert!(reloaded.presets.iter().any(|preset| preset.id == "review"));
 }
 

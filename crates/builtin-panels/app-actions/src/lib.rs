@@ -2,7 +2,10 @@
 
 use panel_sdk::{
     RequestDescriptor,
-    dom::{clear_attribute, html_escape, query_selector, set_attribute, set_inner_html},
+    dom::{
+        clear_attribute, html_escape, parse_option_list, query_selector, set_attribute,
+        set_inner_html,
+    },
     runtime::{
         StatePatchBuffer, emit_service, error, event_string, set_state_bool, set_state_string,
         state_bool, state_string, toggle_state,
@@ -79,16 +82,15 @@ fn render_dom() {
         let raw = state_string(TEMPLATE_OPTIONS);
         let selected = state_string(SELECTED_TEMPLATE);
         let mut html = String::new();
-        for entry in raw.split('|') {
-            if let Some((id, label)) = entry.split_once(':') {
-                let mark = if id == selected { " selected" } else { "" };
-                html.push_str(&format!(
-                    r#"<option value="{}"{}>{}</option>"#,
-                    html_escape(id),
-                    mark,
-                    html_escape(label),
-                ));
-            }
+        // BL-105: 構造化 JSON 配列 [{size,label}] を読み、option を構築する。
+        for (size, label) in parse_option_list(&raw, "size", "label") {
+            let mark = if size == selected { " selected" } else { "" };
+            html.push_str(&format!(
+                r#"<option value="{}"{}>{}</option>"#,
+                html_escape(&size),
+                mark,
+                html_escape(&label),
+            ));
         }
         set_inner_html(select, &html);
     }

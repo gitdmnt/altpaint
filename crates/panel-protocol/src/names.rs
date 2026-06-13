@@ -105,6 +105,40 @@ pub mod workspace_layout {
     pub const MOVE_PANEL: &str = "workspace_layout.move_panel";
 }
 
+/// ホストが persistent config を注入する同梱パネルの ID 契約 (BL-101)。
+///
+/// ホスト (desktop) は特定パネルの config セクションへ動的データ (テンプレート一覧・
+/// ワークスペース一覧・ペンインポート報告) を書き込む。その注入先 ID の分散を解消し、
+/// ここを単一定義点とする。
+pub mod panel_ids {
+    pub const APP_ACTIONS: &str = "builtin.app-actions";
+    pub const WORKSPACE_PRESETS: &str = "builtin.workspace-presets";
+    pub const TOOL_PALETTE: &str = "builtin.tool-palette";
+}
+
+/// ホスト→パネル persistent config キーの契約 (BL-101)。
+///
+/// ホストが `config.<key>` に書き込み、パネルが `state::string("config.<key>")` で読む。
+/// キー文字列のホスト/パネル独立ハードコードを解消する単一定義点。
+pub mod config_keys {
+    /// app-actions: 新規キャンバスサイズプリセットの構造化 JSON 配列 (BL-105)。
+    pub const TEMPLATE_OPTIONS: &str = "template_options";
+    /// app-actions: 既定テンプレートサイズ (`"WIDTHxHEIGHT"`)。
+    pub const DEFAULT_TEMPLATE_SIZE: &str = "default_template_size";
+    /// workspace-presets: ワークスペースプリセット一覧の構造化 JSON 配列 (BL-105)。
+    pub const WORKSPACE_OPTIONS: &str = "workspace_options";
+    /// workspace-presets: 選択中プリセット ID。
+    pub const SELECTED_WORKSPACE: &str = "selected_workspace";
+    /// workspace-presets: 選択中プリセットのラベル。
+    pub const SELECTED_WORKSPACE_LABEL: &str = "selected_workspace_label";
+    /// tool-palette: 直近のペンインポート要約。
+    pub const LAST_IMPORT_SUMMARY: &str = "last_import_summary";
+    /// tool-palette: 直近のペンインポートプレビュー。
+    pub const LAST_IMPORT_PREVIEW: &str = "last_import_preview";
+    /// tool-palette: 直近のペンインポートで発生した issue 列。
+    pub const LAST_IMPORT_ISSUES: &str = "last_import_issues";
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

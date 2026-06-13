@@ -24,6 +24,26 @@ pub struct PanelMeta {
     /// 配置を解決し、ビルトイン ID をハードコードしない。
     #[serde(default)]
     pub layout: PanelLayoutMeta,
+    /// 同梱 default-floating ワークスペースプリセットでの配置 (BL-095)。
+    ///
+    /// `default_workspace_preset_catalog` のハードコードを置換する。宣言したパネルは
+    /// 既定プリセットに含まれ、宣言の anchor/position/size/visible で配置される。
+    /// `None` のパネルは既定プリセットに含まれない (フォールバック配置のみ)。
+    #[serde(default)]
+    pub preset: Option<PanelPresetMeta>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PanelPresetMeta {
+    pub anchor: String,
+    pub position: PanelPositionMeta,
+    pub size: PanelSizeMeta,
+    #[serde(default = "default_preset_visible")]
+    pub visible: bool,
+}
+
+fn default_preset_visible() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

@@ -110,6 +110,25 @@ pub fn set_inner_html(node: NodeId, html: &str) {
     }
 }
 
+/// ホストから供給される構造化 JSON 配列 (BL-105) を `(value, label)` の組へパースする。
+///
+/// `raw` は `[{"<value_key>": "...", "<label_key>": "..."}, ...]` の JSON 文字列。
+/// 旧 "WxH:Label" / "id:label" パイプ区切り独自形式を置換し、dropdown 構築用の
+/// (option value, 表示ラベル) 列を返す。空文字列・不正 JSON は空列を返す。
+pub fn parse_option_list(raw: &str, value_key: &str, label_key: &str) -> Vec<(String, String)> {
+    let Ok(serde_json::Value::Array(items)) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return Vec::new();
+    };
+    items
+        .into_iter()
+        .filter_map(|item| {
+            let value = item.get(value_key)?.as_str()?.to_string();
+            let label = item.get(label_key)?.as_str()?.to_string();
+            Some((value, label))
+        })
+        .collect()
+}
+
 /// HTML 特殊文字をエスケープする。`set_inner_html` に流す動的文字列で必須。
 pub fn html_escape(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -149,5 +168,34 @@ mod tests {
     #[test]
     fn html_escape_japanese_unchanged() {
         assert_eq!(html_escape("レイヤー"), "レイヤー");
+    }
+
+    #[test]
+    fn parse_option_list_extracts_value_label_pairs() {
+        let raw = r#"[{"size":"320x240","label":"Demo"},{"size":"640x480","label":"VGA"}]"#;
+        let opts = parse_option_list(raw, "size", "label");
+        assert_eq!(
+            opts,
+            vec![
+                ("320x240".to_string(), "Demo".to_string()),
+                ("640x480".to_string(), "VGA".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_option_list_handles_empty_and_invalid() {
+        assert!(parse_option_list("", "id", "label").is_empty());
+        assert!(parse_option_list("not json", "id", "label").is_empty());
+        assert!(parse_option_list("{}", "id", "label").is_empty());
+        // キー欠落のエントリは除外。
+        assert!(parse_option_list(r#"[{"id":"x"}]"#, "id", "label").is_empty());
+    }
+
+    #[test]
+    fn parse_option_list_uses_id_label_keys() {
+        let raw = r#"[{"id":"review","label":"Review workspace"}]"#;
+        let opts = parse_option_list(raw, "id", "label");
+        assert_eq!(opts, vec![("review".to_string(), "Review workspace".to_string())]);
     }
 }

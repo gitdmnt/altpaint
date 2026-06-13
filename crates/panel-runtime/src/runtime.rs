@@ -405,6 +405,16 @@ impl PanelRuntime {
             .collect()
     }
 
+    /// 同梱 default-floating プリセット配置を宣言したパネルの `(id, &PanelPresetMeta)`
+    /// を登録順で返す (BL-095)。`default_workspace_preset_catalog` のハードコードを
+    /// 置換し、desktop が meta からプリセットカタログを構築するために使う。
+    pub fn panel_preset_metas(&self) -> Vec<(&str, &crate::meta::PanelPresetMeta)> {
+        self.panels
+            .iter()
+            .filter_map(|panel| panel.preset().map(|preset| (panel.id(), preset)))
+            .collect()
+    }
+
     /// 指定 host state セクションを**明示的に**購読しているパネル ID 一覧 (BL-095)。
     ///
     /// desktop が「特定トピック (tool/color/view 等) が変わったら購読パネルだけ

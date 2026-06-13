@@ -8,36 +8,42 @@
 use super::*;
 use crate::handles::PanelMoveDirection;
 
-pub(super) const WORKSPACE_PANEL_ID: &str = "builtin.workspace-layout";
-const HIDDEN_BY_DEFAULT_PANEL_IDS: &[&str] = &["builtin.koma-list"];
-
-/// Phase 11: `size` は `None` で挿入し、bootstrap 経路で panel.meta.json の
-/// `default_size` を流し込む。`WorkspacePanelSize::default()` には頼らない。
-pub(super) fn default_panel_state(panel_id: &str, index: usize) -> WorkspacePanelState {
-    let (anchor, position) = default_panel_anchor_and_position(panel_id, index);
-    WorkspacePanelState {
-        id: panel_id.to_string(),
-        visible: !HIDDEN_BY_DEFAULT_PANEL_IDS.contains(&panel_id),
-        anchor,
-        position: Some(position),
-        size: None,
-    }
-}
-
 impl PanelWorkspace {
-    pub(super) fn ensure_workspace_layout_panel_entry(&mut self) {
-        if self
-            .workspace_layout
-            .panels
-            .iter()
-            .any(|entry| entry.id == WORKSPACE_PANEL_ID)
-        {
-            return;
+    /// Phase 11: `size` は `None` で挿入し、bootstrap 経路で panel.meta.json の
+    /// `default_size` を流し込む。`WorkspacePanelSize::default()` には頼らない。
+    ///
+    /// BL-095: anchor / position / 既定表示はパネルが meta.json で宣言した既定値
+    /// (`panel_layout_defaults`) から解決し、未宣言なら index ベースのフォールバックを使う。
+    pub(super) fn default_panel_state(&self, panel_id: &str, index: usize) -> WorkspacePanelState {
+        let defaults = self.layout_defaults_for(panel_id);
+        let (anchor, position) = resolve_anchor_and_position(&defaults, index);
+        WorkspacePanelState {
+            id: panel_id.to_string(),
+            visible: !defaults.hidden_by_default,
+            anchor,
+            position: Some(position),
+            size: None,
         }
+    }
 
-        self.workspace_layout
-            .panels
-            .insert(0, default_panel_state(WORKSPACE_PANEL_ID, 0));
+    /// 常時表示パネル (always_visible) を workspace_layout の先頭に確保する。
+    ///
+    /// 旧 `builtin.workspace-layout` ハードコードを meta 宣言ベースに置換 (BL-095)。
+    pub(super) fn ensure_always_visible_panel_entries(&mut self) {
+        let always_visible = self.always_visible_panel_ids();
+        // 登録順を保つため逆順に index 0 へ挿入する。
+        for panel_id in always_visible.iter().rev() {
+            if self
+                .workspace_layout
+                .panels
+                .iter()
+                .any(|entry| &entry.id == panel_id)
+            {
+                continue;
+            }
+            let state = self.default_panel_state(panel_id, 0);
+            self.workspace_layout.panels.insert(0, state);
+        }
     }
 
     pub fn move_panel_to(
@@ -48,6 +54,7 @@ impl PanelWorkspace {
         viewport_width: usize,
         viewport_height: usize,
     ) -> bool {
+        let fallback = self.default_panel_position(panel_id, 0);
         let Some(entry) = self
             .workspace_layout
             .panels
@@ -66,7 +73,7 @@ impl PanelWorkspace {
             viewport_width,
             viewport_height,
             size,
-            default_panel_position(panel_id, 0),
+            fallback,
         );
         if current_position == next_position {
             return false;
@@ -165,7 +172,7 @@ impl PanelWorkspace {
             viewport_width,
             viewport_height,
             size,
-            default_panel_position(panel_id, 0),
+            self.default_panel_position(panel_id, 0),
         );
         Some(geometry::WindowRect {
             x: position.x,
@@ -196,7 +203,8 @@ impl PanelWorkspace {
     }
 
     pub fn set_panel_visibility(&mut self, panel_id: &str, visible: bool) -> bool {
-        if panel_id == WORKSPACE_PANEL_ID {
+        // always_visible 宣言のパネルはユーザーが非表示にできない (BL-095)。
+        if self.layout_defaults_for(panel_id).always_visible {
             return false;
         }
 
@@ -235,26 +243,32 @@ impl PanelWorkspace {
             return;
         }
 
-        self.workspace_layout.panels.push(default_panel_state(
-            panel_id,
-            self.workspace_layout.panels.len(),
-        ));
+        let state = self.default_panel_state(panel_id, self.workspace_layout.panels.len());
+        self.workspace_layout.panels.push(state);
     }
 
     /// 登録済みパネル ID 一覧と workspace layout を整合させる。
     ///
     /// 未知のパネルにはエントリと既定位置を補い、不可視パネルから focus を外す。
     pub fn reconcile_panels(&mut self, panel_ids: Vec<&str>) {
-        self.ensure_workspace_layout_panel_entry();
+        self.ensure_always_visible_panel_entries();
 
         for panel_id in panel_ids {
             self.ensure_workspace_panel_entry(panel_id);
         }
 
-        for (index, entry) in self.workspace_layout.panels.iter_mut().enumerate() {
-            if entry.position.is_none() {
-                entry.position = Some(default_panel_position(&entry.id, index));
-            }
+        // position 未設定のエントリへ既定オフセットを補う。
+        // (entry を借りつつ defaults を引くため、先に id/index を集める。)
+        let fills: Vec<(usize, WorkspacePanelPosition)> = self
+            .workspace_layout
+            .panels
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.position.is_none())
+            .map(|(index, entry)| (index, self.default_panel_position(&entry.id, index)))
+            .collect();
+        for (index, position) in fills {
+            self.workspace_layout.panels[index].position = Some(position);
             // Phase 11: size は bootstrap 経路で meta.json から注入されるため、
             // ここでは触らない (size=None のままにする)。
         }
@@ -272,7 +286,8 @@ impl PanelWorkspace {
     ///
     /// HTML パネルの GPU 描画スキップ判定など、panel-workspace 外部からも参照される。
     pub fn is_panel_visible(&self, panel_id: &str) -> bool {
-        if panel_id == WORKSPACE_PANEL_ID {
+        // always_visible 宣言のパネルは常に表示 (BL-095)。
+        if self.layout_defaults_for(panel_id).always_visible {
             return true;
         }
 
@@ -283,44 +298,31 @@ impl PanelWorkspace {
             .map(|entry| entry.visible)
             .unwrap_or(true)
     }
-}
 
-fn default_panel_anchor_and_position(
-    panel_id: &str,
-    index: usize,
-) -> (WorkspacePanelAnchor, WorkspacePanelPosition) {
-    match panel_id {
-        WORKSPACE_PANEL_ID => (
-            WorkspacePanelAnchor::TopLeft,
-            WorkspacePanelPosition { x: 24, y: 72 },
-        ),
-        "builtin.layers" => (
-            WorkspacePanelAnchor::TopRight,
-            WorkspacePanelPosition { x: 24, y: 72 },
-        ),
-        "builtin.color-palette" => (
-            WorkspacePanelAnchor::BottomLeft,
-            WorkspacePanelPosition { x: 24, y: 24 },
-        ),
-        "builtin.tool-settings" => (
-            WorkspacePanelAnchor::BottomRight,
-            WorkspacePanelPosition { x: 24, y: 24 },
-        ),
-        "builtin.view-controls" => (
-            WorkspacePanelAnchor::BottomRight,
-            WorkspacePanelPosition { x: 376, y: 24 },
-        ),
-        _ => (
-            WorkspacePanelAnchor::TopLeft,
-            WorkspacePanelPosition {
-                x: 24 + index * 28,
-                y: 72 + index * 36,
-            },
-        ),
+    /// 指定パネルの既定オフセットを解決する。
+    /// meta 宣言があればそれを、無ければ index ベースのフォールバックを返す。
+    pub(super) fn default_panel_position(
+        &self,
+        panel_id: &str,
+        index: usize,
+    ) -> WorkspacePanelPosition {
+        resolve_anchor_and_position(&self.layout_defaults_for(panel_id), index).1
     }
 }
 
-fn default_panel_position(panel_id: &str, index: usize) -> WorkspacePanelPosition {
-    default_panel_anchor_and_position(panel_id, index).1
+/// パネルの既定配置を解決する純関数 (BL-095)。
+///
+/// meta 宣言 (`PanelLayoutDefaults`) に anchor/position があればそれを使い、
+/// 無ければ index ベースのフォールバック (左上から段階配置) を返す。
+fn resolve_anchor_and_position(
+    defaults: &PanelLayoutDefaults,
+    index: usize,
+) -> (WorkspacePanelAnchor, WorkspacePanelPosition) {
+    let anchor = defaults.anchor.unwrap_or(WorkspacePanelAnchor::TopLeft);
+    let position = defaults.position.unwrap_or(WorkspacePanelPosition {
+        x: 24 + index * 28,
+        y: 72 + index * 36,
+    });
+    (anchor, position)
 }
 

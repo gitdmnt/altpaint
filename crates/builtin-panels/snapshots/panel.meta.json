@@ -2,5 +2,10 @@
   "id": "builtin.snapshots",
   "title": "Snapshots",
   "default_size": { "width": 320, "height": 320 },
-  "subscribes": ["document", "snapshot", "tool"]
+  "subscribes": ["document", "snapshot", "tool"],
+  "preset": {
+    "anchor": "top-right",
+    "position": { "x": 24, "y": 424 },
+    "size": { "width": 280, "height": 180 }
+  }
 }

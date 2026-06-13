@@ -4,13 +4,18 @@ use std::path::{Path, PathBuf};
 
 use document_model::Document;
 use desktop_support::{
-    DEFAULT_PROJECT_FILE_NAME, DesktopSessionState, WorkspacePresetCatalog,
-    default_canvas_size_preset_path, default_canvas_size_presets, builtin_panels_dir,
-    default_workspace_preset_catalog, load_session_state, load_workspace_preset_catalog,
-    save_canvas_size_presets, save_workspace_preset_catalog,
+    CURRENT_WORKSPACE_PRESET_FORMAT_VERSION, DEFAULT_PROJECT_FILE_NAME, DesktopSessionState,
+    WorkspacePreset, WorkspacePresetCatalog, default_canvas_size_preset_path,
+    default_canvas_size_presets, builtin_panels_dir, load_session_state,
+    load_workspace_preset_catalog, save_canvas_size_presets, save_workspace_preset_catalog,
 };
+use std::collections::BTreeMap;
+
 use panel_runtime::{PanelRuntime, register_builtin_panels};
-use panel_workspace::{PanelWorkspace, WorkspaceUiState};
+use panel_workspace::{
+    PanelLayoutDefaults, PanelWorkspace, WorkspaceLayout, WorkspacePanelAnchor,
+    WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState, WorkspaceUiState,
+};
 
 use super::{DesktopApp, panel_config_sync::selected_workspace_preset_id_from_configs};
 
@@ -36,9 +41,18 @@ impl DesktopApp {
             .as_ref()
             .map(|project| project.document.clone())
             .unwrap_or_default();
-        let workspace_presets = load_workspace_preset_catalog(workspace_preset_path);
+
+        // BL-095: パネルを登録し、meta 既定配置を panel-workspace へ bridge してから
+        // meta 由来の既定カタログを構築する (ビルトイン ID は meta だけが知る)。
+        let (mut panel_runtime, mut panel_workspace) = Self::build_panel_system();
+        let workspace_presets = load_workspace_preset_catalog(
+            workspace_preset_path,
+            default_workspace_preset_catalog_from(&panel_runtime),
+        );
         let mut active_workspace_preset_id = workspace_presets.default_preset_id.clone();
-        let (mut panel_runtime, mut panel_workspace) = Self::load_panel_system(
+        Self::apply_initial_workspace_state(
+            &mut panel_runtime,
+            &mut panel_workspace,
             &workspace_presets,
             loaded_project.as_ref().map(|project| &project.ui_state),
             session.as_ref().map(|state| &state.ui_state),
@@ -79,45 +93,47 @@ impl DesktopApp {
         }
     }
 
-    fn load_panel_system(
-        workspace_presets: &WorkspacePresetCatalog,
-        project_ui_state: Option<&WorkspaceUiState>,
-        session_ui_state: Option<&WorkspaceUiState>,
-    ) -> (PanelRuntime, PanelWorkspace) {
+    /// パネルを登録し、meta 既定配置を panel-workspace へ bridge する (BL-095)。
+    /// プリセット適用前の素の状態を返す。
+    fn build_panel_system() -> (PanelRuntime, PanelWorkspace) {
         let mut panel_runtime = PanelRuntime::new();
         let mut panel_workspace = PanelWorkspace::new();
         let diags = register_builtin_panels(&mut panel_runtime, &builtin_panels_dir());
         for diag in &diags {
             eprintln!("register_builtin_panels: {diag}");
         }
+        // BL-095: パネルが meta.json で宣言した既定配置を panel-workspace へ bridge する。
+        // panel-workspace はビルトイン ID をハードコードせず、この既定値で配置を解決する。
+        panel_workspace.set_panel_layout_defaults(panel_layout_defaults_from(&panel_runtime));
         panel_workspace.reconcile_panels(panel_runtime.panel_ids());
+        (panel_runtime, panel_workspace)
+    }
 
+    /// 既定プリセット → project → session の順で UI 状態を適用する。
+    fn apply_initial_workspace_state(
+        panel_runtime: &mut PanelRuntime,
+        panel_workspace: &mut PanelWorkspace,
+        workspace_presets: &WorkspacePresetCatalog,
+        project_ui_state: Option<&WorkspaceUiState>,
+        session_ui_state: Option<&WorkspaceUiState>,
+    ) {
         if let Some(default_preset) = workspace_presets
             .presets
             .iter()
             .find(|preset| preset.id == workspace_presets.default_preset_id)
         {
             apply_ui_state_to_panel_system(
-                &mut panel_runtime,
-                &mut panel_workspace,
+                panel_runtime,
+                panel_workspace,
                 &default_preset.ui_state,
             );
         }
         if let Some(project_ui_state) = project_ui_state {
-            apply_ui_state_to_panel_system(
-                &mut panel_runtime,
-                &mut panel_workspace,
-                project_ui_state,
-            );
+            apply_ui_state_to_panel_system(panel_runtime, panel_workspace, project_ui_state);
         }
         if let Some(session_ui_state) = session_ui_state {
-            apply_ui_state_to_panel_system(
-                &mut panel_runtime,
-                &mut panel_workspace,
-                session_ui_state,
-            );
+            apply_ui_state_to_panel_system(panel_runtime, panel_workspace, session_ui_state);
         }
-        (panel_runtime, panel_workspace)
     }
 
     pub(super) fn apply_workspace_ui_state(&mut self, ui_state: WorkspaceUiState) {
@@ -148,13 +164,19 @@ impl DesktopApp {
         }
     }
 
+    /// 現在登録されているパネルの meta から同梱 default-floating プリセットカタログを
+    /// 構築する (BL-095)。on-disk カタログ欠落/破損時のフォールバックに使う。
+    pub(super) fn default_workspace_preset_catalog(&self) -> WorkspacePresetCatalog {
+        default_workspace_preset_catalog_from(&self.panel_runtime)
+    }
+
     pub(super) fn ensure_workspace_presets_file(&self, path: &Path) {
         if path.exists() {
             return;
         }
 
-        if let Err(error) = save_workspace_preset_catalog(path, &default_workspace_preset_catalog())
-        {
+        let default_catalog = default_workspace_preset_catalog_from(&self.panel_runtime);
+        if let Err(error) = save_workspace_preset_catalog(path, &default_catalog) {
             eprintln!("failed to create workspace presets file: {error}");
         }
     }
@@ -170,6 +192,70 @@ impl DesktopApp {
                 .dialogs
                 .show_error("Workspace save failed", &message);
         }
+    }
+}
+
+/// panel-runtime の meta から panel-workspace 用の既定配置マップを構築する (BL-095)。
+///
+/// ビルトイン ID の知識を持つのは「パネル自身 (meta.json)」だけになり、水平層の
+/// panel-workspace は ID 非依存のまま配置を解決できる。
+fn panel_layout_defaults_from(
+    panel_runtime: &PanelRuntime,
+) -> BTreeMap<String, PanelLayoutDefaults> {
+    panel_runtime
+        .panel_layout_metas()
+        .into_iter()
+        .map(|(id, meta)| {
+            let defaults = PanelLayoutDefaults {
+                anchor: meta
+                    .anchor
+                    .as_deref()
+                    .and_then(WorkspacePanelAnchor::from_kebab),
+                position: meta
+                    .position
+                    .map(|p| WorkspacePanelPosition { x: p.x, y: p.y }),
+                hidden_by_default: meta.hidden_by_default,
+                always_visible: meta.always_visible,
+            };
+            (id.to_string(), defaults)
+        })
+        .collect()
+}
+
+/// panel-runtime の meta から同梱 default-floating プリセットカタログを構築する (BL-095)。
+///
+/// `desktop_support::default_workspace_preset_catalog` のビルトイン ID ハードコードを
+/// 置換する。`preset` を宣言したパネルのみが既定プリセットに含まれ、宣言された
+/// anchor/position/size/visible で配置される。パネル登録順を保つ。
+fn default_workspace_preset_catalog_from(
+    panel_runtime: &PanelRuntime,
+) -> WorkspacePresetCatalog {
+    let panels = panel_runtime
+        .panel_preset_metas()
+        .into_iter()
+        .map(|(id, preset)| WorkspacePanelState {
+            id: id.to_string(),
+            visible: preset.visible,
+            anchor: WorkspacePanelAnchor::from_kebab(&preset.anchor)
+                .unwrap_or(WorkspacePanelAnchor::TopLeft),
+            position: Some(WorkspacePanelPosition {
+                x: preset.position.x,
+                y: preset.position.y,
+            }),
+            size: Some(WorkspacePanelSize {
+                width: preset.size.width as usize,
+                height: preset.size.height as usize,
+            }),
+        })
+        .collect();
+    WorkspacePresetCatalog {
+        format_version: CURRENT_WORKSPACE_PRESET_FORMAT_VERSION,
+        default_preset_id: "default-floating".to_string(),
+        presets: vec![WorkspacePreset {
+            id: "default-floating".to_string(),
+            label: "Default floating workspace".to_string(),
+            ui_state: WorkspaceUiState::new(WorkspaceLayout { panels }, Default::default()),
+        }],
     }
 }
 

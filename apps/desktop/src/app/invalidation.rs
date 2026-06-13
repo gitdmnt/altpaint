@@ -82,12 +82,15 @@ impl DesktopApp {
         self.request_panel_reconcile();
     }
 
-    /// 指定パネルを dirty としてマークし、ドキュメント同期をスケジュールする。
-    pub(super) fn sync_ui_from_document_panels(&mut self, panel_ids: &[&str]) {
+    /// 指定 host state セクション (トピック) を購読するパネルを dirty としてマークする
+    /// (BL-095)。ビルトイン ID のハードコードリストに代わり、パネルが meta.json で
+    /// 宣言した `subscribes` から購読パネルを解決する。
+    pub(super) fn sync_ui_from_section(&mut self, section: &str) {
+        let panel_ids = self.panel_runtime.panel_ids_subscribing(section);
         if panel_ids.is_empty() {
             return;
         }
-        for &id in panel_ids {
+        for id in &panel_ids {
             self.panel_runtime.mark_dirty(id);
         }
         self.request_panel_reconcile();
@@ -102,7 +105,7 @@ impl DesktopApp {
             return false;
         }
         self.invalidation.deferred_view_panel_sync = false;
-        self.sync_ui_from_document_panels(&["builtin.view-controls"]);
+        self.sync_ui_from_section("view");
         true
     }
 

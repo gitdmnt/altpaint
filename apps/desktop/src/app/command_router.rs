@@ -10,9 +10,6 @@ use geometry::PageDirtyRect;
 
 use super::DesktopApp;
 
-const TOOL_PANEL_IDS: &[&str] = &["builtin.tool-settings", "builtin.tool-palette"];
-const COLOR_PANEL_IDS: &[&str] = &["builtin.color-palette"];
-
 impl DesktopApp {
     /// 純粋なドキュメント変異コマンドを適用し、関連 UI を同期する。
     pub(crate) fn apply_document_command(&mut self, command: &DocumentCommand) -> bool {
@@ -81,7 +78,7 @@ impl DesktopApp {
             | SessionCommand::SelectChildTool { .. }
             | SessionCommand::SelectNextPenPreset
             | SessionCommand::SelectPreviousPenPreset => {
-                self.sync_ui_from_document_panels(TOOL_PANEL_IDS);
+                self.sync_ui_from_section("tool");
                 self.mark_status_dirty();
                 true
             }
@@ -89,12 +86,12 @@ impl DesktopApp {
             | SessionCommand::SetActivePenPressureEnabled { .. }
             | SessionCommand::SetActivePenAntialias { .. }
             | SessionCommand::SetActivePenStabilization { .. } => {
-                self.sync_ui_from_document_panels(TOOL_PANEL_IDS);
+                self.sync_ui_from_section("tool");
                 self.mark_status_dirty();
                 true
             }
             SessionCommand::SetActiveColor { .. } => {
-                self.sync_ui_from_document_panels(COLOR_PANEL_IDS);
+                self.sync_ui_from_section("color");
                 self.mark_status_dirty();
                 true
             }

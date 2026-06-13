@@ -26,6 +26,6 @@ pub use canvas_size_presets::{
     save_canvas_size_presets,
 };
 pub use workspace_presets::{
-    WorkspacePreset, WorkspacePresetCatalog, default_workspace_preset_catalog,
+    CURRENT_WORKSPACE_PRESET_FORMAT_VERSION, WorkspacePreset, WorkspacePresetCatalog,
     default_workspace_preset_path, load_workspace_preset_catalog, save_workspace_preset_catalog,
 };

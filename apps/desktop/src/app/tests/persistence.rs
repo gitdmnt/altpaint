@@ -94,7 +94,7 @@ fn save_and_load_restore_plugin_shortcut_configs() {
         Some(&json!({
             "default_template_size": "2894x4093",
             "new_shortcut": "Ctrl+Alt+N",
-            "template_options": "2894x4093:A4 350dpi (2894×4093)|2480x3508:A4 300dpi (2480×3508)|2048x2048:Square 2048 (2048×2048)|1920x1080:HD Landscape (1920×1080)",
+            "template_options": "[{\"label\":\"A4 350dpi (2894×4093)\",\"size\":\"2894x4093\"},{\"label\":\"A4 300dpi (2480×3508)\",\"size\":\"2480x3508\"},{\"label\":\"Square 2048 (2048×2048)\",\"size\":\"2048x2048\"},{\"label\":\"HD Landscape (1920×1080)\",\"size\":\"1920x1080\"}]",
             "save_shortcut": "Ctrl+S",
             "save_as_shortcut": "Ctrl+Shift+S",
             "open_shortcut": "Ctrl+O"
@@ -106,7 +106,7 @@ fn save_and_load_restore_plugin_shortcut_configs() {
             .panel_configs
             .get("builtin.workspace-presets"),
         Some(&json!({
-            "workspace_options": "default-floating:Default floating workspace",
+            "workspace_options": "[{\"id\":\"default-floating\",\"label\":\"Default floating workspace\"}]",
             "selected_workspace": "default-floating",
             "selected_workspace_label": "Default floating workspace"
         }))
@@ -121,7 +121,7 @@ fn save_and_load_restore_plugin_shortcut_configs() {
         Some(&json!({
             "default_template_size": "2894x4093",
             "new_shortcut": "Ctrl+Alt+N",
-            "template_options": "2894x4093:A4 350dpi (2894×4093)|2480x3508:A4 300dpi (2480×3508)|2048x2048:Square 2048 (2048×2048)|1920x1080:HD Landscape (1920×1080)",
+            "template_options": "[{\"label\":\"A4 350dpi (2894×4093)\",\"size\":\"2894x4093\"},{\"label\":\"A4 300dpi (2480×3508)\",\"size\":\"2480x3508\"},{\"label\":\"Square 2048 (2048×2048)\",\"size\":\"2048x2048\"},{\"label\":\"HD Landscape (1920×1080)\",\"size\":\"1920x1080\"}]",
             "save_shortcut": "Ctrl+S",
             "save_as_shortcut": "Ctrl+Shift+S",
             "open_shortcut": "Ctrl+O"
@@ -132,7 +132,7 @@ fn save_and_load_restore_plugin_shortcut_configs() {
             .persistent_panel_configs()
             .get("builtin.workspace-presets"),
         Some(&json!({
-            "workspace_options": "default-floating:Default floating workspace",
+            "workspace_options": "[{\"id\":\"default-floating\",\"label\":\"Default floating workspace\"}]",
             "selected_workspace": "default-floating",
             "selected_workspace_label": "Default floating workspace"
         }))
