@@ -6,20 +6,28 @@
 //! - `data-bind-*` を JSON snapshot で評価し、DOM の attribute / class / textContent を更新
 //! - `data-action` を持つ要素のレイアウト矩形を CSS 解決後の絶対座標で収集
 //!
-//! 実描画（vello::Renderer::render_to_texture）は `on_render` が外部所有のレンダラ／共有
-//! `wgpu::Device` で行い、本 crate では GPU リソースを保持しない。
+//! ## 内部モジュール分割 (BL-100)
+//!
+//! `HtmlPanelView` は 1 つの状態構造体だが、責務別に `impl` を 4 つの子モジュールへ分割する:
+//!
+//! - [`dom`] — DOM 管理 (document / replace_document / mutation / 要素状態 snapshot/restore)
+//! - [`layout`] — layout + サイズ (panel_size / 制約 / local size / resolve_layout)
+//! - [`present`] — GPU 提示 (on_render / scene 構築 / chrome 描画)
+//! - [`actions`] — `data-action` 矩形収集と descriptor 解釈
+//!
+//! ## GPU リソースの保持について
+//!
+//! `vello::Renderer` / `wgpu::Device` / `wgpu::Queue` は **保持しない** (`on_render` 引数で
+//! 外部から借りる)。パネル毎の描画先テクスチャ ([`crate::gpu::PanelGpuTarget`]) のみは
+//! 本 view が所有し、`on_render` 内でサイズに応じて再生成する。
 
-use anyrender_vello::VelloScenePainter;
-use blitz_dom::{
-    BaseDocument, DocumentConfig, EventDriver, LocalName, Namespace, NoopEventHandler, QualName,
-    local_name,
-    node::NodeData,
-};
-use blitz_html::{HtmlDocument, HtmlProvider};
-use std::sync::Arc;
-use blitz_paint::paint_scene;
-use blitz_traits::events::UiEvent;
-use blitz_traits::shell::Viewport;
+mod actions;
+mod dom;
+mod layout;
+mod present;
+
+use blitz_dom::{BaseDocument, LocalName, Namespace, QualName, node::NodeData};
+use blitz_html::HtmlDocument;
 
 /// パネル描画器。`HtmlDocument` を保持し、layout 解決と vello scene 構築を行う。
 pub struct HtmlPanelView {
@@ -112,41 +120,20 @@ pub struct ActionRect {
 /// **必ず同一のクランプ規則** で layout を解決するための単一定義点。
 /// 旧実装はこの規則を 2 箇所に複製し「同期を保つ」コメント運用に頼っていた (BL-043)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct LocalRenderSize {
+pub(crate) struct LocalRenderSize {
     /// chrome を含むパネル全体の幅。
-    width: u32,
+    pub(crate) width: u32,
     /// chrome を含むパネル全体の高さ。
-    height: u32,
+    pub(crate) height: u32,
     /// chrome を除いた body 部分の高さ。
-    body_height: u32,
+    pub(crate) body_height: u32,
 }
 
-/// stylo の resolve を直列化するグローバルロック。
-///
-/// Blitz の `BaseDocument::resolve` はグローバル rayon プール (StyleThread) で
-/// スタイル計算を行い、複数ドキュメントの並行 resolve は stylo 内部の
-/// `atomic_refcell` borrow 競合で panic する。プロダクションでは resolve は
-/// 単一 UI スレッドからのみ呼ばれるため無競合 (ロックコストは実質ゼロ)。
-static STYLE_RESOLVE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 impl HtmlPanelView {
-    /// `panel_size` を viewport / chrome_height でクランプした描画用ローカルサイズを返す。
-    ///
-    /// `on_render` と `resolve_action_rects` の両方がこの 1 箇所を経由することで、
-    /// GPU 描画と hit 矩形が常に同一の local size で layout 解決される。
-    fn local_render_size(&self, viewport: (u32, u32), chrome_height: u32) -> LocalRenderSize {
-        let (vp_w, vp_h) = (viewport.0.max(1), viewport.1.max(chrome_height + 1));
-        let width = self.panel_size.0.min(vp_w).max(1);
-        let height = self.panel_size.1.min(vp_h).max(chrome_height + 1);
-        let body_height = height.saturating_sub(chrome_height).max(1);
-        LocalRenderSize {
-            width,
-            height,
-            body_height,
-        }
-    }
-
     pub fn new(html: &str, user_css: &str) -> Self {
+        use blitz_dom::DocumentConfig;
+        use blitz_html::HtmlProvider;
+        use std::sync::Arc;
         let mut config = DocumentConfig::default();
         if !user_css.is_empty() {
             config.ua_stylesheets = Some(vec![user_css.to_string()]);
@@ -165,488 +152,22 @@ impl HtmlPanelView {
             gpu_target: None,
         }
     }
-
-    /// パネルロード時に呼ぶ。bootstrap で必ず確定したサイズ
-    /// (workspace 永続値 or panel.meta.json `default_size`) が渡される。
-    pub fn set_panel_size(&mut self, size: (u32, u32)) {
-        self.panel_size = (size.0.max(1), size.1.max(1));
-        self.layout_dirty = true;
-        self.render_dirty = true;
-    }
-
-    /// 現在の権威サイズ (HTML 本体の width, height)。
-    pub fn panel_size(&self) -> (u32, u32) {
-        self.panel_size
-    }
-
-    /// Phase 11: パネル root 要素 (body 直下の最初の要素) の CSS `min-width` /
-    /// `max-width` / `min-height` / `max-height` を `px` 単位の `u32` で返す。
-    /// `auto` や `%` 単位は `None` (制約なし) として扱う。
-    ///
-    /// 注意: 取り出すのは taffy の `min_size` / `max_size` (CSS → stylo → taffy へと
-    /// 反映された値) なので、`resolve_layout` が一度走った後でないとデフォルト値
-    /// (= Auto) が返る可能性がある。リサイズハンドルから問い合わせる経路では
-    /// 既に少なくとも一度フレームが描画済みのため問題にならない。
-    pub fn root_size_constraints(&self) -> PanelSizeConstraints {
-        let Some(root) = root_panel_node_id(&self.document) else {
-            return PanelSizeConstraints::default();
-        };
-        let Some(node) = self.document.get_node(root) else {
-            return PanelSizeConstraints::default();
-        };
-        PanelSizeConstraints {
-            min_width: dimension_to_px(node.style.min_size.width),
-            max_width: dimension_to_px(node.style.max_size.width),
-            min_height: dimension_to_px(node.style.min_size.height),
-            max_height: dimension_to_px(node.style.max_size.height),
-        }
-    }
-
-    /// 次フレームで resolve が必要か。
-    pub fn layout_dirty(&self) -> bool {
-        self.layout_dirty
-    }
-
-    /// 次フレームで実描画が必要か。
-    pub fn render_dirty(&self) -> bool {
-        self.render_dirty
-    }
-
-    /// 現在の GPU target への参照（render 後に外部が view を作るため）。
-    pub fn gpu_target(&self) -> Option<&crate::gpu::PanelGpuTarget> {
-        self.gpu_target.as_ref()
-    }
-
-    /// パネルを GPU テクスチャに描画する（責務集約）。
-    ///
-    /// 動作 (Phase 11):
-    /// 1. viewport (画面側) で **描画用ローカル size** を算出: `min(measured_w, viewport_w)` 等。
-    ///    `panel_size` 自体は変更しない (ウィンドウ縮小→復元時の往復不変)。
-    /// 2. layout_dirty なら local size で `resolve_layout` を走らせる (content size の自動再測定はしない)。
-    /// 3. render_dirty なら scene 構築 + chrome 描画 + render_to_texture。
-    ///
-    /// `chrome` が `Some` なら上端にその高さ・色で chrome 矩形を重ねる。色は呼出側
-    /// (テーマ) が決める (BL-099: panel-html はテーマ色をハードコードしない)。
-    ///
-    /// 戻り値: `RenderOutcome::Rendered(target)` か `Skipped(target)`。
-    /// `target` は `gpu_target()` でも取得可能。
-    #[allow(clippy::too_many_arguments)]
-    pub fn on_render<'a>(
-        &'a mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        renderer: &mut vello::Renderer,
-        scene_buf: &mut vello::Scene,
-        viewport: (u32, u32),
-        scale: f32,
-        chrome: Option<ChromeStyle>,
-    ) -> RenderOutcome<'a> {
-        let chrome_height = chrome.map(|c| c.height).unwrap_or(0);
-        // viewport クランプ: 描画用 local 変数のみで行い panel_size は変更しない。
-        let LocalRenderSize {
-            width: local_w,
-            height: local_h,
-            body_height: body_h,
-        } = self.local_render_size(viewport, chrome_height);
-
-        // layout_dirty なら resolve のみ実行 (content size の再測定 + panel_size 更新は廃止)
-        if self.layout_dirty {
-            self.resolve_layout(local_w, body_h, scale);
-            self.layout_dirty = false;
-        }
-
-        // GPU target サイズを local size に合わせる
-        let target_size_changed = self
-            .gpu_target
-            .as_ref()
-            .map(|t| t.width != local_w || t.height != local_h)
-            .unwrap_or(true);
-        if target_size_changed {
-            self.gpu_target = Some(crate::gpu::PanelGpuTarget::create(device, local_w, local_h));
-            self.render_dirty = true;
-        }
-
-        if !self.render_dirty {
-            return RenderOutcome::Skipped(self.gpu_target.as_ref().expect("target ensured"));
-        }
-
-        // scene 構築 + chrome 描画 (色は呼出側注入の chrome.fill_rgba)
-        scene_buf.reset();
-        self.build_scene_with_offset(scene_buf, local_w, body_h, scale, 0, chrome_height);
-        if let Some(chrome) = chrome.filter(|c| c.height > 0) {
-            paint_chrome_rect(scene_buf, local_w, chrome.height, chrome.fill_rgba);
-        }
-
-        let target = self.gpu_target.as_ref().expect("target ensured");
-        let view = target.create_render_view();
-        renderer
-            .render_to_texture(
-                device,
-                queue,
-                scene_buf,
-                &view,
-                &vello::RenderParams {
-                    base_color: vello::peniko::Color::TRANSPARENT,
-                    width: local_w,
-                    height: local_h,
-                    antialiasing_method: vello::AaConfig::Area,
-                },
-            )
-            .expect("vello render_to_texture failed");
-
-        self.render_dirty = false;
-        RenderOutcome::Rendered(self.gpu_target.as_ref().expect("target ensured"))
-    }
-
-    /// UiEvent (PointerDown/Up/Move 等) を Blitz に流す。
-    /// `:hover` / `<details>` 開閉 / `<button>` のアクティブ状態などはこの経路でのみ反映される。
-    pub fn on_input(&mut self, event: UiEvent) {
-        let mut driver = EventDriver::new(&mut self.document, NoopEventHandler);
-        driver.handle_ui_event(event);
-        // pointer / key 系イベントは hover 状態 / focus / details 開閉 など
-        // レイアウトが変わる可能性が常にあるため無条件で dirty を立てる。
-        // damage を観測してから判断する API は Blitz 0.3.0-alpha では public でないため
-        // 楽観的に再 resolve させる。
-        self.layout_dirty = true;
-        self.render_dirty = true;
-    }
-
-    pub fn document(&self) -> &BaseDocument {
-        &self.document
-    }
-
-    /// Wasm DOM mutation API のために `HtmlDocument` への可変借用を返す。
-    ///
-    /// 呼び出し側 (panel-runtime) は `PanelWasmInstance::call_with_dom` のスコープ内でのみ使い、
-    /// 戻り際に `mark_mutated()` を呼んで dirty を立てる契約。
-    pub fn document_mut(&mut self) -> &mut HtmlDocument {
-        &mut self.document
-    }
-
-    /// Wasm が DOM mutation を行ったあとに呼び、次フレームで再 layout/render を要求する。
-    pub fn mark_mutated(&mut self) {
-        self.pending_mutation = true;
-        self.layout_dirty = true;
-        self.render_dirty = true;
-    }
-
-    /// HTML / CSS を差し替えて document を再構築する。
-    ///
-    /// - 同一 `(html, css)` ならスキップ (idle frame 最適化、`render_dirty` も立てない)。
-    /// - 異なる場合は新しい `HtmlDocument` を構築する。
-    /// - `gpu_target` は維持する (size 不変ならそのまま使える)。
-    /// - フォーカスや `<details>` 開閉などの要素状態は現状維持できない。保持が必要なら
-    ///   呼出側が [`Self::snapshot_marker_identities`] / [`Self::clear_marker_for_unlisted`]
-    ///   で囲んで保存・復元する (BL-099: details/data-altp-id 規約は panel-html が持たない)。
-    pub fn replace_document(&mut self, html: &str, css: &str) {
-        if self.last_html.as_deref() == Some(html) && self.user_css == css {
-            return;
-        }
-        let mut config = blitz_dom::DocumentConfig::default();
-        if !css.is_empty() {
-            config.ua_stylesheets = Some(vec![css.to_string()]);
-        }
-        config.html_parser_provider = Some(Arc::new(HtmlProvider));
-        self.document = HtmlDocument::from_html(html, config);
-        self.user_css = css.to_string();
-        self.last_html = Some(html.to_string());
-        self.last_resolved = None;
-        self.pending_mutation = true;
-        self.layout_dirty = true;
-        self.render_dirty = true;
-    }
-
-    /// `selector` にマッチする要素のうち、属性 `marker_attr` を持つものの identity を集める
-    /// (汎用 要素状態 snapshot, BL-099)。
-    ///
-    /// identity は `identity_attrs` を先頭から探して最初に見つかった属性値。どの規約属性
-    /// (`data-altp-id` / `id` 等) を identity に使うかは **呼出側が指定する** — panel-html は
-    /// 規約名をハードコードしない。`replace_document` の前に呼んで保存し、後で
-    /// [`Self::clear_marker_for_unlisted`] へ渡す。
-    pub fn snapshot_marker_identities(
-        &self,
-        selector: &str,
-        identity_attrs: &[&str],
-    ) -> Vec<String> {
-        let Ok(ids) = self.document.query_selector_all(selector) else {
-            return Vec::new();
-        };
-        ids.into_iter()
-            .filter_map(|node_id| self.element_identity(node_id, identity_attrs))
-            .collect()
-    }
-
-    /// `selector` にマッチする要素のうち identity が `keep` に無いものから属性 `marker_attr`
-    /// を取り除く (汎用 要素状態 restore, BL-099)。
-    ///
-    /// 「再構築 HTML は常に `marker_attr` 付きで出力されるが、保存時に無かった要素は
-    /// ユーザー操作で外された状態」という復元ポリシーは呼出側が `keep` と `marker_attr` を
-    /// 与えて表現する。
-    pub fn clear_marker_for_unlisted(
-        &mut self,
-        selector: &str,
-        marker_attr: &str,
-        identity_attrs: &[&str],
-        keep: &[String],
-    ) {
-        let Ok(matched) = self.document.query_selector_all(selector) else {
-            return;
-        };
-        for node_id in matched {
-            let Some(identity) = self.element_identity(node_id, identity_attrs) else {
-                continue;
-            };
-            if keep.iter().any(|id| id == &identity) {
-                continue;
-            }
-            let mut mutator = self.document.mutate();
-            mutator.clear_attribute(node_id, qual_name(marker_attr));
-            self.pending_mutation = true;
-        }
-    }
-
-    /// `identity_attrs` を先頭から探し、最初に見つかった属性値を要素の identity として返す。
-    fn element_identity(&self, node_id: usize, identity_attrs: &[&str]) -> Option<String> {
-        let node = self.document.get_node(node_id)?;
-        let NodeData::Element(element) = &node.data else {
-            return None;
-        };
-        identity_attrs
-            .iter()
-            .find_map(|attr| element.attr(LocalName::from(*attr)))
-            .map(str::to_string)
-    }
-
-    /// viewport を設定し layout を解決する。同サイズかつ未変更ならスキップ。
-    pub fn resolve_layout(&mut self, width: u32, height: u32, scale: f32) {
-        if self.last_resolved == Some((width, height)) && !self.pending_mutation {
-            return;
-        }
-        // stylo (Blitz `resolve`) はグローバル rayon プール (StyleThread) を共有しており、
-        // 別ドキュメントの並行 resolve は atomic_refcell の borrow 競合で panic する。
-        // プロダクションは単一 UI スレッドのため無競合だが、並列テストの安全のため
-        // resolve をグローバルに直列化する (ADR 015)。
-        let _style_lock = STYLE_RESOLVE_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let viewport = Viewport::new(width, height, scale, blitz_traits::shell::ColorScheme::Dark);
-        self.document.set_viewport(viewport);
-        self.document.resolve(0.0);
-        self.last_resolved = Some((width, height));
-        self.pending_mutation = false;
-    }
-
-    /// テスト用: blitz-paint で `vello::Scene` を埋める (offset なし)。
-    /// 本番の実描画は `on_render` が `build_scene_with_offset` 経由で行う。
-    #[cfg(test)]
-    pub(crate) fn build_scene(
-        &mut self,
-        scene: &mut vello::Scene,
-        width: u32,
-        height: u32,
-        scale: f32,
-    ) {
-        self.build_scene_with_offset(scene, width, height, scale, 0, 0);
-    }
-
-    /// blitz-paint で `vello::Scene` を埋める（実描画は `on_render`）。
-    /// HTML 本体を `(x_offset, y_offset)` ピクセル分ずらして描画する。
-    /// ホスト描画タイトルバーを上に重ねるためのオフセット指定に使う。
-    pub fn build_scene_with_offset(
-        &mut self,
-        scene: &mut vello::Scene,
-        width: u32,
-        height: u32,
-        scale: f32,
-        x_offset: u32,
-        y_offset: u32,
-    ) {
-        self.resolve_layout(width, height, scale);
-        let mut painter = VelloScenePainter::new(scene);
-        paint_scene(
-            &mut painter,
-            &self.document,
-            scale as f64,
-            width,
-            height,
-            x_offset,
-            y_offset,
-        );
-    }
-
-    /// GPU 非依存でレイアウトを解決し、`data-action` 要素の hit 矩形を返す。
-    ///
-    /// `on_render` と同一のクランプ規則 (panel_size を viewport / chrome_height で
-    /// クランプした local size) で `resolve_layout` を走らせるため、GPU 描画と
-    /// hit 矩形が常に一致する。headless (GPU コンテキストなし) でも動作する。
-    pub fn resolve_action_rects(
-        &mut self,
-        viewport: (u32, u32),
-        scale: f32,
-        chrome_height: u32,
-    ) -> Vec<ActionRect> {
-        let local = self.local_render_size(viewport, chrome_height);
-        if self.layout_dirty {
-            self.resolve_layout(local.width, local.body_height, scale);
-            self.layout_dirty = false;
-        }
-        self.collect_action_rects()
-    }
-
-    /// `data-action` 属性を持つ全要素の絶対矩形を返す（要 `resolve_layout` 済み）。
-    pub fn collect_action_rects(&self) -> Vec<ActionRect> {
-        let ids = match self.document.query_selector_all(ACTION_SELECTOR) {
-            Ok(ids) => ids,
-            Err(_) => return Vec::new(),
-        };
-        ids.into_iter()
-            .filter_map(|id| self.action_rect_for(id))
-            .collect()
-    }
-
-    /// DOM id (`#<id>`) で要素を引き、その `data-action`/`data-args` を [`ActionDescriptor`]
-    /// に解釈して返す (BL-099: data-action 属性規約の単一定義点)。
-    ///
-    /// `id` 文字列の CSS エスケープ (`.` / `:` を含む id 対応) も本メソッドが行うため、
-    /// 呼出側 (panel-runtime) は属性名規約もエスケープ規約も持たない。
-    pub fn action_descriptor_for_element_id(
-        &self,
-        element_id: &str,
-    ) -> Option<crate::action::ActionDescriptor> {
-        let selector = format!("#{}", css_escape_id(element_id));
-        let node_id = self.document.query_selector(&selector).ok().flatten()?;
-        self.action_descriptor_for_element(node_id)
-    }
-
-    /// node の `data-action`/`data-args` 属性を読み、[`ActionDescriptor`] へ解釈する
-    /// (BL-099: data-action / data-args の属性名規約を集約)。`data-action` が無い、
-    /// または解釈に失敗したら `None`。
-    pub fn action_descriptor_for_element(
-        &self,
-        node_id: usize,
-    ) -> Option<crate::action::ActionDescriptor> {
-        let (data_action, data_args) = self.action_attrs_for(node_id)?;
-        crate::action::parse_data_action(&data_action, data_args.as_deref()).ok()
-    }
-
-    /// node の `data-action` (必須) と `data-args` (任意) 生文字列を返す。
-    /// `data-action` が無い / 要素でない場合は `None`。
-    fn action_attrs_for(&self, node_id: usize) -> Option<(String, Option<String>)> {
-        let node = self.document.get_node(node_id)?;
-        let NodeData::Element(element) = &node.data else {
-            return None;
-        };
-        let data_action = element.attr(LocalName::from(DATA_ACTION_ATTR))?.to_string();
-        let data_args = element.attr(LocalName::from(DATA_ARGS_ATTR)).map(str::to_string);
-        Some((data_action, data_args))
-    }
-
-    fn action_rect_for(&self, node_id: usize) -> Option<ActionRect> {
-        let (data_action, data_args) = self.action_attrs_for(node_id)?;
-        let node = self.document.get_node(node_id)?;
-        let NodeData::Element(element) = &node.data else {
-            return None;
-        };
-        let element_id = element.attr(local_name!("id")).map(str::to_string);
-        let (x, y) = compute_absolute_position(&self.document, node_id)?;
-        let size = node.final_layout.size;
-        let rect = PanelActionRect {
-            x: x.max(0.0).floor() as u32,
-            y: y.max(0.0).floor() as u32,
-            width: size.width.max(0.0).ceil() as u32,
-            height: size.height.max(0.0).ceil() as u32,
-        };
-        if rect.width == 0 || rect.height == 0 {
-            return None;
-        }
-        Some(ActionRect {
-            node_id,
-            element_id,
-            data_action,
-            data_args,
-            rect,
-        })
-    }
 }
 
-/// `data-action` 属性名 (アクション要素の規約マーカー)。
-const DATA_ACTION_ATTR: &str = "data-action";
-/// `data-args` 属性名 (アクション payload の JSON)。
-const DATA_ARGS_ATTR: &str = "data-args";
-/// `data-action` を持つ要素を選択する CSS セレクタ。
-const ACTION_SELECTOR: &str = "[data-action]";
-
-/// CSS セレクタ用に id をエスケープする (`.` や `:` を含む id 対応)。
-/// 旧 panel-runtime `css_escape_id` を panel-html へ集約 (BL-099)。
-fn css_escape_id(id: &str) -> String {
-    let mut out = String::with_capacity(id.len());
-    for ch in id.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
-            out.push(ch);
-        } else {
-            out.push('\\');
-            out.push(ch);
-        }
-    }
-    out
+/// `identity_attrs` を先頭から探し、最初に見つかった属性値を要素の identity として返す。
+/// dom / actions モジュール両方が使う共有ヘルパ。
+fn element_identity(document: &BaseDocument, node_id: usize, identity_attrs: &[&str]) -> Option<String> {
+    let node = document.get_node(node_id)?;
+    let NodeData::Element(element) = &node.data else {
+        return None;
+    };
+    identity_attrs
+        .iter()
+        .find_map(|attr| element.attr(LocalName::from(*attr)))
+        .map(str::to_string)
 }
 
-/// Phase 11: パネル root 要素 (body 直下の最初の Element ノード) の NodeId を返す。
-/// 通常 `<body><div class="panel">...</div></body>` 形式なので `.panel` div を指す。
-fn root_panel_node_id(document: &BaseDocument) -> Option<usize> {
-    let body_id = document.query_selector("body").ok().flatten()?;
-    let body = document.get_node(body_id)?;
-    for child_id in &body.children {
-        if let Some(child) = document.get_node(*child_id)
-            && matches!(child.data, NodeData::Element(_)) {
-                return Some(*child_id);
-            }
-    }
-    None
-}
-
-/// taffy::Dimension が `Length(px)` なら u32 で返す。`Auto` / `Percent` / `Calc` は `None`。
-fn dimension_to_px(d: taffy::Dimension) -> Option<u32> {
-    // taffy 0.10 の Dimension::into_option() は `grid` feature 配下で
-    // `LENGTH_TAG` のみを Some(value) として返す純粋関数。
-    d.into_option().map(|px| px.max(0.0).round() as u32)
-}
-
-/// HTML パネル上端のタイトルバー (chrome) を vello シーンに矩形で描画する。
-/// 塗り色 `fill_rgba` は呼出側 (テーマ) が決める — panel-html はテーマ色を
-/// 知らない (BL-099)。テキスト描画は将来追加。
-fn paint_chrome_rect(scene: &mut vello::Scene, width: u32, chrome_height: u32, fill_rgba: [u8; 4]) {
-    use vello::kurbo::{Affine, Rect};
-    use vello::peniko::{Color, Fill};
-    let rect = Rect::new(0.0, 0.0, width as f64, chrome_height as f64);
-    scene.fill(
-        Fill::NonZero,
-        Affine::IDENTITY,
-        Color::from_rgba8(fill_rgba[0], fill_rgba[1], fill_rgba[2], fill_rgba[3]),
-        None,
-        &rect,
-    );
-}
-
-fn compute_absolute_position(doc: &BaseDocument, start: usize) -> Option<(f32, f32)> {
-    let mut x = 0.0_f32;
-    let mut y = 0.0_f32;
-    let mut current = start;
-    let mut visited: std::collections::HashSet<usize> = std::collections::HashSet::new();
-    loop {
-        if !visited.insert(current) {
-            return Some((x, y)); // 安全弁: ループ検出
-        }
-        let node = doc.get_node(current)?;
-        x += node.final_layout.location.x;
-        y += node.final_layout.location.y;
-        match node.layout_parent.get() {
-            Some(parent) => current = parent,
-            None => return Some((x, y)),
-        }
-    }
-}
-
+/// blitz `QualName` を local 名から構築する。
 fn qual_name(local: &str) -> QualName {
     QualName::new(None, Namespace::default(), LocalName::from(local))
 }
@@ -1007,6 +528,18 @@ mod tests {
     }
 
     impl HtmlPanelView {
+        /// テスト用: blitz-paint で `vello::Scene` を埋める (offset なし)。
+        /// 本番の実描画は `on_render` が `build_scene_with_offset` 経由で行う。
+        pub(crate) fn build_scene(
+            &mut self,
+            scene: &mut vello::Scene,
+            width: u32,
+            height: u32,
+            scale: f32,
+        ) {
+            self.build_scene_with_offset(scene, width, height, scale, 0, 0);
+        }
+
         /// Phase 1.7 テスト用: dirty フラグを手動でクリアする
         pub(crate) fn clear_dirty_for_test(&mut self) {
             self.layout_dirty = false;
@@ -1038,5 +571,4 @@ mod tests {
             element.attr(LocalName::from(attr)).is_some()
         }
     }
-
 }

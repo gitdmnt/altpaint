@@ -7,7 +7,9 @@
 //! ## 主要 API
 //!
 //! - [`view::HtmlPanelView`] — `HtmlDocument` を保持し、style/layout 解決と `vello::Scene`
-//!   構築までを行う。実描画（`render_to_texture`）は外部所有の `vello::Renderer` で行う
+//!   構築までを行う。実描画（`render_to_texture`）は外部所有の `vello::Renderer` で行う。
+//!   `vello::Renderer` / `wgpu::Device` / `wgpu::Queue` は保持しないが、パネル毎の描画先
+//!   テクスチャ ([`gpu::PanelGpuTarget`]) のみは view が所有する (BL-100)
 //! - [`gpu::PanelGpuTarget`] — パネル毎の GPU テクスチャ（`Rgba8Unorm` + `STORAGE_BINDING` +
 //!   `view_formats=[Rgba8UnormSrgb]`）
 //! - [`action`] — `data-action` / `data-args` → `ActionDescriptor`（panel-api 非依存）
