@@ -4,17 +4,27 @@
 
 use std::path::{Path, PathBuf};
 
+use editor_state::EditorSession;
 use serde::{Deserialize, Serialize};
 use panel_workspace::WorkspaceUiState;
 
 use crate::json_store::{JsonLoad, load_json};
 
+/// デスクトップのセッション永続化状態。
+///
+/// 作品コンテンツ (project ファイル) とは別に、最後に開いたプロジェクトパス・
+/// パネル UI レイアウト (`ui_state`)、そして BL-079 の保存境界分離により project
+/// ファイルから移されたエディタの一過性編集状態 (`EditorSession`: ツール/色/ペン/
+/// ビュー) を保持する。
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct DesktopSessionState {
     #[serde(default)]
     pub last_project_path: Option<PathBuf>,
     #[serde(default)]
     pub ui_state: WorkspaceUiState,
+    /// エディタの一過性編集状態 (ツール/色/ペン/ビュー)。
+    #[serde(default)]
+    pub editor_session: EditorSession,
 }
 
 pub fn default_session_path() -> PathBuf {
@@ -48,6 +58,7 @@ pub fn startup_project_path(default_project_path: impl Into<PathBuf>) -> PathBuf
 #[cfg(test)]
 mod tests {
     use super::*;
+    use editor_state::ColorRgba8;
     use panel_workspace::WorkspacePanelAnchor;
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -65,6 +76,9 @@ mod tests {
     #[test]
     fn session_roundtrip_preserves_last_project_and_layout() {
         let path = unique_test_path("session-roundtrip");
+        let mut editor_session = EditorSession::default();
+        editor_session.set_active_color(ColorRgba8::new(0x8e, 0x24, 0xaa, 0xff));
+        editor_session.set_active_pen_size(17);
         let state = DesktopSessionState {
             last_project_path: Some(PathBuf::from("custom.altp.json")),
             ui_state: WorkspaceUiState {
@@ -82,10 +96,12 @@ mod tests {
                     serde_json::json!({"new_shortcut": "Ctrl+Alt+N"}),
                 )]),
             },
+            editor_session,
         };
 
         save_session_state(&path, &state).expect("session save should succeed");
 
+        // BL-079: エディタセッション (色/ペンサイズ等) が session 永続化で round-trip する。
         assert_eq!(load_session_state(&path), Some(state));
 
         let _ = std::fs::remove_file(path);

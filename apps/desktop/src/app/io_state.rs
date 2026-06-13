@@ -38,6 +38,9 @@ impl DesktopApp {
                 self.panel_workspace.workspace_layout(),
                 self.panel_runtime.persistent_panel_configs(),
             ),
+            // BL-079: エディタセッション (ツール/色/ペン/ビュー) は project ファイル
+            // ではなく session 永続化で保持する。
+            editor_session: self.document.session.clone(),
         }
     }
 

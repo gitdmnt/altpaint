@@ -116,7 +116,7 @@ pub fn load_koma_composite_from_path(
 mod tests {
     use super::*;
     use document_model::{Document, KomaId, LayerMask, Page, PageId};
-    use editor_state::ColorRgba8;
+    use editor_state::{ColorRgba8, EditorSession};
     use raster::BlendMode;
     use rusqlite::Connection;
     use std::fs;
@@ -190,10 +190,15 @@ mod tests {
         document
     }
 
+    /// BL-079: project ファイルは作品コンテンツ (Work) のみを保存する。
+    /// タイトル・ページ・コマ合成は保全されるが、エディタセッション
+    /// (色などツール/ペン/ビュー状態) は project ファイルには含まれず、
+    /// ロード後は既定セッションへ戻る (セッションは session 永続化が扱う)。
     #[test]
-    fn save_and_load_roundtrip_preserves_document() {
+    fn save_and_load_roundtrip_preserves_work_content_but_not_session() {
         let path = temp_path("roundtrip");
         let mut document = small_document();
+        document.work.title = "Work content".to_string();
         document
             .session
             .set_active_color(ColorRgba8::new(0x8e, 0x24, 0xaa, 0xff));
@@ -210,12 +215,18 @@ mod tests {
             .expect("load should succeed")
             .document;
 
+        // 作品コンテンツは保全される。
         assert_eq!(loaded.work.title, document.work.title);
-        assert_eq!(loaded.session.active_color, document.session.active_color);
         assert_eq!(
             loaded.work.pages[0].komas[0].composite_cache.pixels,
             document.work.pages[0].komas[0].composite_cache.pixels
         );
+        // セッション状態は project ファイルには保存されず、既定値で復元される。
+        assert_eq!(
+            loaded.session.active_color,
+            EditorSession::default().active_color
+        );
+        assert_ne!(loaded.session.active_color, document.session.active_color);
 
         let _ = fs::remove_file(path);
     }

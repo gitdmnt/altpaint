@@ -418,7 +418,12 @@ impl DesktopApp {
         match load_project_from_path(&path) {
             Ok(project) => {
                 self.io_state.project_path = path;
-                self.document = project.document;
+                // BL-079: project ファイルは作品コンテンツのみを保持する。読込時は
+                // 現在のエディタセッション (ツール/色/ペン/ビュー) を温存し、作品
+                // データだけを差し替える。
+                let mut loaded = project.document;
+                loaded.session = std::mem::take(&mut self.document.session);
+                self.document = loaded;
                 let _ = Self::reload_tool_catalog_into_document(&mut self.document);
                 let _ = self.reload_pen_presets();
                 self.panel_workspace

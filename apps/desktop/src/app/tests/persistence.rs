@@ -9,6 +9,7 @@ use desktop_support::{
     DEFAULT_PROJECT_FILE_NAME, FrameProfiler, WorkspacePreset, WorkspacePresetCatalog,
     save_workspace_preset_catalog,
 };
+use editor_state::{ColorRgba8, EditorSession, SessionCommand};
 use panel_runtime::{ServiceRequest, services::names};
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -367,6 +368,7 @@ fn session_layout_overrides_default_workspace_preset() {
                 },
                 BTreeMap::new(),
             ),
+            editor_session: EditorSession::default(),
         },
     )
     .expect("session save should succeed");
@@ -420,6 +422,79 @@ fn startup_restores_last_opened_project_from_session() {
 
     let _ = std::fs::remove_file(session_path);
     let _ = std::fs::remove_file(app.io_state.project_path.clone());
+}
+
+/// BL-079: エディタセッション (ツール/色/ペン/ビュー) は project ファイルではなく
+/// session 永続化で round-trip する。色とペンサイズを変えてプロジェクト保存
+/// (session も永続化される) → 再起動で復元されることを検証する。
+#[test]
+fn editor_session_round_trips_through_session_save_load() {
+    let session_path = unique_test_path("editor-session");
+    let project_path = unique_test_path("editor-session-project");
+    let mut source_app = test_app_with_dialogs_and_session_path(
+        TestDialogs::with_save_path(project_path.clone()),
+        session_path.clone(),
+    );
+
+    let restored_color = ColorRgba8::new(0x8e, 0x24, 0xaa, 0xff);
+    let _ = source_app.apply_session_command(&SessionCommand::SetActiveColor {
+        color: restored_color,
+    });
+    let _ = source_app.apply_session_command(&SessionCommand::SetActivePenSize { size: 23 });
+    assert_ne!(restored_color, EditorSession::default().active_color);
+
+    // プロジェクト保存は session 永続化も走らせる (save_project_to_path → persist_session_state)。
+    assert!(source_app.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_AS)));
+    source_app.wait_for_pending_save_tasks();
+
+    let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
+        PathBuf::from(DEFAULT_PROJECT_FILE_NAME),
+        Box::new(TestDialogs::default()),
+        session_path.clone(),
+        unique_test_path("workspace-presets"),
+    );
+
+    assert_eq!(app.document.session.active_color, restored_color);
+    assert_eq!(app.document.session.active_pen_size, 23);
+
+    let _ = std::fs::remove_file(session_path);
+    let _ = std::fs::remove_file(project_path);
+}
+
+/// BL-079: project ファイルは作品コンテンツのみを保存する。project を直接保存して
+/// 読み込むと、保存時のエディタセッション (色) は project には含まれず、読込側の
+/// 現在セッションが温存される。
+#[test]
+fn loading_project_preserves_live_editor_session() {
+    let path = std::env::temp_dir().join(format!(
+        "altpaint-session-boundary-{}.altp.json",
+        std::process::id()
+    ));
+    let mut source_app = test_app_with_dialogs(TestDialogs::default());
+    let saved_color = ColorRgba8::new(0x11, 0x22, 0x33, 0xff);
+    let _ = source_app.apply_session_command(&SessionCommand::SetActiveColor { color: saved_color });
+    save_project_to_path(
+        &path,
+        &source_app.document,
+        &source_app.panel_workspace.workspace_layout(),
+        &BTreeMap::new(),
+    )
+    .expect("project save should succeed");
+
+    // 別アプリで現在セッションの色を変えてから project を読み込む。
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let live_color = ColorRgba8::new(0xaa, 0xbb, 0xcc, 0xff);
+    let _ = app.apply_session_command(&SessionCommand::SetActiveColor { color: live_color });
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::PROJECT_LOAD_FROM_PATH)
+            .with_value("path", path.to_string_lossy().to_string()),
+    ));
+
+    // 読込側の現在セッション (live_color) が温存され、project 保存時の色は反映されない。
+    assert_eq!(app.document.session.active_color, live_color);
+    assert_ne!(app.document.session.active_color, saved_color);
+
+    let _ = std::fs::remove_file(path);
 }
 
 /// パネル visibility round-trip: session 永続化 → 復元後も非表示状態が復元される。

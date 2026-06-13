@@ -391,7 +391,7 @@ pub(crate) fn default_active_tool_id() -> String {
 ///
 /// 作品データには属さない。アクティブツール選択は `active_tool_id` を単一真実とし、
 /// `ToolKind` は [`EditorSession::active_tool`] で導出する。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EditorSession {
     /// 現在アクティブな登録ツール ID (アクティブツールの単一真実)。
     #[serde(default = "default_active_tool_id")]

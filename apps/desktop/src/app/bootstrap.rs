@@ -56,6 +56,12 @@ impl DesktopApp {
         }
 
         let mut document = document;
+        // BL-079: エディタセッション (ツール/色/ペン/ビュー) は project ファイルではなく
+        // session 永続化から復元する。on-disk カタログ再ロードの前に適用し、復元された
+        // active_tool_id / active_pen_preset_id をカタログ整合で温存する。
+        if let Some(session_state) = session.as_ref() {
+            document.session = session_state.editor_session.clone();
+        }
         Self::reload_tool_catalog_into_document(&mut document);
         Self::reload_pen_presets_into_document(&mut document);
         panel_runtime.mark_all_dirty();

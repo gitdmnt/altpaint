@@ -9,7 +9,6 @@ use document_model::{
     Document, Koma, KomaBounds, KomaId, LayerMask, LayerNodeId, Page, PageId, RasterLayer, Work,
     WorkId,
 };
-use editor_state::{CanvasViewTransform, ColorRgba8, EditorSession, PenPreset, ToolKind};
 use raster::{BlendMode, RgbaBitmap};
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -117,18 +116,42 @@ pub struct ProjectManifest {
     pub composites: Vec<PersistedKomaCompositeSummary>,
 }
 
+/// project ファイルに永続化する作品コンテンツ (Work) メタデータ。
+///
+/// BL-079 の保存境界分離により、エディタの一過性編集状態 (`EditorSession`:
+/// ツール/色/ペン/ビュー) はここには含めず、session 永続化 (desktop-support
+/// `DesktopSessionState`) が扱う。本レコードは作品識別子・タイトルとアクティブ
+/// index のみを保持する。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SqliteDocumentRecord {
     work_id: u64,
     title: String,
-    active_tool: ToolKind,
-    active_color: ColorRgba8,
-    pen_presets: Vec<PenPreset>,
-    active_pen_preset_id: String,
-    active_pen_size: u32,
     active_page_index: usize,
     active_koma_index: usize,
-    view_transform: CanvasViewTransform,
+}
+
+impl SqliteDocumentRecord {
+    /// 保存済み作品メタデータとロード済みページ列から `Document` を一元的に構築する。
+    ///
+    /// エディタセッションは既定値 (`EditorSession::default`) で開始する。
+    /// セッション状態 (ツール/色/ペン/ビュー) は session 永続化が別途復元する。
+    /// 旧来の「空値埋め + `normalize_after_load` 修復頼み」を本変換へ置換した
+    /// (BL-079)。`normalize_after_load` は作品データの構造的不変条件 (空ページ/
+    /// コマ補完・index clamp・レイヤー補完) の修復のみを担う。
+    fn into_document(self, pages: Vec<Page>) -> Document {
+        let mut document = Document {
+            work: Work {
+                id: WorkId(self.work_id),
+                title: self.title,
+                pages,
+            },
+            active_page_index: self.active_page_index,
+            active_koma_index: self.active_koma_index,
+            session: Default::default(),
+        };
+        document.normalize_after_load();
+        document
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -198,14 +221,8 @@ pub(crate) fn save_project_to_sqlite_path(
         &SqliteDocumentRecord {
             work_id: document.work.id.0,
             title: document.work.title.clone(),
-            active_tool: document.session.active_tool(),
-            active_color: document.session.active_color,
-            pen_presets: document.session.pen_presets.clone(),
-            active_pen_preset_id: document.session.active_pen_preset_id.clone(),
-            active_pen_size: document.session.active_pen_size,
             active_page_index: document.active_page_index,
             active_koma_index: document.active_koma_index,
-            view_transform: document.session.view_transform,
         },
     )?;
     put_metadata(
@@ -318,32 +335,7 @@ pub(crate) fn load_project_from_sqlite_path(
     let ui_state: WorkspaceUiState = get_metadata(&connection, METADATA_UI_STATE)?;
     let pages = load_all_pages(&connection)?;
 
-    let mut document = Document {
-        work: Work {
-            id: WorkId(document_record.work_id),
-            title: document_record.title,
-            pages,
-        },
-        active_page_index: document_record.active_page_index,
-        active_koma_index: document_record.active_koma_index,
-        session: EditorSession {
-            // ツール選択は `active_tool` (kind) を種として復元する。
-            // tool_catalog はランタイムで再ロードされるため空で開始し、
-            // `normalize_after_load` が kind フォールバックで active_tool_id を補修する。
-            active_tool_id: String::new(),
-            active_child_tool_id: String::new(),
-            active_color: document_record.active_color,
-            tool_catalog: Vec::new(),
-            pen_presets: document_record.pen_presets,
-            active_pen_preset_id: document_record.active_pen_preset_id,
-            active_pen_size: document_record.active_pen_size,
-            view_transform: document_record.view_transform,
-        },
-    };
-    document
-        .session
-        .ensure_tool_state(document_record.active_tool);
-    document.normalize_after_load();
+    let document = document_record.into_document(pages);
 
     Ok(LoadedProject { document, ui_state })
 }
