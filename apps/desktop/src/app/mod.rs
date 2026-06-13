@@ -123,22 +123,35 @@ pub(crate) struct GpuPaintEngine {
     pub(crate) compositor: gpu_paint::CompositePipeline,
 }
 
+/// `DesktopApp` 構築の依存ポートとパスをまとめた options (D13)。
+///
+/// 旧 telescoping constructor
+/// (`new_with_dialogs_session_path_and_workspace_preset_path`) を置換し、
+/// 引数順序への依存を排除する。
+pub(crate) struct DesktopAppOptions {
+    pub(crate) project_path: PathBuf,
+    pub(crate) dialogs: Box<dyn DesktopDialogs>,
+    pub(crate) session_path: PathBuf,
+    pub(crate) workspace_preset_path: PathBuf,
+}
+
 impl DesktopApp {
     pub(crate) fn new(project_path: PathBuf) -> Self {
-        Self::new_with_dialogs_session_path_and_workspace_preset_path(
+        Self::with_options(DesktopAppOptions {
             project_path,
-            Box::new(NativeDesktopDialogs),
-            default_desktop_session_path(),
-            default_workspace_preset_path(),
-        )
+            dialogs: Box::new(NativeDesktopDialogs),
+            session_path: default_desktop_session_path(),
+            workspace_preset_path: default_workspace_preset_path(),
+        })
     }
 
-    pub(crate) fn new_with_dialogs_session_path_and_workspace_preset_path(
-        project_path: PathBuf,
-        dialogs: Box<dyn DesktopDialogs>,
-        session_path: PathBuf,
-        workspace_preset_path: PathBuf,
-    ) -> Self {
+    pub(crate) fn with_options(options: DesktopAppOptions) -> Self {
+        let DesktopAppOptions {
+            project_path,
+            dialogs,
+            session_path,
+            workspace_preset_path,
+        } = options;
         let bootstrap = Self::bootstrap_state(project_path, &session_path, &workspace_preset_path);
 
         let mut app = Self {

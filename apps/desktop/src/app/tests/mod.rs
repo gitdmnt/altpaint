@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::platform::DesktopDialogs;
 
-use super::DesktopApp;
+use super::{DesktopApp, DesktopAppOptions};
 
 static TEST_FILE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -101,36 +101,36 @@ impl DesktopDialogs for TestDialogs {
 /// 共有パスは並列テスト間の状態汚染 (一方の persist を他方の bootstrap が読む) を
 /// 引き起こすため使用しない (ADR 015)。
 fn test_app_with_dialogs(dialogs: TestDialogs) -> DesktopApp {
-    DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        unique_test_project_path(),
-        Box::new(dialogs),
-        unique_test_path("session"),
-        unique_test_path("workspace-presets"),
-    )
+    DesktopApp::with_options(DesktopAppOptions {
+        project_path: unique_test_project_path(),
+        dialogs: Box::new(dialogs),
+        session_path: unique_test_path("session"),
+        workspace_preset_path: unique_test_path("workspace-presets"),
+    })
 }
 
 fn test_app_with_dialogs_and_session_path(
     dialogs: TestDialogs,
     session_path: PathBuf,
 ) -> DesktopApp {
-    DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        unique_test_project_path(),
-        Box::new(dialogs),
+    DesktopApp::with_options(DesktopAppOptions {
+        project_path: unique_test_project_path(),
+        dialogs: Box::new(dialogs),
         session_path,
-        unique_test_path("workspace-presets"),
-    )
+        workspace_preset_path: unique_test_path("workspace-presets"),
+    })
 }
 
 fn test_app_with_dialogs_and_workspace_preset_path(
     dialogs: TestDialogs,
     workspace_preset_path: PathBuf,
 ) -> DesktopApp {
-    DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        unique_test_project_path(),
-        Box::new(dialogs),
-        unique_test_path("session"),
+    DesktopApp::with_options(DesktopAppOptions {
+        project_path: unique_test_project_path(),
+        dialogs: Box::new(dialogs),
+        session_path: unique_test_path("session"),
         workspace_preset_path,
-    )
+    })
 }
 
 pub(crate) fn unique_test_path(name: &str) -> PathBuf {

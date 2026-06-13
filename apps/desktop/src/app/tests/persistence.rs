@@ -20,7 +20,7 @@ use project_store::{load_project_from_path, save_project_to_path};
 use super::{
     TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_session_path, unique_test_path,
 };
-use crate::app::DesktopApp;
+use crate::app::{DesktopApp, DesktopAppOptions};
 
 #[test]
 fn execute_command_load_project_uses_native_dialog_path() {
@@ -297,12 +297,12 @@ fn startup_uses_default_workspace_preset_when_project_and_session_are_empty() {
 
     // 他のテストが /tmp/altpaint-test.altp.json へ書き込む競合を避けるため
     // 存在しない一意パスを使う（プロジェクトが読み込まれず preset が優先される）。
-    let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        unique_test_path("preset-project"),
-        Box::new(TestDialogs::default()),
-        unique_test_path("preset-session"),
-        preset_path.clone(),
-    );
+    let app = DesktopApp::with_options(DesktopAppOptions {
+        project_path: unique_test_path("preset-project"),
+        dialogs: Box::new(TestDialogs::default()),
+        session_path: unique_test_path("preset-session"),
+        workspace_preset_path: preset_path.clone(),
+    });
     let entry = app
         .panel_workspace
         .workspace_layout()
@@ -375,12 +375,12 @@ fn session_layout_overrides_default_workspace_preset() {
     )
     .expect("session save should succeed");
 
-    let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from("/tmp/altpaint-test.altp.json"),
-        Box::new(TestDialogs::default()),
-        session_path.clone(),
-        preset_path.clone(),
-    );
+    let app = DesktopApp::with_options(DesktopAppOptions {
+        project_path: PathBuf::from("/tmp/altpaint-test.altp.json"),
+        dialogs: Box::new(TestDialogs::default()),
+        session_path: session_path.clone(),
+        workspace_preset_path: preset_path.clone(),
+    });
     let entry = app
         .panel_workspace
         .workspace_layout()
@@ -412,12 +412,12 @@ fn startup_restores_last_opened_project_from_session() {
     assert!(source_app.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_AS)));
     source_app.wait_for_pending_save_tasks();
 
-    let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        default_project_path(),
-        Box::new(TestDialogs::default()),
-        session_path.clone(),
-        unique_test_path("workspace-presets"),
-    );
+    let app = DesktopApp::with_options(DesktopAppOptions {
+        project_path: default_project_path(),
+        dialogs: Box::new(TestDialogs::default()),
+        session_path: session_path.clone(),
+        workspace_preset_path: unique_test_path("workspace-presets"),
+    });
 
     assert_eq!(app.io_state.project_path, project_path);
     assert_eq!(app.document.work.title, "Recovered Project");
@@ -449,12 +449,12 @@ fn editor_session_round_trips_through_session_save_load() {
     assert!(source_app.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_AS)));
     source_app.wait_for_pending_save_tasks();
 
-    let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        default_project_path(),
-        Box::new(TestDialogs::default()),
-        session_path.clone(),
-        unique_test_path("workspace-presets"),
-    );
+    let app = DesktopApp::with_options(DesktopAppOptions {
+        project_path: default_project_path(),
+        dialogs: Box::new(TestDialogs::default()),
+        session_path: session_path.clone(),
+        workspace_preset_path: unique_test_path("workspace-presets"),
+    });
 
     assert_eq!(app.document.session.active_color, restored_color);
     assert_eq!(app.document.session.active_pen_size, 23);
@@ -568,22 +568,22 @@ fn startup_preserves_last_selected_workspace_preset_id() {
     )
     .expect("preset save should succeed");
 
-    let mut source_app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from("/tmp/altpaint-test.altp.json"),
-        Box::new(TestDialogs::default()),
-        unique_test_path("selected-preset-session-source"),
-        preset_path.clone(),
-    );
+    let mut source_app = DesktopApp::with_options(DesktopAppOptions {
+        project_path: PathBuf::from("/tmp/altpaint-test.altp.json"),
+        dialogs: Box::new(TestDialogs::default()),
+        session_path: unique_test_path("selected-preset-session-source"),
+        workspace_preset_path: preset_path.clone(),
+    });
     assert!(source_app.execute_service_request(
         ServiceRequest::new(names::WORKSPACE_APPLY_PRESET).with_value("preset_id", "review"),
     ));
 
-    let restarted = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from("/tmp/altpaint-test.altp.json"),
-        Box::new(TestDialogs::default()),
-        source_app.io_state.session_path.clone(),
-        preset_path.clone(),
-    );
+    let restarted = DesktopApp::with_options(DesktopAppOptions {
+        project_path: PathBuf::from("/tmp/altpaint-test.altp.json"),
+        dialogs: Box::new(TestDialogs::default()),
+        session_path: source_app.io_state.session_path.clone(),
+        workspace_preset_path: preset_path.clone(),
+    });
 
     assert_eq!(
         restarted

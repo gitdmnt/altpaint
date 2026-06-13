@@ -6,7 +6,7 @@ use std::sync::Arc;
 use document_model::DocumentCommand;
 
 use super::{TestDialogs, unique_test_path};
-use super::super::DesktopApp;
+use super::super::{DesktopApp, DesktopAppOptions};
 
 /// wgpu デバイスとキューを生成するテスト用ヘルパー。
 /// GPU がない CI、または Rgba8Unorm STORAGE_READ_WRITE 非対応のアダプターでは `None` を返す。
@@ -41,12 +41,12 @@ async fn try_init_device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
 
 fn make_test_app() -> DesktopApp {
     use std::path::PathBuf;
-    DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from("/tmp/altpaint-gpu-test.altp.json"),
-        Box::new(TestDialogs::default()),
-        unique_test_path("gpu-session"),
-        unique_test_path("gpu-workspace"),
-    )
+    DesktopApp::with_options(DesktopAppOptions {
+        project_path: PathBuf::from("/tmp/altpaint-gpu-test.altp.json"),
+        dialogs: Box::new(TestDialogs::default()),
+        session_path: unique_test_path("gpu-session"),
+        workspace_preset_path: unique_test_path("gpu-workspace"),
+    })
 }
 
 /// install_gpu_resources 後にすべての GPU フィールドが Some になること。

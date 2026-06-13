@@ -47,17 +47,17 @@ impl DesktopApp {
 mod tests {
     use std::path::PathBuf;
 
-    use crate::app::DesktopApp;
+    use crate::app::{DesktopApp, DesktopAppOptions};
     use crate::app::tests::unique_test_path;
     use crate::platform::NativeDesktopDialogs;
 
     fn make_app() -> DesktopApp {
-        DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-            PathBuf::from("/tmp/altpaint-snapshot-test.altp.json"),
-            Box::new(NativeDesktopDialogs),
-            unique_test_path("snapshot-session"),
-            unique_test_path("snapshot-workspace"),
-        )
+        DesktopApp::with_options(DesktopAppOptions {
+            project_path: PathBuf::from("/tmp/altpaint-snapshot-test.altp.json"),
+            dialogs: Box::new(NativeDesktopDialogs),
+            session_path: unique_test_path("snapshot-session"),
+            workspace_preset_path: unique_test_path("snapshot-workspace"),
+        })
     }
 
     /// スナップショット作成後に件数が増えることを確認する。

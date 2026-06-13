@@ -83,17 +83,17 @@ fn parse_color_hex(hex: &str) -> Option<[u8; 4]> {
 mod tests {
     use std::path::PathBuf;
 
-    use crate::app::DesktopApp;
+    use crate::app::{DesktopApp, DesktopAppOptions};
     use crate::app::tests::unique_test_path;
     use crate::platform::NativeDesktopDialogs;
 
     fn make_app() -> DesktopApp {
-        DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-            PathBuf::from("/tmp/altpaint-text-render-test.altp.json"),
-            Box::new(NativeDesktopDialogs),
-            unique_test_path("text-render-session"),
-            unique_test_path("text-render-workspace"),
-        )
+        DesktopApp::with_options(DesktopAppOptions {
+            project_path: PathBuf::from("/tmp/altpaint-text-render-test.altp.json"),
+            dialogs: Box::new(NativeDesktopDialogs),
+            session_path: unique_test_path("text-render-session"),
+            workspace_preset_path: unique_test_path("text-render-workspace"),
+        })
     }
 
     #[test]

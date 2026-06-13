@@ -5,7 +5,7 @@ use winit::event::MouseScrollDelta;
 use winit::event::TouchPhase;
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 
-use crate::app::DesktopApp;
+use crate::app::{DesktopApp, DesktopAppOptions};
 use crate::app::cpu_canvas_snapshot::build_cpu_canvas_snapshot;
 
 use super::DesktopEventLoop;
@@ -13,12 +13,12 @@ use super::keyboard::normalized_key_name;
 
 fn test_event_loop() -> DesktopEventLoop {
     DesktopEventLoop {
-        app: DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-            crate::app::tests::unique_test_project_path(),
-            Box::new(crate::app::tests::TestDialogs::default()),
-            crate::app::tests::unique_test_path("event-loop-session"),
-            crate::app::tests::unique_test_path("event-loop-workspace-presets"),
-        ),
+        app: DesktopApp::with_options(DesktopAppOptions {
+            project_path: crate::app::tests::unique_test_project_path(),
+            dialogs: Box::new(crate::app::tests::TestDialogs::default()),
+            session_path: crate::app::tests::unique_test_path("event-loop-session"),
+            workspace_preset_path: crate::app::tests::unique_test_path("event-loop-workspace-presets"),
+        }),
         window: None,
         presenter: None,
         last_cursor_position: None,

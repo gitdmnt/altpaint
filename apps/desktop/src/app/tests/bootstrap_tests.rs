@@ -7,7 +7,7 @@ use project_store::load_project_from_path;
 use super::{
     TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_session_path, unique_test_path,
 };
-use crate::app::DesktopApp;
+use crate::app::{DesktopApp, DesktopAppOptions};
 
 #[test]
 fn startup_restores_last_project_from_session_path() {
@@ -18,12 +18,12 @@ fn startup_restores_last_project_from_session_path() {
     source_app.document.work.title = "Recovered Project".to_string();
     assert!(source_app.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_TO_PATH).with_value("path", project_path.to_string_lossy().to_string())));
     source_app.wait_for_pending_save_tasks();
-    let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        default_project_path(),
-        Box::new(TestDialogs::default()),
-        session_path.clone(),
-        unique_test_path("bootstrap-workspace-presets"),
-    );
+    let app = DesktopApp::with_options(DesktopAppOptions {
+        project_path: default_project_path(),
+        dialogs: Box::new(TestDialogs::default()),
+        session_path: session_path.clone(),
+        workspace_preset_path: unique_test_path("bootstrap-workspace-presets"),
+    });
 
     assert_eq!(app.io_state.project_path, project_path);
     assert_eq!(app.document.work.title, "Recovered Project");
