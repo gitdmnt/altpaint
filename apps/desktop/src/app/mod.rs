@@ -13,6 +13,7 @@ mod host_request_router;
 mod input;
 mod panel_config_sync;
 mod present;
+mod present_api;
 mod project_paths;
 mod invalidation;
 mod services;
@@ -96,7 +97,18 @@ impl PaintState {
 /// hit テーブル更新 (`present.rs`) と GPU 描画 (`event_loop.rs`) で共有する。
 pub(crate) const PANEL_CHROME_HEIGHT: u32 = 24;
 
-/// ランタイムから利用されるデスクトップアプリ本体を表す。
+/// デスクトップアプリ本体 (composition root)。
+///
+/// 各 feature サブ状態 (PaintState / WorkspaceState 等) と subsystem (panel-runtime /
+/// panel-workspace / GPU リソース) を保持し配線するだけの薄い構造 (BL-110)。
+/// フィールドの可視性は所有境界を表す:
+/// - `pub(crate)` のフィールドは対応する feature ハンドラ (`features/*` の `impl DesktopApp`)
+///   が自スライスの状態として直接触れる co-owned 状態。
+/// - 可視性指定なし (`app` モジュール内のみ) のフィールドは feature から参照されない
+///   app 内部状態。
+///
+/// 消費者 (`event_loop`) はいずれのフィールドにも直接触れず、`present_api` などの
+/// メソッド境界のみを通じてアクセスする。
 pub(crate) struct DesktopApp {
     pub(crate) document: Document,
     pub(crate) panel_runtime: PanelRuntime,
@@ -108,17 +120,17 @@ pub(crate) struct DesktopApp {
     pub(crate) workspace: WorkspaceState,
     /// paint feature のサブ状態 (ペイント実行・履歴・CPU 表示キャッシュ)。
     pub(crate) paint: PaintState,
-    /// コマ作成 (KomaRect) ジェスチャの進行中状態 (BL-081)。
+    /// コマ作成 (KomaRect) ジェスチャの進行中状態 (BL-081)。app 内部状態。
     koma_gesture: KomaGesture,
     pub(crate) layout: Option<DesktopLayout>,
-    /// Phase 9E-4: ステータスバー (HtmlPanelView GPU 描画)。
-    pub(crate) status_bar: crate::features::status_bar::StatusBar,
-    /// 次フレームで消化される提示無効化状態 (保留 dirty rect・再構築フラグ)。
-    pub(crate) invalidation: invalidation::PresentInvalidation,
+    /// Phase 9E-4: ステータスバー (HtmlPanelView GPU 描画)。app 内部状態。
+    status_bar: crate::features::status_bar::StatusBar,
+    /// 次フレームで消化される提示無効化状態 (保留 dirty rect・再構築フラグ)。app 内部状態。
+    invalidation: invalidation::PresentInvalidation,
     pub(crate) snapshots: DocumentSnapshotStore,
     pub(crate) panel_interaction: PanelInteractionState,
-    /// 進行中のバックグラウンドジョブ (project save 等)。
-    pub(crate) background_jobs: Vec<background_tasks::BackgroundJob>,
+    /// 進行中のバックグラウンドジョブ (project save 等)。app 内部状態。
+    background_jobs: Vec<background_tasks::BackgroundJob>,
     /// GPU ペイントリソース一式。`install_gpu_resources` で一括構築される。
     pub(crate) gpu: Option<GpuPaintEngine>,
 }

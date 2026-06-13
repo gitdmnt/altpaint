@@ -121,9 +121,8 @@ impl ApplicationHandler for DesktopEventLoop {
         );
 
         self.app
-            .panel_runtime
-            .install_gpu_context(presenter.device(), presenter.queue());
-        self.app.panel_runtime.mark_all_dirty();
+            .install_panel_gpu_context(presenter.device(), presenter.queue());
+        self.app.mark_all_panels_dirty();
 
         let _ = self.app.prepare_present_frame(
             size.width as usize,
@@ -248,82 +247,17 @@ impl ApplicationHandler for DesktopEventLoop {
 
                 // HTML パネル描画も先に処理（&mut panel_runtime を必要とするため、
                 // 続く &self.app 借用と衝突しない順序で実施）。
-                struct HtmlQuadEntry {
-                    panel_id: String,
-                    texture: std::sync::Arc<wgpu::Texture>,
-                    screen_rect: geometry::WindowRect,
-                }
-                let html_quad_entries: Vec<HtmlQuadEntry> = {
-                    // hit / move handle / full rect テーブルは prepare_present_frame
-                    // (refresh_panel_hit_tables) が CPU 側で更新済み。
-                    // ここでは GPU テクスチャの描画と quad 配置のみを担う。
-                    let panel_ids: Vec<String> = self
-                        .app
-                        .panel_runtime
-                        .panel_ids_with_gpu()
-                        .into_iter()
-                        .filter(|id| self.app.panel_workspace.is_panel_visible(id))
-                        .collect();
-                    if panel_ids.is_empty() {
-                        Vec::new()
-                    } else {
-                        // viewport は GPU テクスチャの上限としてそのまま渡し、View 側でクランプさせる。
-                        let sized: Vec<(String, u32, u32)> = panel_ids
-                            .iter()
-                            .map(|id| (id.clone(), size.width, size.height))
-                            .collect();
-                        // render_panels は所有テクスチャハンドル (`Arc<wgpu::Texture>`) を返すため、
-                        // panel_runtime の借用とは独立して保持できる (BL-092: raw pointer + unsafe 撤去)。
-                        let textures = self.app.panel_runtime.render_panels(
-                            &sized,
-                            1.0,
-                            crate::app::PANEL_CHROME_HEIGHT,
-                        );
-                        // quad の screen rect は hit テーブルと同じ full rect を共有する。
-                        textures
-                            .into_iter()
-                            .map(|rendered| {
-                                let screen_rect = self
-                                    .app
-                                    .panel_workspace
-                                    .panel_full_rect(&rendered.panel_id)
-                                    .unwrap_or(geometry::WindowRect {
-                                        x: 0,
-                                        y: 0,
-                                        width: rendered.width as usize,
-                                        height: rendered.height as usize,
-                                    });
-                                HtmlQuadEntry {
-                                    panel_id: rendered.panel_id,
-                                    texture: rendered.texture,
-                                    screen_rect,
-                                }
-                            })
-                            .collect()
-                    }
-                };
+                let html_quad_entries = self.app.render_visible_panels(
+                    size.width,
+                    size.height,
+                    crate::app::PANEL_CHROME_HEIGHT,
+                );
 
-                let gpu_source_spec: Option<(
-                    String,
-                    crate::app::GpuCanvasSourceKind,
-                    u32,
-                    u32,
-                )> = self.app.canvas_surface_source_kind().and_then(|kind| {
-                    let koma = self.app.document.active_koma()?;
-                    let (w, h) = match kind {
-                        crate::app::GpuCanvasSourceKind::Single => koma
-                            .layers
-                            .first()
-                            .map(|l| (l.bitmap.width as u32, l.bitmap.height as u32))?,
-                        crate::app::GpuCanvasSourceKind::Composite => {
-                            (koma.composite_cache.width as u32, koma.composite_cache.height as u32)
-                        }
-                    };
-                    Some((koma.id.0.to_string(), kind, w, h))
-                });
+                let gpu_source_spec = self.app.canvas_gpu_source_spec();
 
-                // CPU canvas snapshot は &mut self.app.status_bar と借用が衝突するため、
-                // pixels/サイズを先に Vec へコピーしてから後段で TextureSource を組み立てる。
+                // CPU canvas snapshot はステータスバー描画 (render_status_bar の &mut 借用)
+                // と衝突するため、pixels/サイズを先に Vec へコピーしてから
+                // 後段で TextureSource を組み立てる。
                 let cpu_canvas_data: Option<(u32, u32, Vec<u8>)> = if gpu_source_spec.is_none() {
                     self.app
                         .cpu_canvas_snapshot()
@@ -331,12 +265,14 @@ impl ApplicationHandler for DesktopEventLoop {
                 } else {
                     None
                 };
-                let canvas_surface = if let Some((ref panel_id, kind, w, h)) = gpu_source_spec {
+                let canvas_surface = if let Some(spec) = &gpu_source_spec {
+                    let panel_id = spec.koma_id.as_str();
+                    let (w, h) = (spec.width, spec.height);
                     canvas_quad.map(|quad| CanvasSurface {
-                        source: match kind {
+                        source: match spec.kind {
                             crate::app::GpuCanvasSourceKind::Single => {
                                 CanvasSurfaceSource::Gpu {
-                                    panel_id: panel_id.as_str(),
+                                    panel_id,
                                     layer_index: 0,
                                     width: w,
                                     height: h,
@@ -344,7 +280,7 @@ impl ApplicationHandler for DesktopEventLoop {
                             }
                             crate::app::GpuCanvasSourceKind::Composite => {
                                 CanvasSurfaceSource::GpuComposite {
-                                    panel_id: panel_id.as_str(),
+                                    panel_id,
                                     width: w,
                                     height: h,
                                 }
@@ -395,42 +331,11 @@ impl ApplicationHandler for DesktopEventLoop {
                 // 9E-4: ステータスバーを HtmlPanelView で GPU 描画する。
                 // panel_runtime の gpu_ctx (device/queue/renderer/scene_scratch) を
                 // HtmlSurfaceRenderer ハンドルとして共有借用する (BL-092)。
-                struct StatusEntry {
-                    texture: std::sync::Arc<wgpu::Texture>,
-                    screen_rect: geometry::WindowRect,
-                }
-                let status_entry: Option<StatusEntry> = {
-                    let snapshot = self.app.build_status_snapshot();
-                    self.app.status_bar.update(&snapshot);
-                    if let Some(surface) = self.app.panel_runtime.html_surface_renderer() {
-                        // フッター位置 (画面下端) に幅 = window 幅で配置する
-                        const FOOTER_HEIGHT: u32 = crate::theme::FOOTER_HEIGHT as u32;
-                        let viewport_w = size.width.max(1);
-                        let outcome = self.app.status_bar.render_gpu(
-                            surface.device,
-                            surface.queue,
-                            surface.renderer,
-                            surface.scene_scratch,
-                            (viewport_w, FOOTER_HEIGHT),
-                        );
-                        let target = outcome.target();
-                        // 所有ハンドルを複製して保持する (unsafe 不要)。
-                        let texture = target.texture_handle();
-                        let target_h = target.height;
-                        let screen_rect = geometry::WindowRect {
-                            x: 0,
-                            y: size.height.saturating_sub(target_h) as usize,
-                            width: target.width as usize,
-                            height: target_h as usize,
-                        };
-                        Some(StatusEntry {
-                            texture,
-                            screen_rect,
-                        })
-                    } else {
-                        None
-                    }
-                };
+                // フッター位置 (画面下端) に幅 = window 幅で配置する。
+                const FOOTER_HEIGHT: u32 = crate::theme::FOOTER_HEIGHT as u32;
+                let status_entry =
+                    self.app
+                        .render_status_bar(size.width, FOOTER_HEIGHT, size.height);
                 let status_quad: Option<crate::wgpu_canvas::GpuPanelQuad<'_>> = status_entry
                     .as_ref()
                     .map(|e| crate::wgpu_canvas::GpuPanelQuad {

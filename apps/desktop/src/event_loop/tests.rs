@@ -37,7 +37,7 @@ fn canvas_input_point(
     min_right_space: i32,
     min_bottom_space: i32,
 ) -> (i32, i32) {
-    let layout = event_loop.app.layout.clone().expect("layout exists");
+    let layout = event_loop.app.layout().cloned().expect("layout exists");
     let start_x = layout.canvas_display_rect.x as i32 + 16;
     let end_x = ((layout.canvas_display_rect.x + layout.canvas_display_rect.width) as i32)
         .saturating_sub(min_right_space.max(16));
@@ -67,7 +67,7 @@ fn touch_started_and_moved_draws_black_pixels() {
     assert!(event_loop.handle_touch_phase(1, TouchPhase::Moved, center_x + 20, center_y, None));
     let _ = event_loop.handle_touch_phase(1, TouchPhase::Ended, center_x + 20, center_y, None);
 
-    let frame = build_cpu_canvas_snapshot(&event_loop.app.document);
+    let frame = build_cpu_canvas_snapshot(event_loop.app.document());
     assert!(
         frame
             .pixels
@@ -103,7 +103,7 @@ fn raw_mouse_motion_draws_between_cursor_events() {
     assert!(event_loop.handle_raw_mouse_motion(40.0, 0.0));
     let _ = event_loop.handle_mouse_button(winit::event::ElementState::Released);
 
-    let frame = build_cpu_canvas_snapshot(&event_loop.app.document);
+    let frame = build_cpu_canvas_snapshot(event_loop.app.document());
     assert!(
         frame
             .pixels
@@ -120,11 +120,11 @@ fn pixel_wheel_pan_accepts_sub_line_delta() {
     let (center_x, center_y) = canvas_input_point(&event_loop, 16, 16);
     event_loop.last_cursor_position = Some((center_x, center_y));
 
-    let before = event_loop.app.document.session.view_transform.pan_y;
+    let before = event_loop.app.document().session.view_transform.pan_y;
     assert!(event_loop.handle_mouse_wheel(MouseScrollDelta::PixelDelta(
         winit::dpi::PhysicalPosition::new(0.0, 1.0),
     )));
-    assert!(event_loop.app.document.session.view_transform.pan_y > before);
+    assert!(event_loop.app.document().session.view_transform.pan_y > before);
 }
 
 #[test]
@@ -135,16 +135,16 @@ fn wheel_pan_animation_continues_after_initial_event() {
     let (center_x, center_y) = canvas_input_point(&event_loop, 16, 16);
     event_loop.last_cursor_position = Some((center_x, center_y));
 
-    let before = event_loop.app.document.session.view_transform.pan_y;
+    let before = event_loop.app.document().session.view_transform.pan_y;
     assert!(event_loop.handle_mouse_wheel(MouseScrollDelta::PixelDelta(
         winit::dpi::PhysicalPosition::new(0.0, 16.0),
     )));
-    let after_first = event_loop.app.document.session.view_transform.pan_y;
+    let after_first = event_loop.app.document().session.view_transform.pan_y;
     assert!(after_first > before);
     assert!(event_loop.has_pending_wheel_animation());
 
     assert!(event_loop.advance_wheel_animation());
-    assert_ne!(event_loop.app.document.session.view_transform.pan_y, after_first);
+    assert_ne!(event_loop.app.document().session.view_transform.pan_y, after_first);
 }
 
 #[test]
@@ -156,9 +156,9 @@ fn shift_wheel_converts_vertical_scroll_into_horizontal_pan() {
     event_loop.last_cursor_position = Some((center_x, center_y));
     event_loop.modifiers = ModifiersState::SHIFT;
 
-    let before = event_loop.app.document.session.view_transform.pan_x;
+    let before = event_loop.app.document().session.view_transform.pan_x;
     assert!(event_loop.handle_mouse_wheel(MouseScrollDelta::LineDelta(0.0, 2.0)));
-    assert!(event_loop.app.document.session.view_transform.pan_x > before);
+    assert!(event_loop.app.document().session.view_transform.pan_x > before);
 }
 
 #[test]
@@ -170,9 +170,9 @@ fn control_wheel_changes_zoom() {
     event_loop.last_cursor_position = Some((center_x, center_y));
     event_loop.modifiers = ModifiersState::CONTROL;
 
-    let before = event_loop.app.document.session.view_transform.zoom;
+    let before = event_loop.app.document().session.view_transform.zoom;
     assert!(event_loop.handle_mouse_wheel(MouseScrollDelta::LineDelta(0.0, 1.0)));
-    assert!(event_loop.app.document.session.view_transform.zoom > before);
+    assert!(event_loop.app.document().session.view_transform.zoom > before);
 }
 
 #[test]
@@ -209,10 +209,10 @@ fn normalized_shortcut_includes_active_modifiers() {
 #[test]
 fn builtin_shortcut_dispatches_save_project() {
     let mut event_loop = test_event_loop();
-    event_loop.app.paths.project_path = std::env::temp_dir().join(format!(
+    event_loop.app.set_project_path(std::env::temp_dir().join(format!(
         "altpaint-event-loop-save-shortcut-{}.altp.json",
         std::process::id()
-    ));
+    )));
     event_loop.modifiers = ModifiersState::CONTROL;
 
     assert!(event_loop.handle_builtin_shortcut(&Key::Character("s".into())));
@@ -227,7 +227,7 @@ fn builtin_shortcut_can_move_focus_backward() {
     let _ = event_loop.app.prepare_present_frame(1280, 200, &mut profiler);
     // ADR 014 以降、focus は HTML hit table を辿るため事前に hit を 1 件 inject する。
     // chrome 0 で full_rect == body_rect とし、hit 矩形を body 原点基準で渡す (BL-096)。
-    event_loop.app.panel_workspace.update_panel_geometry(
+    event_loop.app.inject_panel_geometry(
         "builtin.app-actions",
         geometry::WindowRect {
             x: 100,

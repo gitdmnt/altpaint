@@ -183,7 +183,7 @@ impl DesktopEventLoop {
         if zoom_lines.abs() > f32::EPSILON {
             // BL-064: 倍率 (1.1^lines) と clamp はドメイン側が所有する。入力層は
             // view_policy で飽和 (上下限到達) を検出して pending を打ち切るだけ。
-            let current = self.app.document.session.view_transform.zoom;
+            let current = self.app.current_zoom();
             let next_zoom = editor_state::view_policy::zoom_after_lines(current, zoom_lines);
             if (next_zoom - current).abs() > f32::EPSILON {
                 let t = Instant::now();
@@ -203,7 +203,7 @@ impl DesktopEventLoop {
         let Some((x, y)) = self.last_cursor_position else {
             return false;
         };
-        let Some(layout) = self.app.layout.as_ref() else {
+        let Some(layout) = self.app.layout() else {
             return false;
         };
         let point = geometry::WindowPoint::new(x, y);
@@ -334,7 +334,7 @@ impl DesktopEventLoop {
             screen_x: x as f32,
             screen_y: y as f32,
         };
-        self.app.panel_runtime.forward_panel_input(&panel_id, input)
+        self.app.forward_panel_input(&panel_id, input)
     }
 
     pub(super) fn record_canvas_input_if_needed(&mut self, changed: bool) -> bool {

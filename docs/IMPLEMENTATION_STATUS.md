@@ -134,7 +134,8 @@
   - **D14 panel_dispatch 分割**: `panel_dispatch.rs` を幾何ステートマシン (`features/panel_interaction/state.rs` = drag/resize/press) とルータ (`app/host_request_router.rs`) に分割。
   - **D12 io_state 分離**: `DesktopIoState` を `ProjectPaths` (`app/project_paths.rs`、パス状態) と `DesktopApp` 直下の `dialogs` ポートに分離。
   - **能力境界の pub(crate) 化**: DirtyMarker (append_*_dirty_rect / sync_ui_* / rebuild_present_frame / mark_status_dirty / request_panel_reconcile* / invalidate_document_structure)・SessionPersister (persist_session_state / session_state)・GpuLayers 系・paint 系 (apply_bitmap_edits / refresh_cpu_canvas_snapshot / clear_edit_history) を features から呼べるよう pub(super) → pub(crate) に拡張 (能力 trait の正式導入は後続)。
-  - 検証: desktop テスト 190 passed / 0 failed / 6 ignored、clippy 警告 0 (全ターゲット)、挙動不変。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+  - **BL-110 後半 DesktopApp フィールド private 化**: `event_loop` の `DesktopApp` 直接フィールドアクセスを `app/present_api.rs` のメソッド境界へ置換 (current_zoom / layout / forward_panel_input / mark_all_panels_dirty / install_panel_gpu_context / render_visible_panels / canvas_gpu_source_spec / render_status_bar)。RedrawRequested アーム内の panel 描画・GPU ソース解決・ステータスバー描画の複数フィールド借用順序を app 側メソッドへ封じ込めた。feature ハンドラ (`features/*` の `impl DesktopApp`) が co-own する状態 (document / panel_runtime / panel_workspace / paths / dialogs / workspace / paint / layout / snapshots / panel_interaction / gpu) は `pub(crate)` を維持し、feature から参照されない app 内部状態 (koma_gesture / status_bar / invalidation / background_jobs) は可視性指定なし (app モジュール内のみ) へ縮小。DesktopApp は subsystem を保持・配線する composition root に縮小。
+  - 検証: desktop テスト 190 passed / 0 failed / 6 ignored、workspace 500 passed / 0 failed / 7 ignored、clippy 警告 0 (全ターゲット)、挙動不変。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
 
 ## 現在の workspace 構成
 
