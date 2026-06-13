@@ -239,7 +239,6 @@ impl DesktopApp {
     /// (`activate_focused_panel_control` の戻り値判定に使う)。
     fn dispatch_panel_event_tracking_actions(&mut self, event: PanelEvent) -> (bool, bool) {
         let mut changed = false;
-        let previous_configs = self.panel_runtime.persistent_panel_configs();
 
         let mut needs_redraw = true;
         let mut produced_action = false;
@@ -248,10 +247,11 @@ impl DesktopApp {
             self.panel_workspace.focus_panel_node(panel_id, node_id);
         }
 
+        // BL-097: config 変化検知は runtime の対象パネル単体比較 (`config_changed`) に
+        // 一本化する。desktop 側の全パネル map 二重比較は廃止。
+        // service 経由の config 変更 (`update_panel_config`) は変更箇所が自前で永続化する。
         let runtime = self.panel_runtime.dispatch_event(&event);
-        if runtime.config_changed
-            || self.panel_runtime.persistent_panel_configs() != previous_configs
-        {
+        if runtime.config_changed {
             self.persist_session_state();
         }
         changed |= !runtime.changed_panel_ids.is_empty();
@@ -260,10 +260,6 @@ impl DesktopApp {
         for action in actions {
             produced_action = true;
             needs_redraw |= self.execute_host_request(action);
-        }
-
-        if self.panel_runtime.persistent_panel_configs() != previous_configs {
-            self.persist_session_state();
         }
 
         let changed = changed || needs_redraw;

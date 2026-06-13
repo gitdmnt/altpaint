@@ -80,7 +80,12 @@ impl DesktopApp {
         self.active_workspace_preset_id = selected_workspace;
     }
 
-    /// 指定パネルの persistent config オブジェクトを編集し、reconcile まで行う共通処理 (BL-101)。
+    /// 指定パネルの persistent config オブジェクトを編集し、reconcile と永続化まで行う
+    /// 共通処理 (BL-101)。
+    ///
+    /// BL-097: service 経由の config 変更はこの 1 箇所に集約されているため、
+    /// 変更箇所自身が `persist_session_state` を担う。これにより呼び出し側 (desktop) の
+    /// panel event 経路で config 変化を全パネル map 比較で再検出する必要がなくなる。
     pub(crate) fn update_panel_config(
         &mut self,
         panel_id: &str,
@@ -98,6 +103,7 @@ impl DesktopApp {
         self.panel_runtime.replace_persistent_panel_configs(configs);
         self.panel_workspace
             .reconcile_panels(self.panel_runtime.panel_ids());
+        self.persist_session_state();
     }
 
     pub(crate) fn reload_workspace_presets(&mut self) -> bool {

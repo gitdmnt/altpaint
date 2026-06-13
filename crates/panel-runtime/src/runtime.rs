@@ -443,7 +443,6 @@ impl PanelRuntime {
     /// ADR 014 以降、HTML パネル経路では GPU 側 `render_dirty` が真の dirty 判定を持つため、
     /// runtime 側ではイベントを受けたパネルを無条件で `changed_panel_ids` に入れる。
     pub fn dispatch_event(&mut self, event: &PanelEvent) -> PanelDispatchResult {
-        let previous_configs = collect_persistent_panel_configs(&self.panels);
         let Some(panel) = self
             .panels
             .iter_mut()
@@ -452,10 +451,14 @@ impl PanelRuntime {
             return PanelDispatchResult::default();
         };
 
+        // BL-097: config 変化検知は対象パネル単体の persistent_config 比較に一本化する
+        // (全パネル map の二重 collect を廃止)。イベントを受けるのは対象パネル 1 枚だけなので、
+        // 他パネルの config は変化しえない。
+        let previous_config = panel.persistent_config();
         let actions = panel.handle_event(event);
+        let config_changed = panel.persistent_config() != previous_config;
         let mut changed_panel_ids = BTreeSet::new();
         changed_panel_ids.insert(panel.id().to_string());
-        let config_changed = collect_persistent_panel_configs(&self.panels) != previous_configs;
         PanelDispatchResult {
             actions,
             changed_panel_ids,
@@ -473,10 +476,12 @@ impl PanelRuntime {
         key: &str,
         repeat: bool,
     ) -> PanelKeyboardResult {
-        let previous_configs = collect_persistent_panel_configs(&self.panels);
         let mut handled = false;
         let mut actions = Vec::new();
         let mut changed_panel_ids = BTreeSet::new();
+        // BL-097: config 変化検知はパネル単体の before/after 比較に一本化し、
+        // その結果を `config_changed` へ畳み込む (全パネル map の二重 collect を廃止)。
+        let mut config_changed = false;
         for panel in &mut self.panels {
             if !panel.handles_keyboard_event() {
                 continue;
@@ -488,15 +493,15 @@ impl PanelRuntime {
                 key: key.to_string(),
                 repeat,
             });
-            let keyboard_handled =
-                !panel_actions.is_empty() || panel.persistent_config() != previous_config;
+            let panel_config_changed = panel.persistent_config() != previous_config;
+            config_changed |= panel_config_changed;
+            let keyboard_handled = !panel_actions.is_empty() || panel_config_changed;
             if keyboard_handled {
                 changed_panel_ids.insert(panel.id().to_string());
             }
             handled |= keyboard_handled;
             actions.extend(panel_actions);
         }
-        let config_changed = collect_persistent_panel_configs(&self.panels) != previous_configs;
         PanelKeyboardResult {
             handled,
             actions,
@@ -610,6 +615,37 @@ mod tests {
 
         assert!(!result.handled);
         assert!(!result.config_changed);
+    }
+
+    /// BL-097: dispatch_event の config 変化検知は対象パネル単体比較に一本化されており、
+    /// config を変えないイベントでは `config_changed` が false になる。
+    #[test]
+    fn dispatch_event_reports_no_config_change_when_handler_keeps_config() {
+        let mut runtime = runtime_with_panel("registry-activate", NO_KEYBOARD_WAT);
+
+        let result = runtime.dispatch_event(&PanelEvent::Activate {
+            panel_id: "builtin.test-kb".to_string(),
+            node_id: "kb.test".to_string(),
+        });
+
+        // 対象パネルは config を変えないので config_changed は立たない。
+        assert!(!result.config_changed);
+        // 対象パネルは changed_panel_ids に入る (イベントは届いている)。
+        assert!(result.changed_panel_ids.contains("builtin.test-kb"));
+    }
+
+    /// BL-097: 未登録パネル宛イベントは config_changed を立てず default を返す。
+    #[test]
+    fn dispatch_event_for_unknown_panel_reports_no_config_change() {
+        let mut runtime = runtime_with_panel("registry-unknown", NO_KEYBOARD_WAT);
+
+        let result = runtime.dispatch_event(&PanelEvent::Activate {
+            panel_id: "builtin.missing".to_string(),
+            node_id: "x".to_string(),
+        });
+
+        assert!(!result.config_changed);
+        assert!(result.changed_panel_ids.is_empty());
     }
 
     /// register_panel が runtime 共有の translator registry を各パネルへ注入する (BL-061)。
