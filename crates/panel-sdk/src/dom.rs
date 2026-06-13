@@ -24,6 +24,33 @@
 //! set_inner_html(list, &html);
 //! ```
 
+/// Wasm から見た Blitz NodeId の不透明ハンドル (P25)。
+///
+/// ABI 上は host 側 NodeId に `+1` した `i64` で運ばれる (0 は `None` を意味するため
+/// 避ける)。この `+1` シフトを誤読しないよう、生の `i64` を直接扱う型 alias ではなく
+/// newtype で包む。中身 (`raw`) は host が組み立てた ABI 値そのものであり、パネル
+/// コードは内部表現を解釈しない。`set_attribute` 等の DOM API へはこのハンドルを
+/// そのまま渡す。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NodeHandle(i64);
+
+// from_abi / to_abi は ABI 境界 (`#[cfg(target_arch = "wasm32")]`) と単体テストでのみ
+// 使うため、native 非テストビルドでは到達しない。ABI 契約として常に保持する。
+#[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
+impl NodeHandle {
+    /// ABI から受け取った生の `i64` をハンドルへ包む。
+    ///
+    /// `raw` が `0` 以下 (= `None` 番兵 / 無効値) なら `None` を返す。
+    pub(crate) fn from_abi(raw: i64) -> Option<Self> {
+        if raw <= 0 { None } else { Some(Self(raw)) }
+    }
+
+    /// DOM host function へ渡す ABI 値 (host NodeId + 1)。
+    pub(crate) fn to_abi(self) -> i64 {
+        self.0
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 mod imports {
     #[link(wasm_import_module = "dom")]
@@ -41,18 +68,13 @@ mod imports {
     }
 }
 
-/// Wasm から見た Blitz NodeId の不透明ハンドル。
-///
-/// 内部表現は host 側 NodeId+1 (0 は None を意味するため避ける)。
-pub type NodeId = i64;
-
 /// CSS セレクタにマッチする最初の要素を返す。マッチなしなら `None`。
-pub fn query_selector(selector: &str) -> Option<NodeId> {
+pub fn query_selector(selector: &str) -> Option<NodeHandle> {
     let bytes = selector.as_bytes();
     #[cfg(target_arch = "wasm32")]
     unsafe {
         let raw = imports::query_selector(bytes.as_ptr(), bytes.len() as i32);
-        if raw == 0 { None } else { Some(raw) }
+        NodeHandle::from_abi(raw)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -62,13 +84,13 @@ pub fn query_selector(selector: &str) -> Option<NodeId> {
 }
 
 /// 属性をセットする。
-pub fn set_attribute(node: NodeId, name: &str, value: &str) {
+pub fn set_attribute(node: NodeHandle, name: &str, value: &str) {
     let nb = name.as_bytes();
     let vb = value.as_bytes();
     #[cfg(target_arch = "wasm32")]
     unsafe {
         imports::set_attribute(
-            node,
+            node.to_abi(),
             nb.as_ptr(),
             nb.len() as i32,
             vb.as_ptr(),
@@ -82,11 +104,11 @@ pub fn set_attribute(node: NodeId, name: &str, value: &str) {
 }
 
 /// 属性を削除する。
-pub fn clear_attribute(node: NodeId, name: &str) {
+pub fn clear_attribute(node: NodeHandle, name: &str) {
     let nb = name.as_bytes();
     #[cfg(target_arch = "wasm32")]
     unsafe {
-        imports::clear_attribute(node, nb.as_ptr(), nb.len() as i32);
+        imports::clear_attribute(node.to_abi(), nb.as_ptr(), nb.len() as i32);
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -98,11 +120,11 @@ pub fn clear_attribute(node: NodeId, name: &str) {
 ///
 /// **信頼境界**: `html` 引数は Blitz の HTML パーサに直接流される。
 /// host state 由来の文字列を埋め込む場合は必ず `html_escape` を経由すること。
-pub fn set_inner_html(node: NodeId, html: &str) {
+pub fn set_inner_html(node: NodeHandle, html: &str) {
     let hb = html.as_bytes();
     #[cfg(target_arch = "wasm32")]
     unsafe {
-        imports::set_inner_html(node, hb.as_ptr(), hb.len() as i32);
+        imports::set_inner_html(node.to_abi(), hb.as_ptr(), hb.len() as i32);
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -148,6 +170,23 @@ pub fn html_escape(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn node_handle_rejects_none_sentinel_and_negative() {
+        // 0 は host 側 `query_selector` の None 番兵。負値も無効。
+        assert_eq!(NodeHandle::from_abi(0), None);
+        assert_eq!(NodeHandle::from_abi(-1), None);
+    }
+
+    #[test]
+    fn node_handle_roundtrips_abi_value() {
+        // ABI 値は host NodeId + 1 (>= 1)。包んでも素通しできる。
+        let handle = NodeHandle::from_abi(1).expect("first node handle");
+        assert_eq!(handle.to_abi(), 1);
+
+        let handle = NodeHandle::from_abi(99).expect("node handle");
+        assert_eq!(handle.to_abi(), 99);
+    }
 
     #[test]
     fn html_escape_basic() {
