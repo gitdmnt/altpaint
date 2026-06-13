@@ -118,7 +118,8 @@ impl TranslatorRegistry {
 mod tests {
     use super::*;
     use crate::request_translation::register_default_translators;
-    use app_core::{DocumentCommand, SessionCommand};
+    use app_core::DocumentCommand;
+    use editor_state::SessionCommand;
     use panel_protocol::names::{koma_nav, layer, tool};
     use serde_json::json;
 

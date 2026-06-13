@@ -7,6 +7,7 @@ mod background_tasks;
 mod bootstrap;
 pub(crate) mod cpu_canvas_snapshot;
 mod command_router;
+mod default_tool_catalog;
 pub(crate) mod cursor;
 mod input;
 mod io_state;
@@ -52,7 +53,7 @@ struct CachedCanvasViewGeometry {
     viewport: geometry::WindowRect,
     canvas_width: usize,
     canvas_height: usize,
-    transform: app_core::CanvasViewTransform,
+    transform: editor_state::CanvasViewTransform,
     geometry: Option<canvas_geometry::CanvasViewGeometry>,
 }
 

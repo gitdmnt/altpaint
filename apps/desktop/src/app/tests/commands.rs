@@ -5,10 +5,10 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use app_core::{
-    ColorRgba8, DocumentCommand, SessionCommand, ToolKind,
-    WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
-    WorkspacePanelState,
+    DocumentCommand, WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition,
+    WorkspacePanelSize, WorkspacePanelState,
 };
+use editor_state::{ColorRgba8, SessionCommand, ToolKind};
 use desktop_support::{
     FrameProfiler, WorkspacePreset, WorkspacePresetCatalog,
     save_workspace_preset_catalog,
@@ -70,10 +70,10 @@ fn execute_command_select_child_tool_updates_active_child_tool_id() {
         .iter_mut()
         .find(|t| t.id == "builtin.pen")
     {
-        pen_def.children.push(app_core::ToolDefinition {
+        pen_def.children.push(editor_state::ToolDefinition {
             id: "builtin.pen.test".to_string(),
             name: "Test".to_string(),
-            kind: app_core::ToolKind::Pen,
+            kind: editor_state::ToolKind::Pen,
             provider_plugin_id: String::new(),
             drawing_plugin_id: String::new(),
             settings: vec![],

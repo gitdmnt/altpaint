@@ -1,4 +1,4 @@
-use app_core::ToolKind;
+use editor_state::ToolKind;
 use geometry::{KomaLocalPoint, PagePoint};
 
 use crate::{

@@ -7,5 +7,6 @@ authors.workspace = true
 
 [dependencies]
 app-core = { path = "../app-core" }
+editor-state = { path = "../editor-state" }
 panel-protocol = { path = "../panel-protocol" }
 serde_json.workspace = true

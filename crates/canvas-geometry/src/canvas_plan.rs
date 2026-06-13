@@ -1,4 +1,4 @@
-use app_core::CanvasViewTransform;
+use editor_state::CanvasViewTransform;
 use geometry::{PageDirtyRect, WindowRect};
 
 use crate::{CanvasViewGeometry, map_canvas_dirty_to_display_with_transform};

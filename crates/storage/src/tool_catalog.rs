@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::Path;
 
-use app_core::ToolDefinition;
+use editor_state::ToolDefinition;
 
 use crate::fs_walk::collect_files;
 

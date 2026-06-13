@@ -1,4 +1,4 @@
-use app_core::CanvasViewTransform;
+use editor_state::CanvasViewTransform;
 use geometry::{
     CanvasDisplayPoint, CanvasViewportPoint, ClampToCanvasBounds, PageDirtyRect, PagePoint,
     WindowRect,

@@ -181,7 +181,7 @@ impl DesktopApp {
 
     pub(super) fn mark_canvas_transform_dirty(
         &mut self,
-        previous_transform: app_core::CanvasViewTransform,
+        previous_transform: editor_state::CanvasViewTransform,
     ) -> bool {
         self.invalidation.canvas_transform_update = true;
         if let Some(canvas_viewport_rect) =

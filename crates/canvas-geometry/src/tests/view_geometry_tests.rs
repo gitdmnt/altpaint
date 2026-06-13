@@ -1,4 +1,4 @@
-use app_core::CanvasViewTransform;
+use editor_state::CanvasViewTransform;
 use geometry::{CanvasViewportPoint, PageDirtyRect, PagePoint, WindowRect};
 
 use crate::{

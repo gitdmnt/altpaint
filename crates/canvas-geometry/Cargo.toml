@@ -7,4 +7,5 @@ authors.workspace = true
 
 [dependencies]
 app-core = { path = "../app-core" }
+editor-state = { path = "../editor-state" }
 geometry = { path = "../geometry" }

@@ -1,4 +1,4 @@
-use app_core::{PenPreset, PenRuntimeEngine, PenTipBitmap};
+use editor_state::{PenPreset, PenRuntimeEngine, PenTipBitmap};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};

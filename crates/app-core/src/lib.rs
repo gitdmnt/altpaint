@@ -20,13 +20,6 @@ pub use document::{
     MAX_PAGE_PIXELS, Page, PageId, Koma, KomaBounds, KomaId, RasterLayer, Work, WorkId,
     parse_document_size,
 };
-// B5 BL-073: editor-state へ移設済みのセッション型を再エクスポート (段階移行のための一時措置。
-// 参照付け替え完了後に削除する)。
-pub use editor_state::view_policy;
-pub use editor_state::{
-    CanvasViewTransform, ColorRgba8, EditorSession, PenPreset, PenRuntimeEngine, PenTipBitmap,
-    SessionCommand, ToolDefinition, ToolKind, ToolSettingControl, ToolSettingDefinition,
-};
 pub use history::{DEFAULT_HISTORY_CAPACITY, EditHistory, HistoryEntry, OpaqueGpuData};
 pub use painting::{PaintInput, PaintPlugin, PaintPluginContext};
 pub use workspace::{

@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use app_core::PenPreset;
+use editor_state::PenPreset;
 
 use crate::fs_walk::collect_files;
 use crate::parse_pen_file;

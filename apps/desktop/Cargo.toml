@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 app-core = { path = "../../crates/app-core" }
+editor-state = { path = "../../crates/editor-state" }
 geometry = { path = "../../crates/geometry" }
 raster = { path = "../../crates/raster" }
 gpu-paint = { path = "../../crates/gpu-paint" }

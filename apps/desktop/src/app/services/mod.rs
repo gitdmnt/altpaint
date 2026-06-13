@@ -9,7 +9,8 @@ mod tool_catalog;
 mod workspace_io;
 mod workspace_layout;
 
-use app_core::{Document, DocumentCommand, HistoryEntry, SessionCommand};
+use app_core::{Document, DocumentCommand, HistoryEntry};
+use editor_state::SessionCommand;
 use desktop_support::DEFAULT_PROJECT_FILE_NAME;
 use panel_runtime::{ServiceRequest, services::names};
 use app_core::WorkspaceUiState;
@@ -251,9 +252,13 @@ impl DesktopApp {
         for diagnostic in diagnostics {
             eprintln!("tool catalog load warning: {diagnostic}");
         }
-        if tools.is_empty() {
-            return false;
-        }
+        // tools/ が無い・空の場合は desktop 既定カタログ (provider_plugin_id 付き) を
+        // フォールバックとして注入する。editor-state の既定カタログは provider を持たない。
+        let tools = if tools.is_empty() {
+            crate::app::default_tool_catalog::desktop_default_tool_catalog()
+        } else {
+            tools
+        };
         document.session.replace_tool_catalog(tools);
         true
     }

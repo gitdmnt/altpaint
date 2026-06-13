@@ -114,7 +114,8 @@ pub fn load_koma_composite_from_path(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::{ColorRgba8, Document, LayerMask, Page, PageId, KomaId};
+    use app_core::{Document, LayerMask, Page, PageId, KomaId};
+    use editor_state::ColorRgba8;
     use raster::BlendMode;
     use rusqlite::Connection;
     use std::fs;

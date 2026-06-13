@@ -1,4 +1,5 @@
-use app_core::{PaintPluginContext, ToolKind};
+use app_core::PaintPluginContext;
+use editor_state::ToolKind;
 use raster::{BitmapComposite, BitmapCompositor, BlendMode, RgbaBitmap, composite_pixel};
 
 #[derive(Clone, Copy)]

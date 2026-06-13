@@ -1,4 +1,5 @@
-use app_core::{PaintPluginContext, PenTipBitmap};
+use app_core::PaintPluginContext;
+use editor_state::PenTipBitmap;
 use geometry::KomaLocalPoint;
 use raster::{BitmapEdit, RgbaBitmap};
 

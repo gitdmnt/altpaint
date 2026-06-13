@@ -5,9 +5,10 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use app_core::{
-    CanvasViewTransform, ColorRgba8, Document, EditorSession, LayerMask, LayerNodeId, Page, PageId,
-    Koma, KomaBounds, KomaId, PenPreset, RasterLayer, ToolKind, Work, WorkId, WorkspaceLayout,
+    Document, LayerMask, LayerNodeId, Page, PageId, Koma, KomaBounds, KomaId, RasterLayer, Work,
+    WorkId, WorkspaceLayout,
 };
+use editor_state::{CanvasViewTransform, ColorRgba8, EditorSession, PenPreset, ToolKind};
 use raster::{BlendMode, RgbaBitmap};
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};

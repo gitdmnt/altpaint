@@ -5,7 +5,7 @@
 
 use std::time::Instant;
 
-use app_core::SessionCommand;
+use editor_state::SessionCommand;
 use winit::event::{ElementState, Force, MouseScrollDelta, TouchPhase};
 
 use super::DesktopEventLoop;
@@ -183,7 +183,7 @@ impl DesktopEventLoop {
             // BL-064: 倍率 (1.1^lines) と clamp はドメイン側が所有する。入力層は
             // view_policy で飽和 (上下限到達) を検出して pending を打ち切るだけ。
             let current = self.app.document.session.view_transform.zoom;
-            let next_zoom = app_core::view_policy::zoom_after_lines(current, zoom_lines);
+            let next_zoom = editor_state::view_policy::zoom_after_lines(current, zoom_lines);
             if (next_zoom - current).abs() > f32::EPSILON {
                 let t = Instant::now();
                 changed |= self

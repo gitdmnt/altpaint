@@ -3,7 +3,8 @@
 //! OS 由来の生イベントをドキュメント編集やパネル操作へ変換し、
 //! ランタイム側が UI 詳細を知らずに済むようにする。
 
-use app_core::{DocumentCommand, ToolKind};
+use app_core::DocumentCommand;
+use editor_state::ToolKind;
 use geometry::{PagePoint, WindowPoint, WindowRect};
 use paint_engine::{
     CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, advance_pointer_gesture,

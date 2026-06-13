@@ -13,7 +13,8 @@
 //!
 //! [`TranslatorRegistry`]: crate::translator_registry::TranslatorRegistry
 
-use app_core::{DocumentCommand, SessionCommand, ToolKind};
+use app_core::DocumentCommand;
+use editor_state::{SessionCommand, ToolKind};
 use panel_protocol::RequestDescriptor;
 use panel_protocol::names::{
     export, history, koma_nav, layer, project_io, snapshot, text_render, tool, view, workspace,
@@ -38,7 +39,7 @@ pub enum TranslatedRequest {
 /// 変換器が「この名前は名前空間内に存在しない」ことを表す結果。
 type TranslateOutcome = Result<Option<TranslatedRequest>, String>;
 
-fn parse_hex_color(input: &str) -> Option<app_core::ColorRgba8> {
+fn parse_hex_color(input: &str) -> Option<editor_state::ColorRgba8> {
     let hex = input.strip_prefix('#')?;
     if hex.len() != 6 {
         return None;
@@ -46,7 +47,7 @@ fn parse_hex_color(input: &str) -> Option<app_core::ColorRgba8> {
     let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
     let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
     let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-    Some(app_core::ColorRgba8::new(r, g, b, 0xff))
+    Some(editor_state::ColorRgba8::new(r, g, b, 0xff))
 }
 
 fn service_from_descriptor(descriptor: &RequestDescriptor) -> ServiceRequest {
@@ -351,7 +352,7 @@ mod tests {
             .expect("tool.set_color translates");
         match translated {
             TranslatedRequest::Session(SessionCommand::SetActiveColor { color }) => {
-                assert_eq!(color, app_core::ColorRgba8::new(0x11, 0x22, 0x33, 0xff));
+                assert_eq!(color, editor_state::ColorRgba8::new(0x11, 0x22, 0x33, 0xff));
             }
             other => panic!("expected SetActiveColor, got {other:?}"),
         }

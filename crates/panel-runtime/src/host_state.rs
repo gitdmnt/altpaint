@@ -1,4 +1,5 @@
-use app_core::{Document, PenPreset};
+use app_core::Document;
+use editor_state::PenPreset;
 use serde_json::{Value, json};
 
 /// 高価な JSON シリアライズ結果を再利用するためのキャッシュ。

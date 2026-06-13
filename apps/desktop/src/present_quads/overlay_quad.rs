@@ -291,7 +291,8 @@ fn push_koma_navigator(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_core::{CanvasViewTransform, KomaBounds};
+    use app_core::KomaBounds;
+    use editor_state::CanvasViewTransform;
     use ::geometry::{PagePoint, WindowRect};
     use canvas_geometry::KomaNavigatorEntry;
 

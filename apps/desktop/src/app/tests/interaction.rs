@@ -2,7 +2,8 @@
 
 use std::time::{Duration, Instant};
 
-use app_core::{ColorRgba8, DocumentCommand, SessionCommand, ToolKind};
+use app_core::DocumentCommand;
+use editor_state::{ColorRgba8, SessionCommand, ToolKind};
 use geometry::{CanvasViewportPoint, PagePoint, WindowPoint, WindowRect};
 use desktop_support::{FrameProfiler, StageStats, ValueStats};
 
@@ -17,7 +18,7 @@ fn canvas_position_maps_view_center_into_bitmap_bounds() {
         64,
         64,
         CanvasViewportPoint::new(320, 320),
-        app_core::CanvasViewTransform::default(),
+        editor_state::CanvasViewTransform::default(),
     );
 
     assert_eq!(position, Some(PagePoint::new(32, 32)));
@@ -1104,7 +1105,7 @@ fn lasso_preview_drag_marks_temp_overlay_dirty() {
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
     let _ = app.apply_session_command(&SessionCommand::SetActiveTool {
-        tool: app_core::ToolKind::LassoBucket,
+        tool: editor_state::ToolKind::LassoBucket,
     });
 
     // handle_canvas_pointer を直接呼んでパネルインタラクションをバイパス
