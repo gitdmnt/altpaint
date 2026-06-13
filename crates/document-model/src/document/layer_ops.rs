@@ -2,6 +2,11 @@
 //!
 //! 公開 command 境界の背後にある layer 操作・合成 helper をここへ集約し、
 //! ドキュメント本体を状態遷移の入口として読みやすく保つ。
+//!
+//! BL-080: レイヤーを変異する全経路は `Koma::with_layers_mut` (全面再合成) または
+//! `Koma::edit_layers_region` (領域再合成) の単一ミューテーション入口を通る。これらの
+//! アクセサが変異クロージャの実行後に `composite_cache` を自動再計算するため、
+//! 利用側に再計算を書かせず、再計算漏れを構造的に防止する。
 
 use crate::KomaId;
 use geometry::{ClampToCanvasBounds, MergeInSpace, PageDirtyRect};
@@ -24,6 +29,32 @@ fn local_dirty_to_page_dirty(
     .clamp_to_canvas_bounds(page_width.max(1), page_height.max(1))
 }
 
+impl Koma {
+    /// レイヤーを変異する単一ミューテーション入口 (全面再合成)。
+    ///
+    /// `f` でレイヤー列・合成モード・可視状態などを変異した後、必ず `composite_cache` を
+    /// 全面再計算する。レイヤー枚数や合成構成が変わる操作はこちらを使う。
+    pub fn with_layers_mut<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        let result = f(self);
+        self.composite_cache = composite_koma_bitmap(self);
+        result
+    }
+
+    /// レイヤーを変異する単一ミューテーション入口 (領域再合成)。
+    ///
+    /// `f` が返したコマローカル dirty 領域に限って `composite_cache` を再計算し、その
+    /// dirty 領域をそのまま返す。`f` が `None` を返した場合は再合成しない。画素差分のみを
+    /// 書き換えるストローク等はこちらを使う。
+    pub fn edit_layers_region(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> Option<PageDirtyRect>,
+    ) -> Option<PageDirtyRect> {
+        let dirty = f(self)?;
+        composite_koma_bitmap_region(self, dirty);
+        Some(dirty)
+    }
+}
+
 impl Document {
     pub fn apply_bitmap_edits_to_active_layer(
         &mut self,
@@ -34,19 +65,15 @@ impl Document {
         }
         let koma_bounds = self.active_koma_bounds()?;
         let (page_width, page_height) = self.active_page_dimensions();
-        if let Some(koma) = self.active_koma_mut() {
-            ensure_koma_layers(koma);
-            let dirty = apply_bitmap_edits(koma, edits)?;
-            composite_koma_bitmap_region(koma, dirty);
-            return Some(local_dirty_to_page_dirty(
-                dirty,
-                koma_bounds,
-                page_width,
-                page_height,
-            ));
-        }
-
-        None
+        let koma = self.active_koma_mut()?;
+        ensure_koma_layers(koma);
+        let dirty = koma.edit_layers_region(|koma| apply_bitmap_edits(koma, edits))?;
+        Some(local_dirty_to_page_dirty(
+            dirty,
+            koma_bounds,
+            page_width,
+            page_height,
+        ))
     }
 
     /// 指定 `KomaId` のページ・コマインデックスを返す。
@@ -105,16 +132,17 @@ impl Document {
             (page.width, page.height)
         };
         let koma = &mut self.work.pages[page_idx].komas[koma_idx];
-        if let Some(layer) = koma.layers.get_mut(layer_index) {
-            write_bitmap_region(&mut layer.bitmap, x, y, bitmap);
-        }
-        let dirty = PageDirtyRect {
-            x,
-            y,
-            width: bitmap.width,
-            height: bitmap.height,
-        };
-        composite_koma_bitmap_region(koma, dirty);
+        let dirty = koma.edit_layers_region(|koma| {
+            if let Some(layer) = koma.layers.get_mut(layer_index) {
+                write_bitmap_region(&mut layer.bitmap, x, y, bitmap);
+            }
+            Some(PageDirtyRect {
+                x,
+                y,
+                width: bitmap.width,
+                height: bitmap.height,
+            })
+        })?;
         Some(local_dirty_to_page_dirty(
             dirty,
             koma_bounds,
@@ -129,12 +157,12 @@ impl Document {
             return;
         };
         let koma = &mut self.work.pages[page_idx].komas[koma_idx];
-        if let Some(layer) = koma.layers.get_mut(layer_index) {
-            let (w, h) = (layer.bitmap.width, layer.bitmap.height);
-            layer.bitmap = CanvasBitmap::transparent(w, h);
-        }
-        let new_bitmap = composite_koma_bitmap(&self.work.pages[page_idx].komas[koma_idx]);
-        self.work.pages[page_idx].komas[koma_idx].composite_cache = new_bitmap;
+        koma.with_layers_mut(|koma| {
+            if let Some(layer) = koma.layers.get_mut(layer_index) {
+                let (w, h) = (layer.bitmap.width, layer.bitmap.height);
+                layer.bitmap = CanvasBitmap::transparent(w, h);
+            }
+        });
     }
 
     /// 指定 koma の指定 layer に `BitmapEdit` を適用し、コマ合成も更新する。
@@ -157,10 +185,7 @@ impl Document {
         // layer_index override: set active_layer_index temporarily
         let saved_index = koma.active_layer_index;
         koma.active_layer_index = layer_index.min(koma.layers.len().saturating_sub(1));
-        let dirty = apply_bitmap_edits(koma, edits);
-        if let Some(dirty) = dirty {
-            composite_koma_bitmap_region(koma, dirty);
-        }
+        let dirty = koma.edit_layers_region(|koma| apply_bitmap_edits(koma, edits));
         koma.active_layer_index = saved_index;
         let dirty = dirty?;
         Some(local_dirty_to_page_dirty(dirty, koma_bounds, page_width, page_height))
@@ -169,16 +194,18 @@ impl Document {
     pub fn add_raster_layer(&mut self) {
         if let Some(koma) = self.active_koma_mut() {
             ensure_koma_layers(koma);
-            koma.created_layer_count = koma.created_layer_count.saturating_add(1);
-            let next_index = koma.created_layer_count;
-            let (width, height) = (koma.composite_cache.width, koma.composite_cache.height);
-            koma.layers.push(RasterLayer::transparent(
-                LayerNodeId(next_index),
-                format!("Layer {next_index}"),
-                width,
-                height,
-            ));
-            koma.active_layer_index = koma.layers.len().saturating_sub(1);
+            koma.with_layers_mut(|koma| {
+                koma.created_layer_count = koma.created_layer_count.saturating_add(1);
+                let next_index = koma.created_layer_count;
+                let (width, height) = (koma.composite_cache.width, koma.composite_cache.height);
+                koma.layers.push(RasterLayer::transparent(
+                    LayerNodeId(next_index),
+                    format!("Layer {next_index}"),
+                    width,
+                    height,
+                ));
+                koma.active_layer_index = koma.layers.len().saturating_sub(1);
+            });
         }
     }
 
@@ -188,11 +215,12 @@ impl Document {
             if koma.layers.len() <= 1 {
                 return;
             }
-            koma.layers.remove(koma.active_layer_index);
-            koma.active_layer_index = koma
-                .active_layer_index
-                .min(koma.layers.len().saturating_sub(1));
-            koma.composite_cache = composite_koma_bitmap(koma);
+            koma.with_layers_mut(|koma| {
+                koma.layers.remove(koma.active_layer_index);
+                koma.active_layer_index = koma
+                    .active_layer_index
+                    .min(koma.layers.len().saturating_sub(1));
+            });
         }
     }
 
@@ -226,17 +254,17 @@ impl Document {
                 return;
             }
 
-            let moved = koma.layers.remove(from_index);
-            koma.layers.insert(to_index, moved);
+            koma.with_layers_mut(|koma| {
+                let moved = koma.layers.remove(from_index);
+                koma.layers.insert(to_index, moved);
 
-            koma.active_layer_index = match koma.active_layer_index {
-                index if index == from_index => to_index,
-                index if from_index < index && index <= to_index => index.saturating_sub(1),
-                index if to_index <= index && index < from_index => index + 1,
-                index => index,
-            };
-
-            koma.composite_cache = composite_koma_bitmap(koma);
+                koma.active_layer_index = match koma.active_layer_index {
+                    index if index == from_index => to_index,
+                    index if from_index < index && index <= to_index => index.saturating_sub(1),
+                    index if to_index <= index && index < from_index => index + 1,
+                    index => index,
+                };
+            });
         }
     }
 
@@ -250,9 +278,12 @@ impl Document {
     pub fn cycle_active_layer_blend_mode(&mut self) {
         if let Some(koma) = self.active_koma_mut() {
             ensure_koma_layers(koma);
-            if let Some(layer) = koma.layers.get_mut(koma.active_layer_index) {
-                layer.blend_mode = layer.blend_mode.next();
-                koma.composite_cache = composite_koma_bitmap(koma);
+            let active_index = koma.active_layer_index;
+            if koma.layers.get(active_index).is_some() {
+                koma.with_layers_mut(|koma| {
+                    let layer = &mut koma.layers[active_index];
+                    layer.blend_mode = layer.blend_mode.next();
+                });
             }
         }
     }
@@ -260,9 +291,11 @@ impl Document {
     pub fn set_active_layer_blend_mode(&mut self, mode: BlendMode) {
         if let Some(koma) = self.active_koma_mut() {
             ensure_koma_layers(koma);
-            if let Some(layer) = koma.layers.get_mut(koma.active_layer_index) {
-                layer.blend_mode = mode;
-                koma.composite_cache = composite_koma_bitmap(koma);
+            let active_index = koma.active_layer_index;
+            if koma.layers.get(active_index).is_some() {
+                koma.with_layers_mut(|koma| {
+                    koma.layers[active_index].blend_mode = mode;
+                });
             }
         }
     }
@@ -270,9 +303,12 @@ impl Document {
     pub fn toggle_active_layer_visibility(&mut self) {
         if let Some(koma) = self.active_koma_mut() {
             ensure_koma_layers(koma);
-            if let Some(layer) = koma.layers.get_mut(koma.active_layer_index) {
-                layer.visible = !layer.visible;
-                koma.composite_cache = composite_koma_bitmap(koma);
+            let active_index = koma.active_layer_index;
+            if koma.layers.get(active_index).is_some() {
+                koma.with_layers_mut(|koma| {
+                    let layer = &mut koma.layers[active_index];
+                    layer.visible = !layer.visible;
+                });
             }
         }
     }
@@ -280,18 +316,18 @@ impl Document {
 }
 
 pub(super) fn ensure_koma_layers(koma: &mut Koma) {
-    let mut repaired = false;
     if koma.layers.is_empty() {
-        koma.layers.push(RasterLayer::background(
-            LayerNodeId(1),
-            "Layer 1".to_string(),
-            koma.composite_cache.width,
-            koma.composite_cache.height,
-        ));
-        if let Some(layer) = koma.layers.first_mut() {
-            layer.bitmap = koma.composite_cache.clone();
-        }
-        repaired = true;
+        koma.with_layers_mut(|koma| {
+            koma.layers.push(RasterLayer::background(
+                LayerNodeId(1),
+                "Layer 1".to_string(),
+                koma.composite_cache.width,
+                koma.composite_cache.height,
+            ));
+            if let Some(layer) = koma.layers.first_mut() {
+                layer.bitmap = koma.composite_cache.clone();
+            }
+        });
     }
     koma.created_layer_count = koma
         .created_layer_count
@@ -300,9 +336,6 @@ pub(super) fn ensure_koma_layers(koma: &mut Koma) {
     koma.active_layer_index = koma
         .active_layer_index
         .min(koma.layers.len().saturating_sub(1));
-    if repaired {
-        koma.composite_cache = composite_koma_bitmap(koma);
-    }
 }
 
 

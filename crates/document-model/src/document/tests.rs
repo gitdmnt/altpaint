@@ -600,6 +600,55 @@ fn toggle_active_layer_visibility_reveals_underlying_layer() {
     );
 }
 
+/// BL-080: レイヤー変異の単一入口 `with_layers_mut` は、変異後に composite_cache を
+/// 自動で再計算する。利用側が手動再計算を書かなくても合成が同期する (合成漏れの構造的防止)。
+#[test]
+fn with_layers_mut_recomputes_composite_cache_after_arbitrary_mutation() {
+    let mut koma = Koma::new_blank(KomaId(1), 4, 4);
+    // 透明レイヤーを 1 枚追加し、その 1 画素だけ赤で塗る。手動再計算は一切呼ばない。
+    koma.with_layers_mut(|koma| {
+        let mut overlay = koma.layers[0].clone();
+        overlay.id = LayerNodeId(2);
+        overlay.name = "overlay".to_string();
+        overlay.bitmap = CanvasBitmap::transparent(4, 4);
+        let _ = overlay.bitmap.set_pixel_rgba(1, 1, [255, 0, 0, 255]);
+        koma.layers.push(overlay);
+        koma.active_layer_index = 1;
+    });
+
+    let index = (koma.composite_cache.width + 1) * 4;
+    assert_eq!(&koma.composite_cache.pixels[index..index + 4], &[255, 0, 0, 255]);
+}
+
+/// BL-080: 領域単位の単一入口 `edit_layers_region` は、変異クロージャが返す dirty 領域に
+/// 限って composite_cache を再計算し、その dirty 領域 (コマローカル) を返す。
+#[test]
+fn edit_layers_region_recomputes_only_returned_dirty_region() {
+    let mut koma = Koma::new_blank(KomaId(1), 4, 4);
+    let dirty = koma.edit_layers_region(|koma| {
+        let layer = &mut koma.layers[0];
+        let _ = layer.bitmap.set_pixel_rgba(2, 3, [0, 0, 0, 255]);
+        Some(PageDirtyRect {
+            x: 2,
+            y: 3,
+            width: 1,
+            height: 1,
+        })
+    });
+
+    assert_eq!(
+        dirty,
+        Some(PageDirtyRect {
+            x: 2,
+            y: 3,
+            width: 1,
+            height: 1,
+        })
+    );
+    let index = (3 * koma.composite_cache.width + 2) * 4;
+    assert_eq!(&koma.composite_cache.pixels[index..index + 4], &[0, 0, 0, 255]);
+}
+
 #[test]
 fn create_koma_command_adds_rectangular_koma_without_relayout() {
     let mut document = Document::new(320, 240);

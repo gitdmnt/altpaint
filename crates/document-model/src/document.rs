@@ -7,7 +7,7 @@ use raster::{BlendMode, RgbaBitmap as CanvasBitmap};
 
 mod layer_ops;
 
-use self::layer_ops::{composite_koma_bitmap, ensure_koma_layers};
+use self::layer_ops::ensure_koma_layers;
 
 pub const DEFAULT_PAGE_WIDTH: usize = 2894;
 pub const DEFAULT_PAGE_HEIGHT: usize = 4093;
@@ -745,13 +745,14 @@ fn resize_koma_to_bounds(koma: &mut Koma, width: usize, height: usize) {
     }
 
     ensure_koma_layers(koma);
-    for layer in &mut koma.layers {
-        layer.bitmap = resize_bitmap_nearest(&layer.bitmap, width, height);
-        if let Some(mask) = layer.mask.as_mut() {
-            *mask = resize_mask_nearest(mask, width, height);
+    koma.with_layers_mut(|koma| {
+        for layer in &mut koma.layers {
+            layer.bitmap = resize_bitmap_nearest(&layer.bitmap, width, height);
+            if let Some(mask) = layer.mask.as_mut() {
+                *mask = resize_mask_nearest(mask, width, height);
+            }
         }
-    }
-    koma.composite_cache = composite_koma_bitmap(koma);
+    });
 }
 
 fn resize_bitmap_nearest(bitmap: &CanvasBitmap, width: usize, height: usize) -> CanvasBitmap {
