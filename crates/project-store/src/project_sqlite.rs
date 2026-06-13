@@ -119,8 +119,8 @@ pub struct ProjectManifest {
 /// project ファイルに永続化する作品コンテンツ (Work) メタデータ。
 ///
 /// BL-079 の保存境界分離により、エディタの一過性編集状態 (`EditorSession`:
-/// ツール/色/ペン/ビュー) はここには含めず、session 永続化 (desktop-support
-/// `DesktopSessionState`) が扱う。本レコードは作品識別子・タイトルとアクティブ
+/// ツール/色/ペン/ビュー) はここには含めず、desktop の session 永続化
+/// (`DesktopSessionState`) が扱う。本レコードは作品識別子・タイトルとアクティブ
 /// index のみを保持する。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SqliteDocumentRecord {

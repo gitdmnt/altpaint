@@ -5,7 +5,10 @@ use std::path::PathBuf;
 use panel_workspace::{
     WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState,
 };
-use desktop_support::{WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog};
+use crate::features::project::{DesktopSessionState, save_session_state};
+use crate::features::workspace::{
+    WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog,
+};
 use crate::platform::default_project_path;
 use frame_profiler::FrameProfiler;
 use editor_state::{ColorRgba8, EditorSession, SessionCommand};
@@ -348,9 +351,9 @@ fn session_layout_overrides_default_workspace_preset() {
     )
     .expect("preset save should succeed");
     let session_path = unique_test_path("preset-session");
-    desktop_support::save_session_state(
+    save_session_state(
         &session_path,
-        &desktop_support::DesktopSessionState {
+        &DesktopSessionState {
             last_project_path: None,
             ui_state: panel_workspace::WorkspaceUiState::new(
                 panel_workspace::WorkspaceLayout {

@@ -1,14 +1,15 @@
 //! デスクトップ向けの軽量セッション永続化を担当する。
 //!
 //! プロジェクト本体とは別に、最後に開いたファイルや UI レイアウトを保持する。
+//! B7 で `desktop-support::session` から features/project へ移管した。
 
 use std::path::{Path, PathBuf};
 
 use editor_state::EditorSession;
-use serde::{Deserialize, Serialize};
 use panel_workspace::WorkspaceUiState;
+use serde::{Deserialize, Serialize};
 
-use crate::json_store::{JsonLoad, load_json};
+use crate::features::json_store::{JsonLoad, load_json};
 
 /// デスクトップのセッション永続化状態。
 ///
@@ -17,17 +18,17 @@ use crate::json_store::{JsonLoad, load_json};
 /// ファイルから移されたエディタの一過性編集状態 (`EditorSession`: ツール/色/ペン/
 /// ビュー) を保持する。
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-pub struct DesktopSessionState {
+pub(crate) struct DesktopSessionState {
     #[serde(default)]
-    pub last_project_path: Option<PathBuf>,
+    pub(crate) last_project_path: Option<PathBuf>,
     #[serde(default)]
-    pub ui_state: WorkspaceUiState,
+    pub(crate) ui_state: WorkspaceUiState,
     /// エディタの一過性編集状態 (ツール/色/ペン/ビュー)。
     #[serde(default)]
-    pub editor_session: EditorSession,
+    pub(crate) editor_session: EditorSession,
 }
 
-pub fn load_session_state(path: impl AsRef<Path>) -> Option<DesktopSessionState> {
+pub(crate) fn load_session_state(path: impl AsRef<Path>) -> Option<DesktopSessionState> {
     match load_json::<DesktopSessionState>(path, "session") {
         JsonLoad::Loaded(state) => Some(state),
         // Missing は初回起動。Corrupt は load_json が診断を出力済みで、既定値
@@ -36,7 +37,7 @@ pub fn load_session_state(path: impl AsRef<Path>) -> Option<DesktopSessionState>
     }
 }
 
-pub fn save_session_state(
+pub(crate) fn save_session_state(
     path: impl AsRef<Path>,
     state: &DesktopSessionState,
 ) -> std::io::Result<()> {

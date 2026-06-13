@@ -3,6 +3,9 @@
 //! 破損ファイルを既定値で黙って上書きする事故を防ぐため、`Missing` と
 //! `Corrupt` を明示的に区別する。`Corrupt` の場合は呼び出し側が既定値で
 //! 動作しつつ、元ファイルを温存できる (この層は読み取りのみで書き込まない)。
+//!
+//! B7 で `desktop-support::json_store` から移管した。project / workspace feature が
+//! 共有する。
 
 use std::path::Path;
 
@@ -10,7 +13,7 @@ use serde::de::DeserializeOwned;
 
 /// JSON 設定ファイルのロード結果。
 #[derive(Debug, PartialEq, Eq)]
-pub enum JsonLoad<T> {
+pub(crate) enum JsonLoad<T> {
     /// 正常に読み込めた。
     Loaded(T),
     /// ファイルが存在しない (初回起動など)。
@@ -23,7 +26,7 @@ pub enum JsonLoad<T> {
 ///
 /// `Corrupt` の場合は `label` を含む診断を標準エラーへ出力する
 /// (破損ファイルを黙って既定値で上書きしないため、呼び出し側が温存を選べる)。
-pub fn load_json<T: DeserializeOwned>(path: impl AsRef<Path>, label: &str) -> JsonLoad<T> {
+pub(crate) fn load_json<T: DeserializeOwned>(path: impl AsRef<Path>, label: &str) -> JsonLoad<T> {
     let path = path.as_ref();
     let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,

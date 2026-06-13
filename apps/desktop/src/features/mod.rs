@@ -6,6 +6,7 @@
 //! feature 構造の完成は B7-part2 で行う。
 
 pub(crate) mod export;
+mod json_store;
 pub(crate) mod project;
 pub(crate) mod status_bar;
 pub(crate) mod tools;

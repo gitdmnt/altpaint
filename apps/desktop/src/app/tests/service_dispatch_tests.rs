@@ -1,6 +1,8 @@
 //! service request から desktop host service handler へ届く経路を検証する。
 
-use desktop_support::{WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog};
+use crate::features::workspace::{
+    WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog,
+};
 use panel_runtime::{HostRequest, ServiceRequest, services::names};
 use panel_workspace::WorkspaceUiState;
 
@@ -64,7 +66,7 @@ fn request_service_save_workspace_preset_persists_catalog() {
         ))
     );
 
-    let reloaded = desktop_support::load_workspace_preset_catalog(&preset_path, app.default_workspace_preset_catalog());
+    let reloaded = crate::features::workspace::load_workspace_preset_catalog(&preset_path, app.default_workspace_preset_catalog());
     assert!(reloaded.presets.iter().any(|preset| preset.id == "review"));
 }
 

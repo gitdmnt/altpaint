@@ -2,9 +2,8 @@
 
 use serde_json::{Map, Value, json};
 
-use desktop_support::{
-    default_canvas_size_presets, load_canvas_size_presets, load_workspace_preset_catalog,
-};
+use crate::features::project::{default_canvas_size_presets, load_canvas_size_presets};
+use crate::features::workspace::load_workspace_preset_catalog;
 use panel_runtime::services::names::{config_keys, panel_ids};
 
 use crate::platform::default_canvas_size_preset_path;

@@ -1,24 +1,28 @@
+//! 新規ドキュメント作成用のキャンバスサイズプリセット (R32)。
+//!
+//! B7 で `desktop-support::canvas_size_presets` から features/project へ移管した。
+
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::json_store::{JsonLoad, load_json};
+use crate::features::json_store::{JsonLoad, load_json};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CanvasSizePreset {
-    pub id: String,
-    pub label: String,
-    pub width: usize,
-    pub height: usize,
+pub(crate) struct CanvasSizePreset {
+    pub(crate) id: String,
+    pub(crate) label: String,
+    pub(crate) width: usize,
+    pub(crate) height: usize,
 }
 
 impl CanvasSizePreset {
-    pub fn size_string(&self) -> String {
+    pub(crate) fn size_string(&self) -> String {
         format!("{}x{}", self.width, self.height)
     }
 }
 
-pub fn default_canvas_size_presets() -> Vec<CanvasSizePreset> {
+pub(crate) fn default_canvas_size_presets() -> Vec<CanvasSizePreset> {
     vec![
         CanvasSizePreset {
             id: "a4-350dpi".to_string(),
@@ -47,7 +51,7 @@ pub fn default_canvas_size_presets() -> Vec<CanvasSizePreset> {
     ]
 }
 
-pub fn load_canvas_size_presets(path: impl AsRef<Path>) -> Vec<CanvasSizePreset> {
+pub(crate) fn load_canvas_size_presets(path: impl AsRef<Path>) -> Vec<CanvasSizePreset> {
     // Missing / Corrupt はいずれも既定値で動作する。Corrupt は load_json が
     // 診断を出力済みで、元ファイルはこの層では温存される (書き込まない)。
     match load_json::<Vec<CanvasSizePreset>>(path, "canvas size presets") {
@@ -56,7 +60,7 @@ pub fn load_canvas_size_presets(path: impl AsRef<Path>) -> Vec<CanvasSizePreset>
     }
 }
 
-pub fn save_canvas_size_presets(
+pub(crate) fn save_canvas_size_presets(
     path: impl AsRef<Path>,
     presets: &[CanvasSizePreset],
 ) -> std::io::Result<()> {

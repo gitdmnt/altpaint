@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use desktop_support::{WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog};
+use crate::features::workspace::{
+    WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog,
+};
 use panel_runtime::{ServiceRequest, services::names};
 
 use super::DesktopApp;

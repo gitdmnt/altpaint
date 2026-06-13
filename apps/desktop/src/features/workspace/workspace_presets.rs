@@ -1,28 +1,32 @@
+//! ワークスペースプリセットの永続化カタログ (BL-095)。
+//!
+//! B7 で `desktop-support::workspace_presets` から features/workspace へ移管した。
+
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
 use panel_workspace::WorkspaceUiState;
+use serde::{Deserialize, Serialize};
 
-use crate::json_store::{JsonLoad, load_json};
+use crate::features::json_store::{JsonLoad, load_json};
 
-pub const CURRENT_WORKSPACE_PRESET_FORMAT_VERSION: u32 = 1;
+pub(crate) const CURRENT_WORKSPACE_PRESET_FORMAT_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct WorkspacePreset {
-    pub id: String,
-    pub label: String,
+pub(crate) struct WorkspacePreset {
+    pub(crate) id: String,
+    pub(crate) label: String,
     #[serde(default)]
-    pub ui_state: WorkspaceUiState,
+    pub(crate) ui_state: WorkspaceUiState,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct WorkspacePresetCatalog {
+pub(crate) struct WorkspacePresetCatalog {
     #[serde(default = "default_workspace_preset_format_version")]
-    pub format_version: u32,
+    pub(crate) format_version: u32,
     #[serde(default)]
-    pub default_preset_id: String,
+    pub(crate) default_preset_id: String,
     #[serde(default)]
-    pub presets: Vec<WorkspacePreset>,
+    pub(crate) presets: Vec<WorkspacePreset>,
 }
 
 fn default_workspace_preset_format_version() -> u32 {
@@ -34,7 +38,7 @@ fn default_workspace_preset_format_version() -> u32 {
 /// Missing / Corrupt はいずれも `default_catalog` (呼び出し側が panel meta から構築) で
 /// 動作する。Corrupt は load_json が診断を出力済みで、元ファイルはこの層では温存される
 /// (書き込まない)。ビルトイン ID をこの層が知らないよう、既定カタログは引数で受け取る。
-pub fn load_workspace_preset_catalog(
+pub(crate) fn load_workspace_preset_catalog(
     path: impl AsRef<Path>,
     default_catalog: WorkspacePresetCatalog,
 ) -> WorkspacePresetCatalog {
@@ -49,7 +53,7 @@ pub fn load_workspace_preset_catalog(
     }
 }
 
-pub fn save_workspace_preset_catalog(
+pub(crate) fn save_workspace_preset_catalog(
     path: impl AsRef<Path>,
     catalog: &WorkspacePresetCatalog,
 ) -> std::io::Result<()> {

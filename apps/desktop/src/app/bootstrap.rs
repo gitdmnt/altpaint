@@ -3,10 +3,12 @@
 use std::path::{Path, PathBuf};
 
 use document_model::Document;
-use desktop_support::{
-    CURRENT_WORKSPACE_PRESET_FORMAT_VERSION, DesktopSessionState, WorkspacePreset,
-    WorkspacePresetCatalog, default_canvas_size_presets, load_session_state,
-    load_workspace_preset_catalog, save_canvas_size_presets, save_workspace_preset_catalog,
+use crate::features::project::{
+    DesktopSessionState, default_canvas_size_presets, load_session_state, save_canvas_size_presets,
+};
+use crate::features::workspace::{
+    CURRENT_WORKSPACE_PRESET_FORMAT_VERSION, WorkspacePreset, WorkspacePresetCatalog,
+    load_workspace_preset_catalog, save_workspace_preset_catalog,
 };
 use std::collections::BTreeMap;
 
@@ -227,8 +229,8 @@ fn panel_layout_defaults_from(
 
 /// panel-runtime の meta から同梱 default-floating プリセットカタログを構築する (BL-095)。
 ///
-/// `desktop_support::default_workspace_preset_catalog` のビルトイン ID ハードコードを
-/// 置換する。`preset` を宣言したパネルのみが既定プリセットに含まれ、宣言された
+/// 旧 `desktop_support` のビルトイン ID ハードコードを置換する。`preset` を宣言した
+/// パネルのみが既定プリセットに含まれ、宣言された
 /// anchor/position/size/visible で配置される。パネル登録順を保つ。
 fn default_workspace_preset_catalog_from(
     panel_runtime: &PanelRuntime,

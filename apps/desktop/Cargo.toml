@@ -19,7 +19,6 @@ geometry = { path = "../../crates/geometry" }
 raster = { path = "../../crates/raster" }
 gpu-paint = { path = "../../crates/gpu-paint" }
 paint-engine = { path = "../../crates/paint-engine" }
-desktop-support = { path = "../../crates/desktop-support" }
 frame-profiler = { path = "../../crates/frame-profiler" }
 panel-runtime = { path = "../../crates/panel-runtime" }
 keyboard-types = "0.7"
@@ -30,6 +29,7 @@ serde_json.workspace = true
 project-store = { path = "../../crates/project-store" }
 pen-io = { path = "../../crates/pen-io" }
 panel-workspace = { path = "../../crates/panel-workspace" }
+serde.workspace = true
 thiserror.workspace = true
 tinyfiledialogs.workspace = true
 wgpu.workspace = true

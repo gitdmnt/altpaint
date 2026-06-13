@@ -32,7 +32,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use document_model::{Document, KomaId};
 use geometry::{PageDirtyRect, PagePoint};
 use raster::RgbaBitmap;
-use desktop_support::WorkspacePresetCatalog;
+use crate::features::workspace::WorkspacePresetCatalog;
 use crate::platform::{DesktopDialogs, NativeDesktopDialogs, default_workspace_preset_path};
 use panel_runtime::PanelRuntime;
 use panel_workspace::PanelWorkspace;

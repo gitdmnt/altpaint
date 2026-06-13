@@ -10,8 +10,8 @@ use panel_workspace::{
 };
 use document_model::DocumentCommand;
 use editor_state::{ColorRgba8, SessionCommand, ToolKind};
-use desktop_support::{
-    WorkspacePreset, WorkspacePresetCatalog,
+use crate::features::workspace::{
+    WorkspacePreset, WorkspacePresetCatalog, load_workspace_preset_catalog,
     save_workspace_preset_catalog,
 };
 use frame_profiler::FrameProfiler;
@@ -426,7 +426,7 @@ fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
         Some("illustration")
     );
 
-    let saved = desktop_support::load_workspace_preset_catalog(&preset_path, app.default_workspace_preset_catalog());
+    let saved = load_workspace_preset_catalog(&preset_path, app.default_workspace_preset_catalog());
     assert_eq!(saved.default_preset_id, "illustration");
 
     let _ = std::fs::remove_file(preset_path);
@@ -523,7 +523,7 @@ fn execute_command_saves_current_workspace_preset_into_catalog() {
             .with_value("label", "Review"),
     ));
 
-    let saved = desktop_support::load_workspace_preset_catalog(&preset_path, app.default_workspace_preset_catalog());
+    let saved = load_workspace_preset_catalog(&preset_path, app.default_workspace_preset_catalog());
     let preset = saved
         .presets
         .iter()
@@ -552,7 +552,7 @@ fn execute_command_exports_workspace_preset_to_dialog_path() {
             .with_value("label", "Exported"),
     ));
 
-    let exported = desktop_support::load_workspace_preset_catalog(&export_path, app.default_workspace_preset_catalog());
+    let exported = load_workspace_preset_catalog(&export_path, app.default_workspace_preset_catalog());
     assert_eq!(exported.default_preset_id, "exported");
     assert_eq!(exported.presets.len(), 1);
     assert_eq!(exported.presets[0].label, "Exported");

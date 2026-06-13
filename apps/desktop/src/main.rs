@@ -30,7 +30,7 @@ fn main() -> Result<()> {
 /// 直近のセッションに保存された `last_project_path` があればそれを、無ければ
 /// 既定プロジェクトパスを返す。パス解決は `dirs` ベース (BL-113)。
 fn startup_project_path() -> std::path::PathBuf {
-    desktop_support::load_session_state(default_session_path())
+    crate::features::project::load_session_state(default_session_path())
         .and_then(|state| state.last_project_path)
         .unwrap_or_else(default_project_path)
 }
