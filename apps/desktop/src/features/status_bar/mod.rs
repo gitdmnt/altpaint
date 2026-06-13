@@ -8,6 +8,8 @@
 //! - スケール: 1.0 固定（HiDPI はスコープ外）
 //! - フォント: `system-ui` フォールバック
 
+mod snapshot_builder;
+
 use panel_runtime::html::{HtmlPanelView, RenderOutcome, vello, wgpu};
 #[cfg(test)]
 use panel_runtime::html::PanelGpuTarget;

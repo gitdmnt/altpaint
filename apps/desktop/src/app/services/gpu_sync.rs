@@ -3,7 +3,7 @@
 //! ストローク中は CPU bitmap を書き換えないため、プロジェクト保存前に GPU から読み戻して
 //! `Document` を最新化する必要がある。
 
-use super::DesktopApp;
+use crate::app::DesktopApp;
 
 impl DesktopApp {
     /// 全コマ・全レイヤーの GPU テクスチャを読み戻し、対応する CPU bitmap を上書きする。

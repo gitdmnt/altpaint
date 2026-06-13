@@ -81,13 +81,11 @@ impl DesktopApp {
                     Ok(Ok(())) => {}
                     Ok(Err(error)) => {
                         eprintln!("background job failed ({label}): {error}");
-                        self.io_state
-                            .dialogs
+                        self.dialogs
                             .show_error(&format!("{label} failed"), &error);
                     }
                     Err(_) => {
-                        self.io_state
-                            .dialogs
+                        self.dialogs
                             .show_error(&format!("{label} failed"), "background task panicked");
                     }
                 }

@@ -49,8 +49,7 @@ impl DesktopApp {
         else {
             let message = format!("workspace preset not found: {preset_id}");
             eprintln!("{message}");
-            self.io_state
-                .dialogs
+            self.dialogs
                 .show_error("Workspace load failed", &message);
             return false;
         };
@@ -66,7 +65,7 @@ impl DesktopApp {
         let preset_id = preset_id.trim();
         let label = label.trim();
         if preset_id.is_empty() || label.is_empty() {
-            self.io_state.dialogs.show_error(
+            self.dialogs.show_error(
                 "Workspace save failed",
                 "workspace preset id and label are required",
             );
@@ -94,13 +93,12 @@ impl DesktopApp {
         self.workspace.active_preset_id = preset_id.to_string();
         self.workspace.presets.default_preset_id = self.workspace.active_preset_id.clone();
         if let Err(error) = save_workspace_preset_catalog(
-            &self.io_state.workspace_preset_path,
+            &self.paths.workspace_preset_path,
             &self.workspace.presets,
         ) {
             let message = format!("failed to save workspace preset catalog: {error}");
             eprintln!("{message}");
-            self.io_state
-                .dialogs
+            self.dialogs
                 .show_error("Workspace save failed", &message);
             return false;
         }
@@ -114,13 +112,11 @@ impl DesktopApp {
 
     pub(crate) fn export_workspace_preset(&mut self, preset_id: &str, label: &str) -> bool {
         let suggested = self
-            .io_state
-            .workspace_preset_path
+            .paths.workspace_preset_path
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."))
             .join(format!("{preset_id}.altp-workspace.json"));
         let Some(path) = self
-            .io_state
             .dialogs
             .pick_save_workspace_preset_path(&suggested)
         else {
@@ -138,7 +134,7 @@ impl DesktopApp {
         let preset_id = preset_id.trim();
         let label = label.trim();
         if preset_id.is_empty() || label.is_empty() {
-            self.io_state.dialogs.show_error(
+            self.dialogs.show_error(
                 "Workspace export failed",
                 "workspace preset id and label are required",
             );
@@ -158,8 +154,7 @@ impl DesktopApp {
         if let Err(error) = save_workspace_preset_catalog(&path, &catalog) {
             let message = format!("failed to export workspace preset: {error}");
             eprintln!("{message}");
-            self.io_state
-                .dialogs
+            self.dialogs
                 .show_error("Workspace export failed", &message);
             return false;
         }

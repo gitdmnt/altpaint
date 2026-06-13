@@ -45,7 +45,7 @@ impl DesktopApp {
             .parent()
             .map(|_| pen_dir())
             .unwrap_or_else(pen_dir);
-        let Some(path) = self.io_state.dialogs.pick_open_pen_path(&suggested) else {
+        let Some(path) = self.dialogs.pick_open_pen_path(&suggested) else {
             return false;
         };
         self.import_pen_presets_from_path(path)
@@ -65,8 +65,7 @@ impl DesktopApp {
                     .map(|pen| pen.to_runtime_preset())
                     .collect::<Vec<_>>();
                 if self.document.session.merge_pen_presets(runtime_presets) == 0 {
-                    self.io_state
-                        .dialogs
+                    self.dialogs
                         .show_error("Pen import failed", "no importable pen presets were found");
                     return false;
                 }
@@ -80,8 +79,7 @@ impl DesktopApp {
             Err(error) => {
                 let message = format!("failed to import pen preset: {error}");
                 eprintln!("{message}");
-                self.io_state
-                    .dialogs
+                self.dialogs
                     .show_error("Pen import failed", &message);
                 false
             }

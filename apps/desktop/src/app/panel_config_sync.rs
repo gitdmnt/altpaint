@@ -111,7 +111,7 @@ impl DesktopApp {
     pub(crate) fn reload_workspace_presets(&mut self) -> bool {
         let default_catalog = self.default_workspace_preset_catalog();
         self.workspace.presets =
-            load_workspace_preset_catalog(&self.io_state.workspace_preset_path, default_catalog);
+            load_workspace_preset_catalog(&self.paths.workspace_preset_path, default_catalog);
         self.refresh_workspace_presets();
         self.request_panel_reconcile();
         self.mark_status_dirty();

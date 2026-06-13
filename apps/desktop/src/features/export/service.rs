@@ -26,8 +26,8 @@ impl DesktopApp {
         let path = match path {
             Some(p) => p,
             None => {
-                let current = self.io_state.project_path.with_extension("png");
-                match self.io_state.dialogs.pick_save_image_path(&current) {
+                let current = self.paths.project_path.with_extension("png");
+                match self.dialogs.pick_save_image_path(&current) {
                     Some(p) => p,
                     None => return false,
                 }

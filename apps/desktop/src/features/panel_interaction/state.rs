@@ -1,10 +1,17 @@
-//! パネル入力中継とホストアクション適用を集約する。
+//! パネル操作の幾何ステートマシン (D14): drag / resize / press。
+//!
+//! パネルの移動ドラッグ・リサイズドラッグ・ボタン押下の進行中状態と、
+//! ウィンドウ座標からのヒットテスト・矩形算出を所有する。ホストアクションの
+//! ルーティングは `app/host_request_router.rs` が担う。
+//!
+//! B7 で `app/panel_dispatch.rs` の幾何部を features/panel_interaction へ分離した。
 
 use geometry::{PanelSurfacePoint, WindowPoint, WindowRect};
-use panel_runtime::{HostRequest, PanelEvent};
+use panel_runtime::PanelEvent;
 use panel_workspace::ResizeHandle;
 
-use super::DesktopApp;
+use crate::app::DesktopApp;
+
 /// パネル移動ドラッグ中の被操作パネル情報を保持する。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PanelDragState {
@@ -53,7 +60,7 @@ impl DesktopApp {
         )
     }
 
-    pub(super) fn begin_panel_interaction(&mut self, point: WindowPoint) -> bool {
+    pub(crate) fn begin_panel_interaction(&mut self, point: WindowPoint) -> bool {
         self.panel_interaction.pending_panel_press = None;
 
         // Phase 11: リサイズハンドルを最優先で評価。タイトルバー上端 6px (= North handle) も
@@ -106,7 +113,7 @@ impl DesktopApp {
         true
     }
 
-    pub(super) fn drag_panel_interaction(&mut self, point: WindowPoint) -> bool {
+    pub(crate) fn drag_panel_interaction(&mut self, point: WindowPoint) -> bool {
         // Phase 11: リサイズが active なら先に処理する。
         if let Some(resize_state) = self.panel_interaction.active_panel_resize.clone() {
             return self.drag_resize_interaction(point, &resize_state);
@@ -189,130 +196,9 @@ impl DesktopApp {
         true
     }
 
-    pub(crate) fn activate_panel_control(&mut self, panel_id: &str, node_id: &str) -> bool {
-        self.dispatch_panel_event(PanelEvent::Activate {
-            panel_id: panel_id.to_string(),
-            node_id: node_id.to_string(),
-        })
-    }
-
-    pub(crate) fn dispatch_keyboard_shortcut(
-        &mut self,
-        shortcut: &str,
-        key: &str,
-        repeat: bool,
-    ) -> bool {
-        let runtime = self.panel_runtime.dispatch_keyboard(shortcut, key, repeat);
-        let handled = runtime.handled;
-        let mut changed = handled;
-        if runtime.config_changed {
-            self.persist_session_state();
-        }
-        changed |= !runtime.changed_panel_ids.is_empty();
-        for action in runtime.actions {
-            changed |= self.execute_host_request(action);
-        }
-        self.request_panel_reconcile_if_changed(changed)
-    }
-
-    pub(crate) fn execute_host_request(&mut self, request: HostRequest) -> bool {
-        // BL-065: バックグラウンドジョブの回収は prepare_present_frame に一本化する。
-        // host request ごとの二重回収は廃止 (毎フレーム冒頭で 1 回だけ回収される)。
-        //
-        // P3: パネル可視性/並び替えは translator 経由で workspace_layout サービス
-        // (`RequestService`) に一本化済み。専用 variant は廃止した。
-        match request {
-            HostRequest::DispatchDocumentCommand(command) => {
-                self.apply_document_command(&command)
-            }
-            HostRequest::DispatchSessionCommand(command) => self.apply_session_command(&command),
-            HostRequest::RequestService(request) => self.execute_service_request(request),
-        }
-    }
-
-    pub(super) fn dispatch_panel_event(&mut self, event: PanelEvent) -> bool {
-        self.dispatch_panel_event_tracking_actions(event).0
-    }
-
-    /// パネルイベントを dispatch し、`(changed, produced_action)` を返す。
-    /// `produced_action` は何らかの `HostRequest` が発行されたかを示す
-    /// (`activate_focused_panel_control` の戻り値判定に使う)。
-    fn dispatch_panel_event_tracking_actions(&mut self, event: PanelEvent) -> (bool, bool) {
-        let mut changed = false;
-
-        let mut needs_redraw = true;
-        let mut produced_action = false;
-        // Activate は focus を更新したうえで常にランタイムへ転送する。
-        if let PanelEvent::Activate { panel_id, node_id } = &event {
-            self.panel_workspace.focus_panel_node(panel_id, node_id);
-        }
-
-        // BL-097: config 変化検知は runtime の対象パネル単体比較 (`config_changed`) に
-        // 一本化する。desktop 側の全パネル map 二重比較は廃止。
-        // service 経由の config 変更 (`update_panel_config`) は変更箇所が自前で永続化する。
-        let runtime = self.panel_runtime.dispatch_event(&event);
-        if runtime.config_changed {
-            self.persist_session_state();
-        }
-        changed |= !runtime.changed_panel_ids.is_empty();
-        let actions = runtime.actions;
-
-        for action in actions {
-            produced_action = true;
-            needs_redraw |= self.execute_host_request(action);
-        }
-
-        let changed = changed || needs_redraw;
-        if changed {
-            self.request_panel_reconcile();
-        }
-        (changed, produced_action)
-    }
-
-    pub(super) fn handle_panel_pointer(&mut self, point: WindowPoint) -> bool {
-        let Some(event) = self.panel_event_from_window(point) else {
-            self.panel_interaction.pending_panel_press = None;
-            return false;
-        };
-        let should_dispatch = matches!(
-            (&self.panel_interaction.pending_panel_press, &event),
-            (
-                Some(PanelPressState { panel_id, node_id }),
-                PanelEvent::Activate {
-                    panel_id: released_panel_id,
-                    node_id: released_node_id,
-                }
-            ) if panel_id == released_panel_id && node_id == released_node_id
-        );
-        self.panel_interaction.pending_panel_press = None;
-        if !should_dispatch {
-            return false;
-        }
-        self.dispatch_panel_event(event)
-    }
-
-    pub(crate) fn focus_next_panel_control(&mut self) -> bool {
-        let changed = self.panel_workspace.focus_next();
-        self.request_panel_reconcile_if_changed(changed)
-    }
-
-    pub(crate) fn focus_previous_panel_control(&mut self) -> bool {
-        let changed = self.panel_workspace.focus_previous();
-        self.request_panel_reconcile_if_changed(changed)
-    }
-
-    /// フォーカス中のパネルコントロールを起動し、`HostRequest` が発行されたら `true` を返す。
-    pub(crate) fn activate_focused_panel_control(&mut self) -> bool {
-        let Some((panel_id, node_id)) = self.panel_workspace.activate_focused() else {
-            return false;
-        };
-        let event = PanelEvent::Activate { panel_id, node_id };
-        self.dispatch_panel_event_tracking_actions(event).1
-    }
-
     /// HTML パネル hit テーブルだけを参照する。Phase 9F で DSL surface 側の hit-test 経路は
     /// 削除済みのため、ここに来るのは HTML パネルのみ。
-    pub(super) fn panel_event_from_window(&self, point: WindowPoint) -> Option<PanelEvent> {
+    pub(crate) fn panel_event_from_window(&self, point: WindowPoint) -> Option<PanelEvent> {
         let (panel_id, node_id) = self.panel_workspace.panel_hit_at(point)?;
         Some(PanelEvent::Activate { panel_id, node_id })
     }
@@ -323,7 +209,7 @@ impl DesktopApp {
     }
 
     /// HTML パネルの move handle (タイトルバー) のみを確認する。
-    pub(super) fn panel_move_hit_from_window(&self, point: WindowPoint) -> Option<String> {
+    pub(crate) fn panel_move_hit_from_window(&self, point: WindowPoint) -> Option<String> {
         self.panel_workspace.panel_move_handle_at(point)
     }
 

@@ -10,7 +10,7 @@
 
 use panel_runtime::ServiceRequest;
 
-use super::DesktopApp;
+use crate::app::DesktopApp;
 
 /// feature が登録するサービスハンドラの型。
 ///

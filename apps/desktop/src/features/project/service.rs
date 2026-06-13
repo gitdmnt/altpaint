@@ -40,14 +40,13 @@ pub(crate) fn handle_project_service_request(
 
 impl DesktopApp {
     pub(crate) fn save_project_to_current_path(&mut self) -> bool {
-        self.enqueue_save_project(self.io_state.project_path.clone())
+        self.enqueue_save_project(self.paths.project_path.clone())
     }
 
     pub(crate) fn save_project_as(&mut self) -> bool {
         let Some(path) = self
-            .io_state
             .dialogs
-            .pick_save_project_path(&self.io_state.project_path)
+            .pick_save_project_path(&self.paths.project_path)
         else {
             return false;
         };
@@ -55,7 +54,7 @@ impl DesktopApp {
     }
 
     pub(crate) fn save_project_to_path(&mut self, path: PathBuf) -> bool {
-        self.io_state.project_path = normalize_project_path(path);
+        self.paths.project_path = normalize_project_path(path);
         self.mark_status_dirty();
         self.persist_session_state();
         self.save_project_to_current_path()
@@ -63,9 +62,8 @@ impl DesktopApp {
 
     pub(crate) fn open_project(&mut self) -> bool {
         let Some(path) = self
-            .io_state
             .dialogs
-            .pick_open_project_path(&self.io_state.project_path)
+            .pick_open_project_path(&self.paths.project_path)
         else {
             return false;
         };
@@ -76,7 +74,7 @@ impl DesktopApp {
         let path = normalize_project_path(path);
         match load_project_from_path(&path) {
             Ok(project) => {
-                self.io_state.project_path = path;
+                self.paths.project_path = path;
                 // BL-079: project ファイルは作品コンテンツのみを保持する。読込時は
                 // 現在のエディタセッション (ツール/色/ペン/ビュー) を温存し、作品
                 // データだけを差し替える。
@@ -104,7 +102,7 @@ impl DesktopApp {
             Err(error) => {
                 let message = format!("failed to load project: {error}");
                 eprintln!("{message}");
-                self.io_state.dialogs.show_error("Open failed", &message);
+                self.dialogs.show_error("Open failed", &message);
                 false
             }
         }

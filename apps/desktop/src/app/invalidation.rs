@@ -139,7 +139,7 @@ impl DesktopApp {
         self.paint.canvas_input.reset();
         self.koma_gesture.reset();
         self.invalidation.clear_pending();
-        self.panel_interaction = super::panel_dispatch::PanelInteractionState::default();
+        self.panel_interaction = crate::features::panel_interaction::PanelInteractionState::default();
         self.paint.hover_canvas_position = None;
     }
 

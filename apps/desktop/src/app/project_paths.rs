@@ -1,33 +1,31 @@
-//! プロジェクトパス・ダイアログ・セッション保存先など I/O 系状態をまとめる。
+//! プロジェクト/セッション/ワークスペースプリセットの保存先パス状態 (D12)。
+//!
+//! 旧 `DesktopIoState` からパス状態を分離した型。ダイアログポート (`dialogs`) は
+//! `DesktopApp` 直下のフィールドへ分離した (パス状態と依存ポートの混載解消)。
 
 use std::path::PathBuf;
 
 use crate::features::project::{DesktopSessionState, save_session_state};
 
-use crate::platform::DesktopDialogs;
-
 use super::DesktopApp;
 
-/// プロジェクト I/O とセッション永続化に関わる状態を保持する。
-pub(crate) struct DesktopIoState {
+/// プロジェクト I/O とセッション永続化に関わる保存先パスを保持する。
+pub(crate) struct ProjectPaths {
     pub(crate) project_path: PathBuf,
     pub(crate) session_path: PathBuf,
     pub(crate) workspace_preset_path: PathBuf,
-    pub(crate) dialogs: Box<dyn DesktopDialogs>,
 }
 
-impl DesktopIoState {
+impl ProjectPaths {
     pub(crate) fn new(
         project_path: PathBuf,
         session_path: PathBuf,
         workspace_preset_path: PathBuf,
-        dialogs: Box<dyn DesktopDialogs>,
     ) -> Self {
         Self {
             project_path,
             session_path,
             workspace_preset_path,
-            dialogs,
         }
     }
 }
@@ -35,7 +33,7 @@ impl DesktopIoState {
 impl DesktopApp {
     pub(crate) fn session_state(&self) -> DesktopSessionState {
         DesktopSessionState {
-            last_project_path: Some(self.io_state.project_path.clone()),
+            last_project_path: Some(self.paths.project_path.clone()),
             ui_state: panel_workspace::WorkspaceUiState::new(
                 self.panel_workspace.workspace_layout(),
                 self.panel_runtime.persistent_panel_configs(),
@@ -47,7 +45,7 @@ impl DesktopApp {
     }
 
     pub(crate) fn persist_session_state(&self) {
-        if let Err(error) = save_session_state(&self.io_state.session_path, &self.session_state()) {
+        if let Err(error) = save_session_state(&self.paths.session_path, &self.session_state()) {
             eprintln!("failed to persist desktop session: {error}");
         }
     }

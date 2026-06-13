@@ -209,7 +209,7 @@ fn normalized_shortcut_includes_active_modifiers() {
 #[test]
 fn builtin_shortcut_dispatches_save_project() {
     let mut event_loop = test_event_loop();
-    event_loop.app.io_state.project_path = std::env::temp_dir().join(format!(
+    event_loop.app.paths.project_path = std::env::temp_dir().join(format!(
         "altpaint-event-loop-save-shortcut-{}.altp.json",
         std::process::id()
     ));

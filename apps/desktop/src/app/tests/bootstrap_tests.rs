@@ -25,7 +25,7 @@ fn startup_restores_last_project_from_session_path() {
         workspace_preset_path: unique_test_path("bootstrap-workspace-presets"),
     });
 
-    assert_eq!(app.io_state.project_path, project_path);
+    assert_eq!(app.paths.project_path, project_path);
     assert_eq!(app.document.work.title, "Recovered Project");
 
     let _ = std::fs::remove_file(session_path);

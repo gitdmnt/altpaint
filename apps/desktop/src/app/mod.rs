@@ -9,11 +9,11 @@ pub(crate) mod cpu_canvas_snapshot;
 mod command_effects;
 mod command_router;
 pub(crate) mod cursor;
+mod host_request_router;
 mod input;
-mod io_state;
 mod panel_config_sync;
-mod panel_dispatch;
 mod present;
+mod project_paths;
 mod invalidation;
 mod services;
 mod canvas_state;
@@ -33,10 +33,10 @@ use panel_runtime::PanelRuntime;
 use panel_workspace::PanelWorkspace;
 
 pub(crate) use self::cpu_canvas_snapshot::CpuCanvasSnapshot;
-use self::io_state::DesktopIoState;
+use self::project_paths::ProjectPaths;
 #[cfg(test)]
-pub(crate) use self::panel_dispatch::PanelDragState;
-use self::panel_dispatch::PanelInteractionState;
+pub(crate) use crate::features::panel_interaction::PanelDragState;
+use crate::features::panel_interaction::PanelInteractionState;
 use self::invalidation::PresentFrameUpdate;
 use crate::features::koma::KomaGesture;
 use crate::features::paint::{EditHistory, PendingStroke};
@@ -101,7 +101,10 @@ pub(crate) struct DesktopApp {
     pub(crate) document: Document,
     pub(crate) panel_runtime: PanelRuntime,
     pub(crate) panel_workspace: PanelWorkspace,
-    pub(crate) io_state: DesktopIoState,
+    /// プロジェクト/セッション/ワークスペースプリセットの保存先パス (D12)。
+    pub(crate) paths: ProjectPaths,
+    /// ファイルダイアログの依存ポート (D12: パス状態から分離)。
+    pub(crate) dialogs: Box<dyn DesktopDialogs>,
     pub(crate) workspace: WorkspaceState,
     /// paint feature のサブ状態 (ペイント実行・履歴・CPU 表示キャッシュ)。
     pub(crate) paint: PaintState,
@@ -170,12 +173,12 @@ impl DesktopApp {
             document: bootstrap.document,
             panel_runtime: bootstrap.panel_runtime,
             panel_workspace: bootstrap.panel_workspace,
-            io_state: DesktopIoState::new(
+            paths: ProjectPaths::new(
                 bootstrap.project_path,
                 session_path,
                 workspace_preset_path,
-                dialogs,
             ),
+            dialogs,
             workspace: WorkspaceState {
                 presets: bootstrap.workspace_presets,
                 active_preset_id: bootstrap.active_workspace_preset_id,
@@ -191,7 +194,7 @@ impl DesktopApp {
             gpu: None,
         };
         app.refresh_cpu_canvas_snapshot();
-        app.ensure_workspace_presets_file(&app.io_state.workspace_preset_path);
+        app.ensure_workspace_presets_file(&app.paths.workspace_preset_path);
         app.ensure_canvas_size_presets_file();
         app.refresh_new_document_size_presets();
         app.refresh_workspace_presets();

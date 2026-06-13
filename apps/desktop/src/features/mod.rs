@@ -9,6 +9,7 @@ pub(crate) mod export;
 mod json_store;
 pub(crate) mod koma;
 pub(crate) mod paint;
+pub(crate) mod panel_interaction;
 pub(crate) mod project;
 pub(crate) mod snapshots;
 pub(crate) mod status_bar;
