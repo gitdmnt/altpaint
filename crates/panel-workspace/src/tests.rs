@@ -91,18 +91,22 @@ fn reconcile_applies_declared_layout_defaults() {
     assert!(panel_workspace.is_panel_visible("builtin.workspace-layout"));
 }
 
-/// Phase 4: HTML パネルの move handle (タイトルバー) を screen 座標で検索すると panel_id が返る。
+/// BL-096: `update_panel_geometry` は full_rect と chrome 高さから move handle を導出する。
+/// move handle (タイトルバー) を screen 座標で検索すると panel_id が返る。
 #[test]
 fn panel_move_handle_at_resolves_drag_handle_to_panel_id() {
     let mut panel_workspace = PanelWorkspace::new();
-    panel_workspace.update_panel_move_handle(
+    // full_rect の上端 24px が chrome (move handle)
+    panel_workspace.update_panel_geometry(
         "html.test",
         geometry::WindowRect {
             x: 100,
             y: 50,
             width: 280,
-            height: 24,
+            height: 240,
         },
+        24,
+        Vec::new(),
     );
 
     // ハンドル内
@@ -110,40 +114,43 @@ fn panel_move_handle_at_resolves_drag_handle_to_panel_id() {
         panel_workspace.panel_move_handle_at(geometry::WindowPoint::new(120, 60)),
         Some("html.test".to_string())
     );
-    // ハンドル外 (右下)
+    // ハンドル外 (chrome より下 = body)
     assert_eq!(panel_workspace.panel_move_handle_at(geometry::WindowPoint::new(120, 80)), None);
     // ハンドル外 (上端より上)
     assert_eq!(panel_workspace.panel_move_handle_at(geometry::WindowPoint::new(120, 49)), None);
 }
 
-/// Phase 4: `remove_panel_move_handle` で個別削除できる。
+/// BL-096: `remove_panel_geometry` で move handle も含めて個別削除できる。
 #[test]
-fn remove_panel_move_handle_clears_handle() {
+fn remove_panel_geometry_clears_move_handle() {
     let mut panel_workspace = PanelWorkspace::new();
-    panel_workspace.update_panel_move_handle(
+    panel_workspace.update_panel_geometry(
         "html.test",
         geometry::WindowRect {
             x: 0,
             y: 0,
             width: 100,
-            height: 24,
+            height: 100,
         },
+        24,
+        Vec::new(),
     );
     assert!(panel_workspace.panel_move_handle_at(geometry::WindowPoint::new(50, 10)).is_some());
 
-    panel_workspace.remove_panel_move_handle("html.test");
+    panel_workspace.remove_panel_geometry("html.test");
     assert!(panel_workspace.panel_move_handle_at(geometry::WindowPoint::new(50, 10)).is_none());
 }
 
-/// Phase 3: HTML パネル hit table を screen 座標で検索すると `(panel_id, node_id)` が返る。
+/// BL-096: hit 矩形は body 原点基準。full_rect (100,50) + chrome 24 → body 原点 (100, 74)。
+/// hit table を screen 座標で検索すると `(panel_id, node_id)` が返る。
 #[test]
 fn panel_hit_at_resolves_screen_coordinates_to_panel_event() {
     let mut panel_workspace = PanelWorkspace::new();
-    let screen_rect = geometry::WindowRect {
+    let full_rect = geometry::WindowRect {
         x: 100,
         y: 50,
         width: 280,
-        height: 240,
+        height: 264,
     };
     let hits = vec![
         (
@@ -165,16 +172,17 @@ fn panel_hit_at_resolves_screen_coordinates_to_panel_event() {
             },
         ),
     ];
-    panel_workspace.update_panel_hits("html.test", screen_rect, hits);
+    // chrome 24px → body 原点 (100, 74)
+    panel_workspace.update_panel_geometry("html.test", full_rect, 24, hits);
 
-    // panel-relative (10,20) → screen (110, 70)。範囲は (110..170, 70..100)
-    let inside_save = panel_workspace.panel_hit_at(geometry::WindowPoint::new(120, 80));
+    // body-relative (10,20) → screen (110, 94)。範囲は (110..170, 94..124)
+    let inside_save = panel_workspace.panel_hit_at(geometry::WindowPoint::new(120, 104));
     assert_eq!(
         inside_save,
         Some(("html.test".to_string(), "save_btn".to_string()))
     );
 
-    let inside_undo = panel_workspace.panel_hit_at(geometry::WindowPoint::new(190, 85));
+    let inside_undo = panel_workspace.panel_hit_at(geometry::WindowPoint::new(190, 109));
     assert_eq!(
         inside_undo,
         Some(("html.test".to_string(), "undo_btn".to_string()))
@@ -182,22 +190,25 @@ fn panel_hit_at_resolves_screen_coordinates_to_panel_event() {
 
     // パネル矩形外
     assert_eq!(panel_workspace.panel_hit_at(geometry::WindowPoint::new(50, 50)), None);
-    // パネル矩形内だが action 矩形外
+    // body 内だが action 矩形外
     assert_eq!(panel_workspace.panel_hit_at(geometry::WindowPoint::new(110, 200)), None);
+    // chrome 領域 (body より上) は hit しない
+    assert_eq!(panel_workspace.panel_hit_at(geometry::WindowPoint::new(120, 60)), None);
 }
 
-/// Phase 3: `remove_panel_hits` で hit 情報を消すと、その後の検索は None。
+/// BL-096: `remove_panel_geometry` で hit 情報を消すと、その後の検索は None。
 #[test]
-fn remove_panel_hits_clears_hits_for_panel() {
+fn remove_panel_geometry_clears_hits_for_panel() {
     let mut panel_workspace = PanelWorkspace::new();
-    panel_workspace.update_panel_hits(
+    panel_workspace.update_panel_geometry(
         "html.test",
         geometry::WindowRect {
             x: 0,
             y: 0,
             width: 100,
-            height: 100,
+            height: 124,
         },
+        0,
         vec![(
             "btn".to_string(),
             geometry::WindowRect {
@@ -210,8 +221,53 @@ fn remove_panel_hits_clears_hits_for_panel() {
     );
     assert!(panel_workspace.panel_hit_at(geometry::WindowPoint::new(20, 20)).is_some());
 
-    panel_workspace.remove_panel_hits("html.test");
+    panel_workspace.remove_panel_geometry("html.test");
     assert!(panel_workspace.panel_hit_at(geometry::WindowPoint::new(20, 20)).is_none());
+}
+
+/// BL-096: full_rect / move_handle_rect / body_rect / node_hits が原子的に揃う。
+/// 1 回の update で full rect 取得・move handle hit・body hit・resize hit がすべて整合する。
+#[test]
+fn update_panel_geometry_keeps_all_rects_consistent() {
+    let mut panel_workspace = PanelWorkspace::new();
+    let full_rect = geometry::WindowRect {
+        x: 200,
+        y: 100,
+        width: 300,
+        height: 200,
+    };
+    panel_workspace.update_panel_geometry(
+        "html.test",
+        full_rect,
+        24,
+        vec![(
+            "btn".to_string(),
+            geometry::WindowRect {
+                x: 10,
+                y: 10,
+                width: 50,
+                height: 20,
+            },
+        )],
+    );
+
+    // full_rect は与えた矩形そのもの
+    assert_eq!(panel_workspace.panel_full_rect("html.test"), Some(full_rect));
+    // chrome (上端 24px) は move handle
+    assert_eq!(
+        panel_workspace.panel_move_handle_at(geometry::WindowPoint::new(350, 110)),
+        Some("html.test".to_string())
+    );
+    // body 原点 (200, 124) 基準で hit (10,10) → screen (210, 134)
+    assert_eq!(
+        panel_workspace.panel_hit_at(geometry::WindowPoint::new(220, 140)),
+        Some(("html.test".to_string(), "btn".to_string()))
+    );
+    // resize hit は full_rect の角 (NW)
+    assert_eq!(
+        panel_workspace.panel_resize_hit_at(geometry::WindowPoint::new(202, 102)),
+        Some(("html.test".to_string(), ResizeHandle::NorthWest))
+    );
 }
 
 /// Phase 2: HTML パネル相当の workspace エントリは `set_panel_visibility` で切り替えられ、

@@ -189,11 +189,9 @@ impl DesktopApp {
         let (panel_ids, hidden_ids): (Vec<String>, Vec<String>) = all_panel_ids
             .into_iter()
             .partition(|id| self.panel_workspace.is_panel_visible(id));
-        // 不可視パネルの hit / move handle / full rect は掃除する
+        // 不可視パネルのジオメトリは掃除する
         for id in &hidden_ids {
-            self.panel_workspace.remove_panel_hits(id);
-            self.panel_workspace.remove_panel_move_handle(id);
-            self.panel_workspace.remove_panel_full_rect(id);
+            self.panel_workspace.remove_panel_geometry(id);
         }
         if panel_ids.is_empty() {
             return;
@@ -239,18 +237,6 @@ impl DesktopApp {
                 continue;
             };
             let panel_rect = panel_rects[index];
-            let body_screen_rect = geometry::WindowRect {
-                x: panel_rect.x,
-                y: panel_rect.y + chrome_h,
-                width: panel_rect.width,
-                height: panel_rect.height.saturating_sub(chrome_h),
-            };
-            let chrome_screen_rect = geometry::WindowRect {
-                x: panel_rect.x,
-                y: panel_rect.y,
-                width: panel_rect.width,
-                height: chrome_h,
-            };
             let hit_rects: Vec<(String, geometry::WindowRect)> = hits
                 .into_iter()
                 .filter_map(|hit| {
@@ -266,12 +252,9 @@ impl DesktopApp {
                     ))
                 })
                 .collect();
+            // chrome/body 分割は panel-workspace 側で full_rect から導出される (BL-096)。
             self.panel_workspace
-                .update_panel_hits(&panel_id, body_screen_rect, hit_rects);
-            self.panel_workspace
-                .update_panel_move_handle(&panel_id, chrome_screen_rect);
-            self.panel_workspace
-                .update_panel_full_rect(&panel_id, panel_rect);
+                .update_panel_geometry(&panel_id, panel_rect, chrome_h, hit_rects);
         }
     }
 }

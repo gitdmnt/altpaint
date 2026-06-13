@@ -226,7 +226,8 @@ fn builtin_shortcut_can_move_focus_backward() {
     let mut profiler = FrameProfiler::new();
     let _ = event_loop.app.prepare_present_frame(1280, 200, &mut profiler);
     // ADR 014 以降、focus は HTML hit table を辿るため事前に hit を 1 件 inject する。
-    event_loop.app.panel_workspace.update_panel_hits(
+    // chrome 0 で full_rect == body_rect とし、hit 矩形を body 原点基準で渡す (BL-096)。
+    event_loop.app.panel_workspace.update_panel_geometry(
         "builtin.app-actions",
         geometry::WindowRect {
             x: 100,
@@ -234,6 +235,7 @@ fn builtin_shortcut_can_move_focus_backward() {
             width: 200,
             height: 32,
         },
+        0,
         vec![(
             "app.save".to_string(),
             geometry::WindowRect {

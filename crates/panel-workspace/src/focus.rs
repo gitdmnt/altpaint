@@ -54,8 +54,8 @@ impl PanelWorkspace {
     /// HTML hit table をフラットな FocusTarget 列に変換する。
     fn focusable_targets(&self) -> Vec<FocusTarget> {
         let mut targets = Vec::new();
-        for (panel_id, map) in &self.panel_hits {
-            for hit in &map.hits {
+        for (panel_id, geometry) in &self.panel_geometries {
+            for hit in &geometry.node_hits {
                 targets.push(FocusTarget {
                     panel_id: panel_id.clone(),
                     node_id: hit.node_id.clone(),

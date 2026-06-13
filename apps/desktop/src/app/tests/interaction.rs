@@ -693,7 +693,8 @@ fn focus_refresh_does_not_trigger_ui_update() {
 
     // ADR 014 以降、focus は HTML hit table を辿る経路に統一されたため、
     // テストでは事前に hit を 1 件 inject して focus 対象を用意する。
-    app.panel_workspace.update_panel_hits(
+    // chrome 0 で full_rect == body_rect とし、hit 矩形を body 原点基準で渡す (BL-096)。
+    app.panel_workspace.update_panel_geometry(
         "builtin.app-actions",
         geometry::WindowRect {
             x: 100,
@@ -701,6 +702,7 @@ fn focus_refresh_does_not_trigger_ui_update() {
             width: 200,
             height: 32,
         },
+        0,
         vec![(
             "app.save".to_string(),
             geometry::WindowRect {
@@ -743,7 +745,7 @@ fn tool_change_updates_status_without_full_recompose() {
     assert_eq!(update.ui_panel_dirty_rect, None);
 }
 
-/// Phase 9F 以降は HTML panel hit-table を `update_panel_hits` で synthetic に
+/// Phase 9F 以降は HTML panel hit-table を `update_panel_geometry` で synthetic に
 /// 構築してテストする。
 #[test]
 fn panel_release_without_matching_press_does_not_activate_save() {
@@ -763,9 +765,11 @@ fn panel_release_without_matching_press_does_not_activate_save() {
         width: 64,
         height: 24,
     };
-    app.panel_workspace.update_panel_hits(
+    // chrome 0 で full_rect == body_rect とし、hit 矩形を body 原点基準で渡す (BL-096)。
+    app.panel_workspace.update_panel_geometry(
         "builtin.app-actions",
         panel_screen_rect,
+        0,
         vec![("app.save".to_string(), save_button_rect)],
     );
     let save_x = (panel_screen_rect.x + save_button_rect.x + save_button_rect.width / 2) as i32;
