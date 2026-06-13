@@ -756,8 +756,8 @@ ADR 018 B5 で旧 `app-core` を解体した後も、以下は維持したい。
 
 実装を読んだ結果、次は整理候補になる。
 
-1. tool 実行 backend と host runtime の安定境界の確立（`ToolDescriptor` 化 = B8 BL-134）
+（現時点で残る大きな候補なし）
 
-（旧候補「`panel-html-experiment` の正式名称化」は ADR 016 で、desktop の依存集中・座標系の生タプルは ADR 017 で、「`app_core::Panel` (コマ) と UI パネルの命名衝突の解消」は ADR 018 B1 の `Koma` 改名で、「`panel-api` が `document-model::DocumentCommand` / `editor-state::SessionCommand` を直接知る点」は ADR 018 B6 の `HostRequest` descriptor 化 + panel-api 解体 (C9) で完了済み。「`apply_paint_input` の CPU 差分計算と GPU dispatch の分離」は B8 の `PaintPlan`（BL-130）/ `PaintBackend`（Cpu/Gpu。BL-131）化で完了済み）
+（旧候補「`panel-html-experiment` の正式名称化」は ADR 016 で、desktop の依存集中・座標系の生タプルは ADR 017 で、「`app_core::Panel` (コマ) と UI パネルの命名衝突の解消」は ADR 018 B1 の `Koma` 改名で、「`panel-api` が `document-model::DocumentCommand` / `editor-state::SessionCommand` を直接知る点」は ADR 018 B6 の `HostRequest` descriptor 化 + panel-api 解体 (C9) で完了済み。「`apply_paint_input` の CPU 差分計算と GPU dispatch の分離」は B8 の `PaintPlan`（BL-130）/ `PaintBackend`（Cpu/Gpu。BL-131）化で完了済み。「tool 実行 backend と host runtime の安定境界の確立（`ToolDescriptor` 化）」は B8 BL-134 で完了済み = `editor-state::ToolDescriptor`（`gesture_kind` / `blend_mode` / `resolve_size` / `has_brush_preview` / `applies_stabilization`）が `ToolKind` のクローズド match を吸収し、paint-engine / desktop は記述子へ問い合わせる。Wasm ツールプラグイン化は本リファクタのスコープ外）
 
 ただし、これらは**今そうなっている**という意味ではない。現時点の正本は、上記 compile-time 依存と runtime flow である。

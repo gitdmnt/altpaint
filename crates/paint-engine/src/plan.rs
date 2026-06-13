@@ -11,7 +11,7 @@
 //!   計画では領域を確定させない。
 
 use document_model::Document;
-use editor_state::{ColorRgba8, StrokeMode};
+use editor_state::{ColorRgba8, StrokeMode, ToolDescriptor};
 use geometry::{KomaLocalPoint, PageDirtyRect};
 
 use crate::build_paint_context;
@@ -71,7 +71,7 @@ pub fn plan_paint(document: &Document, input: &PaintInput) -> Option<PaintPlan> 
                     stamps,
                     radius: context.resolved_size as f32 * 0.5,
                     color: context.color,
-                    mode: context.tool.stroke_mode(),
+                    mode: ToolDescriptor::for_kind(context.tool).blend_mode(),
                 },
                 dirty,
             })
@@ -85,7 +85,7 @@ pub fn plan_paint(document: &Document, input: &PaintInput) -> Option<PaintPlan> 
                     stamps,
                     radius: context.resolved_size as f32 * 0.5,
                     color: context.color,
-                    mode: context.tool.stroke_mode(),
+                    mode: ToolDescriptor::for_kind(context.tool).blend_mode(),
                 },
                 dirty,
             })

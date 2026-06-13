@@ -9,14 +9,11 @@ use crate::present_quads::{KomaNavigatorEntry, KomaNavigatorOverlay};
 
 impl DesktopApp {
     pub(super) fn brush_preview_size(&self) -> Option<u32> {
-        match self.document.session.active_tool() {
-            editor_state::ToolKind::Pen | editor_state::ToolKind::Eraser => {
-                Some(self.document.session.active_pen_size.max(1))
-            }
-            editor_state::ToolKind::Bucket
-            | editor_state::ToolKind::LassoBucket
-            | editor_state::ToolKind::KomaRect => None,
-        }
+        self.document
+            .session
+            .active_tool_descriptor()
+            .has_brush_preview()
+            .then(|| self.document.session.active_pen_size.max(1))
     }
 
     pub(crate) fn refresh_cpu_canvas_snapshot(&mut self) {

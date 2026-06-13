@@ -9,6 +9,7 @@
 
 pub mod command;
 pub mod session;
+pub mod tool_descriptor;
 pub mod view_policy;
 
 pub use command::SessionCommand;
@@ -16,3 +17,4 @@ pub use session::{
     CanvasViewTransform, ColorRgba8, EditorSession, PenPreset, PenRuntimeEngine, PenTipBitmap,
     StrokeMode, ToolDefinition, ToolKind, ToolSettingControl, ToolSettingDefinition,
 };
+pub use tool_descriptor::{GestureKind, SizePolicy, ToolDescriptor};

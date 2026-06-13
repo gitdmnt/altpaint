@@ -1,5 +1,5 @@
 use crate::painting::PaintPluginContext;
-use editor_state::ToolKind;
+use editor_state::{StrokeMode, ToolDescriptor};
 use raster::{BitmapComposite, BitmapCompositor, BlendMode, RgbaBitmap, composite_pixel};
 
 #[derive(Clone, Copy)]
@@ -44,21 +44,20 @@ pub(crate) fn fill_color(context: &PaintPluginContext<'_>) -> [u8; 4] {
 }
 
 pub(crate) fn stamp_color(context: &PaintPluginContext<'_>) -> [u8; 4] {
-    match context.tool {
-        ToolKind::Eraser if context.active_layer_is_background => [255, 255, 255, 255],
-        ToolKind::Eraser => [0, 0, 0, 255],
-        _ => context.color.to_rgba8(),
+    match ToolDescriptor::for_kind(context.tool).blend_mode() {
+        StrokeMode::Erase if context.active_layer_is_background => [255, 255, 255, 255],
+        StrokeMode::Erase => [0, 0, 0, 255],
+        StrokeMode::Paint => context.color.to_rgba8(),
     }
 }
 
 pub(crate) fn edit_composite(context: &PaintPluginContext<'_>) -> BitmapComposite {
-    match context.tool {
-        ToolKind::Pen => BitmapComposite::source_over(),
-        ToolKind::Eraser if context.active_layer_is_background => BitmapComposite::source_over(),
-        ToolKind::Eraser => BitmapComposite::custom(EraseComposite),
-        ToolKind::Bucket | ToolKind::LassoBucket | ToolKind::KomaRect => {
-            BitmapComposite::source_over()
+    match ToolDescriptor::for_kind(context.tool).blend_mode() {
+        // 背景レイヤーの消去は「白塗り」のため通常合成 (stamp_color が白を返す)。
+        StrokeMode::Erase if !context.active_layer_is_background => {
+            BitmapComposite::custom(EraseComposite)
         }
+        StrokeMode::Erase | StrokeMode::Paint => BitmapComposite::source_over(),
     }
 }
 

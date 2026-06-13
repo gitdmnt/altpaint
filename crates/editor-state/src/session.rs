@@ -7,6 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::SessionCommand;
+use crate::ToolDescriptor;
 use crate::view_policy;
 
 /// ホストと保存形式の間で共有する最小RGBA色。
@@ -480,6 +481,13 @@ impl EditorSession {
             .unwrap_or_default()
     }
 
+    /// アクティブツールの挙動記述子 (`ToolDescriptor`)。
+    ///
+    /// ジェスチャ種別・合成モード・サイズ解決の問い合わせ点 (BL-134)。
+    pub fn active_tool_descriptor(&self) -> ToolDescriptor {
+        ToolDescriptor::for_kind(self.active_tool())
+    }
+
     pub fn tool_definition(&self, tool_id: &str) -> Option<&ToolDefinition> {
         self.tool_catalog.iter().find(|tool| tool.id == tool_id)
     }
@@ -711,23 +719,15 @@ impl EditorSession {
     }
 
     /// 現在ツールと筆圧から実効ブラシサイズを決定する。
+    ///
+    /// サイズ解決方針は `ToolDescriptor` に集約済み (BL-134)。本メソッドは
+    /// セッション状態 (アクティブペンサイズ・プリセット) を記述子へ渡すだけ。
     pub fn brush_size_for_pressure(&self, pressure: f32) -> u32 {
-        let clamped_pressure = pressure.clamp(0.0, 1.0);
-        match self.active_tool() {
-            ToolKind::Eraser => self.active_pen_size.max(1),
-            ToolKind::Pen => {
-                let Some(preset) = self.active_pen_preset() else {
-                    return self.active_pen_size.max(1);
-                };
-                let base = self.active_pen_size.max(1);
-                if !preset.pressure_enabled {
-                    return base;
-                }
-                let scaled = (base as f32 * (0.2 + clamped_pressure * 0.8)).round() as u32;
-                scaled.max(1)
-            }
-            ToolKind::Bucket | ToolKind::LassoBucket | ToolKind::KomaRect => 1,
-        }
+        self.active_tool_descriptor().resolve_size(
+            self.active_pen_size,
+            self.active_pen_preset(),
+            pressure,
+        )
     }
 
     /// エディタセッションコマンド (ツール/色/ペン/ビュー) を適用する。

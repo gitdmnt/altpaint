@@ -1,5 +1,5 @@
 use crate::painting::PaintInput;
-use editor_state::ToolKind;
+use editor_state::{GestureKind, ToolDescriptor, ToolKind};
 use geometry::{KomaLocalPoint, PagePoint};
 
 use crate::CanvasInputState;
@@ -62,11 +62,11 @@ fn handle_pointer_down<F>(
 where
     F: FnMut(PagePoint) -> Option<KomaLocalPoint>,
 {
-    match active_tool {
-        ToolKind::Bucket => to_koma_local(point)
+    match ToolDescriptor::for_kind(active_tool).gesture_kind() {
+        GestureKind::FloodFill => to_koma_local(point)
             .map(|at| CanvasGestureUpdate::Paint(PaintInput::FloodFill { at }))
             .unwrap_or(CanvasGestureUpdate::None),
-        ToolKind::LassoBucket => {
+        GestureKind::LassoFill => {
             state.is_drawing = true;
             state.last_position = Some(point);
             state.last_smoothed_position = Some(point.into());
@@ -74,7 +74,7 @@ where
             state.lasso_points.push(point);
             CanvasGestureUpdate::LassoPreviewChanged
         }
-        ToolKind::Pen | ToolKind::Eraser => {
+        GestureKind::Stroke => {
             // Down では手ブレ補正を適用しない (補正は drag の平滑化でのみ働く)。
             state.is_drawing = true;
             state.last_position = Some(point);
@@ -84,7 +84,7 @@ where
                 .unwrap_or(CanvasGestureUpdate::None)
         }
         // コマ作成は desktop feature が別経路で処理する (BL-081)。
-        ToolKind::KomaRect => CanvasGestureUpdate::None,
+        GestureKind::KomaRect => CanvasGestureUpdate::None,
     }
 }
 
@@ -103,8 +103,8 @@ where
         return CanvasGestureUpdate::None;
     }
 
-    match active_tool {
-        ToolKind::LassoBucket => {
+    match ToolDescriptor::for_kind(active_tool).gesture_kind() {
+        GestureKind::LassoFill => {
             if state.lasso_points.last().copied() != Some(point) {
                 state.lasso_points.push(point);
                 state.last_position = Some(point);
@@ -113,7 +113,7 @@ where
                 CanvasGestureUpdate::None
             }
         }
-        ToolKind::Pen | ToolKind::Eraser => {
+        GestureKind::Stroke => {
             let next_position =
                 stabilized_canvas_position(state, point, active_tool, stabilization);
             let previous = state.last_position;
@@ -129,7 +129,7 @@ where
                 .unwrap_or(CanvasGestureUpdate::None)
         }
         // バケツは drag で何もしない。コマ作成は desktop feature が別経路で処理する (BL-081)。
-        ToolKind::Bucket | ToolKind::KomaRect => CanvasGestureUpdate::None,
+        GestureKind::FloodFill | GestureKind::KomaRect => CanvasGestureUpdate::None,
     }
 }
 
@@ -143,8 +143,8 @@ fn handle_pointer_up<F>(
 where
     F: FnMut(PagePoint) -> Option<KomaLocalPoint>,
 {
-    match active_tool {
-        ToolKind::LassoBucket => {
+    match ToolDescriptor::for_kind(active_tool).gesture_kind() {
+        GestureKind::LassoFill => {
             let update = if state.lasso_points.len() >= 3 {
                 state
                     .lasso_points
@@ -160,7 +160,7 @@ where
             state.reset();
             update
         }
-        ToolKind::Pen | ToolKind::Eraser => {
+        GestureKind::Stroke => {
             let previous = state.last_position;
             let update = if state.is_drawing && previous != Some(point) {
                 previous
@@ -176,7 +176,7 @@ where
             update
         }
         // バケツは up で何もしない。コマ作成は desktop feature が別経路で処理する (BL-081)。
-        ToolKind::Bucket | ToolKind::KomaRect => CanvasGestureUpdate::None,
+        GestureKind::FloodFill | GestureKind::KomaRect => CanvasGestureUpdate::None,
     }
 }
 
@@ -186,7 +186,7 @@ fn stabilized_canvas_position(
     active_tool: ToolKind,
     stabilization: u8,
 ) -> PagePoint {
-    if active_tool != ToolKind::Pen || stabilization == 0 {
+    if !ToolDescriptor::for_kind(active_tool).applies_stabilization() || stabilization == 0 {
         state.last_smoothed_position = Some(point.into());
         return point;
     }

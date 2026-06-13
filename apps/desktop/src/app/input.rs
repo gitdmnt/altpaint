@@ -4,7 +4,7 @@
 //! ランタイム側が UI 詳細を知らずに済むようにする。
 
 use document_model::DocumentCommand;
-use editor_state::ToolKind;
+use editor_state::GestureKind;
 use geometry::{PagePoint, WindowPoint, WindowRect};
 use paint_engine::{CanvasGestureUpdate, CanvasPointerAction, advance_pointer_gesture};
 
@@ -151,11 +151,12 @@ impl DesktopApp {
         };
 
         let active_tool = self.document.session.active_tool();
+        let tool = self.document.session.active_tool_descriptor();
         let active_koma_bounds = self.document.active_koma_bounds();
 
         // コマ作成 (KomaRect) は別経路で処理する (BL-081)。ジェスチャ進行中の
         // drag/up はアクティブコマ境界へクランプする (分離前の挙動を維持)。
-        if active_tool == ToolKind::KomaRect {
+        if tool.gesture_kind() == GestureKind::KomaRect {
             let page_point = if action != CanvasPointerAction::Down && self.koma_gesture.is_drawing {
                 active_koma_bounds
                     .and_then(|bounds| bounds.clamp_canvas_point(page_point))
@@ -207,7 +208,7 @@ impl DesktopApp {
                 if action == CanvasPointerAction::Up {
                     self.commit_stroke_to_history();
                 }
-                if active_tool == ToolKind::LassoBucket
+                if tool.gesture_kind() == GestureKind::LassoFill
                     && action == CanvasPointerAction::Up
                     && let Some(layout) = self.layout.as_ref()
                 {
@@ -291,9 +292,10 @@ impl DesktopApp {
 
     fn hover_canvas_position_from_window(&self, point: WindowPoint) -> Option<PagePoint> {
         let position = self.canvas_position_from_window(point)?;
-        match self.document.session.active_tool() {
-            ToolKind::KomaRect => Some(position),
-            ToolKind::Pen | ToolKind::Eraser | ToolKind::Bucket | ToolKind::LassoBucket => self
+        // コマ作成は生のページ座標を使う。ペイント系はアクティブコマ内のみホバー有効。
+        match self.document.session.active_tool_descriptor().gesture_kind() {
+            GestureKind::KomaRect => Some(position),
+            GestureKind::Stroke | GestureKind::FloodFill | GestureKind::LassoFill => self
                 .page_position_in_active_panel(position)
                 .map(|_| position),
         }
