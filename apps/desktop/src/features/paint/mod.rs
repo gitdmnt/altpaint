@@ -10,10 +10,12 @@
 
 mod execute;
 mod history;
+mod history_service;
 mod preview;
 
 pub(crate) use execute::PendingStroke;
 pub(crate) use history::{BitmapPatch, EditHistory, GpuRegionPatch, PaintPatch};
+pub(crate) use history_service::handle_history_service_request;
 pub(crate) use preview::brush_preview_dirty_rect;
 
 use crate::app::DesktopApp;

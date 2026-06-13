@@ -5,7 +5,7 @@
 
 use panel_runtime::{ServiceRequest, services::names};
 
-use crate::features::paint::{BitmapPatch, GpuRegionPatch, PaintPatch};
+use super::{BitmapPatch, GpuRegionPatch, PaintPatch};
 use crate::app::DesktopApp;
 
 /// history service request を処理する。

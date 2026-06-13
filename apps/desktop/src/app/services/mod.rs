@@ -6,8 +6,9 @@
 //!
 //! ここに残るのは feature 横断の補助処理:
 //! - `gpu_sync`: 保存前の GPU→CPU ビットマップ読み戻し
-//! - `history`: undo/redo の文書/GPU 復元 (paint feature の `EditHistory` を消費)
+//!
+//! undo/redo (`history.*`) のハンドラと文書/GPU 復元は paint feature
+//! (`features/paint/history_service.rs`) が所有する。
 
 mod gpu_sync;
-mod history;
 mod registry;
