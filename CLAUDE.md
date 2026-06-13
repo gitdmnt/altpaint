@@ -71,7 +71,7 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 
 **入力 → 描画**: OS入力 → `event_loop/pointer.rs` 正規化 → `app/input.rs` がキャンバスかパネルへ振り分け → `canvas-geometry::map_view_to_canvas_with_transform` が座標変換 → `paint_engine::gesture` が `PaintInput` を生成 → `paint_engine::context_builder` が `Document` からペイントコンテキストを解決 → `gpu-paint` の compute shader が GPU レイヤーテクスチャへ直接描画（ブラシ/塗りつぶし/合成）→ `wgpu_canvas.rs` が GPU へ提示
 
-**パネル**: `HtmlWasmPanel` が `panel.html` + `panel.css` をロード → `panel-wasm-host`（wasmtime）が Wasm を実行し DOM mutation host function で直接 DOM を書換え → `PanelRuntime` が host state を同期 → `PanelEvent`（Activate/Keyboard 等）/`HostAction` → `DesktopApp` が `DocumentCommand`/`SessionCommand` またはサイドエフェクトとして適用 → `panel-html::HtmlPanelView`（Blitz + vello）が GPU テクスチャに直描画 → `wgpu_canvas` が `panel_quads` レイヤーで合成。hit / move handle テーブルは `prepare_present_frame` が GPU 非依存で毎フレーム更新
+**パネル**: `HtmlWasmPanel` が `panel.html` + `panel.css` をロード → `panel-wasm-host`（wasmtime）が Wasm を実行し DOM mutation host function で直接 DOM を書換え → `PanelRuntime` が host state を同期 → `PanelEvent`（Activate/Keyboard 等）/`HostRequest`（`RequestDescriptor` ベース） → `DesktopApp` が translator registry 経由で `DocumentCommand`/`SessionCommand`/`ServiceRequest` またはサイドエフェクトとして適用 → `panel-html::HtmlPanelView`（Blitz + vello）が GPU テクスチャに直描画 → `wgpu_canvas` が `panel_quads` レイヤーで合成。hit / move handle テーブルは `prepare_present_frame` が GPU 非依存で毎フレーム更新
 
 ### 主要クレート
 
@@ -85,12 +85,11 @@ altpaint はデスクトップ向けデジタルペイントアプリ。Rust 202
 | `crates/paint-engine`                 | `PaintEngine`、ジェスチャーステートマシン、ビットマップ操作、`PaintInput`/`PaintPlugin`    |
 | `crates/gpu-paint`                    | `LayerTextureStore`、ブラシ/塗りつぶし/レイヤー合成の compute shader dispatch（`BrushPipeline`/`FillPipeline`/`CompositePipeline`） |
 | `crates/canvas-geometry`              | `CanvasViewGeometry` 単一経路（view↔page 座標写像 + `TextureQuad`）のキャンバス表示幾何     |
-| `crates/panel-runtime`                | パネルサブシステム facade。`PanelRuntime`/`HtmlWasmPanel`、Wasm ブリッジ、host state 同期、永続設定、同梱パネル loader、panel-api/panel-html の再公開 |
-| `crates/panel-html`                   | `HtmlPanelView`（Blitz HTML/CSS + parley + vello GPU 直描画、hit 矩形収集）               |
-| `crates/panel-workspace`              | パネルワークスペースレイアウト、フォーカス、ヒットテスト                                  |
-| `crates/panel-api`                    | パネル/ホスト間コントラクト（`PanelPlugin`、`PanelEvent`、`HostAction`）                  |
+| `crates/panel-runtime`                | パネルサブシステム facade。`PanelRuntime`/`HtmlWasmPanel`（具象保持）、Wasm ブリッジ、`HostStateRegistry`（revision キャッシュ）、translator registry、`HostRequest`/`PanelEvent`/`ServiceRequest` 契約型（旧 panel-api を C9 で吸収）、永続設定、同梱パネル loader、panel-html の最小面再公開 |
+| `crates/panel-html`                   | `HtmlPanelView`（Blitz HTML/CSS + parley + vello GPU 直描画、hit 矩形収集。責務別 4 モジュール分割） |
+| `crates/panel-workspace`              | パネルワークスペースレイアウト、フォーカス、ヒットテスト、`PanelGeometry` 1 map、`ResizeHandle`/`PanelMoveDirection`（旧 panel-api から C9 で移設） |
 | `crates/panel-wasm-host`              | wasmtime ベースの Wasm パネルランタイム + DOM mutation host functions                     |
-| `crates/panel-protocol`               | ホスト↔Wasm 共有 DTO                                                                      |
+| `crates/panel-protocol`               | ホスト↔Wasm 共有 DTO・ABI 定数・wire 名定数・`HostState`/`HostCallInput`/`HandlerEffects`（ローカル依存ゼロ、serde/serde_json のみ） |
 | `crates/panel-sdk` + `panel-macros`   | パネル作者向け SDK と proc-macro                                                          |
 | `crates/storage`                      | SQLite プロジェクト永続化、ペン/ツールカタログ                                            |
 | `crates/desktop-support`              | セッション、ダイアログ、パス、プロファイラー、キャンバスサイズプリセット                  |

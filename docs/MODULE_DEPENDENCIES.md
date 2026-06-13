@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、**2026-06-13 時点 (ADR 018 B5 完了) の実装コードを正本として**、workspace 内のクレートと主要モジュールの依存関係を整理するための文書である。
+この文書は、**2026-06-13 時点 (ADR 018 B6 完了) の実装コードを正本として**、workspace 内のクレートと主要モジュールの依存関係を整理するための文書である。
 
 主に次を明確にする。
 
@@ -22,11 +22,11 @@
 
 1. ドメインの中心は水平土台 4 クレート `geometry` / `raster` / `document-model` / `editor-state` である（ADR 018 B5 で旧 `app-core` を責務別に解体）。`document-model::Document`（作品コンテンツ）と `editor-state::EditorSession`（編集セッション）が状態の二大入口
 2. `apps/desktop`（package `altpaint-desktop`）がデスクトップ実行ホストである
-3. パネル系は `panel-api` / `panel-protocol` / `panel-wasm-host` / `panel-sdk` / `panel-html` / `panel-runtime` / `panel-workspace` に分散しているが、desktop からの入口は `panel-runtime` (facade) と `panel-workspace` (workspace 配置) の 2 系統に集約されている (ADR 017)
+3. パネル系は `panel-protocol` / `panel-wasm-host` / `panel-sdk` / `panel-html` / `panel-runtime` / `panel-workspace` に分散しているが、desktop からの入口は `panel-runtime` (facade) と `panel-workspace` (workspace 配置) の 2 系統に集約されている (ADR 017。ADR 018 B6 で旧 `panel-api` を解体し契約型を panel-runtime / panel-workspace / panel-protocol へ分配)
 
 ## workspace パッケージ一覧
 
-2026-06-13 時点 (ADR 018 B5 完了) の workspace package は次の通り（計 30 メンバー: 中核 18 + 組み込みパネル 12）。
+2026-06-13 時点 (ADR 018 B6 完了) の workspace package は次の通り（計 29 メンバー: 中核 17 + 組み込みパネル 12。B6 で `panel-api` を解体）。
 
 ### 中核クレート（水平土台）
 
@@ -44,8 +44,7 @@ ADR 018 B5 で旧 `app-core` を責務別の 4 クレートへ解体した:
 - `canvas-geometry`（旧 `render-types`。B5 で `CanvasViewGeometry` 単一経路へ縮約）
 - `storage`
 - `desktop-support`
-- `panel-api`
-- `panel-workspace`（旧 `ui-shell`）
+- `panel-workspace`（旧 `ui-shell`。B6 で `ResizeHandle` / `PanelMoveDirection` を旧 panel-api から移設）
 - `panel-wasm-host`（旧 `plugin-host`）
 - `panel-protocol`（旧 `panel-schema`）
 - `panel-macros`（旧 `plugin-macros`）
@@ -61,7 +60,8 @@ ADR 018 B5 で旧 `app-core` を責務別の 4 クレートへ解体した:
 - `crates/panel-dsl` は Phase 10（ADR 012）で `.altp-panel` DSL ごと削除済み。
 - `crates/workspace-persistence` は ADR 016 で旧 `app-core::workspace` へ統合し削除済み。`WorkspaceUiState` / `WorkspacePanelState` は B5 (BL-075) で `panel-workspace` へ移設した。
 - `crates/panel-html` は旧名 `panel-html-experiment` を ADR 016 で正式名称化したもの。
-- `panel-api` / `panel-sdk` を正面名とし、proc-macro は `panel-macros` として物理分離する。
+- `crates/panel-api` は ADR 018 B6 (C9) で解体しワークスペースから削除済み。host 向け契約型 (`HostRequest` / `PanelEvent` / `ServiceRequest`) は `panel-runtime`、配置ジオメトリ型 (`ResizeHandle` / `PanelMoveDirection`) は `panel-workspace`、wire 名定数・ABI 定数・`HostState` DTO は `panel-protocol` へ分配した。これにより旧 panel-api が抱えていた document-model / editor-state への契約依存を解消し、パネル基盤の水平土台化が完成した。
+- `panel-sdk` を作者向け正面名とし、proc-macro は `panel-macros` として物理分離する。
 
 ### 組み込みパネル crate（`crates/builtin-panels/` 配下、12 個）
 
@@ -121,18 +121,13 @@ graph TD
     dsupport --> docmodel
     dsupport --> editorstate
     dsupport --> panelws
-    panelapi[panel-api] --> docmodel
-    panelapi --> editorstate
-    panelapi --> protocol[panel-protocol]
 
     panelws --> geometry
-    panelws --> panelapi
 
     panelruntime --> docmodel
     panelruntime --> editorstate
     panelruntime --> raster
-    panelruntime --> panelapi
-    panelruntime --> protocol
+    panelruntime --> protocol[panel-protocol]
     panelruntime --> wasmhost[panel-wasm-host]
     panelruntime --> phtml[panel-html]
 
@@ -151,17 +146,19 @@ graph TD
   - `editor-state` は `document-model` に依存しない（循環回避。`serde` のみ）。`EditorSession` / ツール・ペン定義 / `SessionCommand` / `view_policy`
   - `document-model` は `editor-state` / `geometry` / `raster` に依存し、`Document` / `Work` / `Page` / `Koma` / `RasterLayer` / `DocumentCommand` を持つ
   - いずれも `winit` / `wgpu` / `wasmtime` / `blitz` に依存しない
-- `paint-engine` / `gpu-paint` / `canvas-geometry` / `panel-api` は水平土台の周辺クレートである
+- `paint-engine` / `gpu-paint` / `canvas-geometry` は水平土台の周辺クレートである（旧 `panel-api` は B6 で解体）
 - `paint-engine` のローカル依存は `document-model` / `editor-state` / `geometry` / `raster`（B5 で旧 app-core 依存を 4 クレートへ付け替え。BL-042 で view mapping ラッパーは廃止済みで、view 座標変換は desktop が `canvas-geometry::map_view_to_canvas_with_transform` を直接呼ぶ）。project I/O や panel runtime へは依存しない
 - `gpu-paint` は `wgpu` に依存する唯一のペイント実装クレートで、ローカル依存は `editor-state` / `geometry` / `raster` のみ
 - `canvas-geometry` は B5 で `CanvasViewGeometry` 単一経路へ縮約され、ローカル依存は `geometry` / `editor-state` のみ（`CanvasPlan` / overlay DTO は desktop へ移管）
 - `panel-html` はローカル依存を持たず、Blitz / taffy / vello / wgpu に閉じた HTML パネル描画クレートである
 - `panel-runtime` は panel サブシステムの facade であり、`PanelRuntime`・`HtmlWasmPanel`
-  （HTML+Wasm）・host state 同期・hit 収集・同梱パネル loader を持ち、`panel-api` の host 向け型と
-  `panel-html`（`panel_runtime::html`）を再公開する。desktop は panel-api / panel-html へ直接依存しない（ADR 017）
-- `panel-workspace` はパネル配置専用 crate で、ローカル依存は `geometry` / `panel-api` のみ（BL-041 で hit 矩形型を `geometry::WindowRect` に統合）。B5 (BL-075) で `WorkspaceUiState` / `WorkspacePanelState` を保持するようになった。
+  （HTML+Wasm 具象保持）・`HostStateRegistry`（revision キャッシュ）・translator registry・hit 収集・同梱パネル loader を持ち、
+  host 向け契約型（`HostRequest` / `PanelEvent` / `ServiceRequest`。B6 で旧 panel-api から吸収）と
+  `panel-html`（`panel_runtime::html`、B6 で最小面に絞り込み）を desktop へ公開する。desktop は panel-html へ直接依存しない（ADR 017）。
+  ローカル依存は `document-model` / `editor-state`（host_state 構築と translator の正当な参照）/ `raster` / `panel-protocol` / `panel-wasm-host` / `panel-html`
+- `panel-workspace` はパネル配置専用 crate で、ローカル依存は `geometry` のみ（B6 で旧 panel-api 依存を解消。BL-041 で hit 矩形型を `geometry::WindowRect` に統合）。B5 (BL-075) で `WorkspaceUiState` / `WorkspacePanelState` を保持し、B6 (C9) で `ResizeHandle` / `PanelMoveDirection` を旧 panel-api から移設、`PanelGeometry` 1 map で full/move-handle/body 矩形と node hit を原子的に保持する。
   runtime のパネル一覧は `reconcile_panels(panel_ids)` の引数として desktop 側から受け取り（ADR 016）、
-  hit-test API の戻り値型 `ResizeHandle` を再公開する（ADR 017）
+  hit-test API の戻り値型 `ResizeHandle` を desktop へ公開する（ADR 017）
 - `panel-wasm-host` は `panel-runtime` の内側で使われ、`apps/desktop` は直接依存していない
 - `panel-sdk` はパネル作者向け表面 API であり、macro と DOM mutation API を含む唯一の作者向け入口である
 - 各パネル crate（`crates/builtin-panels/*`）は `panel-sdk` のみに依存する。旧 `builtin-panels`
@@ -340,35 +337,37 @@ graph TD
 - GPU 経路（`gpu-paint` / `wgpu_canvas.rs`）への入力となる幾何計算
 - B5 で `CanvasViewGeometry` 単一経路へ縮約した。`CanvasPlan` / `LayerDirtyAccumulator` / `CanvasOverlayState` / `KomaNavigatorOverlay` などの overlay DTO は `apps/desktop` へ移管した（旧 `crates/render` は Phase 9F で物理削除済み。`RenderFrame` 後継は `apps/desktop/src/app/cpu_canvas_snapshot.rs::CpuCanvasSnapshot`、旧 `CanvasFrame`。詳細は `docs/adr/010-render-crate-removal.md`）
 
-### `panel-api`
+### `panel-api`（ADR 018 B6 / C9 で解体済み）
 
-担当:
+クレートは存在しない。旧担当を次へ分配した:
 
-- `PanelPlugin` trait（`handle_event` / `handles_keyboard_event` / `persistent_config` 等）
-- `PanelEvent`（`Activate` / `SetValue` / `DragValue` / `SetText` / `Keyboard`）
-- `HostAction`（`DispatchDocumentCommand` / `DispatchSessionCommand` / `RequestService` / `MovePanel` / `SetPanelVisibility`。B4 で `DispatchCommand` を document/session に分割。`MovePanel` / `SetPanelVisibility` は desktop 側で `workspace_layout.*` サービスへ変換され、専用 variant は B6 P3 で削除予定）
-- `ResizeHandle`（8 ハンドルリサイズ。旧 `ResizeEdge`）
-- `ServiceRequest` と service 名定数の互換表面（定数の正本は `panel_protocol::names`。
-  `services::names` はフラット名の再エクスポートとして維持）
+- host 向け契約型 → `panel-runtime`:
+  - `PanelEvent`（`Activate` / `SetValue` / `DragValue` / `SetText` / `Keyboard`）
+  - `HostRequest`（旧 `HostAction`。`DispatchDocumentCommand` / `DispatchSessionCommand` / `RequestService`。`DispatchCommand` の `RequestDescriptor` ベース化で `MovePanel` / `SetPanelVisibility` 専用 variant を削除し translator registry 経由へ統一）
+  - `ServiceRequest` と service 名互換表面（定数の正本は `panel_protocol::names`）
+  - `PanelPlugin` trait は P1 で撤去。`PanelRuntime` が `Vec<HtmlWasmPanel>` を具象保持し downcast を全廃
+- 配置ジオメトリ型 → `panel-workspace`:
+  - `ResizeHandle`（8 ハンドルリサイズ。旧 `ResizeEdge`）
+  - `PanelMoveDirection`
+- wire 名・ABI 定数・付随状態 DTO → `panel-protocol`（下記参照）
 
-意味:
-
-- `DocumentCommand` / `SessionCommand` / `ServiceRequest` をパネルから直接返すのではなく、`HostAction` を経由するための境界
-- `PanelTree` / `PanelNode` / `PanelView` は Phase 12（ADR 014）で撤去済み
+解体の意義: 旧 panel-api は契約クレートでありながら `document-model` / `editor-state` に依存しており「契約として成立しない」状態だった。B6 でこの依存を切断し、パネル基盤を feature 非依存の水平土台として完成させた。`PanelTree` / `PanelNode` / `PanelView` は Phase 12（ADR 014）で撤去済み。
 
 ### `panel-protocol`（旧 `panel-schema`）
 
-担当:
+ローカルクレート依存ゼロ（`serde` / `serde_json` のみ。不変条件 1）。担当:
 
 - host と Wasm runtime 間でやりとりする DTO
-- `PanelEventRequest`
-- `HandlerEffects`（旧 `HandlerResult`。副作用バンドル）
+- `HostCallInput`（旧 `PanelEventRequest`。state / host_state / event_payload を持つホスト側呼出しコンテキスト。B6 P6 で疑似イベント捏造を解消）
+- `HostState`（`can_undo` / `can_redo` / `active_jobs` / `snapshot_count` の付随状態 DTO。旧 `PanelPlugin::update` の個別引数を集約）
+- `HandlerEffects`（旧 `HandlerResult`。副作用バンドル。`diagnostics` は panel-runtime が log へ必ず流す）
 - `StatePatch` / `StatePatchOp`
 - `apply_patches`（`StatePatch` 適用の唯一の実装。BL-035 で host / runtime の二重実装を解消）
 - `RequestDescriptor`（旧 `CommandDescriptor`）
 - `Diagnostic`
+- `abi`: export/import 名・`DiagnosticLevel`↔i32・"value" キー規約の定数（B6 BL-103 で集約）
 - `names`: host↔panel 間 wire 名（command / service 名）の feature 別定数モジュール
-  （単一定義点。リテラル直書き禁止）
+  （単一定義点。リテラル直書き禁止）。config キー定数（`template_options` 等）も型付き契約として保持（B6 BL-101）
 
 ### `panel-macros`（旧 `plugin-macros`）
 
@@ -453,9 +452,10 @@ graph TD
 - `translator_registry.rs`: 名前空間 prefix → 変換クロージャの `TranslatorRegistry`。
   未登録 prefix/name は黙殺せず `TranslationDiagnostic` を返す（BL-061）。
   `PanelRuntime` が構築した共有 registry を `register_panel` で各 `HtmlWasmPanel` へ注入
-- `meta.rs`: `panel.meta.json`（`default_size` 必須）のパース
-- facade 再公開: `panel-api` の host 向け型（`HostAction` / `PanelEvent` / `ServiceRequest` 等）と
-  `panel-html`（`panel_runtime::html`）
+- `meta.rs`: `panel.meta.json`（`default_size` 必須、anchor/position/hidden_by_default/always_visible/preset/購読トピックの既定値宣言を B6 BL-095 で追加）のパース
+- `host_state.rs`: `HostStateRegistry` + per-section `HostStateSection { key, revision, build }`（旧 `build_host_state` 230 行を B6 BL-093 で解体。revision ベースキャッシュ）
+- `host_request.rs` / `services.rs`: host 向け契約型（`HostRequest` / `PanelEvent` / `ServiceRequest`。B6 C9 で旧 panel-api から移設）
+- facade 公開: 上記契約型と `panel-html`（`panel_runtime::html`、B6 BL-091 で最小面に絞り込み）
 
 実装上の特徴:
 
@@ -605,8 +605,8 @@ crates/builtin-panels/<name>/{panel.html, panel.css, panel.meta.json, *.wasm}
   -> panel-runtime::HtmlWasmPanel
      -> panel-html::HtmlPanelView (Blitz + vello)
      -> panel-wasm-host::PanelWasmInstance (wasmtime + dom_api)
-  -> panel-protocol DTO
-  -> panel-api::PanelEvent / HostAction (desktop へは panel-runtime が再公開)
+  -> panel-protocol DTO (HostState / HostCallInput / HandlerEffects)
+  -> panel-runtime::PanelEvent / HostRequest (旧 panel-api を B6 で吸収)
 ```
 
 役割分担:
@@ -614,7 +614,7 @@ crates/builtin-panels/<name>/{panel.html, panel.css, panel.meta.json, *.wasm}
 - `panel-html`: HTML/CSS のレイアウト解決・GPU 描画・hit 矩形収集
 - `panel-wasm-host`: Wasm handler 呼び出しと DOM mutation host functions
 - `panel-runtime`: パネル資産の発見と一括登録、state と host state の受け渡し、
-  結果の `HostAction` / DOM 更新への変換
+  結果の `HostRequest` / DOM 更新への変換（translator registry で `DocumentCommand` / `SessionCommand` / `ServiceRequest` へ）
 
 ### 3. 永続化側
 
@@ -664,7 +664,7 @@ project file と session file は役割が異なる（B5 BL-079 で保存境界�
 3. 対象 panel へ `PanelEvent` が forward され、`HtmlWasmPanel::handle_event(...)` が呼ばれる
 4. `panel-wasm-host` を通じて Wasm handler（`panel_handle_event` / `panel_handle_keyboard`）を実行する。handler は DOM mutation host functions で自パネルの DOM を更新できる
 5. `StatePatch` を panel local state に適用する
-6. `panel-runtime` の translator registry が `RequestDescriptor` を名前空間 prefix で振り分け、`HostAction::DispatchDocumentCommand(...)`（`DocumentCommand`）/ `DispatchSessionCommand(...)`（`SessionCommand`）/ `RequestService(...)`（`ServiceRequest`）のいずれかへ変換する。未登録 prefix/name は黙殺せず `TranslationDiagnostic` としてログ出力する（B4 / BL-061）
+6. `panel-runtime` の translator registry が `RequestDescriptor` を名前空間 prefix で振り分け、`HostRequest::DispatchDocumentCommand(...)`（`DocumentCommand`）/ `DispatchSessionCommand(...)`（`SessionCommand`）/ `RequestService(...)`（`ServiceRequest`）のいずれかへ変換する。未登録 prefix/name は黙殺せず `TranslationDiagnostic` としてログ出力する（B4 / BL-061）
 7. `apps/desktop/src/app/panel_dispatch.rs` の `DesktopApp::execute_host_action(...)` が `apply_document_command` / `apply_session_command` / `execute_service_request` へ振り分けて実行する
 8. `HtmlPanelView` が vello で GPU テクスチャへ再描画し、`wgpu_canvas` が `panel_quads` 層で合成する
 
@@ -725,9 +725,8 @@ ADR 018 B5 で旧 `app-core` を解体した後も、以下は維持したい。
 実装を読んだ結果、次は整理候補になる。
 
 1. `apply_paint_input`（`services/project_io.rs`）内の CPU 差分計算と GPU dispatch の分離 (ADR 018 B8 で PaintPlan / PaintBackend 化を予定)
-2. `panel-api` が `document-model::DocumentCommand` / `editor-state::SessionCommand` を直接知っている点の再評価 (ADR 018 B6 で HostRequest の descriptor 化と panel-api 解体を予定)
-3. tool 実行 plugin と host runtime の安定境界の確立
+2. tool 実行 plugin と host runtime の安定境界の確立
 
-（旧候補「`panel-html-experiment` の正式名称化」は ADR 016 で、desktop の依存集中・座標系の生タプルは ADR 017 で、「`app_core::Panel` (コマ) と UI パネルの命名衝突の解消」は ADR 018 B1 の `Koma` 改名で完了済み）
+（旧候補「`panel-html-experiment` の正式名称化」は ADR 016 で、desktop の依存集中・座標系の生タプルは ADR 017 で、「`app_core::Panel` (コマ) と UI パネルの命名衝突の解消」は ADR 018 B1 の `Koma` 改名で、「`panel-api` が `document-model::DocumentCommand` / `editor-state::SessionCommand` を直接知る点」は ADR 018 B6 の `HostRequest` descriptor 化 + panel-api 解体 (C9) で完了済み）
 
 ただし、これらは**今そうなっている**という意味ではない。現時点の正本は、上記 compile-time 依存と runtime flow である。
