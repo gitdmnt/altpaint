@@ -24,6 +24,7 @@ use crate::translator_registry::TranslatorRegistry;
 use crate::host_state::HostStateBuild;
 use crate::meta::{PanelLayoutMeta, PanelMeta, PanelPresetMeta};
 use panel_wasm_host::{PanelWasmHostError, PanelWasmInstance};
+use panel_protocol::{Diagnostic, DiagnosticLevel, HandlerEffects};
 use serde_json::{Value, json};
 
 pub struct HtmlWasmPanel {
@@ -101,6 +102,8 @@ impl HtmlWasmPanel {
         // panel_init は DOM context 必須 (Wasm が初期 DOM を mutate する可能性)。
         let init = wasm.call_with_dom(view.document_mut(), |rt| rt.panel_init())?;
         view.mark_mutated();
+        // BL-102: panel_init が積んだ診断を黙殺せず流す。
+        emit_handler_diagnostics(&meta.id, "panel_init", &init);
         let has_keyboard_handler = wasm.has_handler("keyboard");
 
         // panel_init が返した state_patch を空 state に適用して初期 state を確定する。
@@ -183,6 +186,8 @@ impl HtmlWasmPanel {
                 rt.handle_event(handler_name, &input)
             })?;
         self.view.mark_mutated();
+        // BL-102: handler が積んだ診断を黙殺せず流す。
+        emit_handler_diagnostics(&self.id, handler_name, &result);
         panel_protocol::apply_patches(&mut self.state, &result.state_patch);
         let registry = &self.translator_registry;
         Ok(result
@@ -213,6 +218,37 @@ fn panel_host_call_input(
         state: state.clone(),
         host_state: host_state.clone(),
     }
+}
+
+/// パネル (Wasm) が `diagnostic` host function で積んだ診断を 1 件 1 行へ整形する。
+///
+/// BL-102: パネル内エラーの黙殺を廃止するため、`HandlerEffects::diagnostics` を
+/// この形式で診断ログへ流す。
+fn format_panel_diagnostic(panel_id: &str, handler: &str, diagnostic: &Diagnostic) -> String {
+    let level = match diagnostic.level {
+        DiagnosticLevel::Info => "INFO",
+        DiagnosticLevel::Warning => "WARN",
+        DiagnosticLevel::Error => "ERROR",
+    };
+    format!(
+        "panel diagnostic [{level}] {panel_id}::{handler}: {}",
+        diagnostic.message
+    )
+}
+
+/// `HandlerEffects::diagnostics` を診断ログ (stderr) へ流し、消費件数を返す (BL-102)。
+///
+/// 黙殺禁止: panel_init / handler / sync_host のいずれの戻り値の診断も
+/// 必ずこの経路を通す。戻り値はテストで「診断が消費されたか」を検証するために使う。
+fn emit_handler_diagnostics(
+    panel_id: &str,
+    handler: &str,
+    effects: &HandlerEffects,
+) -> usize {
+    for diagnostic in &effects.diagnostics {
+        eprintln!("{}", format_panel_diagnostic(panel_id, handler, diagnostic));
+    }
+    effects.diagnostics.len()
 }
 
 fn request_descriptor_to_host_request(
@@ -272,6 +308,8 @@ impl HtmlWasmPanel {
                 rt.sync_host(state, host_state_value)
             });
         if let Ok(result) = outcome {
+            // BL-102: sync_host が積んだ診断を黙殺せず流す。
+            emit_handler_diagnostics(&self.id, "sync_host", &result);
             panel_protocol::apply_patches(&mut self.state, &result.state_patch);
             self.view.mark_mutated();
             true
@@ -456,6 +494,17 @@ pub(crate) mod test_fixture {
     (memory (export "memory") 1)
     (func (export "panel_init")))"#;
 
+    /// `panel_init` で error 診断 (level=2) を 1 件積むパネル (BL-102 検証用)。
+    pub(crate) const DIAGNOSTIC_WAT: &str = r#"(module
+    (import "host" "diagnostic" (func $diagnostic (param i32 i32 i32)))
+    (memory (export "memory") 1)
+    (data (i32.const 0) "boom")
+    (func (export "panel_init")
+        i32.const 2
+        i32.const 0
+        i32.const 4
+        call $diagnostic))"#;
+
     pub(crate) fn write_panel_fixture(name: &str, wat: &str) -> PathBuf {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -480,10 +529,53 @@ pub(crate) mod test_fixture {
 
 #[cfg(test)]
 mod tests {
-    use super::test_fixture::{KEYBOARD_WAT, NO_KEYBOARD_WAT, write_panel_fixture};
+    use super::test_fixture::{DIAGNOSTIC_WAT, KEYBOARD_WAT, NO_KEYBOARD_WAT, write_panel_fixture};
     use super::*;
     use panel_protocol::RequestDescriptor;
     use panel_protocol::names::{layer, tool};
+
+    /// BL-102: 診断は黙殺されず、level/panel/handler/message を含む 1 行へ整形される。
+    #[test]
+    fn diagnostic_is_formatted_with_level_panel_and_handler() {
+        let line = format_panel_diagnostic(
+            "builtin.example",
+            "panel_init",
+            &Diagnostic::error("boom"),
+        );
+        assert!(line.contains("ERROR"), "level present: {line}");
+        assert!(line.contains("builtin.example"), "panel id present: {line}");
+        assert!(line.contains("panel_init"), "handler present: {line}");
+        assert!(line.contains("boom"), "message present: {line}");
+    }
+
+    /// BL-102: emit_handler_diagnostics は積まれた診断件数を消費して返す (黙殺しない)。
+    #[test]
+    fn emit_handler_diagnostics_consumes_all_diagnostics() {
+        let effects = HandlerEffects {
+            diagnostics: vec![Diagnostic::warning("a"), Diagnostic::error("b")],
+            ..HandlerEffects::default()
+        };
+        let consumed = emit_handler_diagnostics("builtin.x", "save", &effects);
+        assert_eq!(consumed, 2, "all diagnostics must be consumed, not dropped");
+    }
+
+    /// BL-102: 診断が無ければ消費件数は 0。
+    #[test]
+    fn emit_handler_diagnostics_returns_zero_when_empty() {
+        let consumed =
+            emit_handler_diagnostics("builtin.x", "noop", &HandlerEffects::default());
+        assert_eq!(consumed, 0);
+    }
+
+    /// BL-102: panel_init が診断を積むパネルもエラーなくロードでき (診断は消費経路へ流れる)。
+    #[test]
+    fn panel_with_init_diagnostic_loads_without_swallowing_error() {
+        let dir = write_panel_fixture("diag-init", DIAGNOSTIC_WAT);
+        // panel_init が error 診断を 1 件積むが、ロード自体は成功する。
+        // 診断は emit_handler_diagnostics 経由で流れる (黙殺されない)。
+        let panel = HtmlWasmPanel::load(&dir, "panel.wasm", None);
+        assert!(panel.is_ok(), "panel with init diagnostic should load");
+    }
 
     /// 既知の command 名は registry 経由で HostRequest へ翻訳される。
     #[test]
