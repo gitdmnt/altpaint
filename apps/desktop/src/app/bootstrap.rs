@@ -189,7 +189,7 @@ impl DesktopApp {
     pub(super) fn persist_workspace_preset_catalog(&self) {
         if let Err(error) = save_workspace_preset_catalog(
             &self.io_state.workspace_preset_path,
-            &self.workspace_presets,
+            &self.workspace.presets,
         ) {
             let message = format!("failed to persist workspace preset catalog: {error}");
             eprintln!("{message}");

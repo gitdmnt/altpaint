@@ -32,7 +32,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use document_model::{Document, KomaId};
 use geometry::{PageDirtyRect, PagePoint};
 use raster::RgbaBitmap;
-use crate::features::workspace::WorkspacePresetCatalog;
+use crate::features::workspace::WorkspaceState;
 use crate::platform::{DesktopDialogs, NativeDesktopDialogs, default_workspace_preset_path};
 use panel_runtime::PanelRuntime;
 use panel_workspace::PanelWorkspace;
@@ -84,8 +84,7 @@ pub(crate) struct DesktopApp {
     pub(crate) panel_runtime: PanelRuntime,
     pub(crate) panel_workspace: PanelWorkspace,
     pub(crate) io_state: DesktopIoState,
-    workspace_presets: WorkspacePresetCatalog,
-    active_workspace_preset_id: String,
+    pub(crate) workspace: WorkspaceState,
     paint_engine: paint_engine::PaintEngine,
     canvas_input: CanvasInputState,
     /// コマ作成 (KomaRect) ジェスチャの進行中状態 (BL-081)。
@@ -164,8 +163,10 @@ impl DesktopApp {
                 workspace_preset_path,
                 dialogs,
             ),
-            workspace_presets: bootstrap.workspace_presets,
-            active_workspace_preset_id: bootstrap.active_workspace_preset_id,
+            workspace: WorkspaceState {
+                presets: bootstrap.workspace_presets,
+                active_preset_id: bootstrap.active_workspace_preset_id,
+            },
             paint_engine: paint_engine::PaintEngine::default(),
             canvas_input: CanvasInputState::default(),
             koma_gesture: KomaGesture::default(),

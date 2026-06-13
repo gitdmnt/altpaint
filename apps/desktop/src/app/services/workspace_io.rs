@@ -35,7 +35,8 @@ impl DesktopApp {
 
     pub(crate) fn apply_workspace_preset(&mut self, preset_id: &str) -> bool {
         let Some(preset) = self
-            .workspace_presets
+            .workspace
+            .presets
             .presets
             .iter()
             .find(|preset| preset.id == preset_id)
@@ -49,8 +50,8 @@ impl DesktopApp {
             return false;
         };
 
-        self.active_workspace_preset_id = preset.id;
-        self.workspace_presets.default_preset_id = self.active_workspace_preset_id.clone();
+        self.workspace.active_preset_id = preset.id;
+        self.workspace.presets.default_preset_id = self.workspace.active_preset_id.clone();
         self.apply_workspace_ui_state(preset.ui_state);
         self.persist_workspace_preset_catalog();
         true
@@ -69,7 +70,8 @@ impl DesktopApp {
 
         let ui_state = self.capture_workspace_ui_state();
         if let Some(existing) = self
-            .workspace_presets
+            .workspace
+            .presets
             .presets
             .iter_mut()
             .find(|preset| preset.id == preset_id)
@@ -77,18 +79,18 @@ impl DesktopApp {
             existing.label = label.to_string();
             existing.ui_state = ui_state;
         } else {
-            self.workspace_presets.presets.push(WorkspacePreset {
+            self.workspace.presets.presets.push(WorkspacePreset {
                 id: preset_id.to_string(),
                 label: label.to_string(),
                 ui_state,
             });
         }
 
-        self.active_workspace_preset_id = preset_id.to_string();
-        self.workspace_presets.default_preset_id = self.active_workspace_preset_id.clone();
+        self.workspace.active_preset_id = preset_id.to_string();
+        self.workspace.presets.default_preset_id = self.workspace.active_preset_id.clone();
         if let Err(error) = save_workspace_preset_catalog(
             &self.io_state.workspace_preset_path,
-            &self.workspace_presets,
+            &self.workspace.presets,
         ) {
             let message = format!("failed to save workspace preset catalog: {error}");
             eprintln!("{message}");
@@ -139,7 +141,7 @@ impl DesktopApp {
         }
 
         let catalog = WorkspacePresetCatalog {
-            format_version: self.workspace_presets.format_version,
+            format_version: self.workspace.presets.format_version,
             default_preset_id: preset_id.to_string(),
             presets: vec![WorkspacePreset {
                 id: preset_id.to_string(),
@@ -157,7 +159,7 @@ impl DesktopApp {
             return false;
         }
 
-        self.active_workspace_preset_id = preset_id.to_string();
+        self.workspace.active_preset_id = preset_id.to_string();
         self.refresh_workspace_presets();
         self.request_panel_reconcile();
         self.mark_status_dirty();

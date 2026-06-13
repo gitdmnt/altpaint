@@ -46,7 +46,8 @@ impl DesktopApp {
     pub(crate) fn refresh_workspace_presets(&mut self) {
         // BL-105: "id:label" パイプ区切り文字列 → 構造化 JSON 配列 (JSON 文字列で格納)。
         let options = self
-            .workspace_presets
+            .workspace
+            .presets
             .presets
             .iter()
             .map(|preset| {
@@ -59,7 +60,8 @@ impl DesktopApp {
         let options_json = serde_json::to_string(&options).unwrap_or_else(|_| "[]".to_string());
         let selected_workspace = self.selected_workspace_preset_id();
         let selected_workspace_label = self
-            .workspace_presets
+            .workspace
+            .presets
             .presets
             .iter()
             .find(|preset| preset.id == selected_workspace)
@@ -77,7 +79,7 @@ impl DesktopApp {
                 json!(selected_workspace_label),
             );
         });
-        self.active_workspace_preset_id = selected_workspace;
+        self.workspace.active_preset_id = selected_workspace;
     }
 
     /// 指定パネルの persistent config オブジェクトを編集し、reconcile と永続化まで行う
@@ -108,7 +110,7 @@ impl DesktopApp {
 
     pub(crate) fn reload_workspace_presets(&mut self) -> bool {
         let default_catalog = self.default_workspace_preset_catalog();
-        self.workspace_presets =
+        self.workspace.presets =
             load_workspace_preset_catalog(&self.io_state.workspace_preset_path, default_catalog);
         self.refresh_workspace_presets();
         self.request_panel_reconcile();
@@ -119,24 +121,26 @@ impl DesktopApp {
 
     fn selected_workspace_preset_id(&self) -> String {
         if self
-            .workspace_presets
+            .workspace
+            .presets
             .presets
             .iter()
-            .any(|preset| preset.id == self.active_workspace_preset_id)
+            .any(|preset| preset.id == self.workspace.active_preset_id)
         {
-            return self.active_workspace_preset_id.clone();
+            return self.workspace.active_preset_id.clone();
         }
 
         if self
-            .workspace_presets
+            .workspace
+            .presets
             .presets
             .iter()
-            .any(|preset| preset.id == self.workspace_presets.default_preset_id)
+            .any(|preset| preset.id == self.workspace.presets.default_preset_id)
         {
-            return self.workspace_presets.default_preset_id.clone();
+            return self.workspace.presets.default_preset_id.clone();
         }
 
-        self.workspace_presets
+        self.workspace.presets
             .presets
             .first()
             .map(|preset| preset.id.clone())
