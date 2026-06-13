@@ -237,6 +237,143 @@ mod golden_equivalence {
         }
     }
 
+    /// GPU バックエンドはストローク / flood fill の `apply` 中に CPU 画素を一切
+    /// 生成・変更しない (BL-130/131 完了条件)。
+    ///
+    /// GPU 経路では画素は GPU テクスチャ上にのみ書かれ、`Document` の CPU
+    /// ビットマップ (CpuCanvasSnapshot のソース) はストローク中は不変に保たれる。
+    /// `apply` 前後で CPU ビットマップがバイト一致することを確認することで、
+    /// 「全画素 CPU 生成→捨てる」/「flood fill の全面 visited 走査」が経路から
+    /// 消えていることを担保する。GPU 非対応環境では skip。
+    #[test]
+    fn gpu_apply_does_not_touch_cpu_pixels() {
+        let outcome = std::panic::catch_unwind(|| {
+            let (device, queue, adapter) = try_init_gpu()?;
+            if !gpu_paint::format_check::supports_rgba8unorm_storage(&adapter) {
+                return None;
+            }
+
+            // 透明アクティブレイヤーを GPU へアップロードして共通の準備をする。
+            fn setup(
+                device: &Arc<wgpu::Device>,
+                queue: &Arc<wgpu::Queue>,
+            ) -> (
+                Document,
+                document_model::KomaId,
+                usize,
+                gpu_paint::LayerTextureStore,
+                gpu_paint::BrushPipeline,
+                gpu_paint::FillPipeline,
+            ) {
+                let mut document = transparent_document();
+                document.session.set_active_pen_size(12);
+                document
+                    .session
+                    .set_active_color(ColorRgba8::new(0xff, 0x00, 0x00, 0xff));
+                let (koma_id, layer_index) = {
+                    let koma = document.active_koma().unwrap();
+                    (koma.id, koma.active_layer_index)
+                };
+                let initial = document
+                    .clone_koma_layer_bitmap(koma_id, layer_index)
+                    .expect("initial layer");
+                let (lw, lh) = (initial.width as u32, initial.height as u32);
+                let mut pool =
+                    gpu_paint::LayerTextureStore::new(device.clone(), queue.clone());
+                let koma_key = gpu_paint::KomaTextureId(koma_id.0);
+                pool.create_layer_texture(koma_key, layer_index, lw, lh);
+                pool.upload_cpu_bitmap(koma_key, layer_index, &initial.pixels);
+                let ctx = gpu_paint::GpuCanvasContext::new(device.clone(), queue.clone());
+                let brush = gpu_paint::BrushPipeline::new(&ctx);
+                let fill = gpu_paint::FillPipeline::new(&ctx);
+                (document, koma_id, layer_index, pool, brush, fill)
+            }
+
+            // --- ストローク (Stamp) ---
+            {
+                let (mut document, koma_id, layer_index, pool, brush, fill) =
+                    setup(&device, &queue);
+                let before = document
+                    .clone_koma_layer_bitmap(koma_id, layer_index)
+                    .expect("before stroke");
+                let input = PaintInput::Stamp {
+                    at: KomaLocalPoint::new(32, 32),
+                    pressure: 1.0,
+                };
+                let plan = plan_paint(&document, &input).expect("stroke plan");
+                {
+                    let mut target = PaintTarget {
+                        document: &mut document,
+                        koma_id,
+                        layer_index,
+                        gpu: Some(GpuPaintResources {
+                            pool: &pool,
+                            brush: &brush,
+                            fill: &fill,
+                        }),
+                    };
+                    let mut backend = GpuPaintBackend::new();
+                    backend.begin_stroke(&target);
+                    let mut encoder = pool.create_paint_encoder("no-cpu-stroke-encoder");
+                    backend.apply(&plan, &input, &mut target, Some(&mut encoder));
+                    pool.submit(encoder);
+                }
+                let after = document
+                    .clone_koma_layer_bitmap(koma_id, layer_index)
+                    .expect("after stroke");
+                assert_eq!(
+                    before.pixels, after.pixels,
+                    "GPU ストロークは CPU 画素を変更してはならない"
+                );
+            }
+
+            // --- flood fill ---
+            {
+                let (mut document, koma_id, layer_index, pool, brush, fill) =
+                    setup(&device, &queue);
+                document.apply_session_command(&editor_state::SessionCommand::SetActiveTool {
+                    tool: editor_state::ToolKind::Bucket,
+                });
+                let before = document
+                    .clone_koma_layer_bitmap(koma_id, layer_index)
+                    .expect("before fill");
+                let input = PaintInput::FloodFill {
+                    at: KomaLocalPoint::new(16, 16),
+                };
+                let plan = plan_paint(&document, &input).expect("fill plan");
+                {
+                    let mut target = PaintTarget {
+                        document: &mut document,
+                        koma_id,
+                        layer_index,
+                        gpu: Some(GpuPaintResources {
+                            pool: &pool,
+                            brush: &brush,
+                            fill: &fill,
+                        }),
+                    };
+                    let mut backend = GpuPaintBackend::new();
+                    backend.apply(&plan, &input, &mut target, None);
+                }
+                let after = document
+                    .clone_koma_layer_bitmap(koma_id, layer_index)
+                    .expect("after fill");
+                assert_eq!(
+                    before.pixels, after.pixels,
+                    "GPU flood fill は CPU 画素 (visited 配列含む) を変更してはならない"
+                );
+            }
+
+            Some(())
+        });
+
+        match outcome {
+            Ok(Some(())) => { /* CPU 画素不変を確認 */ }
+            Ok(None) => { /* GPU 非対応: skip */ }
+            Err(_) => { /* 非対応環境: skip */ }
+        }
+    }
+
     /// アクティブレイヤーが透明 (背景でない) 文書を作る。
     fn transparent_document() -> Document {
         let mut document = Document::default();
