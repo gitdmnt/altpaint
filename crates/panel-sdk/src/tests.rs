@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use crate::{RequestDescriptor, commands, host, names, runtime, services, state};
+use crate::{RequestDescriptor, commands, host, host_state, names, runtime, services, state};
 use crate::{panel_handler, panel_init, panel_sync_host};
 
 #[panel_init]
@@ -179,6 +179,9 @@ fn native_runtime_helpers_are_safe_noops() {
     assert!(!runtime::host_bool("host.bool"));
     assert_eq!(runtime::host_i32("host.int"), 0);
     assert_eq!(runtime::host_string("host.string"), "");
+    // host state セクション JSON 取得 (BL-142) は native では空 → None。
+    assert_eq!(runtime::host_section_json(host_state::section::DOCUMENT), "");
+    assert!(runtime::host_section::<host_state::DocumentState>(host_state::section::DOCUMENT).is_none());
 }
 
 #[test]

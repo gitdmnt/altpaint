@@ -23,6 +23,8 @@ unsafe extern "C" {
     fn host_get_i32(ptr: i32, len: i32) -> i32;
     fn host_get_string_len(ptr: i32, len: i32) -> i32;
     fn host_get_string_copy(path_ptr: i32, path_len: i32, buffer_ptr: i32, buffer_len: i32);
+    fn host_get_section_json_len(ptr: i32, len: i32) -> i32;
+    fn host_get_section_json_copy(key_ptr: i32, key_len: i32, buffer_ptr: i32, buffer_len: i32);
     fn command(ptr: i32, len: i32);
     fn command_string(
         name_ptr: i32,
@@ -215,6 +217,34 @@ pub fn host_string(path: impl AsRef<str>) -> String {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn host_string(_path: impl AsRef<str>) -> String {
     String::new()
+}
+
+/// host state の トップレベルセクション (例 `"document"`) を JSON 文字列で 1 回取得する
+/// (BL-142)。個別 path getter を値の数だけ呼ぶ代わりに、セクションをまとめて読む。
+#[cfg(target_arch = "wasm32")]
+pub fn host_section_json(section: impl AsRef<str>) -> String {
+    read_string(
+        section.as_ref(),
+        host_get_section_json_len,
+        host_get_section_json_copy,
+    )
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn host_section_json(_section: impl AsRef<str>) -> String {
+    String::new()
+}
+
+/// host state のセクションを取得し、型付き DTO へ serde デシリアライズする (BL-142)。
+///
+/// `section` は `panel_protocol::host_state::section` の定数を渡す。デシリアライズに
+/// 失敗した場合 (native ビルドの空文字列含む) は `None`。
+pub fn host_section<T: serde::de::DeserializeOwned>(section: impl AsRef<str>) -> Option<T> {
+    let json = host_section_json(section);
+    if json.is_empty() {
+        return None;
+    }
+    serde_json::from_str(&json).ok()
 }
 
 #[cfg(target_arch = "wasm32")]

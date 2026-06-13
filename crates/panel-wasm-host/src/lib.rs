@@ -385,6 +385,82 @@ mod tests {
         );
     }
 
+    /// host state セクション JSON を 1 回で取得する ABI (BL-142)。
+    /// `document` セクション全体を JSON 文字列として読み、state へ書き戻す。
+    const SECTION_JSON_WAT: &str = r#"(module
+    (import "host" "state_set_string" (func $state_set_string (param i32 i32 i32 i32)))
+    (import "host" "host_get_section_json_len" (func $host_get_section_json_len (param i32 i32) (result i32)))
+    (import "host" "host_get_section_json_copy" (func $host_get_section_json_copy (param i32 i32 i32 i32)))
+    (memory (export "memory") 1)
+    (data (i32.const 0) "section")
+    (data (i32.const 16) "document")
+    (func (export "panel_sync_host")
+        (local $json_len i32)
+        (local $buffer_ptr i32)
+        i32.const 16
+        i32.const 8
+        call $host_get_section_json_len
+        local.set $json_len
+        i32.const 256
+        local.set $buffer_ptr
+        i32.const 16
+        i32.const 8
+        local.get $buffer_ptr
+        local.get $json_len
+        call $host_get_section_json_copy
+        i32.const 0
+        i32.const 7
+        local.get $buffer_ptr
+        local.get $json_len
+        call $state_set_string))"#;
+
+    #[test]
+    fn instance_reads_host_state_section_as_json() {
+        use panel_protocol::host_state::DocumentState;
+
+        let wasm_path = write_temp_wat(SECTION_JSON_WAT);
+        let mut instance = PanelWasmInstance::load(&wasm_path).expect("instance loads");
+
+        let document = json!({
+            "title": "Untitled",
+            "page_count": 1,
+            "koma_count": 1,
+            "active_page_number": 1,
+            "active_page_koma_count": 1,
+            "active_koma_index": 0,
+            "active_koma_number": 1,
+            "active_koma_x": 0,
+            "active_koma_y": 0,
+            "active_koma_width": 320,
+            "active_koma_height": 240,
+            "active_layer_name": "Layer 1",
+            "layer_count": 1,
+            "active_layer_index": 0,
+            "active_layer_blend_mode": "normal",
+            "active_layer_visible": true,
+            "active_layer_masked": false,
+            "komas_json": "[]",
+            "layers_json": "[{\"name\":\"Layer 1\",\"blend_mode\":\"normal\",\"visible\":true,\"masked\":false}]",
+        });
+
+        let synced = instance
+            .sync_host(&json!({}), &json!({ "document": document.clone() }))
+            .expect("section json handler runs");
+        assert!(synced.diagnostics.is_empty());
+
+        // state へ書き戻された JSON 文字列を型付き DTO へ落とせる。
+        let patch = synced
+            .state_patch
+            .iter()
+            .find(|patch| patch.path == "section")
+            .expect("section patch present");
+        let json = patch.value.as_ref().and_then(Value::as_str).expect("string value");
+        let state: DocumentState = serde_json::from_str(json).expect("document state parses");
+        assert_eq!(state.title, "Untitled");
+        assert_eq!(state.active_koma_width, 320);
+        assert_eq!(state.layers().len(), 1);
+    }
+
     #[test]
     fn instance_reads_host_state_through_host_imports() {
         let wasm_path = write_temp_wat(HOST_SYNC_WAT);

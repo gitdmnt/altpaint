@@ -56,7 +56,63 @@ pub(crate) fn register_state_readers(
     register_source_readers(linker, "state", StateSource::PanelState)?;
     register_source_readers(linker, "host", StateSource::HostState)?;
     register_event_string_readers(linker, "event", StateSource::Event)?;
+    // host state セクション JSON を 1 回で取得する ABI (BL-142)。
+    register_section_json_readers(linker)?;
     Ok(())
+}
+
+/// `host_get_section_json_len` / `host_get_section_json_copy` を登録する (BL-142)。
+///
+/// 個別 path getter (`host_get_string` 等) を値の数だけ呼ぶ代わりに、host state の
+/// トップレベルセクション (例 `"document"`) を JSON 文字列として 1 回で取得し、
+/// パネル側で型付き DTO ([`panel_protocol::host_state`]) へ serde デシリアライズする。
+fn register_section_json_readers(linker: &mut Linker<HostCallContext>) -> wasmtime::Result<()> {
+    let source = StateSource::HostState;
+    linker.func_wrap(
+        HOST_IMPORT_MODULE,
+        "host_get_section_json_len",
+        move |mut caller: Caller<'_, HostCallContext>, ptr: i32, len: i32| -> i32 {
+            let Some(key) = read_path(&mut caller, ptr, len, source, "section json len") else {
+                return 0;
+            };
+            section_json(&caller, &key)
+                .map(|json| json.len() as i32)
+                .unwrap_or_default()
+        },
+    )?;
+    linker.func_wrap(
+        HOST_IMPORT_MODULE,
+        "host_get_section_json_copy",
+        move |mut caller: Caller<'_, HostCallContext>,
+              key_ptr: i32,
+              key_len: i32,
+              buffer_ptr: i32,
+              buffer_len: i32| {
+            let Some(key) = read_path(&mut caller, key_ptr, key_len, source, "section json copy")
+            else {
+                return;
+            };
+            let Some(json) = section_json(&caller, &key) else {
+                return;
+            };
+            write_str_to_buffer(
+                &mut caller,
+                &json,
+                buffer_ptr,
+                buffer_len,
+                "host state section json copy",
+            );
+        },
+    )?;
+    Ok(())
+}
+
+/// host state の トップレベルセクション (`key`) を JSON 文字列へシリアライズする。
+fn section_json(caller: &Caller<'_, HostCallContext>, key: &str) -> Option<String> {
+    let section = StateSource::HostState
+        .value(caller.data())
+        .and_then(|value| value.get(key))?;
+    serde_json::to_string(section).ok()
 }
 
 /// `<prefix>_get_bool` / `_get_i32` / `_get_string_len` / `_get_string_copy` を登録する。

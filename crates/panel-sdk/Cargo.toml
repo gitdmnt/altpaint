@@ -8,4 +8,5 @@ authors.workspace = true
 [dependencies]
 panel-macros = { path = "../panel-macros" }
 panel-protocol = { path = "../panel-protocol" }
+serde.workspace = true
 serde_json.workspace = true
