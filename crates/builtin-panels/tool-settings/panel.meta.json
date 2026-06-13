@@ -2,5 +2,9 @@
   "id": "builtin.tool-settings",
   "title": "ツール設定",
   "default_size": { "width": 280, "height": 360 },
-  "subscribes": ["tool"]
+  "subscribes": ["tool"],
+  "layout": {
+    "anchor": "bottom-right",
+    "position": { "x": 24, "y": 24 }
+  }
 }

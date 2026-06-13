@@ -394,6 +394,31 @@ impl PanelRuntime {
         self.panels.iter().map(|panel| panel.id()).collect()
     }
 
+    /// 各パネルの meta.json で宣言された既定ワークスペース配置 (BL-095)。
+    ///
+    /// `(panel_id, &PanelLayoutMeta)` を登録順で返す。desktop が panel-workspace へ
+    /// 配置既定値を bridge するために使う (panel-workspace はビルトイン ID を持たない)。
+    pub fn panel_layout_metas(&self) -> Vec<(&str, &crate::meta::PanelLayoutMeta)> {
+        self.panels
+            .iter()
+            .map(|panel| (panel.id(), panel.layout()))
+            .collect()
+    }
+
+    /// 指定 host state セクションを**明示的に**購読しているパネル ID 一覧 (BL-095)。
+    ///
+    /// desktop が「特定トピック (tool/color/view 等) が変わったら購読パネルだけ
+    /// dirty にする」解決に使い、ビルトイン ID リストのハードコードを廃止する。
+    /// `subscribes` が空のパネル (全セクション購読) は対象外 — それらは全面同期
+    /// (`mark_all_dirty`) 経路で扱われる。
+    pub fn panel_ids_subscribing(&self, section: &str) -> Vec<String> {
+        self.panels
+            .iter()
+            .filter(|panel| panel.subscribes().iter().any(|s| s == section))
+            .map(|panel| panel.id().to_string())
+            .collect()
+    }
+
     pub fn persistent_panel_configs(&self) -> BTreeMap<String, Value> {
         collect_persistent_panel_configs(&self.panels)
     }

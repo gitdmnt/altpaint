@@ -22,7 +22,7 @@ use panel_html::{
 use crate::request_translation::TranslatedRequest;
 use crate::translator_registry::TranslatorRegistry;
 use crate::host_state::HostStateBuild;
-use crate::meta::PanelMeta;
+use crate::meta::{PanelLayoutMeta, PanelMeta};
 use panel_wasm_host::{PanelWasmHostError, PanelWasmInstance};
 use serde_json::{Value, json};
 
@@ -40,6 +40,8 @@ pub struct HtmlWasmPanel {
     /// meta.json で宣言された購読 host state セクション (BL-093)。
     /// 空の場合は全セクション購読 (どれか変われば再 render)。
     subscribes: Vec<String>,
+    /// meta.json で宣言された既定ワークスペース配置 (BL-095)。
+    layout: PanelLayoutMeta,
     /// 初回 `update` を購読 delta に関わらず必ず render させるフラグ (BL-093)。
     ///
     /// section registry の revision キャッシュはパネル横断で共有されるため、
@@ -112,6 +114,7 @@ impl HtmlWasmPanel {
             state,
             last_host_state: json!({}),
             subscribes: meta.subscribes,
+            layout: meta.layout,
             needs_initial_render: true,
             has_keyboard_handler,
             translator_registry: Arc::new(default_translator_registry()),
@@ -133,6 +136,11 @@ impl HtmlWasmPanel {
     /// meta.json で宣言された購読セクション (BL-093)。空 = 全セクション購読。
     pub fn subscribes(&self) -> &[String] {
         &self.subscribes
+    }
+
+    /// meta.json で宣言された既定ワークスペース配置 (BL-095)。
+    pub fn layout(&self) -> &PanelLayoutMeta {
+        &self.layout
     }
 
     /// panel.meta.json の `default_size` を返す。

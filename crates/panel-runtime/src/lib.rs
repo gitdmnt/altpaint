@@ -19,7 +19,7 @@ pub use host_state::{
     EMPTY_WORKSPACE_PANELS_JSON, HostState, HostStateBuild, HostStateContext, HostStateRegistry,
 };
 pub use loader::{BuiltinPanelDef, BuiltinPanelLoadError, register_builtin_panels};
-pub use meta::{PanelMeta, PanelSizeMeta};
+pub use meta::{PanelLayoutMeta, PanelMeta, PanelPositionMeta, PanelSizeMeta};
 pub use runtime::{
     HtmlSurfaceRenderer, RenderedPanelTexture, PanelRuntime, PanelDispatchResult,
     PanelKeyboardResult,
