@@ -58,7 +58,51 @@ pub(crate) fn register_state_readers(
     register_event_string_readers(linker, "event", StateSource::Event)?;
     // host state セクション JSON を 1 回で取得する ABI (BL-142)。
     register_section_json_readers(linker)?;
+    // event payload 全体を JSON で取得する ABI (BL-141 typed handler payload)。
+    register_event_payload_json_readers(linker)?;
     Ok(())
+}
+
+/// `event_get_payload_json_len` / `event_get_payload_json_copy` を登録する (BL-141)。
+///
+/// typed handler payload のため、UI イベントの `event_payload` 全体を JSON 文字列で
+/// 1 回取得し、パネル側で serde `Deserialize` 構造体へ落とす。引数付きパスは取らない
+/// (常に payload ルートをシリアライズする)。
+fn register_event_payload_json_readers(
+    linker: &mut Linker<HostCallContext>,
+) -> wasmtime::Result<()> {
+    linker.func_wrap(
+        HOST_IMPORT_MODULE,
+        "event_get_payload_json_len",
+        |caller: Caller<'_, HostCallContext>| -> i32 {
+            event_payload_json(&caller)
+                .map(|json| json.len() as i32)
+                .unwrap_or_default()
+        },
+    )?;
+    linker.func_wrap(
+        HOST_IMPORT_MODULE,
+        "event_get_payload_json_copy",
+        |mut caller: Caller<'_, HostCallContext>, buffer_ptr: i32, buffer_len: i32| {
+            let Some(json) = event_payload_json(&caller) else {
+                return;
+            };
+            write_str_to_buffer(
+                &mut caller,
+                &json,
+                buffer_ptr,
+                buffer_len,
+                "event payload json copy",
+            );
+        },
+    )?;
+    Ok(())
+}
+
+/// 現在の event_payload 全体を JSON 文字列へシリアライズする。
+fn event_payload_json(caller: &Caller<'_, HostCallContext>) -> Option<String> {
+    let payload = StateSource::Event.value(caller.data())?;
+    serde_json::to_string(payload).ok()
 }
 
 /// `host_get_section_json_len` / `host_get_section_json_copy` を登録する (BL-142)。

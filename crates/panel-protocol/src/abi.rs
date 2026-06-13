@@ -41,6 +41,23 @@ pub const DOM_IMPORT_MODULE: &str = "dom";
 /// SetValue / DragValue / SetText 等のホスト側イベントも同キーに値を格納する。
 pub const PAYLOAD_VALUE_KEY: &str = "value";
 
+/// `event_payload` 全体の JSON バイト長を返す host function 名 (BL-141)。
+///
+/// **handler payload 規約**: パネルのイベント handler (`panel_handle_<name>`) は
+/// 0 個または 1 個の引数を取る:
+///
+/// - **引数なし** (`fn handler()`): payload を読まない handler。
+/// - **typed payload** (`fn handler(payload: T)` で `T: serde::Deserialize + Default`):
+///   ホストの `event_payload` 全体を本 ABI ([`EVENT_PAYLOAD_JSON_LEN`] /
+///   [`EVENT_PAYLOAD_JSON_COPY`]) で 1 回取得し、`T` へ serde デシリアライズして渡す。
+///   `event_string` 等での暗黙 payload 読みを廃止する。
+/// - **legacy i32** (`fn handler(value: i32)`): 移行期間のみ許可。`event_payload["value"]`
+///   ([`PAYLOAD_VALUE_KEY`]) を `i32` で渡す。typed payload への移行完了時に撤去する。
+pub const EVENT_PAYLOAD_JSON_LEN: &str = "event_get_payload_json_len";
+
+/// `event_payload` 全体の JSON を Wasm バッファへコピーする host function 名 (BL-141)。
+pub const EVENT_PAYLOAD_JSON_COPY: &str = "event_get_payload_json_copy";
+
 /// handler の export 名を組み立てる (`panel_handle_<sanitized>`)。
 ///
 /// `sanitize_handler_name` は ASCII 英数字以外を `_` に置換する (host / SDK 共通規約)。

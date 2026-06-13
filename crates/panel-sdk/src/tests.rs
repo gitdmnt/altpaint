@@ -19,6 +19,19 @@ fn slider_for_macro_test(value: i32) {
     assert_eq!(value, 42);
 }
 
+/// typed payload (serde Deserialize + Default) を受ける handler の macro 展開を検証する。
+#[derive(Debug, Default, serde::Deserialize, PartialEq)]
+struct MoveLayerPayload {
+    from_index: i64,
+    to_index: i64,
+}
+
+#[panel_handler]
+fn typed_payload_for_macro_test(payload: MoveLayerPayload) {
+    // native では event_payload が空 → Default。
+    assert_eq!(payload, MoveLayerPayload::default());
+}
+
 #[test]
 fn typed_service_requests_hide_service_names() {
     let save = services::project_io::save_current();
@@ -211,4 +224,5 @@ fn macro_annotated_functions_remain_directly_callable() {
     save_for_macro_test();
     sync_host_for_macro_test();
     slider_for_macro_test(42);
+    typed_payload_for_macro_test(MoveLayerPayload::default());
 }

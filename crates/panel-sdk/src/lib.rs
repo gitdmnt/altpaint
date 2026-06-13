@@ -1,5 +1,9 @@
 //! `panel-sdk` はパネル作者向けの正面入口である。
 
+// panel_handler マクロが生成する typed payload 取り出し (`::panel_sdk::runtime::
+// event_payload`) を、panel-sdk 自身のテスト内でも解決できるようにする自己エイリアス。
+extern crate self as panel_sdk;
+
 pub mod commands;
 pub mod dom;
 pub mod host;

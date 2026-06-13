@@ -19,6 +19,8 @@ unsafe extern "C" {
     fn state_get_string_copy(path_ptr: i32, path_len: i32, buffer_ptr: i32, buffer_len: i32);
     fn event_get_string_len(ptr: i32, len: i32) -> i32;
     fn event_get_string_copy(path_ptr: i32, path_len: i32, buffer_ptr: i32, buffer_len: i32);
+    fn event_get_payload_json_len() -> i32;
+    fn event_get_payload_json_copy(buffer_ptr: i32, buffer_len: i32);
     fn host_get_bool(ptr: i32, len: i32) -> i32;
     fn host_get_i32(ptr: i32, len: i32) -> i32;
     fn host_get_string_len(ptr: i32, len: i32) -> i32;
@@ -185,6 +187,41 @@ pub fn event_string(path: impl AsRef<str>) -> String {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn event_string(_path: impl AsRef<str>) -> String {
     String::new()
+}
+
+/// UI イベントの `event_payload` 全体を JSON 文字列で 1 回取得する (BL-141)。
+#[cfg(target_arch = "wasm32")]
+pub fn event_payload_json() -> String {
+    let length = unsafe { event_get_payload_json_len() };
+    if length <= 0 {
+        return String::new();
+    }
+    let mut buffer = vec![0u8; length as usize];
+    unsafe {
+        event_get_payload_json_copy(buffer.as_mut_ptr() as i32, buffer.len() as i32);
+    }
+    String::from_utf8(buffer).unwrap_or_default()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn event_payload_json() -> String {
+    String::new()
+}
+
+/// `event_payload` を typed payload (serde `Deserialize` 構造体) へ落とす (BL-141)。
+///
+/// panel_handler マクロが typed payload 引数の handler に対し生成する取り出し口。
+/// 空 payload や deserialize 失敗時は `T::default()` を返す
+/// (handler は常に値を 1 つ受け取る規約; payload 欠落は既定値として扱う)。
+pub fn event_payload<T>() -> T
+where
+    T: serde::de::DeserializeOwned + Default,
+{
+    let json = event_payload_json();
+    if json.is_empty() {
+        return T::default();
+    }
+    serde_json::from_str(&json).unwrap_or_default()
 }
 
 #[cfg(target_arch = "wasm32")]

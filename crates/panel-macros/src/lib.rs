@@ -2,8 +2,8 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::spanned::Spanned;
 use syn::{
-    FnArg, Ident, ItemFn, LitStr, Pat, PatIdent, ReturnType, Type, parse::Parse,
-    parse::ParseStream, parse_macro_input,
+    FnArg, Ident, ItemFn, LitStr, Pat, ReturnType, Type, parse::Parse, parse::ParseStream,
+    parse_macro_input,
 };
 
 struct HandlerArgs {
@@ -76,15 +76,26 @@ pub fn panel_sync_host(attr: TokenStream, item: TokenStream) -> TokenStream {
     )
 }
 
+/// handler 引数の種別 (BL-141 handler payload 規約)。
+enum HandlerArgKind {
+    /// 引数なし。
+    None,
+    /// legacy `i32` payload (`event_payload["value"]`)。移行期間のみ。
+    LegacyI32,
+    /// typed payload (`T: serde::Deserialize + Default`)。`event_payload` 全体を渡す。
+    Typed(Box<Type>),
+}
+
 fn expand_panel_export(
     function: ItemFn,
     export_prefix: &str,
     is_init: bool,
     explicit_name: Option<LitStr>,
 ) -> TokenStream {
-    if let Err(error) = validate_signature(&function.sig, is_init) {
-        return error.to_compile_error().into();
-    }
+    let arg_kind = match validate_signature(&function.sig, is_init) {
+        Ok(arg_kind) => arg_kind,
+        Err(error) => return error.to_compile_error().into(),
+    };
 
     let attrs = &function.attrs;
     let vis = &function.vis;
@@ -103,8 +114,22 @@ fn expand_panel_export(
         }
     });
 
-    let wrapper_inputs = &sig.inputs;
-    let call_arguments = sig.inputs.iter().map(call_argument_for_input);
+    // 種別ごとに wrapper の FFI シグネチャと handler 呼出を組み立てる。
+    // typed payload は FFI 引数を持たず、wrapper 内で event_payload を取得する。
+    let (wrapper_params, call) = match arg_kind {
+        HandlerArgKind::None => (quote!(), quote!(#function_name();)),
+        HandlerArgKind::LegacyI32 => (
+            quote!(value: i32),
+            quote!(#function_name(value);),
+        ),
+        HandlerArgKind::Typed(ty) => (
+            quote!(),
+            quote!(
+                let payload: #ty = ::panel_sdk::runtime::event_payload::<#ty>();
+                #function_name(payload);
+            ),
+        ),
+    };
 
     quote!(
         #(#attrs)*
@@ -112,14 +137,14 @@ fn expand_panel_export(
 
         #[doc(hidden)]
         #[unsafe(export_name = #export_name)]
-        pub extern "C" fn #wrapper_name(#wrapper_inputs) {
-            #function_name(#(#call_arguments),*);
+        pub extern "C" fn #wrapper_name(#wrapper_params) {
+            #call
         }
     )
     .into()
 }
 
-fn validate_signature(signature: &syn::Signature, is_init: bool) -> syn::Result<()> {
+fn validate_signature(signature: &syn::Signature, is_init: bool) -> syn::Result<HandlerArgKind> {
     if signature.constness.is_some() {
         return Err(syn::Error::new(
             signature.constness.span(),
@@ -161,28 +186,31 @@ fn validate_signature(signature: &syn::Signature, is_init: bool) -> syn::Result<
     if !is_init && input_count > 1 {
         return Err(syn::Error::new(
             signature.inputs.span(),
-            "panel handlers currently support zero or one `i32` argument",
+            "panel handlers take zero or one payload argument (typed serde struct or legacy i32)",
         ));
     }
-    if let Some(argument) = signature.inputs.first() {
-        match argument {
-            FnArg::Typed(argument) if matches_i32(&argument.ty) => {}
-            FnArg::Typed(argument) => {
-                return Err(syn::Error::new(
-                    argument.ty.span(),
-                    "panel handlers currently support only `i32` payload arguments",
-                ));
-            }
-            FnArg::Receiver(receiver) => {
-                return Err(syn::Error::new(
-                    receiver.span(),
-                    "panel entrypoints cannot take `self`",
-                ));
-            }
-        }
-    }
 
-    Ok(())
+    let Some(argument) = signature.inputs.first() else {
+        return Ok(HandlerArgKind::None);
+    };
+    match argument {
+        // legacy i32 payload は移行期間のみ許可 (typed payload への移行で撤去)。
+        FnArg::Typed(argument) if matches_i32(&argument.ty) => Ok(HandlerArgKind::LegacyI32),
+        // それ以外の単一型引数は typed payload (T: Deserialize + Default) とみなす。
+        FnArg::Typed(argument) => {
+            if !matches!(&*argument.pat, Pat::Ident(_)) {
+                return Err(syn::Error::new(
+                    argument.pat.span(),
+                    "panel handler payload argument must be a simple identifier",
+                ));
+            }
+            Ok(HandlerArgKind::Typed(argument.ty.clone()))
+        }
+        FnArg::Receiver(receiver) => Err(syn::Error::new(
+            receiver.span(),
+            "panel entrypoints cannot take `self`",
+        )),
+    }
 }
 
 fn matches_i32(ty: &Type) -> bool {
@@ -193,17 +221,5 @@ fn matches_i32(ty: &Type) -> bool {
             .last()
             .is_some_and(|segment| segment.ident == "i32"),
         _ => false,
-    }
-}
-
-fn call_argument_for_input(argument: &FnArg) -> proc_macro2::TokenStream {
-    match argument {
-        FnArg::Typed(argument) => match &*argument.pat {
-            Pat::Ident(PatIdent { ident, .. }) => quote!(#ident),
-            _ => quote!(compile_error!(
-                "panel entrypoint arguments must be simple identifiers"
-            )),
-        },
-        FnArg::Receiver(_) => quote!(compile_error!("panel entrypoints cannot take self")),
     }
 }
