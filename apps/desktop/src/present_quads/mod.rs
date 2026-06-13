@@ -7,7 +7,7 @@ mod overlay_quad;
 mod overlay_state;
 mod solid_quad;
 use ::geometry::WindowRect;
-use crate::theme::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
+use crate::presenter::theme::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
 
 pub(crate) use canvas_plan::CanvasPlan;
 pub(crate) use geometry::fit_rect;

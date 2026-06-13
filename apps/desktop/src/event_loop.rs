@@ -23,7 +23,7 @@ use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::app::DesktopApp;
 use crate::presenter::WgpuPresenter;
-use crate::theme::{FOOTER_HEIGHT, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
+use crate::presenter::theme::{FOOTER_HEIGHT, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
 
 /// `winit` アプリケーションとして振る舞うイベントループホストを表す。
 pub(crate) struct DesktopEventLoop {

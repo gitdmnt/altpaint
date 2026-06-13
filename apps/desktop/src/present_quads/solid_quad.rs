@@ -4,7 +4,7 @@
 //! 描画リクエストの最小単位。`pixel_rect_to_ndc` は wgpu の Y 軸 (上=+1) を
 //! 考慮した変換式を一箇所に集約する。
 
-use crate::theme::{
+use crate::presenter::theme::{
     ACTIVE_PANEL_BORDER, APP_BACKGROUND, CANVAS_BACKGROUND, CANVAS_FRAME_BACKGROUND,
     CANVAS_FRAME_BORDER,
 };

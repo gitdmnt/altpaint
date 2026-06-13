@@ -6,7 +6,7 @@
 //! `WgpuPresenter` の専用パイプラインへ渡される。
 
 use ::geometry::{PageDirtyRect, WindowRect};
-use crate::theme::{
+use crate::presenter::theme::{
     ACTIVE_KOMA_BORDER, ACTIVE_KOMA_FILL, ACTIVE_KOMA_MASK, BRUSH_PREVIEW_RING, LASSO_LINE,
     KOMA_NAVIGATOR_ACTIVE, KOMA_NAVIGATOR_BACKGROUND, KOMA_NAVIGATOR_BORDER,
     KOMA_NAVIGATOR_KOMA, KOMA_PREVIEW_BORDER, KOMA_PREVIEW_FILL,

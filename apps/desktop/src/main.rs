@@ -10,7 +10,6 @@ mod present_quads;
 mod presenter;
 mod event_loop;
 mod profiling;
-mod theme;
 
 use anyhow::Result;
 

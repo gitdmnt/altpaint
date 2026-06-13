@@ -5,6 +5,7 @@
 //!   - `pipelines`: テクスチャ提示パイプライン + 共通 quad パイプライン (solid/circle/line 統合)
 //!   - `textures`:  CPU/GPU テクスチャ確保・アップロード・bind group キャッシュ
 //!   - `frame`:     `PresentFrame` 等の入力 DTO と `render` 本体
+//!   - `theme`:     配色・ウィンドウ寸法・表示閾値 (BL-112 の最終配置)
 //!
 //! 毎フレームの描画手順:
 //!   1. CPU 側のピクセルデータを GPU テクスチャへアップロード (queue.write_texture)
@@ -16,6 +17,7 @@
 mod frame;
 mod pipelines;
 mod shaders;
+pub(crate) mod theme;
 mod textures;
 
 use std::collections::HashMap;
@@ -206,10 +208,10 @@ impl WgpuPresenter {
         );
 
         let clear_color = wgpu::Color {
-            r: crate::theme::APP_BACKGROUND[0] as f64 / 255.0,
-            g: crate::theme::APP_BACKGROUND[1] as f64 / 255.0,
-            b: crate::theme::APP_BACKGROUND[2] as f64 / 255.0,
-            a: crate::theme::APP_BACKGROUND[3] as f64 / 255.0,
+            r: theme::APP_BACKGROUND[0] as f64 / 255.0,
+            g: theme::APP_BACKGROUND[1] as f64 / 255.0,
+            b: theme::APP_BACKGROUND[2] as f64 / 255.0,
+            a: theme::APP_BACKGROUND[3] as f64 / 255.0,
         };
 
         Ok(Self {

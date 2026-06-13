@@ -1,7 +1,8 @@
 //! デスクトップの配色・ウィンドウ寸法・表示用閾値を集約する。
 //!
-//! BL-112 暫定配置。`desktop-support::config` の解体に伴い移設した。最終的な
-//! presenter/theme への配置は B7-part2 で行う。
+//! presenter (GPU 提示) が消費する正準データのため、presenter モジュール直下に
+//! 置く (D2 / BL-112 の最終配置)。クリア色・各レイヤーの quad 色・オーバーレイ色は
+//! すべてここを単一の真実として参照する。
 
 /// ウィンドウタイトルのベース文字列を表す。
 pub(crate) const WINDOW_TITLE: &str = "altpaint";
