@@ -23,12 +23,14 @@ desktop-support = { path = "../../crates/desktop-support" }
 frame-profiler = { path = "../../crates/frame-profiler" }
 panel-runtime = { path = "../../crates/panel-runtime" }
 keyboard-types = "0.7"
+png = "0.17"
 pollster.workspace = true
 canvas-geometry = { path = "../../crates/canvas-geometry" }
 serde_json.workspace = true
 project-store = { path = "../../crates/project-store" }
 pen-io = { path = "../../crates/pen-io" }
 panel-workspace = { path = "../../crates/panel-workspace" }
+thiserror.workspace = true
 tinyfiledialogs.workspace = true
 wgpu.workspace = true
 winit.workspace = true

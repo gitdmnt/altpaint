@@ -246,7 +246,7 @@ impl DesktopApp {
 
     pub(crate) fn reload_tool_catalog_into_document(document: &mut Document) -> bool {
         let (tools, diagnostics) =
-            project_store::load_tool_directory(crate::platform::tool_dir());
+            crate::features::tools::load_tool_directory(crate::platform::tool_dir());
         for diagnostic in diagnostics {
             eprintln!("tool catalog load warning: {diagnostic}");
         }

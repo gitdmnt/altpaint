@@ -57,7 +57,7 @@ impl DesktopApp {
         let document = self.document.clone();
         let path_display = path.display().to_string();
         let handle = thread::spawn(move || {
-            project_store::export_active_koma_as_png(&document, &path)
+            crate::features::export::export_active_koma_as_png(&document, &path)
                 .map_err(|error| error.to_string())
         });
         self.background_jobs.push(BackgroundJob {
