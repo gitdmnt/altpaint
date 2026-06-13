@@ -24,12 +24,12 @@ pub(crate) const SERVICE_HANDLERS: &[ServiceHandler] = &[
     super::project_io::handle_project_service_request,
     super::workspace_io::handle_workspace_service_request,
     super::workspace_layout::handle_workspace_layout_service_request,
-    super::tool_catalog::handle_tool_catalog_service_request,
-    super::view::handle_view_service_request,
-    super::koma_navigation::handle_koma_navigation_service_request,
+    crate::features::tools::handle_tool_catalog_service_request,
+    crate::features::view::handle_view_service_request,
+    crate::features::koma::handle_koma_navigation_service_request,
     super::history::handle_history_service_request,
-    super::snapshot::handle_snapshot_service_request,
-    super::export::handle_export_service_request,
+    crate::features::snapshots::handle_snapshot_service_request,
+    crate::features::export::handle_export_service_request,
     crate::features::text::handle_text_render_service_request,
 ];
 

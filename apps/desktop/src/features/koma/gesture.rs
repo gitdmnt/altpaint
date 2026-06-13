@@ -3,7 +3,7 @@
 //! NOTE: BL-081 で paint-engine のペイント系ステートマシンから分離した。
 //! コマ作成はペイント入力解釈ではなく desktop feature の責務であり、
 //! `CanvasGestureUpdate` を Paint 系に縮小するために別経路へ切り出した。
-//! 最終配置 (features/koma) は B7 で確定する。挙動は分離前と不変。
+//! B7 で `app/koma_gesture.rs` から features/koma へ移設した。挙動不変。
 
 use document_model::KomaBounds;
 use geometry::PagePoint;

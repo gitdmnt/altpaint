@@ -3,7 +3,7 @@
 use document_model::DocumentCommand;
 use panel_runtime::{ServiceRequest, services::names};
 
-use super::DesktopApp;
+use crate::app::DesktopApp;
 
 /// koma_nav service request を処理する。
 pub(crate) fn handle_koma_navigation_service_request(

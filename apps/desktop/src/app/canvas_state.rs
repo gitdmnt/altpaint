@@ -19,7 +19,7 @@ impl DesktopApp {
         }
     }
 
-    pub(super) fn refresh_cpu_canvas_snapshot(&mut self) {
+    pub(crate) fn refresh_cpu_canvas_snapshot(&mut self) {
         self.paint.cpu_canvas_snapshot = Some(build_cpu_canvas_snapshot(&self.document));
     }
 
@@ -33,7 +33,7 @@ impl DesktopApp {
 
     pub(super) fn koma_creation_preview_bounds(&self) -> Option<document_model::KomaBounds> {
         let (page_width, page_height) = self.document.active_page_dimensions();
-        super::koma_gesture::koma_creation_preview_bounds(
+        crate::features::koma::koma_creation_preview_bounds(
             &self.koma_gesture,
             page_width,
             page_height,

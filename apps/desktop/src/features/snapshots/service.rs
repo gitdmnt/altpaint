@@ -2,7 +2,7 @@
 
 use panel_runtime::{ServiceRequest, services::names};
 
-use super::DesktopApp;
+use crate::app::DesktopApp;
 
 /// snapshot service request を処理する。
 pub(crate) fn handle_snapshot_service_request(
@@ -37,7 +37,7 @@ impl DesktopApp {
         };
         self.document = entry.document.clone();
         // 履歴はスナップショット復元後にクリアして整合性を保つ
-        self.paint.history.clear();
+        self.clear_edit_history();
         self.refresh_cpu_canvas_snapshot();
         true
     }

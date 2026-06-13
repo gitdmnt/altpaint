@@ -7,8 +7,11 @@
 
 pub(crate) mod export;
 mod json_store;
+pub(crate) mod koma;
 pub(crate) mod project;
+pub(crate) mod snapshots;
 pub(crate) mod status_bar;
 pub(crate) mod text;
 pub(crate) mod tools;
+pub(crate) mod view;
 pub(crate) mod workspace;

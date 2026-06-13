@@ -7,11 +7,9 @@ mod background_tasks;
 mod bootstrap;
 pub(crate) mod cpu_canvas_snapshot;
 mod command_router;
-mod default_tool_catalog;
 pub(crate) mod cursor;
 mod input;
 mod io_state;
-mod koma_gesture;
 mod paint;
 mod paint_preview;
 mod panel_config_sync;
@@ -20,7 +18,6 @@ mod present;
 mod invalidation;
 mod services;
 mod canvas_state;
-mod snapshot_store;
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -43,9 +40,9 @@ use self::io_state::DesktopIoState;
 pub(crate) use self::panel_dispatch::PanelDragState;
 use self::panel_dispatch::PanelInteractionState;
 use self::invalidation::PresentFrameUpdate;
-use self::koma_gesture::KomaGesture;
+use crate::features::koma::KomaGesture;
 use self::paint::EditHistory;
-use self::snapshot_store::DocumentSnapshotStore;
+use crate::features::snapshots::DocumentSnapshotStore;
 use crate::present_quads::DesktopLayout;
 use paint_engine::CanvasInputState;
 

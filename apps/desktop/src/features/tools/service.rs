@@ -9,7 +9,8 @@ use panel_runtime::{
 use serde_json::json;
 use pen_io::{ImportedPenSet, load_pen_directory, parse_pen_file};
 
-use super::DesktopApp;
+use super::{desktop_default_tool_catalog, load_tool_directory};
+use crate::app::DesktopApp;
 
 /// tool_catalog service request を処理する。
 pub(crate) fn handle_tool_catalog_service_request(
@@ -149,6 +150,22 @@ impl DesktopApp {
             return false;
         }
         document.session.replace_pen_presets(presets);
+        true
+    }
+
+    pub(crate) fn reload_tool_catalog_into_document(document: &mut Document) -> bool {
+        let (tools, diagnostics) = load_tool_directory(crate::platform::tool_dir());
+        for diagnostic in diagnostics {
+            eprintln!("tool catalog load warning: {diagnostic}");
+        }
+        // tools/ が無い・空の場合は desktop 既定カタログ (provider_plugin_id 付き) を
+        // フォールバックとして注入する。editor-state の既定カタログは provider を持たない。
+        let tools = if tools.is_empty() {
+            desktop_default_tool_catalog()
+        } else {
+            tools
+        };
+        document.session.replace_tool_catalog(tools);
         true
     }
 }

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use panel_runtime::{ServiceRequest, services::names};
 
-use super::DesktopApp;
+use crate::app::DesktopApp;
 
 /// export service request を処理する。
 pub(crate) fn handle_export_service_request(

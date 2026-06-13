@@ -1,18 +1,12 @@
 //! host service request と補助的な状態同期処理を扱う。
 
-mod export;
 mod gpu_sync;
 mod history;
-mod koma_navigation;
 mod project_io;
 mod registry;
-mod snapshot;
-mod tool_catalog;
-mod view;
 mod workspace_io;
 mod workspace_layout;
 
-use document_model::Document;
 use crate::platform::DEFAULT_PROJECT_FILE_NAME;
 use panel_workspace::WorkspaceUiState;
 
@@ -24,23 +18,6 @@ impl DesktopApp {
             self.panel_workspace.workspace_layout(),
             self.panel_runtime.persistent_panel_configs(),
         )
-    }
-
-    pub(crate) fn reload_tool_catalog_into_document(document: &mut Document) -> bool {
-        let (tools, diagnostics) =
-            crate::features::tools::load_tool_directory(crate::platform::tool_dir());
-        for diagnostic in diagnostics {
-            eprintln!("tool catalog load warning: {diagnostic}");
-        }
-        // tools/ が無い・空の場合は desktop 既定カタログ (provider_plugin_id 付き) を
-        // フォールバックとして注入する。editor-state の既定カタログは provider を持たない。
-        let tools = if tools.is_empty() {
-            crate::app::default_tool_catalog::desktop_default_tool_catalog()
-        } else {
-            tools
-        };
-        document.session.replace_tool_catalog(tools);
-        true
     }
 
     /// 9E-4: HtmlPanelView ステータスバー用のスナップショットを組み立てる。

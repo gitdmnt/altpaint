@@ -9,7 +9,7 @@ use geometry::{PagePoint, WindowPoint, WindowRect};
 use paint_engine::{CanvasGestureUpdate, CanvasPointerAction, advance_pointer_gesture};
 
 use super::DesktopApp;
-use super::koma_gesture::{KomaGesture, KomaGestureUpdate, advance_koma_gesture};
+use crate::features::koma::{KomaGesture, KomaGestureUpdate, advance_koma_gesture};
 
 impl DesktopApp {
     pub(crate) fn update_canvas_hover(&mut self, x: i32, y: i32) -> bool {
@@ -245,7 +245,7 @@ impl DesktopApp {
                     anchor: Some(anchor),
                     last_position: Some(current),
                 };
-                let created = super::koma_gesture::koma_creation_preview_bounds(
+                let created = crate::features::koma::koma_creation_preview_bounds(
                     &preview_state,
                     page_width,
                     page_height,

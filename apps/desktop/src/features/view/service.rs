@@ -3,7 +3,7 @@
 use editor_state::SessionCommand;
 use panel_runtime::{ServiceRequest, services::names};
 
-use super::DesktopApp;
+use crate::app::DesktopApp;
 
 /// view service request を処理する。
 pub(crate) fn handle_view_service_request(
