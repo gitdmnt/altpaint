@@ -6,7 +6,7 @@
 
 use std::time::Instant;
 
-use desktop_support::FrameProfiler;
+use frame_profiler::FrameProfiler;
 
 use super::{DesktopApp, PresentFrameUpdate};
 use crate::present_quads::DesktopLayout;

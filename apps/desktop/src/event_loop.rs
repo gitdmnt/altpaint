@@ -13,7 +13,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::Context;
-use desktop_support::{FrameProfiler, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
+use desktop_support::{WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
+use frame_profiler::FrameProfiler;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, MouseButton, WindowEvent};
@@ -236,8 +237,10 @@ impl ApplicationHandler for DesktopEventLoop {
                     size.height as usize,
                     &mut self.profiler,
                 );
-                self.profiler
-                    .record("prepare_frame", prepare_started.elapsed());
+                self.profiler.record_stage(
+                    frame_profiler::FrameStage::PrepareFrame,
+                    prepare_started.elapsed(),
+                );
                 // canvas_texture_quad は &mut self を必要とするため frame 参照の取得より先に呼ぶ
                 let quad_t = Instant::now();
                 let canvas_quad = self.app.canvas_texture_quad();
@@ -456,14 +459,18 @@ impl ApplicationHandler for DesktopEventLoop {
                         return;
                     }
                 };
-                self.profiler
-                    .record("present_total", present_started.elapsed());
+                self.profiler.record_stage(
+                    frame_profiler::FrameStage::PresentTotal,
+                    present_started.elapsed(),
+                );
                 self.profiler.record_present(timings);
                 if update.canvas_updated {
                     self.profiler.record_canvas_present();
                 }
-                self.profiler.finish_frame(frame_started.elapsed());
-                window.set_title(&self.profiler.title_text());
+                if let Some(report) = self.profiler.finish_frame(frame_started.elapsed()) {
+                    crate::profiling::print_frame_report(&report);
+                }
+                window.set_title(&crate::profiling::window_title(self.profiler.latest_snapshot()));
                 if self.app.is_canvas_interacting() || self.has_pending_wheel_animation() {
                     self.request_redraw();
                 }

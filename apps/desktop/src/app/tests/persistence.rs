@@ -6,9 +6,10 @@ use panel_workspace::{
     WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState,
 };
 use desktop_support::{
-    DEFAULT_PROJECT_FILE_NAME, FrameProfiler, WorkspacePreset, WorkspacePresetCatalog,
+    DEFAULT_PROJECT_FILE_NAME, WorkspacePreset, WorkspacePresetCatalog,
     save_workspace_preset_catalog,
 };
+use frame_profiler::FrameProfiler;
 use editor_state::{ColorRgba8, EditorSession, SessionCommand};
 use panel_runtime::{ServiceRequest, services::names};
 use serde_json::json;

@@ -1,6 +1,6 @@
 //! `event_loop` モジュールの入力ルーティング回帰テストをまとめる。
 
-use desktop_support::FrameProfiler;
+use frame_profiler::FrameProfiler;
 use winit::event::MouseScrollDelta;
 use winit::event::TouchPhase;
 use winit::keyboard::{Key, ModifiersState, NamedKey};

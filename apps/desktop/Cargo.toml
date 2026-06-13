@@ -19,6 +19,7 @@ raster = { path = "../../crates/raster" }
 gpu-paint = { path = "../../crates/gpu-paint" }
 paint-engine = { path = "../../crates/paint-engine" }
 desktop-support = { path = "../../crates/desktop-support" }
+frame-profiler = { path = "../../crates/frame-profiler" }
 panel-runtime = { path = "../../crates/panel-runtime" }
 keyboard-types = "0.7"
 pollster.workspace = true

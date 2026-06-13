@@ -6,6 +6,7 @@
 mod app;
 mod present_quads;
 mod event_loop;
+mod profiling;
 mod wgpu_canvas;
 
 use anyhow::Result;

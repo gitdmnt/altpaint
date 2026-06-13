@@ -4,7 +4,6 @@
 //! バイナリ側が実行配線だけへ集中できるようにする。
 
 use std::path::PathBuf;
-use std::time::Duration;
 
 /// 既定のプロジェクト保存先ファイル名。
 pub const DEFAULT_PROJECT_FILE_NAME: &str = "altpaint-project.altp.json";
@@ -52,8 +51,6 @@ pub const KOMA_NAVIGATOR_ACTIVE: [u8; 4] = [0xff, 0xc1, 0x07, 0xff];
 pub const BRUSH_PREVIEW_RING: [u8; 4] = [0x9f, 0xb7, 0xff, 0xff];
 /// ラッソ選択プレビュー線の色（黄色）。
 pub const LASSO_LINE: [u8; 4] = [0xff, 0xc1, 0x07, 0xff];
-/// パフォーマンス表示を集計する時間窓を表す。
-pub const PERFORMANCE_SNAPSHOT_WINDOW: Duration = Duration::from_millis(1000);
 /// 入力レイテンシの目標値を表す。
 pub const INPUT_LATENCY_TARGET_MS: f64 = 10.0;
 /// 入力サンプリング周波数の目標値を表す。

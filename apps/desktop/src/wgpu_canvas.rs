@@ -10,7 +10,7 @@
 
 use anyhow::{Context, Result};
 use desktop_support::APP_BACKGROUND;
-use desktop_support::PresentTimings;
+use frame_profiler::PresentTimings;
 use crate::app::CpuCanvasSnapshot;
 use std::collections::HashMap;
 use std::sync::Arc;

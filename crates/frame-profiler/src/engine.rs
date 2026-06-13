@@ -4,11 +4,14 @@ use std::collections::{BTreeMap, VecDeque};
 use std::env;
 use std::time::{Duration, Instant};
 
-use crate::config::{
-    INPUT_LATENCY_TARGET_MS, INPUT_SAMPLING_TARGET_HZ, PERFORMANCE_SNAPSHOT_WINDOW, WINDOW_TITLE,
+use crate::types::{
+    FrameStage, PerformanceSnapshot, PresentTimings, StageStats, ValueStats,
 };
 
-use super::types::{PerformanceSnapshot, PresentTimings, StageStats, ValueStats};
+/// パフォーマンス表示を集計する既定の時間窓。
+pub const PERFORMANCE_SNAPSHOT_WINDOW: Duration = Duration::from_millis(1000);
+/// レポート出力の既定インターバル。
+const REPORT_INTERVAL: Duration = Duration::from_secs(2);
 
 /// 単一フレームで集計した主要区間の合計時間を表す。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -32,6 +35,24 @@ struct FrameSample {
 struct TimedLatencySample {
     recorded_at: Instant,
     latency: Duration,
+}
+
+/// レポート整形に必要な計測データを呼び出し側へ引き渡す純データ。
+///
+/// 文字列整形 (eprintln) は呼び出し側 (desktop) が担う。プロファイラ本体は
+/// インターバル経過判定と統計の蓄積/リセットのみを行う。
+#[derive(Debug, Clone)]
+pub struct FrameReport {
+    /// このレポート区間の経過秒数。
+    pub interval_secs: f64,
+    /// 区間内に集計したフレーム数。
+    pub frames: u64,
+    /// 最新スナップショット (存在すれば)。
+    pub snapshot: Option<PerformanceSnapshot>,
+    /// 計測ラベルごとの集計 (リセット前のスナップショット)。
+    pub stats: BTreeMap<&'static str, StageStats>,
+    /// 数値メトリクスの集計 (リセット前のスナップショット)。
+    pub value_stats: BTreeMap<&'static str, ValueStats>,
 }
 
 /// レンダリング区間と入力レイテンシを窓付きで集計する軽量プロファイラ。
@@ -72,7 +93,7 @@ impl FrameProfiler {
             frames: 0,
             frame_interval_started: now,
             last_report: now,
-            report_interval: Duration::from_secs(2),
+            report_interval: REPORT_INTERVAL,
             snapshot_window: PERFORMANCE_SNAPSHOT_WINDOW,
             current_frame: FrameStageTotals::default(),
             recent_frames: VecDeque::new(),
@@ -84,6 +105,12 @@ impl FrameProfiler {
         }
     }
 
+    /// `logging_enabled` を返す。レポート整形を呼び出し側で行うため、有効判定も
+    /// 公開する (整形コストを掛けるかの判断に使う)。
+    pub fn logging_enabled(&self) -> bool {
+        self.logging_enabled
+    }
+
     pub fn measure<T>(&mut self, label: &'static str, f: impl FnOnce() -> T) -> T {
         let started = Instant::now();
         let value = f();
@@ -91,20 +118,36 @@ impl FrameProfiler {
         value
     }
 
+    /// 自由形式ラベルの計測を記録する (レポート専用メトリクス)。
+    ///
+    /// フレーム集計対象の区間は `record_stage` を使う。
     pub fn record(&mut self, label: &'static str, elapsed: Duration) {
-        let stat = self.stats.entry(label).or_default();
+        Self::accumulate_stat(&mut self.stats, label, elapsed);
+    }
+
+    /// フレーム集計対象のステージ区間を記録する。
+    ///
+    /// `stats` へ正準ラベルで集計するとともに、フレーム合計へ加算する。
+    pub fn record_stage(&mut self, stage: FrameStage, elapsed: Duration) {
+        Self::accumulate_stat(&mut self.stats, stage.label(), elapsed);
+        match stage {
+            FrameStage::FrameTotal => self.current_frame.frame_total += elapsed,
+            FrameStage::PrepareFrame => self.current_frame.prepare_frame += elapsed,
+            FrameStage::UiUpdate => self.current_frame.ui_update += elapsed,
+            FrameStage::PanelSurface => self.current_frame.panel_surface += elapsed,
+            FrameStage::PresentTotal => self.current_frame.present_total += elapsed,
+        }
+    }
+
+    fn accumulate_stat(
+        stats: &mut BTreeMap<&'static str, StageStats>,
+        label: &'static str,
+        elapsed: Duration,
+    ) {
+        let stat = stats.entry(label).or_default();
         stat.calls += 1;
         stat.total += elapsed;
         stat.max = stat.max.max(elapsed);
-
-        match label {
-            "frame_total" => self.current_frame.frame_total += elapsed,
-            "prepare_frame" => self.current_frame.prepare_frame += elapsed,
-            "ui_update" => self.current_frame.ui_update += elapsed,
-            "panel_surface" => self.current_frame.panel_surface += elapsed,
-            "present_total" => self.current_frame.present_total += elapsed,
-            _ => {}
-        }
     }
 
     pub fn record_value(&mut self, label: &'static str, value: f64) {
@@ -114,12 +157,14 @@ impl FrameProfiler {
         stat.max = stat.max.max(value);
     }
 
-    pub fn finish_frame(&mut self, elapsed: Duration) {
-        self.finish_frame_at(elapsed, Instant::now());
+    /// フレーム計測を確定する。レポートインターバルが経過していれば、整形用の
+    /// `FrameReport` を返し (内部でインターバルをリセット)、呼び出し側が出力する。
+    pub fn finish_frame(&mut self, elapsed: Duration) -> Option<FrameReport> {
+        self.finish_frame_at(elapsed, Instant::now())
     }
 
-    pub fn finish_frame_at(&mut self, elapsed: Duration, now: Instant) {
-        self.record("frame_total", elapsed);
+    pub fn finish_frame_at(&mut self, elapsed: Duration, now: Instant) -> Option<FrameReport> {
+        self.record_stage(FrameStage::FrameTotal, elapsed);
         self.frames += 1;
 
         self.recent_frames.push_back(FrameSample {
@@ -134,8 +179,11 @@ impl FrameProfiler {
         }
 
         if self.logging_enabled && now.duration_since(self.last_report) >= self.report_interval {
-            self.print_report(now);
+            let report = self.build_report(now);
             self.reset_interval(now);
+            Some(report)
+        } else {
+            None
         }
     }
 
@@ -178,14 +226,18 @@ impl FrameProfiler {
         self.prune_recent_inputs(now);
     }
 
-    pub fn title_text(&self) -> String {
-        self.latest_snapshot
-            .map(|snapshot| snapshot.title_text())
-            .unwrap_or_else(|| WINDOW_TITLE.to_string())
-    }
-
     pub fn latest_snapshot(&self) -> Option<PerformanceSnapshot> {
         self.latest_snapshot
+    }
+
+    fn build_report(&self, now: Instant) -> FrameReport {
+        FrameReport {
+            interval_secs: now.duration_since(self.frame_interval_started).as_secs_f64(),
+            frames: self.frames,
+            snapshot: self.latest_snapshot,
+            stats: self.stats.clone(),
+            value_stats: self.value_stats.clone(),
+        }
     }
 
     fn prune_recent_frames(&mut self, now: Instant) {
@@ -300,83 +352,6 @@ impl FrameProfiler {
                 .map(|sample| sample.latency.as_secs_f64() * 1000.0)
                 .sum::<f64>()
                 / self.recent_canvas_latencies.len() as f64
-        }
-    }
-
-    fn average_ms(&self, label: &'static str) -> f64 {
-        self.stats.get(label).map_or(0.0, |stat| {
-            if stat.calls == 0 {
-                0.0
-            } else {
-                stat.total.as_secs_f64() * 1000.0 / stat.calls as f64
-            }
-        })
-    }
-
-    fn print_report(&self, now: Instant) {
-        let interval_secs = now
-            .duration_since(self.frame_interval_started)
-            .as_secs_f64()
-            .max(f64::EPSILON);
-        eprintln!(
-            "[profile] ---- last {:.2}s | fps={:.1} frame={:.3}ms prep={:.3}ms ui={:.3}ms panel={:.3}ms present={:.3}ms ink={:.3}ms target<={:.1}ms motion={:.1}Hz target>={:.1}Hz input={:.1}Hz target>={:.1}Hz ----",
-            now.duration_since(self.frame_interval_started)
-                .as_secs_f64(),
-            self.frames as f64 / interval_secs,
-            self.average_ms("frame_total"),
-            self.average_ms("prepare_frame"),
-            self.average_ms("ui_update"),
-            self.average_ms("panel_surface"),
-            self.average_ms("present_total"),
-            self.latest_snapshot
-                .map_or(0.0, |snapshot| snapshot.canvas_latency_ms),
-            INPUT_LATENCY_TARGET_MS,
-            self.latest_snapshot
-                .map_or(0.0, |snapshot| snapshot.canvas_present_hz),
-            INPUT_SAMPLING_TARGET_HZ,
-            self.latest_snapshot
-                .map_or(0.0, |snapshot| snapshot.canvas_sample_hz),
-            INPUT_SAMPLING_TARGET_HZ,
-        );
-        if let (Some(window_events), Some(raw_events), Some(dispatches)) = (
-            self.stats.get("canvas_input_window_event"),
-            self.stats.get("canvas_input_raw_event"),
-            self.stats.get("canvas_input_dispatch"),
-        ) {
-            let wheel_events = self
-                .stats
-                .get("canvas_input_wheel_event")
-                .map_or(0, |stat| stat.calls);
-            eprintln!(
-                "[profile] input sources window={} raw={} wheel={} dispatch={}",
-                window_events.calls, raw_events.calls, wheel_events, dispatches.calls,
-            );
-        }
-        for (label, stat) in &self.stats {
-            let avg = if stat.calls == 0 {
-                0.0
-            } else {
-                stat.total.as_secs_f64() * 1000.0 / stat.calls as f64
-            };
-            eprintln!(
-                "[profile] {:>18} calls={:>5} avg={:>8.3}ms max={:>8.3}ms total={:>8.3}ms",
-                label,
-                stat.calls,
-                avg,
-                stat.max.as_secs_f64() * 1000.0,
-                stat.total.as_secs_f64() * 1000.0,
-            );
-        }
-        for (label, stat) in &self.value_stats {
-            let avg = if stat.samples == 0 {
-                0.0
-            } else {
-                stat.total / stat.samples as f64
-            };
-            eprintln!(
-                "[profile] {:>18} samples={:>5} avg={:>10.1} max={:>10.1}",
-                label, stat.samples, avg, stat.max,
-            );
         }
     }
 

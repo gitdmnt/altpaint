@@ -13,6 +13,7 @@ members = [
   "crates/builtin-panels/color-palette",
   "crates/builtin-panels/workspace-layout",
   "crates/paint-engine",
+  "crates/frame-profiler",
   "crates/geometry",
   "crates/raster",
   "crates/editor-state",

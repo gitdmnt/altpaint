@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use document_model::DocumentCommand;
 use editor_state::{ColorRgba8, SessionCommand, ToolKind};
 use geometry::{CanvasViewportPoint, PagePoint, WindowPoint, WindowRect};
-use desktop_support::{FrameProfiler, StageStats, ValueStats};
+use frame_profiler::{FrameProfiler, StageStats, ValueStats};
 
 use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::DesktopApp;

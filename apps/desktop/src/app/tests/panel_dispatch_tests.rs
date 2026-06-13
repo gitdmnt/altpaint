@@ -1,7 +1,7 @@
 //! panel_dispatch の回帰テストをまとめる。
 
 use geometry::WindowPoint;
-use desktop_support::FrameProfiler;
+use frame_profiler::FrameProfiler;
 use panel_runtime::{ServiceRequest, services::names};
 
 use super::{TestDialogs, test_app_with_dialogs};

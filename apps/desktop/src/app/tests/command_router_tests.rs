@@ -44,7 +44,7 @@ fn document_command_route_creates_koma() {
 #[test]
 fn new_document_form_opens_via_panel_activation() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = desktop_support::FrameProfiler::new();
+    let mut profiler = frame_profiler::FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
     assert!(app.activate_panel_control("builtin.app-actions", "app.new"));

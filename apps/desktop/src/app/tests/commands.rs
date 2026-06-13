@@ -11,9 +11,10 @@ use panel_workspace::{
 use document_model::DocumentCommand;
 use editor_state::{ColorRgba8, SessionCommand, ToolKind};
 use desktop_support::{
-    FrameProfiler, WorkspacePreset, WorkspacePresetCatalog,
+    WorkspacePreset, WorkspacePresetCatalog,
     save_workspace_preset_catalog,
 };
+use frame_profiler::FrameProfiler;
 use panel_runtime::{HostRequest, PanelEvent, ServiceRequest, services::names};
 use serde_json::json;
 use panel_workspace::WorkspaceUiState;
