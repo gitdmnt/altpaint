@@ -285,25 +285,26 @@ graph TD
 
 担当:
 
-- `PaintEngine`（旧 `CanvasRuntime`。`compute_paint_edits` でペイント差分を計算する状態なしの計算機）
+- `PaintEngine`（旧 `CanvasRuntime`。`compute_paint_edits` でペイント差分を計算する状態なしのユニット構造体。R5 で `PaintPlugin` registry を撤去し CPU op を直接ディスパッチ）
 - `CanvasInputState`
 - `advance_pointer_gesture(...)` による input state machine
 - `build_paint_context(...)` による `Document` 読み取り文脈の構築
-- built-in bitmap paint plugin
-- stamp / stroke / flood fill / lasso fill / composite の bitmap op
-- GPU dispatch 用の `compute_stamp_positions`
-- `PaintInput` / `PaintPluginContext` / `PaintPlugin`（B5 で旧 app-core から移設）
+- `plan_paint(...)` による `PaintPlan`（純データ計画: `Stroke` / `FloodFill` / `LassoFill` + dirty。画素を作らない。BL-130）の生成
+- stamp / stroke / flood fill / lasso fill / composite の bitmap op（CPU 参照実装。`ops::compute_bitmap_edits` が入力 variant でディスパッチ）
+- `compute_stamp_positions`（B8 BL-132 で `pub(crate)` 化。スタンプ列は `PaintPlan::Stroke.stamps` として DTO 化済み）
+- `PaintInput` / `PaintPluginContext`（B5 で旧 app-core から移設。`PaintPlugin` trait は R5 で撤去）
+- `BUILTIN_BITMAP_BACKEND_ID`（R6: 旧 `STANDARD_BITMAP_PLUGIN_ID`。ツール定義の `drawing_plugin_id` が指す単一バックエンド id）
 
 主要モジュール:
 
-- `engine.rs`
+- `engine.rs`（`compute_paint_edits` = CPU 参照経路。registry なし）
+- `plan.rs`（`plan_paint` / `PaintPlan` / `PaintOp`。BL-130）
 - `context_builder.rs`
 - `context.rs`
 - `gesture.rs`
 - `input_state.rs`
-- `painting.rs`（B5 で旧 app-core から移設）
-- `plugins/builtin_bitmap.rs`
-- `ops/*`
+- `painting.rs`（B5 で旧 app-core から移設。`PaintInput` / `PaintPluginContext` / `BUILTIN_BITMAP_BACKEND_ID`）
+- `ops/*`（`compute_bitmap_edits` ディスパッチ + stamp / stroke / flood fill / lasso fill / composite）
 
 依存の特徴:
 
@@ -523,7 +524,7 @@ ADR 018 B7-part1 で旧 `desktop-support` を解体し、残りの責務を desk
 ADR 018 B7-part2 / BL-111 で service ハンドラを名前空間 registry 化し、旧 `app/services/*` の
 if-let チェーンを解消した）:
 
-- `paint/`（ペイント実行 `execute.rs` = 旧 `services/project_io.rs` のペイント部 8 割 / D9、`EditHistory` `history.rs`、ブラシプレビュー `preview.rs`）
+- `paint/`（ペイント実行配線 `execute.rs`、`PaintBackend` trait + `CpuPaintBackend` / `GpuPaintBackend` `backend/`（BL-131。CPU/GPU 二重実装を 1 境界へ集約）、`EditHistory` `history.rs`、undo/redo service `history_service.rs`、ブラシプレビュー `preview.rs`）
 - `project/`（`project_io.*` save/load `service.rs` = I/O 部 2 割 / D9、session save/load `session.rs`、canvas size preset 読込 = `CanvasSizePreset`）
 - `export/`（PNG export `png.rs` 旧 `storage::export` + `export.*` ハンドラ `service.rs`）
 - `workspace/`（workspace preset catalog `workspace_presets.rs` + `workspace_io.*` `service.rs` + `workspace_layout.*` `layout_service.rs`）
@@ -678,8 +679,8 @@ project file と session file は役割が異なる（B5 BL-079 で保存境界�
 2. `DesktopApp::handle_pointer_*` が panel/canvas を振り分ける
 3. `canvas-geometry::map_view_to_canvas_with_transform` が view 座標を page 座標へ変換する（desktop が直接呼ぶ）
 4. `paint_engine::gesture` が down / drag / up を `PaintInput` やコマ矩形 preview へ変換する
-5. `features/paint/execute.rs::apply_paint_input`（旧 `services/project_io.rs` のペイント部 / D9）が `paint_engine::PaintEngine::compute_paint_edits` で `BitmapEdit` 差分（dirty rect の典拠）を計算する
-6. `BrushPipeline` / `FillPipeline` が compute shader で GPU レイヤーテクスチャへ直接書き込み、`CompositePipeline` が合成する（ストローク中は CPU bitmap を書き換えない）
+5. `features/paint/execute.rs::apply_paint_input` が `paint_engine::plan_paint` で `PaintPlan`（純データ計画。dirty rect の典拠）を生成し、選択した `PaintBackend`（GPU 有効時 `GpuPaintBackend` / 不在時 `CpuPaintBackend`。BL-131）へ適用を委譲する
+6. `GpuPaintBackend` が `BrushPipeline` / `FillPipeline` へ compute shader dispatch で GPU レイヤーテクスチャへ直接書き込み（編集中に CPU 画素を作らない）、`CompositePipeline` が合成する。`CpuPaintBackend` は GPU 不在時にアクティブレイヤービットマップへ書き込み `CpuCanvasSnapshot` 表示経路へ供給する（BL-136）
 7. dirty rect / transform 更新 / UI 再同期要求は `apps/desktop/src/app/invalidation.rs` に蓄積される
 8. `prepare_present_frame(...)` が dirty panel sync・hit テーブル更新・差分計画を組み立てる
 9. `presenter/`（旧 `wgpu_canvas.rs` を分割 = B7-part2 / D2）が `PresentFrame` を提示する
@@ -751,9 +752,8 @@ ADR 018 B5 で旧 `app-core` を解体した後も、以下は維持したい。
 
 実装を読んだ結果、次は整理候補になる。
 
-1. `apply_paint_input`（`services/project_io.rs`）内の CPU 差分計算と GPU dispatch の分離 (ADR 018 B8 で PaintPlan / PaintBackend 化を予定)
-2. tool 実行 plugin と host runtime の安定境界の確立
+1. tool 実行 backend と host runtime の安定境界の確立（`ToolDescriptor` 化 = B8 BL-134）
 
-（旧候補「`panel-html-experiment` の正式名称化」は ADR 016 で、desktop の依存集中・座標系の生タプルは ADR 017 で、「`app_core::Panel` (コマ) と UI パネルの命名衝突の解消」は ADR 018 B1 の `Koma` 改名で、「`panel-api` が `document-model::DocumentCommand` / `editor-state::SessionCommand` を直接知る点」は ADR 018 B6 の `HostRequest` descriptor 化 + panel-api 解体 (C9) で完了済み）
+（旧候補「`panel-html-experiment` の正式名称化」は ADR 016 で、desktop の依存集中・座標系の生タプルは ADR 017 で、「`app_core::Panel` (コマ) と UI パネルの命名衝突の解消」は ADR 018 B1 の `Koma` 改名で、「`panel-api` が `document-model::DocumentCommand` / `editor-state::SessionCommand` を直接知る点」は ADR 018 B6 の `HostRequest` descriptor 化 + panel-api 解体 (C9) で完了済み。「`apply_paint_input` の CPU 差分計算と GPU dispatch の分離」は B8 の `PaintPlan`（BL-130）/ `PaintBackend`（Cpu/Gpu。BL-131）化で完了済み）
 
 ただし、これらは**今そうなっている**という意味ではない。現時点の正本は、上記 compile-time 依存と runtime flow である。
