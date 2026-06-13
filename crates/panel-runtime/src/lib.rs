@@ -19,7 +19,10 @@ pub use host_state::{
 };
 pub use loader::{BuiltinPanelDef, BuiltinPanelLoadError, register_builtin_panels};
 pub use meta::{PanelMeta, PanelSizeMeta};
-pub use runtime::{RenderedPanelTexture, PanelRuntime, PanelDispatchResult, PanelKeyboardResult};
+pub use runtime::{
+    HtmlSurfaceRenderer, RenderedPanelTexture, PanelRuntime, PanelDispatchResult,
+    PanelKeyboardResult,
+};
 
 // パネル契約型 (旧 panel-api、C9 で本クレートへ移設)。
 // desktop はパネルイベント/要求型を panel-runtime 経由で参照する。

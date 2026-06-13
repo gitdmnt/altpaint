@@ -4,9 +4,16 @@
 //! - Format: Rgba8Unorm（vello の出力先要件）
 //! - Usage: STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST
 //! - view_formats: [Rgba8UnormSrgb]（present 側で sRGB view を作って合成する）
+//!
+//! `texture` は `Arc<wgpu::Texture>` で保持する。`wgpu::Texture` は内部的に
+//! refcount された安価なハンドルだが、所有テクスチャを present 経路へ
+//! ライフタイム安全に受け渡す (BL-092: raw pointer + unsafe の撤去) ため
+//! `Arc` で明示し、`texture_handle()` で複製を配る。
+
+use std::sync::Arc;
 
 pub struct PanelGpuTarget {
-    pub texture: wgpu::Texture,
+    pub texture: Arc<wgpu::Texture>,
     pub width: u32,
     pub height: u32,
 }
@@ -31,10 +38,18 @@ impl PanelGpuTarget {
             view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
         });
         Self {
-            texture,
+            texture: Arc::new(texture),
             width: width.max(1),
             height: height.max(1),
         }
+    }
+
+    /// present 経路へ受け渡すための所有テクスチャハンドル (複製)。
+    ///
+    /// `wgpu::Texture` は refcount されたハンドルなので複製は安価。
+    /// raw pointer を介さず GPU リソースをフレームへ渡すために使う (BL-092)。
+    pub fn texture_handle(&self) -> Arc<wgpu::Texture> {
+        Arc::clone(&self.texture)
     }
 
     /// vello 出力先用 view（Rgba8Unorm リニア）。

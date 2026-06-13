@@ -247,7 +247,7 @@ impl ApplicationHandler for DesktopEventLoop {
                 // 続く &self.app 借用と衝突しない順序で実施）。
                 struct HtmlQuadEntry {
                     panel_id: String,
-                    texture_ptr: *const wgpu::Texture,
+                    texture: std::sync::Arc<wgpu::Texture>,
                     screen_rect: geometry::WindowRect,
                 }
                 let html_quad_entries: Vec<HtmlQuadEntry> = {
@@ -269,40 +269,30 @@ impl ApplicationHandler for DesktopEventLoop {
                             .iter()
                             .map(|id| (id.clone(), size.width, size.height))
                             .collect();
+                        // render_panels は所有テクスチャハンドル (`Arc<wgpu::Texture>`) を返すため、
+                        // panel_runtime の借用とは独立して保持できる (BL-092: raw pointer + unsafe 撤去)。
                         let textures = self.app.panel_runtime.render_panels(
                             &sized,
                             1.0,
                             crate::app::PANEL_CHROME_HEIGHT,
                         );
-                        // quad の screen rect は hit テーブルと同じ full rect を共有する
-                        // (textures は &mut panel_runtime に紐付くため、この間 panel_runtime は再借用しない)
-                        let texture_meta: Vec<(String, *const wgpu::Texture, u32, u32)> = textures
-                            .iter()
-                            .map(|rendered| {
-                                (
-                                    rendered.panel_id.clone(),
-                                    rendered.texture as *const wgpu::Texture,
-                                    rendered.width,
-                                    rendered.height,
-                                )
-                            })
-                            .collect();
-                        texture_meta
+                        // quad の screen rect は hit テーブルと同じ full rect を共有する。
+                        textures
                             .into_iter()
-                            .map(|(panel_id, texture_ptr, tex_w, tex_h)| {
+                            .map(|rendered| {
                                 let screen_rect = self
                                     .app
                                     .panel_workspace
-                                    .panel_full_rect(&panel_id)
+                                    .panel_full_rect(&rendered.panel_id)
                                     .unwrap_or(geometry::WindowRect {
                                         x: 0,
                                         y: 0,
-                                        width: tex_w as usize,
-                                        height: tex_h as usize,
+                                        width: rendered.width as usize,
+                                        height: rendered.height as usize,
                                     });
                                 HtmlQuadEntry {
-                                    panel_id,
-                                    texture_ptr,
+                                    panel_id: rendered.panel_id,
+                                    texture: rendered.texture,
                                     screen_rect,
                                 }
                             })
@@ -381,15 +371,13 @@ impl ApplicationHandler for DesktopEventLoop {
                 let present_started = Instant::now();
 
                 // 上で組み立てた html_quad_entries を `GpuPanelQuad<'_>` に変換する。
-                // SAFETY: texture_ptr は self.app.panel_runtime 所有の Box<HtmlWasmPanel>::target.texture
-                // を指す。Box は heap に固定されており、本フレームの間 panel_runtime に変更を加えないため
-                // 寿命が保たれる。html_quad_entries 自体は本ブロックスコープで保持されている。
+                // texture は `Arc<wgpu::Texture>` の所有ハンドルなので unsafe 不要 (BL-092)。
                 let panel_quads_owned: Vec<crate::wgpu_canvas::GpuPanelQuad<'_>> =
                     html_quad_entries
                         .iter()
                         .map(|e| crate::wgpu_canvas::GpuPanelQuad {
                             panel_id: e.panel_id.as_str(),
-                            texture: unsafe { &*e.texture_ptr },
+                            texture: std::sync::Arc::clone(&e.texture),
                             screen_rect: e.screen_rect,
                         })
                         .collect();
@@ -402,38 +390,38 @@ impl ApplicationHandler for DesktopEventLoop {
                     self.app.overlay_quads();
 
                 // 9E-4: ステータスバーを HtmlPanelView で GPU 描画する。
-                // panel_runtime の gpu_ctx (device/queue/renderer/scene_scratch) を共有借用する。
+                // panel_runtime の gpu_ctx (device/queue/renderer/scene_scratch) を
+                // HtmlSurfaceRenderer ハンドルとして共有借用する (BL-092)。
                 struct StatusEntry {
-                    texture_ptr: *const wgpu::Texture,
+                    texture: std::sync::Arc<wgpu::Texture>,
                     screen_rect: geometry::WindowRect,
                 }
                 let status_entry: Option<StatusEntry> = {
                     let snapshot = self.app.build_status_snapshot();
                     self.app.status_bar.update(&snapshot);
-                    let parts = self.app.panel_runtime.gpu_context_parts();
-                    if let Some((device, queue, renderer, scene_buf)) = parts {
+                    if let Some(surface) = self.app.panel_runtime.html_surface_renderer() {
                         // フッター位置 (画面下端) に幅 = window 幅で配置する
                         const FOOTER_HEIGHT: u32 = desktop_support::FOOTER_HEIGHT as u32;
                         let viewport_w = size.width.max(1);
                         let outcome = self.app.status_bar.render_gpu(
-                            device,
-                            queue,
-                            renderer,
-                            scene_buf,
+                            surface.device,
+                            surface.queue,
+                            surface.renderer,
+                            surface.scene_scratch,
                             (viewport_w, FOOTER_HEIGHT),
                         );
                         let target = outcome.target();
-                        let texture_ptr: *const wgpu::Texture = &target.texture;
-                        let target_w = target.width;
+                        // 所有ハンドルを複製して保持する (unsafe 不要)。
+                        let texture = target.texture_handle();
                         let target_h = target.height;
                         let screen_rect = geometry::WindowRect {
                             x: 0,
                             y: size.height.saturating_sub(target_h) as usize,
-                            width: target_w as usize,
+                            width: target.width as usize,
                             height: target_h as usize,
                         };
                         Some(StatusEntry {
-                            texture_ptr,
+                            texture,
                             screen_rect,
                         })
                     } else {
@@ -444,10 +432,7 @@ impl ApplicationHandler for DesktopEventLoop {
                     .as_ref()
                     .map(|e| crate::wgpu_canvas::GpuPanelQuad {
                         panel_id: "__status__",
-                        // SAFETY: texture_ptr は self.app.status_bar が所有する
-                        // PanelGpuTarget::texture を指す。本フレーム中、status_bar は
-                        // 借用されない（render_gpu の呼び出しは終わっている）ため寿命が保たれる。
-                        texture: unsafe { &*e.texture_ptr },
+                        texture: std::sync::Arc::clone(&e.texture),
                         screen_rect: e.screen_rect,
                     });
 

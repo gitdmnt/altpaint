@@ -12,10 +12,14 @@ use std::sync::Arc;
 
 /// パネル毎の GPU 描画結果をまとめて返す。
 ///
+/// `texture` は `Arc<wgpu::Texture>` で所有渡しする。`wgpu::Texture` は内部的に
+/// refcount されたハンドルなので複製は安価で、present 経路へ raw pointer + unsafe
+/// なしで受け渡せる (BL-092)。
+///
 /// hit 矩形は GPU 描画から分離済み (`collect_panel_hits`)。
-pub struct RenderedPanelTexture<'a> {
+pub struct RenderedPanelTexture {
     pub panel_id: String,
-    pub texture: &'a wgpu::Texture,
+    pub texture: Arc<wgpu::Texture>,
     pub width: u32,
     pub height: u32,
 }
@@ -26,6 +30,18 @@ struct PanelGpuContext {
     queue: Arc<wgpu::Queue>,
     renderer: vello::Renderer,
     scene_scratch: vello::Scene,
+}
+
+/// panel-runtime 外部 (ステータスバー等) が共有 GPU コンテキストを使って
+/// `HtmlPanelView::on_render` を呼ぶための借用ハンドル (BL-092)。
+///
+/// 旧 `gpu_context_parts` の 4 連 tuple を置換し、device/queue/renderer/scene を
+/// 1 つの型でまとめて貸し出す。`on_render` が要求する引数順をそのまま提供する。
+pub struct HtmlSurfaceRenderer<'a> {
+    pub device: &'a Arc<wgpu::Device>,
+    pub queue: &'a Arc<wgpu::Queue>,
+    pub renderer: &'a mut vello::Renderer,
+    pub scene_scratch: &'a mut vello::Scene,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -106,16 +122,19 @@ impl PanelRuntime {
         true
     }
 
-    /// 集約 vello::Renderer / scene scratch / device / queue への可変アクセスを提供する。
+    /// 共有 GPU コンテキスト (device/queue/renderer/scene scratch) を
+    /// [`HtmlSurfaceRenderer`] ハンドルとして貸し出す。
     /// `install_gpu_context` 未呼び出しなら `None`。
     /// 9E-4: ステータスバーなど panel-runtime 外部の `HtmlPanelView` 利用者が
-    /// 共有 GPU コンテキストを再利用するために公開する。
-    pub fn gpu_context_parts(
-        &mut self,
-    ) -> Option<(&Arc<wgpu::Device>, &Arc<wgpu::Queue>, &mut vello::Renderer, &mut vello::Scene)>
-    {
+    /// 共有 GPU コンテキストを再利用するために公開する (BL-092 で 4 連 tuple を置換)。
+    pub fn html_surface_renderer(&mut self) -> Option<HtmlSurfaceRenderer<'_>> {
         let ctx = self.gpu_ctx.as_mut()?;
-        Some((&ctx.device, &ctx.queue, &mut ctx.renderer, &mut ctx.scene_scratch))
+        Some(HtmlSurfaceRenderer {
+            device: &ctx.device,
+            queue: &ctx.queue,
+            renderer: &mut ctx.renderer,
+            scene_scratch: &mut ctx.scene_scratch,
+        })
     }
 
     /// 共有 wgpu Device/Queue を受け取り、vello::Renderer を集約構築する。
@@ -234,15 +253,15 @@ impl PanelRuntime {
         sized: &[(String, u32, u32)],
         scale: f32,
         chrome_height: u32,
-    ) -> Vec<RenderedPanelTexture<'_>> {
+    ) -> Vec<RenderedPanelTexture> {
         let Some(gpu_ctx) = self.gpu_ctx.as_mut() else {
             return Vec::new();
         };
-        // ループ内で self.panels を可変借用するため、まず ID → 描画情報 のメタを集める
-        type TextureTuple = (String, *const wgpu::Texture, u32, u32);
-        let mut textures: Vec<TextureTuple> = Vec::new();
+        // 各パネルを描画し、所有テクスチャハンドル (`Arc<wgpu::Texture>`) を集める。
+        // `texture_handle()` の複製は refcount ハンドルなので安価で、戻り値が
+        // self.panels の借用と独立するため raw pointer + unsafe は不要 (BL-092)。
+        let mut textures = Vec::with_capacity(sized.len());
         for (panel_id, width, height) in sized {
-            // 該当パネルを mutable で取得
             let Some(panel) = self.panels.iter_mut().find(|p| p.id() == panel_id.as_str()) else {
                 continue;
             };
@@ -257,23 +276,14 @@ impl PanelRuntime {
                 chrome_height,
             );
             let target = outcome.target();
-            let ptr: *const wgpu::Texture = &target.texture;
-            textures.push((panel_id.clone(), ptr, target.width, target.height));
+            textures.push(RenderedPanelTexture {
+                panel_id: panel_id.clone(),
+                texture: target.texture_handle(),
+                width: target.width,
+                height: target.height,
+            });
         }
-        // SAFETY: 各 *const wgpu::Texture は self.panels 内の HtmlWasmPanel の
-        // view が保持するテクスチャを指す。Vec 要素のテクスチャは heap 上の
-        // wgpu リソースを参照しており、戻り値の RenderedPanelTexture は
-        // &mut self に紐付くので、戻り値存在中は self.panels が不変に保たれる。
-        // テクスチャの寿命も同期する。(raw pointer + unsafe の撤去は BL-092)
         textures
-            .into_iter()
-            .map(|(panel_id, ptr, w, h)| RenderedPanelTexture {
-                panel_id,
-                texture: unsafe { &*ptr },
-                width: w,
-                height: h,
-            })
-            .collect()
     }
 
     /// 指定された (panel_id, viewport_w, viewport_h) リストのパネルについて、

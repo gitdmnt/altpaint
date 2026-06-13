@@ -117,7 +117,7 @@ pub struct CanvasSurface<'a> {
 ///   L3 panel_quads          … DSL/HTML 全パネル（vello で GPU 直描画されたテクスチャを quad 合成）
 ///   L4 foreground_quads     … 前景 solid quad 群（アクティブ UI パネル枠線）
 ///   L5 status_quad          … ステータスバー (HtmlPanelView GPU 描画) を最前面に配置
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct PresentFrame<'a> {
     pub background_quads: &'a [SolidQuad],
     pub canvas_surface: Option<CanvasSurface<'a>>,
@@ -131,11 +131,13 @@ pub struct PresentFrame<'a> {
 
 /// HTML パネル 1 枚分の GPU 描画情報。
 /// `texture` は panel-runtime 側が所有する `Rgba8Unorm + STORAGE_BINDING + view_formats=[Rgba8UnormSrgb]`
-/// テクスチャへの不変参照。`screen_rect` は画面ピクセル座標の配置矩形。
-#[derive(Debug, Clone, Copy)]
+/// テクスチャの所有ハンドル (`Arc<wgpu::Texture>`)。refcount ハンドルなので複製は
+/// 安価で、raw pointer + unsafe なしで present 経路へ受け渡せる (BL-092)。
+/// `screen_rect` は画面ピクセル座標の配置矩形。
+#[derive(Debug, Clone)]
 pub struct GpuPanelQuad<'a> {
     pub panel_id: &'a str,
-    pub texture: &'a wgpu::Texture,
+    pub texture: std::sync::Arc<wgpu::Texture>,
     pub screen_rect: geometry::WindowRect,
 }
 
