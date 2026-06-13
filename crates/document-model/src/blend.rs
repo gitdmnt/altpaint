@@ -2,7 +2,7 @@
 //!
 //! ピクセル単位のブレンド (`composite_pixel` / `BlendMode`) と `RgbaBitmap` は
 //! `raster` クレートが持つ。本モジュールはドメインの `RasterLayer` / `LayerMask` を
-//! 参照する層合成のみを担う (document-model 確立まで app-core 残置)。
+//! 参照する層合成のみを担う。
 
 use raster::{RgbaBitmap, composite_pixel};
 
