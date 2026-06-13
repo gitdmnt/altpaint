@@ -6,14 +6,5 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-document-model = { path = "../document-model" }
-editor-state = { path = "../editor-state" }
-panel-workspace = { path = "../panel-workspace" }
 pen-io = { path = "../pen-io" }
-raster = { path = "../raster" }
-rusqlite = { version = "0.33", features = ["bundled"] }
-serde.workspace = true
-serde_json = "1.0"
-thiserror.workspace = true
-zstd = "0.13"
-png = "0.17"
+project-store = { path = "../project-store" }

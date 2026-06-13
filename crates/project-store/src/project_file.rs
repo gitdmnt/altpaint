@@ -4,8 +4,6 @@ use panel_workspace::WorkspaceLayout;
 use document_model::{Document, Page, PageId};
 use serde_json::Value;
 use std::collections::BTreeMap;
-use thiserror::Error;
-use panel_workspace::WorkspaceUiState;
 
 use crate::project_sqlite::{
     PersistedKomaComposite, ProjectManifest, ProjectSaveOptions, file_has_sqlite_header,
@@ -13,38 +11,7 @@ use crate::project_sqlite::{
     load_project_from_sqlite_path, load_project_manifest_from_sqlite_path,
     save_project_to_sqlite_path,
 };
-
-pub const CURRENT_PROJECT_FORMAT_VERSION: u32 = 7;
-
-#[derive(Debug, Clone)]
-pub struct LoadedProject {
-    pub document: Document,
-    pub ui_state: WorkspaceUiState,
-}
-
-#[derive(Debug, Error)]
-pub enum ProjectStoreError {
-    #[error("unsupported altpaint project format version: {0}")]
-    UnsupportedFormatVersion(u32),
-    #[error("failed to compress project file: {0}")]
-    Compress(#[source] std::io::Error),
-    #[error("failed to decompress project file: {0}")]
-    Decompress(#[source] std::io::Error),
-    #[error("sqlite failed: {0}")]
-    Sqlite(#[from] rusqlite::Error),
-    #[error("failed to serialize metadata json: {0}")]
-    SerializeMetadataJson(#[source] serde_json::Error),
-    #[error("failed to deserialize metadata json: {0}")]
-    DeserializeMetadataJson(#[source] serde_json::Error),
-    #[error("invalid project file: {0}")]
-    InvalidProject(String),
-    #[error("page not found in project: {0}")]
-    PageNotFound(u64),
-    #[error("koma not found in project: page={page_id}, koma={koma_id}")]
-    KomaNotFound { page_id: u64, koma_id: u64 },
-    #[error("failed to access project file: {0}")]
-    Io(#[from] std::io::Error),
-}
+use crate::types::{LoadedProject, ProjectStoreError};
 
 /// 指定パスが altpaint の sqlite プロジェクトファイルであることを確認する。
 ///
@@ -115,6 +82,7 @@ pub fn load_koma_composite_from_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::CURRENT_PROJECT_FORMAT_VERSION;
     use document_model::{Document, KomaId, LayerMask, Page, PageId};
     use editor_state::{ColorRgba8, EditorSession};
     use raster::BlendMode;

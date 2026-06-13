@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use panel_workspace::{PanelConfigs, WorkspaceUiState};
 
-use crate::project_file::{CURRENT_PROJECT_FORMAT_VERSION, LoadedProject, ProjectStoreError};
+use crate::types::{CURRENT_PROJECT_FORMAT_VERSION, LoadedProject, ProjectStoreError};
 
 pub(crate) const SQLITE_HEADER: &[u8; 16] = b"SQLite format 3\0";
 pub const DEFAULT_PROJECT_CHUNK_SIZE: usize = 256;
