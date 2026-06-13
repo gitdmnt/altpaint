@@ -27,6 +27,7 @@ members = [
   "crates/panel-html",
   "crates/canvas-geometry",
   "crates/storage",
+  "crates/pen-io",
   "crates/panel-workspace",
   "apps/desktop",
 ]
