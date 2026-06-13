@@ -11,6 +11,7 @@ mod default_tool_catalog;
 pub(crate) mod cursor;
 mod input;
 mod io_state;
+mod paint;
 mod paint_preview;
 mod panel_config_sync;
 mod panel_dispatch;
@@ -27,7 +28,6 @@ use std::path::PathBuf;
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use app_core::EditHistory;
 use document_model::{Document, KomaId};
 use geometry::{PageDirtyRect, PagePoint};
 use raster::RgbaBitmap;
@@ -43,6 +43,7 @@ use self::io_state::DesktopIoState;
 pub(crate) use self::panel_dispatch::PanelDragState;
 use self::panel_dispatch::PanelInteractionState;
 use self::invalidation::PresentFrameUpdate;
+use self::paint::EditHistory;
 use self::snapshot_store::DocumentSnapshotStore;
 use crate::present_quads::DesktopLayout;
 use paint_engine::CanvasInputState;

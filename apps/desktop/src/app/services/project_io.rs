@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 
-use app_core::{HistoryEntry, PaintInput, PaintPluginContext};
+use app_core::{PaintInput, PaintPluginContext};
 use document_model::DocumentCommand;
 use geometry::{MergeInSpace, PageDirtyRect};
 use desktop_support::normalize_project_path;
 use panel_runtime::{ServiceRequest, services::names};
 use storage::load_project_from_path;
 
+use super::super::paint::{BitmapPatch, GpuRegionPatch, PaintPatch};
 use super::super::PendingStroke;
 use super::DesktopApp;
 
@@ -40,15 +41,6 @@ pub(crate) fn merged_dirty(edits: &[raster::BitmapEdit]) -> Option<PageDirtyRect
             None => edit.dirty_rect,
         })
     })
-}
-
-/// GPU テクスチャ方式 Undo/Redo スナップショット。
-///
-/// dirty 領域サイズの小テクスチャを `before` / `after` に保持する。
-/// `HistoryEntry::GpuBitmapPatch::gpu_data` に `OpaqueGpuData(Arc::new(_))` として格納する。
-pub(crate) struct GpuPatchSnapshot {
-    pub(crate) before: wgpu::Texture,
-    pub(crate) after: wgpu::Texture,
 }
 
 impl DesktopApp {
@@ -194,13 +186,13 @@ impl DesktopApp {
                         self.document
                             .capture_koma_layer_region(koma_id, layer_index, dirty)
                 {
-                    self.history.push(HistoryEntry::BitmapPatch {
+                    self.history.push(PaintPatch::Cpu(BitmapPatch {
                         koma_id,
                         layer_index,
                         dirty,
                         before,
                         after,
-                    });
+                    }));
                 }
                 changed
             } else {
@@ -308,15 +300,13 @@ impl DesktopApp {
             dirty.height as u32,
             &before_region.pixels,
         );
-        self.history.push(HistoryEntry::GpuBitmapPatch {
+        self.history.push(PaintPatch::Gpu(GpuRegionPatch {
             koma_id,
             layer_index,
             dirty,
-            gpu_data: app_core::OpaqueGpuData(std::sync::Arc::new(GpuPatchSnapshot {
-                before: before_tex,
-                after: after_tex,
-            })),
-        });
+            before: before_tex,
+            after: after_tex,
+        }));
         self.append_canvas_dirty_rect(dirty);
         self.recomposite_koma(koma_id, Some(dirty));
         true
@@ -346,16 +336,13 @@ impl DesktopApp {
                     dirty.height as u32,
                     &bp.pixels,
                 );
-                let snapshot = GpuPatchSnapshot {
-                    before: before_tex,
-                    after: after_tex,
-                };
-                self.history.push(HistoryEntry::GpuBitmapPatch {
+                self.history.push(PaintPatch::Gpu(GpuRegionPatch {
                     koma_id: stroke.koma_id,
                     layer_index: stroke.layer_index,
                     dirty,
-                    gpu_data: app_core::OpaqueGpuData(std::sync::Arc::new(snapshot)),
-                });
+                    before: before_tex,
+                    after: after_tex,
+                }));
             } else {
                 eprintln!(
                     "commit_stroke_to_history: GPU snapshot skipped (before/after unavailable) \
@@ -383,13 +370,13 @@ impl DesktopApp {
         else {
             return;
         };
-        self.history.push(HistoryEntry::BitmapPatch {
+        self.history.push(PaintPatch::Cpu(BitmapPatch {
             koma_id: stroke.koma_id,
             layer_index: stroke.layer_index,
             dirty,
             before,
             after,
-        });
+        }));
         self.sync_ui_from_document();
     }
 

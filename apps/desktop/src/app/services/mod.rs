@@ -9,13 +9,13 @@ mod tool_catalog;
 mod workspace_io;
 mod workspace_layout;
 
-use app_core::HistoryEntry;
 use document_model::{Document, DocumentCommand};
 use editor_state::SessionCommand;
 use desktop_support::DEFAULT_PROJECT_FILE_NAME;
 use panel_runtime::{ServiceRequest, services::names};
 use panel_workspace::WorkspaceUiState;
 
+use super::paint::{BitmapPatch, GpuRegionPatch, PaintPatch};
 use super::DesktopApp;
 
 impl DesktopApp {
@@ -75,13 +75,13 @@ impl DesktopApp {
     /// `BitmapPatch` の before ビットマップ領域を復元する。
     pub(crate) fn execute_undo(&mut self) -> bool {
         match self.history.undo() {
-            Some(HistoryEntry::BitmapPatch {
+            Some(PaintPatch::Cpu(BitmapPatch {
                 koma_id,
                 layer_index,
                 dirty,
                 before,
                 ..
-            }) => {
+            })) => {
                 if let Some(page_dirty) = self.document.restore_koma_layer_region(
                     koma_id,
                     layer_index,
@@ -107,21 +107,19 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 true
             }
-            Some(HistoryEntry::GpuBitmapPatch {
+            Some(PaintPatch::Gpu(GpuRegionPatch {
                 koma_id,
                 layer_index,
                 dirty,
-                gpu_data,
-            }) => {
-                if let (Some(pool), Some(snap)) = (
-                    self.layer_texture_store(),
-                    (*gpu_data.0).downcast_ref::<project_io::GpuPatchSnapshot>(),
-                ) {
+                before,
+                ..
+            })) => {
+                if let Some(pool) = self.layer_texture_store() {
                     pool.restore_region(
                         &koma_id.0.to_string(),
                         layer_index,
                         geometry::KomaLocalPoint::new(dirty.x, dirty.y),
-                        &snap.before,
+                        &before,
                     );
                     self.append_canvas_dirty_rect(dirty);
                     self.recomposite_koma(koma_id, Some(dirty));
@@ -138,13 +136,13 @@ impl DesktopApp {
     /// `BitmapPatch` の after ビットマップ領域を復元する。
     pub(crate) fn execute_redo(&mut self) -> bool {
         match self.history.redo() {
-            Some(HistoryEntry::BitmapPatch {
+            Some(PaintPatch::Cpu(BitmapPatch {
                 koma_id,
                 layer_index,
                 dirty,
                 after,
                 ..
-            }) => {
+            })) => {
                 if let Some(page_dirty) = self.document.restore_koma_layer_region(
                     koma_id,
                     layer_index,
@@ -169,21 +167,19 @@ impl DesktopApp {
                 self.sync_ui_from_document();
                 true
             }
-            Some(HistoryEntry::GpuBitmapPatch {
+            Some(PaintPatch::Gpu(GpuRegionPatch {
                 koma_id,
                 layer_index,
                 dirty,
-                gpu_data,
-            }) => {
-                if let (Some(pool), Some(snap)) = (
-                    self.layer_texture_store(),
-                    (*gpu_data.0).downcast_ref::<project_io::GpuPatchSnapshot>(),
-                ) {
+                after,
+                ..
+            })) => {
+                if let Some(pool) = self.layer_texture_store() {
                     pool.restore_region(
                         &koma_id.0.to_string(),
                         layer_index,
                         geometry::KomaLocalPoint::new(dirty.x, dirty.y),
-                        &snap.after,
+                        &after,
                     );
                     self.append_canvas_dirty_rect(dirty);
                     self.recomposite_koma(koma_id, Some(dirty));
