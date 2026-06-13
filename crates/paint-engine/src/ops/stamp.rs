@@ -55,6 +55,44 @@ pub(crate) fn build_stamp(context: &PaintPluginContext<'_>) -> Option<RgbaBitmap
     }
 }
 
+/// `build_stamp` が生成するスタンプの幅・高さを画素生成なしで求める。
+///
+/// dirty rect 計画 (`plan_paint`) が画素を作らずにストローク境界を確定するために使う。
+/// 寸法ロジックは `build_stamp` / `resample_*` / `generated_round_stamp` と同一でなければ
+/// CPU 経路の dirty rect とずれる。
+pub(crate) fn stamp_dimensions(context: &PaintPluginContext<'_>) -> (usize, usize) {
+    let size = context.resolved_size.max(1) as usize;
+    match context.pen.tip.as_ref() {
+        Some(PenTipBitmap::AlphaMask8 {
+            width,
+            height,
+            data,
+        })
+        | Some(PenTipBitmap::Rgba8 {
+            width,
+            height,
+            data,
+        }) if !data.is_empty() => resampled_tip_dimensions(*width as usize, *height as usize, size),
+        _ => (size.max(1), size.max(1)),
+    }
+}
+
+/// `resample_alpha_tip` / `resample_rgba_tip` のターゲット寸法計算と同一。
+fn resampled_tip_dimensions(
+    source_width: usize,
+    source_height: usize,
+    target_size: usize,
+) -> (usize, usize) {
+    let aspect = if source_width == 0 {
+        1.0
+    } else {
+        source_height.max(1) as f32 / source_width.max(1) as f32
+    };
+    let target_width = target_size.max(1);
+    let target_height = ((target_size as f32 * aspect).round() as usize).max(1);
+    (target_width, target_height)
+}
+
 fn generated_round_stamp(
     size: usize,
     color: [u8; 4],

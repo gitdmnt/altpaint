@@ -5,6 +5,8 @@ pub(crate) mod stamp;
 pub(crate) mod stroke;
 
 pub use stroke::compute_stamp_positions;
+pub(crate) use stamp::stamp_dimensions;
+pub(crate) use stroke::stroke_dirty_rect;
 
 use crate::painting::PaintPluginContext;
 use geometry::{KomaLocalPoint, PageDirtyRect};

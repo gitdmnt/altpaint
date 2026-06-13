@@ -1,6 +1,7 @@
 mod context_tests;
 mod fill_tests;
 mod input_tests;
+mod plan_tests;
 mod stamp_tests;
 mod stroke_tests;
 

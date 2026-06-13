@@ -49,6 +49,43 @@ pub(crate) fn stroke_segment_edit(
     stroke_like_edit(&points, context)
 }
 
+/// スタンプ列とスタンプ寸法からストロークの dirty rect を画素生成なしで求める。
+///
+/// `stroke_like_edit` の境界計算と同一でなければ CPU 経路と plan の dirty rect がずれる。
+/// 範囲が空 (点なし・幅/高さ 0) のときは `None`。
+pub(crate) fn stroke_dirty_rect(
+    points: &[KomaLocalPoint],
+    stamp_width: usize,
+    stamp_height: usize,
+) -> Option<PageDirtyRect> {
+    if points.is_empty() {
+        return None;
+    }
+    let half_w = stamp_width as isize / 2;
+    let half_h = stamp_height as isize / 2;
+    let mut left = usize::MAX;
+    let mut top = usize::MAX;
+    let mut right = 0usize;
+    let mut bottom = 0usize;
+    for point in points {
+        let stamp_left = point.x.saturating_sub(half_w.max(0) as usize);
+        let stamp_top = point.y.saturating_sub(half_h.max(0) as usize);
+        left = left.min(stamp_left);
+        top = top.min(stamp_top);
+        right = right.max(stamp_left.saturating_add(stamp_width));
+        bottom = bottom.max(stamp_top.saturating_add(stamp_height));
+    }
+    if left == usize::MAX || right <= left || bottom <= top {
+        return None;
+    }
+    Some(PageDirtyRect {
+        x: left,
+        y: top,
+        width: right - left,
+        height: bottom - top,
+    })
+}
+
 pub(crate) fn stroke_like_edit(
     points: &[KomaLocalPoint],
     context: &PaintPluginContext<'_>,
@@ -59,32 +96,11 @@ pub(crate) fn stroke_like_edit(
     let stamp_bitmap = stamp::build_stamp(context)?;
     let half_w = stamp_bitmap.width as isize / 2;
     let half_h = stamp_bitmap.height as isize / 2;
-    let mut left = usize::MAX;
-    let mut top = usize::MAX;
-    let mut right = 0usize;
-    let mut bottom = 0usize;
-    for point in points {
-        let stamp_left = point.x.saturating_sub(half_w.max(0) as usize);
-        let stamp_top = point.y.saturating_sub(half_h.max(0) as usize);
-        left = left.min(stamp_left);
-        top = top.min(stamp_top);
-        right = right.max(stamp_left.saturating_add(stamp_bitmap.width));
-        bottom = bottom.max(stamp_top.saturating_add(stamp_bitmap.height));
-    }
-    if left == usize::MAX || right <= left || bottom <= top {
-        return None;
-    }
-
-    let dirty_rect = PageDirtyRect {
-        x: left,
-        y: top,
-        width: right - left,
-        height: bottom - top,
-    };
+    let dirty_rect = stroke_dirty_rect(points, stamp_bitmap.width, stamp_bitmap.height)?;
     let mut bitmap = RgbaBitmap::transparent(dirty_rect.width, dirty_rect.height);
     for point in points {
-        let local_x = point.x.saturating_sub(left);
-        let local_y = point.y.saturating_sub(top);
+        let local_x = point.x.saturating_sub(dirty_rect.x);
+        let local_y = point.y.saturating_sub(dirty_rect.y);
         composite::blend_stamp(
             &mut bitmap,
             &stamp_bitmap,

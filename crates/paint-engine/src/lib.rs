@@ -7,6 +7,7 @@ mod gesture;
 mod input_state;
 pub mod ops;
 pub mod painting;
+pub mod plan;
 pub mod plugins;
 #[cfg(test)]
 mod tests;
@@ -14,6 +15,7 @@ mod tests;
 pub use context::ResolvedPaintContext;
 pub use context_builder::{build_paint_context, resolved_size_for_input};
 pub use painting::{PaintInput, PaintPlugin, PaintPluginContext};
+pub use plan::{PaintOp, PaintPlan, StampPoint, plan_paint};
 pub use gesture::{CanvasGestureUpdate, CanvasPointerAction, advance_pointer_gesture};
 pub use input_state::CanvasInputState;
 pub use ops::compute_stamp_positions;
