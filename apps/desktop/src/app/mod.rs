@@ -11,6 +11,7 @@ mod default_tool_catalog;
 pub(crate) mod cursor;
 mod input;
 mod io_state;
+mod koma_gesture;
 mod paint;
 mod paint_preview;
 mod panel_config_sync;
@@ -43,6 +44,7 @@ use self::io_state::DesktopIoState;
 pub(crate) use self::panel_dispatch::PanelDragState;
 use self::panel_dispatch::PanelInteractionState;
 use self::invalidation::PresentFrameUpdate;
+use self::koma_gesture::KomaGesture;
 use self::paint::EditHistory;
 use self::snapshot_store::DocumentSnapshotStore;
 use crate::present_quads::DesktopLayout;
@@ -90,6 +92,8 @@ pub(crate) struct DesktopApp {
     active_workspace_preset_id: String,
     paint_engine: paint_engine::PaintEngine,
     canvas_input: CanvasInputState,
+    /// コマ作成 (KomaRect) ジェスチャの進行中状態 (BL-081)。
+    koma_gesture: KomaGesture,
     pub(crate) layout: Option<DesktopLayout>,
     cpu_canvas_snapshot: Option<CpuCanvasSnapshot>,
     /// Phase 9E-4: ステータスバー (HtmlPanelView GPU 描画)。
@@ -155,6 +159,7 @@ impl DesktopApp {
             active_workspace_preset_id: bootstrap.active_workspace_preset_id,
             paint_engine: paint_engine::PaintEngine::default(),
             canvas_input: CanvasInputState::default(),
+            koma_gesture: KomaGesture::default(),
             layout: None,
             cpu_canvas_snapshot: None,
             status_bar: crate::present_quads::status_panel::StatusBar::new(),

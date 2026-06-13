@@ -134,6 +134,7 @@ impl DesktopApp {
 
     pub(super) fn reset_active_interactions(&mut self) {
         self.canvas_input.reset();
+        self.koma_gesture.reset();
         self.invalidation.clear_pending();
         self.panel_interaction = super::panel_dispatch::PanelInteractionState::default();
         self.hover_canvas_position = None;

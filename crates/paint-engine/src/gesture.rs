@@ -11,16 +11,15 @@ pub enum CanvasPointerAction {
     Up,
 }
 
+/// ペイント系ジェスチャの 1 ステップ進行結果。
+///
+/// コマ作成 (KomaRect) は paint-engine の責務外であり、desktop feature が別経路で
+/// 処理する (BL-081)。本 enum はペン/消しゴム/バケツ/投げ縄バケツのみを表す。
 #[derive(Debug, Clone, PartialEq)]
 pub enum CanvasGestureUpdate {
     None,
     Paint(PaintInput),
     LassoPreviewChanged,
-    KomaRectPreviewChanged,
-    KomaRectCommitted {
-        anchor: PagePoint,
-        current: PagePoint,
-    },
 }
 
 pub fn advance_pointer_gesture<F>(
@@ -75,12 +74,6 @@ where
             state.lasso_points.push(point);
             CanvasGestureUpdate::LassoPreviewChanged
         }
-        ToolKind::KomaRect => {
-            state.is_drawing = true;
-            state.koma_rect_anchor = Some(point);
-            state.last_position = Some(point);
-            CanvasGestureUpdate::KomaRectPreviewChanged
-        }
         ToolKind::Pen | ToolKind::Eraser => {
             // Down では手ブレ補正を適用しない (補正は drag の平滑化でのみ働く)。
             state.is_drawing = true;
@@ -90,6 +83,8 @@ where
                 .map(|at| CanvasGestureUpdate::Paint(PaintInput::Stamp { at, pressure }))
                 .unwrap_or(CanvasGestureUpdate::None)
         }
+        // コマ作成は desktop feature が別経路で処理する (BL-081)。
+        ToolKind::KomaRect => CanvasGestureUpdate::None,
     }
 }
 
@@ -118,13 +113,6 @@ where
                 CanvasGestureUpdate::None
             }
         }
-        ToolKind::KomaRect => {
-            if state.last_position == Some(point) {
-                return CanvasGestureUpdate::None;
-            }
-            state.last_position = Some(point);
-            CanvasGestureUpdate::KomaRectPreviewChanged
-        }
         ToolKind::Pen | ToolKind::Eraser => {
             let next_position =
                 stabilized_canvas_position(state, point, active_tool, stabilization);
@@ -140,7 +128,8 @@ where
                 })
                 .unwrap_or(CanvasGestureUpdate::None)
         }
-        ToolKind::Bucket => CanvasGestureUpdate::None,
+        // バケツは drag で何もしない。コマ作成は desktop feature が別経路で処理する (BL-081)。
+        ToolKind::Bucket | ToolKind::KomaRect => CanvasGestureUpdate::None,
     }
 }
 
@@ -171,17 +160,6 @@ where
             state.reset();
             update
         }
-        ToolKind::KomaRect => {
-            let anchor = state.koma_rect_anchor;
-            let current = state.last_position.or(Some(point));
-            state.reset();
-            match (anchor, current) {
-                (Some(anchor), Some(current)) => {
-                    CanvasGestureUpdate::KomaRectCommitted { anchor, current }
-                }
-                _ => CanvasGestureUpdate::None,
-            }
-        }
         ToolKind::Pen | ToolKind::Eraser => {
             let previous = state.last_position;
             let update = if state.is_drawing && previous != Some(point) {
@@ -197,7 +175,8 @@ where
             state.reset();
             update
         }
-        ToolKind::Bucket => CanvasGestureUpdate::None,
+        // バケツは up で何もしない。コマ作成は desktop feature が別経路で処理する (BL-081)。
+        ToolKind::Bucket | ToolKind::KomaRect => CanvasGestureUpdate::None,
     }
 }
 

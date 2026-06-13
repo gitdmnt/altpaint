@@ -1,10 +1,7 @@
 use editor_state::ToolKind;
 use geometry::{KomaLocalPoint, PagePoint};
 
-use crate::{
-    CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, advance_pointer_gesture,
-    koma_creation_preview_bounds,
-};
+use crate::{CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, advance_pointer_gesture};
 
 #[test]
 fn lasso_gesture_collects_points_and_emits_fill_on_release() {
@@ -60,20 +57,4 @@ fn lasso_gesture_collects_points_and_emits_fill_on_release() {
         CanvasGestureUpdate::Paint(app_core::PaintInput::LassoFill { .. })
     ));
     assert_eq!(state, CanvasInputState::default());
-}
-
-#[test]
-fn koma_rect_preview_bounds_are_derived_from_canvas_state() {
-    let state = CanvasInputState {
-        koma_rect_anchor: Some(PagePoint::new(80, 50)),
-        last_position: Some(PagePoint::new(20, 30)),
-        ..CanvasInputState::default()
-    };
-
-    let bounds = koma_creation_preview_bounds(&state, 200, 200).expect("preview bounds");
-
-    assert_eq!(bounds.x, 20);
-    assert_eq!(bounds.y, 30);
-    assert_eq!(bounds.width, 61);
-    assert_eq!(bounds.height, 21);
 }

@@ -6,11 +6,10 @@
 use document_model::DocumentCommand;
 use editor_state::ToolKind;
 use geometry::{PagePoint, WindowPoint, WindowRect};
-use paint_engine::{
-    CanvasGestureUpdate, CanvasInputState, CanvasPointerAction, advance_pointer_gesture,
-};
+use paint_engine::{CanvasGestureUpdate, CanvasPointerAction, advance_pointer_gesture};
 
 use super::DesktopApp;
+use super::koma_gesture::{KomaGesture, KomaGestureUpdate, advance_koma_gesture};
 
 impl DesktopApp {
     pub(crate) fn update_canvas_hover(&mut self, x: i32, y: i32) -> bool {
@@ -93,7 +92,7 @@ impl DesktopApp {
         pressure: f32,
     ) -> bool {
         let point = WindowPoint::new(x, y);
-        if self.canvas_input.is_drawing {
+        if self.is_canvas_interacting() {
             return self.handle_canvas_pointer("up", point, pressure);
         }
         if self.panel_interaction.active_panel_resize.take().is_some() {
@@ -120,7 +119,7 @@ impl DesktopApp {
         pressure: f32,
     ) -> bool {
         let point = WindowPoint::new(x, y);
-        if self.canvas_input.is_drawing {
+        if self.is_canvas_interacting() {
             return self.handle_canvas_pointer("drag", point, pressure);
         }
 
@@ -143,19 +142,32 @@ impl DesktopApp {
             return false;
         };
         let canvas_position = self.canvas_position_from_window(point).or_else(|| {
-            (action != "down" && self.canvas_input.is_drawing)
+            (action != "down" && self.is_canvas_interacting())
                 .then(|| self.canvas_position_from_window_clamped(point))
                 .flatten()
         });
         let Some(page_point) = canvas_position else {
             if pointer_action == CanvasPointerAction::Up {
-                self.canvas_input.reset();
+                self.reset_canvas_gestures();
             }
             return false;
         };
 
         let active_tool = self.document.session.active_tool();
         let active_koma_bounds = self.document.active_koma_bounds();
+
+        // コマ作成 (KomaRect) は別経路で処理する (BL-081)。ジェスチャ進行中の
+        // drag/up はアクティブコマ境界へクランプする (分離前の挙動を維持)。
+        if active_tool == ToolKind::KomaRect {
+            let page_point = if action != "down" && self.koma_gesture.is_drawing {
+                active_koma_bounds
+                    .and_then(|bounds| bounds.clamp_canvas_point(page_point))
+                    .unwrap_or(page_point)
+            } else {
+                page_point
+            };
+            return self.handle_koma_rect_pointer(pointer_action, page_point);
+        }
 
         let page_point = if action != "down" && self.canvas_input.is_drawing {
             active_koma_bounds
@@ -166,7 +178,7 @@ impl DesktopApp {
         };
         let inside_active_koma =
             active_koma_bounds.is_some_and(|bounds| bounds.contains_canvas_point(page_point));
-        if active_tool != ToolKind::KomaRect && !inside_active_koma {
+        if !inside_active_koma {
             if pointer_action == CanvasPointerAction::Up {
                 self.canvas_input.reset();
             }
@@ -212,32 +224,44 @@ impl DesktopApp {
                 }
                 true
             }
-            CanvasGestureUpdate::KomaRectPreviewChanged => {
+        }
+    }
+
+    /// コマ作成 (KomaRect) ジェスチャを処理する (BL-081)。
+    fn handle_koma_rect_pointer(
+        &mut self,
+        pointer_action: CanvasPointerAction,
+        page_point: PagePoint,
+    ) -> bool {
+        match advance_koma_gesture(&mut self.koma_gesture, pointer_action, page_point) {
+            KomaGestureUpdate::None => false,
+            KomaGestureUpdate::PreviewChanged => {
                 if let Some(layout) = self.layout.as_ref() {
                     self.append_temp_overlay_dirty_rect(layout.canvas_host_rect);
                 }
                 true
             }
-            CanvasGestureUpdate::KomaRectCommitted { anchor, current } => {
+            KomaGestureUpdate::Committed { anchor, current } => {
                 let (page_width, page_height) = self.document.active_page_dimensions();
-                let preview_state = CanvasInputState {
+                let preview_state = KomaGesture {
                     is_drawing: false,
+                    anchor: Some(anchor),
                     last_position: Some(current),
-                    last_smoothed_position: None,
-                    lasso_points: Vec::new(),
-                    koma_rect_anchor: Some(anchor),
                 };
-                let created =
-                    paint_engine::koma_creation_preview_bounds(&preview_state, page_width, page_height)
-                        .filter(|bounds| bounds.width >= 8 && bounds.height >= 8)
-                        .is_some_and(|bounds| {
-                            self.apply_document_command(&DocumentCommand::CreateKoma {
-                                x: bounds.x,
-                                y: bounds.y,
-                                width: bounds.width,
-                                height: bounds.height,
-                            })
-                        });
+                let created = super::koma_gesture::koma_creation_preview_bounds(
+                    &preview_state,
+                    page_width,
+                    page_height,
+                )
+                .filter(|bounds| bounds.width >= 8 && bounds.height >= 8)
+                .is_some_and(|bounds| {
+                    self.apply_document_command(&DocumentCommand::CreateKoma {
+                        x: bounds.x,
+                        y: bounds.y,
+                        width: bounds.width,
+                        height: bounds.height,
+                    })
+                });
                 if let Some(layout) = self.layout.as_ref() {
                     self.append_temp_overlay_dirty_rect(layout.canvas_host_rect);
                     return true;
@@ -245,6 +269,12 @@ impl DesktopApp {
                 created
             }
         }
+    }
+
+    /// 両ジェスチャ状態 (ペイント系 + コマ作成) を破棄する。
+    fn reset_canvas_gestures(&mut self) {
+        self.canvas_input.reset();
+        self.koma_gesture.reset();
     }
 
     fn canvas_position_from_window(&self, point: WindowPoint) -> Option<PagePoint> {

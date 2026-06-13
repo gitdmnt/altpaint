@@ -33,7 +33,11 @@ impl DesktopApp {
 
     pub(super) fn koma_creation_preview_bounds(&self) -> Option<document_model::KomaBounds> {
         let (page_width, page_height) = self.document.active_page_dimensions();
-        paint_engine::koma_creation_preview_bounds(&self.canvas_input, page_width, page_height)
+        super::koma_gesture::koma_creation_preview_bounds(
+            &self.koma_gesture,
+            page_width,
+            page_height,
+        )
     }
 
     pub(super) fn koma_navigator_overlay(&self) -> Option<KomaNavigatorOverlay> {
@@ -61,6 +65,6 @@ impl DesktopApp {
     }
 
     pub(crate) fn is_canvas_interacting(&self) -> bool {
-        self.canvas_input.is_drawing
+        self.canvas_input.is_drawing || self.koma_gesture.is_drawing
     }
 }
