@@ -108,6 +108,18 @@ impl GpuRgbaTexture {
     }
 }
 
+/// 1 レイヤー分の CPU ピクセル + 任意マスクの差分同期入力。
+///
+/// [`LayerTextureStore::sync_koma_layers`] へ渡し、コマ単位でテクスチャを
+/// 差分的に再構築するために使う。`pixels` はレイヤー本体の RGBA8 列、`mask` は
+/// `(width, height, alpha)` の 1ch アルファ列 (なければ `None`)。
+pub struct LayerUpload<'a> {
+    pub width: u32,
+    pub height: u32,
+    pub pixels: &'a [u8],
+    pub mask: Option<(u32, u32, &'a [u8])>,
+}
+
 /// `(koma_id: String, layer_index: usize)` をキーにレイヤーテクスチャを管理するストア。
 pub struct LayerTextureStore {
     ctx: GpuCanvasContext,
@@ -408,6 +420,41 @@ impl LayerTextureStore {
         let pid = koma_id.to_string();
         self.textures.retain(|(p, _), _| p != &pid);
         self.mask_textures.retain(|(p, _), _| p != &pid);
+    }
+
+    /// 指定コマに登録済みのレイヤーテクスチャ数を返す。
+    ///
+    /// 差分同期 (`sync_koma_layers`) が当該コマのみを対象としていることを
+    /// 検証するためのクエリ。
+    pub fn layer_count_for_koma(&self, koma_id: &str) -> usize {
+        self.textures.keys().filter(|(p, _)| p == koma_id).count()
+    }
+
+    /// 1 コマ分のレイヤー/マスク/合成テクスチャを差分的に再構築する (BL-117)。
+    ///
+    /// 当該コマの既存レイヤー/マスクエントリのみをクリアしてから、`layers` を
+    /// インデックス順に再登録・アップロードする。`sync_all_layers_to_gpu` の
+    /// 全ページ全コマ全転送と異なり、コマ集合が不変でアクティブコマのレイヤー構成
+    /// だけが変わった場合 (レイヤー追加/削除/並べ替え) に、当該コマだけを同期する。
+    ///
+    /// `composite_size` は合成テクスチャのサイズ (コマの composite_cache 寸法)。
+    pub fn sync_koma_layers(
+        &mut self,
+        koma_id: &str,
+        composite_size: (u32, u32),
+        layers: &[LayerUpload<'_>],
+    ) {
+        self.clear_layers_for_koma(koma_id);
+        let (cw, ch) = composite_size;
+        self.ensure_composite_texture(koma_id, cw, ch);
+        for (idx, layer) in layers.iter().enumerate() {
+            self.create_layer_texture(koma_id, idx, layer.width, layer.height);
+            self.upload_cpu_bitmap(koma_id, idx, layer.pixels);
+            match layer.mask {
+                Some((mw, mh, alpha)) => self.upload_mask(koma_id, idx, mw, mh, alpha),
+                None => self.remove_mask(koma_id, idx),
+            }
+        }
     }
 
     /// 合成テクスチャを CPU へ読み戻す（保存経路の `koma.composite_cache` 更新用）。

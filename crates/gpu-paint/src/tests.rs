@@ -462,4 +462,71 @@ mod gpu_tests {
         });
         let _ = outcome;
     }
+
+    /// sync_koma_layers が当該コマのみのレイヤー/マスク/合成テクスチャを再構築し、
+    /// 別コマのテクスチャには一切触れないことを確認する (BL-117 差分同期)。
+    #[test]
+    fn sync_koma_layers_only_touches_target_koma() {
+        pollster::block_on(async {
+            let Some((device, queue, _adapter)) = try_init_device().await else {
+                return;
+            };
+            let mut pool = LayerTextureStore::new(device, queue);
+
+            // 別コマ "other" を 2 レイヤーで登録しておく (差分同期で触られないこと)。
+            pool.create_layer_texture("other", 0, 4, 4);
+            pool.create_layer_texture("other", 1, 4, 4);
+            assert_eq!(pool.layer_count_for_koma("other"), 2);
+
+            // 対象コマ "target" に 1 レイヤーを差分同期。
+            let pixels0 = vec![64u8; 4 * 4 * 4];
+            pool.sync_koma_layers(
+                "target",
+                (4, 4),
+                &[crate::LayerUpload {
+                    width: 4,
+                    height: 4,
+                    pixels: &pixels0,
+                    mask: None,
+                }],
+            );
+            assert_eq!(pool.layer_count_for_koma("target"), 1);
+            assert!(pool.get_composite("target").is_some());
+            // 別コマは不変。
+            assert_eq!(pool.layer_count_for_koma("other"), 2);
+
+            // 同じコマを 2 レイヤー + マスク付きで再同期すると、古いエントリが
+            // 置き換わりレイヤー数が更新される。
+            let pixels1 = vec![32u8; 4 * 4 * 4];
+            let pixels2 = vec![16u8; 4 * 4 * 4];
+            let mask = vec![200u8; 4 * 4];
+            pool.sync_koma_layers(
+                "target",
+                (4, 4),
+                &[
+                    crate::LayerUpload {
+                        width: 4,
+                        height: 4,
+                        pixels: &pixels1,
+                        mask: None,
+                    },
+                    crate::LayerUpload {
+                        width: 4,
+                        height: 4,
+                        pixels: &pixels2,
+                        mask: Some((4, 4, &mask)),
+                    },
+                ],
+            );
+            assert_eq!(pool.layer_count_for_koma("target"), 2);
+            assert!(pool.get_mask("target", 1).is_some());
+            assert!(pool.get_mask("target", 0).is_none());
+            // 別コマは依然不変。
+            assert_eq!(pool.layer_count_for_koma("other"), 2);
+
+            // レイヤー本体のピクセルが反映されていること。
+            let (_, _, out) = pool.read_back_full("target", 0).expect("readback");
+            assert!(out.iter().all(|&b| b == 32));
+        });
+    }
 }
