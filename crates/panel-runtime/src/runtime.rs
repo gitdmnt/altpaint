@@ -3,6 +3,7 @@ use crate::persistent_config::{collect_persistent_panel_configs, restore_persist
 use crate::request_translation::register_default_translators;
 use crate::translator_registry::TranslatorRegistry;
 use crate::host_state::{EMPTY_WORKSPACE_PANELS_JSON, HostState};
+use crate::panel_input::PanelPointerInput;
 use document_model::Document;
 use crate::host_request::{HostRequest, PanelEvent};
 use panel_html::{vello, wgpu, PanelSizeConstraints, ActionRect};
@@ -198,16 +199,15 @@ impl PanelRuntime {
         }
     }
 
-    /// 指定パネルに UI 入力イベントを転送する。`:hover` / `<details>` 開閉等の動的レイアウトを動かす。
+    /// 指定パネルにポインタ入力を転送する。`:hover` / `<details>` 開閉等の動的レイアウトを動かす。
     /// 戻り値: 該当パネルが見つかった場合 true。
-    pub fn forward_panel_input(
-        &mut self,
-        panel_id: &str,
-        event: panel_html::blitz_traits::events::UiEvent,
-    ) -> bool {
+    ///
+    /// 入力は panel-runtime 定義の [`PanelPointerInput`] で受け取り、blitz `UiEvent` への
+    /// 変換は本クレート内部で行う (BL-091: ホスト側の blitz 直接構築を撤去)。
+    pub fn forward_panel_input(&mut self, panel_id: &str, input: PanelPointerInput) -> bool {
         match self.panels.iter_mut().find(|panel| panel.id() == panel_id) {
             Some(panel) => {
-                panel.view_mut().on_input(event);
+                panel.view_mut().on_input(input.into_ui_event());
                 true
             }
             None => false,

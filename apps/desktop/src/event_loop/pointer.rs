@@ -6,6 +6,7 @@
 use std::time::Instant;
 
 use editor_state::SessionCommand;
+use panel_runtime::{PanelPointerInput, PanelPointerKind};
 use winit::event::{ElementState, Force, MouseScrollDelta, TouchPhase};
 
 use super::DesktopEventLoop;
@@ -319,38 +320,21 @@ impl DesktopEventLoop {
         else {
             return false;
         };
-        use panel_runtime::html::blitz_traits::events::{
-            BlitzPointerEvent, BlitzPointerId, MouseEventButton, MouseEventButtons,
-            PointerCoords, PointerDetails, UiEvent,
-        };
-        // local は chrome を含む panel 全体原点（screen_rect 基準）なので
-        // body オフセット（chrome_height）を View 側で扱う。Blitz には panel-local 座標を渡す。
-        let coords = PointerCoords {
-            page_x: local.x as f32,
-            page_y: local.y as f32,
-            client_x: local.x as f32,
-            client_y: local.y as f32,
+        // local は chrome を含む panel 全体原点（screen_rect 基準）。body オフセット
+        // (chrome_height) は View 側で扱う。blitz `UiEvent` への変換は panel-runtime が
+        // 内部で行うため、ここでは panel-runtime 定義の入力 DTO を組み立てる (BL-091)。
+        let input = PanelPointerInput {
+            kind: match kind {
+                HtmlPointerKind::Down => PanelPointerKind::Down,
+                HtmlPointerKind::Up => PanelPointerKind::Up,
+                HtmlPointerKind::Move => PanelPointerKind::Move,
+            },
+            local_x: local.x as f32,
+            local_y: local.y as f32,
             screen_x: x as f32,
             screen_y: y as f32,
         };
-        let pointer = BlitzPointerEvent {
-            id: BlitzPointerId::Mouse,
-            is_primary: true,
-            coords,
-            button: MouseEventButton::Main,
-            buttons: match kind {
-                HtmlPointerKind::Down => MouseEventButtons::Primary,
-                _ => MouseEventButtons::empty(),
-            },
-            mods: keyboard_types::Modifiers::empty(),
-            details: PointerDetails::default(),
-        };
-        let event = match kind {
-            HtmlPointerKind::Down => UiEvent::PointerDown(pointer),
-            HtmlPointerKind::Up => UiEvent::PointerUp(pointer),
-            HtmlPointerKind::Move => UiEvent::PointerMove(pointer),
-        };
-        self.app.panel_runtime.forward_panel_input(&panel_id, event)
+        self.app.panel_runtime.forward_panel_input(&panel_id, input)
     }
 
     pub(super) fn record_canvas_input_if_needed(&mut self, changed: bool) -> bool {
