@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
@@ -16,10 +16,6 @@ impl CanvasSizePreset {
     pub fn size_string(&self) -> String {
         format!("{}x{}", self.width, self.height)
     }
-}
-
-pub fn default_canvas_size_preset_path() -> PathBuf {
-    PathBuf::from("canvas-templates.json")
 }
 
 pub fn default_canvas_size_presets() -> Vec<CanvasSizePreset> {
@@ -71,6 +67,7 @@ pub fn save_canvas_size_presets(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn default_size_presets_include_a4_350dpi() {

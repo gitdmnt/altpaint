@@ -4,7 +4,7 @@
 //! `PerformanceSnapshot` / `FrameReport` を消費してウィンドウタイトルと
 //! プロファイルログを組み立てる。表示用の閾値 (目標値) もここに置く。
 
-use desktop_support::{INPUT_LATENCY_TARGET_MS, INPUT_SAMPLING_TARGET_HZ, WINDOW_TITLE};
+use crate::theme::{INPUT_LATENCY_TARGET_MS, INPUT_SAMPLING_TARGET_HZ, WINDOW_TITLE};
 use frame_profiler::{FrameReport, PerformanceSnapshot};
 
 /// 最新スナップショットからウィンドウタイトル文字列を組み立てる。

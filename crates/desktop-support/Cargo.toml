@@ -6,9 +6,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-document-model = { path = "../document-model" }
 editor-state = { path = "../editor-state" }
 panel-workspace = { path = "../panel-workspace" }
 serde.workspace = true
 serde_json.workspace = true
-tinyfiledialogs.workspace = true

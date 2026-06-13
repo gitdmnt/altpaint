@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+dirs.workspace = true
 font8x8 = { workspace = true }
 document-model = { path = "../../crates/document-model" }
 editor-state = { path = "../../crates/editor-state" }
@@ -28,6 +29,7 @@ serde_json.workspace = true
 project-store = { path = "../../crates/project-store" }
 pen-io = { path = "../../crates/pen-io" }
 panel-workspace = { path = "../../crates/panel-workspace" }
+tinyfiledialogs.workspace = true
 wgpu.workspace = true
 winit.workspace = true
 

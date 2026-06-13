@@ -4,12 +4,15 @@ use std::path::{Path, PathBuf};
 
 use document_model::Document;
 use desktop_support::{
-    CURRENT_WORKSPACE_PRESET_FORMAT_VERSION, DEFAULT_PROJECT_FILE_NAME, DesktopSessionState,
-    WorkspacePreset, WorkspacePresetCatalog, default_canvas_size_preset_path,
-    default_canvas_size_presets, builtin_panels_dir, load_session_state,
+    CURRENT_WORKSPACE_PRESET_FORMAT_VERSION, DesktopSessionState, WorkspacePreset,
+    WorkspacePresetCatalog, default_canvas_size_presets, load_session_state,
     load_workspace_preset_catalog, save_canvas_size_presets, save_workspace_preset_catalog,
 };
 use std::collections::BTreeMap;
+
+use crate::platform::{
+    builtin_panels_dir, default_canvas_size_preset_path, default_project_path,
+};
 
 use panel_runtime::{PanelRuntime, register_builtin_panels};
 use panel_workspace::{
@@ -265,7 +268,7 @@ fn resolve_startup_project_path(
 ) -> PathBuf {
     session
         .and_then(|state| {
-            (project_path == Path::new(DEFAULT_PROJECT_FILE_NAME))
+            (project_path == default_project_path())
                 .then(|| state.last_project_path.clone())
                 .flatten()
         })

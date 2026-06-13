@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use document_model::DocumentCommand;
 use paint_engine::{PaintInput, PaintPluginContext};
 use geometry::{MergeInSpace, PageDirtyRect};
-use desktop_support::normalize_project_path;
+use crate::platform::normalize_project_path;
 use panel_runtime::{ServiceRequest, services::names};
 use project_store::load_project_from_path;
 

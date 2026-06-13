@@ -2,7 +2,9 @@
 
 use std::path::PathBuf;
 
-use desktop_support::{DesktopDialogs, DesktopSessionState, save_session_state};
+use desktop_support::{DesktopSessionState, save_session_state};
+
+use crate::platform::DesktopDialogs;
 
 use super::DesktopApp;
 

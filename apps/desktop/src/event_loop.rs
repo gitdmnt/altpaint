@@ -13,7 +13,6 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::Context;
-use desktop_support::{WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
 use frame_profiler::FrameProfiler;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -23,6 +22,7 @@ use winit::keyboard::ModifiersState;
 use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::app::DesktopApp;
+use crate::theme::{WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH};
 use crate::wgpu_canvas::{
     CanvasSurface, CanvasSurfaceSource, PresentFrame, TextureSource, UploadRegion, WgpuPresenter,
 };
@@ -404,7 +404,7 @@ impl ApplicationHandler for DesktopEventLoop {
                     self.app.status_bar.update(&snapshot);
                     if let Some(surface) = self.app.panel_runtime.html_surface_renderer() {
                         // フッター位置 (画面下端) に幅 = window 幅で配置する
-                        const FOOTER_HEIGHT: u32 = desktop_support::FOOTER_HEIGHT as u32;
+                        const FOOTER_HEIGHT: u32 = crate::theme::FOOTER_HEIGHT as u32;
                         let viewport_w = size.width.max(1);
                         let outcome = self.app.status_bar.render_gpu(
                             surface.device,

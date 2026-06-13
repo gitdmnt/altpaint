@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use panel_workspace::WorkspaceUiState;
@@ -27,10 +27,6 @@ pub struct WorkspacePresetCatalog {
 
 fn default_workspace_preset_format_version() -> u32 {
     CURRENT_WORKSPACE_PRESET_FORMAT_VERSION
-}
-
-pub fn default_workspace_preset_path() -> PathBuf {
-    PathBuf::from("workspace-presets.json")
 }
 
 /// 既定ワークスペースプリセットを `path` から読み込む (BL-095)。
@@ -64,6 +60,7 @@ pub fn save_workspace_preset_catalog(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     fn unique_test_path(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(

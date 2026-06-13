@@ -8,7 +8,7 @@ mod overlay_state;
 mod solid_quad;
 pub(crate) mod status_panel;
 use ::geometry::WindowRect;
-use desktop_support::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
+use crate::theme::{FOOTER_HEIGHT, HEADER_HEIGHT, WINDOW_PADDING};
 
 pub(crate) use canvas_plan::CanvasPlan;
 pub(crate) use geometry::fit_rect;

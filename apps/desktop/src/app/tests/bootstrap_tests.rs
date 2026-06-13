@@ -1,8 +1,6 @@
 //! 起動時 bootstrap の回帰テストをまとめる。
 
-use std::path::PathBuf;
-
-use desktop_support::DEFAULT_PROJECT_FILE_NAME;
+use crate::platform::default_project_path;
 use panel_runtime::{ServiceRequest, services::names};
 use project_store::load_project_from_path;
 
@@ -21,7 +19,7 @@ fn startup_restores_last_project_from_session_path() {
     assert!(source_app.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_TO_PATH).with_value("path", project_path.to_string_lossy().to_string())));
     source_app.wait_for_pending_save_tasks();
     let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from(DEFAULT_PROJECT_FILE_NAME),
+        default_project_path(),
         Box::new(TestDialogs::default()),
         session_path.clone(),
         unique_test_path("bootstrap-workspace-presets"),

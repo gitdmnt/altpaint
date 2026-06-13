@@ -12,7 +12,7 @@ mod workspace_layout;
 
 use document_model::{Document, DocumentCommand};
 use editor_state::SessionCommand;
-use desktop_support::DEFAULT_PROJECT_FILE_NAME;
+use crate::platform::DEFAULT_PROJECT_FILE_NAME;
 use panel_runtime::{ServiceRequest, services::names};
 use panel_workspace::WorkspaceUiState;
 
@@ -246,7 +246,7 @@ impl DesktopApp {
 
     pub(crate) fn reload_tool_catalog_into_document(document: &mut Document) -> bool {
         let (tools, diagnostics) =
-            project_store::load_tool_directory(desktop_support::default_tool_dir());
+            project_store::load_tool_directory(crate::platform::tool_dir());
         for diagnostic in diagnostics {
             eprintln!("tool catalog load warning: {diagnostic}");
         }

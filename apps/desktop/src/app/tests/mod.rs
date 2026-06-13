@@ -15,7 +15,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use desktop_support::DesktopDialogs;
+use crate::platform::DesktopDialogs;
 
 use super::DesktopApp;
 

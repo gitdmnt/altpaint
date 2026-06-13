@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use document_model::Document;
-use desktop_support::{builtin_panels_dir, default_pen_dir};
+use crate::platform::{builtin_panels_dir, pen_dir};
 use panel_runtime::{
     ServiceRequest,
     services::names::{self, config_keys, panel_ids},
@@ -41,8 +41,8 @@ impl DesktopApp {
     pub(crate) fn import_pen_presets(&mut self) -> bool {
         let suggested = builtin_panels_dir()
             .parent()
-            .map(|_| desktop_support::default_pen_dir())
-            .unwrap_or_else(desktop_support::default_pen_dir);
+            .map(|_| pen_dir())
+            .unwrap_or_else(pen_dir);
         let Some(path) = self.io_state.dialogs.pick_open_pen_path(&suggested) else {
             return false;
         };
@@ -140,7 +140,7 @@ impl DesktopApp {
     }
 
     pub(crate) fn reload_pen_presets_into_document(document: &mut Document) -> bool {
-        let (presets, diagnostics) = load_pen_directory(default_pen_dir());
+        let (presets, diagnostics) = load_pen_directory(pen_dir());
         for diagnostic in diagnostics {
             eprintln!("pen preset load warning: {diagnostic}");
         }

@@ -9,7 +9,7 @@
 //! ```
 
 use anyhow::{Context, Result};
-use desktop_support::APP_BACKGROUND;
+use crate::theme::APP_BACKGROUND;
 use frame_profiler::PresentTimings;
 use crate::app::CpuCanvasSnapshot;
 use std::collections::HashMap;

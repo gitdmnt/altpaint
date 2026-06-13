@@ -49,7 +49,7 @@ mod tests {
 
     use crate::app::DesktopApp;
     use crate::app::tests::unique_test_path;
-    use desktop_support::NativeDesktopDialogs;
+    use crate::platform::NativeDesktopDialogs;
 
     fn make_app() -> DesktopApp {
         DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(

@@ -27,10 +27,6 @@ pub struct DesktopSessionState {
     pub editor_session: EditorSession,
 }
 
-pub fn default_session_path() -> PathBuf {
-    PathBuf::from("altpaint-session.json")
-}
-
 pub fn load_session_state(path: impl AsRef<Path>) -> Option<DesktopSessionState> {
     match load_json::<DesktopSessionState>(path, "session") {
         JsonLoad::Loaded(state) => Some(state),
@@ -47,12 +43,6 @@ pub fn save_session_state(
     let path = path.as_ref();
     let serialized = serde_json::to_vec_pretty(state)?;
     std::fs::write(path, serialized)
-}
-
-pub fn startup_project_path(default_project_path: impl Into<PathBuf>) -> PathBuf {
-    load_session_state(default_session_path())
-        .and_then(|state| state.last_project_path)
-        .unwrap_or_else(|| default_project_path.into())
 }
 
 #[cfg(test)]

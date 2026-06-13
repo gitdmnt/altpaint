@@ -5,10 +5,8 @@ use std::path::PathBuf;
 use panel_workspace::{
     WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState,
 };
-use desktop_support::{
-    DEFAULT_PROJECT_FILE_NAME, WorkspacePreset, WorkspacePresetCatalog,
-    save_workspace_preset_catalog,
-};
+use desktop_support::{WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog};
+use crate::platform::default_project_path;
 use frame_profiler::FrameProfiler;
 use editor_state::{ColorRgba8, EditorSession, SessionCommand};
 use panel_runtime::{ServiceRequest, services::names};
@@ -412,7 +410,7 @@ fn startup_restores_last_opened_project_from_session() {
     source_app.wait_for_pending_save_tasks();
 
     let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from(DEFAULT_PROJECT_FILE_NAME),
+        default_project_path(),
         Box::new(TestDialogs::default()),
         session_path.clone(),
         unique_test_path("workspace-presets"),
@@ -449,7 +447,7 @@ fn editor_session_round_trips_through_session_save_load() {
     source_app.wait_for_pending_save_tasks();
 
     let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from(DEFAULT_PROJECT_FILE_NAME),
+        default_project_path(),
         Box::new(TestDialogs::default()),
         session_path.clone(),
         unique_test_path("workspace-presets"),

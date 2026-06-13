@@ -32,9 +32,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use document_model::{Document, KomaId};
 use geometry::{PageDirtyRect, PagePoint};
 use raster::RgbaBitmap;
-use desktop_support::{
-    DesktopDialogs, NativeDesktopDialogs, WorkspacePresetCatalog, default_workspace_preset_path,
-};
+use desktop_support::WorkspacePresetCatalog;
+use crate::platform::{DesktopDialogs, NativeDesktopDialogs, default_workspace_preset_path};
 use panel_runtime::PanelRuntime;
 use panel_workspace::PanelWorkspace;
 
@@ -404,6 +403,6 @@ fn default_desktop_session_path() -> PathBuf {
 
     #[cfg(not(test))]
     {
-        desktop_support::default_session_path()
+        crate::platform::default_session_path()
     }
 }

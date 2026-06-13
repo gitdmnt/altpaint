@@ -1,4 +1,4 @@
-﻿//! OS ダイアログとパス正規化を担当する補助モジュール。
+//! OS ダイアログとパス正規化を担当する補助モジュール。
 //!
 //! デスクトップ本体からネイティブダイアログ依存を切り離し、
 //! テストでは差し替え可能な境界として扱う。
@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 /// プロジェクトの開閉に必要なダイアログ操作を抽象化する。
-pub trait DesktopDialogs {
+pub(crate) trait DesktopDialogs {
     fn pick_open_project_path(&self, current_path: &Path) -> Option<PathBuf>;
     fn pick_save_project_path(&self, current_path: &Path) -> Option<PathBuf>;
     fn pick_save_workspace_preset_path(&self, current_path: &Path) -> Option<PathBuf>;
@@ -19,7 +19,7 @@ pub trait DesktopDialogs {
 }
 
 /// 実行環境でネイティブダイアログを使う既定実装を表す。
-pub struct NativeDesktopDialogs;
+pub(crate) struct NativeDesktopDialogs;
 
 impl DesktopDialogs for NativeDesktopDialogs {
     fn pick_open_project_path(&self, current_path: &Path) -> Option<PathBuf> {
@@ -80,7 +80,7 @@ impl DesktopDialogs for NativeDesktopDialogs {
     }
 }
 
-pub fn normalize_project_path(path: PathBuf) -> PathBuf {
+pub(crate) fn normalize_project_path(path: PathBuf) -> PathBuf {
     if path.extension().is_some() {
         path
     } else {
@@ -88,7 +88,7 @@ pub fn normalize_project_path(path: PathBuf) -> PathBuf {
     }
 }
 
-pub fn normalize_workspace_preset_path(path: PathBuf) -> PathBuf {
+pub(crate) fn normalize_workspace_preset_path(path: PathBuf) -> PathBuf {
     if path.extension().is_some() {
         path
     } else {
