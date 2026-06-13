@@ -23,6 +23,7 @@ fn startup_restores_last_project_from_session_path() {
         dialogs: Box::new(TestDialogs::default()),
         session_path: session_path.clone(),
         workspace_preset_path: unique_test_path("bootstrap-workspace-presets"),
+        canvas_size_preset_path: unique_test_path("bootstrap-canvas-size"),
     });
 
     assert_eq!(app.paths.project_path, project_path);

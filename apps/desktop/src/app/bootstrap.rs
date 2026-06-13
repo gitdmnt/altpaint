@@ -12,9 +12,7 @@ use crate::features::workspace::{
 };
 use std::collections::BTreeMap;
 
-use crate::platform::{
-    builtin_panels_dir, default_canvas_size_preset_path, default_project_path,
-};
+use crate::platform::{builtin_panels_dir, default_project_path};
 
 use panel_runtime::{PanelRuntime, register_builtin_panels};
 use panel_workspace::{
@@ -159,12 +157,12 @@ impl DesktopApp {
     }
 
     pub(super) fn ensure_canvas_size_presets_file(&self) {
-        let path = default_canvas_size_preset_path();
+        let path = &self.paths.canvas_size_preset_path;
         if path.exists() {
             return;
         }
 
-        if let Err(error) = save_canvas_size_presets(&path, &default_canvas_size_presets()) {
+        if let Err(error) = save_canvas_size_presets(path, &default_canvas_size_presets()) {
             eprintln!("failed to create canvas size presets file: {error}");
         }
     }

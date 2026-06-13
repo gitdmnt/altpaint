@@ -14,6 +14,7 @@ pub(crate) struct ProjectPaths {
     pub(crate) project_path: PathBuf,
     pub(crate) session_path: PathBuf,
     pub(crate) workspace_preset_path: PathBuf,
+    pub(crate) canvas_size_preset_path: PathBuf,
 }
 
 impl ProjectPaths {
@@ -21,11 +22,13 @@ impl ProjectPaths {
         project_path: PathBuf,
         session_path: PathBuf,
         workspace_preset_path: PathBuf,
+        canvas_size_preset_path: PathBuf,
     ) -> Self {
         Self {
             project_path,
             session_path,
             workspace_preset_path,
+            canvas_size_preset_path,
         }
     }
 }

@@ -106,6 +106,7 @@ fn test_app_with_dialogs(dialogs: TestDialogs) -> DesktopApp {
         dialogs: Box::new(dialogs),
         session_path: unique_test_path("session"),
         workspace_preset_path: unique_test_path("workspace-presets"),
+        canvas_size_preset_path: unique_test_path("canvas-size-presets"),
     })
 }
 
@@ -118,6 +119,7 @@ fn test_app_with_dialogs_and_session_path(
         dialogs: Box::new(dialogs),
         session_path,
         workspace_preset_path: unique_test_path("workspace-presets"),
+        canvas_size_preset_path: unique_test_path("canvas-size-presets"),
     })
 }
 
@@ -130,6 +132,7 @@ fn test_app_with_dialogs_and_workspace_preset_path(
         dialogs: Box::new(dialogs),
         session_path: unique_test_path("session"),
         workspace_preset_path,
+        canvas_size_preset_path: unique_test_path("canvas-size-presets"),
     })
 }
 

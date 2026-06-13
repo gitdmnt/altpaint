@@ -57,6 +57,7 @@ mod tests {
             dialogs: Box::new(NativeDesktopDialogs),
             session_path: unique_test_path("snapshot-session"),
             workspace_preset_path: unique_test_path("snapshot-workspace"),
+            canvas_size_preset_path: unique_test_path("snapshot-canvas-size"),
         })
     }
 

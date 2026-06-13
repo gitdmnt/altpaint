@@ -302,6 +302,7 @@ fn startup_uses_default_workspace_preset_when_project_and_session_are_empty() {
         dialogs: Box::new(TestDialogs::default()),
         session_path: unique_test_path("preset-session"),
         workspace_preset_path: preset_path.clone(),
+        canvas_size_preset_path: unique_test_path("preset-canvas-size"),
     });
     let entry = app
         .panel_workspace
@@ -380,6 +381,7 @@ fn session_layout_overrides_default_workspace_preset() {
         dialogs: Box::new(TestDialogs::default()),
         session_path: session_path.clone(),
         workspace_preset_path: preset_path.clone(),
+        canvas_size_preset_path: unique_test_path("workspace-canvas-size"),
     });
     let entry = app
         .panel_workspace
@@ -417,6 +419,7 @@ fn startup_restores_last_opened_project_from_session() {
         dialogs: Box::new(TestDialogs::default()),
         session_path: session_path.clone(),
         workspace_preset_path: unique_test_path("workspace-presets"),
+        canvas_size_preset_path: unique_test_path("recovered-canvas-size"),
     });
 
     assert_eq!(app.paths.project_path, project_path);
@@ -454,6 +457,7 @@ fn editor_session_round_trips_through_session_save_load() {
         dialogs: Box::new(TestDialogs::default()),
         session_path: session_path.clone(),
         workspace_preset_path: unique_test_path("workspace-presets"),
+        canvas_size_preset_path: unique_test_path("recovered-canvas-size"),
     });
 
     assert_eq!(app.document.session.active_color, restored_color);
@@ -573,6 +577,7 @@ fn startup_preserves_last_selected_workspace_preset_id() {
         dialogs: Box::new(TestDialogs::default()),
         session_path: unique_test_path("selected-preset-session-source"),
         workspace_preset_path: preset_path.clone(),
+        canvas_size_preset_path: unique_test_path("selected-preset-canvas-size"),
     });
     assert!(source_app.execute_service_request(
         ServiceRequest::new(names::WORKSPACE_APPLY_PRESET).with_value("preset_id", "review"),
@@ -583,6 +588,7 @@ fn startup_preserves_last_selected_workspace_preset_id() {
         dialogs: Box::new(TestDialogs::default()),
         session_path: source_app.paths.session_path.clone(),
         workspace_preset_path: preset_path.clone(),
+        canvas_size_preset_path: unique_test_path("restarted-canvas-size"),
     });
 
     assert_eq!(

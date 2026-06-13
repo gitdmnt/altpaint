@@ -18,6 +18,7 @@ fn test_event_loop() -> DesktopEventLoop {
             dialogs: Box::new(crate::app::tests::TestDialogs::default()),
             session_path: crate::app::tests::unique_test_path("event-loop-session"),
             workspace_preset_path: crate::app::tests::unique_test_path("event-loop-workspace-presets"),
+            canvas_size_preset_path: crate::app::tests::unique_test_path("event-loop-canvas-size"),
         }),
         window: None,
         presenter: None,

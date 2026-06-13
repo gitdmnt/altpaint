@@ -90,6 +90,7 @@ mod tests {
             dialogs: Box::new(NativeDesktopDialogs),
             session_path: unique_test_path("text-render-session"),
             workspace_preset_path: unique_test_path("text-render-workspace"),
+            canvas_size_preset_path: unique_test_path("text-render-canvas-size"),
         })
     }
 

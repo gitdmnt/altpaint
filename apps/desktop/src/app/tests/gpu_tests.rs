@@ -46,6 +46,7 @@ fn make_test_app() -> DesktopApp {
         dialogs: Box::new(TestDialogs::default()),
         session_path: unique_test_path("gpu-session"),
         workspace_preset_path: unique_test_path("gpu-workspace"),
+        canvas_size_preset_path: unique_test_path("gpu-canvas-size"),
     })
 }
 

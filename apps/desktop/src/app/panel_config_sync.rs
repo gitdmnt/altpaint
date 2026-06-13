@@ -6,13 +6,11 @@ use crate::features::project::{default_canvas_size_presets, load_canvas_size_pre
 use crate::features::workspace::load_workspace_preset_catalog;
 use panel_runtime::services::names::{config_keys, panel_ids};
 
-use crate::platform::default_canvas_size_preset_path;
-
 use super::DesktopApp;
 
 impl DesktopApp {
     pub(crate) fn refresh_new_document_size_presets(&mut self) {
-        let presets = load_canvas_size_presets(default_canvas_size_preset_path());
+        let presets = load_canvas_size_presets(self.paths.canvas_size_preset_path.clone());
         let default_preset = presets
             .first()
             .cloned()

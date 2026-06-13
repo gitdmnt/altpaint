@@ -161,6 +161,7 @@ pub(crate) struct DesktopAppOptions {
     pub(crate) dialogs: Box<dyn DesktopDialogs>,
     pub(crate) session_path: PathBuf,
     pub(crate) workspace_preset_path: PathBuf,
+    pub(crate) canvas_size_preset_path: PathBuf,
 }
 
 impl DesktopApp {
@@ -170,6 +171,7 @@ impl DesktopApp {
             dialogs: Box::new(NativeDesktopDialogs),
             session_path: default_desktop_session_path(),
             workspace_preset_path: default_workspace_preset_path(),
+            canvas_size_preset_path: crate::platform::default_canvas_size_preset_path(),
         })
     }
 
@@ -179,6 +181,7 @@ impl DesktopApp {
             dialogs,
             session_path,
             workspace_preset_path,
+            canvas_size_preset_path,
         } = options;
         let bootstrap = Self::bootstrap_state(project_path, &session_path, &workspace_preset_path);
 
@@ -190,6 +193,7 @@ impl DesktopApp {
                 bootstrap.project_path,
                 session_path,
                 workspace_preset_path,
+                canvas_size_preset_path,
             ),
             dialogs,
             workspace: WorkspaceState {
