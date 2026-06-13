@@ -242,7 +242,7 @@ HTML パネル描画エンジン（旧名 `panel-html-experiment`、依存最小
 - workspace layout 管理（4 隅アンカー基準の panel 配置、move / visibility / resize）
 - focus 管理（`focused_target` / panel フォーカス巡回、`focus_panel_node(panel_id, node_id)` / `focus_next()` / `focus_previous()`）
 - HTML panel hit-test（`html_panel_hit_at` / `panel_resize_hit_at` / move handle）
-- 登録済みパネル ID と workspace layout の整合（`reconcile_panels(panel_ids: Vec<&'static str>)` — desktop 側が `panel_runtime.panel_static_ids()` を渡す）
+- 登録済みパネル ID と workspace layout の整合（`reconcile_panels(panel_ids: Vec<&str>)` — desktop 側が `panel_runtime.panel_ids()` を渡す）
 
 主なモジュール:
 

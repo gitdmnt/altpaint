@@ -29,8 +29,8 @@ use panel_wasm_host::{PanelWasmHostError, PanelWasmInstance};
 use serde_json::{Value, json};
 
 pub struct HtmlWasmPanel {
-    id: &'static str,
-    title: &'static str,
+    id: String,
+    title: String,
     default_size: (u32, u32),
     view: HtmlPanelView,
     wasm: PanelWasmInstance,
@@ -102,8 +102,8 @@ impl HtmlWasmPanel {
         panel_protocol::apply_patches(&mut state, &init.state_patch);
 
         Ok(Self {
-            id: Box::leak(meta.id.into_boxed_str()),
-            title: Box::leak(meta.title.into_boxed_str()),
+            id: meta.id,
+            title: meta.title,
             default_size,
             view,
             wasm,
@@ -226,12 +226,12 @@ fn request_descriptor_to_host_request(
 /// パネルのライフサイクルメソッド (旧 `PanelPlugin` trait。P1 で trait を撤去し
 /// `HtmlWasmPanel` の inherent メソッドに統合した)。
 impl HtmlWasmPanel {
-    pub fn id(&self) -> &'static str {
-        self.id
+    pub fn id(&self) -> &str {
+        &self.id
     }
 
-    pub fn title(&self) -> &'static str {
-        self.title
+    pub fn title(&self) -> &str {
+        &self.title
     }
 
     pub fn update(&mut self, document: &Document, host_state: HostState) {
@@ -281,13 +281,13 @@ impl HtmlWasmPanel {
                 shortcut,
                 key,
                 repeat,
-            } if panel_id == self.id => self
+            } if *panel_id == self.id => self
                 .dispatch_to_wasm(
                     "keyboard",
                     json!({ "shortcut": shortcut, "key": key, "repeat": repeat }),
                 )
                 .unwrap_or_default(),
-            PanelEvent::Activate { panel_id, node_id } if panel_id == self.id => {
+            PanelEvent::Activate { panel_id, node_id } if *panel_id == self.id => {
                 let descriptor = self.lookup_action_descriptor(node_id);
                 self.descriptor_to_actions(descriptor, json!({}))
             }
@@ -295,7 +295,7 @@ impl HtmlWasmPanel {
                 panel_id,
                 node_id,
                 value,
-            } if panel_id == self.id => {
+            } if *panel_id == self.id => {
                 let descriptor = self.lookup_action_descriptor(node_id);
                 self.descriptor_to_actions(descriptor, json!({ "value": value }))
             }
@@ -304,7 +304,7 @@ impl HtmlWasmPanel {
                 node_id,
                 from,
                 to,
-            } if panel_id == self.id => {
+            } if *panel_id == self.id => {
                 let descriptor = self.lookup_action_descriptor(node_id);
                 self.descriptor_to_actions(
                     descriptor,
@@ -315,7 +315,7 @@ impl HtmlWasmPanel {
                 panel_id,
                 node_id,
                 value,
-            } if panel_id == self.id => {
+            } if *panel_id == self.id => {
                 let descriptor = self.lookup_action_descriptor(node_id);
                 self.descriptor_to_actions(descriptor, json!({ "value": value.clone() }))
             }

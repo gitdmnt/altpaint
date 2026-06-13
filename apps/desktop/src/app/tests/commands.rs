@@ -214,7 +214,7 @@ fn execute_command_new_document_sized_replaces_bitmap() {
 #[test]
 fn builtin_panels_are_registered() {
     let app = test_app_with_dialogs(TestDialogs::default());
-    let registered: Vec<&str> = app.panel_runtime.panel_static_ids();
+    let registered: Vec<&str> = app.panel_runtime.panel_ids();
 
     for panel_id in [
         "builtin.app-actions",

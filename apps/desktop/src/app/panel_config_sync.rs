@@ -42,7 +42,7 @@ impl DesktopApp {
         );
         self.panel_runtime.replace_persistent_panel_configs(configs);
         self.panel_workspace
-            .reconcile_panels(self.panel_runtime.panel_static_ids());
+            .reconcile_panels(self.panel_runtime.panel_ids());
     }
 
     pub(crate) fn refresh_workspace_presets(&mut self) {
@@ -82,7 +82,7 @@ impl DesktopApp {
         self.active_workspace_preset_id = selected_workspace;
         self.panel_runtime.replace_persistent_panel_configs(configs);
         self.panel_workspace
-            .reconcile_panels(self.panel_runtime.panel_static_ids());
+            .reconcile_panels(self.panel_runtime.panel_ids());
     }
 
     pub(crate) fn reload_workspace_presets(&mut self) -> bool {

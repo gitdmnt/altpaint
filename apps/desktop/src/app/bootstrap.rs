@@ -67,7 +67,7 @@ impl DesktopApp {
         panel_runtime.mark_all_dirty();
         let _changed_panels =
             panel_runtime.sync_dirty_panels(&document, panel_runtime::HostState::default());
-        panel_workspace.reconcile_panels(panel_runtime.panel_static_ids());
+        panel_workspace.reconcile_panels(panel_runtime.panel_ids());
 
         BootstrapState {
             document,
@@ -90,7 +90,7 @@ impl DesktopApp {
         for diag in &diags {
             eprintln!("register_builtin_panels: {diag}");
         }
-        panel_workspace.reconcile_panels(panel_runtime.panel_static_ids());
+        panel_workspace.reconcile_panels(panel_runtime.panel_ids());
 
         if let Some(default_preset) = workspace_presets
             .presets
@@ -127,7 +127,7 @@ impl DesktopApp {
         self.panel_runtime
             .replace_persistent_panel_configs(panel_configs);
         self.panel_workspace
-            .reconcile_panels(self.panel_runtime.panel_static_ids());
+            .reconcile_panels(self.panel_runtime.panel_ids());
         self.refresh_new_document_size_presets();
         self.refresh_workspace_presets();
         self.reset_active_interactions();
@@ -197,7 +197,7 @@ fn apply_ui_state_to_panel_system(
     if !ui_state.panel_configs.is_empty() {
         panel_runtime.replace_persistent_panel_configs(ui_state.panel_configs.clone());
     }
-    panel_workspace.reconcile_panels(panel_runtime.panel_static_ids());
+    panel_workspace.reconcile_panels(panel_runtime.panel_ids());
 
     // Phase 11: GPU パネル (HTML) の size を確定する。
     // 1. workspace_layout に永続値があればそれを使う。

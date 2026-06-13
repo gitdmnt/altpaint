@@ -135,7 +135,7 @@ impl DesktopApp {
         object.insert("last_import_issues".to_string(), json!(issues));
         self.panel_runtime.replace_persistent_panel_configs(configs);
         self.panel_workspace
-            .reconcile_panels(self.panel_runtime.panel_static_ids());
+            .reconcile_panels(self.panel_runtime.panel_ids());
     }
 
     pub(crate) fn reload_pen_presets(&mut self) -> bool {

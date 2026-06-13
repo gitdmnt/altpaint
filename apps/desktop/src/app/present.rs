@@ -51,7 +51,7 @@ impl DesktopApp {
             profiler.record("ui_sync_panels", sync_t.elapsed());
             let reconcile_t = Instant::now();
             self.panel_workspace
-                .reconcile_panels(self.panel_runtime.panel_static_ids());
+                .reconcile_panels(self.panel_runtime.panel_ids());
             profiler.record("ui_reconcile", reconcile_t.elapsed());
             if !changed.is_empty() {
                 self.request_panel_reconcile();
@@ -69,7 +69,7 @@ impl DesktopApp {
         if self.invalidation.needs_panel_reconcile {
             profiler.measure("panel_reconcile", || {
                 self.panel_workspace
-                    .reconcile_panels(self.panel_runtime.panel_static_ids());
+                    .reconcile_panels(self.panel_runtime.panel_ids());
             });
             self.invalidation.needs_panel_reconcile = false;
         }

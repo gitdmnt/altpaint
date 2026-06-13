@@ -244,7 +244,7 @@ impl PanelWorkspace {
     /// 登録済みパネル ID 一覧と workspace layout を整合させる。
     ///
     /// 未知のパネルにはエントリと既定位置を補い、不可視パネルから focus を外す。
-    pub fn reconcile_panels(&mut self, panel_ids: Vec<&'static str>) {
+    pub fn reconcile_panels(&mut self, panel_ids: Vec<&str>) {
         self.ensure_workspace_layout_panel_entry();
 
         for panel_id in panel_ids {

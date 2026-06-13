@@ -376,9 +376,9 @@ impl PanelRuntime {
             .collect()
     }
 
-    /// 登録されたパネル ID (登録順、`&'static str`) を返す。
-    /// reconcile_panels 用。
-    pub fn panel_static_ids(&self) -> Vec<&'static str> {
+    /// 登録されたパネル ID (登録順) を借用で返す。
+    /// reconcile_panels 用 (BL-098: `&'static str` 要求を撤去)。
+    pub fn panel_ids(&self) -> Vec<&str> {
         self.panels.iter().map(|panel| panel.id()).collect()
     }
 

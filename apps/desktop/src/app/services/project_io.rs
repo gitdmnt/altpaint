@@ -431,7 +431,7 @@ impl DesktopApp {
                 self.panel_runtime
                     .replace_persistent_panel_configs(project.ui_state.panel_configs);
                 self.panel_workspace
-                    .reconcile_panels(self.panel_runtime.panel_static_ids());
+                    .reconcile_panels(self.panel_runtime.panel_ids());
                 self.refresh_new_document_size_presets();
                 self.refresh_workspace_presets();
                 self.reset_active_interactions();
