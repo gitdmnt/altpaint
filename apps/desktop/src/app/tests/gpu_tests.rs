@@ -130,6 +130,159 @@ fn should_use_gpu_canvas_source_true_for_multi_layer_via_composite() {
     });
 }
 
+/// BL-117 回帰: コマ選択変更は GPU テクスチャを再アップロードせず、既存ピクセルを保つ。
+///
+/// アクティブコマのレイヤーテクスチャに識別可能なピクセルを直接書き込み、
+/// 別コマへ選択を移して戻したあと、テクスチャが byte 一致で不変であることを確認する。
+/// 旧実装ではコマ選択ごとに全ページ全コマ全転送が走り、CPU bitmap (全 0) で
+/// 上書きされてピクセルが消えていた。
+#[test]
+fn selecting_koma_preserves_gpu_layer_pixels() {
+    pollster::block_on(async {
+        let Some((device, queue)) = try_init_device().await else {
+            return;
+        };
+        let mut app = make_test_app();
+        app.install_gpu_resources(device, queue);
+
+        // 2 コマ目を追加 (Full 同期でテクスチャ再構築)。
+        app.apply_document_command(&DocumentCommand::AddKoma);
+        // コマ 0 を選択し直してアクティブにする。
+        app.apply_document_command(&DocumentCommand::SelectKoma { index: 0 });
+
+        let koma0_id = app.document.active_koma().unwrap().id.0.to_string();
+
+        // アクティブコマ (0) のレイヤー 0 テクスチャへ識別ピクセルを書き込む。
+        let marker = vec![123u8; 2 * 2 * 4];
+        {
+            let pool = app.layer_texture_store().unwrap();
+            pool.upload_region(
+                &koma0_id,
+                0,
+                geometry::PageDirtyRect::new(0, 0, 2, 2),
+                &marker,
+            );
+        }
+        let before = app
+            .layer_texture_store()
+            .unwrap()
+            .read_back_full(&koma0_id, 0)
+            .expect("readback before");
+
+        // 別コマへ移って戻す (どちらも GpuSyncGranularity::None のはず)。
+        app.apply_document_command(&DocumentCommand::SelectNextKoma);
+        app.apply_document_command(&DocumentCommand::SelectKoma { index: 0 });
+
+        let after = app
+            .layer_texture_store()
+            .unwrap()
+            .read_back_full(&koma0_id, 0)
+            .expect("readback after");
+
+        assert_eq!(
+            before, after,
+            "コマ選択変更で GPU レイヤーテクスチャのピクセルが変化してはならない"
+        );
+        // マーカーが残っていること (= 全 0 で上書きされていない)。
+        assert_eq!(after.2[0], 123, "識別ピクセルが消えている");
+    });
+}
+
+/// BL-117 回帰: レイヤー選択変更も GPU テクスチャを保つ (GpuSyncGranularity::None)。
+#[test]
+fn selecting_layer_preserves_gpu_layer_pixels() {
+    pollster::block_on(async {
+        let Some((device, queue)) = try_init_device().await else {
+            return;
+        };
+        let mut app = make_test_app();
+        app.install_gpu_resources(device, queue);
+        // 2 レイヤーにする (ActiveKomaLayers 同期)。
+        app.apply_document_command(&DocumentCommand::AddRasterLayer);
+
+        let koma_id = app.document.active_koma().unwrap().id.0.to_string();
+        let marker = vec![77u8; 2 * 2 * 4];
+        {
+            let pool = app.layer_texture_store().unwrap();
+            pool.upload_region(&koma_id, 0, geometry::PageDirtyRect::new(0, 0, 2, 2), &marker);
+        }
+        let before = app
+            .layer_texture_store()
+            .unwrap()
+            .read_back_full(&koma_id, 0)
+            .expect("readback before");
+
+        // レイヤー選択を動かして戻す (None 同期)。
+        app.apply_document_command(&DocumentCommand::SelectLayer { index: 1 });
+        app.apply_document_command(&DocumentCommand::SelectLayer { index: 0 });
+
+        let after = app
+            .layer_texture_store()
+            .unwrap()
+            .read_back_full(&koma_id, 0)
+            .expect("readback after");
+        assert_eq!(before, after, "レイヤー選択変更でテクスチャが変化してはならない");
+        assert_eq!(after.2[0], 77);
+    });
+}
+
+/// AddRasterLayer (ActiveKomaLayers 差分同期) 後もアクティブコマの全レイヤーに
+/// テクスチャが揃うこと。差分同期が全レイヤー登録を漏らさないことを確認する。
+#[test]
+fn add_layer_differential_sync_creates_all_active_koma_textures() {
+    pollster::block_on(async {
+        let Some((device, queue)) = try_init_device().await else {
+            return;
+        };
+        let mut app = make_test_app();
+        app.install_gpu_resources(device, queue);
+        app.apply_document_command(&DocumentCommand::AddRasterLayer);
+        app.apply_document_command(&DocumentCommand::AddRasterLayer);
+
+        let koma = app.document.active_koma().unwrap();
+        let koma_id = koma.id.0.to_string();
+        let layer_count = koma.layers.len();
+        let pool = app.layer_texture_store().unwrap();
+        assert_eq!(pool.layer_count_for_koma(&koma_id), layer_count);
+        for idx in 0..layer_count {
+            assert!(pool.get(&koma_id, idx).is_some(), "layer {idx} missing");
+        }
+    });
+}
+
+/// AddRasterLayer の差分同期はアクティブコマ以外のテクスチャに触れないこと。
+#[test]
+fn add_layer_differential_sync_leaves_other_komas_untouched() {
+    pollster::block_on(async {
+        let Some((device, queue)) = try_init_device().await else {
+            return;
+        };
+        let mut app = make_test_app();
+        app.install_gpu_resources(device, queue);
+        // 2 コマ目を追加 (Full)。コマ 1 がアクティブになる。
+        app.apply_document_command(&DocumentCommand::AddKoma);
+
+        // コマ 0 のレイヤー 0 テクスチャへマーカーを書き込む。
+        let koma0_id = app.document.work.pages[0].komas[0].id.0.to_string();
+        let marker = vec![200u8; 2 * 2 * 4];
+        {
+            let pool = app.layer_texture_store().unwrap();
+            pool.upload_region(&koma0_id, 0, geometry::PageDirtyRect::new(0, 0, 2, 2), &marker);
+        }
+
+        // アクティブコマ (1) にレイヤー追加 → ActiveKomaLayers 差分同期。
+        app.apply_document_command(&DocumentCommand::AddRasterLayer);
+
+        // コマ 0 のテクスチャは不変。
+        let after = app
+            .layer_texture_store()
+            .unwrap()
+            .read_back_full(&koma0_id, 0)
+            .expect("readback");
+        assert_eq!(after.2[0], 200, "別コマのテクスチャが差分同期で変化した");
+    });
+}
+
 /// AddRasterLayer 後に source kind が Single → Composite へ切り替わること。
 #[test]
 fn layer_count_change_switches_gpu_source_kind() {

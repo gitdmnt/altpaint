@@ -120,6 +120,13 @@ impl DesktopApp {
     ) -> PresentFrameUpdate {
         let (canvas_width, canvas_height) = self.canvas_dimensions();
 
+        // BL-117 計測下地: 直前フレーム区間で発生した GPU 同期回数を profiler へ記録し、
+        // カウンタをリセットする。B8 の前後比較で差分同期の効果を観測するための土台。
+        let full_syncs = std::mem::take(&mut self.invalidation.gpu_sync_full_count);
+        let differential_syncs = std::mem::take(&mut self.invalidation.gpu_sync_differential_count);
+        profiler.record_value("gpu_sync_full_count", full_syncs as f64);
+        profiler.record_value("gpu_sync_differential_count", differential_syncs as f64);
+
         if self.invalidation.needs_full_present_rebuild {
             self.invalidation.canvas_dirty_rect = None;
             self.invalidation.temp_overlay_dirty_rect = None;

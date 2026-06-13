@@ -239,71 +239,76 @@ impl DesktopApp {
     /// 全ページ・全パネル・全レイヤーの CPU ビットマップを GPU テクスチャへ同期する。
     /// マスクと composite テクスチャも同期する。
     ///
-    /// レイヤー追加/削除/並べ替えで古いエントリがずれるのを防ぐため、
-    /// 各コマのレイヤー/マスクエントリを先にクリアしてから再登録する。
+    /// コマ集合が変わった場合 (新規ドキュメント・コマ追加削除・ロード) にのみ呼ぶ。
+    /// アクティブコマのレイヤー構成だけが変わった場合は差分同期
+    /// (`sync_active_koma_layers_to_gpu`) を使い、全転送を避ける (BL-117)。
     pub(crate) fn sync_all_layers_to_gpu(&mut self) {
         if self.gpu.is_none() {
             return;
         }
-        let koma_ids: Vec<String> = self
+        let koma_ids: Vec<KomaId> = self
             .document
             .work
             .pages
             .iter()
-            .flat_map(|page| page.komas.iter().map(|p| p.id.0.to_string()))
+            .flat_map(|page| page.komas.iter().map(|koma| koma.id))
             .collect();
-        if let Some(gpu) = self.gpu.as_mut() {
-            for pid in &koma_ids {
-                gpu.pool.clear_layers_for_koma(pid);
-            }
+        for koma_id in koma_ids {
+            self.sync_koma_layers_to_gpu(koma_id);
         }
-        #[derive(Clone)]
-        struct LayerSync {
-            koma_id: String,
-            koma_w: u32,
-            koma_h: u32,
-            layer_index: usize,
-            w: u32,
-            h: u32,
-            pixels: Vec<u8>,
-            mask: Option<(u32, u32, Vec<u8>)>,
+    }
+
+    /// 指定コマのレイヤー/マスク/合成テクスチャを GPU へ差分同期する (BL-117)。
+    ///
+    /// 当該コマの既存エントリのみをクリアしてから再登録するため、別コマの
+    /// テクスチャには触れない。レイヤー追加/削除/並べ替えで古いインデックスが
+    /// ずれるのを防ぐ。
+    pub(crate) fn sync_koma_layers_to_gpu(&mut self, koma_id: KomaId) {
+        if self.gpu.is_none() {
+            return;
         }
-        let mut entries: Vec<LayerSync> = Vec::new();
-        for page in &self.document.work.pages {
-            for koma in &page.komas {
-                let koma_id = koma.id.0.to_string();
-                let koma_w = koma.composite_cache.width as u32;
-                let koma_h = koma.composite_cache.height as u32;
-                for (idx, layer) in koma.layers.iter().enumerate() {
-                    entries.push(LayerSync {
-                        koma_id: koma_id.clone(),
-                        koma_w,
-                        koma_h,
-                        layer_index: idx,
-                        w: layer.bitmap.width as u32,
-                        h: layer.bitmap.height as u32,
-                        pixels: layer.bitmap.pixels.clone(),
-                        mask: layer.mask.as_ref().map(|m| {
-                            (m.width as u32, m.height as u32, m.alpha.clone())
-                        }),
-                    });
-                }
-            }
-        }
+        let koma_id_str = koma_id.0.to_string();
+        let Some(koma) = self
+            .document
+            .work
+            .pages
+            .iter()
+            .flat_map(|page| &page.komas)
+            .find(|koma| koma.id == koma_id)
+        else {
+            return;
+        };
+        let composite_size = (
+            koma.composite_cache.width as u32,
+            koma.composite_cache.height as u32,
+        );
+        let layers: Vec<gpu_paint::LayerUpload<'_>> = koma
+            .layers
+            .iter()
+            .map(|layer| gpu_paint::LayerUpload {
+                width: layer.bitmap.width as u32,
+                height: layer.bitmap.height as u32,
+                pixels: &layer.bitmap.pixels,
+                mask: layer
+                    .mask
+                    .as_ref()
+                    .map(|m| (m.width as u32, m.height as u32, m.alpha.as_slice())),
+            })
+            .collect();
         let pool = &mut self.gpu.as_mut().unwrap().pool;
-        for entry in entries {
-            pool.ensure_composite_texture(&entry.koma_id, entry.koma_w, entry.koma_h);
-            pool.create_layer_texture(&entry.koma_id, entry.layer_index, entry.w, entry.h);
-            pool.upload_cpu_bitmap(&entry.koma_id, entry.layer_index, &entry.pixels);
-            match entry.mask {
-                Some((mw, mh, alpha)) => {
-                    pool.upload_mask(&entry.koma_id, entry.layer_index, mw, mh, &alpha);
-                }
-                None => {
-                    pool.remove_mask(&entry.koma_id, entry.layer_index);
-                }
-            }
-        }
+        pool.sync_koma_layers(&koma_id_str, composite_size, &layers);
+    }
+
+    /// アクティブコマのレイヤーを GPU へ差分同期し、当該コマを再合成する (BL-117)。
+    ///
+    /// レイヤー追加/削除/並べ替えのようにアクティブコマのレイヤー構成のみが
+    /// 変わった場合に使い、`sync_all_layers_to_gpu` の全ページ全コマ全転送を避ける。
+    pub(crate) fn sync_active_koma_layers_to_gpu(&mut self) {
+        let Some(koma_id) = self.document.active_koma().map(|koma| koma.id) else {
+            return;
+        };
+        self.sync_koma_layers_to_gpu(koma_id);
+        self.recomposite_koma(koma_id, None);
     }
 
     /// GPU テクスチャをキャンバスの表示正本として使えるかどうかを返す。

@@ -10,6 +10,7 @@ use editor_state::SessionCommand;
 use geometry::PageDirtyRect;
 
 use super::DesktopApp;
+use super::invalidation::GpuSyncGranularity;
 
 impl DesktopApp {
     /// ドキュメントコマンド適用後の副作用を、コマンド種別ごとに実行する。
@@ -39,31 +40,45 @@ impl DesktopApp {
                 self.mark_status_dirty();
                 true
             }
+            // アクティブコマのレイヤー構成が変化する操作。当該コマだけ差分同期する。
             DocumentCommand::AddRasterLayer
             | DocumentCommand::RemoveActiveLayer
-            | DocumentCommand::SelectLayer { .. }
-            | DocumentCommand::RenameActiveLayer { .. }
-            | DocumentCommand::MoveLayer { .. }
-            | DocumentCommand::SelectNextLayer
-            | DocumentCommand::CycleActiveLayerBlendMode => {
-                self.invalidate_document_structure();
+            | DocumentCommand::MoveLayer { .. } => {
+                self.invalidate_document_structure(GpuSyncGranularity::ActiveKomaLayers);
                 true
             }
+            // blend mode 循環はアクティブコマの合成出力のみ変える。再合成のみ。
+            DocumentCommand::CycleActiveLayerBlendMode => {
+                self.invalidate_document_structure(GpuSyncGranularity::RecompositeActiveKoma);
+                true
+            }
+            // レイヤー選択・リネームは GPU テクスチャ不変。同期不要。
+            DocumentCommand::SelectLayer { .. }
+            | DocumentCommand::RenameActiveLayer { .. }
+            | DocumentCommand::SelectNextLayer => {
+                self.invalidate_document_structure(GpuSyncGranularity::None);
+                true
+            }
+            // コマ集合が変わる操作。全ページ全コマを同期する。
             DocumentCommand::AddKoma
             | DocumentCommand::CreateKoma { .. }
-            | DocumentCommand::RemoveActiveKoma
-            | DocumentCommand::SelectKoma { .. }
+            | DocumentCommand::RemoveActiveKoma => {
+                self.invalidate_document_structure(GpuSyncGranularity::Full);
+                true
+            }
+            // コマ選択は GPU テクスチャ不変。同期不要。
+            DocumentCommand::SelectKoma { .. }
             | DocumentCommand::SelectNextKoma
             | DocumentCommand::SelectPreviousKoma
             | DocumentCommand::FocusActiveKoma => {
-                self.invalidate_document_structure();
+                self.invalidate_document_structure(GpuSyncGranularity::None);
                 true
             }
             DocumentCommand::NewDocumentSized { .. } => {
                 let _ = Self::reload_tool_catalog_into_document(&mut self.document);
                 let _ = Self::reload_pen_presets_into_document(&mut self.document);
                 self.reset_active_interactions();
-                self.invalidate_document_structure();
+                self.invalidate_document_structure(GpuSyncGranularity::Full);
                 true
             }
             DocumentCommand::Noop => false,

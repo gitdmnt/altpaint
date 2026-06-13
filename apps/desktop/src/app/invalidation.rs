@@ -5,6 +5,22 @@ use raster::BitmapEdit;
 
 use super::DesktopApp;
 
+/// ドキュメント変異後に必要な GPU テクスチャ同期の粒度 (BL-117)。
+///
+/// コマンド種別ごとに「GPU テクスチャがどこまで変化するか」を宣言的に分類し、
+/// 選択変更のようなテクスチャ不変の操作で全ページ全コマ全転送が走るのを防ぐ。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GpuSyncGranularity {
+    /// GPU テクスチャは不変。同期不要 (純粋な選択変更・リネーム等)。
+    None,
+    /// アクティブコマの合成出力のみ再計算が必要 (blend mode 循環等)。
+    RecompositeActiveKoma,
+    /// アクティブコマのレイヤー構成が変化 (レイヤー追加/削除/並べ替え)。
+    ActiveKomaLayers,
+    /// コマ集合変更・新規ドキュメント・ロード。全ページ全コマを同期。
+    Full,
+}
+
 /// 差分提示のために更新領域を集約した結果を表す。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PresentFrameUpdate {
@@ -39,6 +55,11 @@ pub(crate) struct PresentInvalidation {
     pub(crate) needs_status_refresh: bool,
     /// フレーム全体の再構築が必要か。
     pub(crate) needs_full_present_rebuild: bool,
+    /// このフレーム区間で発生した GPU 全転送 (Full) 同期の回数 (BL-117 計測下地)。
+    /// `prepare_present_frame` の invalidation_drain で profiler へ記録しリセットする。
+    pub(crate) gpu_sync_full_count: u32,
+    /// このフレーム区間で発生した GPU 差分同期 (ActiveKomaLayers) の回数。
+    pub(crate) gpu_sync_differential_count: u32,
 }
 
 impl PresentInvalidation {
@@ -124,15 +145,41 @@ impl DesktopApp {
 
     /// レイヤー/コマ構成変更後の全面再構築シーケンスをまとめて実行する。
     ///
-    /// CPU スナップショット再生成・UI 同期・ステータス更新・present 再構築・
-    /// GPU レイヤー同期・全コマ再合成を順に行う。
-    pub(crate) fn invalidate_document_structure(&mut self) {
+    /// CPU スナップショット再生成・UI 同期・ステータス更新・present 再構築は
+    /// 常に行い、GPU 同期は `granularity` に応じて必要最小限に絞る (BL-117)。
+    /// これにより、選択変更のような GPU テクスチャ不変の操作で
+    /// 全ページ全コマ全転送が走る問題を解消する。
+    pub(crate) fn invalidate_document_structure(&mut self, granularity: GpuSyncGranularity) {
         self.refresh_cpu_canvas_snapshot();
         self.sync_ui_from_document();
         self.mark_status_dirty();
         self.rebuild_present_frame();
-        self.sync_all_layers_to_gpu();
-        self.recomposite_all_komas();
+        self.apply_gpu_sync(granularity);
+    }
+
+    /// 宣言された GPU 同期粒度に従って GPU テクスチャ同期/再合成を実行する (BL-117)。
+    pub(crate) fn apply_gpu_sync(&mut self, granularity: GpuSyncGranularity) {
+        match granularity {
+            // 純粋な選択変更などで GPU テクスチャは既に正しい。同期不要。
+            GpuSyncGranularity::None => {}
+            // アクティブコマの合成出力のみ更新が必要 (blend mode 変更等)。
+            GpuSyncGranularity::RecompositeActiveKoma => {
+                if let Some(koma_id) = self.document.active_koma().map(|koma| koma.id) {
+                    self.recomposite_koma(koma_id, None);
+                }
+            }
+            // アクティブコマのレイヤー構成変更 (追加/削除/並べ替え)。当該コマだけ同期。
+            GpuSyncGranularity::ActiveKomaLayers => {
+                self.invalidation.gpu_sync_differential_count += 1;
+                self.sync_active_koma_layers_to_gpu();
+            }
+            // コマ集合変更・新規ドキュメント・ロード。全ページ全コマ同期。
+            GpuSyncGranularity::Full => {
+                self.invalidation.gpu_sync_full_count += 1;
+                self.sync_all_layers_to_gpu();
+                self.recomposite_all_komas();
+            }
+        }
     }
 
     pub(crate) fn reset_active_interactions(&mut self) {
