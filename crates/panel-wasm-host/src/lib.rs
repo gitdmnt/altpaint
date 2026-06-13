@@ -13,8 +13,8 @@ use dom_api::DomCtx;
 use panel_protocol::abi::{
     PANEL_INIT_EXPORT, PANEL_SYNC_HOST_EXPORT, PAYLOAD_VALUE_KEY, handler_export_name,
 };
-use panel_protocol::{HandlerEffects, PanelEventRequest};
-use serde_json::{Map, Value};
+use panel_protocol::{HandlerEffects, HostCallInput};
+use serde_json::Value;
 use thiserror::Error;
 use wasmtime::{Engine, Func, Instance, Linker, Module, Store};
 
@@ -41,14 +41,14 @@ pub enum PanelWasmHostError {
 #[derive(Default)]
 struct HostCallContext {
     result: HandlerEffects,
-    current_request: Option<PanelEventRequest>,
+    current_input: Option<HostCallInput>,
     dom_ctx: DomCtx,
 }
 
 impl HostCallContext {
     fn clear(&mut self) {
         self.result = HandlerEffects::default();
-        self.current_request = None;
+        self.current_input = None;
         // dom_ctx は call_with_dom が制御するためここではクリアしない
     }
 }
@@ -87,15 +87,16 @@ impl PanelWasmInstance {
 
     pub fn sync_host(
         &mut self,
-        state_snapshot: &Value,
+        state: &Value,
         host_state: &Value,
     ) -> Result<HandlerEffects, PanelWasmHostError> {
         self.store.data_mut().clear();
-        self.store.data_mut().current_request = Some(PanelEventRequest {
-            handler_name: "sync_host".to_string(),
-            event_payload: Value::Object(Map::new()),
-            state_snapshot: state_snapshot.clone(),
+        // sync_host はホスト状態変化時の再描画フックであり UI イベントを伴わない。
+        // event_payload は既定 (空) のままにし、疑似イベントの捏造はしない (P6)。
+        self.store.data_mut().current_input = Some(HostCallInput {
+            state: state.clone(),
             host_state: host_state.clone(),
+            ..HostCallInput::default()
         });
 
         let handler = self
@@ -110,25 +111,30 @@ impl PanelWasmInstance {
         Ok(self.store.data().result.clone())
     }
 
+    /// `panel_handle_<handler_name>` を呼び出す。
+    ///
+    /// `handler_name` は export 名の組み立てに使い、`input` (state/host_state/
+    /// event_payload) は host function が引くコンテキストとして store に積む。
     pub fn handle_event(
         &mut self,
-        request: &PanelEventRequest,
+        handler_name: &str,
+        input: &HostCallInput,
     ) -> Result<HandlerEffects, PanelWasmHostError> {
+        let export_name = handler_export_name(handler_name);
+        let numeric_value = input
+            .event_payload
+            .get(PAYLOAD_VALUE_KEY)
+            .and_then(Value::as_i64)
+            .unwrap_or_default() as i32;
+        let payload = input.event_payload.get(PAYLOAD_VALUE_KEY).map(|_| numeric_value);
         self.store.data_mut().clear();
-        self.store.data_mut().current_request = Some(request.clone());
-        let export_name = handler_export_name(&request.handler_name);
+        self.store.data_mut().current_input = Some(input.clone());
         let handler = self
             .instance
             .get_func(&mut self.store, &export_name)
             .ok_or_else(|| {
                 PanelWasmHostError::Runtime(format!("missing handler export: {export_name}"))
             })?;
-        let numeric_value = request
-            .event_payload
-            .get(PAYLOAD_VALUE_KEY)
-            .and_then(Value::as_i64)
-            .unwrap_or_default() as i32;
-        let payload = request.event_payload.get(PAYLOAD_VALUE_KEY).map(|_| numeric_value);
         call_export(&mut self.store, handler, payload).map_err(PanelWasmHostError::Runtime)?;
         Ok(self.store.data().result.clone())
     }
@@ -329,29 +335,17 @@ mod tests {
         let initial_state = json!({"expanded": false});
 
         let toggled = instance
-            .handle_event(&PanelEventRequest {
-                handler_name: "toggle-expanded".to_string(),                event_payload: json!({}),
-                state_snapshot: initial_state.clone(),
-                host_state: json!({}),
-            })
+            .handle_event("toggle-expanded", &input_with_state(initial_state.clone()))
             .expect("toggle handler runs");
         assert_eq!(toggled.state_patch, vec![StatePatch::toggle("expanded")]);
 
         let saved = instance
-            .handle_event(&PanelEventRequest {
-                handler_name: "save_project".to_string(),                event_payload: json!({}),
-                state_snapshot: initial_state.clone(),
-                host_state: json!({}),
-            })
+            .handle_event("save_project", &input_with_state(initial_state.clone()))
             .expect("save handler runs");
         assert_eq!(saved.commands, vec![RequestDescriptor::new("project.save")]);
 
         let pen = instance
-            .handle_event(&PanelEventRequest {
-                handler_name: "activate_pen".to_string(),                event_payload: json!({}),
-                state_snapshot: initial_state,
-                host_state: json!({}),
-            })
+            .handle_event("activate_pen", &input_with_state(initial_state))
             .expect("tool handler runs");
         let mut expected = RequestDescriptor::new("tool.set_active");
         expected
@@ -360,20 +354,15 @@ mod tests {
         assert_eq!(pen.commands, vec![expected]);
 
         let string_len = instance
-            .handle_event(&PanelEventRequest {
-                handler_name: "save_path_len".to_string(),                event_payload: json!({}),
-                state_snapshot: json!({"save_path": "project.altp.json"}),
-                host_state: json!({}),
-            })
+            .handle_event(
+                "save_path_len",
+                &input_with_state(json!({"save_path": "project.altp.json"})),
+            )
             .expect("string state handler runs");
         assert!(string_len.diagnostics.is_empty());
 
         let moved = instance
-            .handle_event(&PanelEventRequest {
-                handler_name: "move_layer".to_string(),                event_payload: json!({}),
-                state_snapshot: json!({}),
-                host_state: json!({}),
-            })
+            .handle_event("move_layer", &input_with_state(json!({})))
             .expect("json payload handler runs");
         let mut expected_move = RequestDescriptor::new("layer.move");
         expected_move
@@ -385,11 +374,7 @@ mod tests {
         assert_eq!(moved.commands, vec![expected_move]);
 
         let batched = instance
-            .handle_event(&PanelEventRequest {
-                handler_name: "apply_batch".to_string(),                event_payload: json!({}),
-                state_snapshot: json!({}),
-                host_state: json!({}),
-            })
+            .handle_event("apply_batch", &input_with_state(json!({})))
             .expect("state batch handler runs");
         assert_eq!(
             batched.state_patch,
@@ -429,6 +414,14 @@ mod tests {
             ]
         );
         assert!(synced.diagnostics.is_empty());
+    }
+
+    /// state ソースのみを持つ `HostCallInput` (event_payload / host_state は空)。
+    fn input_with_state(state: Value) -> HostCallInput {
+        HostCallInput {
+            state,
+            ..HostCallInput::default()
+        }
     }
 
     fn write_temp_wat(contents: &str) -> PathBuf {

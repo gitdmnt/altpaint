@@ -9,8 +9,7 @@ pub mod state;
 
 pub use panel_protocol::names;
 pub use panel_protocol::{
-    RequestDescriptor, Diagnostic, DiagnosticLevel, HandlerEffects, PanelEventRequest, StatePatch,
-    StatePatchOp,
+    RequestDescriptor, Diagnostic, DiagnosticLevel, HandlerEffects, StatePatch, StatePatchOp,
 };
 pub use panel_macros::{panel_handler, panel_init, panel_sync_host};
 

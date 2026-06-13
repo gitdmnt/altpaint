@@ -1,6 +1,6 @@
 //! パネルがホスト状態を読むための host function 群。
 //!
-//! `state_get_*` / `host_get_*` / `event_get_*` はいずれも「現在の `PanelEventRequest` の
+//! `state_get_*` / `host_get_*` / `event_get_*` はいずれも「現在の `HostCallInput` の
 //! ある JSON ソースをドット区切り path で引く」という同一処理であり、ソースだけが異なる。
 //! [`StateSource`] でソースを選び、[`register_source_readers`] が ABI 名 prefix ごとに
 //! 一括登録する。
@@ -17,10 +17,10 @@ use panel_protocol::abi::HOST_IMPORT_MODULE;
 use serde_json::Value;
 use wasmtime::{Caller, Linker};
 
-/// 読み取り対象となる `PanelEventRequest` の JSON ソース。
+/// 読み取り対象となる `HostCallInput` の JSON ソース。
 #[derive(Clone, Copy)]
 pub(crate) enum StateSource {
-    /// パネル自身の永続/一時 state (`state_snapshot`)。
+    /// パネル自身の永続/一時 state (`state`)。
     PanelState,
     /// ホストが配るドキュメント等の状態 (`host_state`)。
     HostState,
@@ -29,13 +29,13 @@ pub(crate) enum StateSource {
 }
 
 impl StateSource {
-    /// このソースに対応する `PanelEventRequest` の JSON 値を返す。
+    /// このソースに対応する `HostCallInput` の JSON 値を返す。
     fn value(self, ctx: &HostCallContext) -> Option<&Value> {
-        let request = ctx.current_request.as_ref()?;
+        let input = ctx.current_input.as_ref()?;
         Some(match self {
-            StateSource::PanelState => &request.state_snapshot,
-            StateSource::HostState => &request.host_state,
-            StateSource::Event => &request.event_payload,
+            StateSource::PanelState => &input.state,
+            StateSource::HostState => &input.host_state,
+            StateSource::Event => &input.event_payload,
         })
     }
 

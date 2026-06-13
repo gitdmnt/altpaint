@@ -4,13 +4,22 @@ pub mod names;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct PanelEventRequest {
-    pub handler_name: String,
+/// 1 回の Wasm 呼出に対するホスト側コンテキスト (P6, 旧 `PanelEventRequest`)。
+///
+/// `state_get_*` / `host_get_*` / `event_get_*` host function が読む 3 つの JSON
+/// ソースをまとめて保持する。**Wasm へは渡らない** (ポインタ越しに host function が
+/// 引くだけ)。handler 名は呼出側が `PanelWasmInstance::handle_event` に直接渡すため、
+/// 本コンテキストは保持しない (旧 `handler_name` の write-only フィールドと
+/// `sync_host` の疑似イベント捏造を解消)。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct HostCallInput {
+    /// UI イベントの payload (`event_get_*` のソース)。
     #[serde(default)]
     pub event_payload: Value,
+    /// パネル自身の永続/一時 state (`state_get_*` のソース)。
     #[serde(default)]
-    pub state_snapshot: Value,
+    pub state: Value,
+    /// ホストが配るドキュメント等の状態 (`host_get_*` のソース)。
     #[serde(default)]
     pub host_state: Value,
 }

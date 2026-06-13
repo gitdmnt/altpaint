@@ -176,15 +176,12 @@ impl HtmlWasmPanel {
         if !self.wasm.has_handler(handler_name) {
             return Ok(Vec::new());
         }
-        let request = panel_host_request(
-            handler_name,
-            event_payload,
-            &self.state,
-            &self.last_host_state,
-        );
+        let input = panel_host_call_input(event_payload, &self.state, &self.last_host_state);
         let result = self
             .wasm
-            .call_with_dom(self.view.document_mut(), |rt| rt.handle_event(&request))?;
+            .call_with_dom(self.view.document_mut(), |rt| {
+                rt.handle_event(handler_name, &input)
+            })?;
         self.view.mark_mutated();
         panel_protocol::apply_patches(&mut self.state, &result.state_patch);
         let registry = &self.translator_registry;
@@ -206,16 +203,14 @@ fn default_translator_registry() -> TranslatorRegistry {
     registry
 }
 
-fn panel_host_request(
-    handler_name: &str,
+fn panel_host_call_input(
     event_payload: Value,
-    state_snapshot: &Value,
+    state: &Value,
     host_state: &Value,
-) -> panel_protocol::PanelEventRequest {
-    panel_protocol::PanelEventRequest {
-        handler_name: handler_name.to_string(),
+) -> panel_protocol::HostCallInput {
+    panel_protocol::HostCallInput {
         event_payload,
-        state_snapshot: state_snapshot.clone(),
+        state: state.clone(),
         host_state: host_state.clone(),
     }
 }
