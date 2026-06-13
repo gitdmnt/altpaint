@@ -13,12 +13,12 @@ use super::koma_gesture::{KomaGesture, KomaGestureUpdate, advance_koma_gesture};
 
 impl DesktopApp {
     pub(crate) fn update_canvas_hover(&mut self, x: i32, y: i32) -> bool {
-        let previous = self.hover_canvas_position;
+        let previous = self.paint.hover_canvas_position;
         let next = self.hover_canvas_position_from_window(WindowPoint::new(x, y));
-        if next == self.hover_canvas_position {
+        if next == self.paint.hover_canvas_position {
             return false;
         }
-        self.hover_canvas_position = next;
+        self.paint.hover_canvas_position = next;
 
         let Some(layout) = self.layout.as_ref().map(|layout| layout.canvas_host_rect) else {
             self.rebuild_present_frame();
@@ -166,7 +166,7 @@ impl DesktopApp {
             return self.handle_koma_rect_pointer(action, page_point);
         }
 
-        let page_point = if action != CanvasPointerAction::Down && self.canvas_input.is_drawing {
+        let page_point = if action != CanvasPointerAction::Down && self.paint.canvas_input.is_drawing {
             active_koma_bounds
                 .and_then(|bounds| bounds.clamp_canvas_point(page_point))
                 .unwrap_or(page_point)
@@ -177,7 +177,7 @@ impl DesktopApp {
             active_koma_bounds.is_some_and(|bounds| bounds.contains_canvas_point(page_point));
         if !inside_active_koma {
             if action == CanvasPointerAction::Up {
-                self.canvas_input.reset();
+                self.paint.canvas_input.reset();
             }
             return false;
         }
@@ -189,7 +189,7 @@ impl DesktopApp {
             .map(|preset| preset.stabilization)
             .unwrap_or_default();
         let update = advance_pointer_gesture(
-            &mut self.canvas_input,
+            &mut self.paint.canvas_input,
             action,
             page_point,
             active_tool,
@@ -270,7 +270,7 @@ impl DesktopApp {
 
     /// 両ジェスチャ状態 (ペイント系 + コマ作成) を破棄する。
     fn reset_canvas_gestures(&mut self) {
-        self.canvas_input.reset();
+        self.paint.canvas_input.reset();
         self.koma_gesture.reset();
     }
 

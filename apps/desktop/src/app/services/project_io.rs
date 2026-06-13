@@ -76,6 +76,7 @@ impl DesktopApp {
     pub(crate) fn apply_paint_input(&mut self, input: PaintInput) -> bool {
         // ビットマップ差分を取得
         let Some(edits) = self
+            .paint
             .paint_engine
             .compute_paint_edits(&self.document, &input)
         else {
@@ -90,7 +91,7 @@ impl DesktopApp {
 
         if is_stroke_op {
             // ストローク開始時にレイヤー状態を保存する
-            if self.pending_stroke.is_none() {
+            if self.paint.pending_stroke.is_none() {
                 let koma_id = self.document.active_koma().map(|p| p.id);
                 let layer_index = self.document.active_koma().map(|p| p.active_layer_index);
                 if let (Some(koma_id), Some(layer_index)) = (koma_id, layer_index) {
@@ -101,7 +102,7 @@ impl DesktopApp {
                         self.document.clone_koma_layer_bitmap(koma_id, layer_index)
                     };
 
-                    self.pending_stroke = Some(PendingStroke {
+                    self.paint.pending_stroke = Some(PendingStroke {
                         koma_id,
                         layer_index,
                         before_layer,
@@ -111,7 +112,7 @@ impl DesktopApp {
             }
 
             // 前回のストローク状態があれば、今回の編集のdirty rectをマージして更新する
-            if let Some(stroke) = &mut self.pending_stroke {
+            if let Some(stroke) = &mut self.paint.pending_stroke {
                 let edit_dirty = merged_dirty(&edits);
                 if let Some(edit_dirty) = edit_dirty {
                     stroke.dirty = Some(match stroke.dirty {
@@ -186,7 +187,7 @@ impl DesktopApp {
                         self.document
                             .capture_koma_layer_region(koma_id, layer_index, dirty)
                 {
-                    self.history.push(PaintPatch::Cpu(BitmapPatch {
+                    self.paint.history.push(PaintPatch::Cpu(BitmapPatch {
                         koma_id,
                         layer_index,
                         dirty,
@@ -300,7 +301,7 @@ impl DesktopApp {
             dirty.height as u32,
             &before_region.pixels,
         );
-        self.history.push(PaintPatch::Gpu(GpuRegionPatch {
+        self.paint.history.push(PaintPatch::Gpu(GpuRegionPatch {
             koma_id,
             layer_index,
             dirty,
@@ -314,7 +315,7 @@ impl DesktopApp {
 
     /// ストロークを確定して履歴へ積む。ポインタ Up 後に呼び出す。
     pub(crate) fn commit_stroke_to_history(&mut self) {
-        let Some(stroke) = self.pending_stroke.take() else {
+        let Some(stroke) = self.paint.pending_stroke.take() else {
             return;
         };
         let Some(dirty) = stroke.dirty else {
@@ -336,7 +337,7 @@ impl DesktopApp {
                     dirty.height as u32,
                     &bp.pixels,
                 );
-                self.history.push(PaintPatch::Gpu(GpuRegionPatch {
+                self.paint.history.push(PaintPatch::Gpu(GpuRegionPatch {
                     koma_id: stroke.koma_id,
                     layer_index: stroke.layer_index,
                     dirty,
@@ -370,7 +371,7 @@ impl DesktopApp {
         else {
             return;
         };
-        self.history.push(PaintPatch::Cpu(BitmapPatch {
+        self.paint.history.push(PaintPatch::Cpu(BitmapPatch {
             koma_id: stroke.koma_id,
             layer_index: stroke.layer_index,
             dirty,

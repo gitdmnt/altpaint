@@ -37,7 +37,7 @@ impl DesktopApp {
         };
         self.document = entry.document.clone();
         // 履歴はスナップショット復元後にクリアして整合性を保つ
-        self.history.clear();
+        self.paint.history.clear();
         self.refresh_cpu_canvas_snapshot();
         true
     }

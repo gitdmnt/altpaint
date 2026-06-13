@@ -136,11 +136,11 @@ impl DesktopApp {
     }
 
     pub(super) fn reset_active_interactions(&mut self) {
-        self.canvas_input.reset();
+        self.paint.canvas_input.reset();
         self.koma_gesture.reset();
         self.invalidation.clear_pending();
         self.panel_interaction = super::panel_dispatch::PanelInteractionState::default();
-        self.hover_canvas_position = None;
+        self.paint.hover_canvas_position = None;
     }
 
     /// 変更があった場合のみパネル再整合を予約する。
@@ -206,9 +206,9 @@ impl DesktopApp {
                 previous_transform,
             );
             // current_geometry はキャッシュを使う（キャッシュが古ければ再計算して更新）
-            self.cached_canvas_view_geometry = None;
+            self.paint.cached_canvas_view_geometry = None;
             let current_geometry = self.canvas_view_geometry();
-            if let Some(dirty) = self.hover_canvas_position.and_then(|hover_position| {
+            if let Some(dirty) = self.paint.hover_canvas_position.and_then(|hover_position| {
                 super::paint_preview::brush_preview_dirty_rect(
                     previous_geometry,
                     current_geometry,
@@ -257,7 +257,7 @@ impl DesktopApp {
         let Some(layout) = self.layout.as_ref() else {
             return (Vec::new(), Vec::new(), Vec::new());
         };
-        let bitmap = self.cpu_canvas_snapshot.as_ref();
+        let bitmap = self.paint.cpu_canvas_snapshot.as_ref();
         let canvas_plan = crate::present_quads::CanvasPlan {
             host_rect: layout.canvas_host_rect,
             source_width: bitmap.map_or(1, |b| b.width),
@@ -265,9 +265,9 @@ impl DesktopApp {
             transform: self.document.session.view_transform,
         };
         let overlay_state = crate::present_quads::CanvasOverlayState {
-            brush_preview: self.hover_canvas_position,
+            brush_preview: self.paint.hover_canvas_position,
             brush_size: self.brush_preview_size(),
-            lasso_points: self.canvas_input.lasso_points.clone(),
+            lasso_points: self.paint.canvas_input.lasso_points.clone(),
             active_koma_bounds: self.active_koma_mask_overlay(),
             koma_navigator: self.koma_navigator_overlay(),
             panel_creation_preview: self.koma_creation_preview_bounds(),
@@ -301,7 +301,7 @@ impl DesktopApp {
         let canvas_height = bitmap.height;
         let transform = self.document.session.view_transform;
 
-        if let Some(ref cache) = self.cached_canvas_view_geometry
+        if let Some(ref cache) = self.paint.cached_canvas_view_geometry
             && cache.viewport == viewport
             && cache.canvas_width == canvas_width
             && cache.canvas_height == canvas_height
@@ -310,7 +310,7 @@ impl DesktopApp {
             return cache.geometry;
         }
         let geometry = canvas_geometry::CanvasViewGeometry::compute(viewport, canvas_width, canvas_height, transform);
-        self.cached_canvas_view_geometry = Some(super::CachedCanvasViewGeometry {
+        self.paint.cached_canvas_view_geometry = Some(super::CachedCanvasViewGeometry {
             viewport,
             canvas_width,
             canvas_height,
@@ -321,6 +321,6 @@ impl DesktopApp {
     }
 
     pub(crate) fn cpu_canvas_snapshot(&self) -> Option<&super::cpu_canvas_snapshot::CpuCanvasSnapshot> {
-        self.cpu_canvas_snapshot.as_ref()
+        self.paint.cpu_canvas_snapshot.as_ref()
     }
 }

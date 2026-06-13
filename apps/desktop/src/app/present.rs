@@ -39,8 +39,8 @@ impl DesktopApp {
         if self.panel_runtime.has_dirty_panels() {
             profiler.record_value("ui_update_panels", self.panel_runtime.dirty_panel_count() as f64);
             let host_state = panel_runtime::HostState {
-                can_undo: self.history.can_undo(),
-                can_redo: self.history.can_redo(),
+                can_undo: self.paint.history.can_undo(),
+                can_redo: self.paint.history.can_redo(),
                 active_jobs: self.background_jobs.len(),
                 snapshot_count: self.snapshots.len(),
             };
@@ -81,7 +81,7 @@ impl DesktopApp {
             self.invalidation.canvas_transform_update = false;
             self.invalidation.needs_status_refresh = false;
             self.invalidation.needs_full_present_rebuild = false;
-            let bitmap = self.cpu_canvas_snapshot.as_ref();
+            let bitmap = self.paint.cpu_canvas_snapshot.as_ref();
             let window_rect = geometry::WindowRect {
                 x: 0,
                 y: 0,

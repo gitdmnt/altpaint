@@ -1049,16 +1049,16 @@ fn new_document_sized_resets_active_interactions() {
 
     assert!(app.handle_canvas_pointer(CanvasPointerAction::Down, WindowPoint::new(center_x, center_y), 1.0));
     assert!(app.update_canvas_hover(center_x, center_y));
-    assert!(app.canvas_input.is_drawing);
-    assert!(app.hover_canvas_position.is_some());
+    assert!(app.paint.canvas_input.is_drawing);
+    assert!(app.paint.hover_canvas_position.is_some());
 
     assert!(app.apply_document_command(&DocumentCommand::NewDocumentSized {
         width: 48,
         height: 32,
     }));
-    assert!(!app.canvas_input.is_drawing);
-    assert!(app.canvas_input.last_position.is_none());
-    assert!(app.hover_canvas_position.is_none());
+    assert!(!app.paint.canvas_input.is_drawing);
+    assert!(app.paint.canvas_input.last_position.is_none());
+    assert!(app.paint.hover_canvas_position.is_none());
 }
 
 #[test]
@@ -1088,7 +1088,7 @@ fn brush_preview_dirty_rect_grows_with_pen_size() {
         .expect("small preview dirty exists");
 
     app.invalidation.temp_overlay_dirty_rect = None;
-    app.hover_canvas_position = None;
+    app.paint.hover_canvas_position = None;
     let _ = app.apply_session_command(&SessionCommand::SetActivePenSize { size: 96 });
     assert!(app.update_canvas_hover(center_x, center_y));
     let large_dirty = app

@@ -20,7 +20,7 @@ impl DesktopApp {
     }
 
     pub(super) fn refresh_cpu_canvas_snapshot(&mut self) {
-        self.cpu_canvas_snapshot = Some(build_cpu_canvas_snapshot(&self.document));
+        self.paint.cpu_canvas_snapshot = Some(build_cpu_canvas_snapshot(&self.document));
     }
 
     pub(super) fn active_koma_mask_overlay(&self) -> Option<document_model::KomaBounds> {
@@ -58,13 +58,13 @@ impl DesktopApp {
     }
 
     pub(super) fn canvas_dimensions(&self) -> (usize, usize) {
-        self.cpu_canvas_snapshot
+        self.paint.cpu_canvas_snapshot
             .as_ref()
             .map(|bitmap| (bitmap.width, bitmap.height))
             .unwrap_or((1, 1))
     }
 
     pub(crate) fn is_canvas_interacting(&self) -> bool {
-        self.canvas_input.is_drawing || self.koma_gesture.is_drawing
+        self.paint.canvas_input.is_drawing || self.koma_gesture.is_drawing
     }
 }

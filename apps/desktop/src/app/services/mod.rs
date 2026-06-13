@@ -75,7 +75,7 @@ impl DesktopApp {
     ///
     /// `BitmapPatch` の before ビットマップ領域を復元する。
     pub(crate) fn execute_undo(&mut self) -> bool {
-        match self.history.undo() {
+        match self.paint.history.undo() {
             Some(PaintPatch::Cpu(BitmapPatch {
                 koma_id,
                 layer_index,
@@ -136,7 +136,7 @@ impl DesktopApp {
     ///
     /// `BitmapPatch` の after ビットマップ領域を復元する。
     pub(crate) fn execute_redo(&mut self) -> bool {
-        match self.history.redo() {
+        match self.paint.history.redo() {
             Some(PaintPatch::Cpu(BitmapPatch {
                 koma_id,
                 layer_index,

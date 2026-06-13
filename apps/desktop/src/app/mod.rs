@@ -74,6 +74,42 @@ struct PendingStroke {
     dirty: Option<PageDirtyRect>,
 }
 
+/// paint feature のサブ状態 (BL-110)。
+///
+/// DesktopApp に散在していたペイント実行・履歴・CPU 表示キャッシュの各フィールドを
+/// まとめる。`cpu_canvas_snapshot` / `hover_canvas_position` / `cached_canvas_view_geometry`
+/// は CPU 表示経路 (BL-136) の派生キャッシュであり paint feature が正本を所有する。
+struct PaintState {
+    /// ペイント計算機 (状態を持たない純計算)。
+    paint_engine: paint_engine::PaintEngine,
+    /// ペイント系ジェスチャの進行中状態。
+    canvas_input: CanvasInputState,
+    /// ストローク中のビットマップ差分追跡状態。
+    pending_stroke: Option<PendingStroke>,
+    /// 型付き patch (Cpu/Gpu) を積む編集履歴 (BL-076)。
+    history: EditHistory,
+    /// CPU 表示用のキャンバス合成スナップショット (BL-136)。
+    cpu_canvas_snapshot: Option<CpuCanvasSnapshot>,
+    /// ブラシプレビュー描画用の現在のホバー位置 (ページ座標)。
+    hover_canvas_position: Option<PagePoint>,
+    /// canvas_view_geometry の再計算を省くキャッシュ。
+    cached_canvas_view_geometry: Option<CachedCanvasViewGeometry>,
+}
+
+impl PaintState {
+    fn new() -> Self {
+        Self {
+            paint_engine: paint_engine::PaintEngine::default(),
+            canvas_input: CanvasInputState::default(),
+            pending_stroke: None,
+            history: EditHistory::new(),
+            cpu_canvas_snapshot: None,
+            hover_canvas_position: None,
+            cached_canvas_view_geometry: None,
+        }
+    }
+}
+
 /// HTML パネル上端のホスト描画タイトルバー (chrome) の高さ (px)。
 /// hit テーブル更新 (`present.rs`) と GPU 描画 (`event_loop.rs`) で共有する。
 pub(crate) const PANEL_CHROME_HEIGHT: u32 = 24;
@@ -85,22 +121,17 @@ pub(crate) struct DesktopApp {
     pub(crate) panel_workspace: PanelWorkspace,
     pub(crate) io_state: DesktopIoState,
     pub(crate) workspace: WorkspaceState,
-    paint_engine: paint_engine::PaintEngine,
-    canvas_input: CanvasInputState,
+    /// paint feature のサブ状態 (ペイント実行・履歴・CPU 表示キャッシュ)。
+    paint: PaintState,
     /// コマ作成 (KomaRect) ジェスチャの進行中状態 (BL-081)。
     koma_gesture: KomaGesture,
     pub(crate) layout: Option<DesktopLayout>,
-    cpu_canvas_snapshot: Option<CpuCanvasSnapshot>,
     /// Phase 9E-4: ステータスバー (HtmlPanelView GPU 描画)。
     pub(crate) status_bar: crate::features::status_bar::StatusBar,
     /// 次フレームで消化される提示無効化状態 (保留 dirty rect・再構築フラグ)。
     pub(crate) invalidation: invalidation::PresentInvalidation,
-    cached_canvas_view_geometry: Option<CachedCanvasViewGeometry>,
-    pub(crate) history: EditHistory,
     pub(crate) snapshots: DocumentSnapshotStore,
     pub(crate) panel_interaction: PanelInteractionState,
-    hover_canvas_position: Option<PagePoint>,
-    pending_stroke: Option<PendingStroke>,
     /// 進行中のバックグラウンドジョブ (project save 等)。
     pub(crate) background_jobs: Vec<background_tasks::BackgroundJob>,
     /// GPU ペイントリソース一式。`install_gpu_resources` で一括構築される。
@@ -167,19 +198,13 @@ impl DesktopApp {
                 presets: bootstrap.workspace_presets,
                 active_preset_id: bootstrap.active_workspace_preset_id,
             },
-            paint_engine: paint_engine::PaintEngine::default(),
-            canvas_input: CanvasInputState::default(),
+            paint: PaintState::new(),
             koma_gesture: KomaGesture::default(),
             layout: None,
-            cpu_canvas_snapshot: None,
             status_bar: crate::features::status_bar::StatusBar::new(),
             invalidation: invalidation::PresentInvalidation::at_startup(),
-            cached_canvas_view_geometry: None,
-            history: EditHistory::new(),
             snapshots: DocumentSnapshotStore::default(),
             panel_interaction: PanelInteractionState::default(),
-            hover_canvas_position: None,
-            pending_stroke: None,
             background_jobs: Vec::new(),
             gpu: None,
         };
