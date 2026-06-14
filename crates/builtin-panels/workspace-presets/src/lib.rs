@@ -1,12 +1,20 @@
 //! `builtin.workspace-presets` パネル (Phase 10 DOM mutation 版)。
 
 use panel_sdk::{
-    dom::{html_escape, parse_option_list, query_selector, set_attribute, set_inner_html},
-    runtime::{
-        emit_service, error, event_string, set_state_string, state_string,
-    },
+    dom::{parse_option_list, query_selector, render_options, set_attribute, set_inner_html},
+    runtime::{emit_request, error, set_state_string, state_string},
+    serde::Deserialize,
     services, state,
 };
+
+/// テキスト/セレクト入力 payload (`altp:input:*` / `altp:select:*` は
+/// `event_payload.value` を文字列で運ぶ)。
+#[derive(Default, Deserialize)]
+#[serde(crate = "panel_sdk::serde")]
+struct TextValue {
+    #[serde(default)]
+    value: String,
+}
 
 const SELECTED_WORKSPACE: state::StringKey = state::string("config.selected_workspace");
 const SELECTED_WORKSPACE_LABEL: state::StringKey =
@@ -50,17 +58,10 @@ fn render_dom() {
     let options = parse_options(&state_string(WORKSPACE_OPTIONS));
 
     if let Some(select) = query_selector("#workspace\\.preset\\.selector") {
-        let mut html = String::new();
-        for (id, label) in &options {
-            let selected = if id == &preset_id { " selected" } else { "" };
-            html.push_str(&format!(
-                r#"<option value="{}"{}>{}</option>"#,
-                html_escape(id),
-                selected,
-                html_escape(label),
-            ));
-        }
-        set_inner_html(select, &html);
+        let pairs = options
+            .iter()
+            .map(|(id, label)| (id.as_str(), label.as_str()));
+        set_inner_html(select, &render_options(pairs, &preset_id));
     }
     if let Some(input) = query_selector("#workspace\\.preset\\.id") {
         set_attribute(input, "value", &preset_id);
@@ -81,8 +82,8 @@ fn on_host_change() {
 }
 
 #[panel_sdk::panel_handler]
-fn select_workspace() {
-    let value = event_string("value");
+fn select_workspace(payload: TextValue) {
+    let value = payload.value;
     if value.trim().is_empty() {
         return;
     }
@@ -92,25 +93,23 @@ fn select_workspace() {
         set_state_string(SELECTED_WORKSPACE_LABEL, &label);
     }
     render_dom();
-    emit_service(&services::workspace_io::apply_preset(value.trim()));
+    emit_request(&services::workspace_io::apply_preset(value.trim()));
 }
 
 #[panel_sdk::panel_handler]
-fn edit_workspace_id() {
-    let value = event_string("value");
-    if value.trim().is_empty() {
+fn edit_workspace_id(payload: TextValue) {
+    if payload.value.trim().is_empty() {
         return;
     }
-    set_state_string(SELECTED_WORKSPACE, value.trim());
+    set_state_string(SELECTED_WORKSPACE, payload.value.trim());
 }
 
 #[panel_sdk::panel_handler]
-fn edit_workspace_label() {
-    let value = event_string("value");
-    if value.trim().is_empty() {
+fn edit_workspace_label(payload: TextValue) {
+    if payload.value.trim().is_empty() {
         return;
     }
-    set_state_string(SELECTED_WORKSPACE_LABEL, value.trim());
+    set_state_string(SELECTED_WORKSPACE_LABEL, payload.value.trim());
 }
 
 #[panel_sdk::panel_handler]
@@ -119,7 +118,7 @@ fn load_workspace() {
         error("workspace preset id is required");
         return;
     };
-    emit_service(&services::workspace_io::apply_preset(preset_id));
+    emit_request(&services::workspace_io::apply_preset(preset_id));
 }
 
 #[panel_sdk::panel_handler]
@@ -128,7 +127,7 @@ fn save_workspace() {
         error("workspace preset id and label are required");
         return;
     };
-    emit_service(&services::workspace_io::save_preset(preset_id, label));
+    emit_request(&services::workspace_io::save_preset(preset_id, label));
 }
 
 #[panel_sdk::panel_handler]
@@ -137,30 +136,29 @@ fn export_workspace() {
         error("workspace preset id and label are required");
         return;
     };
-    emit_service(&services::workspace_io::export_preset(preset_id, label));
+    emit_request(&services::workspace_io::export_preset(preset_id, label));
 }
 
 #[panel_sdk::panel_handler]
 fn reload_workspaces() {
-    emit_service(&services::workspace_io::reload_presets());
+    emit_request(&services::workspace_io::reload_presets());
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn entrypoints_callable_on_native() {
-        init();
-        on_host_change();
-        select_workspace();
-        edit_workspace_id();
-        edit_workspace_label();
-        load_workspace();
-        save_workspace();
-        export_workspace();
-        reload_workspaces();
-    }
+    panel_sdk::assert_entrypoints!(entrypoints_callable_on_native => {
+        init(),
+        on_host_change(),
+        select_workspace(TextValue { value: "review".to_string() }),
+        edit_workspace_id(TextValue { value: "review".to_string() }),
+        edit_workspace_label(TextValue { value: "Review".to_string() }),
+        load_workspace(),
+        save_workspace(),
+        export_workspace(),
+        reload_workspaces(),
+    });
 
     #[test]
     fn parse_options_handles_empty_and_pairs() {
