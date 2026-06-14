@@ -1,4 +1,4 @@
-//! プロジェクト I/O (`project_io.*`) service request のハンドラと save/load 実装。
+//! プロジェクト I/O (`project.*`) service request のハンドラと save/load 実装。
 //!
 //! D9: 旧 `app/services/project_io.rs` のうち I/O 部 (save/load、~2 割) をここへ
 //! 分離した。ペイント実行+履歴部 (~8 割) は features/paint へ。

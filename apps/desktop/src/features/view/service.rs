@@ -1,4 +1,4 @@
-//! ビュー操作 (`view_service.*`) service request のハンドラ。
+//! ビュー操作 (`view.*`) service request のハンドラ。
 
 use editor_state::SessionCommand;
 use panel_runtime::{ServiceRequest, services::names};

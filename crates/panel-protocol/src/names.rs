@@ -5,21 +5,21 @@
 
 /// プロジェクト入出力サービス。
 pub mod project_io {
-    pub const NEW_DOCUMENT_SIZED: &str = "project_io.new_document_sized";
-    pub const SAVE_CURRENT: &str = "project_io.save_current";
-    pub const SAVE_AS: &str = "project_io.save_as";
-    pub const SAVE_TO_PATH: &str = "project_io.save_to_path";
-    pub const LOAD_DIALOG: &str = "project_io.load_dialog";
-    pub const LOAD_FROM_PATH: &str = "project_io.load_from_path";
+    pub const NEW_DOCUMENT_SIZED: &str = "project.new_document_sized";
+    pub const SAVE_CURRENT: &str = "project.save_current";
+    pub const SAVE_AS: &str = "project.save_as";
+    pub const SAVE_TO_PATH: &str = "project.save_to_path";
+    pub const LOAD_DIALOG: &str = "project.load_dialog";
+    pub const LOAD_FROM_PATH: &str = "project.load_from_path";
 }
 
 /// ワークスペースプリセットサービス。
 pub mod workspace {
-    pub const RELOAD_PRESETS: &str = "workspace_io.reload_presets";
-    pub const APPLY_PRESET: &str = "workspace_io.apply_preset";
-    pub const SAVE_PRESET: &str = "workspace_io.save_preset";
-    pub const EXPORT_PRESET: &str = "workspace_io.export_preset";
-    pub const EXPORT_PRESET_TO_PATH: &str = "workspace_io.export_preset_to_path";
+    pub const RELOAD_PRESETS: &str = "workspace.reload_presets";
+    pub const APPLY_PRESET: &str = "workspace.apply_preset";
+    pub const SAVE_PRESET: &str = "workspace.save_preset";
+    pub const EXPORT_PRESET: &str = "workspace.export_preset";
+    pub const EXPORT_PRESET_TO_PATH: &str = "workspace.export_preset_to_path";
 }
 
 /// ツール操作コマンド (`tool.*`) とツールカタログサービス (`tool_catalog.*`)。
@@ -59,12 +59,12 @@ pub mod layer {
 
 /// ビュー操作サービス。
 pub mod view {
-    pub const SET_ZOOM: &str = "view_service.set_zoom";
-    pub const SET_PAN: &str = "view_service.set_pan";
-    pub const SET_ROTATION: &str = "view_service.set_rotation";
-    pub const FLIP_HORIZONTAL: &str = "view_service.flip_horizontal";
-    pub const FLIP_VERTICAL: &str = "view_service.flip_vertical";
-    pub const RESET: &str = "view_service.reset";
+    pub const SET_ZOOM: &str = "view.set_zoom";
+    pub const SET_PAN: &str = "view.set_pan";
+    pub const SET_ROTATION: &str = "view.set_rotation";
+    pub const FLIP_HORIZONTAL: &str = "view.flip_horizontal";
+    pub const FLIP_VERTICAL: &str = "view.flip_vertical";
+    pub const RESET: &str = "view.reset";
 }
 
 /// コマナビゲーションサービス。
@@ -96,7 +96,7 @@ pub mod export {
 
 /// テキスト描画サービス。
 pub mod text_render {
-    pub const RENDER_TO_LAYER: &str = "text_render.render_to_layer";
+    pub const RENDER_TO_LAYER: &str = "text.render_to_layer";
 }
 
 /// ワークスペースレイアウト (UI パネル可視性・並び順) サービス。
@@ -218,23 +218,48 @@ mod tests {
         }
     }
 
+    /// wire 名前空間が統一形であること (P31)。
+    ///
+    /// `project_io.` / `workspace_io.` / `view_service.` / `text_render.` の
+    /// 旧サフィックスを廃し、操作の主体 (`project.` / `workspace.` / `view.` /
+    /// `text.`) を namespace に採る。1 操作 1 名前を回帰として固定する。
+    ///
+    /// `tool_catalog.` (ツールカタログ I/O) と `workspace_layout.` (UI パネル
+    /// 可視性/並び順) は `tool.` / `workspace.` (プリセット) とは別操作群のため
+    /// 独立 namespace のまま残す。`koma_nav.` は P31 目標形の正準 namespace。
+    #[test]
+    fn wire_namespaces_use_unified_prefixes() {
+        // _io / _service の無規約サフィックスが付いた namespace が無いこと。
+        // (`koma_nav.` は P31 目標形の正準名であり `_nav` は撤去対象ではない。)
+        const FORBIDDEN_NAMESPACE_SUFFIXES: &[&str] = &["_io", "_service"];
+        for name in ALL_WIRE_NAMES {
+            let namespace = name.split_once('.').expect("namespaced wire name").0;
+            for forbidden in FORBIDDEN_NAMESPACE_SUFFIXES {
+                assert!(
+                    !namespace.ends_with(forbidden),
+                    "wire 名 {name} の namespace `{namespace}` が旧サフィックス {forbidden} を残している"
+                );
+            }
+        }
+    }
+
     /// wire 値のピン留め (プロトコル互換の回帰網)。
     /// 意図的な wire 改名時は定数定義と本テストを同時に書き換える。
     #[test]
     fn wire_values_are_pinned() {
-        assert_eq!(project_io::NEW_DOCUMENT_SIZED, "project_io.new_document_sized");
-        assert_eq!(project_io::SAVE_CURRENT, "project_io.save_current");
-        assert_eq!(project_io::SAVE_AS, "project_io.save_as");
-        assert_eq!(project_io::SAVE_TO_PATH, "project_io.save_to_path");
-        assert_eq!(project_io::LOAD_DIALOG, "project_io.load_dialog");
-        assert_eq!(project_io::LOAD_FROM_PATH, "project_io.load_from_path");
-        assert_eq!(workspace::RELOAD_PRESETS, "workspace_io.reload_presets");
-        assert_eq!(workspace::APPLY_PRESET, "workspace_io.apply_preset");
-        assert_eq!(workspace::SAVE_PRESET, "workspace_io.save_preset");
-        assert_eq!(workspace::EXPORT_PRESET, "workspace_io.export_preset");
+        assert_eq!(project_io::NEW_DOCUMENT_SIZED, "project.new_document_sized");
+        assert_eq!(project_io::SAVE_CURRENT, "project.save_current");
+        assert_eq!(project_io::SAVE_AS, "project.save_as");
+        assert_eq!(project_io::SAVE_TO_PATH, "project.save_to_path");
+        assert_eq!(project_io::LOAD_DIALOG, "project.load_dialog");
+        assert_eq!(project_io::LOAD_FROM_PATH, "project.load_from_path");
+        assert_eq!(workspace::RELOAD_PRESETS, "workspace.reload_presets");
+        assert_eq!(workspace::APPLY_PRESET, "workspace.apply_preset");
+        assert_eq!(workspace::SAVE_PRESET, "workspace.save_preset");
+        assert_eq!(workspace::EXPORT_PRESET, "workspace.export_preset");
         assert_eq!(
             workspace::EXPORT_PRESET_TO_PATH,
-            "workspace_io.export_preset_to_path"
+            "workspace.export_preset_to_path"
         );
         assert_eq!(tool::SET_ACTIVE, "tool.set_active");
         assert_eq!(tool::SELECT, "tool.select");
@@ -268,12 +293,12 @@ mod tests {
         assert_eq!(layer::CYCLE_BLEND_MODE, "layer.cycle_blend_mode");
         assert_eq!(layer::SET_BLEND_MODE, "layer.set_blend_mode");
         assert_eq!(layer::TOGGLE_VISIBILITY, "layer.toggle_visibility");
-        assert_eq!(view::SET_ZOOM, "view_service.set_zoom");
-        assert_eq!(view::SET_PAN, "view_service.set_pan");
-        assert_eq!(view::SET_ROTATION, "view_service.set_rotation");
-        assert_eq!(view::FLIP_HORIZONTAL, "view_service.flip_horizontal");
-        assert_eq!(view::FLIP_VERTICAL, "view_service.flip_vertical");
-        assert_eq!(view::RESET, "view_service.reset");
+        assert_eq!(view::SET_ZOOM, "view.set_zoom");
+        assert_eq!(view::SET_PAN, "view.set_pan");
+        assert_eq!(view::SET_ROTATION, "view.set_rotation");
+        assert_eq!(view::FLIP_HORIZONTAL, "view.flip_horizontal");
+        assert_eq!(view::FLIP_VERTICAL, "view.flip_vertical");
+        assert_eq!(view::RESET, "view.reset");
         assert_eq!(koma_nav::ADD, "koma_nav.add");
         assert_eq!(koma_nav::REMOVE, "koma_nav.remove");
         assert_eq!(koma_nav::SELECT, "koma_nav.select");
@@ -285,7 +310,7 @@ mod tests {
         assert_eq!(snapshot::CREATE, "snapshot.create");
         assert_eq!(snapshot::RESTORE, "snapshot.restore");
         assert_eq!(export::IMAGE, "export.image");
-        assert_eq!(text_render::RENDER_TO_LAYER, "text_render.render_to_layer");
+        assert_eq!(text_render::RENDER_TO_LAYER, "text.render_to_layer");
         assert_eq!(
             workspace_layout::SET_PANEL_VISIBILITY,
             "workspace_layout.set_panel_visibility"

@@ -367,7 +367,7 @@ mod tests {
     #[test]
     fn resolve_action_rects_returns_hits_without_gpu() {
         let html = r#"<html><body>
-            <button id="app.save" data-action="service:project_io.save" style="display:block;">Save</button>
+            <button id="app.save" data-action="service:project.save" style="display:block;">Save</button>
         </body></html>"#;
         let mut view = view(html);
         view.set_panel_size((280, 160));

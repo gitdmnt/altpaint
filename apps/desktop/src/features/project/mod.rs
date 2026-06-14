@@ -1,7 +1,7 @@
 //! project feature スライス (BL-111 / D9)。
 //!
 //! セッション永続化 (`session`)、キャンバスサイズプリセット (`canvas_size_presets`)、
-//! `project_io.*` service ハンドラ + save/load 実装 (`service`) を所有する。
+//! `project.*` service ハンドラ + save/load 実装 (`service`) を所有する。
 //!
 //! D9: 旧 `app/services/project_io.rs` のうち I/O 部 (save/load) をここへ分離した。
 

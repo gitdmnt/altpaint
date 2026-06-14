@@ -7,9 +7,10 @@
 //!
 //! BL-061: 巨大 match は廃止し、名前空間 prefix 単位の変換器を
 //! [`TranslatorRegistry`] へ登録する。`tool.` / `layer.` は command/session へ
-//! 翻訳し、それ以外 (project_io / workspace / view / koma_nav / snapshot /
-//! export / ...) は ServiceRequest としてそのまま搬送する。
-//! 未登録 prefix/name は黙殺せず診断として呼び出し側へ返す。
+//! 翻訳し、それ以外 (project / workspace / view / koma_nav / snapshot /
+//! export / text / ...) は ServiceRequest としてそのまま搬送する。
+//! 名前空間は P31 で統一形 (`project.` / `workspace.` / `view.` / `text.` 等、
+//! 1 操作 1 名前) を採る。未登録 prefix/name は黙殺せず診断として呼び出し側へ返す。
 //!
 //! [`TranslatorRegistry`]: crate::translator_registry::TranslatorRegistry
 
@@ -258,7 +259,7 @@ pub fn register_default_translators(registry: &mut TranslatorRegistry) {
 
     // I/O サービスとしてそのまま搬送する名前空間 (desktop feature が実処理を持つ)。
     registry.register(
-        "project_io.",
+        "project.",
         passthrough(&[
             project_io::NEW_DOCUMENT_SIZED,
             project_io::SAVE_CURRENT,
@@ -268,8 +269,11 @@ pub fn register_default_translators(registry: &mut TranslatorRegistry) {
             project_io::LOAD_FROM_PATH,
         ]),
     );
+    // `workspace.` (プリセット) と `workspace_layout.` (UI パネル可視性/並び順) は
+    // 排他 prefix。`"workspace_layout."` は `"workspace."` で始まらない
+    // (9 文字目が `_` で `.` ではない) ため、登録順は結果に影響しない。
     registry.register(
-        "workspace_io.",
+        "workspace.",
         passthrough(&[
             workspace::RELOAD_PRESETS,
             workspace::APPLY_PRESET,
@@ -295,7 +299,7 @@ pub fn register_default_translators(registry: &mut TranslatorRegistry) {
         ]),
     );
     registry.register(
-        "view_service.",
+        "view.",
         passthrough(&[
             view::SET_ZOOM,
             view::SET_PAN,
@@ -322,7 +326,7 @@ pub fn register_default_translators(registry: &mut TranslatorRegistry) {
         passthrough(&[snapshot::CREATE, snapshot::RESTORE]),
     );
     registry.register("export.", passthrough(&[export::IMAGE]));
-    registry.register("text_render.", passthrough(&[text_render::RENDER_TO_LAYER]));
+    registry.register("text.", passthrough(&[text_render::RENDER_TO_LAYER]));
 }
 
 #[cfg(test)]
@@ -373,13 +377,13 @@ mod tests {
         }
     }
 
-    /// 既知の service 名前空間 (view_service) は ServiceRequest へ素通しされる。
+    /// 既知の service 名前空間 (view) は ServiceRequest へ素通しされる。
     #[test]
     fn view_service_passes_through() {
         let registry = registry();
         let translated = registry
             .translate(&descriptor_with(view::SET_ZOOM, "zoom", json!(2.0)))
-            .expect("view_service.set_zoom passes through");
+            .expect("view.set_zoom passes through");
         match translated {
             TranslatedRequest::Service(request) => {
                 assert_eq!(request.name, view::SET_ZOOM);
@@ -393,11 +397,11 @@ mod tests {
     #[test]
     fn unregistered_service_name_yields_diagnostic() {
         let registry = registry();
-        let result = registry.translate(&RequestDescriptor::new("view_service.unknown_op"));
+        let result = registry.translate(&RequestDescriptor::new("view.unknown_op"));
         assert_eq!(
             result,
             Err(TranslationDiagnostic::UnregisteredName {
-                name: "view_service.unknown_op".to_string(),
+                name: "view.unknown_op".to_string(),
             })
         );
     }

@@ -1,10 +1,10 @@
 //! 名前空間 prefix 単位の `RequestDescriptor` → [`TranslatedRequest`] 変換器レジストリ。
 //!
 //! BL-061: `translate_descriptor` の巨大 match を解体し、各 desktop feature が
-//! 自分の名前空間 (`"tool."` / `"layer."` / `"view_service."` / `"koma_nav."` /
-//! `"project_io."` / `"workspace_io."` / `"snapshot."` / `"export."` /
-//! `"text_render."` / `"history."` / `"workspace_layout."` / `"tool_catalog."`)
-//! の変換器を登録する仕組みにする。
+//! 自分の名前空間 (`"tool."` / `"layer."` / `"view."` / `"koma_nav."` /
+//! `"project."` / `"workspace."` / `"snapshot."` / `"export."` /
+//! `"text."` / `"history."` / `"workspace_layout."` / `"tool_catalog."`)
+//! の変換器を登録する仕組みにする (名前空間は P31 統一形)。
 //!
 //! 巨大 match は廃止し、未登録 prefix/name は黙殺せず [`TranslationDiagnostic`] として
 //! 呼び出し側へ返す (呼び出し側が log へ流す)。

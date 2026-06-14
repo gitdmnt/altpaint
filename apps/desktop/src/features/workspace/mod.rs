@@ -1,6 +1,6 @@
 //! workspace feature スライス (BL-111)。
 //!
-//! ワークスペースプリセット catalog (`workspace_presets`)、`workspace_io.*` service
+//! ワークスペースプリセット catalog (`workspace_presets`)、`workspace.*` service
 //! ハンドラ (`service`)、`workspace_layout.*` service ハンドラ (`layout_service`) を
 //! 所有する。
 //!
