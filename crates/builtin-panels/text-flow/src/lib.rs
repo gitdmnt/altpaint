@@ -1,7 +1,7 @@
 //! `builtin.text-flow` パネル (Phase 10 DOM mutation 版)。
 
 use panel_sdk::{
-    dom::{set_slider, set_text},
+    dom::set_slider,
     runtime::{emit_request, set_state_i32, set_state_string, state_i32, state_string},
     serde::Deserialize,
     services, state,
