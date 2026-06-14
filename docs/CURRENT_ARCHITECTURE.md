@@ -1,5 +1,7 @@
 # altpaint 現在アーキテクチャ
 
+> **アーカイブ (2026-06-14)**: 本文書は 2026-06-12 時点 (大規模リファクタリング ADR 018 の着手前) のスナップショットであり、旧クレート名 (`app-core` / `ui-shell` / `plugin-host` / `plugin-sdk` / `storage` / `desktop-support` / `gpu-canvas` 等) を含む。**現在の正本は [docs/ARCHITECTURE.md](ARCHITECTURE.md) (目標=現行構造) と [docs/MODULE_DEPENDENCIES.md](MODULE_DEPENDENCIES.md) (依存事実)**。ADR 018 (B0〜B10) でクレート/型/モジュール名・依存構造を全面再編したため、本文書の記述は歴史記録として参照すること。
+
 ## この文書の目的
 
 この文書は、2026-06-12 時点の `altpaint` が**コード上で実際にどう分割され、どこに責務が集中しているか**を整理するための現況文書である。
