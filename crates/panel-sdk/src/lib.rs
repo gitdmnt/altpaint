@@ -9,6 +9,7 @@ pub mod dom;
 pub mod host;
 pub mod runtime;
 pub mod services;
+pub mod shortcut;
 pub mod state;
 
 pub use panel_protocol::host_state;
