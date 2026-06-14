@@ -49,8 +49,8 @@ fn render_panel_list(workspace_panels_json: &str) -> String {
 #[panel_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_sync_host]
-fn sync_host() {
+#[panel_sdk::panel_on_host_change]
+fn on_host_change() {
     if let Some(list) = query_selector("#workspace-panels") {
         let json = host::workspace::panels_json();
         set_inner_html(list, &render_panel_list(&json));
@@ -76,7 +76,7 @@ mod tests {
     #[test]
     fn entrypoints_callable_on_native() {
         init();
-        sync_host();
+        on_host_change();
         set_visibility(0);
         set_visibility(1);
     }

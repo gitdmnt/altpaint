@@ -149,8 +149,8 @@ fn init() {
     render_dom();
 }
 
-#[panel_sdk::panel_sync_host]
-fn sync_host() {
+#[panel_sdk::panel_on_host_change]
+fn on_host_change() {
     render_dom();
 }
 
@@ -383,7 +383,7 @@ mod tests {
     #[test]
     fn entrypoints_callable_on_native() {
         init();
-        sync_host();
+        on_host_change();
         select_tool();
         activate_pen();
         activate_eraser();

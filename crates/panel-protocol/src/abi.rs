@@ -3,26 +3,23 @@
 //! ホスト (`panel-wasm-host`) と SDK (`panel-sdk`) が **同一の契約**を共有するための
 //! 単一定義点。従来は host / SDK / マクロが各々ハードコードしていた以下を集約する:
 //!
-//! - パネルが export する ライフサイクル関数名 (`panel_init` / `panel_sync_host`) と
+//! - パネルが export する ライフサイクル関数名 (`panel_init` / `panel_on_host_change`) と
 //!   イベント handler の export 名 prefix (`panel_handle_`)
 //! - ホストが提供する import module 名 (`host` / `dom`)
 //! - `DiagnosticLevel` ↔ `i32` の対応 ([`DiagnosticLevel::from_abi`] /
 //!   [`DiagnosticLevel::to_abi`])
 //! - イベント payload のスカラ値を運ぶ予約キー `"value"` ([`PAYLOAD_VALUE_KEY`])
-//!
-//! 註: 個々の wire 名 (export/import 名) は Wasm ABI の共有契約点であり、改名は
-//! B9 (P26) まで温存する。本モジュールは値を変えずに **置き場**を 1 箇所へ集約する。
 
 use crate::DiagnosticLevel;
 
 /// パネルが export する初期化関数名。
 pub const PANEL_INIT_EXPORT: &str = "panel_init";
 
-/// パネルが export する host state 同期 (再描画) フック名。
+/// パネルが export する host 状態変化フック名 (P26)。
 ///
-/// 「パネルがホストを sync する」と読めるが実態は host 状態変化時の再描画フック。
-/// 改名 (`panel_on_host_change`) は B9 (P26)。
-pub const PANEL_SYNC_HOST_EXPORT: &str = "panel_sync_host";
+/// host state が変化した際にホストが呼び、パネルは購読セクションを再 render する。
+/// 旧名 `panel_sync_host` は「パネルがホストを sync する」と逆に読めたため改名した。
+pub const PANEL_ON_HOST_CHANGE_EXPORT: &str = "panel_on_host_change";
 
 /// イベント handler の export 名 prefix。実 export 名は
 /// `panel_handle_<sanitized_handler_name>`。

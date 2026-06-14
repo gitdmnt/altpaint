@@ -10,8 +10,8 @@ use panel_sdk::{
 #[panel_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_sync_host]
-fn sync_host() {
+#[panel_sdk::panel_on_host_change]
+fn on_host_change() {
     if let Some(node) = query_selector("#title") {
         set_inner_html(node, &html_escape(&host::document::title()));
     }
@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn entrypoints_callable_on_native() {
         init();
-        sync_host();
+        on_host_change();
         add_panel();
         remove_panel();
         select_previous_panel();

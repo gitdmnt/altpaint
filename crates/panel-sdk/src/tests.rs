@@ -3,7 +3,7 @@
 use serde_json::json;
 
 use crate::{RequestDescriptor, commands, host, host_state, names, runtime, services, state};
-use crate::{panel_handler, panel_init, panel_sync_host};
+use crate::{panel_handler, panel_init, panel_on_host_change};
 
 #[panel_init]
 fn init_for_macro_test() {}
@@ -11,8 +11,8 @@ fn init_for_macro_test() {}
 #[panel_handler]
 fn save_for_macro_test() {}
 
-#[panel_sync_host]
-fn sync_host_for_macro_test() {}
+#[panel_on_host_change]
+fn on_host_change_for_macro_test() {}
 
 #[panel_handler]
 fn slider_for_macro_test(value: i32) {
@@ -222,7 +222,7 @@ fn state_patch_buffer_collects_expected_patch_sequence() {
 fn macro_annotated_functions_remain_directly_callable() {
     init_for_macro_test();
     save_for_macro_test();
-    sync_host_for_macro_test();
+    on_host_change_for_macro_test();
     slider_for_macro_test(42);
     typed_payload_for_macro_test(MoveLayerPayload::default());
 }

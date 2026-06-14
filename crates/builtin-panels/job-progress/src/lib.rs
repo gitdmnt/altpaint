@@ -8,8 +8,8 @@ use panel_sdk::{
 #[panel_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_sync_host]
-fn sync_host() {
+#[panel_sdk::panel_on_host_change]
+fn on_host_change() {
     let active = host::jobs::active();
     if let Some(node) = query_selector("#active") {
         set_inner_html(node, &active.to_string());
@@ -40,7 +40,7 @@ mod tests {
     #[test]
     fn entrypoints_callable_on_native() {
         init();
-        sync_host();
+        on_host_change();
     }
 
     #[test]

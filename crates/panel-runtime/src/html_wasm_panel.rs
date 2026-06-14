@@ -2,7 +2,7 @@
 //!
 //! 構成要素:
 //! - `HtmlPanelView` (Blitz HTML/CSS + parley + vello)
-//! - `PanelWasmInstance` (wasmtime, panel_init / panel_handle_* / panel_sync_host export を呼ぶ)
+//! - `PanelWasmInstance` (wasmtime, panel_init / panel_handle_* / panel_on_host_change export を呼ぶ)
 //! - 各 Wasm 呼出は `PanelWasmInstance::call_with_dom` で view の document を context にし、
 //!   Wasm 内 DOM mutation host function (`set_attribute` / `set_inner_html` 等) で直接 DOM を書換える
 //!
@@ -235,7 +235,7 @@ fn format_panel_diagnostic(panel_id: &str, handler: &str, diagnostic: &Diagnosti
 
 /// `HandlerEffects::diagnostics` を診断ログ (stderr) へ流し、消費件数を返す (BL-102)。
 ///
-/// 黙殺禁止: panel_init / handler / sync_host のいずれの戻り値の診断も
+/// 黙殺禁止: panel_init / handler / on_host_change のいずれの戻り値の診断も
 /// 必ずこの経路を通す。戻り値はテストで「診断が消費されたか」を検証するために使う。
 fn emit_handler_diagnostics(
     panel_id: &str,
@@ -283,7 +283,7 @@ impl HtmlWasmPanel {
     ///
     /// `last_host_state` は再 render の有無に関わらず常に最新値へ更新する
     /// (handler 内 `host_get_*` が最新データを読めるように)。DOM mutation
-    /// (`sync_host`) は購読セクション (`subscribes`) のいずれかが今回変化した
+    /// (`on_host_change`) は購読セクション (`subscribes`) のいずれかが今回変化した
     /// 時のみ実行する (BL-093: revision ベース購読)。
     ///
     /// 戻り値: DOM を再 render した場合 true。
@@ -294,7 +294,7 @@ impl HtmlWasmPanel {
         if !force && !host_state.affects(&self.subscribes) {
             return false;
         }
-        if !self.wasm.supports_sync_host() {
+        if !self.wasm.supports_on_host_change() {
             return false;
         }
         let state = &self.state;
@@ -302,11 +302,11 @@ impl HtmlWasmPanel {
         let outcome = self
             .wasm
             .call_with_dom(self.view.document_mut(), |rt| {
-                rt.sync_host(state, host_state_value)
+                rt.on_host_change(state, host_state_value)
             });
         if let Ok(result) = outcome {
-            // BL-102: sync_host が積んだ診断を黙殺せず流す。
-            emit_handler_diagnostics(&self.id, "sync_host", &result);
+            // BL-102: on_host_change が積んだ診断を黙殺せず流す。
+            emit_handler_diagnostics(&self.id, "on_host_change", &result);
             panel_protocol::apply_patches(&mut self.state, &result.state_patch);
             self.view.mark_mutated();
             true

@@ -104,8 +104,8 @@ fn init() {
     render_dom();
 }
 
-#[panel_sdk::panel_sync_host]
-fn sync_host() {
+#[panel_sdk::panel_on_host_change]
+fn on_host_change() {
     render_dom();
 }
 
@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn entrypoints_callable_on_native() {
         init();
-        sync_host();
+        on_host_change();
         set_pen_size(400);
         set_pen_size_text();
         toggle_pressure();

@@ -1,6 +1,6 @@
 //! `builtin.view-controls` パネル (Phase 10 DOM mutation 版)。
 //!
-//! `panel_sync_host` で host state から各 DOM 要素を直接 update する。
+//! `panel_on_host_change` で host state から各 DOM 要素を直接 update する。
 //! `panel_handle_*` はサービスを発行する (UI 表示は次フレームの sync_host で更新)。
 
 use panel_sdk::{
@@ -19,8 +19,8 @@ const PAN_SLIDER_MAX: i32 = 4000;
 #[panel_sdk::panel_init]
 fn init() {}
 
-#[panel_sdk::panel_sync_host]
-fn sync_host() {
+#[panel_sdk::panel_on_host_change]
+fn on_host_change() {
     let zoom_milli = host::view::zoom_milli().max(1);
     let zoom_percent_f = zoom_milli as f32 / 10.0;
     let zoom_clamped =
@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn entrypoints_callable_on_native() {
         init();
-        sync_host();
+        on_host_change();
         set_zoom(125);
         set_pan_x(2100);
         set_pan_y(1950);

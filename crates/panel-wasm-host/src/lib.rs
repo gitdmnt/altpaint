@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 use blitz_html::HtmlDocument;
 use dom_api::DomCtx;
 use panel_protocol::abi::{
-    PANEL_INIT_EXPORT, PANEL_SYNC_HOST_EXPORT, PAYLOAD_VALUE_KEY, handler_export_name,
+    PANEL_INIT_EXPORT, PANEL_ON_HOST_CHANGE_EXPORT, PAYLOAD_VALUE_KEY, handler_export_name,
 };
 use panel_protocol::{HandlerEffects, HostCallInput};
 use serde_json::Value;
@@ -85,13 +85,13 @@ impl PanelWasmInstance {
         Ok(Self { store, instance })
     }
 
-    pub fn sync_host(
+    pub fn on_host_change(
         &mut self,
         state: &Value,
         host_state: &Value,
     ) -> Result<HandlerEffects, PanelWasmHostError> {
         self.store.data_mut().clear();
-        // sync_host はホスト状態変化時の再描画フックであり UI イベントを伴わない。
+        // on_host_change はホスト状態変化時の再描画フックであり UI イベントを伴わない。
         // event_payload は既定 (空) のままにし、疑似イベントの捏造はしない (P6)。
         self.store.data_mut().current_input = Some(HostCallInput {
             state: state.clone(),
@@ -101,10 +101,10 @@ impl PanelWasmInstance {
 
         let handler = self
             .instance
-            .get_func(&mut self.store, PANEL_SYNC_HOST_EXPORT)
+            .get_func(&mut self.store, PANEL_ON_HOST_CHANGE_EXPORT)
             .ok_or_else(|| {
                 PanelWasmHostError::Runtime(format!(
-                    "missing lifecycle export: {PANEL_SYNC_HOST_EXPORT}"
+                    "missing lifecycle export: {PANEL_ON_HOST_CHANGE_EXPORT}"
                 ))
             })?;
         call_export(&mut self.store, handler, None).map_err(PanelWasmHostError::Runtime)?;
@@ -139,9 +139,9 @@ impl PanelWasmInstance {
         Ok(self.store.data().result.clone())
     }
 
-    pub fn supports_sync_host(&mut self) -> bool {
+    pub fn supports_on_host_change(&mut self) -> bool {
         self.instance
-            .get_func(&mut self.store, PANEL_SYNC_HOST_EXPORT)
+            .get_func(&mut self.store, PANEL_ON_HOST_CHANGE_EXPORT)
             .is_some()
     }
 
@@ -293,7 +293,7 @@ mod tests {
     (data (i32.const 48) "document.title")
     (data (i32.const 80) "document.active_layer_visible")
     (data (i32.const 128) "document.page_count")
-    (func (export "panel_sync_host")
+    (func (export "panel_on_host_change")
         (local $title_len i32)
         (local $buffer_ptr i32)
         i32.const 48
@@ -394,7 +394,7 @@ mod tests {
     (memory (export "memory") 1)
     (data (i32.const 0) "section")
     (data (i32.const 16) "document")
-    (func (export "panel_sync_host")
+    (func (export "panel_on_host_change")
         (local $json_len i32)
         (local $buffer_ptr i32)
         i32.const 16
@@ -444,7 +444,7 @@ mod tests {
         });
 
         let synced = instance
-            .sync_host(&json!({}), &json!({ "document": document.clone() }))
+            .on_host_change(&json!({}), &json!({ "document": document.clone() }))
             .expect("section json handler runs");
         assert!(synced.diagnostics.is_empty());
 
@@ -466,10 +466,10 @@ mod tests {
         let wasm_path = write_temp_wat(HOST_SYNC_WAT);
         let mut instance = PanelWasmInstance::load(&wasm_path).expect("instance loads");
 
-        assert!(instance.supports_sync_host());
+        assert!(instance.supports_on_host_change());
 
         let synced = instance
-            .sync_host(
+            .on_host_change(
                 &json!({}),
                 &json!({
                     "document": {
