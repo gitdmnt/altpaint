@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、**2026-06-13 時点 (ADR 018 B6 完了) の実装コードを正本として**、workspace 内のクレートと主要モジュールの依存関係を整理するための文書である。
+この文書は、**2026-06-14 時点 (ADR 018 B10 = 最終バッチ完了) の実装コードを正本として**、workspace 内のクレートと主要モジュールの依存関係を整理するための文書である。
 
 主に次を明確にする。
 
@@ -12,6 +12,8 @@
 - 今後 `ARCHITECTURE.md` や `ROADMAP.md` を読む前提として、どこが「現実の実装」か
 
 この文書は理想図ではなく、**今のコードの実態整理**を優先する。
+設計原則・配置判断の基準（水平土台 / パネル基盤 / 垂直 feature の理念）は
+[docs/ARCHITECTURE.md](ARCHITECTURE.md) を参照すること。両文書は整合させてある。
 
 ## 読み方
 
@@ -26,7 +28,7 @@
 
 ## workspace パッケージ一覧
 
-2026-06-14 時点 (ADR 018 B7 完了 = part1 + part2) の workspace package は次の通り（計 30 メンバー: 中核 18 + 組み込みパネル 12。B7-part1 で `storage` / `desktop-support` を解体し `project-store` / `pen-io` / `frame-profiler` を新設。part2 は desktop 内部の features/ 垂直スライス化のためメンバー数は不変）。
+2026-06-14 時点 (ADR 018 B10 = 最終バッチ完了) の workspace package は次の通り（計 30 メンバー: 中核 18 + 組み込みパネル 12。B7-part1 で `storage` / `desktop-support` を解体し `project-store` / `pen-io` / `frame-profiler` を新設。part2 以降は desktop 内部の features/ 垂直スライス化のためメンバー数は不変）。クレート構成は 4 群に分かれる: **水平土台**（feature 横断の純粋型・演算）/ **パネル基盤**（HTML+CSS+Wasm パネルの実行・配置・契約）/ **垂直 feature 演算**（paint / project / pen の純粋演算クレート + desktop 内 `features/` スライス）/ **host**（`apps/desktop`）。詳細な層理念は [docs/ARCHITECTURE.md](ARCHITECTURE.md)。
 
 ### 中核クレート（水平土台）
 
@@ -165,35 +167,30 @@ graph TD
 - 各パネル crate（`crates/builtin-panels/*`）は `panel-sdk` のみに依存する。旧 `builtin-panels`
   umbrella crate は ADR 017 で `panel-runtime::loader` に統合し削除した
 
-## 将来の配置判断用メモ
+## クレート責務早見表
 
-この節は**現状の compile-time 依存ではなく、今後の責務移動先を固定するためのメモ**である。
+この節は**現在の compile-time 構成における責務境界の早見表**である（ADR 018 B10 で目標構造
+へ到達済み。設計原則は [docs/ARCHITECTURE.md](ARCHITECTURE.md)）。各クレートに「置く / 置かない」
+責務を 1 行で示す。
 
-```mermaid
-graph TD
-  desktop[apps/desktop] --> docmodel[document-model]
-  desktop --> editorstate[editor-state]
-  desktop --> paintengine[paint-engine]
-  desktop --> gpupaint[gpu-paint]
-  desktop --> panelws[panel-workspace]
-  desktop --> panelruntime[panel-runtime]
-  panelruntime --> phtml[panel-html]
-  panelruntime --> wasmhost[panel-wasm-host]
-  panels[crates/builtin-panels/*] --> panelsdk[panel-sdk]
-```
-
-| 論理名            | 置く責務                                              | 置かない責務                                  |
+| クレート          | 置く責務                                              | 置かない責務                                  |
 | ----------------- | ----------------------------------------------------- | --------------------------------------------- |
-| `desktopApp`      | event loop、OS I/O、GPU 所有、subsystem orchestration | canvas op、panel runtime 詳細、project 意味論 |
+| `apps/desktop`    | event loop、OS I/O、GPU 所有、subsystem orchestration、垂直 feature | canvas op 本体、panel runtime 詳細、純粋ドメイン状態 |
 | `geometry`        | 座標型、矩形、dirty rect 演算                         | ドメインモデル、GPU、I/O（ローカル依存ゼロ）  |
 | `raster`          | `RgbaBitmap`、ブレンド、ラスタライズ、`BitmapEdit`    | ドメインモデル、GPU（`geometry` のみ依存）    |
 | `document-model`  | pure state、`Document` / `Work` / `Koma`、`DocumentCommand` | desktop / `wgpu` / `panel-wasm-host` 依存 |
-| `editor-state`    | `EditorSession`、ツール/ペン定義、`SessionCommand`、`view_policy` | 作品データ（`document-model` 非依存 = 循環回避） |
-| `canvas-geometry` | canvas plan、dirty rect、座標変換の純データ計算       | GPU 実装、project / workspace I/O             |
+| `editor-state`    | `EditorSession`、ツール/ペン定義、`SessionCommand`、`ToolDescriptor`、`view_policy` | 作品データ（`document-model` 非依存 = 循環回避） |
+| `canvas-geometry` | canvas 表示幾何、view↔page 写像の純データ計算         | GPU 実装、project / workspace I/O             |
+| `frame-profiler`  | フレーム実行時間計測                                 | レポート整形（desktop 側）                    |
 | `gpu-paint`       | ブラシ / 塗り / 合成の GPU compute 実装               | dispatch 判断、document 意味論                |
-| `paint-engine`    | gesture 解釈、ペイント文脈解決、bitmap op             | panel runtime                                 |
+| `paint-engine`    | gesture 解釈、ペイント文脈解決、`PaintPlan` 生成、CPU 参照 bitmap op | panel runtime、GPU upload |
+| `project-store`   | SQLite project save/load                             | session / preset 永続化（desktop 側）         |
+| `pen-io`          | ペンプリセット読込 / import / export                 | project 本体永続化                            |
+| `panel-protocol`  | host↔Wasm 契約 DTO、wire/ABI 定数、`HostState`        | ドメイン依存（feature 非依存の契約）          |
+| `panel-wasm-host` | wasmtime 実行器、DOM mutation host functions         | panel layout、host state 構築                 |
+| `panel-html`      | HTML/CSS レイアウト、vello GPU 描画、hit 矩形収集     | Wasm 実行、ウィンドウ配置                     |
 | `panel-workspace` | パネル配置、focus、hit テスト                         | Wasm runtime 詳細                             |
-| `panel-runtime`   | HTML/Wasm runtime sync、hit 収集                      | panel surface のウィンドウ配置                |
+| `panel-runtime`   | HTML/Wasm runtime sync、host state 同期、hit 収集、translator registry | panel surface のウィンドウ配置 |
 | `panel-sdk`       | パネル作者向け API（DOM mutation 含む）               | host 内部型の露出                             |
 
 ## クレート別の実責務
@@ -261,14 +258,16 @@ graph TD
 担当:
 
 - エディタの一過性編集状態 `EditorSession`（アクティブツール・色・ペンプリセット・表示変換）
-- ツール/ペン定義型 `ToolDefinition` / `ToolKind` / `ToolSettingDefinition` / `PenPreset` / `PenRuntimeEngine` / `PenTipBitmap` / `ColorRgba8` / `CanvasViewTransform`
+- ツール/ペン定義型 `ToolDefinition` / `ToolKind` / `ToolSettingDefinition` / `ToolSettingControl` / `StrokeMode` / `PenPreset` / `PenRuntimeEngine` / `PenTipBitmap` / `ColorRgba8` / `CanvasViewTransform`
+- `ToolDescriptor`（`tool_descriptor.rs`。`GestureKind` / `SizePolicy` を含む記述子で `ToolKind` のクローズド match を吸収。paint-engine / desktop は記述子へ問い合わせる。B8 BL-134）
 - `SessionCommand`（ツール/色/ペン/ビューのセッション変更。B4 で旧 `Command` を 2 分割した後 B5 BL-073 で本クレートへ移設）
-- `view_policy`（ズーム倍率・clamp・パン量のビュー操作ポリシー）、`tool_state`
+- `view_policy`（ズーム倍率・clamp・パン量のビュー操作ポリシー）
 
 主要モジュール:
 
 - `command.rs`
 - `session.rs`
+- `tool_descriptor.rs`
 - `view_policy.rs`
 
 依存の特徴:
@@ -277,7 +276,7 @@ graph TD
 
 補足（B5 での移動先）:
 
-- `EditHistory`（undo/redo、`PaintPatch` enum = `Cpu` / `Gpu` の型付きスナップショット方式。`OpaqueGpuData` + downcast は B5 で全廃）は `apps/desktop/src/app/paint/history.rs` へ移管した
+- `EditHistory`（undo/redo、`PaintPatch` enum = `Cpu` / `Gpu` の型付きスナップショット方式。`OpaqueGpuData` + downcast は B5 で全廃）は `apps/desktop/src/features/paint/history.rs` へ移管した
 - `WorkspaceUiState` / `WorkspacePanelState` / `PanelConfigs`（project / session 共有の UI 永続化 DTO）は B5 (BL-075) で `panel-workspace` へ移設した
 - `PaintInput` / `PaintPluginContext` / `PaintPlugin` などの共有 paint primitive は B5 で `paint-engine` へ移設した（paint context の組み立ても `paint-engine` 側）
 
@@ -609,11 +608,13 @@ apps/desktop/main.rs
      -> presenter/*              (frame / pipelines / shaders / textures / theme。旧 wgpu_canvas.rs を分割)
 
 crates/paint-engine/src/lib.rs
-  -> engine.rs
+  -> engine.rs          (compute_paint_edits = CPU 参照経路)
+  -> plan.rs            (plan_paint / PaintPlan。純データ計画)
   -> context_builder.rs
   -> gesture.rs
-  -> plugins/builtin_bitmap.rs
-  -> ops/*
+  -> input_state.rs
+  -> painting.rs        (PaintInput / BUILTIN_BITMAP_BACKEND_ID)
+  -> ops/*              (stamp / stroke / flood_fill / lasso_fill / composite)
 
 crates/gpu-paint/src/lib.rs
   -> gpu/ (context / texture / store / snapshot / mask / readback。LayerTextureStore + KomaTextureId)
@@ -626,7 +627,7 @@ crates/gpu-paint/src/lib.rs
 
 - `event_loop.rs`: OS イベント、再描画サイクル、`PresentFrame` 組み立て
 - `app/*`: 状態変化と副作用、GPU dispatch
-- `crates/paint-engine/src/*`: gesture / paint engine / bitmap op / view mapping
+- `crates/paint-engine/src/*`: gesture / paint engine / `PaintPlan` 生成 / CPU 参照 bitmap op（view 座標変換は desktop が `canvas-geometry` を直接呼ぶ。BL-042 でラッパー廃止済み）
 - `crates/gpu-paint/src/*`: ブラシ / 塗り / 合成の compute shader 実行
 - `present_quads/*`: desktop レイアウトと quad DTO（ステータスバーは `features/status_bar` へ移管 = B7 / D4）
 - `presenter/*`: 実 GPU 提示（旧 `wgpu_canvas.rs` を分割 = B7-part2 / D2）

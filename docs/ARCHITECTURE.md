@@ -2,35 +2,45 @@
 
 ## この文書の目的
 
-この文書は、`altpaint` が今後採るべき**目標構造と責務境界**を定義するための文書である。
+この文書は、`altpaint` が採る**目標構造と責務境界**を定義する。
 
-ここで書くのは現状の説明ではない。
-現状の構造は [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md) を参照すること。
+ここで書くのは「どこに何を置くべきか」の設計原則であり、現状コードの逐次説明ではない。
+現状コードの依存事実は [docs/MODULE_DEPENDENCIES.md](MODULE_DEPENDENCIES.md) を、現況の到達点は
+[docs/IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) を参照すること。
 
-この文書では、次を固定する。
+**文書とコードが食い違う場合、現に動いているコードが正本。** この文書は、新規コードを
+どの層へ置くかを判断するための基準として使う。
+
+この文書では次を固定する。
 
 - どの責務をどの層へ置くか
 - host に残す高性能経路は何か
-- plugin へ委譲する非性能領域は何か
-- plugin panel / tool / workspace / project の境界をどう考えるか
+- plugin（パネル）へ委譲する非性能領域は何か
+- 水平土台と垂直 feature の設計原則
+- 守るべき依存方向
+
+> 用語注: ADR 018 で「plugin」は予約語化した。現在 host を拡張する実体は **HTML+CSS+Wasm
+> パネル**である。本文書では「パネル」を実体名として使い、「plugin が担う領域」という
+> 表現は将来の拡張点を示す概念語として用いる。「Koma（コマ）」は作品ドメインの分割単位、
+> 「panel」は UI パネルを指す（ADR 018 B1 で命名衝突を解消済み）。
 
 ## 基本的理念
 
 `altpaint` は次の理念を採る。
 
-> GPU 処理などの性能が要求されるものは基本的にアプリに組み込む。
-> それ以外のものはすべて plugin として実装する。
+> 性能が要求されるものは host（アプリ本体）に組み込む。
+> それ以外のものは plugin（パネル）として実装する。
 
 この原則により、`altpaint` は
 
 - host が性能要求の高い runtime を持ち
-- plugin が機能拡張と UI を担う
+- パネルが機能拡張と UI を担う
 
 という構造を目指す。
 
 さらに、キャンバス編集処理に関して次の原則を採る。
 
-> **キャンバスへの描画は必ず GPU を使って行う。**
+> **キャンバスへの描画は GPU を使って行う。**
 > **CPU と GPU 間の通信は最低限に抑える。**
 
 具体的には次を意味する。
@@ -41,360 +51,257 @@
 - CPU は「座標・サイズ・色・ペン設定」などのパラメータ（uniform buffer）のみを GPU へ渡す
 - CPU が GPU テクスチャの内容を読み書きするのは、プロジェクトの保存・読込時のみ
 
-この原則に反する実装（CPU での `Vec<u8>` ベースのブラシ合成等）は、性能改善フェーズで順次 GPU 実装へ移行する。
+補足: GPU が利用できない環境向けに CPU 参照経路（`paint-engine::ops` の bitmap op +
+`CpuPaintBackend`）を持つが、これはフォールバックであり、性能要件のある通常経路は GPU である。
 
-## 目標の層構造
+## 層構造の全体像
 
-### 1. `desktopApp`
-
-`desktopApp` は起動時およびランタイムの I/O と event loop を担当する。
-
-置くもの:
-
-- アプリ起動
-- window 作成
-- OS 入力の受信
-- event loop
-- GPU device / surface / presenter の所有
-- 各 subsystem 呼び出し順の制御
-
-置かないもの:
-
-- ドメイン編集ロジックの本体
-- project / workspace の意味論
-- ツール差分生成の本体
-- panel 定義の parse
-- plugin author 向け SDK
-
-### 2. `app-core`
-
-アプリの中核的な処理は `app-core` が担う。
-
-置くもの:
-
-- document model
-- command model
-- layer / page / panel / work などの中核状態
-- tool や workspace に関する純粋状態
-- host から見た不変条件
-
-置かないもの:
-
-- OS / GPU / event loop
-- plugin file load
-- panel runtime
-- canvas 差分生成アルゴリズム
-
-### 3. `render`
-
-表示するための画面の生成はすべて `render` が担う。
-
-置くもの:
-
-- canvas の表示計画
-- overlay の表示計画
-- panel surface の表示計画
-- dirty rect 写像
-- 画面座標変換
-- 画面生成のための scene / pass / quad / compose 計画
-
-置かないもの:
-
-- OS イベント処理
-- file I/O
-- plugin 実行判断
-
-### 4. `desktop-support`
-
-実行時間の計測や desktop 固有補助は `desktop-support` が担う。
-
-置くもの:
-
-- profiler
-- native dialog 境界
-- desktop 固有 config
-- desktop 起動補助
-
-置かないもの:
-
-- project 形式そのもの
-- canvas 演算
-- panel runtime
-
-### 5. `canvas`
-
-キャンバスへの処理は `canvas` が担当する。
-
-置くもの:
-
-- キャンバス入力解釈
-- ツール実行ランタイム
-- bitmap 差分生成
-- ブラシ / 消しゴム / 塗りつぶしなどの canvas オペレーション
-- canvas 固有の演算補助
-
-置かないもの:
-
-- event loop
-- 最終画面生成
-- plugin panel runtime
-
-補足:
-
-- `canvas` は性能要求の高い領域として host 側に置く。
-
-### 6. `ui-shell`
-
-plugin への API 提供を含めた処理は `ui-shell` が担当する。
-
-置くもの:
-
-- plugin panel と host の仲介
-- panel event 変換
-- host action の受理
-- workspace 上の panel 管理 API
-- plugin に対する host service 提供
-
-置かないもの:
-
-- Wasm runtime 実装そのもの
-- panel 定義ファイル parse 本体
-- canvas 差分生成
-
-### 7. `plugin-host`
-
-plugin panel の runtime は `plugin-host` が担う。
-
-置くもの:
-
-- Wasm runtime
-- ABI bridge
-- sandbox / isolation
-- plugin 呼び出しのエラー境界
-
-### 8. `panel-dsl`
-
-plugin panel のファイル parse は `panel-dsl` が担う。
-
-置くもの:
-
-- parser
-- validator
-- normalized IR
-- panel manifest の解釈
-
-### 9. `plugin-sdk`
-
-plugin panel の SDK は `plugin-sdk` が担当し、macro はそのサブモジュールが担当する。
-
-置くもの:
-
-- plugin 作者向け安定 API
-- typed command / state / host accessor
-- panel authoring surface
-- macro export surface
-
-補足:
-
-- macro は物理的に別 crate でもよいが、論理的には `plugin-sdk` 配下の authoring surface として扱う。
-
-## 目標 crate 配置草案
-
-現時点でまだ存在しない crate を含め、今後の責務移動先は次で固定して読む。
-
-| 論理名          | 現在の主配置                                 | 目標配置               | 主責務                                                | 新規コードを置く判断基準                             |
-| --------------- | -------------------------------------------- | ---------------------- | ----------------------------------------------------- | ---------------------------------------------------- |
-| `desktopApp`    | `apps/desktop`                               | `apps/desktop`         | event loop、OS I/O、GPU 所有、subsystem orchestration | OS/window/GPU/event loop に触るならここ              |
-| `app-core`      | `crates/app-core`                            | `crates/app-core`      | `Document`、`Command`、純粋状態、不変条件             | UI/GPU/Wasm を知らない純粋状態ならここ               |
-| `render-types`  | `crates/render-types`                        | `crates/render-types`  | frame plan、dirty rect、座標変換、純データ DTO        | 画面生成のための純粋計算ならここ                     |
-| `canvas`        | 未作成                                       | `crates/canvas`        | canvas 入力解釈、tool runtime、bitmap op              | canvas 差分生成や gesture state machine ならここ     |
-| `ui-shell`      | `crates/ui-shell`                            | `crates/ui-shell`      | panel presentation、host facade、panel UI 管理 API    | panel の見た目・hit-test・focus・text input ならここ |
-| `panel-runtime` | 未作成                                       | `crates/panel-runtime` | panel discovery、DSL/Wasm bridge、host snapshot sync  | panel runtime と presentation を分けたい処理ならここ |
-| `plugin-host`   | `crates/plugin-host`                         | `crates/plugin-host`   | Wasm runtime、ABI、sandbox                            | Wasm 実行器そのものならここ                          |
-| `panel-dsl`     | `crates/panel-dsl`                           | `crates/panel-dsl`     | `.altp-panel` parser / validator / normalized IR      | DSL parse / validate ならここ                        |
-| `plugin-sdk`    | `crates/plugin-sdk` + `crates/plugin-macros` | `crates/plugin-sdk` 系 | plugin 作者向け安定 API と macro surface              | plugin 作者が直接触る API ならここ                   |
-
-### 将来の物理配置イメージ
+クレートは責務性質で 4 群に分かれる。
 
 ```text
-apps/desktop
-	-> app-core
-	-> render-types
-	-> canvas
-	-> ui-shell
-		 -> panel-runtime
-				-> panel-dsl
-				-> plugin-host
-
-plugins/*
-	-> plugin-sdk
+host（apps/desktop）
+  ├─ 垂直 feature  : 機能 1 つを「実装 + 状態 + 翻訳」で縦に閉じる
+  ├─ パネル基盤    : HTML+CSS+Wasm パネルの実行・配置・契約
+  └─ 水平土台      : feature 横断で共有する純粋な型・演算（最安定層）
 ```
 
-補足:
+- **水平土台**: 座標・ビットマップ・ドメインモデル・編集セッション・パネル契約など、
+  複数 feature が共有する純粋な型と演算。GPU / OS / Wasm を知らない。最も安定させる層。
+- **パネル基盤**: パネル（HTML+CSS+Wasm）を実行・配置・描画し、host との契約を仲介する層。
+- **垂直 feature**: paint / project / export 等の機能を 1 つずつ縦に切った層。`apps/desktop`
+  内の `features/` スライスとして実装する。
+- **host**: `apps/desktop`。OS window と GPU を唯一所有し、event loop と提示を回す。
 
-- `panel-runtime` はフェーズ3で導入候補とする。
-- `canvas` はフェーズ2で追加する前提とする。
-- `plugin-sdk` は `plugin-macros` を再 export し、作者向け入口を 1 つに保つ。
+## 水平土台の設計原則
 
-### crate ごとの判断基準
+水平土台は **feature 横断で共有される純粋な型と演算**だけを置く層である。
 
-#### `desktopApp`
+- `winit` / `wgpu` / `wasmtime` / `blitz` に依存しない（GPU・OS・Wasm 非依存）
+- I/O・dialog・file path を持たない
+- 依存方向は厳密に一方向にし、循環を作らない
+- ある型が「複数の feature から参照される純粋な状態か演算」であれば水平土台へ、
+  「特定機能の I/O フローやランタイム配線」であれば feature 側へ置く
 
-- 入出力順序、再描画要求、OS イベント配線だけを持つ。
-- project / workspace の意味論は置かない。
-- canvas や panel の詳細アルゴリズムは持ち込まない。
+水平土台クレート（ドメイン側）:
 
-#### `app-core`
+| クレート          | 責務                                                                       | ローカル依存                                  |
+| ----------------- | -------------------------------------------------------------------------- | --------------------------------------------- |
+| `geometry`        | 座標型・矩形・dirty rect 演算                                               | なし（最下層）                                |
+| `raster`          | `RgbaBitmap`・ブレンド・ラスタライズ・`BitmapEdit`                          | `geometry`                                    |
+| `editor-state`    | `EditorSession`・ツール/ペン定義・`SessionCommand`・`ToolDescriptor`・`view_policy` | なし（`document-model` 非依存 = 循環回避） |
+| `document-model`  | `Document`/`Work`/`Page`/`Koma`/`RasterLayer`・`DocumentCommand`            | `geometry` / `raster` / `editor-state`        |
+| `canvas-geometry` | `CanvasViewGeometry`（view↔page 写像）・提示用テクスチャ矩形                | `geometry` / `editor-state`                   |
+| `frame-profiler`  | フレーム実行時間計測（整形は host 側）                                      | なし                                          |
 
-- 保存可能な状態と不変条件だけを持つ。
-- runtime 文脈の組み立ては置かない。
-- file path、dialog、Wasm runtime、GPU 型を受け取らない。
+ドメインの二大入口は `document-model::Document`（作品コンテンツ）と
+`editor-state::EditorSession`（編集セッション）である。状態変更はそれぞれ
+`DocumentCommand` / `SessionCommand` を入口とする。`editor-state` は `document-model` に
+依存させない（一方向にして循環を避ける）。
 
-#### `render`
+パネル契約側の水平土台:
 
-- 描画結果を決める計算は置く。
-- project 読込/保存や plugin discovery は置かない。
-- UI の意味論ではなく表示計画だけを扱う。
+| クレート         | 責務                                                       | ローカル依存 |
+| ---------------- | ---------------------------------------------------------- | ------------ |
+| `panel-protocol` | host↔Wasm 共有 DTO・wire 名定数・ABI 定数・`HostState` DTO  | なし         |
 
-#### `canvas`
+`panel-protocol` は契約クレートとして純粋であり、ドメインクレート（`document-model` /
+`editor-state`）にも依存しない。これによりパネル基盤全体が feature 非依存の水平土台として
+成立する（ADR 018 B6 で旧 `panel-api` のドメイン依存を切断して達成）。
 
-- pointer/gesture から `BitmapEdit` 相当を作る責務を持つ。
-- panel runtime や workspace layout は持たない。
-- 最終提示や GPU upload は扱わない。
+## パネル基盤の設計原則
 
-#### `ui-shell`
+パネル基盤は **host とパネル（HTML+CSS+Wasm）の境界**を担う層である。
 
-- panel presentation と host facade に寄せる。
-- runtime bridge は `panel-runtime` 導入後に薄くする。
-- panel 描画と focus/input 管理はここに寄せる。
+- パネルは host 内部型を直接参照しない。常に安定 API（`panel-sdk`）を通る
+- host↔Wasm のやりとりは `panel-protocol` の DTO に閉じる
+- runtime（Wasm 実行・host state 同期）と配置（layout・focus・hit-test）を分離する
+- host からの入口は `panel-runtime`（runtime facade）と `panel-workspace`（配置）の 2 系統
 
-#### `panel-runtime`
+| クレート          | 責務                                                                              | ローカル依存                                                            |
+| ----------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `panel-protocol`  | host↔Wasm 契約 DTO・wire/ABI 定数・keyboard 規約（水平土台でもある）              | なし                                                                    |
+| `panel-wasm-host` | wasmtime ベースの Wasm 実行器 + DOM mutation host functions                        | `panel-protocol`                                                        |
+| `panel-html`      | Blitz（HTML/CSS）+ vello による GPU 直描画・hit 矩形収集                           | なし（Blitz / taffy / vello / wgpu に閉じる）                           |
+| `panel-runtime`   | パネル registry・HTML/Wasm bridge・host state 同期・translator registry・loader    | `document-model` / `editor-state` / `raster` / `panel-protocol` / `panel-wasm-host` / `panel-html` |
+| `panel-workspace` | ワークスペース配置・focus・hit-test                                               | `geometry`                                                              |
+| `panel-sdk`       | パネル作者向け安定 API（`emit_request` / DOM ヘルパ / shortcut / state / test）   | `panel-macros` / `panel-protocol`                                       |
+| `panel-macros`    | `#[panel_init]` / `#[panel_handler]` / `#[panel_on_host_change]` proc-macro       | なし                                                                    |
 
-- DSL/Wasm/runtime sync を閉じ込める。
-- panel surface の描画は持たない。
-- `ui-shell` presentation 側へ Wasm 詳細を漏らさない。
+責務境界:
 
-#### `plugin-host`
+- `panel-runtime` が **runtime 側の正本**（Wasm 実行・host state 同期・hit 収集・契約型公開）
+- `panel-workspace` が **配置側の正本**（layout・focus・hit-test 結果の利用）
+- `panel-workspace` は `panel-runtime` へコンパイル依存しない。登録パネル一覧は
+  `reconcile_panels(panel_ids)` の引数として host から受け取る
+- `panel-runtime` が host 向け契約型（`HostRequest` / `PanelEvent` / `ServiceRequest`）と
+  `panel-html` の最小面（`panel_runtime::html`）を host へ公開する。host は `panel-html` /
+  `panel-wasm-host` へ直接依存しない
+- パネル作者は `panel-sdk` のみに依存する。`panel-macros` は `panel-sdk` が再 export する
 
-- ABI と Wasm 実行だけを持つ。
-- panel layout、workspace、描画キャッシュは持たない。
+## 垂直 feature の設計原則
 
-#### `panel-dsl`
+垂直 feature は **機能 1 つを「サービスハンドラ + 状態 + 翻訳器」で縦に閉じる**スライスである。
+`apps/desktop/src/features/` 配下に置く。
 
-- parser / validator / normalized IR に閉じる。
-- host state や UI presentation を持たない。
+- 1 スライス = 1 機能の I/O フロー・状態・request 翻訳をまとめて所有する
+- 機能横断で共有する純粋な型は水平土台へ抜く（feature に純粋ドメイン型を抱え込まない）
+- パネル/入力発の要求は `ServiceRequest` として届き、各スライスのサービスハンドラが受ける。
+  ハンドラは名前空間 registry（`app/services/registry.rs::SERVICE_HANDLERS`）に登録する
+- OS 固有 I/O（dialog / path）は feature ではなく `platform/` に寄せる
 
-#### `plugin-sdk`
+現在の 11 スライス:
 
-- plugin 作者が依存する唯一の安定表面を目指す。
-- host 内部型への依存を隠蔽する。
-- runtime ABI の詳細を直接露出しない。
+| スライス            | 責務                                                                                |
+| ------------------- | ----------------------------------------------------------------------------------- |
+| `paint`             | ペイント実行配線・`PaintBackend`（Cpu/Gpu）・`EditHistory`・undo/redo・ブラシプレビュー |
+| `project`           | project save/load・session save/load・canvas size preset                            |
+| `export`            | PNG export とハンドラ                                                                |
+| `workspace`         | workspace preset catalog・workspace I/O・layout service                             |
+| `tools`             | ツールカタログ読込・既定カタログ・ツール設定/ペン import ハンドラ                    |
+| `koma`              | コマ作成ジェスチャ・コマ移動ナビゲーションハンドラ                                   |
+| `view`              | ビュー操作サービスハンドラ                                                           |
+| `snapshots`         | `DocumentSnapshotStore` とハンドラ                                                   |
+| `text`              | テキストラスタライズとハンドラ                                                       |
+| `panel_interaction` | パネル drag/resize/press 幾何ステートマシン                                          |
+| `status_bar`        | ステータスバー描画とスナップショット組み立て                                         |
 
-## plugin が担うべき領域
+## host（apps/desktop）の責務
 
-以下の機能は、それぞれ plugin が担う。
+`apps/desktop`（package `altpaint-desktop`、bin `altpaint`）は唯一の実行ホストである。
 
-### 1. project file の読み込み / 保存
+置くもの:
 
-project の意味論と操作フローは plugin が持つ。
+- アプリ起動・window 作成・OS 入力受信・event loop（`event_loop.rs`）
+- GPU device / surface / presenter の所有（`presenter/`）
+- GPU ペイントリソースの所有と dispatch 判断（`gpu-paint` の `LayerTextureStore` /
+  `BrushPipeline` / `FillPipeline` / `CompositePipeline` を所有）
+- canvas 入力 → `DocumentCommand` / `SessionCommand` / `PaintInput` 変換
+- `DesktopApp` による状態遷移・副作用統合（composition root）と提示（`PresentFrame` 組み立て）
+- 垂直 feature スライス群（`features/`）と OS 固有 I/O（`platform/`）
 
-host は次だけを提供する。
+置かないもの:
 
-- file I/O service
-- serializer 実行 service
-- 現在 document へのアクセス
+- 純粋ドメイン状態の本体（→ 水平土台）
+- Wasm 実行器・パネル配置アルゴリズムの本体（→ パネル基盤）
+- パネル作者向け SDK（→ `panel-sdk`）
 
-### 2. workspace の読み込み / 保存
+GPU ペイントの三層理解:
 
-workspace の意味論、表示 panel の管理、配置管理は plugin が担う。
+- **画素適用の実装**は `gpu-paint`（compute shader）
+- **計画生成**は `paint-engine::plan_paint`（`PaintPlan` = 純データ計画。画素を作らない）
+- **backend 選択・結合・dispatch 判断**は host の `features/paint`
 
-host は panel 配置 API と永続化 service を提供する。
+## 垂直 feature 側の純粋演算クレート
 
-### 3. ツール関連
+feature の実装が依存する、GPU/ドメイン演算のクレート:
 
-plugin が次を担う。
+| クレート       | 責務                                                                       | ローカル依存                                  |
+| -------------- | -------------------------------------------------------------------------- | --------------------------------------------- |
+| `paint-engine` | gesture 解釈・ペイント文脈解決・`PaintPlan` 生成・CPU 参照 bitmap op        | `document-model` / `editor-state` / `geometry` / `raster` |
+| `gpu-paint`    | ブラシ/塗り/合成の GPU compute 実装・レイヤーテクスチャ store               | `editor-state` / `geometry` / `raster` / `wgpu` |
+| `project-store`| SQLite project save/load                                                   | `document-model` / `panel-workspace` / `raster` |
+| `pen-io`       | ペンプリセット読込 / import / export                                       | `editor-state`                                |
 
-- ツール一覧の読み込み / 一覧表示
-- ツールパラメータおよび処理の親の読み込み / 一覧表示 / 設定
-- キャンバスに書き込むための差分の生成
+- `gpu-paint` は `wgpu` に依存する唯一のペイント実装クレート。dispatch の判断（GPU/CPU 選択）
+  は持たず、それは host 側にある
+- `paint-engine` は panel runtime / project I/O を知らない
+- `project-store` / `pen-io` は永続化を担うが、永続化パスの解決と session/preset 永続化は host
+  の `platform/` / `features/` に置く
 
-補足:
+## plugin（パネル）が担うべき領域
 
-- 描画処理さえ plugin に記述され、アプリ本体はそれを実行する runtime である、という構造を目指す
-- ツール処理 plugin は、処理を共有する子ツールを外部から追加できるべきである
-- ツール処理 plugin は parameter file を読み取り、ツール処理を実行し、canvas 差分を生成する
-- ペンプラグインはビルダーまたはマクロによって WGSL のパイプラインを生成し、`canvas` からそれを呼び出せるようにする
+次の機能は、それぞれパネル（HTML+CSS+Wasm）が UI と操作フローを担う。host は安定 API と
+service だけを提供する。
 
-### 4. キャンバスビューの移動
+| 領域              | パネルが持つもの                              | host が提供するもの                         |
+| ----------------- | --------------------------------------------- | ------------------------------------------- |
+| project I/O       | 保存/読込の操作フロー・UI                      | file I/O service・serializer・現在 document  |
+| workspace I/O     | 表示パネル管理・配置 UI                        | 配置 API・永続化 service                     |
+| ツール            | 一覧表示・パラメータ設定・選択 UI              | カタログ・ツール選択 command                |
+| view 操作         | パン/ズーム/回転の UI                          | view state 更新 command（`SessionCommand`） |
+| color palette     | 色選択 UI と操作フロー                         | 現在色 state・色変更 command                |
+| snapshots         | スナップショット一覧・操作 UI                  | snapshot store service                      |
 
-view 操作の UI と意味論は plugin が担う。
-
-host は view state 更新 API を提供する。
-
-### 5. panel を持つ plugin 一覧の表示、表示非表示切り替え
-
-workspace / panel 管理 plugin が担う。
-
-### 6. color palette
-
-color 選択 UI とその操作フローは plugin が担う。
+将来の拡張意図（現状スコープ外）: ツール処理そのものをパネル/プラグインに記述し、host が
+それを実行する runtime に徹する構造（ペンが WGSL パイプラインを生成し host から呼ばれる等）。
+本リファクタのスコープ外として明示する。
 
 ## runtime flow の目標形
 
 ### 1. 起動
 
-1. `desktopApp` が window / GPU / event loop を初期化する
-2. `desktopApp` が `app-core`、`render`、`canvas`、`ui-shell` を起動する
-3. `ui-shell` が `panel-dsl` と `plugin-host` を使って plugin panel を準備する
-4. plugin が必要な project / workspace / tool catalog を読み込む
-5. `render` が最初の画面生成を行う
+1. host が window / GPU / event loop を初期化する
+2. host が session / project / workspace preset を解決し、`PanelRuntime` / `PanelWorkspace` と
+   `Document` の初期状態を組み立てる
+3. `panel-runtime::register_builtin_panels` が同梱 12 パネルをロードし、各パネルが HTML と
+   Wasm instance を初期化する
+4. パネルサイズは `panel.meta.json::default_size` を初期値に、workspace 永続値で上書きする
+5. host が GPU ペイントリソースを構築し、全レイヤーを GPU テクスチャへ同期する
 
-### 2. canvas 入力
+### 2. キャンバス編集
 
-1. `desktopApp` が入力を受ける
-2. `canvas` が入力を解釈する
-3. `app-core` の document state を参照する
-4. tool plugin が差分を生成する
-5. host runtime が差分を適用する
-6. `render` が画面を再生成する
+1. host が OS pointer event を受け、canvas/panel を振り分ける
+2. `canvas-geometry` が view 座標を page 座標へ変換する
+3. `paint-engine::gesture` が down/drag/up を `PaintInput` やコマ矩形 preview へ変換する
+4. host `features/paint` が `paint-engine::plan_paint` で `PaintPlan` を生成し、選択した
+   `PaintBackend`（GPU 有効時 Gpu / 不在時 Cpu）へ適用を委譲する
+5. `GpuPaintBackend` が `gpu-paint` の compute shader で GPU レイヤーテクスチャへ直接書込み・
+   合成する（編集中に CPU 画素を作らない）
+6. dirty rect / UI 再同期要求が host に蓄積され、提示フレームが組み立てられる
 
-### 3. panel イベント
+### 3. パネルイベント
 
-1. `desktopApp` が panel 入力を受ける
-2. `ui-shell` が panel event に変換する
-3. `plugin-host` が panel plugin を呼び出す
-4. plugin は host API / command request を返す
-5. host が `app-core` / `canvas` / `render` へ反映する
+1. host が panel 入力を受ける
+2. host の `panel_interaction` 幾何ステートマシンと host_request_router が hit テーブル
+   （`panel-runtime` が CPU 更新）で hit-test / drag / resize を中継する
+3. 対象パネルへ `PanelEvent` が forward され、Wasm handler が実行される。handler は DOM
+   mutation host functions で自パネルの DOM を更新できる
+4. handler が返した `RequestDescriptor` を `panel-runtime` の translator registry が名前空間
+   prefix で `HostRequest`（`DispatchDocumentCommand` / `DispatchSessionCommand` /
+   `RequestService`）へ変換する。未登録 prefix/name は黙殺せず診断ログへ流す
+5. host が `apply_document_command` / `apply_session_command` / `execute_service_request` へ
+   振り分けて反映する
+6. `panel-html` が vello で GPU テクスチャへ再描画し、host が panel quad 層で合成する
 
 ### 4. project / workspace I/O
 
-1. plugin が保存 / 読込操作を開始する
-2. `ui-shell` が host service を介して I/O を仲介する
-3. host が serializer や runtime state へアクセスする
-4. 結果を plugin と host state に反映する
+1. パネル/入力層が `ServiceRequest`（`project_io.*` 等）を発行する
+2. 保存前に host が GPU テクスチャを readback して `Document` の CPU bitmap を最新化する
+3. project 保存は `project-store`、workspace layout は `panel-workspace`、panel config は
+   `panel-runtime` から取り出して保存する
+4. session 保存は host の `features/project/session.rs` へ委譲する（`dirs` ベースのパス）
+
+project file と session file は役割が異なる:
+
+- project file: 作品状態 `Document` + workspace layout + panel config（`EditorSession` は含まない）
+- session file: 最後に開いた project と `EditorSession`（ツール/色/ペン/ビューの編集セッション）
 
 ## 依存方向の原則
 
 ### 守る方向
 
-- `desktopApp` -> `app-core`, `render`, `desktop-support`, `canvas`, `ui-shell`
-- `ui-shell` -> `plugin-host`, `panel-dsl`, `plugin-sdk` が前提とする契約
-- `canvas` -> `app-core`
-- `render` -> `app-core`
-- `plugin-host` -> panel/plugin schema
-- plugin -> `plugin-sdk`
+- `apps/desktop` → 水平土台（`geometry` / `raster` / `document-model` / `editor-state` /
+  `canvas-geometry` / `frame-profiler`）、feature 演算（`paint-engine` / `gpu-paint` /
+  `project-store` / `pen-io`）、パネル基盤入口（`panel-runtime` / `panel-workspace`）
+- 水平土台ドメイン: `geometry` → `raster` → `editor-state` / `document-model`（一方向。
+  `editor-state` は `document-model` に依存しない）
+- `paint-engine` / `gpu-paint` / `canvas-geometry` → 水平土台ドメイン
+- `panel-runtime` → `panel-wasm-host` / `panel-html` / `panel-protocol` /（host state 構築のため）
+  `document-model` / `editor-state` / `raster`
+- `panel-wasm-host` → `panel-protocol`
+- `panel-workspace` → `geometry`
+- `project-store` → `document-model` / `raster` / `panel-workspace`
+- パネル crate → `panel-sdk` のみ
 
-### 禁止したい方向
+### 禁止する方向
 
-- `app-core` -> `apps/desktop` / OS / GPU / `wgpu`
-- `app-core` -> `plugin-host` / Wasm runtime
-- plugin -> host 内部型の直接参照
-- plugin -> GPU / event loop 直接制御
-- `desktop-support` -> canvas / panel runtime の本体
-- `render` -> file I/O や plugin discovery
-- `render` -> project / workspace I/O の意味論
-- `ui-shell` の presentation 側 -> Wasm runtime の詳細
-- `canvas` -> panel runtime
+- 水平土台 → `apps/desktop` / OS / GPU(`wgpu`) / Wasm(`wasmtime`) / `blitz`
+- `editor-state` → `document-model`（循環回避）
+- パネル基盤の契約（`panel-protocol`）→ ドメイン（`document-model` / `editor-state`）
+- パネル crate → host 内部型の直接参照 / GPU / event loop 直接制御
+- `canvas-geometry` → project / workspace I/O の意味論 / GPU 実装
+- `panel-workspace` 配置側 → Wasm runtime の詳細
+- `paint-engine` → panel runtime
 
 ## 境界設計の原則
 
@@ -402,99 +309,96 @@ color 選択 UI とその操作フローは plugin が担う。
 
 host は次を直接所有する。
 
-- GPU
-- event loop
-- canvas 実行 runtime
-- 画面生成
+- GPU・event loop・GPU ペイント dispatch・画面生成
 
-### 1-a. キャンバス編集は GPU で行う
+#### 1-a. キャンバス編集は GPU で行う
 
-- キャンバスへの全ての描画操作（ブラシ・消しゴム・塗りつぶし等）は GPU compute shader で実行する
+- キャンバスへの描画操作（ブラシ・消しゴム・塗りつぶし等）は GPU compute shader で実行する
 - キャンバスビットマップは GPU テクスチャとして保持し、CPU バッファに戻す操作を行わない
 - CPU は描画パラメータの計算とコマンド発行のみを担い、ピクセル演算は GPU に委ねる
 - **キャンバス編集中のビットマップデータの CPU→GPU 転送は禁止**（差分であっても不可）
 - CPU から GPU へ渡すのは座標・サイズ・色等の uniform buffer パラメータのみ
 
-### 2. plugin は意味論と UI を持つ
+### 2. パネルは意味論と UI を持つ
 
-plugin は次を持つ。
+パネルは UI・操作フロー・project / workspace / tool / color / view の操作意味論・host へ
+要求する command / service request を持つ。
 
-- UI
-- 操作フロー
-- project / workspace / tool / color / view の意味論
-- host へ要求する command / service request
+### 3. パネルは host を直接触らない
 
-### 3. plugin は host を直接触らない
+パネルは常に安定 API（`panel-sdk`）と DTO（`panel-protocol`）を通る。直接参照を禁止するもの:
 
-plugin は常に安定 API を通る。
+- `Document` の内部構造・GPU resource・window handle・runtime 内部状態
 
-直接参照を禁止するもの:
-
-- `Document` の内部構造
-- GPU resource
-- window handle
-- runtime 内部状態
-
-## 追加判断基準
-
-新しい機能を追加するときは、まず次を確認する。
+## 新機能を追加するときの配置判断
 
 ### host に置くべきもの
 
 - GPU / 高速描画 / 低遅延入力処理
-- canvas 差分適用 runtime
-- 厳しい性能要件がある処理
+- canvas 差分適用 runtime・厳しい性能要件のある処理
 
-### plugin に置くべきもの
+### パネルに置くべきもの
 
-- UI
-- I/O フロー
-- 設定管理
+- UI・I/O フロー・設定管理
 - view / panel / tool / color / workspace の操作意味論
 - 外部記述ファイルに基づく振る舞い
 
+### 水平土台に置くべきもの
+
+- 複数 feature が共有する純粋な型・演算（GPU/OS/Wasm 非依存）
+
+### 垂直 feature に置くべきもの
+
+- 特定機能の I/O フロー・状態・request 翻訳
+
 ## 新規ファイル配置規約
 
-今後 module を増やすときは、少なくとも次の意味で名前を使い分ける。
+module を増やすときは、少なくとも次の意味で名前を使い分ける。
 
 ### `runtime/`
 
-- 外部 runtime や stateful bridge を置く。
-- Wasm / event / host snapshot などの仲介を含める。
+- 外部 runtime や stateful bridge を置く（Wasm / event / host state snapshot などの仲介）
 
 ### `presentation/`
 
-- layout、hit-test、focus、text input、surface 生成など見た目寄りを置く。
-- runtime の詳細を直接持ち込まない。
+- layout / hit-test / focus / text input / surface 生成など見た目寄りを置く。runtime の詳細を
+  直接持ち込まない
 
 ### `services/`
 
-- project / workspace / export / catalog など I/O orchestration を置く。
-- serializer や dialog を束ねる上位フローを置く。
+- project / workspace / export / catalog など I/O orchestration を置く
+
+### `features/`
+
+- 機能 1 つを縦に閉じる垂直スライス（サービスハンドラ + 状態 + 翻訳器）を置く
+
+### `platform/`
+
+- OS 固有 I/O（dialog / path）を置く。アプリ層ロジックに OS 分岐を書かない
+  （`#[cfg(target_os)]` 禁止。差異はクロスプラットフォームライブラリに吸収させる）
 
 ### `ops/`
 
-- canvas や render の高頻度オペレーションを置く。
-- stateless か、少なくとも狭い演算責務へ切る。
+- canvas や render の高頻度オペレーションを置く。stateless か狭い演算責務へ切る
 
 ### `tests/`
 
-- crate 単位・module 単位で分離した境界テストを置く。
-- integration でしか検証できないもの以外は `apps/desktop` へ残さない。
+- crate 単位・module 単位の境界テストを置く
 
 ### `lib.rs`
 
-- module 宣言、公開 API、薄い re-export に寄せる。
-- 大きな実装や分岐を `lib.rs` に戻さない。
+- module 宣言・公開 API・薄い re-export に寄せる。大きな実装を `lib.rs` に戻さない
 
 ## この文書の結論
 
 `altpaint` の目標構造は、
 
-- host が性能要求の高い runtime を持ち
-- plugin が機能と UI を持ち
-- `desktopApp`、`app-core`、`render`、`canvas`、`ui-shell`、`plugin-host` が明確に分担する
+- host（`apps/desktop`）が GPU・event loop・ペイント dispatch・提示という性能要求の高い
+  runtime を所有し
+- 水平土台が feature 横断の純粋な型・演算を最安定層として持ち
+- パネル基盤が host とパネルの契約・実行・配置を仲介し
+- 垂直 feature が機能 1 つを「実装 + 状態 + 翻訳」で縦に閉じ
+- パネル（HTML+CSS+Wasm）が UI と操作意味論を担う
 
-という形である。
-
-現状がこの形とずれていても、今後の変更は常にこの文書を基準に寄せていく。
+という形である。新規の変更は常にこの文書を基準に寄せていく。整合する依存事実は
+[docs/MODULE_DEPENDENCIES.md](MODULE_DEPENDENCIES.md) を参照すること。
