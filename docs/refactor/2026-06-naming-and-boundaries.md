@@ -550,7 +550,7 @@ diagnostics: HandlerEffects (旧 HandlerResult) の diagnostics を panel-runtim
 | BL-146 | `panel_on_host_change` ABI 改名 (P26)、`panel_render_*` 規約整理 | term | panel-macros, panel-protocol, 12 パネル | — | B9 |
 | BL-147 | SDK runtime.rs 分割 (abi/state/events/diagnostics) + wasm/native 対の宣言マクロ化 | cohesion | panel-sdk | BL-141 | B9 |
 | BL-148 | layers パネルの index 反転をホスト側 1 箇所に集約。方式は**安定 id 指定に確定**: BL-142 の LayerState DTO に既存の layer id (`RasterLayer.id`) を含め、選択・並べ替え等の request も id 指定にする。表示順 layers_json 供給案は不採用 (並べ替えで index の意味が変わり、BL-093 の revision キャッシュと相性が悪い) | leak | panel-runtime, layers パネル | BL-142 | B9 |
-| BL-149 | tool-palette のサイズ記憶 (config.size_memory JSON blob + ペン rotation 自前計算) をホスト tool 状態へ移管 | god | tool-palette, desktop/features/tools | BL-142 | B9 |
+| BL-149 | tool-palette のサイズ記憶 (config.size_memory JSON blob + ペン rotation 自前計算) をホスト tool 状態へ移管。**B10 で繰り越し確定** (下記 §3.10 参照): `EditorSession` 保存形式変更 + UI 経路別挙動 (ドロップダウン/バケツは非記憶) を保つコマンド分割が必要で挙動変更を伴う。rotation 自前計算は該当コード消滅済みで対象なし。ROADMAP「今後の検討項目」へ記録 | god | tool-palette, desktop/features/tools | BL-142 | B9→繰り越し |
 | BL-150 | エントリポイントテストマクロ (assert_entrypoints!) 追加、12 パネルのコピペテスト置換 | dup | panel-sdk, 12 パネル | — | B9 |
 | BL-151 | layers パネルの RENAME_BUF/rename_text 二重真実解消 | cohesion | layers パネル | BL-145 | B9 |
 | BL-152 | キーボードショートカット文字列正規化のホスト/SDK 規約を panel-protocol に定数化 | leak | desktop/keyboard.rs, panel-protocol | BL-144 | B9 |
@@ -581,6 +581,7 @@ perf 項目の in/out 判定基準: **境界修正・API 再形成に随伴し�
 | StatusBar の PanelRuntime 管理パネル化 | panel-runtime 調査 | workspace パネルではない (move/resize 不能) ため管理下に入れる意味が薄い。HtmlSurfaceRenderer ハンドル + Arc テクスチャ (BL-092) で unsafe と tuple 漏出は解消できる |
 | desktop 内 PaintBackend を独立クレート化 | — | 消費者が desktop のみで、下層からの参照も不要。features/paint モジュールで十分 (過剰分割の回避)。クレート化の判断基準は「desktop 以外 (特に下層) からの参照の有無」で統一 — frame-profiler は gpu-paint 等の下層から計測点を参照されるためクレート化する (§1.3) |
 | `panel-protocol` と panel-api の単純統合 (app-core 依存ごと) | ADR 016 検討 | Wasm 側に app-core が混入するため不可 (ADR 016 の判断を踏襲)。app-core 依存切断 + 解体 (C9) を採用 |
+| tool-palette サイズ記憶のホスト移管 (BL-149) | ADR 018 backlog | B10 (文書確定) スコープでは挙動変更を伴うため繰り越し。`EditorSession` 永続フィールド追加 (= session 保存形式変更) と、UI 経路で記憶/非記憶が分岐する現状 (ドロップダウン `select_tool`・バケツ系は同一 `SessionCommand` を発行するが非記憶) を保つコマンド分割/引数追加が必要。純粋な整理ではなく機能設計。判断条件と受け入れ条件は ROADMAP「今後の検討項目」へ記録。rotation 自前計算は該当コード消滅済みで対象なし |
 
 ---
 

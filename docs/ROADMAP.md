@@ -50,6 +50,24 @@
 - 目標構造は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 実コードの構造は [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md)
 
+### 今後の検討項目 (機能変更を伴う繰り越し)
+
+- **tool-palette サイズ記憶のホスト移管 (旧 BL-149)**: 現状はパネル側 `config.size_memory`
+  JSON blob (`tool:pen_id` / `eraser:pen_id` キー → サイズ) に保持し、`activate_pen` /
+  `activate_eraser` / `previous_pen` / `next_pen` ハンドラのみで「現サイズを記憶 → 切替 →
+  目標サイズを復元」する。これをホスト `EditorSession` の tool 状態へ移すには、(1)
+  `EditorSession` への永続フィールド追加 (= session 保存形式の変更)、(2) UI 経路で挙動が
+  分岐する現状 (ドロップダウン `select_tool` ・バケツ系はサイズ記憶しないが、同一の
+  `SessionCommand::SelectTool` / `SelectNextPenPreset` を発行する) を保つための
+  コマンド分割または引数追加、が必要で、純粋な「ホストへ寄せる整理」ではなく挙動を
+  変える機能設計になる。ADR 018 の B10 (文書確定) スコープを越えるため繰り越し。
+  着手時の受け入れ条件: 4 UI 経路 (ペン/消しゴム切替・前後ペン・ドロップダウン・バケツ系)
+  の記憶/非記憶挙動を再現するゴールデンテスト、session round-trip の後方互換 (旧
+  session JSON が新フィールド欠落でも既定値で読める serde `#[serde(default)]`)。
+  なお旧 BL-149 が併記していた「ペン rotation 自前計算」は既に該当コードが存在せず
+  (`PenPreset.rotation_degrees` は `editor-state` 所有で host `ToolState` revision に反映済み)、
+  移管対象なし。
+
 ---
 
 ## Phase 9 — render クレート完全削除と描画完全 GPU 化
