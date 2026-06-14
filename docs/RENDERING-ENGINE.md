@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、`altpaint` のレンダリングエンジンをどの粒度で分割し、どの順番で実装し、どこまでを `render` クレートの責務にするかを詳細に記述する。
+この文書は、`altpaint` のレンダリングエンジンをどの粒度で分割し、どの順番で実装し、各責務をどのクレート（`paint-engine` / `canvas-geometry` / `gpu-paint` / desktop の `present_quads` ・ `presenter`）へ割り当てるかを詳細に記述する。
 
 対象は主に以下である。
 
@@ -27,16 +27,16 @@ UIパネルのレイアウトやプラグイン実行は主目的ではない。
 ## 基本原則
 
 1. **表示責務と編集意味論を分離する**
-   - 作品状態の正しさは `app-core`
-   - どう見せるかは `render`
+   - 作品状態の正しさは `document-model` / `editor-state`
+   - どう見せるかは `paint-engine` の計画 + presenter の提示
 2. **全展開を避ける**
    - 見えていない範囲まで毎回フル合成しない
    - タイル単位、dirty 範囲単位で扱う
 3. **提示と内部表現を分ける**
    - 永続化形式とレンダリング向け展開形式は分けてよい
 4. **GPU所有権はホストが握る**
-   - `apps/desktop` がデバイス・キュー・サーフェスを所有する
-   - `render` はそれに渡す描画入力を作る
+   - `apps/desktop` がデバイス・キュー・サーフェスを所有する（presenter）
+   - `paint-engine` の計画と `gpu-paint` の compute dispatch がそれに渡す描画入力を作る
 5. **オーバーレイを第一級に扱う**
    - スナップガイド、選択枠、ブラシプレビュー、コマ境界は独立レイヤーとして扱う
 6. **キャンバス編集は GPU で行う**
@@ -51,10 +51,10 @@ UIパネルのレイアウトやプラグイン実行は主目的ではない。
 
 描画パイプラインは概ね次の層に分ける。
 
-1. ドキュメント層
+1. ドキュメント層（`document-model`）
    - `Document`
    - `Page`
-   - `Panel`
+   - `Koma`（コマ）
    - `RasterLayer`
 2. 描画準備層
    - 可視範囲計算
@@ -73,8 +73,8 @@ UIパネルのレイアウトやプラグイン実行は主目的ではない。
    - スナップ
    - ページ/コマ境界
    - ブラシカーソル
-6. 提示層
-   - `FramePlan` / `DirtyFramePlan` 生成
+6. 提示層（現行: `present_quads` の純データ DTO 生成 → `presenter` の GPU 提示）
+   - quad / overlay / canvas plan の生成（旧 `FramePlan` / `DirtyFramePlan` 相当）
    - UI ベーステクスチャ更新
    - キャンバステクスチャ更新
    - オーバーレイテクスチャ更新
@@ -127,9 +127,11 @@ MVP時点では、レンダリングエンジンが満たすべき最低契約�
 ## 主要コンポーネント
 
 > 注: 旧 `render` クレートは Phase 9F で物理削除済み。`RenderContext` /
-> `RenderFrame` / `FramePlan` / `RenderGraph` といった旧名は実在しない。
-> 以下は現行（ADR 018 完了後）の対応コンポーネントである。本節を含む本文書全体の
-> 全面改稿は BL-162（B10）で行う。
+> `RenderFrame` / `FramePlan` / `CanvasScene` / `RenderGraph` といった旧名は実在しない。
+> 以下は現行（ADR 018 / B10 完了後）の対応コンポーネントである。MVP 期の設計スケッチ
+> （タイルキャッシュ、合成器、`CanvasViewTransform` の独立型等）は未実装の将来余地として
+> 残すが、現に動いている構造は「描画データフロー（現行 GPU 経路）」「責務分割の現在地」
+> 「最小モジュール構成」の各節を正本とする。
 
 ### 1. 計画 / 表示幾何（`paint-engine` + `canvas-geometry`）
 
@@ -352,14 +354,16 @@ MVPで扱う変換:
 
 ## レンダリングエンジンの最小モジュール構成
 
-Phase 9F (2026-04-29) で旧 `crates/render/` は物理削除され、現状は次の構成:
+Phase 9F (2026-04-29) で旧 `crates/render/` は物理削除され、ADR 018 / B10 完了時点では
+純データ DTO・固定レイアウト計算・GPU 提示が次のように配置されている:
 
-- `crates/render-types/src/` — 純データ DTO (FramePlan / CanvasPlan / PixelRect / CanvasScene 等。パネル面は含まない — パネルは `PanelRuntime::render_panels` による GPU 直描画)
-- `apps/desktop/src/wgpu_canvas.rs` — `PresentScene` と GPU 提示パイプライン
-- `apps/desktop/src/frame/` — 背景・前景・overlay の solid/circle/line quad 構築
-- `apps/desktop/src/app/canvas_frame.rs` — CPU キャンバススナップショット (`CanvasFrame`)
+- `crates/canvas-geometry/src/` — `CanvasViewGeometry`（view↔page 写像 + `TextureQuad`）。表示幾何の単一経路
+- `apps/desktop/src/present_quads/` — desktop 固定レイアウト計算と presenter 入力 DTO（`CanvasPlan` / `CanvasOverlayState` / solid・circle・line quad ビルダ / `LayerDirtyAccumulator`）。純関数で `wgpu` 非依存
+- `apps/desktop/src/presenter/` — `wgpu` 提示パイプライン（旧 `wgpu_canvas.rs` を `shaders` / `pipelines` / `textures` / `frame` / `theme` へ分割）
+- `apps/desktop/src/app/cpu_canvas_snapshot.rs` — CPU キャンバススナップショット (`CpuCanvasSnapshot`、旧 `render::RenderFrame`)。GPU 不在時フォールバックと viewport / 表示幾何計算で参照
 
-MVPではファイル数を抑えてよいが、純データ DTO と GPU 提示パイプラインを分離する責務境界は崩さない。
+純データ DTO（`present_quads`）と GPU 提示（`presenter`）を分離する責務境界は崩さない。パネル面は
+この計画 DTO に含まれない（`PanelRuntime` による GPU 直描画。ADR 016）。
 
 ## パフォーマンス目標との接続
 
@@ -386,7 +390,7 @@ MVPではファイル数を抑えてよいが、純データ DTO と GPU 提示�
 - タイル/チャンク単位の読み出し
 - 差分保存またはフル保存の切替余地
 
-つまり、`render` の要求は `storage` に伝えるが、`render` が直接 SQLite やファイル構造を知る必要はない。
+つまり、レンダリング側の要求は `project-store`（SQLite 永続化）に伝えるが、`paint-engine` / presenter が直接 SQLite やファイル構造を知る必要はない。
 
 ## 将来拡張
 
@@ -401,14 +405,14 @@ MVPではファイル数を抑えてよいが、純データ DTO と GPU 提示�
 
 ## 実装優先順位
 
-優先順位は以下とする。
+1〜3 は ADR 018 / B10 時点で達成済み（現行構造）、4〜6 は将来余地である。
 
-1. `RenderFrame` ベースの安定提示
-2. `CanvasViewTransform` の整理
-3. dirty 範囲の明示化
-4. タイルキャッシュ導入
-5. オーバーレイの独立描画
-6. 合成モード拡張
+1. ✅ 安定提示（`present_quads` 純データ DTO → `presenter` GPU 提示。旧 `RenderFrame` 経路は撤去）
+2. ✅ view 変換の集約（`canvas-geometry::CanvasViewGeometry` 単一経路 + `editor-state` の `view_policy`）
+3. ✅ dirty 範囲の明示化（`PaintPlan.dirty` / `LayerDirtyAccumulator`）
+4. タイルキャッシュ導入（未着手）
+5. オーバーレイの独立描画（GPU 直描画化済み。さらなる独立更新は将来）
+6. 合成モード拡張（将来）
 
 ## この文書の結論
 
