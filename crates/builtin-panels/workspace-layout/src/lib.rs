@@ -6,13 +6,15 @@
 
 use panel_sdk::{
     dom::{html_escape, query_selector, set_inner_html},
-    host,
-    runtime::{emit_service, event_string},
+    host_state::{WorkspaceState, section},
+    runtime::{emit_request, host_section},
+    serde::Deserialize,
     services,
 };
 
 /// `workspace.panels_json` 内 1 エントリのパネル。
-#[derive(Default, serde::Deserialize)]
+#[derive(Default, Deserialize)]
+#[serde(crate = "panel_sdk::serde")]
 struct PanelEntry {
     #[serde(default)]
     id: String,
@@ -20,6 +22,16 @@ struct PanelEntry {
     title: String,
     #[serde(default)]
     visible: bool,
+}
+
+/// 可視性トグルの payload (`data-args` の value / panel_id を運ぶ)。
+#[derive(Default, Deserialize)]
+#[serde(crate = "panel_sdk::serde")]
+struct VisibilityToggle {
+    #[serde(default)]
+    value: i32,
+    #[serde(default)]
+    panel_id: String,
 }
 
 const SELF_PANEL_ID: &str = "builtin.workspace-layout";
@@ -52,20 +64,22 @@ fn init() {}
 #[panel_sdk::panel_on_host_change]
 fn on_host_change() {
     if let Some(list) = query_selector("#workspace-panels") {
-        let json = host::workspace::panels_json();
+        // BL-142: workspace セクションを型付き DTO として 1 回取得する。
+        let json = host_section::<WorkspaceState>(section::WORKSPACE)
+            .map(|workspace| workspace.panels_json)
+            .unwrap_or_default();
         set_inner_html(list, &render_panel_list(&json));
     }
 }
 
 #[panel_sdk::panel_handler]
-fn set_visibility(value: i32) {
-    let panel_id = event_string("panel_id");
-    if panel_id.is_empty() {
+fn set_visibility(payload: VisibilityToggle) {
+    if payload.panel_id.is_empty() {
         return;
     }
-    emit_service(&services::workspace_layout::set_panel_visibility(
-        panel_id,
-        value != 0,
+    emit_request(&services::workspace_layout::set_panel_visibility(
+        payload.panel_id,
+        payload.value != 0,
     ));
 }
 
@@ -73,13 +87,12 @@ fn set_visibility(value: i32) {
 mod tests {
     use super::*;
 
-    #[test]
-    fn entrypoints_callable_on_native() {
-        init();
-        on_host_change();
-        set_visibility(0);
-        set_visibility(1);
-    }
+    panel_sdk::assert_entrypoints!(entrypoints_callable_on_native => {
+        init(),
+        on_host_change(),
+        set_visibility(VisibilityToggle { value: 0, panel_id: "builtin.layers".to_string() }),
+        set_visibility(VisibilityToggle { value: 1, panel_id: "builtin.layers".to_string() }),
+    });
 
     #[test]
     fn render_panel_list_emits_data_args_with_panel_id() {
