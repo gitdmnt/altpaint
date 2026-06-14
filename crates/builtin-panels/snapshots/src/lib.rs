@@ -1,9 +1,9 @@
 //! `builtin.snapshots` パネル (Phase 10 DOM mutation 版)。
 
 use panel_sdk::{
-    dom::{html_escape, query_selector, set_inner_html},
-    host,
-    runtime::emit_service,
+    dom::set_text,
+    host_state::{DocumentState, SnapshotState, ToolState, section},
+    runtime::{emit_request, host_section},
     services,
 };
 
@@ -12,39 +12,33 @@ fn init() {}
 
 #[panel_sdk::panel_on_host_change]
 fn on_host_change() {
-    if let Some(node) = query_selector("#title") {
-        set_inner_html(node, &html_escape(&host::document::title()));
+    // BL-142: 購読セクションを 1 回ずつ取得し型付き DTO へ落とす。
+    if let Some(document) = host_section::<DocumentState>(section::DOCUMENT) {
+        set_text("#title", &document.title);
+        set_text("#page-count", &document.page_count.to_string());
+        set_text("#panel-count", &document.koma_count.to_string());
     }
-    if let Some(node) = query_selector("#page-count") {
-        set_inner_html(node, &host::document::page_count().to_string());
+    if let Some(tool) = host_section::<ToolState>(section::TOOL) {
+        set_text("#active-tool", &tool.active);
     }
-    if let Some(node) = query_selector("#panel-count") {
-        set_inner_html(node, &host::document::koma_count().to_string());
-    }
-    if let Some(node) = query_selector("#active-tool") {
-        set_inner_html(node, &html_escape(&host::tool::active_name()));
-    }
-    if let Some(node) = query_selector("#storage-status") {
-        set_inner_html(node, &html_escape(&host::snapshot::storage_status()));
-    }
-    if let Some(node) = query_selector("#snapshot-count") {
-        set_inner_html(node, &host::snapshot::count().to_string());
+    if let Some(snapshot) = host_section::<SnapshotState>(section::SNAPSHOT) {
+        set_text("#storage-status", &snapshot.storage_status);
+        set_text("#snapshot-count", &snapshot.count.to_string());
     }
 }
 
 #[panel_sdk::panel_handler]
 fn create_snapshot() {
-    emit_service(&services::snapshot::create("Snapshot"));
+    emit_request(&services::snapshot::create("Snapshot"));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn entrypoints_callable_on_native() {
-        init();
-        on_host_change();
-        create_snapshot();
-    }
+    panel_sdk::assert_entrypoints!(entrypoints_callable_on_native => {
+        init(),
+        on_host_change(),
+        create_snapshot(),
+    });
 }

@@ -16,6 +16,14 @@ pub mod test_macros;
 pub use panel_protocol::host_state;
 pub use panel_protocol::keyboard;
 pub use panel_protocol::names;
+
+// typed handler payload (BL-141) / host_state DTO (BL-142) の derive を、パネルが
+// 個別に serde / serde_json を Cargo 依存へ加えずに使えるよう再公開する。
+// パネルは `#[derive(panel_sdk::serde::Deserialize)]` ではなく、`use panel_sdk::serde;`
+// 後に `#[derive(serde::Deserialize)]` と書ける (derive マクロが `::serde` ではなく
+// スコープ内 `serde` を解決するため)。
+pub use serde;
+pub use serde_json;
 pub use panel_protocol::{
     RequestDescriptor, Diagnostic, DiagnosticLevel, HandlerEffects, StatePatch, StatePatchOp,
 };
