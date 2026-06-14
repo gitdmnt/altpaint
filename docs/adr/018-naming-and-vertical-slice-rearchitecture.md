@@ -1,9 +1,10 @@
 # ADR 018: 用語体系の確立と垂直スライス再編 (大規模リファクタリング)
 
-- 作業日時: 2026-06-12 (起票。各バッチ完了時に追記し、B10 で確定)
-- 作業 Agent: claude-fable-5 (Claude Code)
-- ステータス: 進行中
+- 作業日時: 2026-06-12 (起票) / 2026-06-14 (B10 で確定)
+- 作業 Agent: claude-fable-5 (Claude Code) / claude-opus-4-8[1m] (B10 確定)
+- ステータス: 完了 (B0〜B10 全バッチ実装・検証済み)
 - 設計書: [docs/refactor/2026-06-naming-and-boundaries.md](../refactor/2026-06-naming-and-boundaries.md)
+- 確定時点の検証: テスト 562 passed / 0 failed / 9 ignored、clippy 警告 0、ワークスペース 30 メンバー
 
 ## 背景
 
@@ -58,6 +59,123 @@
 - **Blitz/stylo グローバル Mutex** (`STYLE_RESOLVE_LOCK`): 外部ライブラリ制約のため維持。マルチウィンドウ/並行 resolve が要件化した時点で再評価。
 - **レイヤー操作の安定 id 指定** (BL-148): layers パネルの index 反転問題は表示順 index ではなく `RasterLayer.id` ベースの request に統一して解消する。
 
+## B10 確定記録 (BL-164)
+
+B0〜B10 を実装・検証し、本 ADR の決定事項を以下に確定する。文書は実コードを正本とし、確定時点の grep / Read で裏取りした。
+
+### 用語体系 (確定)
+
+§1 の表のとおり確定。残存は wire 値・テスト fixture・docs 履歴のみで、production ロジックには旧義の `Panel` (コマ義) / `plugin` (パネル義) が存在しない。`koma` / `panel` / `page` / `canvas` / `paint` / `frame` / `host state` / `snapshot` / `runtime` / `session` が責務一致で確立した。
+
+### Koma 採用理由 (確定。§2 を確認)
+
+§2 のとおり確定。`Frame` は提示系語彙 (描画フレーム・profiler) と再衝突し二義問題を移すだけ、`ComicPanel` は "Panel" 部分文字列が grep 分離不能。`Koma` は衝突ゼロ・grep 一意・UI 表示「コマ N」(日本語が正本) と一致。実装で衝突ゼロを確認 (`Koma` 型は document-model のみ、UI パネルは `panel` 語に統一)。
+
+### 最終クレート構成 (30 メンバー、確定)
+
+`Cargo.toml` の `members` が正本。30 メンバー = ライブラリ 17 (水平土台 6 + パネル基盤 7 + 垂直 feature 4) + ビルトインパネル 12 + デスクトップアプリ 1。
+
+- 水平土台 (6): `geometry` / `raster` / `document-model` / `editor-state` / `canvas-geometry` / `frame-profiler`
+- パネル基盤 (7): `panel-protocol` / `panel-wasm-host` / `panel-html` / `panel-runtime` / `panel-workspace` / `panel-sdk` / `panel-macros`
+- 垂直 feature (4): `paint-engine` / `gpu-paint` / `project-store` / `pen-io`
+- ビルトインパネル (12): `app-actions` / `color-palette` / `job-progress` / `koma-list` / `layers` / `snapshots` / `text-flow` / `tool-palette` / `tool-settings` / `view-controls` / `workspace-layout` / `workspace-presets`
+- アプリ (1): `apps/desktop` (package `altpaint-desktop` / bin `altpaint`、内部に `features/` 11 垂直スライス: paint / project / export / workspace / tools / koma / view / snapshots / text / panel_interaction / status_bar)
+
+解体・削除済みクレート (umbrella / God オブジェクト): `app-core` / `panel-api` / `render-types` (→ canvas-geometry へ縮約改名) / `panel-schema` / `plugin-host` / `plugin-sdk` / `plugin-macros` / `ui-shell` / `storage` / `desktop-support`。
+
+### wire 名定数を水平 `panel-protocol::names` に置く例外の理由 (確定)
+
+§4 のとおり確定。正本は `crates/panel-protocol/src/names.rs`。host↔Wasm 境界の wire 名は共有契約点が物理的に 1 箇所必要であり、これは水平土台に置く以外に成立しない。**この例外が「水平に feature 知識を置かない」原則と矛盾しない根拠は additive 性にある**: 各 feature は自分の `names::<feature>` モジュール (例 `view` / `koma_nav` / `snapshot`) を additive に追加するだけで、既存モジュールの横断編集を発生させない。実コードでも namespace は feature 別 `pub mod` に分割済みで、新 namespace の追加は新 `pub mod` の追記 + テストの `ALL_WIRE_NAMES` への追記に閉じる (既存定数の編集を伴わない)。垂直分割の目的 (横断編集の排除) は「既存 feature の定義を触らずに済むこと」であり、共有定義点が 1 ファイルに同居すること自体は目的に反しない。
+
+### GPU 非必須化 = CpuPaintBackend フォールバック維持 (BL-136、確定)
+
+§その他 BL-136 のとおり確定。`apps/desktop/src/features/paint/backend/` に `PaintBackend` trait + `CpuPaintBackend` / `GpuPaintBackend` を実装。GPU を正経路としつつ `CpuPaintBackend` を GPU 初期化失敗 (アダプタ取得失敗・RGBA8 storage 非対応環境) 時の表示フォールバックとして維持し、GPU 必須化はしない。判断根拠: アルファ段階ではあらゆる環境でのアプリ起動・編集可能性が可用性要件であり、CPU 参照実装 1 つを維持するコストは PaintBackend 抽象により小さい (二重実装は backend 内に閉じ、CPU/GPU ゴールデン等価テストで挙動同値を担保)。
+
+### コマ即時合成の維持 + 遅延評価切替条件 (BL-080、確定)
+
+§その他 BL-080 のとおり確定。`Koma.composite_cache` の再計算をレイヤー変異の単一ミューテーション入口に集約 (B5 BL-080)。**遅延評価 (dirty フラグ + 表示時評価) への切替条件**: frame-profiler の計測でコマ合成コストがフレーム予算を圧迫することが実環境で観測された場合に限る。それまでは即時合成を維持する (即時合成は実装が単純で、ミューテーション入口集約により合成漏れ・stale を構造的に防げるため、観測なき先行最適化はしない)。
+
+### Blitz/stylo グローバル Mutex (`STYLE_RESOLVE_LOCK`) の再評価条件 (確定)
+
+§その他のとおり確定。外部ライブラリ (Blitz/stylo) のグローバル状態制約のため維持。**再評価条件**: マルチウィンドウ、またはパネルの並行 style resolve が要件化した時点。それまで単一ロックで直列化する (現状は単一プロセス・直列 resolve で競合がなく、ロック撤去には上流ライブラリ側の対応が前提となるため)。
+
+### 毎フレーム hit 収集の観測条件 (確定)
+
+`prepare_present_frame` の hit_tables フェーズがパネルの hit / move handle テーブルを毎フレーム GPU 非依存で再構築する現状を維持する。**dirty スキップ (パネルジオメトリ非変化フレームでの hit 収集省略) を導入する観測条件**: frame-profiler の計測で hit 収集がフレーム予算に対し有意なコストを占めることが実環境で観測された場合。これは新規実装を要する性能機能のため ROADMAP 扱い (perf 項目の out 基準。下記)。
+
+### B8 ストロークレイテンシ計測の論拠 (確定)
+
+B8 はパイプライン構造の変更であり、ストローク中レイテンシは構造的に非劣化である。論拠は 3 点:
+
+1. **CPU 全画素生成の廃止**: 旧 GPU 経路の「全画素を CPU で生成 → 破棄」と flood fill の計画段階での全面 visited 走査を `plan_paint` (画素を一切作らない `PaintPlan` 生成) へ置換。ストローク中に CPU 画素バッファが生成されないことを回帰テスト (`gpu_apply_does_not_touch_cpu_pixels`) で担保。
+2. **submit 集約**: `BrushPipeline::dispatch_stroke` が呼び出し側 encoder に compute pass を積むだけにし、ストローク区間の brush + composite を 1 encoder / 1 submit へ集約 (BL-133)。submit 回数がストロークあたり複数 → 1 へ減少。
+3. **GPU 同期の差分化**: `GpuSyncGranularity` による `DocumentCommand` 種別ごとの差分同期 (B7 BL-117) で、選択変更時の全ページ全コマ全転送を排除。
+
+frame-profiler は `canvas_latency_ms` (入力→present)、`gpu_sync_full_count` / `gpu_sync_differential_count` を計測下地として持つ。headless 環境ではインタラクティブセッションの前後実測値は採取していないが、上記 3 点で CPU 側ストローク処理コストは構造的に増えないため非劣化と判断する。実環境セッションでの前後実測は ROADMAP として残す。
+
+### perf 項目の in/out 基準 (確定)
+
+§その他のとおり確定。
+
+- **in-scope** (境界修正・API 再形成に随伴して解消される性能問題): GPU 同期粒度の差分化 (BL-117)、encoder 集約 / submit 集約 (BL-133)、flood fill の CPU 全面走査廃止 (BL-130)。これらは本 ADR で完了。
+- **out-of-scope** (新規実装を要する性能機能 → ROADMAP): タイルキャッシュ、hit 収集の dirty スキップ、コマ合成の遅延評価、ストロークレイテンシの実環境前後実測。
+
+### §1.1 原則 2 の受け入れ検証 (仮想 feature 追加ウォークスルー)
+
+設計の原則 2「feature 固有の知識を水平土台に置かず、新 feature の追加は自スライス + 自パネル + wire 名の additive 追記に閉じる」を、架空の小 feature を実際のコード構造に照らして追加シミュレーションして検証する。
+
+**想定 feature**: 「レイヤー不透明度スライダー」。パネルにスライダーを置き、ドラッグでアクティブレイヤーの不透明度を変える。現状コードに `layer opacity` は存在しないため純粋な新規追加となる。
+
+検証の結論を先に述べる: **この feature はレイヤー変異であるため、原則 2 の理想形 (自スライス + 自パネル + wire additive のみ) では完結せず、水平土台 (document-model) と中央集約点 (panel-runtime の translator / host_state) への編集が必要になる。** これは欠陥ではなく、本アーキテクチャの設計選択の帰結である (下記「評価」参照)。正直に touch point を列挙する。
+
+#### 触るファイル一覧 (実コード照合済み)
+
+| # | ファイル | 編集種別 | additive か横断か |
+| --- | --- | --- | --- |
+| 1 | `crates/panel-protocol/src/names.rs` (`mod layer`) | wire 名定数 `SET_OPACITY` 追加 + テスト `ALL_WIRE_NAMES` / ピン留めへ追記 | **既存モジュール内 additive** (既存定数は無編集) |
+| 2 | `crates/document-model/src/command.rs` | `DocumentCommand::SetActiveLayerOpacity { opacity }` variant 追加 | **水平 enum への横断追加** |
+| 3 | `crates/document-model/src/document.rs` | `apply` の match へ新 arm 追加 (レイヤー不透明度書込み) | **水平の横断編集** |
+| 4 | `crates/panel-runtime/src/request_translation.rs` (`translate_layer`) | `layer.set_opacity` → `DocumentCommand::SetActiveLayerOpacity` の match arm 追加 | **中央 translator の横断編集** |
+| 5 | `crates/panel-protocol/src/host_state.rs` (`struct LayerState`) | 現在の不透明度をパネルが読むため `opacity` フィールド追加 | **共有 DTO の横断編集** |
+| 6 | `crates/panel-runtime/src/host_state.rs` (`DocumentSection::build`) | `layers_json` 各要素に `opacity` を供給 | **中央 host_state builder の横断編集** |
+| 7 | 自パネルディレクトリ (既存 `crates/builtin-panels/layers/` か新規パネル) の `panel.html` / `panel.css` / `src/lib.rs` / `panel.meta.json` | スライダー UI + `emit_request(layer.set_opacity)` + host state 購読 | **自パネル内に閉じる** |
+| 8 (新規パネルの場合のみ) | `Cargo.toml` の `members` / `crates/panel-runtime/src/loader.rs` の `BUILTIN_PANELS` / `scripts/build-ui-wasm.{ps1,sh}` | パネル登録 | **中央 panel 一覧の横断追加** |
+
+#### 横断編集が必要になった原因 (正直な記録)
+
+1. **レイヤー操作は垂直 feature スライスではなく水平 `document-model` に属する**。`features/` に `layers` スライスは無く、レイヤー変異はすべて `DocumentCommand` (document-model) として表現される。よって「レイヤーに属性を 1 つ足す」変更は本質的に document-model への横断編集になる。これは「ドキュメントモデルは単一の権威」という設計選択の帰結であり、layer 操作を vertical feature 化していないため。
+2. **command 系 wire 名の翻訳は中央 `translate_layer` に集約されている** (BL-061)。service 系 (pass-through) と異なり、command 系は payload を typed `DocumentCommand` へ解す責務を中央 translator が持つため、新コマンドは中央編集を伴う。
+3. **host state の `document` セクションは中央 `DocumentSection` が単一構築する**。パネルが現在値を読むには共有 DTO (`LayerState`) と中央 builder の両方を編集する。
+4. **新規パネル登録は中央 `BUILTIN_PANELS` 配列 + ビルドスクリプトを横断する** (既存 `layers` パネルに UI を足すだけなら不要)。
+
+#### service 系 feature だった場合の比較 (理想形に最も近いケース)
+
+仮に feature が「ドキュメントを変異させない I/O サービス」(例: 新しい view 操作や新 export 形式) であれば、touch point は次に縮小する:
+
+- `panel-protocol::names::<feature>` に **新 `pub mod` を additive 追加** (既存モジュール無編集 — これが §4 例外の根拠そのもの)
+- `panel-runtime::request_translation.rs::register_default_translators` に `registry.register("<feature>.", passthrough(&[...]))` を **1 行追加**
+- `panel-runtime::services.rs::names` に再エクスポートを additive 追加
+- `apps/desktop/src/features/<feature>/` に自スライス (`mod.rs` + `service.rs` + ハンドラ) を新設
+- `apps/desktop/src/app/services/registry.rs` の `SERVICE_HANDLERS` に **ハンドラ 1 つを additive 追加**
+- 自パネルディレクトリ + (新規パネルなら) 中央パネル登録
+
+この service 系ケースでも、横断編集は「中央 registry 表 (`register_default_translators` / `SERVICE_HANDLERS`) への 1 行追記」と「中央パネル一覧への 1 行追記」に限定され、**既存 feature の定義の編集は発生しない**。すなわち横断は「集約点への additive 追記」のみで、設計書 §1.1 が排除を狙った「既存 feature 横断の連鎖編集」は発生しない。
+
+#### 評価
+
+- **原則 2 が完全に成立する範囲**: service 系 feature。wire 名 (additive `pub mod`)・自スライス・自パネルに閉じ、中央集約点 (`SERVICE_HANDLERS` / `register_default_translators` / `BUILTIN_PANELS`) への追記は **既存エントリ無編集の additive 1 行** に限る。§4 の wire 名例外の正当化 (additive で横断編集なし) は実コードで成立を確認した。
+- **原則 2 が部分的にしか成立しない範囲 (改善余地)**: ドキュメントモデルの属性を増やす feature (レイヤー不透明度等)。`DocumentCommand` / `document.rs::apply` / `translate_layer` / `LayerState` / `DocumentSection` の 5 水平箇所への横断編集が必要。これは layer 操作を vertical feature 化せず水平 document-model に集約した設計選択の帰結であり、本 ADR のスコープでは是正しない (document-model は単一権威であることに価値があり、属性追加の横断は局所的で連鎖しない)。属性追加 feature を additive 化したい場合は document-model にプラグイン属性機構を導入する別 ADR を要する (ROADMAP 候補)。
+- **中央 registry の additive 性**: `SERVICE_HANDLERS` / `register_default_translators` / `BUILTIN_PANELS` はいずれも「追記専用の集約表」であり、新 feature 追加で既存エントリを編集しない。これは「集約点 1 つを additive に伸ばす」形であり、横断連鎖編集 (1 feature 追加で N 既存 feature を触る) とは異なる。原則 2 の本質的目標 (横断連鎖の排除) は達成されている。
+
+### 不採用リスト (確定)
+
+検討の上、本 ADR では採らなかった選択肢:
+
+- **UI パネル → `Pane` 改名は見送り**: `panel` を UI パネルの正準語として確立済み (コマは `Koma` へ分離済みで二義衝突は解消)。`Pane` への再改名は追加価値がなく、12 ビルトインパネル ID・wire 名・SDK 表面の広域改名コストに見合わない。
+- **表示順 `layers_json` 供給案は不採用** (BL-148): レイヤー選択/並べ替えは表示順 index ではなく安定 id (`RasterLayer.id`) を host state に供給する案を採り、表示順 index を host から渡してパネル側で反転する案は採らない (index 反転の二重管理を避けるため)。
+- **`paint_params` モジュールの早期削除は不採用→ B8 で実施** (BL-023): `MAX_STAMP_STEPS` が gpu-paint からも参照されるため B0 では削除せず、PaintPlan 化 (B8) で stamps が計画側に移り定数が `raster` のみで完結した時点で撤去。
+- **マイグレーションは書かない** (alpha 方針): Koma 改名 + SQLite スキーマ変更 + パネル ID 改名により旧プロジェクトファイル・セッション・ワークスペースプリセットは非互換。後方互換コードは残さない。
+
 ## 実装バッチ
 
 B0 死コード一掃 → B1 Koma 用語統一 → B2 クレート・型機械改名 → B3 重複一本化 + 既知バグ修正 → B4 コマンド経路一本化 → B5 土台再編 → B6 パネル境界整理 → B7 desktop 垂直分割 → B8 描画パイプライン再設計 → B9 パネル API 再設計 → B10 文書改稿。
@@ -84,3 +202,5 @@ B0 死コード一掃 → B1 Koma 用語統一 → B2 クレート・型機械�
   - **完了条件の充足**: CPU/GPU ゴールデン等価テスト (`features::paint::backend::tests::golden_equivalence::cpu_and_gpu_stamp_produce_matching_alpha`、CPU bitmap と GPU readback の中心 alpha 一致) green、ストローク中に CPU 画素バッファ生成が走らないテスト (`gpu_apply_does_not_touch_cpu_pixels`、ストローク + flood fill の apply 前後で Document CPU ビットマップがバイト一致 = visited 配列含め CPU 画素非生成) green、`plan_paint` の計画生成テスト 6 件 (`plan_tests.rs`、stamp 列・dirty rect・mode・color・target_layer の期待値) green。
   - バッチ検証 (claude-opus-4-8[1m]): cargo test --workspace 0 failed (desktop 197 + new 1 / paint-engine 54 / gpu-paint 23 / 他)、clippy 警告 0 (全ターゲット)、wasm ビルド成功 (12 パネル)、起動スモーク 25 秒パニックなし (ICU4X ja-segmentation 警告は無害)、gpu-paint 実 GPU テスト 23 passed (NVIDIA / Vulkan)、構造検証 (PaintPlan が paint-engine で画素なし / PaintBackend + Cpu/GpuPaintBackend が features/paint / PaintPlugin・PaintPluginRegistry 消滅 / gpu モジュール 6 分割 / BrushStrokeParams が StrokeMode・非 ToolKind / compute_stamp_positions pub(crate) / ToolKind 振る舞い match の散在解消) 全通過。検証で追加した「CPU 画素非生成」テストを除き残存・失敗なし。次は B9 (パネル API 再設計) または B10 (文書全面改稿)。
 - 2026-06-14: **B9 完了** (パネル API 再設計、SDK 先行チャンク = claude-fable-5[1m] / バッチ検証 = claude-opus-4-8[1m])。コミット 2434539..f9c3fa1。パネル作者向け表面を最終形にした (BL-140〜152、P25〜P28 / P31〜P33)。(1) **wire 名前空間統一 (P31 / BL-140)**: services の名前空間サフィックス無規約を 1 操作 1 名前へ統一 (`project_io.`→`project.` / `workspace_io.`→`workspace.` / `view_service.`→`view.` / `text_render.`→`text.`)。定義の正本 `panel-protocol::names` の定数値とピン留めテストを書換え、translator registry prefix 登録を追随。`workspace_layout.` / `tool_catalog.` / `koma_nav.` は別操作群/正準形として温存。(2) **emit_request 一本化 + runtime 分割 (P27 / BL-147)**: `panel-sdk` runtime を `abi` / `state` / `events` / `diagnostics` へ分割し wasm/native 対を `abi::wasm_or_native!` で畳む。`emit_request(&RequestDescriptor)` を request 発行の単一 API として確立 (command/service の区別は host 側 translator registry の静的振り分け)、旧 `emit_command` / `emit_service` / `emit_*_descriptor` を撤去。(3) **typed payload + typed DTO (BL-141 / BL-142)**: `#[panel_handler]` を引数 1 個の serde `Deserialize` 構造体対応に拡張し `event_string` 暗黙読みを廃止。host state は文字列 path ABI からセクション JSON 1 回取得 + serde の typed DTO (`ToolState` / `LayerState` / `DocumentState` 等) へ。(4) **SDK 水平 DOM ヘルパ + shortcut レジストリ (BL-143 / BL-144)**: `dom::{set_text, set_visible, set_button_active, set_slider, render_options, render_action_list}` (escape 内蔵) を吸い上げ 12 パネルのコピペを削除、`shortcut::{ShortcutRegistry, Outcome}` で tool-palette / app-actions の二重状態機械を置換。(5) **ABI 改名 + テストマクロ (P26 / BL-146 / BL-150)**: `panel_sync_host`→`panel_on_host_change`、`assert_entrypoints!` で 12 パネルのコピペテストを置換。(6) **state 2 層化 + 命名統一 (BL-145 / P33)**: state キーを `session.*` / `config.*` の 2 層へ (素キー廃止)、`set_text_node`→`dom::set_text`。(7) **layers 安定 id 化 (BL-148)**: `LayerState` DTO に `RasterLayer.id` を含め選択/並べ替え request を安定 id 指定へ。表示順 index 反転をホスト側 (`host_state.rs` で `"id": layer.id.0` を供給) 1 箇所へ集約しパネル側の二重反転を撤去 (表示順 layers_json 供給案は不採用)。(8) **Tool enum 撤去 (P28、バッチ検証で完了)**: SDK `Tool` enum + wire `tool.set_active` を撤去し、ツール起動を catalog id ベース `commands::tool::select_tool(tool_id)` (`tool.select`) に一本化 (tool-palette 専用ボタンは slot→catalog id 変換経由。内部 `SessionCommand::SetActiveTool` はキーボード/テスト経路で存続)。SDK 先行チャンクでは P28 が「後続チャンク」として未着手だったため、バッチ検証で完了させ検証修正コミット 1 件 (f9c3fa1) を追加。検証: cargo test --workspace 0 failed、clippy 警告 0 (panel-sdk は native + wasm 両ターゲット)、`.\scripts\build-ui-wasm.ps1` 成功 (12 パネル)、起動スモーク 22 秒パニックなし (GPU=Vulkan/RTX2070)、構造検証 grep (`event_string` が `crates/builtin-panels` に 0 件 / 旧 wire サフィックスリテラル 0 件 / `emit_command`・`emit_service` コード消滅 / SDK DOM 水平ヘルパ存在 / `panel_on_host_change` ABI / SDK `Tool` enum 消滅 / shortcut レジストリを 2 パネルが使用 / layers が安定 id ベース) 全通過。スコープ外: BL-149 (tool-palette サイズ記憶のホスト移管) は tools feature 所管として config.size_memory blob を温存 (パネル側コメントに明記)。残る `tool.set_active` 文字列リテラルは panel-wasm-host の汎用 host-ABI テスト fixture (WAT) 内の任意データのみで wire 参照ではない。次は B10 (文書全面改稿と最終クリーンアップ)。
+- 2026-06-14: **B8 / B9 検証再確認** (claude-opus-4-8[1m])。B10 着手時点で `cargo test --workspace` 0 failed (テスト 562 passed / 0 failed / 9 ignored)、`cargo clippy --workspace --all-targets` 警告 0、ワークスペース 30 メンバーを再確認。B8 (描画パイプライン) / B9 (パネル API) の到達点が回帰なく維持されていることを確定。
+- 2026-06-14: **B10 完了** (文書全面改稿と ADR 確定、claude-opus-4-8[1m])。BL-164 (本 ADR の確定) を実施。(1) **本 ADR を「完了」へ確定**: ステータスを「進行中」→「完了」に更新し、上部に確定時点の検証値 (テスト 562 passed / 0 failed / 9 ignored、clippy 警告 0、30 メンバー) を明記。(2) **「B10 確定記録」節を追加**: 用語体系・Koma 採用理由・最終クレート構成 (30 メンバー、`Cargo.toml` の `members` で裏取り)・wire 名定数を `panel-protocol::names` に置く例外の additive 根拠・GPU 非必須 (CpuPaintBackend フォールバック、BL-136)・コマ即時合成維持と遅延評価切替条件 (BL-080)・Blitz/stylo グローバル Mutex 再評価条件・毎フレーム hit 収集の観測条件・B8 ストロークレイテンシ計測の論拠 (CPU 全画素生成廃止 + submit 集約 + GPU 同期差分化による構造的非劣化)・perf 項目 in/out 基準・不採用リスト (UI パネル→Pane 改名見送り等) を実コード照合の上で確定記録。(3) **§1.1 原則 2 の受け入れ検証 (仮想 feature 追加ウォークスルー)**: 架空の「レイヤー不透明度スライダー」feature を実コード構造に照らし touch point を列挙。**正直な結論**: service 系 feature は wire 名 (additive `pub mod`) + 自スライス + 自パネル + 中央集約点 (`SERVICE_HANDLERS` / `register_default_translators` / `BUILTIN_PANELS`) への additive 1 行追記に閉じ、既存 feature の横断連鎖編集は発生しない (原則 2 成立)。一方ドキュメントモデル属性を増やす feature (レイヤー不透明度) は `DocumentCommand` / `document.rs::apply` / `translate_layer` / `LayerState` / `DocumentSection` の 5 水平箇所への横断編集が必要 (layer 操作を水平 document-model に集約した設計選択の帰結、ROADMAP 候補として改善余地を明記)。検証は `Cargo.toml` / `crates/panel-protocol/src/names.rs` / `crates/document-model/src/command.rs` / `crates/panel-runtime/src/request_translation.rs` / `crates/panel-runtime/src/host_state.rs` / `apps/desktop/src/app/services/registry.rs` / `crates/panel-runtime/src/loader.rs` の Read で裏取り。検証: 文書のみの変更につきコード無改変、`cargo test --workspace` 0 failed・clippy 警告 0 維持。B0〜B10 全バッチ完了により本 ADR を確定する。
