@@ -178,6 +178,9 @@ fn native_runtime_helpers_are_safe_noops() {
     runtime::set_state_bool("flag", true);
     runtime::set_state_i32("count", 3);
     runtime::set_state_string("name", "demo");
+    // P27: emit_request が単一発行 API。旧 emit_command/emit_service/*_descriptor は
+    // 移行期間の薄い別名 (次チャンクで撤去)。
+    runtime::emit_request(&services::project_io::save_current());
     runtime::emit_command(&RequestDescriptor::new("project.save"));
     runtime::emit_command_descriptor(&RequestDescriptor::new("project.load"));
     runtime::emit_service(&services::project_io::save_current());
