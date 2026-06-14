@@ -157,6 +157,11 @@
   - **ToolDescriptor (BL-134)**: `editor-state::ToolDescriptor` がツール種別から gesture 種別 / 合成モード / サイズ解決を導出し、paint-engine / desktop の `ToolKind` クローズド match 散在を吸収。
   - **GPU 非必須を維持 (BL-136)**: `CpuPaintBackend` を GPU 初期化失敗時のフォールバックとして残し、`CpuCanvasSnapshot`（旧 `CanvasFrame`）を表示経路へ統合。GPU 必須化はしない。`paint_params` モジュール撤去 (BL-023) で `MAX_STAMP_STEPS` は `raster` のみに定義。
   - 検証 (claude-opus-4-8[1m] によるバッチ検証): cargo test --workspace 0 failed (desktop 197+1 / paint-engine 54 / gpu-paint 23 / 他)、clippy 警告 0 (全ターゲット)、wasm ビルド成功 (12 パネル)、起動スモーク 25 秒パニックなし、gpu-paint 実 GPU テスト 23 passed (NVIDIA/Vulkan)、CPU/GPU ゴールデン等価テスト green、ストローク中 CPU 画素非生成テスト (flood fill 含む) green。ストロークレイテンシは構造的に悪化しない (CPU 全画素生成廃止 + submit 集約 + GPU 同期差分化)。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+- **Phase 25 / B9 進行中 (2026-06-14)**: ADR 018 — バッチ B9「パネル API 再設計」。SDK の発行 API・wire 名前空間・runtime 分割を先行実施 (パネル移行は後続チャンク):
+  - **wire 名前空間統一 (P31 / BL-140)**: services の wire 名前空間サフィックス無規約を解消し 1 操作 1 名前へ統一 (`project_io.`→`project.` / `workspace_io.`→`workspace.` / `view_service.`→`view.` / `text_render.`→`text.`)。定義の正本 `panel-protocol::names` の定数値とピン留めテストを書換え、`panel-runtime` の translator registry prefix 登録を追随。SDK/desktop は定数参照のため自動追随。UI レイアウトの `workspace_layout.` と `tool_catalog.` / `koma_nav.` は別操作群/正準形として温存。
+  - **SDK runtime 分割 + emit_request (BL-147 / P27)**: `panel-sdk` の単一 `runtime.rs` を関心別 4 サブモジュール (`abi` / `state` / `events` / `diagnostics`) へ分割し、wasm/native 対を `abi::wasm_or_native!` 宣言マクロで畳んだ。`emit_request(&RequestDescriptor)` を request 発行の単一 API として確立 (command/service の区別は host 側 translator registry の静的振り分けに委ねる)。旧 `emit_command`/`emit_service`/`emit_*_descriptor` は `emit_request` の薄い別名として移行期間のみ残置 (12 パネル移行完了時に撤去)。
+  - **後続チャンク (panel 移行)**: P28 (`Tool` enum + `tool.set_active` 撤去 → catalog id `tool.select` 一本化)、BL-145 (state 2 層化 `session::*`/`config::*` + 素キー廃止)、P33 (`set_text_node`→`dom::set_text` 命名統一)、emit 旧別名撤去は、各 12 パネルの「1 パネル 1 コミット」移行とともに後続チャンクで実施する。
+  - 検証 (claude-fable-5[1m]): cargo test --workspace 0 failed (panel-protocol 24 / panel-runtime 47 / panel-sdk 18 / desktop 198+6ignored / 他)、clippy 警告 0 (panel-sdk は native + wasm 両ターゲット)、12 パネル Wasm 再ビルド成功。
 
 ## 現在の workspace 構成
 
