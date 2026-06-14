@@ -6,7 +6,6 @@ extern crate self as panel_sdk;
 
 pub mod commands;
 pub mod dom;
-pub mod host;
 pub mod runtime;
 pub mod services;
 pub mod shortcut;

@@ -10,9 +10,7 @@ use std::sync::OnceLock;
 
 use blitz_html::HtmlDocument;
 use dom_api::DomCtx;
-use panel_protocol::abi::{
-    PANEL_INIT_EXPORT, PANEL_ON_HOST_CHANGE_EXPORT, PAYLOAD_VALUE_KEY, handler_export_name,
-};
+use panel_protocol::abi::{PANEL_INIT_EXPORT, PANEL_ON_HOST_CHANGE_EXPORT, handler_export_name};
 use panel_protocol::{HandlerEffects, HostCallInput};
 use serde_json::Value;
 use thiserror::Error;
@@ -107,7 +105,7 @@ impl PanelWasmInstance {
                     "missing lifecycle export: {PANEL_ON_HOST_CHANGE_EXPORT}"
                 ))
             })?;
-        call_export(&mut self.store, handler, None).map_err(PanelWasmHostError::Runtime)?;
+        call_export(&mut self.store, handler).map_err(PanelWasmHostError::Runtime)?;
         Ok(self.store.data().result.clone())
     }
 
@@ -121,12 +119,6 @@ impl PanelWasmInstance {
         input: &HostCallInput,
     ) -> Result<HandlerEffects, PanelWasmHostError> {
         let export_name = handler_export_name(handler_name);
-        let numeric_value = input
-            .event_payload
-            .get(PAYLOAD_VALUE_KEY)
-            .and_then(Value::as_i64)
-            .unwrap_or_default() as i32;
-        let payload = input.event_payload.get(PAYLOAD_VALUE_KEY).map(|_| numeric_value);
         self.store.data_mut().clear();
         self.store.data_mut().current_input = Some(input.clone());
         let handler = self
@@ -135,7 +127,7 @@ impl PanelWasmInstance {
             .ok_or_else(|| {
                 PanelWasmHostError::Runtime(format!("missing handler export: {export_name}"))
             })?;
-        call_export(&mut self.store, handler, payload).map_err(PanelWasmHostError::Runtime)?;
+        call_export(&mut self.store, handler).map_err(PanelWasmHostError::Runtime)?;
         Ok(self.store.data().result.clone())
     }
 
@@ -177,26 +169,19 @@ impl PanelWasmInstance {
     pub fn panel_init(&mut self) -> Result<HandlerEffects, PanelWasmHostError> {
         self.store.data_mut().clear();
         if let Some(init) = self.instance.get_func(&mut self.store, PANEL_INIT_EXPORT) {
-            call_export(&mut self.store, init, None).map_err(PanelWasmHostError::Runtime)?;
+            call_export(&mut self.store, init).map_err(PanelWasmHostError::Runtime)?;
         }
         Ok(self.store.data().result.clone())
     }
 }
 
-fn call_export(
-    store: &mut Store<HostCallContext>,
-    func: Func,
-    payload: Option<i32>,
-) -> Result<(), String> {
-    if let Ok(typed) = func.typed::<(), ()>(&mut *store) {
-        typed.call(store, ()).map_err(|error| error.to_string())
-    } else if let Ok(typed) = func.typed::<i32, ()>(&mut *store) {
-        typed
-            .call(store, payload.unwrap_or_default())
-            .map_err(|error| error.to_string())
-    } else {
-        Err("unsupported handler signature; expected () or (i32)".to_string())
-    }
+fn call_export(store: &mut Store<HostCallContext>, func: Func) -> Result<(), String> {
+    // BL-141: パネル handler は引数を取らず、payload は host function 経由で
+    // `event_payload` を引く。export はすべて `()` シグネチャ。
+    let typed = func
+        .typed::<(), ()>(&mut *store)
+        .map_err(|_| "unsupported handler signature; expected ()".to_string())?;
+    typed.call(store, ()).map_err(|error| error.to_string())
 }
 
 /// 全 host module の host function を linker に登録する。

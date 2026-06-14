@@ -34,8 +34,9 @@ pub const DOM_IMPORT_MODULE: &str = "dom";
 
 /// イベント payload のスカラ値を運ぶ予約キー。
 ///
-/// `i32` 1 引数の handler 呼出では `event_payload["value"]` を引数へ写す。
-/// SetValue / DragValue / SetText 等のホスト側イベントも同キーに値を格納する。
+/// SetValue / DragValue / SetText / slider 等のホスト側イベントは、スカラ値を
+/// `event_payload["value"]` に格納する。typed payload 構造体はこの `value` フィールドを
+/// 読むことでスカラ入力を受け取る (BL-141)。
 pub const PAYLOAD_VALUE_KEY: &str = "value";
 
 /// `event_payload` 全体の JSON バイト長を返す host function 名 (BL-141)。
@@ -47,9 +48,7 @@ pub const PAYLOAD_VALUE_KEY: &str = "value";
 /// - **typed payload** (`fn handler(payload: T)` で `T: serde::Deserialize + Default`):
 ///   ホストの `event_payload` 全体を本 ABI ([`EVENT_PAYLOAD_JSON_LEN`] /
 ///   [`EVENT_PAYLOAD_JSON_COPY`]) で 1 回取得し、`T` へ serde デシリアライズして渡す。
-///   `event_string` 等での暗黙 payload 読みを廃止する。
-/// - **legacy i32** (`fn handler(value: i32)`): 移行期間のみ許可。`event_payload["value"]`
-///   ([`PAYLOAD_VALUE_KEY`]) を `i32` で渡す。typed payload への移行完了時に撤去する。
+///   `event_string` 等での暗黙 payload 読みは廃止済み (BL-141: 全パネル移行完了)。
 pub const EVENT_PAYLOAD_JSON_LEN: &str = "event_get_payload_json_len";
 
 /// `event_payload` 全体の JSON を Wasm バッファへコピーする host function 名 (BL-141)。

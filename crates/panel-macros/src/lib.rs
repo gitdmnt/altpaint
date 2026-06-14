@@ -80,8 +80,6 @@ pub fn panel_on_host_change(attr: TokenStream, item: TokenStream) -> TokenStream
 enum HandlerArgKind {
     /// 引数なし。
     None,
-    /// legacy `i32` payload (`event_payload["value"]`)。移行期間のみ。
-    LegacyI32,
     /// typed payload (`T: serde::Deserialize + Default`)。`event_payload` 全体を渡す。
     Typed(Box<Type>),
 }
@@ -118,10 +116,6 @@ fn expand_panel_export(
     // typed payload は FFI 引数を持たず、wrapper 内で event_payload を取得する。
     let (wrapper_params, call) = match arg_kind {
         HandlerArgKind::None => (quote!(), quote!(#function_name();)),
-        HandlerArgKind::LegacyI32 => (
-            quote!(value: i32),
-            quote!(#function_name(value);),
-        ),
         HandlerArgKind::Typed(ty) => (
             quote!(),
             quote!(
@@ -186,7 +180,7 @@ fn validate_signature(signature: &syn::Signature, is_init: bool) -> syn::Result<
     if !is_init && input_count > 1 {
         return Err(syn::Error::new(
             signature.inputs.span(),
-            "panel handlers take zero or one payload argument (typed serde struct or legacy i32)",
+            "panel handlers take zero or one payload argument (a typed serde Deserialize struct)",
         ));
     }
 
@@ -194,9 +188,7 @@ fn validate_signature(signature: &syn::Signature, is_init: bool) -> syn::Result<
         return Ok(HandlerArgKind::None);
     };
     match argument {
-        // legacy i32 payload は移行期間のみ許可 (typed payload への移行で撤去)。
-        FnArg::Typed(argument) if matches_i32(&argument.ty) => Ok(HandlerArgKind::LegacyI32),
-        // それ以外の単一型引数は typed payload (T: Deserialize + Default) とみなす。
+        // 単一型引数は typed payload (T: Deserialize + Default) とみなす (BL-141)。
         FnArg::Typed(argument) => {
             if !matches!(&*argument.pat, Pat::Ident(_)) {
                 return Err(syn::Error::new(
@@ -210,16 +202,5 @@ fn validate_signature(signature: &syn::Signature, is_init: bool) -> syn::Result<
             receiver.span(),
             "panel entrypoints cannot take `self`",
         )),
-    }
-}
-
-fn matches_i32(ty: &Type) -> bool {
-    match ty {
-        Type::Path(path) => path
-            .path
-            .segments
-            .last()
-            .is_some_and(|segment| segment.ident == "i32"),
-        _ => false,
     }
 }

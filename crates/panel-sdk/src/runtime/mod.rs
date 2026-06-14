@@ -24,29 +24,6 @@ pub use state::{
     state_string, toggle_state,
 };
 
-use panel_protocol::RequestDescriptor;
-
-// P27: `emit_command` / `emit_service` / `emit_*_descriptor` は `emit_request` の
-// 別名でしかない (command/service の区別は host 側 translator registry が静的に
-// 振り分けるため、SDK は区別を提示しない)。これらの薄いラッパは 12 パネル移行
-// (次チャンク) 完了時に撤去し、`emit_request` 単一発行 API へ統合する。
-
-/// `emit_request` の旧名 (移行期間のみ)。
-pub fn emit_command(descriptor: &RequestDescriptor) {
-    emit_request(descriptor);
-}
-
-/// `emit_request` の旧名 (移行期間のみ)。
-pub fn emit_service(descriptor: &RequestDescriptor) {
-    emit_request(descriptor);
-}
-
-/// `emit_request` の旧名 (移行期間のみ)。
-pub fn emit_command_descriptor(descriptor: &RequestDescriptor) {
-    emit_request(descriptor);
-}
-
-/// `emit_request` の旧名 (移行期間のみ)。
-pub fn emit_service_descriptor(descriptor: &RequestDescriptor) {
-    emit_request(descriptor);
-}
+// P27: command/service の区別は host 側 translator registry が静的に振り分けるため、
+// SDK は単一発行 API [`emit_request`] のみを提示する。旧 `emit_command` /
+// `emit_service` / `emit_*_descriptor` の薄いラッパは 12 パネル移行完了に伴い撤去した。

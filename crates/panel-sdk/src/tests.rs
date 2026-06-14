@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use crate::{RequestDescriptor, commands, host, host_state, names, runtime, services, state};
+use crate::{RequestDescriptor, commands, host_state, names, runtime, services, state};
 use crate::{panel_handler, panel_init, panel_on_host_change};
 
 #[panel_init]
@@ -128,45 +128,6 @@ fn typed_state_keys_can_be_declared_once() {
 }
 
 #[test]
-fn typed_host_helpers_are_callable_on_native_targets() {
-    assert_eq!(host::document::title(), "");
-    assert_eq!(host::document::page_count(), 0);
-    assert_eq!(host::document::koma_count(), 0);
-    assert_eq!(host::document::layer_count(), 0);
-    assert_eq!(host::document::active_layer_name(), "");
-    assert_eq!(host::document::active_layer_index(), 0);
-    assert_eq!(host::document::active_layer_blend_mode(), "");
-    assert!(!host::document::active_layer_visible());
-    assert!(!host::document::active_layer_masked());
-    assert_eq!(host::document::layers_json(), "");
-    assert_eq!(host::tool::active_name(), "");
-    assert_eq!(host::tool::pen_name(), "");
-    assert_eq!(host::tool::pen_id(), "");
-    assert_eq!(host::tool::pen_presets_json(), "");
-    assert_eq!(host::tool::pen_index(), 0);
-    assert_eq!(host::tool::pen_count(), 0);
-    assert_eq!(host::tool::pen_size(), 0);
-    assert_eq!(host::tool::snapshot().pen_size, 0);
-    assert!(!host::tool::capabilities().supports_size);
-    assert_eq!(host::color::active_hex(), "");
-    assert_eq!(host::color::red(), 0);
-    assert_eq!(host::color::green(), 0);
-    assert_eq!(host::color::blue(), 0);
-    assert_eq!(host::view::zoom_milli(), 0);
-    assert_eq!(host::view::pan_x(), 0);
-    assert_eq!(host::view::pan_y(), 0);
-    assert!(!host::view::flipped_x());
-    assert!(!host::view::flipped_y());
-    assert_eq!(host::document::active_koma_x(), 0);
-    assert_eq!(host::document::active_koma_y(), 0);
-    assert_eq!(host::document::active_koma_width(), 0);
-    assert_eq!(host::document::active_koma_height(), 0);
-    assert_eq!(host::jobs::active(), 0);
-    assert_eq!(host::jobs::queued(), 0);
-    assert_eq!(host::snapshot::storage_status(), "");
-}
-
-#[test]
 fn native_runtime_helpers_are_safe_noops() {
     let mut batch = runtime::StatePatchBuffer::new();
     batch.set_bool("flag", true);
@@ -180,12 +141,9 @@ fn native_runtime_helpers_are_safe_noops() {
     runtime::set_state_bool("flag", true);
     runtime::set_state_i32("count", 3);
     runtime::set_state_string("name", "demo");
-    // P27: emit_request が単一発行 API。旧 emit_command/emit_service/*_descriptor は
-    // 移行期間の薄い別名 (次チャンクで撤去)。
+    // P27: emit_request が単一発行 API (旧 emit_command/emit_service/*_descriptor は撤去済み)。
     runtime::emit_request(&services::project_io::save_current());
-    runtime::emit_command(&RequestDescriptor::new("project.save"));
-    runtime::emit_command_descriptor(&RequestDescriptor::new("project.load"));
-    runtime::emit_service(&services::project_io::save_current());
+    runtime::emit_request(&RequestDescriptor::new("project.save"));
     runtime::info("info");
     runtime::warn("warn");
     runtime::error("error");
