@@ -1,10 +1,9 @@
 //! `builtin.text-flow` パネル (Phase 10 DOM mutation 版)。
 
 use panel_sdk::{
-    dom::{query_selector, set_attribute, set_inner_html},
-    runtime::{
-        emit_service, event_string, set_state_i32, set_state_string, state_i32, state_string,
-    },
+    dom::{set_slider, set_text},
+    runtime::{emit_request, set_state_i32, set_state_string, state_i32, state_string},
+    serde::Deserialize,
     services, state,
 };
 
@@ -13,25 +12,26 @@ const FONT_SIZE: state::IntKey = state::int("font_size");
 const X: state::IntKey = state::int("x");
 const Y: state::IntKey = state::int("y");
 
+/// テキスト入力 payload (`altp:input:*` は `event_payload.value` を文字列で運ぶ)。
+#[derive(Default, Deserialize)]
+#[serde(crate = "panel_sdk::serde")]
+struct TextValue {
+    #[serde(default)]
+    value: String,
+}
+
+/// スライダー入力 payload (`altp:slider:*` は `event_payload.value` を整数で運ぶ)。
+#[derive(Default, Deserialize)]
+#[serde(crate = "panel_sdk::serde")]
+struct SliderValue {
+    #[serde(default)]
+    value: i32,
+}
+
 fn render_dom() {
-    if let Some(node) = query_selector("#font-size-label") {
-        set_inner_html(node, &state_i32(FONT_SIZE).to_string());
-    }
-    if let Some(node) = query_selector("#x-label") {
-        set_inner_html(node, &state_i32(X).to_string());
-    }
-    if let Some(node) = query_selector("#y-label") {
-        set_inner_html(node, &state_i32(Y).to_string());
-    }
-    if let Some(node) = query_selector("#font-size") {
-        set_attribute(node, "value", &state_i32(FONT_SIZE).to_string());
-    }
-    if let Some(node) = query_selector("#x") {
-        set_attribute(node, "value", &state_i32(X).to_string());
-    }
-    if let Some(node) = query_selector("#y") {
-        set_attribute(node, "value", &state_i32(Y).to_string());
-    }
+    set_slider("#font-size", state_i32(FONT_SIZE), "#font-size-label");
+    set_slider("#x", state_i32(X), "#x-label");
+    set_slider("#y", state_i32(Y), "#y-label");
 }
 
 #[panel_sdk::panel_init]
@@ -45,26 +45,25 @@ fn on_host_change() {
 }
 
 #[panel_sdk::panel_handler]
-fn update_text() {
-    let value = event_string("value");
-    set_state_string(INPUT_TEXT, &value);
+fn update_text(payload: TextValue) {
+    set_state_string(INPUT_TEXT, &payload.value);
 }
 
 #[panel_sdk::panel_handler]
-fn update_font_size(value: i32) {
-    set_state_i32(FONT_SIZE, value.clamp(8, 200));
+fn update_font_size(payload: SliderValue) {
+    set_state_i32(FONT_SIZE, payload.value.clamp(8, 200));
     render_dom();
 }
 
 #[panel_sdk::panel_handler]
-fn update_x(value: i32) {
-    set_state_i32(X, value.max(0));
+fn update_x(payload: SliderValue) {
+    set_state_i32(X, payload.value.max(0));
     render_dom();
 }
 
 #[panel_sdk::panel_handler]
-fn update_y(value: i32) {
-    set_state_i32(Y, value.max(0));
+fn update_y(payload: SliderValue) {
+    set_state_i32(Y, payload.value.max(0));
     render_dom();
 }
 
@@ -78,7 +77,7 @@ fn render_text() {
     let x = state_i32(X).max(0) as usize;
     let y = state_i32(Y).max(0) as usize;
     // 色指定 UI は未提供。空文字を渡すと host 側既定 (#000000) で描画される。
-    emit_service(&services::text_render::render_to_layer(
+    emit_request(&services::text_render::render_to_layer(
         &text, font_size, "", x, y,
     ));
 }
@@ -87,14 +86,13 @@ fn render_text() {
 mod tests {
     use super::*;
 
-    #[test]
-    fn entrypoints_callable_on_native() {
-        init();
-        on_host_change();
-        update_text();
-        update_font_size(64);
-        update_x(200);
-        update_y(300);
-        render_text();
-    }
+    panel_sdk::assert_entrypoints!(entrypoints_callable_on_native => {
+        init(),
+        on_host_change(),
+        update_text(TextValue { value: "hi".to_string() }),
+        update_font_size(SliderValue { value: 64 }),
+        update_x(SliderValue { value: 200 }),
+        update_y(SliderValue { value: 300 }),
+        render_text(),
+    });
 }
