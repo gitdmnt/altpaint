@@ -313,6 +313,29 @@ mod tests {
         assert!(view.action_descriptor_for_element_id("missing").is_none());
     }
 
+    /// BL-143: SDK の `render_action_list` は `data-args` を二重引用符 + HTML エンティティ
+    /// エスケープ (`&quot;`) で出力する。その出力が実 Blitz パーサで JSON へ復元できることを
+    /// 保証する (SDK escape 形式と panel-html パーサのクロスクレート契約)。
+    #[test]
+    fn action_descriptor_parses_entity_escaped_double_quoted_data_args() {
+        use crate::action::ActionDescriptor;
+        // panel_sdk::dom::render_action_list が生成する形式に一致させる。
+        let html = r#"<html><body>
+            <li id="layer.0" data-action="altp:activate:select_layer" data-args="{&quot;value&quot;:1}">L</li>
+        </body></html>"#;
+        let view = view(html);
+        let desc = view
+            .action_descriptor_for_element_id("layer.0")
+            .expect("descriptor parsed");
+        match desc {
+            ActionDescriptor::Altp { node_id, payload } => {
+                assert_eq!(node_id, "select_layer");
+                assert_eq!(payload.get("value").and_then(|v| v.as_i64()), Some(1));
+            }
+            other => panic!("expected altp descriptor, got {other:?}"),
+        }
+    }
+
     /// S2: collect_action_rects が CSS padding を反映する
     #[test]
     fn html_engine_collect_action_rects_returns_buttons_with_padding() {

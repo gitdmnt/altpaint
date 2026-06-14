@@ -167,6 +167,148 @@ pub fn html_escape(input: &str) -> String {
     out
 }
 
+// ===========================================================================
+// 水平 DOM ヘルパ (BL-143)
+//
+// 12 パネルに散在していた `set_text` / `set_visible` / `set_button_active` /
+// `set_slider` / `render_options` / `render_action_list` のコピペを SDK に集約する。
+// テキスト・属性値・ラベルは **すべて `html_escape` を内蔵** し、XSS を構造的に
+// 防ぐ (escape 安全性テストは本モジュールに集約)。`set_*` は native では
+// `query_selector` が `None` を返すため副作用なしの no-op になる。
+// ===========================================================================
+
+/// セレクタにマッチする要素のテキスト内容を設定する (escape 内蔵)。
+///
+/// `text` は `html_escape` を通して `set_inner_html` へ流す。host state 由来の
+/// 文字列をそのまま渡してよい (生 HTML として解釈されない)。
+pub fn set_text(selector: &str, text: &str) {
+    if let Some(node) = query_selector(selector) {
+        set_inner_html(node, &html_escape(text));
+    }
+}
+
+/// セレクタにマッチする要素の表示/非表示を `hidden` 属性で切り替える。
+pub fn set_visible(selector: &str, visible: bool) {
+    if let Some(node) = query_selector(selector) {
+        if visible {
+            clear_attribute(node, "hidden");
+        } else {
+            set_attribute(node, "hidden", "");
+        }
+    }
+}
+
+/// ボタン要素の `class` を `active` 状態に応じて `"btn active"` / `"btn"` へ設定する。
+pub fn set_button_active(selector: &str, active: bool) {
+    if let Some(node) = query_selector(selector) {
+        set_attribute(node, "class", if active { "btn active" } else { "btn" });
+    }
+}
+
+/// スライダーの `value` 属性を設定し、対応する表示要素のテキストも更新する。
+///
+/// `display_selector` が空文字列なら表示要素の更新は行わない (スライダーのみ更新)。
+pub fn set_slider(selector: &str, value: i32, display_selector: &str) {
+    if let Some(node) = query_selector(selector) {
+        set_attribute(node, "value", &value.to_string());
+    }
+    if !display_selector.is_empty() {
+        set_text(display_selector, &value.to_string());
+    }
+}
+
+/// `(value, label)` の組から `<option>` 列の HTML 断片を組み立てる (escape 内蔵)。
+///
+/// `selected` と一致する value の option に ` selected` を付与する。value / label は
+/// `html_escape` を通すため、host state 由来の文字列を安全に渡せる。返値は
+/// `set_inner_html` へ流す前提の HTML 断片 (要素自体の探索・設定は呼出側が行う)。
+pub fn render_options<'a, I>(options: I, selected: &str) -> String
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>,
+{
+    let mut html = String::new();
+    for (value, label) in options {
+        let mark = if value == selected { " selected" } else { "" };
+        html.push_str(r#"<option value=""#);
+        html.push_str(&html_escape(value));
+        html.push('"');
+        html.push_str(mark);
+        html.push('>');
+        html.push_str(&html_escape(label));
+        html.push_str("</option>");
+    }
+    html
+}
+
+/// `render_action_list` の 1 行を表す。data-action 付き `<li>` を生成する素材。
+///
+/// - `handler`: `data-action="altp:activate:<handler>"` に埋める handler 名。
+/// - `args`: `data-args` の JSON オブジェクト (`serde_json::Value`)。`Value::Null` なら
+///   `data-args` 属性を出力しない。
+/// - `active`: true なら `<li>` に `class="active"` を付与する。
+/// - `body`: `<li>` の内側 HTML (呼出側が `html_escape` 済みの断片を渡す)。
+#[derive(Debug, Clone)]
+pub struct ActionListItem {
+    pub handler: String,
+    pub args: serde_json::Value,
+    pub active: bool,
+    pub body: String,
+}
+
+impl ActionListItem {
+    /// handler 名と内側 HTML から最小の項目を作る (args なし・非 active)。
+    pub fn new(handler: impl Into<String>, body: impl Into<String>) -> Self {
+        Self {
+            handler: handler.into(),
+            args: serde_json::Value::Null,
+            active: false,
+            body: body.into(),
+        }
+    }
+
+    /// `data-args` の JSON を設定する。
+    pub fn with_args(mut self, args: serde_json::Value) -> Self {
+        self.args = args;
+        self
+    }
+
+    /// active フラグを設定する。
+    pub fn active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+}
+
+/// data-action 付き `<li>` 列の HTML 断片を組み立てる (属性値 escape 内蔵)。
+///
+/// handler 名・data-args JSON は属性値として `html_escape` を通す。`body` は呼出側が
+/// 構築した内側 HTML (動的文字列は呼出側で `html_escape` 済みの前提)。返値は
+/// `set_inner_html` へ流す HTML 断片。
+pub fn render_action_list<I>(items: I) -> String
+where
+    I: IntoIterator<Item = ActionListItem>,
+{
+    let mut html = String::new();
+    for item in items {
+        html.push_str("<li");
+        if item.active {
+            html.push_str(r#" class="active""#);
+        }
+        html.push_str(r#" data-action="altp:activate:"#);
+        html.push_str(&html_escape(&item.handler));
+        html.push('"');
+        if !item.args.is_null() {
+            html.push_str(r#" data-args=""#);
+            html.push_str(&html_escape(&item.args.to_string()));
+            html.push('"');
+        }
+        html.push('>');
+        html.push_str(&item.body);
+        html.push_str("</li>");
+    }
+    html
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,5 +378,78 @@ mod tests {
         let raw = r#"[{"id":"review","label":"Review workspace"}]"#;
         let opts = parse_option_list(raw, "id", "label");
         assert_eq!(opts, vec![("review".to_string(), "Review workspace".to_string())]);
+    }
+
+    // ---- 水平 DOM ヘルパ (BL-143) ----
+
+    #[test]
+    fn render_options_marks_selected_and_escapes() {
+        let html = render_options(
+            [("normal", "通常"), ("multiply", "乗算")],
+            "multiply",
+        );
+        assert_eq!(
+            html,
+            r#"<option value="normal">通常</option><option value="multiply" selected>乗算</option>"#
+        );
+    }
+
+    #[test]
+    fn render_options_escapes_value_and_label() {
+        // value / label の双方を escape する (host state 由来の文字列でも安全)。
+        let html = render_options([(r#"<a">"#, r#"<script>"#)], "");
+        assert!(!html.contains("<script>"));
+        assert!(!html.contains(r#"<a">"#));
+        assert!(html.contains("&lt;script&gt;"));
+        assert!(html.contains(r#"value="&lt;a&quot;&gt;""#));
+    }
+
+    #[test]
+    fn render_options_empty_iter_yields_empty_string() {
+        let html = render_options(std::iter::empty::<(&str, &str)>(), "x");
+        assert_eq!(html, "");
+    }
+
+    #[test]
+    fn render_action_list_builds_li_with_action_and_args() {
+        let html = render_action_list([
+            ActionListItem::new("select_layer", "<span>L1</span>")
+                .with_args(serde_json::json!({ "value": 0 }))
+                .active(true),
+            ActionListItem::new("select_layer", "<span>L2</span>")
+                .with_args(serde_json::json!({ "value": 1 })),
+        ]);
+        assert!(html.contains(r#"<li class="active" data-action="altp:activate:select_layer""#));
+        // data-args は属性値として escape されるため、" は &quot; になる。
+        assert!(html.contains(r#"data-args="{&quot;value&quot;:0}""#));
+        assert!(html.contains("<span>L1</span>"));
+        // 非 active 項目に class="active" は付かない。
+        assert!(html.contains(r#"<li data-action="altp:activate:select_layer""#));
+    }
+
+    #[test]
+    fn render_action_list_omits_data_args_when_null() {
+        let html = render_action_list([ActionListItem::new("reload", "x")]);
+        assert_eq!(html, r#"<li data-action="altp:activate:reload">x</li>"#);
+        assert!(!html.contains("data-args"));
+    }
+
+    #[test]
+    fn render_action_list_escapes_handler_name() {
+        // handler 名は属性値として escape する (XSS 防止)。
+        let html = render_action_list([ActionListItem::new(r#""><script>"#, "body")]);
+        assert!(!html.contains("<script>"));
+        assert!(html.contains("&lt;script&gt;"));
+    }
+
+    #[test]
+    fn dom_setters_are_safe_noops_on_native() {
+        // native では query_selector が None を返すため、副作用なしで通る。
+        set_text("#x", "<b>");
+        set_visible("#x", true);
+        set_visible("#x", false);
+        set_button_active("#x", true);
+        set_slider("#x", 12, "#display");
+        set_slider("#x", 12, "");
     }
 }
