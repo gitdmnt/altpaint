@@ -5,11 +5,20 @@
 
 use panel_sdk::{
     commands::{self, RgbColor},
-    dom::{clear_attribute, query_selector, set_attribute, set_inner_html},
-    host,
-    runtime::{emit_command, set_state_i32, state_i32},
+    dom::{query_selector, set_attribute, set_button_active, set_slider, set_text, set_visible},
+    host_state::{ColorState, section},
+    runtime::{emit_request, host_section, set_state_i32, state_i32},
+    serde::Deserialize,
     state,
 };
+
+/// スライダー入力 payload (`altp:slider:*` は `event_payload.value` を整数で運ぶ)。
+#[derive(Default, Deserialize)]
+#[serde(crate = "panel_sdk::serde")]
+struct SliderValue {
+    #[serde(default)]
+    value: i32,
+}
 
 const HUE: state::IntKey = state::int("hue");
 const SATURATION: state::IntKey = state::int("saturation");
@@ -23,10 +32,17 @@ const OKLCH_C: state::IntKey = state::int("oklch_c");
 const OKLCH_H: state::IntKey = state::int("oklch_h");
 
 fn render_dom() {
-    let r = host::color::red();
-    let g = host::color::green();
-    let b = host::color::blue();
-    let hex = host::color::active_hex();
+    // BL-142: color セクションを型付き DTO として 1 回取得する。
+    let color = host_section::<ColorState>(section::COLOR).unwrap_or(ColorState {
+        active: String::new(),
+        red: 0,
+        green: 0,
+        blue: 0,
+    });
+    let r = color.red as i32;
+    let g = color.green as i32;
+    let b = color.blue as i32;
+    let hex = color.active;
     let mode = state_i32(COLOR_MODE);
 
     let (hue, sat, val) = rgb_to_hsv(r, g, b);
@@ -66,39 +82,9 @@ fn render_dom() {
     set_button_active("#mode\\.oklch", mode == 2);
 }
 
-fn set_text(selector: &str, text: &str) {
-    if let Some(node) = query_selector(selector) {
-        set_inner_html(node, text);
-    }
-}
-
-fn set_slider(selector: &str, value: i32, display_selector: &str) {
-    if let Some(node) = query_selector(selector) {
-        set_attribute(node, "value", &value.to_string());
-    }
-    set_text(display_selector, &value.to_string());
-}
-
-fn set_visible(selector: &str, visible: bool) {
-    if let Some(node) = query_selector(selector) {
-        if visible {
-            clear_attribute(node, "hidden");
-        } else {
-            set_attribute(node, "hidden", "");
-        }
-    }
-}
-
-fn set_button_active(selector: &str, active: bool) {
-    if let Some(btn) = query_selector(selector) {
-        let cls = if active { "btn active" } else { "btn" };
-        set_attribute(btn, "class", cls);
-    }
-}
-
 fn emit_color_from_rgb(r: i32, g: i32, b: i32) {
     let rgb = RgbColor::new(clamp_channel(r), clamp_channel(g), clamp_channel(b));
-    emit_command(&commands::tool::set_color_hex(rgb.to_hex_string()));
+    emit_request(&commands::tool::set_color_hex(rgb.to_hex_string()));
     render_dom();
 }
 
@@ -131,64 +117,64 @@ fn set_mode_oklch() {
 }
 
 #[panel_sdk::panel_handler]
-fn set_hue(value: i32) {
-    let h = value.rem_euclid(360);
+fn set_hue(payload: SliderValue) {
+    let h = payload.value.rem_euclid(360);
     let rgb = hsv_to_rgb(h, state_i32(SATURATION), state_i32(VALUE));
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
 
 #[panel_sdk::panel_handler]
-fn set_saturation(value: i32) {
-    let s = value.clamp(0, 100);
+fn set_saturation(payload: SliderValue) {
+    let s = payload.value.clamp(0, 100);
     let rgb = hsv_to_rgb(state_i32(HUE), s, state_i32(VALUE));
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
 
 #[panel_sdk::panel_handler]
-fn set_value(value: i32) {
-    let v = value.clamp(0, 100);
+fn set_value(payload: SliderValue) {
+    let v = payload.value.clamp(0, 100);
     let rgb = hsv_to_rgb(state_i32(HUE), state_i32(SATURATION), v);
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
 
 #[panel_sdk::panel_handler]
-fn set_lab_l(value: i32) {
-    let l = value.clamp(0, 100);
+fn set_lab_l(payload: SliderValue) {
+    let l = payload.value.clamp(0, 100);
     let rgb = lab_to_rgb(l, state_i32(LAB_A), state_i32(LAB_B));
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
 
 #[panel_sdk::panel_handler]
-fn set_lab_a(value: i32) {
-    let a = value.clamp(-128, 127);
+fn set_lab_a(payload: SliderValue) {
+    let a = payload.value.clamp(-128, 127);
     let rgb = lab_to_rgb(state_i32(LAB_L), a, state_i32(LAB_B));
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
 
 #[panel_sdk::panel_handler]
-fn set_lab_b(value: i32) {
-    let b = value.clamp(-128, 127);
+fn set_lab_b(payload: SliderValue) {
+    let b = payload.value.clamp(-128, 127);
     let rgb = lab_to_rgb(state_i32(LAB_L), state_i32(LAB_A), b);
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
 
 #[panel_sdk::panel_handler]
-fn set_oklch_l(value: i32) {
-    let l = value.clamp(0, 100);
+fn set_oklch_l(payload: SliderValue) {
+    let l = payload.value.clamp(0, 100);
     let rgb = oklch_to_rgb(l, state_i32(OKLCH_C), state_i32(OKLCH_H));
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
 
 #[panel_sdk::panel_handler]
-fn set_oklch_c(value: i32) {
-    let c = value.clamp(0, 400);
+fn set_oklch_c(payload: SliderValue) {
+    let c = payload.value.clamp(0, 400);
     let rgb = oklch_to_rgb(state_i32(OKLCH_L), c, state_i32(OKLCH_H));
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
 
 #[panel_sdk::panel_handler]
-fn set_oklch_h(value: i32) {
-    let h = value.rem_euclid(360);
+fn set_oklch_h(payload: SliderValue) {
+    let h = payload.value.rem_euclid(360);
     let rgb = oklch_to_rgb(state_i32(OKLCH_L), state_i32(OKLCH_C), h);
     emit_color_from_rgb(rgb.red as i32, rgb.green as i32, rgb.blue as i32);
 }
@@ -409,21 +395,20 @@ mod tests {
         }
     }
 
-    #[test]
-    fn entrypoints_callable_on_native() {
-        init();
-        on_host_change();
-        set_mode_hsv();
-        set_mode_lab();
-        set_mode_oklch();
-        set_hue(120);
-        set_saturation(50);
-        set_value(80);
-        set_lab_l(50);
-        set_lab_a(20);
-        set_lab_b(-10);
-        set_oklch_l(70);
-        set_oklch_c(100);
-        set_oklch_h(180);
-    }
+    panel_sdk::assert_entrypoints!(entrypoints_callable_on_native => {
+        init(),
+        on_host_change(),
+        set_mode_hsv(),
+        set_mode_lab(),
+        set_mode_oklch(),
+        set_hue(SliderValue { value: 120 }),
+        set_saturation(SliderValue { value: 50 }),
+        set_value(SliderValue { value: 80 }),
+        set_lab_l(SliderValue { value: 50 }),
+        set_lab_a(SliderValue { value: 20 }),
+        set_lab_b(SliderValue { value: -10 }),
+        set_oklch_l(SliderValue { value: 70 }),
+        set_oklch_c(SliderValue { value: 100 }),
+        set_oklch_h(SliderValue { value: 180 }),
+    });
 }
