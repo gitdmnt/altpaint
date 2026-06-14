@@ -1,0 +1,11 @@
+{
+  "id": "builtin.job-progress",
+  "title": "Jobs",
+  "default_size": { "width": 320, "height": 200 },
+  "subscribes": ["document", "jobs"],
+  "preset": {
+    "anchor": "bottom-left",
+    "position": { "x": 376, "y": 24 },
+    "size": { "width": 280, "height": 180 }
+  }
+}

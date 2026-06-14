@@ -1,0 +1,454 @@
+//! パネル操作の幾何ステートマシン (D14): drag / resize / press。
+//!
+//! パネルの移動ドラッグ・リサイズドラッグ・ボタン押下の進行中状態と、
+//! ウィンドウ座標からのヒットテスト・矩形算出を所有する。ホストアクションの
+//! ルーティングは `app/host_request_router.rs` が担う。
+//!
+//! B7 で `app/panel_dispatch.rs` の幾何部を features/panel_interaction へ分離した。
+
+use geometry::{PanelSurfacePoint, WindowPoint, WindowRect};
+use panel_runtime::PanelEvent;
+use panel_workspace::ResizeHandle;
+
+use crate::app::DesktopApp;
+
+/// パネル移動ドラッグ中の被操作パネル情報を保持する。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PanelDragState {
+    pub panel_id: String,
+    /// パネル原点から見た掴み位置 (パネルローカル座標)。
+    pub grab_offset: PanelSurfacePoint,
+}
+
+/// Phase 11: パネルリサイズドラッグ中の状態。
+/// `start_rect` は pointer down 時のパネル矩形 (絶対 screen 座標)。
+/// pointer move のたびに `start_pointer` からの差分でリサイズ後の矩形を再計算する。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PanelResizeState {
+    pub(crate) panel_id: String,
+    pub(crate) handle: ResizeHandle,
+    pub(crate) start_rect: WindowRect,
+    pub(crate) start_pointer: WindowPoint,
+}
+
+/// ボタン系パネル操作の押下開始情報を保持する。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PanelPressState {
+    pub(crate) panel_id: String,
+    pub(crate) node_id: String,
+}
+
+/// パネル操作中の一時状態を保持する。
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct PanelInteractionState {
+    pub(crate) active_panel_drag: Option<PanelDragState>,
+    /// Phase 11: リサイズハンドルドラッグ中の状態。`active_panel_drag` と排他。
+    pub(crate) active_panel_resize: Option<PanelResizeState>,
+    pub(crate) pending_panel_press: Option<PanelPressState>,
+}
+
+impl DesktopApp {
+    /// 現在のウィンドウ viewport で指定パネルの矩形を解決する。
+    /// layout 未確定 (初回フレーム前) は `None` (BL-051: `usize::MAX`
+    /// フォールバックは右/下アンカーで画面外座標を返すため廃止)。
+    pub(crate) fn panel_rect_in_window(&self, panel_id: &str) -> Option<WindowRect> {
+        let layout = self.layout.as_ref()?;
+        self.panel_workspace.panel_rect(
+            panel_id,
+            layout.window_rect.width,
+            layout.window_rect.height,
+        )
+    }
+
+    pub(crate) fn begin_panel_interaction(&mut self, point: WindowPoint) -> bool {
+        self.panel_interaction.pending_panel_press = None;
+
+        // Phase 11: リサイズハンドルを最優先で評価。タイトルバー上端 6px (= North handle) も
+        // 移動より優先される。
+        if let Some((panel_id, handle)) = self.panel_resize_hit_from_window(point) {
+            let Some(start_rect) = self.panel_rect_in_window(&panel_id) else {
+                return false;
+            };
+            self.panel_interaction.active_panel_resize = Some(PanelResizeState {
+                panel_id,
+                handle,
+                start_rect,
+                start_pointer: point,
+            });
+            self.panel_interaction.active_panel_drag = None;
+            return true;
+        }
+
+        if let Some(panel_id) = self.panel_move_hit_from_window(point) {
+            let Some(panel_rect) = self.panel_rect_in_window(&panel_id) else {
+                return false;
+            };
+            self.panel_interaction.active_panel_drag = Some(PanelDragState {
+                panel_id,
+                grab_offset: panel_rect
+                    .to_panel_surface_point(point)
+                    .unwrap_or(PanelSurfacePoint::new(0, 0)),
+            });
+            return true;
+        }
+
+        let Some(event) = self.panel_event_from_window(point) else {
+            self.panel_interaction.active_panel_drag = None;
+            return false;
+        };
+
+        // Phase 9F: panel_event_from_window は HTML hit-table のみを参照するため
+        // 返り値は常に PanelEvent::Activate になる。SetValue / SetText / DragValue は
+        // Wasm パネル handler が dispatch_panel_event 経由で直接発行する経路に統一。
+        let PanelEvent::Activate { panel_id, node_id } = &event else {
+            return false;
+        };
+        let changed = self.panel_workspace.focus_panel_node(panel_id, node_id);
+        self.panel_interaction.pending_panel_press = Some(PanelPressState {
+            panel_id: panel_id.clone(),
+            node_id: node_id.clone(),
+        });
+        self.request_panel_reconcile_if_changed(changed);
+        // パネルボタンにヒットした場合は常に処理済みとしてキャンバスへのフォールスルーを防ぐ
+        true
+    }
+
+    pub(crate) fn drag_panel_interaction(&mut self, point: WindowPoint) -> bool {
+        // Phase 11: リサイズが active なら先に処理する。
+        if let Some(resize_state) = self.panel_interaction.active_panel_resize.clone() {
+            return self.drag_resize_interaction(point, &resize_state);
+        }
+
+        let Some(state) = self.panel_interaction.active_panel_drag.clone() else {
+            return false;
+        };
+        let PanelDragState {
+            panel_id,
+            grab_offset,
+        } = state;
+        let Some(layout) = self.layout.as_ref() else {
+            return false;
+        };
+        let (win_w, win_h) = (layout.window_rect.width, layout.window_rect.height);
+        let window_x = point.x.max(0) as usize;
+        let window_y = point.y.max(0) as usize;
+        let previous_rect = self.panel_workspace.panel_rect(&panel_id, win_w, win_h);
+        let changed = self.panel_workspace.move_panel_to(
+            &panel_id,
+            window_x.saturating_sub(grab_offset.x),
+            window_y.saturating_sub(grab_offset.y),
+            win_w,
+            win_h,
+        );
+        if changed {
+            self.request_panel_reconcile();
+            if let Some(rect) = previous_rect {
+                self.append_ui_panel_dirty_rect(rect);
+            }
+        }
+        changed
+    }
+
+    /// Phase 11: リサイズドラッグ 1 フレームの処理。
+    /// handle に応じて new_rect を算出し、最小/最大クランプ → workspace に書き戻し →
+    /// view の panel_size に即時反映する。
+    fn drag_resize_interaction(
+        &mut self,
+        point: WindowPoint,
+        state: &PanelResizeState,
+    ) -> bool {
+        let Some(layout) = self.layout.as_ref() else {
+            return false;
+        };
+        let (win_w, win_h) = (layout.window_rect.width, layout.window_rect.height);
+        let constraints = self
+            .panel_runtime
+            .panel_size_constraints(&state.panel_id)
+            .unwrap_or_default();
+        let new_rect = compute_resized_rect(
+            state,
+            point,
+            (win_w as u32, win_h as u32),
+            constraints,
+        );
+        let previous_rect = self.panel_workspace.panel_rect(&state.panel_id, win_w, win_h);
+
+        let applied = self.panel_workspace.resize_panel_keeping_anchor(
+            &state.panel_id,
+            new_rect,
+            (win_w, win_h),
+        );
+        let Some(applied_rect) = applied else {
+            return false;
+        };
+        // view の panel_size をフレーム内追従させる
+        let _ = self.panel_runtime.restore_panel_size(
+            &state.panel_id,
+            (
+                applied_rect.width.max(1) as u32,
+                applied_rect.height.max(1) as u32,
+            ),
+        );
+        self.request_panel_reconcile();
+        if let Some(rect) = previous_rect {
+            self.append_ui_panel_dirty_rect(rect);
+        }
+        true
+    }
+
+    /// HTML パネル hit テーブルだけを参照する。Phase 9F で DSL surface 側の hit-test 経路は
+    /// 削除済みのため、ここに来るのは HTML パネルのみ。
+    pub(crate) fn panel_event_from_window(&self, point: WindowPoint) -> Option<PanelEvent> {
+        let (panel_id, node_id) = self.panel_workspace.panel_hit_at(point)?;
+        Some(PanelEvent::Activate { panel_id, node_id })
+    }
+
+    pub(crate) fn panel_is_hovered(&self, point: WindowPoint) -> bool {
+        self.panel_move_hit_from_window(point).is_some()
+            || self.panel_event_from_window(point).is_some()
+    }
+
+    /// HTML パネルの move handle (タイトルバー) のみを確認する。
+    pub(crate) fn panel_move_hit_from_window(&self, point: WindowPoint) -> Option<String> {
+        self.panel_workspace.panel_move_handle_at(point)
+    }
+
+    /// Phase 11: パネルリサイズハンドル hit from ウィンドウ。
+    /// HTML パネル full rect のいずれかの 8 ハンドルにヒットした場合 `(panel_id, handle)`。
+    pub(crate) fn panel_resize_hit_from_window(
+        &self,
+        point: WindowPoint,
+    ) -> Option<(String, ResizeHandle)> {
+        self.panel_workspace.panel_resize_hit_at(point)
+    }
+}
+
+/// Phase 11 デフォルトの絶対最小サイズ (CSS 制約がない場合のフォールバック)。
+const ABS_MIN_WIDTH: i32 = 80;
+const ABS_MIN_HEIGHT: i32 = 60;
+
+/// Phase 11: リサイズドラッグ中の現在 pointer 位置から、handle に応じた new_rect を算出する。
+/// CSS の `min/max-width/height` 制約 (`constraints`) を尊重し、viewport 内に
+/// クランプ済みの矩形を返す。`constraints` が `None` の場合は CSS 制約なしと
+/// みなしてデフォルト (80x60 min / viewport max) を適用する。
+pub(crate) fn compute_resized_rect(
+    state: &PanelResizeState,
+    pointer: WindowPoint,
+    viewport: (u32, u32),
+    constraints: panel_runtime::PanelSizeConstraints,
+) -> WindowRect {
+    let dx = pointer.x - state.start_pointer.x;
+    let dy = pointer.y - state.start_pointer.y;
+
+    let start_left = state.start_rect.x as i32;
+    let start_top = state.start_rect.y as i32;
+    let start_right = start_left + state.start_rect.width as i32;
+    let start_bottom = start_top + state.start_rect.height as i32;
+
+    // CSS 制約と絶対最小を合成
+    let min_w = constraints
+        .min_width
+        .map(|v| (v as i32).max(ABS_MIN_WIDTH))
+        .unwrap_or(ABS_MIN_WIDTH);
+    let min_h = constraints
+        .min_height
+        .map(|v| (v as i32).max(ABS_MIN_HEIGHT))
+        .unwrap_or(ABS_MIN_HEIGHT);
+    let max_w = constraints
+        .max_width
+        .map(|v| (v as i32).max(min_w))
+        .unwrap_or(i32::MAX);
+    let max_h = constraints
+        .max_height
+        .map(|v| (v as i32).max(min_h))
+        .unwrap_or(i32::MAX);
+
+    // handle 別に left/top/right/bottom を更新
+    let mut new_left = start_left;
+    let mut new_top = start_top;
+    let mut new_right = start_right;
+    let mut new_bottom = start_bottom;
+
+    if state.handle.touches_left() {
+        // width = right - left を [min_w, max_w] に収めるための left の許容範囲
+        let left_min = start_right.saturating_sub(max_w).max(0);
+        let left_max = start_right.saturating_sub(min_w);
+        new_left = start_left.saturating_add(dx).clamp(left_min, left_max);
+    }
+    if state.handle.touches_right() {
+        let right_min = start_left.saturating_add(min_w);
+        let right_max = start_left.saturating_add(max_w).min(viewport.0 as i32);
+        new_right = start_right.saturating_add(dx).clamp(right_min, right_max);
+    }
+    if state.handle.touches_top() {
+        let top_min = start_bottom.saturating_sub(max_h).max(0);
+        let top_max = start_bottom.saturating_sub(min_h);
+        new_top = start_top.saturating_add(dy).clamp(top_min, top_max);
+    }
+    if state.handle.touches_bottom() {
+        let bottom_min = start_top.saturating_add(min_h);
+        let bottom_max = start_top.saturating_add(max_h).min(viewport.1 as i32);
+        new_bottom = start_bottom.saturating_add(dy).clamp(bottom_min, bottom_max);
+    }
+
+    // 念のため幅・高さを [min, max] にクランプ
+    let width = (new_right - new_left).clamp(min_w, max_w);
+    let height = (new_bottom - new_top).clamp(min_h, max_h);
+    let max_x = (viewport.0 as i32).saturating_sub(width).max(0);
+    let max_y = (viewport.1 as i32).saturating_sub(height).max(0);
+    let final_x = new_left.clamp(0, max_x);
+    let final_y = new_top.clamp(0, max_y);
+
+    WindowRect {
+        x: final_x as usize,
+        y: final_y as usize,
+        width: width as usize,
+        height: height as usize,
+    }
+}
+
+#[cfg(test)]
+mod resize_drag_tests {
+    use super::*;
+    use panel_runtime::PanelSizeConstraints;
+
+    fn state(handle: ResizeHandle, start_rect: WindowRect, start_pointer: WindowPoint) -> PanelResizeState {
+        PanelResizeState {
+            panel_id: "test.panel".to_string(),
+            handle,
+            start_rect,
+            start_pointer,
+        }
+    }
+
+    fn rect(x: usize, y: usize, w: usize, h: usize) -> WindowRect {
+        WindowRect {
+            x,
+            y,
+            width: w,
+            height: h,
+        }
+    }
+
+    fn no_constraints() -> PanelSizeConstraints {
+        PanelSizeConstraints::default()
+    }
+
+    #[test]
+    fn south_east_grows_width_and_height_only() {
+        let st = state(ResizeHandle::SouthEast, rect(100, 100, 200, 150), WindowPoint::new(300, 250));
+        let result = compute_resized_rect(&st, WindowPoint::new(350, 290), (1000, 800), no_constraints());
+        assert_eq!(result.x, 100);
+        assert_eq!(result.y, 100);
+        assert_eq!(result.width, 250); // 200 + 50
+        assert_eq!(result.height, 190); // 150 + 40
+    }
+
+    #[test]
+    fn north_west_moves_origin_and_shrinks_size() {
+        let st = state(ResizeHandle::NorthWest, rect(100, 100, 200, 150), WindowPoint::new(100, 100));
+        let result = compute_resized_rect(&st, WindowPoint::new(140, 130), (1000, 800), no_constraints());
+        assert_eq!(result.x, 140);
+        assert_eq!(result.y, 130);
+        assert_eq!(result.width, 160); // (100+200)-140
+        assert_eq!(result.height, 120); // (100+150)-130
+    }
+
+    #[test]
+    fn min_size_clamps_to_80x60_when_no_css_constraints() {
+        let st = state(ResizeHandle::SouthEast, rect(100, 100, 200, 150), WindowPoint::new(300, 250));
+        // 大きく内側にドラッグ
+        let result = compute_resized_rect(&st, WindowPoint::new(50, 50), (1000, 800), no_constraints());
+        assert_eq!(result.width, 80);
+        assert_eq!(result.height, 60);
+    }
+
+    #[test]
+    fn west_drag_clamps_to_min_width_keeping_right_edge() {
+        let st = state(ResizeHandle::West, rect(100, 100, 200, 150), WindowPoint::new(100, 175));
+        // 右辺 (x=300) を超えるほど内側にドラッグ
+        let result = compute_resized_rect(&st, WindowPoint::new(400, 175), (1000, 800), no_constraints());
+        assert_eq!(result.width, 80);
+        // x = right - min_width = 300 - 80 = 220
+        assert_eq!(result.x, 220);
+    }
+
+    #[test]
+    fn east_drag_clamps_to_viewport() {
+        let st = state(ResizeHandle::East, rect(100, 100, 200, 150), WindowPoint::new(300, 175));
+        // viewport の外までドラッグ
+        let result = compute_resized_rect(&st, WindowPoint::new(5000, 175), (800, 600), no_constraints());
+        // 右辺は viewport (800) でクランプされる
+        assert_eq!(result.x, 100);
+        assert_eq!(result.width, 700); // 800 - 100
+    }
+
+    #[test]
+    fn north_drag_only_changes_y_and_height() {
+        let st = state(ResizeHandle::North, rect(100, 100, 200, 150), WindowPoint::new(200, 100));
+        let result = compute_resized_rect(&st, WindowPoint::new(200, 50), (1000, 800), no_constraints());
+        assert_eq!(result.x, 100);
+        assert_eq!(result.width, 200);
+        assert_eq!(result.y, 50);
+        assert_eq!(result.height, 200); // 150 + 50
+    }
+
+    /// CSS の min-width が絶対最小 80 より大きい場合、CSS 制約が優先される。
+    #[test]
+    fn css_min_width_overrides_absolute_minimum() {
+        let st = state(ResizeHandle::SouthEast, rect(100, 100, 300, 200), WindowPoint::new(400, 300));
+        let c = PanelSizeConstraints {
+            min_width: Some(240),
+            ..Default::default()
+        };
+        // 大きく内側にドラッグしても width は 240 でクランプ
+        let result = compute_resized_rect(&st, WindowPoint::new(50, 50), (1000, 800), c);
+        assert_eq!(result.width, 240);
+        assert_eq!(result.height, 60); // height は CSS 制約なし → 絶対 min 60
+    }
+
+    /// CSS の max-width 指定があれば、それ以上に広がらない。
+    #[test]
+    fn css_max_width_caps_expansion() {
+        let st = state(ResizeHandle::East, rect(100, 100, 200, 150), WindowPoint::new(300, 175));
+        let c = PanelSizeConstraints {
+            max_width: Some(400),
+            ..Default::default()
+        };
+        // 大きく外側にドラッグしても width は 400 でクランプ
+        let result = compute_resized_rect(&st, WindowPoint::new(5000, 175), (2000, 800), c);
+        assert_eq!(result.width, 400);
+        assert_eq!(result.x, 100);
+    }
+
+    /// CSS min-height / max-height も同様に効く。
+    #[test]
+    fn css_min_max_height_constraints_apply() {
+        let st = state(ResizeHandle::South, rect(100, 100, 200, 150), WindowPoint::new(200, 250));
+        let c = PanelSizeConstraints {
+            min_height: Some(120),
+            max_height: Some(300),
+            ..Default::default()
+        };
+        // 縮める → min_height で止まる
+        let small = compute_resized_rect(&st, WindowPoint::new(200, 50), (1000, 800), c);
+        assert_eq!(small.height, 120);
+        // 広げる → max_height で止まる
+        let large = compute_resized_rect(&st, WindowPoint::new(200, 5000), (1000, 800), c);
+        assert_eq!(large.height, 300);
+    }
+
+    /// W ハンドル: CSS min-width で右辺が固定されたまま左辺が動く。
+    #[test]
+    fn css_min_width_constraint_keeps_right_edge_fixed_on_west_drag() {
+        let st = state(ResizeHandle::West, rect(100, 100, 300, 200), WindowPoint::new(100, 200));
+        let c = PanelSizeConstraints {
+            min_width: Some(240),
+            ..Default::default()
+        };
+        // 右へドラッグ → min_width 240 でクランプ。x = right - 240 = 400 - 240 = 160
+        let result = compute_resized_rect(&st, WindowPoint::new(300, 200), (1000, 800), c);
+        assert_eq!(result.width, 240);
+        assert_eq!(result.x, 160);
+    }
+}

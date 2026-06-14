@@ -4,25 +4,25 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use app_core::{
-    ColorRgba8, Command, DEFAULT_DOCUMENT_HEIGHT, DEFAULT_DOCUMENT_WIDTH, ToolKind,
+use panel_workspace::{
     WorkspaceLayout, WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize,
     WorkspacePanelState,
 };
-use desktop_support::{
-    DesktopProfiler, WorkspacePreset, WorkspacePresetCatalog, default_panel_dir,
-    parse_document_size, save_workspace_preset_catalog,
+use document_model::DocumentCommand;
+use editor_state::{ColorRgba8, SessionCommand, ToolKind};
+use crate::features::workspace::{
+    WorkspacePreset, WorkspacePresetCatalog, load_workspace_preset_catalog,
+    save_workspace_preset_catalog,
 };
-use panel_api::{HostAction, PanelEvent};
+use frame_profiler::FrameProfiler;
+use panel_runtime::{HostRequest, PanelEvent, ServiceRequest, services::names};
 use serde_json::json;
-use workspace_persistence::WorkspaceUiState;
+use panel_workspace::WorkspaceUiState;
 
 use super::{
     TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_workspace_preset_path,
-    tree_contains_button_id, tree_contains_text,
 };
 
-/// 現在の unique ワークスペース preset パス を返す。
 fn unique_workspace_preset_path(name: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -34,50 +34,79 @@ fn unique_workspace_preset_path(name: &str) -> PathBuf {
     ))
 }
 
-/// execute コマンド updates ドキュメント ツール が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_updates_document_tool() {
-    let mut app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut app = test_app_with_dialogs(TestDialogs::default());
 
-    let _ = app.execute_command(Command::SetActiveTool {
+    let _ = app.apply_session_command(&SessionCommand::SetActiveTool {
         tool: ToolKind::Eraser,
     });
 
-    assert_eq!(app.document.active_tool, ToolKind::Eraser);
+    assert_eq!(app.document.session.active_tool(), ToolKind::Eraser);
 }
 
-/// execute コマンド 選択 ツール updates ドキュメント ツール ID が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_select_tool_updates_document_tool_id() {
-    let mut app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut app = test_app_with_dialogs(TestDialogs::default());
 
-    let _ = app.execute_command(Command::SelectTool {
+    let _ = app.apply_session_command(&SessionCommand::SelectTool {
         tool_id: "builtin.eraser".to_string(),
+        remember_size: false,
     });
 
-    assert_eq!(app.document.active_tool, ToolKind::Eraser);
-    assert_eq!(app.document.active_tool_id, "builtin.eraser");
+    assert_eq!(app.document.session.active_tool(), ToolKind::Eraser);
+    assert_eq!(app.document.session.active_tool_id, "builtin.eraser");
 }
 
-/// execute コマンド SelectChildTool sets active_child_tool_id が期待どおりに動作することを検証する。
+/// BL-149: `SelectTool { remember_size: true }` 経由でツール別サイズ記憶が
+/// ホスト `EditorSession` に退避/復元される (旧 tool-palette ローカル blob 廃止)。
+#[test]
+fn select_tool_remembering_restores_per_tool_size() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+
+    // pen を 20px に設定し、記憶付きで eraser へ切替。
+    let _ = app.apply_session_command(&SessionCommand::SetActivePenSize { size: 20 });
+    let _ = app.apply_session_command(&SessionCommand::SelectTool {
+        tool_id: "builtin.eraser".to_string(),
+        remember_size: true,
+    });
+    // eraser を 5px にして、記憶付きで pen へ戻すと pen の 20px が復元される。
+    let _ = app.apply_session_command(&SessionCommand::SetActivePenSize { size: 5 });
+    let _ = app.apply_session_command(&SessionCommand::SelectTool {
+        tool_id: "builtin.pen".to_string(),
+        remember_size: true,
+    });
+    assert_eq!(app.document.session.active_tool(), ToolKind::Pen);
+    assert_eq!(app.document.session.active_pen_size, 20);
+
+    // 再び eraser へ戻すと eraser の 5px が復元される。
+    let _ = app.apply_session_command(&SessionCommand::SelectTool {
+        tool_id: "builtin.eraser".to_string(),
+        remember_size: true,
+    });
+    assert_eq!(app.document.session.active_pen_size, 5);
+}
+
 #[test]
 fn execute_command_select_child_tool_updates_active_child_tool_id() {
-    let mut app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut app = test_app_with_dialogs(TestDialogs::default());
     // Pen tool must be loaded so we can select one of its children
-    let _ = app.execute_command(Command::SelectTool {
+    let _ = app.apply_session_command(&SessionCommand::SelectTool {
         tool_id: "builtin.pen".to_string(),
+        remember_size: false,
     });
     // Inject a child tool definition into the tool catalog
     if let Some(pen_def) = app
         .document
+        .session
         .tool_catalog
         .iter_mut()
         .find(|t| t.id == "builtin.pen")
     {
-        pen_def.children.push(app_core::ToolDefinition {
+        pen_def.children.push(editor_state::ToolDefinition {
             id: "builtin.pen.test".to_string(),
             name: "Test".to_string(),
-            kind: app_core::ToolKind::Pen,
+            kind: editor_state::ToolKind::Pen,
             provider_plugin_id: String::new(),
             drawing_plugin_id: String::new(),
             settings: vec![],
@@ -85,108 +114,91 @@ fn execute_command_select_child_tool_updates_active_child_tool_id() {
         });
     }
 
-    let _ = app.execute_command(Command::SelectChildTool {
+    let _ = app.apply_session_command(&SessionCommand::SelectChildTool {
         child_id: "builtin.pen.test".to_string(),
     });
 
-    assert_eq!(app.document.active_child_tool_id, "builtin.pen.test");
+    assert_eq!(app.document.session.active_child_tool_id, "builtin.pen.test");
 }
 
-/// execute コマンド updates ドキュメント 色 が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_updates_document_color() {
-    let mut app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut app = test_app_with_dialogs(TestDialogs::default());
 
-    let _ = app.execute_command(Command::SetActiveColor {
+    let _ = app.apply_session_command(&SessionCommand::SetActiveColor {
         color: ColorRgba8::new(0x1e, 0x88, 0xe5, 0xff),
     });
 
     assert_eq!(
-        app.document.active_color,
+        app.document.session.active_color,
         ColorRgba8::new(0x1e, 0x88, 0xe5, 0xff)
     );
 }
 
-/// execute コマンド 新規 ドキュメント resets ツール to 既定 が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_new_document_resets_tool_to_default() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    app.document.set_active_tool(ToolKind::Eraser);
+    app.document.session.set_active_tool(ToolKind::Eraser);
 
-    let _ = app.execute_command(Command::NewDocumentSized {
+    let _ = app.apply_document_command(&DocumentCommand::NewDocumentSized {
         width: 64,
         height: 64,
     });
 
-    assert_eq!(app.document.active_tool, ToolKind::Pen);
+    assert_eq!(app.document.session.active_tool(), ToolKind::Pen);
 }
 
-/// ホスト action dispatches ツール switch コマンド が期待どおりに動作することを検証する。
 #[test]
 fn host_action_dispatches_tool_switch_command() {
-    let mut app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut app = test_app_with_dialogs(TestDialogs::default());
 
-    let _ = app.execute_host_action(HostAction::DispatchCommand(Command::SetActiveTool {
-        tool: ToolKind::Eraser,
-    }));
+    let _ = app.execute_host_request(HostRequest::DispatchSessionCommand(
+        SessionCommand::SetActiveTool {
+            tool: ToolKind::Eraser,
+        },
+    ));
 
-    assert_eq!(app.document.active_tool, ToolKind::Eraser);
+    assert_eq!(app.document.session.active_tool(), ToolKind::Eraser);
 }
 
-/// キーボード パネル フォーカス can activate アプリ action が期待どおりに動作することを検証する。
 #[test]
 fn keyboard_panel_focus_can_activate_app_action() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
 
-    assert!(app.panel_presentation.focus_panel_node(
-        &app.panel_runtime,
-        "builtin.app-actions",
-        "app.save"
-    ));
-    // app.save は emit_service 経由で保存を実行するため Command::Noop が返る。
+    assert!(
+        app.panel_workspace
+            .focus_panel_node("builtin.app-actions", "app.save")
+    );
+    // app.save は emit_service 経由で保存サービスを発行するため、HostRequest が
+    // 生成され activate_focused_panel_control は true を返す。
     // pending_jobs でジョブがキューされていることを確認する。
-    assert_eq!(
-        app.activate_focused_panel_control(),
-        Some(Command::Noop)
-    );
-    assert_eq!(app.io_state.pending_jobs.len(), 1);
+    assert!(app.activate_focused_panel_control());
+    assert_eq!(app.background_jobs.len(), 1);
 }
 
-/// 解析 ドキュメント サイズ accepts common formats が期待どおりに動作することを検証する。
+/// BL-063: 新規ドキュメントフォームは app-actions パネルの直接起動で開く。
+/// ドメインサービス経由 (旧 project_io.new_document) は廃止済み。
 #[test]
-fn parse_document_size_accepts_common_formats() {
-    assert_eq!(parse_document_size("64x64"), Some((64, 64)));
-    assert_eq!(
-        parse_document_size("2894x4093"),
-        Some((DEFAULT_DOCUMENT_WIDTH, DEFAULT_DOCUMENT_HEIGHT))
-    );
-    assert_eq!(parse_document_size("320 240"), Some((320, 240)));
-    assert_eq!(parse_document_size("800,600"), Some((800, 600)));
-    assert_eq!(parse_document_size("0x600"), None);
-}
-
-/// execute コマンド 新規 ドキュメント opens inline form が期待どおりに動作することを検証する。
-#[test]
-fn execute_command_new_document_opens_inline_form() {
+fn new_document_shortcut_opens_inline_form() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
+    let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
-    assert!(app.execute_command(Command::NewDocument));
+    assert!(app.activate_panel_control("builtin.app-actions", "app.new"));
 }
 
-/// プラグイン キーボード ショートカット can switch ツール が期待どおりに動作することを検証する。
 #[test]
 fn plugin_keyboard_shortcut_can_switch_tool() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    app.document.set_active_tool(ToolKind::Eraser);
+    app.document.session.set_active_tool(ToolKind::Eraser);
 
     assert!(app.dispatch_keyboard_shortcut("P", "P", false));
 
-    assert_eq!(app.document.active_tool, ToolKind::Pen);
+    assert_eq!(app.document.session.active_tool(), ToolKind::Pen);
 }
 
-/// プラグイン キーボード 取得 updates persistent 設定 が期待どおりに動作することを検証する。
 #[test]
 fn plugin_keyboard_capture_updates_persistent_config() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -201,7 +213,7 @@ fn plugin_keyboard_capture_updates_persistent_config() {
         Some(&json!({
             "default_template_size": "2894x4093",
             "new_shortcut": "Ctrl+Alt+N",
-            "template_options": "2894x4093:A4 350dpi (2894×4093)|2480x3508:A4 300dpi (2480×3508)|2048x2048:Square 2048 (2048×2048)|1920x1080:HD Landscape (1920×1080)",
+            "template_options": "[{\"label\":\"A4 350dpi (2894×4093)\",\"size\":\"2894x4093\"},{\"label\":\"A4 300dpi (2480×3508)\",\"size\":\"2480x3508\"},{\"label\":\"Square 2048 (2048×2048)\",\"size\":\"2048x2048\"},{\"label\":\"HD Landscape (1920×1080)\",\"size\":\"1920x1080\"}]",
             "save_shortcut": "Ctrl+S",
             "save_as_shortcut": "Ctrl+Shift+S",
             "open_shortcut": "Ctrl+O"
@@ -209,7 +221,6 @@ fn plugin_keyboard_capture_updates_persistent_config() {
     );
 }
 
-/// unmatched キーボード ショートカット is not consumed が期待どおりに動作することを検証する。
 #[test]
 fn unmatched_keyboard_shortcut_is_not_consumed() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
@@ -217,12 +228,11 @@ fn unmatched_keyboard_shortcut_is_not_consumed() {
     assert!(!app.dispatch_keyboard_shortcut("Tab", "Tab", false));
 }
 
-/// execute コマンド 新規 ドキュメント sized replaces ビットマップ が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_new_document_sized_replaces_bitmap() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
 
-    assert!(app.execute_command(Command::NewDocumentSized {
+    assert!(app.apply_document_command(&DocumentCommand::NewDocumentSized {
         width: 320,
         height: 240,
     }));
@@ -231,87 +241,51 @@ fn execute_command_new_document_sized_replaces_bitmap() {
     assert_eq!((bitmap.width, bitmap.height), (320, 240));
 }
 
-/// phase6 sample assets live under tools experimental が期待どおりに動作することを検証する。
+/// Phase 10: builtin パネルが正しく登録されているか確認する。
+/// (旧 phase6/phase7 DSL 系のアサーションは Phase 10 で PanelTree が空になったため撤去)
 #[test]
-fn phase6_sample_assets_live_under_tools_experimental() {
+fn builtin_panels_are_registered() {
     let app = test_app_with_dialogs(TestDialogs::default());
-
-    assert!(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("apps dir")
-            .parent()
-            .expect("workspace root")
-            .join("tools")
-            .join("experimental")
-            .join("phase6-sample")
-            .join("panel.altp-panel")
-            .exists()
-    );
-    assert!(
-        !default_panel_dir()
-            .join("phase6-sample")
-            .join("panel.altp-panel")
-            .exists()
-    );
-    assert!(
-        app.panel_presentation
-            .panel_trees(&app.panel_runtime)
-            .iter()
-            .all(|panel| panel.id != "builtin.dsl-sample")
-    );
-}
-
-/// desktop アプリ replaces builtin panels with phase7 dsl variants が期待どおりに動作することを検証する。
-#[test]
-fn desktop_app_replaces_builtin_panels_with_phase7_dsl_variants() {
-    let app = test_app_with_dialogs(TestDialogs::default());
-    let panels = app.panel_presentation.panel_trees(&app.panel_runtime);
+    let registered: Vec<&str> = app.panel_runtime.panel_ids();
 
     for panel_id in [
         "builtin.app-actions",
         "builtin.workspace-presets",
         "builtin.tool-palette",
-        "builtin.layers-panel",
-        "builtin.pen-settings",
+        "builtin.layers",
+        "builtin.tool-settings",
+        "builtin.color-palette",
+        "builtin.view-controls",
+        "builtin.koma-list",
+        "builtin.snapshots",
+        "builtin.text-flow",
+        "builtin.job-progress",
     ] {
-        assert_eq!(
-            panels.iter().filter(|panel| panel.id == panel_id).count(),
-            1,
-            "expected a single panel for {panel_id}"
+        assert!(
+            registered.contains(&panel_id),
+            "expected panel {panel_id} to be registered, got {registered:?}"
         );
     }
-
-    let app_actions = panels
-        .iter()
-        .find(|panel| panel.id == "builtin.app-actions")
-        .expect("app actions panel exists");
-    let layers = panels
-        .iter()
-        .find(|panel| panel.id == "builtin.layers-panel")
-        .expect("layers panel exists");
-
-    assert!(tree_contains_button_id(&app_actions.children, "app.save"));
-    assert!(tree_contains_text(&layers.children, "Untitled"));
 }
 
-/// 再読込 ペン presets reads 既定 ペン directory が期待どおりに動作することを検証する。
 #[test]
 fn reload_pen_presets_reads_default_pen_directory() {
-    let mut app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let mut app = test_app_with_dialogs(TestDialogs::default());
 
-    assert!(app.execute_command(Command::ReloadPenPresets));
-    assert!(app.document.pen_presets.len() >= 3);
+    assert!(app.execute_service_request(ServiceRequest::new(
+        names::TOOL_CATALOG_RELOAD_PEN_PRESETS
+    )));
+    assert!(app.document.session.pen_presets.len() >= 3);
 }
 
-/// startup loads ツール カタログ from 既定 ツール directory が期待どおりに動作することを検証する。
 #[test]
 fn startup_loads_tool_catalog_from_default_tool_directory() {
-    let app = super::DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
+    let app = test_app_with_dialogs(TestDialogs::default());
 
-    assert!(app.document.tool_catalog.len() >= 5);
+    assert!(app.document.session.tool_catalog.len() >= 5);
     assert!(
         app.document
+            .session
             .tool_catalog
             .iter()
             .any(|tool| tool.id == "builtin.pen"
@@ -319,7 +293,6 @@ fn startup_loads_tool_catalog_from_default_tool_directory() {
     );
 }
 
-/// execute コマンド applies 選択中 ワークスペース preset が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_applies_selected_workspace_preset() {
     let preset_path = unique_workspace_preset_path("workspace-preset-apply");
@@ -335,7 +308,7 @@ fn execute_command_applies_selected_workspace_preset() {
                     ui_state: WorkspaceUiState::new(
                         WorkspaceLayout {
                             panels: vec![WorkspacePanelState {
-                                id: "builtin.layers-panel".to_string(),
+                                id: "builtin.layers".to_string(),
                                 visible: true,
                                 anchor: WorkspacePanelAnchor::TopLeft,
                                 position: Some(WorkspacePanelPosition { x: 24, y: 72 }),
@@ -354,7 +327,7 @@ fn execute_command_applies_selected_workspace_preset() {
                     ui_state: WorkspaceUiState::new(
                         WorkspaceLayout {
                             panels: vec![WorkspacePanelState {
-                                id: "builtin.layers-panel".to_string(),
+                                id: "builtin.layers".to_string(),
                                 visible: true,
                                 anchor: WorkspacePanelAnchor::BottomRight,
                                 position: Some(WorkspacePanelPosition { x: 32, y: 40 }),
@@ -376,16 +349,17 @@ fn execute_command_applies_selected_workspace_preset() {
         preset_path.clone(),
     );
 
-    assert!(app.execute_command(Command::ApplyWorkspacePreset {
-        preset_id: "illustration".to_string(),
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_APPLY_PRESET)
+            .with_value("preset_id", "illustration"),
+    ));
 
     let layout_entry = app
-        .panel_presentation
+        .panel_workspace
         .workspace_layout()
         .panels
         .into_iter()
-        .find(|panel| panel.id == "builtin.layers-panel")
+        .find(|panel| panel.id == "builtin.layers")
         .expect("layers panel should exist");
     assert_eq!(layout_entry.anchor, WorkspacePanelAnchor::BottomRight);
     assert_eq!(
@@ -404,7 +378,6 @@ fn execute_command_applies_selected_workspace_preset() {
     let _ = std::fs::remove_file(preset_path);
 }
 
-/// ワークスペース preset dropdown selection auto applies and persists 既定 が期待どおりに動作することを検証する。
 #[test]
 fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
     let preset_path = unique_workspace_preset_path("workspace-preset-dropdown-apply");
@@ -420,7 +393,7 @@ fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
                     ui_state: WorkspaceUiState::new(
                         WorkspaceLayout {
                             panels: vec![WorkspacePanelState {
-                                id: "builtin.layers-panel".to_string(),
+                                id: "builtin.layers".to_string(),
                                 visible: true,
                                 anchor: WorkspacePanelAnchor::TopLeft,
                                 position: Some(WorkspacePanelPosition { x: 24, y: 72 }),
@@ -439,7 +412,7 @@ fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
                     ui_state: WorkspaceUiState::new(
                         WorkspaceLayout {
                             panels: vec![WorkspacePanelState {
-                                id: "builtin.layers-panel".to_string(),
+                                id: "builtin.layers".to_string(),
                                 visible: true,
                                 anchor: WorkspacePanelAnchor::BottomRight,
                                 position: Some(WorkspacePanelPosition { x: 32, y: 40 }),
@@ -468,11 +441,11 @@ fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
     }));
 
     let layout_entry = app
-        .panel_presentation
+        .panel_workspace
         .workspace_layout()
         .panels
         .into_iter()
-        .find(|panel| panel.id == "builtin.layers-panel")
+        .find(|panel| panel.id == "builtin.layers")
         .expect("layers panel should exist");
     assert_eq!(layout_entry.anchor, WorkspacePanelAnchor::BottomRight);
     assert_eq!(
@@ -484,13 +457,12 @@ fn workspace_preset_dropdown_selection_auto_applies_and_persists_default() {
         Some("illustration")
     );
 
-    let saved = desktop_support::load_workspace_preset_catalog(&preset_path);
+    let saved = load_workspace_preset_catalog(&preset_path, app.default_workspace_preset_catalog());
     assert_eq!(saved.default_preset_id, "illustration");
 
     let _ = std::fs::remove_file(preset_path);
 }
 
-/// execute コマンド reloads ワークスペース presets into ワークスペース パネル 設定 が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_reloads_workspace_presets_into_workspace_panel_config() {
     let preset_path = unique_workspace_preset_path("workspace-preset-reload");
@@ -533,7 +505,7 @@ fn execute_command_reloads_workspace_presets_into_workspace_panel_config() {
     )
     .expect("updated preset catalog should save");
 
-    assert!(app.execute_command(Command::ReloadWorkspacePresets));
+    assert!(app.execute_service_request(ServiceRequest::new(names::WORKSPACE_RELOAD_PRESETS)));
 
     let config = app
         .panel_runtime
@@ -545,7 +517,7 @@ fn execute_command_reloads_workspace_presets_into_workspace_panel_config() {
         config
             .get("workspace_options")
             .and_then(|value| value.as_str()),
-        Some("review:Review|compact:Compact")
+        Some(r#"[{"id":"review","label":"Review"},{"id":"compact","label":"Compact"}]"#)
     );
     assert_eq!(
         config
@@ -563,7 +535,6 @@ fn execute_command_reloads_workspace_presets_into_workspace_panel_config() {
     let _ = std::fs::remove_file(preset_path);
 }
 
-/// execute コマンド saves 現在 ワークスペース preset into カタログ が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_saves_current_workspace_preset_into_catalog() {
     let preset_path = unique_workspace_preset_path("workspace-preset-save");
@@ -572,16 +543,18 @@ fn execute_command_saves_current_workspace_preset_into_catalog() {
         preset_path.clone(),
     );
 
-    assert!(app.execute_host_action(HostAction::SetPanelVisibility {
-        panel_id: "builtin.tool-palette".to_string(),
-        visible: false,
-    }));
-    assert!(app.execute_command(Command::SaveWorkspacePreset {
-        preset_id: "review".to_string(),
-        label: "Review".to_string(),
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+            .with_value("panel_id", "builtin.tool-palette")
+            .with_value("visible", false),
+    ));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_SAVE_PRESET)
+            .with_value("preset_id", "review")
+            .with_value("label", "Review"),
+    ));
 
-    let saved = desktop_support::load_workspace_preset_catalog(&preset_path);
+    let saved = load_workspace_preset_catalog(&preset_path, app.default_workspace_preset_catalog());
     let preset = saved
         .presets
         .iter()
@@ -599,18 +572,18 @@ fn execute_command_saves_current_workspace_preset_into_catalog() {
     let _ = std::fs::remove_file(preset_path);
 }
 
-/// execute コマンド exports ワークスペース preset to ダイアログ パス が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_exports_workspace_preset_to_dialog_path() {
     let export_path = unique_workspace_preset_path("workspace-preset-export");
     let mut app = test_app_with_dialogs(TestDialogs::with_workspace_save_path(export_path.clone()));
 
-    assert!(app.execute_command(Command::ExportWorkspacePreset {
-        preset_id: "exported".to_string(),
-        label: "Exported".to_string(),
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_EXPORT_PRESET)
+            .with_value("preset_id", "exported")
+            .with_value("label", "Exported"),
+    ));
 
-    let exported = desktop_support::load_workspace_preset_catalog(&export_path);
+    let exported = load_workspace_preset_catalog(&export_path, app.default_workspace_preset_catalog());
     assert_eq!(exported.default_preset_id, "exported");
     assert_eq!(exported.presets.len(), 1);
     assert_eq!(exported.presets[0].label, "Exported");
@@ -618,7 +591,6 @@ fn execute_command_exports_workspace_preset_to_dialog_path() {
     let _ = std::fs::remove_file(export_path);
 }
 
-/// execute コマンド imports ペン file and records report が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_imports_pen_file_and_records_report() {
     let path = unique_workspace_preset_path("import-pen").with_extension("altp-pen.json");
@@ -643,9 +615,12 @@ fn execute_command_imports_pen_file_and_records_report() {
     .expect("pen file written");
     let mut app = test_app_with_dialogs(TestDialogs::with_pen_open_path(path.clone()));
 
-    assert!(app.execute_command(Command::ImportPenPresets));
+    assert!(app.execute_service_request(ServiceRequest::new(
+        names::TOOL_CATALOG_IMPORT_PEN_PRESETS
+    )));
     assert!(
         app.document
+            .session
             .pen_presets
             .iter()
             .any(|preset| preset.id == "imported.pen")

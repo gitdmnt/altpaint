@@ -25,6 +25,10 @@ Claude Code がこのリポジトリを扱う際の唯一の入口ファイル�
 cargo build
 cargo build --release
 
+# Run（デスクトップアプリ起動）
+cargo run -p altpaint-desktop
+cargo run -p altpaint-desktop --release
+
 # Test
 cargo test
 cargo test --workspace
@@ -63,42 +67,51 @@ bash scripts/build-ui-wasm.sh          # Linux / WSL2
 
 ## アーキテクチャ概要
 
-altpaint はデスクトップ向けデジタルペイントアプリ。Rust 2024-edition Cargo workspace（28 メンバー: ライブラリ 15、プラグイン 10、デスクトップアプリ 1）。
+altpaint はデスクトップ向けデジタルペイントアプリ。Rust 2024-edition Cargo workspace（30 メンバー: ライブラリ 17、ビルトインパネル 12、デスクトップアプリ 1）。
 
 ### Runtime Flow
 
-**起動**: `apps/desktop` が winit + wgpu 初期化 → `DesktopApp::new` がセッション/プロジェクト/ワークスペース復元 → `PanelRuntime` が `plugins/**/*.altp-panel` を読み込む → `storage` がツール・ペンを読み込む → 初期レンダリング
+**起動**: `apps/desktop` が winit + wgpu 初期化 → `DesktopApp::with_options` がセッション/プロジェクト/ワークスペース復元 → `PanelRuntime` が `crates/builtin-panels/` の HTML+CSS+Wasm パネル 12 個を読み込む → desktop の `features/tools` と `pen-io` がツール・ペンを読み込む → 初期レンダリング
 
-**入力 → 描画**: OS入力 → `runtime/pointer.rs` 正規化 → `app/input.rs` がキャンバスかパネルへ振り分け → `canvas::view_mapping` が座標変換 → `canvas::gesture` が `PaintInput` を生成 → `canvas::context_builder` が `Document` からペイントコンテキストを解決 → ビルトインビットマッププラグインがビットマップ差分を書く → 差分を `Document` に適用 → `render_types::FramePlan` 組み立て → dirty rect 合成 → `wgpu_canvas.rs` が GPU へ提示
+**入力 → 描画**: OS入力 → `event_loop/pointer.rs` 正規化 → `app/input.rs` がキャンバスかパネルへ振り分け → `canvas-geometry::map_view_to_canvas_with_transform` が座標変換 → `paint_engine::gesture` が `PaintInput` を生成 → `paint_engine::context_builder` が `Document` からペイントコンテキストを解決 → `features/paint` が `gpu-paint` の compute shader で GPU レイヤーテクスチャへ直接描画（ブラシ/塗りつぶし/合成）→ desktop `presenter/`（旧 `wgpu_canvas.rs`）が GPU へ提示
 
-**パネル**: `panel-dsl` が `.altp-panel` をパース → `plugin-host`（wasmtime）が Wasm を実行 → `PanelRuntime` がホストスナップショットを同期 → `PanelEvent`/`HostAction` → `DesktopApp` が `Command` またはサイドエフェクトとして適用 → `panel-runtime::HtmlPanelEngine` が GPU テクスチャに直描画 → `wgpu_canvas` が `panel_quads` レイヤーで合成
+**パネル**: `HtmlWasmPanel` が `panel.html` + `panel.css` をロード → `panel-wasm-host`（wasmtime）が Wasm を実行し DOM mutation host function で直接 DOM を書換え → `PanelRuntime` が host state を同期 → `PanelEvent`（Activate/Keyboard 等）/`HostRequest`（`RequestDescriptor` ベース） → `DesktopApp` が `app/host_request_router.rs` で translator registry 経由の `DocumentCommand`/`SessionCommand`/`ServiceRequest` またはサイドエフェクトとして適用 → `panel-html::HtmlPanelView`（Blitz + vello）が GPU テクスチャに直描画 → `presenter/` が `panel_quads` レイヤーで合成。hit / move handle テーブルは `prepare_present_frame` が GPU 非依存で毎フレーム更新
 
 ### 主要クレート
 
 | クレート                              | 責務                                                                                      |
 | ------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `apps/desktop`                        | winit + wgpu ホスト、`DesktopApp` 統括、入力ルーティング、提示                            |
-| `crates/app-core`                     | `Document`、ドメインモデル（Work→Page→Panel→LayerNode）、`Command`、ペイント基本型        |
-| `crates/canvas`                       | `CanvasRuntime`、ジェスチャーステートマシン、ビットマップ操作                             |
-| `crates/render-types`                 | `FramePlan`/`CanvasPlan`/`PanelPlan`、`PixelRect`/`CanvasScene`/`CanvasOverlayState` 等の純データ DTO |
-| `crates/panel-runtime`                | パネルレジストリ、DSL/Wasm ブリッジ、ホストスナップショット同期、永続設定                 |
-| `crates/ui-shell`                     | パネルワークスペースレイアウト、フォーカス、ヒットテスト、サーフェスレンダリング          |
-| `crates/panel-api`                    | パネル/ホスト間コントラクト（`PanelPlugin`、`PanelEvent`、`HostAction`）                  |
-| `crates/plugin-host`                  | wasmtime ベースの Wasm パネルランタイム                                                   |
-| `crates/panel-dsl`                    | `.altp-panel` パーサー/バリデーター/IR                                                    |
-| `crates/panel-schema`                 | ホスト↔Wasm 共有 DTO                                                                      |
-| `crates/plugin-sdk` + `plugin-macros` | プラグイン作者向け SDK と proc-macro                                                      |
-| `crates/storage`                      | SQLite プロジェクト永続化、ペン/ツールカタログ                                            |
-| `crates/desktop-support`              | セッション、ダイアログ、パス、プロファイラー、キャンバステンプレート                      |
-| `crates/workspace-persistence`        | `WorkspaceUiState`、`PluginConfigs` 共有 DTO                                              |
-| `plugins/*`                           | 10 個のビルトインパネル（各々 `.altp-panel` + Rust/Wasm ソース + コンパイル済み `.wasm`） |
+| `apps/desktop`                        | winit + wgpu ホスト、`DesktopApp` 統括、入力ルーティング、提示、`EditHistory`（`PaintPatch` Cpu/Gpu）、`CanvasPlan`/overlay DTO |
+| `crates/geometry`                     | 座標型・矩形・dirty rect 演算（ローカル依存ゼロ）                                          |
+| `crates/raster`                       | `RgbaBitmap`、ピクセルブレンド、ラスタライズ、`BitmapEdit`（`geometry` のみ依存）          |
+| `crates/document-model`               | `Document`、作品ドメインモデル（Work→Page→Koma→RasterLayer）、`DocumentCommand`、`normalize_after_load` |
+| `crates/editor-state`                 | `EditorSession`、`ToolDefinition`/`PenPreset`、`SessionCommand`、`view_policy`、`tool_state` |
+| `crates/paint-engine`                 | `PaintEngine`、ジェスチャーステートマシン、ビットマップ操作、`PaintInput`/`PaintPlugin`    |
+| `crates/gpu-paint`                    | `LayerTextureStore`、ブラシ/塗りつぶし/レイヤー合成の compute shader dispatch（`BrushPipeline`/`FillPipeline`/`CompositePipeline`） |
+| `crates/canvas-geometry`              | `CanvasViewGeometry` 単一経路（view↔page 座標写像 + `TextureQuad`）のキャンバス表示幾何     |
+| `crates/panel-runtime`                | パネルサブシステム facade。`PanelRuntime`/`HtmlWasmPanel`（具象保持）、Wasm ブリッジ、`HostStateRegistry`（revision キャッシュ）、translator registry、`HostRequest`/`PanelEvent`/`ServiceRequest` 契約型（旧 panel-api を C9 で吸収）、永続設定、同梱パネル loader、panel-html の最小面再公開 |
+| `crates/panel-html`                   | `HtmlPanelView`（Blitz HTML/CSS + parley + vello GPU 直描画、hit 矩形収集。`view/`（dom/layout/present/actions）+ `gpu` + `action` へ責務分割） |
+| `crates/panel-workspace`              | パネルワークスペースレイアウト、フォーカス、ヒットテスト、`PanelGeometry` 1 map、`ResizeHandle`/`PanelMoveDirection`（旧 panel-api から C9 で移設） |
+| `crates/panel-wasm-host`              | wasmtime ベースの Wasm パネルランタイム + DOM mutation host functions                     |
+| `crates/panel-protocol`               | ホスト↔Wasm 共有 DTO・ABI 定数・wire 名定数・`HostState`/`HostCallInput`/`HandlerEffects`（ローカル依存ゼロ、serde/serde_json のみ） |
+| `crates/panel-sdk` + `panel-macros`   | パネル作者向け SDK と proc-macro                                                          |
+| `crates/project-store`                | SQLite プロジェクト永続化（旧 `storage` から B7-part1 で切り出し。`document-model`/`panel-workspace`/`raster` 依存、wgpu/winit 非依存） |
+| `crates/pen-io`                       | ペンプリセット読込 / import/export（旧 `storage` から B7-part1 で切り出し。`editor-state` のみ依存、wgpu/winit 非依存） |
+| `crates/frame-profiler`               | `FrameProfiler` フレーム計測（旧 `desktop-support` から B7-part1 で切り出し。整形は desktop 側、ローカル依存ゼロ） |
+| `crates/builtin-panels/*`             | 12 個のビルトインパネル（各々 `panel.html` + `panel.css` + `panel.meta.json` + Rust/Wasm ソース） |
 
 ### ファイル配置規則
 
-- `runtime/` — 外部ランタイム・ステートフルブリッジ
-- `presentation/` — レイアウト、ヒットテスト、フォーカス、テキスト入力、サーフェス生成
-- `services/` — I/O 統括（プロジェクト、ワークスペース、エクスポート、カタログ）
-- `ops/` — 高頻度なキャンバス/レンダリング操作
+**原則 (B7 以降)**: desktop の機能コードは「所属する feature 垂直スライス」に置く。`desktop-support` のような水平バケツに寄せない。新しいサービスハンドラ・状態・翻訳器は対応する `features/<feature>/` に追加し、`app/services/registry.rs` の `SERVICE_HANDLERS` へ 1 行登録する（水平ファイルの横断編集を発生させない）。どの feature にも属さない真に横断的なものだけを `app/` 直下や `platform/` に置く。
+
+- `features/`（apps/desktop）— 垂直スライス。各スライスが「サービスハンドラ + サブ状態 + 翻訳器 + テスト」を所有する。現状 11 スライス: `paint`（ペイント実行・履歴・プレビュー）/ `project`（save/load・session・canvas size preset）/ `export`（PNG）/ `workspace`（preset catalog・layout service）/ `tools`（tool catalog・ペン import）/ `koma`（コマ作成ジェスチャ・ナビゲーション）/ `view`（zoom/pan/rotate）/ `snapshots`（`DocumentSnapshotStore`）/ `text`（テキストラスタライズ）/ `panel_interaction`（パネル drag/resize/press 幾何）/ `status_bar`。横断 JSON ローダは `features/json_store.rs`
+- `app/`（apps/desktop）— composition root（`DesktopApp` = subsystem の保持・配線のみ）。`services/registry.rs`（service registry）/ `command_router.rs` + `command_effects.rs`（ルーティングと宣言的副作用表）/ `host_request_router.rs`（パネル発アクションのルータ）/ `present.rs` + `present_api.rs`（提示パイプラインとメソッド境界）/ `project_paths.rs`
+- `platform/`（apps/desktop）— OS 境界。native dialog、パス解決（`dirs` ベース）
+- `presenter/`（apps/desktop）— wgpu presenter（旧 `wgpu_canvas.rs` を分割: `frame` / `pipelines` / `shaders` / `textures` / `theme`）
+- `present_quads/`（apps/desktop）— presenter 入力の quad DTO とレイアウト
+- `runtime/` — 外部ランタイム・ステートフルブリッジ（クレート内）
+- `presentation/` — レイアウト、ヒットテスト、フォーカス、サーフェス生成（クレート内）
+- `ops/` — 高頻度なキャンバス/レンダリング操作（クレート内）
 - `tests/` — クレート/モジュール境界テスト
 - `lib.rs` — モジュール宣言、再エクスポート、薄い公開 API のみ（大きな実装は置かない）
 

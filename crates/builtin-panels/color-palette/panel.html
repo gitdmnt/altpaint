@@ -1,0 +1,58 @@
+<div class="panel">
+  <header class="panel-title">色</header>
+  <div class="alt-section">
+    <div class="alt-section-title">カラー</div>
+    <div id="color-preview" class="color-preview" style="background:#000000"></div>
+    <p><span id="active-hex">#000000</span></p>
+    <div class="row">
+      <button class="btn" id="mode.hsv" data-action="altp:activate:set_mode_hsv">HSV</button>
+      <button class="btn" id="mode.lab" data-action="altp:activate:set_mode_lab">Lab</button>
+      <button class="btn" id="mode.oklch" data-action="altp:activate:set_mode_oklch">Oklch</button>
+    </div>
+
+    <div id="hsv-section">
+      <label>
+        <span>H: <span id="hue-display">0</span>°</span>
+        <input type="range" id="hue" min="0" max="360" value="0" data-action="altp:slider:set_hue">
+      </label>
+      <label>
+        <span>S: <span id="saturation-display">100</span>%</span>
+        <input type="range" id="saturation" min="0" max="100" value="100" data-action="altp:slider:set_saturation">
+      </label>
+      <label>
+        <span>V: <span id="value-display">100</span>%</span>
+        <input type="range" id="value" min="0" max="100" value="100" data-action="altp:slider:set_value">
+      </label>
+    </div>
+
+    <div id="lab-section" hidden>
+      <label>
+        <span>L: <span id="lab-l-display">0</span></span>
+        <input type="range" id="lab.l" min="0" max="100" value="0" data-action="altp:slider:set_lab_l">
+      </label>
+      <label>
+        <span>a: <span id="lab-a-display">0</span></span>
+        <input type="range" id="lab.a" min="-128" max="127" value="0" data-action="altp:slider:set_lab_a">
+      </label>
+      <label>
+        <span>b: <span id="lab-b-display">0</span></span>
+        <input type="range" id="lab.b" min="-128" max="127" value="0" data-action="altp:slider:set_lab_b">
+      </label>
+    </div>
+
+    <div id="oklch-section" hidden>
+      <label>
+        <span>L: <span id="oklch-l-display">100</span>%</span>
+        <input type="range" id="oklch.l" min="0" max="100" value="100" data-action="altp:slider:set_oklch_l">
+      </label>
+      <label>
+        <span>C: <span id="oklch-c-display">0</span></span>
+        <input type="range" id="oklch.c" min="0" max="400" value="0" data-action="altp:slider:set_oklch_c">
+      </label>
+      <label>
+        <span>H: <span id="oklch-h-display">0</span>°</span>
+        <input type="range" id="oklch.h" min="0" max="360" value="0" data-action="altp:slider:set_oklch_h">
+      </label>
+    </div>
+  </div>
+</div>

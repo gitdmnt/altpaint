@@ -1,33 +1,35 @@
 [workspace]
 members = [
-  "crates/panel-api",
-  "crates/canvas",
-  "crates/app-core",
-  "crates/desktop-support",
-  "crates/panel-dsl",
+  "crates/builtin-panels/view-controls",
+  "crates/builtin-panels/job-progress",
+  "crates/builtin-panels/koma-list",
+  "crates/builtin-panels/snapshots",
+  "crates/builtin-panels/workspace-presets",
+  "crates/builtin-panels/app-actions",
+  "crates/builtin-panels/text-flow",
+  "crates/builtin-panels/tool-palette",
+  "crates/builtin-panels/tool-settings",
+  "crates/builtin-panels/layers",
+  "crates/builtin-panels/color-palette",
+  "crates/builtin-panels/workspace-layout",
+  "crates/paint-engine",
+  "crates/frame-profiler",
+  "crates/geometry",
+  "crates/raster",
+  "crates/editor-state",
+  "crates/document-model",
   "crates/panel-runtime",
-  "crates/panel-schema",
-  "crates/plugin-macros",
-  "crates/plugin-sdk",
-  "crates/plugin-host",
-  "crates/gpu-canvas",
-  "crates/panel-html-experiment",
-  "crates/render-types",
-  "crates/storage",
-  "crates/ui-shell",
-  "crates/workspace-persistence",
+  "crates/panel-protocol",
+  "crates/panel-macros",
+  "crates/panel-sdk",
+  "crates/panel-wasm-host",
+  "crates/gpu-paint",
+  "crates/panel-html",
+  "crates/canvas-geometry",
+  "crates/pen-io",
+  "crates/project-store",
+  "crates/panel-workspace",
   "apps/desktop",
-  "plugins/app-actions",
-  "plugins/workspace-presets",
-  "plugins/tool-palette",
-  "plugins/view-controls",
-  "plugins/panel-list",
-  "plugins/layers-panel",
-  "plugins/color-palette",
-  "plugins/pen-settings",
-  "plugins/job-progress",
-  "plugins/snapshot-panel",
-  "plugins/text-flow",
 ]
 resolver = "2"
 
@@ -38,16 +40,13 @@ version = "0.1.0"
 authors = ["Naoto"]
 
 [workspace.dependencies]
-ab_glyph = "0.2"
 anyhow = "1.0"
+dirs = "6.0"
 font8x8 = "0.3"
-fontdb = "0.23"
-rfd = "0.15"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tinyfiledialogs = "3.9"
 thiserror = "2.0"
 winit = "0.30"
-pixels = "0.15"
 wgpu = "28.0"
 pollster = "0.4"

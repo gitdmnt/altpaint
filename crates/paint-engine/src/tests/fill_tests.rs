@@ -1,0 +1,93 @@
+use crate::painting::PaintInput;
+use document_model::Document;
+use editor_state::ColorRgba8;
+use geometry::KomaLocalPoint;
+
+use crate::PaintEngine;
+
+use super::apply_input;
+
+#[test]
+fn flood_fill_recolors_matching_region() {
+    let mut document = Document::default();
+    document
+        .session
+        .set_active_color(ColorRgba8::new(0xff, 0x00, 0x00, 0xff));
+    let engine = PaintEngine::new();
+
+    let dirty = apply_input(
+        &mut document,
+        &engine,
+        PaintInput::FloodFill {
+            at: KomaLocalPoint::new(8, 8),
+        },
+    )
+    .expect("dirty rect");
+
+    assert!(dirty.width > 0);
+    let bitmap = document.active_bitmap().expect("active bitmap");
+    assert_eq!(bitmap.pixel_rgba(8, 8), Some([0xff, 0x00, 0x00, 0xff]));
+}
+
+/// 斜め辺を持つ三角形で lasso fill が正確に境界を判定することを検証する。
+///
+/// 修正前の `.abs()` バグでは upward-going な斜め辺の交点計算が誤るため、
+/// 三角形内部のピクセルが外部扱いになっていた。
+#[test]
+fn lasso_fill_triangular_region_diagonal_edges() {
+    let mut document = Document::default();
+    document
+        .session
+        .set_active_color(ColorRgba8::new(0xff, 0x00, 0x00, 0xff));
+    let engine = PaintEngine::new();
+
+    // 三角形: (0,0), (20,0), (10,20) — 斜め辺を含む
+    let dirty = apply_input(
+        &mut document,
+        &engine,
+        PaintInput::LassoFill {
+            points: vec![
+                KomaLocalPoint::new(0, 0),
+                KomaLocalPoint::new(20, 0),
+                KomaLocalPoint::new(10, 20),
+            ],
+        },
+    )
+    .expect("dirty rect");
+
+    assert!(dirty.width > 0);
+    let bitmap = document.active_bitmap().expect("active bitmap");
+    // 三角形の中心付近のピクセルは赤く塗られているはず
+    assert_eq!(
+        bitmap.pixel_rgba(10, 8),
+        Some([0xff, 0x00, 0x00, 0xff]),
+        "center of triangle should be filled"
+    );
+}
+
+#[test]
+fn lasso_fill_colors_polygon_area() {
+    let mut document = Document::default();
+    document
+        .session
+        .set_active_color(ColorRgba8::new(0x00, 0x00, 0xff, 0xff));
+    let engine = PaintEngine::new();
+
+    let dirty = apply_input(
+        &mut document,
+        &engine,
+        PaintInput::LassoFill {
+            points: vec![
+                KomaLocalPoint::new(10, 10),
+                KomaLocalPoint::new(30, 10),
+                KomaLocalPoint::new(30, 30),
+                KomaLocalPoint::new(10, 30),
+            ],
+        },
+    )
+    .expect("dirty rect");
+
+    assert!(dirty.height > 0);
+    let bitmap = document.active_bitmap().expect("active bitmap");
+    assert_eq!(bitmap.pixel_rgba(20, 20), Some([0x00, 0x00, 0xff, 0xff]));
+}

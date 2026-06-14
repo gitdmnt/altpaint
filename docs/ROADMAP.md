@@ -22,6 +22,10 @@
 | 9E       | DSL パネル + ステータスバー GPU 化 (HtmlPanelEngine 経路統合) + 9C-2 統合         | 2026-04-26 |
 | 9F       | `crates/render/` 物理削除と `PresentScene` レイヤー再編成                          | 2026-04-29 |
 | 9G       | `html-panel` feature gate 完全撤去 (Phase 9E で唯一経路化した HTML 描画を default 化) | 2026-05-02 |
+| 10       | `.altp-panel` DSL 撤去・全 11 パネルを HTML+CSS+Wasm DOM mutation へ移行             | 2026-05-03 |
+| 11       | HTML パネル自動サイズ廃止 + 8 ハンドル手動リサイズ導入 + `default_size` 必須化       | 2026-05-12 |
+| 12       | `PanelTree`/`PanelNode`/`PanelView` 撤廃 + `builtin.workspace-layout` を HTML 化 (全 12 パネル統一) | 2026-05-15 |
+| 13       | HTML パネルのキーボード ABI 配線 + hit テーブル GPU 非依存化 (キーボード系 5 テスト失敗の解消、テスト失敗ゼロ化) | 2026-06-11 |
 
 詳細は [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) を参照。
 
@@ -46,6 +50,19 @@
 - 目標構造は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 実コードの構造は [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md)
 
+### 完了済み (旧「今後の検討項目」)
+
+- **tool-palette サイズ記憶のホスト移管 (BL-149) — 実装済み**: パネル側
+  `config.size_memory` JSON blob とローカルなキー計算/ペン index 二重計算を撤去し、
+  ホスト `EditorSession.per_tool_sizes` (`{tool_wire}:{pen_id}` → サイズ,
+  `#[serde(default)]`) へ集約した。UI 経路別の記憶/非記憶分岐は `SessionCommand`
+  (`SelectTool` / `SelectNextPenPreset` / `SelectPreviousPenPreset`) の `remember_size`
+  フラグで表明する: ペン/消しゴムボタン・前後ペンは記憶 (`select_tool_remembering` 等)、
+  ドロップダウン選択・バケツ系は非記憶。退避/復元のメカニズム (キー計算・per-tool マップ)
+  はホストが単一真実として持つ。session 保存形式は新フィールド追加で変わるが alpha 方針で
+  後方互換不要、`#[serde(default)]` により旧 session JSON も既定値で読める。ペン rotation
+  自前計算は該当コード消滅済みで対象外。
+
 ---
 
 ## Phase 9 — render クレート完全削除と描画完全 GPU 化
@@ -60,7 +77,7 @@ altpaint の描画責務を完全に GPU へ寄せ、CPU 合成・CPU ラスタ�
 
 `render` の責務を 3 種に分解する。
 
-1. **純データ型** (`PixelRect` / `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan` / `LayerGroupDirtyPlan` / `union_dirty_rect` / `brush_preview_dirty_rect` 他) — 移動先が必要、削除はしない
+1. **純データ型** (`PixelRect` / `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan` / `LayerGroupDirtyPlan` / `union_dirty_rect` / `brush_preview_dirty_rect` 他) — 移動先が必要、削除はしない（注: `PanelPlan` はその後、依存最小化リアーキテクト (ADR 016) で削除済み）
 2. **CPU 合成** (`compose_*` / `blit_*` / `fill_rgba_block` / `scroll_canvas_region`) — Phase 8 でキャンバスは GPU 化済み。残る装飾レイヤーを GPU 化すれば消せる
 3. **CPU ラスタライザ** (`rasterize_panel_layer` / `draw_text_rgba` / `measure_panel_size` / `wrap_text_lines`) — DSL パネルとテキストの GPU 化が必要。Phase 9 の最大の山
 

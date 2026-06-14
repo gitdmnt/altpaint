@@ -1,0 +1,707 @@
+//! GPU 塗りつぶし（flood fill / lasso fill）のディスパッチャ。
+//!
+//! `flood_fill_step.wgsl` をピンポンマスクで反復実行し、`fill_apply.wgsl` で
+//! アクティブレイヤーへ source-over ブレンドで fill color を書き込む。
+//! lasso は `lasso_fill_mark.wgsl` でポリゴン内ピクセルをマスクし、同じ
+//! `fill_apply.wgsl` を使う。
+
+use std::sync::Arc;
+
+use geometry::{KomaLocalPoint, PageDirtyRect};
+
+use crate::gpu::{GpuCanvasContext, GpuRgbaTexture};
+use crate::pipeline::build_compute_pipeline;
+
+/// flood_fill_step の uniform バッファサイズ（32 bytes）。
+const FLOOD_FILL_PARAMS_SIZE: u64 = 32;
+/// fill_apply の uniform バッファサイズ（32 bytes）。
+const FILL_APPLY_PARAMS_SIZE: u64 = 32;
+/// lasso_fill_mark の uniform バッファサイズ（32 bytes）。
+const LASSO_MARK_PARAMS_SIZE: u64 = 32;
+/// 収束検出を試す iteration 間隔。
+const CONVERGENCE_CHECK_INTERVAL: u32 = 32;
+/// Flood fill の最大 iteration 数の安全上限。
+const FLOOD_FILL_ITERATION_CAP: u32 = 8192;
+
+/// Flood fill 後に返される実行メトリクス。
+pub struct FloodFillOutcome {
+    pub iterations: u32,
+    pub pixels_changed: u32,
+}
+
+/// GPU 塗りつぶし（flood fill / lasso fill）のパイプラインを保持する。
+pub struct FillPipeline {
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
+    flood_step_pipeline: wgpu::ComputePipeline,
+    flood_step_bgl: wgpu::BindGroupLayout,
+    lasso_pipeline: wgpu::ComputePipeline,
+    lasso_bgl: wgpu::BindGroupLayout,
+    apply_pipeline: wgpu::ComputePipeline,
+    apply_bgl: wgpu::BindGroupLayout,
+}
+
+impl FillPipeline {
+    /// 計算パイプラインと BGL を初期化する。
+    pub fn new(ctx: &GpuCanvasContext) -> Self {
+        let device = ctx.device();
+        let queue = ctx.queue();
+        let flood_step_bgl = create_flood_step_bgl(&device);
+        let lasso_bgl = create_lasso_bgl(&device);
+        let apply_bgl = create_apply_bgl(&device);
+
+        let flood_step_pipeline = build_compute_pipeline(
+            &device,
+            &flood_step_bgl,
+            include_str!("shaders/flood_fill_step.wgsl"),
+            "flood_fill_step",
+        );
+        let lasso_pipeline = build_compute_pipeline(
+            &device,
+            &lasso_bgl,
+            include_str!("shaders/lasso_fill_mark.wgsl"),
+            "lasso_fill_mark",
+        );
+        let apply_pipeline = build_compute_pipeline(
+            &device,
+            &apply_bgl,
+            include_str!("shaders/fill_apply.wgsl"),
+            "fill_apply",
+        );
+
+        Self {
+            device,
+            queue,
+            flood_step_pipeline,
+            flood_step_bgl,
+            lasso_pipeline,
+            lasso_bgl,
+            apply_pipeline,
+            apply_bgl,
+        }
+    }
+
+    /// 指定座標の seed 色に一致する連結成分を塗りつぶす。
+    ///
+    /// - `source`: seed 色と連結成分の判定に使うテクスチャ。CPU 実装の
+    ///   `composited_bitmap` に相当（多レイヤー時はコマの composite テクスチャを
+    ///   渡す。単一レイヤー時は active layer テクスチャで等価）。
+    /// - `target`: 実際に塗り色を書き込むレイヤーテクスチャ（active layer）。
+    /// - `source` と `target` は同じサイズである必要がある。
+    pub fn dispatch_flood_fill(
+        &self,
+        source: &GpuRgbaTexture,
+        target: &GpuRgbaTexture,
+        seed: KomaLocalPoint,
+        fill_rgba: [f32; 4],
+    ) -> FloodFillOutcome {
+        let w = target.width;
+        let h = target.height;
+        let (seed_x, seed_y) = (seed.x as u32, seed.y as u32);
+        if w == 0 || h == 0 || seed_x >= w || seed_y >= h {
+            return FloodFillOutcome {
+                iterations: 0,
+                pixels_changed: 0,
+            };
+        }
+        if source.width != w || source.height != h {
+            return FloodFillOutcome {
+                iterations: 0,
+                pixels_changed: 0,
+            };
+        }
+
+        let mark_a = self.create_mask_texture(w, h, "flood-mark-a");
+        let mark_b = self.create_mask_texture(w, h, "flood-mark-b");
+
+        let source_view = source.texture.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("flood-source-view"),
+            format: Some(wgpu::TextureFormat::Rgba8Unorm),
+            ..Default::default()
+        });
+        let view_a = mark_a.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("flood-mark-a-view"),
+            ..Default::default()
+        });
+        let view_b = mark_b.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("flood-mark-b-view"),
+            ..Default::default()
+        });
+
+        let params_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("flood-fill-params"),
+            size: FLOOD_FILL_PARAMS_SIZE,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.queue.write_buffer(
+            &params_buf,
+            0,
+            &build_flood_fill_params_bytes(seed_x, seed_y, w, h),
+        );
+
+        let counter_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("flood-fill-counter"),
+            size: 4,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let readback_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("flood-fill-counter-readback"),
+            size: 4,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        let bg_ab = self.make_flood_bind_group(
+            &params_buf,
+            &source_view,
+            &view_a,
+            &view_b,
+            &counter_buf,
+        );
+        let bg_ba = self.make_flood_bind_group(
+            &params_buf,
+            &source_view,
+            &view_b,
+            &view_a,
+            &counter_buf,
+        );
+
+        let wg_x = w.div_ceil(8);
+        let wg_y = h.div_ceil(8);
+        let max_iter = FLOOD_FILL_ITERATION_CAP.min(w + h + 4);
+
+        let mut iterations = 0u32;
+        let mut total_changed = 0u32;
+        // swap_flag は「次 iter で src として読むマスクはどちらか」を示す:
+        //   swap_flag == false → bg_ab (src=a, dst=b) を使う → 書き込み先は b
+        //   swap_flag == true  → bg_ba (src=b, dst=a) を使う → 書き込み先は a
+        // 各 iter の dispatch 後に swap_flag をトグルする。
+        // ループ終了後、直近の書き込み先は: swap_flag==true なら b、false なら a。
+        //
+        // BL-133 submit 統合: step pass を 1 iter 1 submit から CONVERGENCE_CHECK_INTERVAL
+        // iter ごと 1 submit へまとめる。1 ウィンドウの先頭でカウンタを 0 にし、ウィンドウ
+        // 内の step pass を 1 encoder に積む (pass 間は wgpu が mask テクスチャの read-after-write
+        // ハザードへバリアを挿入するため、伝播は per-submit 版と同一)。ウィンドウ末尾で
+        // カウンタを readback し、ウィンドウ全体の変化合計が 0 なら収束とみなす。
+        // (合計 0 ⟺ ウィンドウ内の各 iter が 0 変化 ⟹ 収束。塗り結果は per-iter 版と同値。)
+        let mut swap_flag = false;
+        let mut iter = 0u32;
+        'outer: while iter < max_iter {
+            let window_end = (iter + CONVERGENCE_CHECK_INTERVAL).min(max_iter);
+
+            // ウィンドウ先頭でカウンタをリセットする。
+            self.queue.write_buffer(&counter_buf, 0, &0u32.to_le_bytes());
+
+            let mut encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("flood-fill-step-encoder"),
+                });
+            while iter < window_end {
+                iterations += 1;
+                {
+                    let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                        label: Some("flood-fill-step-pass"),
+                        timestamp_writes: None,
+                    });
+                    cpass.set_pipeline(&self.flood_step_pipeline);
+                    let bg = if swap_flag { &bg_ba } else { &bg_ab };
+                    cpass.set_bind_group(0, bg, &[]);
+                    cpass.dispatch_workgroups(wg_x, wg_y, 1);
+                }
+                swap_flag = !swap_flag;
+                iter += 1;
+            }
+            encoder.copy_buffer_to_buffer(&counter_buf, 0, &readback_buf, 0, 4);
+            self.queue.submit(std::iter::once(encoder.finish()));
+
+            let slice = readback_buf.slice(..);
+            let (tx, rx) = std::sync::mpsc::channel();
+            slice.map_async(wgpu::MapMode::Read, move |r| {
+                let _ = tx.send(r);
+            });
+            let _ = self.device.poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: None,
+            });
+            if rx.recv().ok().and_then(|r| r.ok()).is_some() {
+                let data = slice.get_mapped_range();
+                let changed = u32::from_le_bytes(data[0..4].try_into().unwrap_or([0u8; 4]));
+                drop(data);
+                readback_buf.unmap();
+                total_changed += changed;
+                if changed == 0 {
+                    // ウィンドウ全体で変化なし = 収束。
+                    break 'outer;
+                }
+            }
+        }
+
+        // 直近の書き込み先マスクを選ぶ。swap_flag==true のとき最後の dst は mark_b。
+        let final_mark = if swap_flag { &mark_b } else { &mark_a };
+
+        let mut apply_encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("flood-fill-apply-encoder"),
+            });
+        self.apply_mark_to_layer(&mut apply_encoder, final_mark, target, fill_rgba);
+        self.queue.submit(std::iter::once(apply_encoder.finish()));
+
+        FloodFillOutcome {
+            iterations,
+            pixels_changed: total_changed,
+        }
+    }
+
+    /// 指定ポリゴン内ピクセルを塗りつぶす compute pass を `encoder` に積む (BL-133)。
+    ///
+    /// mark pass と apply pass を 1 encoder にまとめる。pass 間は wgpu が mark
+    /// テクスチャの write→read ハザードへバリアを挿入する。submit は呼び出し側。
+    /// `polygon_aabb` はポリゴンのバウンディングボックスを表す半開矩形
+    /// (dispatch 範囲の culling にのみ使う)。
+    pub fn dispatch_lasso_fill(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        active_layer: &GpuRgbaTexture,
+        polygon: &[(f32, f32)],
+        polygon_aabb: PageDirtyRect,
+        fill_rgba: [f32; 4],
+    ) {
+        let w = active_layer.width;
+        let h = active_layer.height;
+        if w == 0 || h == 0 || polygon.len() < 3 {
+            return;
+        }
+
+        let mark = self.create_mask_texture(w, h, "lasso-mark");
+        let mark_view = mark.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("lasso-mark-view"),
+            ..Default::default()
+        });
+
+        // Pack polygon into storage buffer (vec2<f32>; stride 8).
+        let mut poly_bytes = Vec::with_capacity(polygon.len() * 8);
+        for &(x, y) in polygon {
+            poly_bytes.extend_from_slice(&x.to_le_bytes());
+            poly_bytes.extend_from_slice(&y.to_le_bytes());
+        }
+        let poly_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("lasso-polygon"),
+            size: poly_bytes.len() as wgpu::BufferAddress,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.queue.write_buffer(&poly_buf, 0, &poly_bytes);
+
+        let params_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("lasso-mark-params"),
+            size: LASSO_MARK_PARAMS_SIZE,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.queue.write_buffer(
+            &params_buf,
+            0,
+            &build_lasso_mark_params_bytes(polygon.len() as u32, w, h, polygon_aabb),
+        );
+
+        let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("lasso-mark-bg"),
+            layout: &self.lasso_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: params_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: poly_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&mark_view),
+                },
+            ],
+        });
+
+        let wg_x = w.div_ceil(8);
+        let wg_y = h.div_ceil(8);
+        {
+            let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("lasso-mark-pass"),
+                timestamp_writes: None,
+            });
+            cpass.set_pipeline(&self.lasso_pipeline);
+            cpass.set_bind_group(0, &bg, &[]);
+            cpass.dispatch_workgroups(wg_x, wg_y, 1);
+        }
+
+        self.apply_mark_to_layer(encoder, &mark, active_layer, fill_rgba);
+    }
+
+    /// マスク済みピクセルへ fill color を source-over で書き込む compute pass を
+    /// `encoder` に積む (submit はしない)。
+    fn apply_mark_to_layer(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        mark: &wgpu::Texture,
+        active_layer: &GpuRgbaTexture,
+        fill_rgba: [f32; 4],
+    ) {
+        let w = active_layer.width;
+        let h = active_layer.height;
+
+        let mark_view = mark.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("fill-apply-mark-view"),
+            ..Default::default()
+        });
+        let layer_view = active_layer.texture.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("fill-apply-layer-view"),
+            format: Some(wgpu::TextureFormat::Rgba8Unorm),
+            ..Default::default()
+        });
+
+        let params_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("fill-apply-params"),
+            size: FILL_APPLY_PARAMS_SIZE,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.queue.write_buffer(
+            &params_buf,
+            0,
+            &build_fill_apply_params_bytes(fill_rgba, w, h),
+        );
+
+        let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("fill-apply-bg"),
+            layout: &self.apply_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: params_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&mark_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&layer_view),
+                },
+            ],
+        });
+
+        let wg_x = w.div_ceil(8);
+        let wg_y = h.div_ceil(8);
+        let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("fill-apply-pass"),
+            timestamp_writes: None,
+        });
+        cpass.set_pipeline(&self.apply_pipeline);
+        cpass.set_bind_group(0, &bg, &[]);
+        cpass.dispatch_workgroups(wg_x, wg_y, 1);
+    }
+
+    fn create_mask_texture(&self, w: u32, h: u32, label: &str) -> wgpu::Texture {
+        self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        })
+    }
+
+    fn make_flood_bind_group(
+        &self,
+        params: &wgpu::Buffer,
+        source_view: &wgpu::TextureView,
+        in_view: &wgpu::TextureView,
+        out_view: &wgpu::TextureView,
+        counter: &wgpu::Buffer,
+    ) -> wgpu::BindGroup {
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("flood-step-bg"),
+            layout: &self.flood_step_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: params.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(source_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(in_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(out_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: counter.as_entire_binding(),
+                },
+            ],
+        })
+    }
+}
+
+fn create_flood_step_bgl(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("flood-step-bgl"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::StorageTexture {
+                    access: wgpu::StorageTextureAccess::WriteOnly,
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 4,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+    })
+}
+
+fn create_lasso_bgl(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("lasso-mark-bgl"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::StorageTexture {
+                    access: wgpu::StorageTextureAccess::WriteOnly,
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                },
+                count: None,
+            },
+        ],
+    })
+}
+
+fn create_apply_bgl(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("fill-apply-bgl"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::StorageTexture {
+                    access: wgpu::StorageTextureAccess::ReadWrite,
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                },
+                count: None,
+            },
+        ],
+    })
+}
+
+/// FloodFillStepParams を 32-byte LE シリアライズする。WGSL のメモリレイアウトに一致。
+pub(crate) fn build_flood_fill_params_bytes(
+    seed_x: u32,
+    seed_y: u32,
+    w: u32,
+    h: u32,
+) -> [u8; 32] {
+    let mut buf = [0u8; 32];
+    buf[0..4].copy_from_slice(&seed_x.to_le_bytes());
+    buf[4..8].copy_from_slice(&seed_y.to_le_bytes());
+    buf[8..12].copy_from_slice(&w.to_le_bytes());
+    buf[12..16].copy_from_slice(&h.to_le_bytes());
+    buf
+}
+
+/// FillApplyParams を 32-byte LE シリアライズする。
+pub(crate) fn build_fill_apply_params_bytes(color: [f32; 4], w: u32, h: u32) -> [u8; 32] {
+    let mut buf = [0u8; 32];
+    buf[0..4].copy_from_slice(&color[0].to_le_bytes());
+    buf[4..8].copy_from_slice(&color[1].to_le_bytes());
+    buf[8..12].copy_from_slice(&color[2].to_le_bytes());
+    buf[12..16].copy_from_slice(&color[3].to_le_bytes());
+    buf[16..20].copy_from_slice(&w.to_le_bytes());
+    buf[20..24].copy_from_slice(&h.to_le_bytes());
+    buf
+}
+
+/// LassoMarkParams を 32-byte LE シリアライズする。
+///
+/// `aabb` は半開矩形。WGSL 側は包括 AABB (`aabb_x1`/`aabb_y1` = 最終ピクセル座標)
+/// で culling するため、ここで `x + width - 1` / `y + height - 1` の包括座標へ
+/// 変換する。空矩形の場合は culling が常に外れる包括座標を書く。
+pub(crate) fn build_lasso_mark_params_bytes(
+    polygon_count: u32,
+    w: u32,
+    h: u32,
+    aabb: PageDirtyRect,
+) -> [u8; 32] {
+    let x0 = aabb.x as u32;
+    let y0 = aabb.y as u32;
+    let x1 = x0 + (aabb.width as u32).saturating_sub(1);
+    let y1 = y0 + (aabb.height as u32).saturating_sub(1);
+    let mut buf = [0u8; 32];
+    buf[0..4].copy_from_slice(&polygon_count.to_le_bytes());
+    buf[4..8].copy_from_slice(&w.to_le_bytes());
+    buf[8..12].copy_from_slice(&h.to_le_bytes());
+    buf[12..16].copy_from_slice(&x0.to_le_bytes());
+    buf[16..20].copy_from_slice(&y0.to_le_bytes());
+    buf[20..24].copy_from_slice(&x1.to_le_bytes());
+    buf[24..28].copy_from_slice(&y1.to_le_bytes());
+    buf
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flood_fill_params_layout_matches_wgsl() {
+        let bytes = build_flood_fill_params_bytes(3, 5, 128, 256);
+        assert_eq!(bytes.len(), 32);
+        assert_eq!(u32::from_le_bytes(bytes[0..4].try_into().unwrap()), 3);
+        assert_eq!(u32::from_le_bytes(bytes[4..8].try_into().unwrap()), 5);
+        assert_eq!(u32::from_le_bytes(bytes[8..12].try_into().unwrap()), 128);
+        assert_eq!(u32::from_le_bytes(bytes[12..16].try_into().unwrap()), 256);
+        assert_eq!(&bytes[16..32], &[0u8; 16]);
+    }
+
+    #[test]
+    fn fill_apply_params_layout_matches_wgsl() {
+        let bytes = build_fill_apply_params_bytes([1.0, 0.5, 0.25, 0.75], 64, 32);
+        assert_eq!(bytes.len(), 32);
+        assert_eq!(f32::from_le_bytes(bytes[0..4].try_into().unwrap()), 1.0);
+        assert_eq!(f32::from_le_bytes(bytes[4..8].try_into().unwrap()), 0.5);
+        assert_eq!(f32::from_le_bytes(bytes[8..12].try_into().unwrap()), 0.25);
+        assert_eq!(f32::from_le_bytes(bytes[12..16].try_into().unwrap()), 0.75);
+        assert_eq!(u32::from_le_bytes(bytes[16..20].try_into().unwrap()), 64);
+        assert_eq!(u32::from_le_bytes(bytes[20..24].try_into().unwrap()), 32);
+        assert_eq!(&bytes[24..32], &[0u8; 8]);
+    }
+
+    #[test]
+    fn lasso_mark_params_layout_matches_wgsl() {
+        // 半開矩形 (x=10, y=20, w=91, h=181) → 包括 AABB (10, 20, 100, 200)。
+        let bytes =
+            build_lasso_mark_params_bytes(7, 320, 240, PageDirtyRect::new(10, 20, 91, 181));
+        assert_eq!(bytes.len(), 32);
+        assert_eq!(u32::from_le_bytes(bytes[0..4].try_into().unwrap()), 7);
+        assert_eq!(u32::from_le_bytes(bytes[4..8].try_into().unwrap()), 320);
+        assert_eq!(u32::from_le_bytes(bytes[8..12].try_into().unwrap()), 240);
+        assert_eq!(u32::from_le_bytes(bytes[12..16].try_into().unwrap()), 10);
+        assert_eq!(u32::from_le_bytes(bytes[16..20].try_into().unwrap()), 20);
+        assert_eq!(u32::from_le_bytes(bytes[20..24].try_into().unwrap()), 100);
+        assert_eq!(u32::from_le_bytes(bytes[24..28].try_into().unwrap()), 200);
+    }
+
+    #[test]
+    fn lasso_mark_params_single_pixel_aabb_is_inclusive() {
+        // 1x1 半開矩形 (x=5, y=7, w=1, h=1) → 包括 AABB (5, 7, 5, 7)。
+        let bytes = build_lasso_mark_params_bytes(3, 16, 16, PageDirtyRect::new(5, 7, 1, 1));
+        assert_eq!(u32::from_le_bytes(bytes[12..16].try_into().unwrap()), 5);
+        assert_eq!(u32::from_le_bytes(bytes[16..20].try_into().unwrap()), 7);
+        assert_eq!(u32::from_le_bytes(bytes[20..24].try_into().unwrap()), 5);
+        assert_eq!(u32::from_le_bytes(bytes[24..28].try_into().unwrap()), 7);
+    }
+}

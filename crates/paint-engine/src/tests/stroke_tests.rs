@@ -1,0 +1,64 @@
+use crate::painting::PaintInput;
+use document_model::Document;
+use editor_state::{SessionCommand, ToolKind};
+use geometry::KomaLocalPoint;
+
+use crate::PaintEngine;
+
+use super::apply_input;
+
+#[test]
+fn stroke_segment_paints_multiple_pixels() {
+    let mut document = Document::default();
+    let engine = PaintEngine::new();
+
+    let dirty = apply_input(
+        &mut document,
+        &engine,
+        PaintInput::StrokeSegment {
+            from: KomaLocalPoint::new(32, 32),
+            to: KomaLocalPoint::new(64, 32),
+            pressure: 1.0,
+        },
+    )
+    .expect("dirty rect");
+
+    assert!(dirty.width >= 16);
+    let bitmap = document.active_bitmap().expect("active bitmap");
+    assert!(
+        bitmap
+            .pixels
+            .chunks_exact(4)
+            .any(|pixel| pixel == [0, 0, 0, 255])
+    );
+}
+
+#[test]
+fn eraser_uses_engine_composite_to_clear_pixels() {
+    let mut document = Document::default();
+    let engine = PaintEngine::new();
+
+    let _ = apply_input(
+        &mut document,
+        &engine,
+        PaintInput::Stamp {
+            at: KomaLocalPoint::new(48, 48),
+            pressure: 1.0,
+        },
+    );
+    document.apply_session_command(&SessionCommand::SetActiveTool {
+        tool: ToolKind::Eraser,
+    });
+    let _ = apply_input(
+        &mut document,
+        &engine,
+        PaintInput::Stamp {
+            at: KomaLocalPoint::new(48, 48),
+            pressure: 1.0,
+        },
+    );
+
+    let bitmap = document.active_bitmap().expect("active bitmap");
+    let center = bitmap.pixel_rgba(48, 48).expect("pixel");
+    assert_eq!(center, [255, 255, 255, 255]);
+}

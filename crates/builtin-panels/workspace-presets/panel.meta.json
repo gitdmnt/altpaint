@@ -1,0 +1,10 @@
+{
+  "id": "builtin.workspace-presets",
+  "title": "ワークスペース",
+  "default_size": { "width": 280, "height": 280 },
+  "preset": {
+    "anchor": "top-right",
+    "position": { "x": 24, "y": 616 },
+    "size": { "width": 320, "height": 180 }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "builtin.tool-palette",
+  "title": "ツール",
+  "default_size": { "width": 220, "height": 320 },
+  "subscribes": ["tool"],
+  "preset": {
+    "anchor": "top-left",
+    "position": { "x": 24, "y": 384 },
+    "size": { "width": 300, "height": 280 }
+  }
+}

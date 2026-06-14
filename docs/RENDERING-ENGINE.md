@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、`altpaint` のレンダリングエンジンをどの粒度で分割し、どの順番で実装し、どこまでを `render` クレートの責務にするかを詳細に記述する。
+この文書は、`altpaint` のレンダリングエンジンをどの粒度で分割し、どの順番で実装し、各責務をどのクレート（`paint-engine` / `canvas-geometry` / `gpu-paint` / desktop の `present_quads` ・ `presenter`）へ割り当てるかを詳細に記述する。
 
 対象は主に以下である。
 
@@ -27,16 +27,16 @@ UIパネルのレイアウトやプラグイン実行は主目的ではない。
 ## 基本原則
 
 1. **表示責務と編集意味論を分離する**
-   - 作品状態の正しさは `app-core`
-   - どう見せるかは `render`
+   - 作品状態の正しさは `document-model` / `editor-state`
+   - どう見せるかは `paint-engine` の計画 + presenter の提示
 2. **全展開を避ける**
    - 見えていない範囲まで毎回フル合成しない
    - タイル単位、dirty 範囲単位で扱う
 3. **提示と内部表現を分ける**
    - 永続化形式とレンダリング向け展開形式は分けてよい
 4. **GPU所有権はホストが握る**
-   - `apps/desktop` がデバイス・キュー・サーフェスを所有する
-   - `render` はそれに渡す描画入力を作る
+   - `apps/desktop` がデバイス・キュー・サーフェスを所有する（presenter）
+   - `paint-engine` の計画と `gpu-paint` の compute dispatch がそれに渡す描画入力を作る
 5. **オーバーレイを第一級に扱う**
    - スナップガイド、選択枠、ブラシプレビュー、コマ境界は独立レイヤーとして扱う
 6. **キャンバス編集は GPU で行う**
@@ -51,11 +51,11 @@ UIパネルのレイアウトやプラグイン実行は主目的ではない。
 
 描画パイプラインは概ね次の層に分ける。
 
-1. ドキュメント層
+1. ドキュメント層（`document-model`）
    - `Document`
    - `Page`
-   - `Panel`
-   - `LayerNode`
+   - `Koma`（コマ）
+   - `RasterLayer`
 2. 描画準備層
    - 可視範囲計算
    - 表示対象のレイヤー解決
@@ -73,8 +73,8 @@ UIパネルのレイアウトやプラグイン実行は主目的ではない。
    - スナップ
    - ページ/コマ境界
    - ブラシカーソル
-6. 提示層
-   - `FramePlan` / `DirtyFramePlan` 生成
+6. 提示層（現行: `present_quads` の純データ DTO 生成 → `presenter` の GPU 提示）
+   - quad / overlay / canvas plan の生成（旧 `FramePlan` / `DirtyFramePlan` 相当）
    - UI ベーステクスチャ更新
    - キャンバステクスチャ更新
    - オーバーレイテクスチャ更新
@@ -126,32 +126,31 @@ MVP時点では、レンダリングエンジンが満たすべき最低契約�
 
 ## 主要コンポーネント
 
-### 1. `RenderContext`
+> 注: 旧 `render` クレートは Phase 9F で物理削除済み。`RenderContext` /
+> `RenderFrame` / `FramePlan` / `CanvasScene` / `RenderGraph` といった旧名は実在しない。
+> 以下は現行（ADR 018 / B10 完了後）の対応コンポーネントである。MVP 期の設計スケッチ
+> （タイルキャッシュ、合成器、`CanvasViewTransform` の独立型等）は未実装の将来余地として
+> 残すが、現に動いている構造は「描画データフロー（現行 GPU 経路）」「責務分割の現在地」
+> 「最小モジュール構成」の各節を正本とする。
+
+### 1. 計画 / 表示幾何（`paint-engine` + `canvas-geometry`）
 
 責務:
 
-- `Document` と表示要求から描画結果を組み立てる入口
-- 必要なキャッシュやワークバッファの保持
-- フレーム単位の描画要求の正規化
+- `paint-engine::plan_paint` が `PaintInput` から `PaintPlan`（純データ計画）を組み立てる入口
+- `canvas-geometry::CanvasViewGeometry` が view↔page 座標写像と表示幾何を提供する
+  - `TextureQuad`
+  - dirty rect の表示先写像
+  - view 座標 ↔ page 座標変換
+  - ブラシプレビュー矩形（`features/paint/preview.rs`）
 
-MVPでは `RenderFrame` を返す単純な入口でもよいが、将来的には `RenderGraph` 風の構造へ発展できるようにする。
+旧 `CanvasScene` / `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan` /
+`DirtyFramePlan` は次のように整理済み:
 
-2026-03-10 時点では、これに加えて canvas scene 計画 API を持つ。
-
-- `CanvasScene`
-- `TextureQuad`
-- dirty rect の表示先写像
-- view 座標 <-> canvas 座標変換
-- ブラシプレビュー矩形
-
-2026-03-12 時点では、さらに次を `render` 側へ寄せた。
-
-- `FramePlan` / `CanvasPlan` / `OverlayPlan` / `PanelPlan` (`OverlayPlan`
-  は Phase 9D で削除)
-- `DirtyFramePlan`
-- base / overlay / panel / status の CPU compose (overlay は Phase 9D で
-  GPU 直描画化)
-- ブラシ preview dirty と露出背景 dirty の計算
+- `CanvasViewGeometry` 単一経路へ縮約（ADR 018 B5）
+- `CanvasPlan` / overlay DTO は `apps/desktop` へ移管
+- パネル面は `PanelRuntime::render_panels` の GPU 直描画で、計画に含まれない（ADR 016）
+- base / overlay / panel / status の compose は presenter（`apps/desktop/src/presenter/`）が担う（overlay / panel は GPU 直描画）
 
 ### 2. `CanvasViewTransform`
 
@@ -225,43 +224,50 @@ MVPで対象にする合成モード:
 
 重要なのは、これらを直接キャンバス内容へ焼き込まないことだ。
 
-## 描画データフロー
+## 描画データフロー（現行 GPU 経路 / ADR 018 B8 以降）
 
 1. `apps/desktop` が入力種別、筆圧、window 座標を受け取る
-2. `apps/desktop` が view 変換を使って canvas 座標へ変換する
-3. `app-core` が active panel 内判定と active layer / composited bitmap / active color / active tool metadata を解決する
-4. desktop host が active tool の drawing plugin を呼び、更新用 bitmap を得る
-5. `app-core` が active layer へ bitmap edit を反映する
-6. `render` が dirty rect と表示変換に基づいて `FramePlan` / `DirtyFramePlan` を計画する
-7. `render` が UI ベースフレームとオーバーレイフレームを CPU で組み立てる
-8. `apps/desktop` がキャンバス bitmap を GPU テクスチャへ差分アップロードする
-9. `apps/desktop` が `render` の返した quad / UV と compose 結果を GPU へ渡す
-10. GPU が base → canvas → overlay の順に合成提示する
+2. `paint-engine` の view↔page 写像（`canvas-geometry::CanvasViewGeometry`）で page 座標へ変換し、`advance_pointer_gesture` が `PaintInput`（Stamp / StrokeSegment / FloodFill / LassoFill）を生成する
+3. `paint-engine::plan_paint(document, input)` が `build_paint_context` で active コマ / active layer / composited bitmap / active color / active tool を解決し、**画素を一切作らずに** `PaintPlan`（純データ計画: stamps 列 / seed / polygon + color + dirty rect）を返す
+4. `apps/desktop/src/features/paint/execute.rs::apply_paint_input` が、GPU 有効時は `GpuPaintBackend`、不在時は `CpuPaintBackend` を選び、`PaintPlan` を適用させる（`PaintBackend` trait。BL-131）
+5. `GpuPaintBackend` が `PaintPlan` を `BrushStrokeParams` / fill パラメータへ機械変換し、`BrushPipeline` / `FillPipeline` の compute shader を **GPU レイヤーテクスチャへ直接 dispatch** する（編集中に CPU 画素を作らない。flood fill は GPU 上のピンポンマスクで連結成分を解決し CPU visited 配列を持たない）。ストロークは brush pass と composite pass を 1 encoder へ積み 1 submit に集約する（BL-133）
+6. `CompositePipeline` がコマの可視レイヤーを GPU 上で合成し composite テクスチャを更新する
+7. presenter（`apps/desktop/src/presenter/`）が canvas composite テクスチャと、CPU 側で組み立てた overlay / panel quad を `quad / UV` で受け取り、GPU が base → canvas → temp overlay → ui panel の順に合成提示する
+8. undo/redo は `PaintPatch`（`Cpu` / `Gpu` 型付きスナップショット）で記録する。GPU 経路は dirty 領域の before/after を GPU テクスチャスナップショットとして保持する
+
+GPU 不在時のフォールバック（BL-136、GPU 必須化はしない）:
+
+- `CpuPaintBackend` が `paint-engine` の CPU ops（`compute_paint_edits`）でアクティブレイヤービットマップへ書き込み、`CpuCanvasSnapshot`（旧 `CanvasFrame`）が表示経路へ画素を供給する
 
 補足:
 
-- dirty rect による差分更新は、描画意味論ではなく表示更新の責務なので、`render` と presenter 側で扱う
-- drawing plugin 自身は「どの bitmap をどう更新するか」に集中し、最終提示戦略は持たない
+- dirty rect による差分更新は描画意味論ではなく表示更新の責務であり、`PaintPlan.dirty` を典拠に presenter 側で扱う
+- `PaintBackend` は「どの計画をどう適用するか」に集中し、最終提示戦略は presenter が持つ
 
-## 責務分割の現在地
+## 責務分割の現在地（ADR 018 完了後）
 
-### `app-core`
+> 旧 `render` クレートは Phase 9F で物理削除、旧 `app-core` クレートは ADR 018 B5 で
+> `geometry` / `raster` / `document-model` / `editor-state` の 4 クレートへ解体済み。
 
-- `CanvasViewTransform` のような**ユーザー操作で変化する view state** を保持する
-- `Command` の意味論として zoom/pan/reset を受け持つ
+### ドメイン / セッション層（`document-model` / `editor-state`）
 
-### `render`
+- `Document`（作品コンテンツ）と `EditorSession`（一過性編集状態）を保持する。`wgpu` / `winit` 非依存
+- `CanvasViewTransform` のような**ユーザー操作で変化する view state** は `EditorSession` が保持する
+- `SessionCommand`（`editor-state`）の意味論として zoom / pan / reset を受け持つ（`view_policy` に倍率・clamp・パン量を集約）
+- `ToolDescriptor`（`editor-state`、BL-134）がツール種別から gesture 種別 / 合成モード / サイズ解決を導出し、`ToolKind` のクローズド match を 1 箇所へ集約する
 
-- 上記 view state を受け取り、可視範囲、dirty の表示先、quad / UV、overlay 幾何、frame compose を計算する
-- フェーズ5完了時点で CPU 側画面生成の中心はここにある
+### 計画層（`paint-engine`）
 
-### `apps/desktop`
+- `plan_paint` が `PaintInput` を `PaintPlan`（純データ）へ計画する。画素は作らない
+- view↔page 写像 / 可視範囲 / quad / UV / overlay 幾何は `canvas-geometry::CanvasViewGeometry` が計算する
 
-- `winit` / `wgpu` 所有
-- desktop 固定レイアウトの算出
-- 最終提示
+### 適用 / 提示層（`apps/desktop` + `gpu-paint`）
 
-したがって、view transform を renderer へ完全移管するのではなく、**state は `app-core`、表示計算は `render`** という分割を正とする。
+- `apps/desktop/src/features/paint`: `PaintBackend`（Cpu / Gpu）の選択・適用・履歴
+- `gpu-paint`: brush / fill / composite の compute shader 実装（`wgpu` 依存）
+- presenter: `winit` / `wgpu` 所有、desktop 固定レイアウト算出、最終提示
+
+したがって、**state はドメイン / セッション層、計画は `paint-engine`、画素適用は backend（GPU 実装は `gpu-paint`）、提示は presenter** という分割を正とする。
 
 ## CPU と GPU の役割分担
 
@@ -281,40 +287,31 @@ MVPで対象にする合成モード:
 | ドキュメント走査・dirty 範囲計算           | CPU          | 状態管理・論理演算                              |
 | UI ベースフレーム・オーバーレイピクセル    | CPU          | パネル等の非高頻度描画                          |
 
-### 現状（移行前）
+### 現状（ADR 018 B8 完了後 = GPU 経路が正）
 
-現在の実装は CPU ベースのキャンバス編集を持つ（`Vec<u8>` でのブラシ合成等）。
-これは性能上の問題（太いブラシで UI ブロッキング、O(size²) × 64 ステップ）を持っており、
-上記原則に従った GPU 実装へ移行する。
+GPU 利用可能時、キャンバス編集は GPU 経路で完結する。`PaintPlan`（計画、画素なし）→
+`GpuPaintBackend` → compute shader dispatch という流れで、編集中に CPU 画素バッファを
+生成しない（ストローク・flood fill ともに。回帰テスト
+`features::paint::backend::tests::golden_equivalence::gpu_apply_does_not_touch_cpu_pixels`
+で CPU ビットマップが apply 前後で不変であることを担保）。旧 CPU ベース編集
+（`Vec<u8>` でのブラシ合成、太いブラシで O(size²) × 64 ステップの UI ブロッキング）は
+GPU 経路へ移行済み。
 
-CPU:
+CPU が担うのは:
 
-- ドキュメント走査
-- dirty 範囲計算
-- 最小ラスタ合成（暫定）
-- UI ベースフレーム生成
-- オーバーレイピクセル生成
+- ドキュメント走査・dirty 範囲計算
+- `paint-engine::plan_paint` による高レベルな描画計画（座標・サイズ・色・dirty）
+- 描画パラメータ（uniform buffer）の組み立てと GPU へのバインド
+- UI ベースフレーム生成・オーバーレイピクセル生成（パネル等の非高頻度描画）
+- GPU 不在時のみ `CpuPaintBackend` による参照実装の CPU 合成（BL-136 フォールバック）
 
-GPU:
+GPU が担うのは:
 
-- キャンバステクスチャ保持
-- パン・ズーム適用
-- base / canvas / overlay の最終合成表示
-
-### 目標段階
-
-CPU:
-
-- 高レベルな描画計画
-- キャッシュ戦略
-- 描画パラメータ（座標・サイズ・色）の計算と GPU へのバインド
-
-GPU:
-
-- キャンバスビットマップの常時保持（テクスチャ）
-- ブラシスタンプ生成・合成（compute shader）
-- 塗りつぶし（compute shader）
-- パン・ズーム（vertex shader / quad UV）
+- キャンバスビットマップの常時保持（レイヤーテクスチャ。`gpu-paint::LayerTextureStore`）
+- ブラシスタンプ生成・合成（compute shader。`BrushPipeline`）
+- 塗りつぶし（compute shader。`FillPipeline`、ピンポンマスクで CPU visited 配列を持たない）
+- レイヤー合成（`CompositePipeline`）
+- パン・ズーム（quad UV 更新。テクスチャ再生成なし）
 - base / canvas / overlay の最終合成表示
 
 ## Dirty 更新戦略
@@ -357,14 +354,16 @@ MVPで扱う変換:
 
 ## レンダリングエンジンの最小モジュール構成
 
-Phase 9F (2026-04-29) で旧 `crates/render/` は物理削除され、現状は次の構成:
+Phase 9F (2026-04-29) で旧 `crates/render/` は物理削除され、ADR 018 / B10 完了時点では
+純データ DTO・固定レイアウト計算・GPU 提示が次のように配置されている:
 
-- `crates/render-types/src/` — 純データ DTO (FramePlan / CanvasPlan / PanelPlan / PixelRect / CanvasScene 等)
-- `apps/desktop/src/wgpu_canvas.rs` — `PresentScene` と GPU 提示パイプライン
-- `apps/desktop/src/frame/` — 背景・前景・overlay の solid/circle/line quad 構築
-- `apps/desktop/src/app/canvas_frame.rs` — CPU キャンバススナップショット (`CanvasFrame`)
+- `crates/canvas-geometry/src/` — `CanvasViewGeometry`（view↔page 写像 + `TextureQuad`）。表示幾何の単一経路
+- `apps/desktop/src/present_quads/` — desktop 固定レイアウト計算と presenter 入力 DTO（`CanvasPlan` / `CanvasOverlayState` / solid・circle・line quad ビルダ / `LayerDirtyAccumulator`）。純関数で `wgpu` 非依存
+- `apps/desktop/src/presenter/` — `wgpu` 提示パイプライン（旧 `wgpu_canvas.rs` を `shaders` / `pipelines` / `textures` / `frame` / `theme` へ分割）
+- `apps/desktop/src/app/cpu_canvas_snapshot.rs` — CPU キャンバススナップショット (`CpuCanvasSnapshot`、旧 `render::RenderFrame`)。GPU 不在時フォールバックと viewport / 表示幾何計算で参照
 
-MVPではファイル数を抑えてよいが、純データ DTO と GPU 提示パイプラインを分離する責務境界は崩さない。
+純データ DTO（`present_quads`）と GPU 提示（`presenter`）を分離する責務境界は崩さない。パネル面は
+この計画 DTO に含まれない（`PanelRuntime` による GPU 直描画。ADR 016）。
 
 ## パフォーマンス目標との接続
 
@@ -391,7 +390,7 @@ MVPではファイル数を抑えてよいが、純データ DTO と GPU 提示�
 - タイル/チャンク単位の読み出し
 - 差分保存またはフル保存の切替余地
 
-つまり、`render` の要求は `storage` に伝えるが、`render` が直接 SQLite やファイル構造を知る必要はない。
+つまり、レンダリング側の要求は `project-store`（SQLite 永続化）に伝えるが、`paint-engine` / presenter が直接 SQLite やファイル構造を知る必要はない。
 
 ## 将来拡張
 
@@ -406,14 +405,14 @@ MVPではファイル数を抑えてよいが、純データ DTO と GPU 提示�
 
 ## 実装優先順位
 
-優先順位は以下とする。
+1〜3 は ADR 018 / B10 時点で達成済み（現行構造）、4〜6 は将来余地である。
 
-1. `RenderFrame` ベースの安定提示
-2. `CanvasViewTransform` の整理
-3. dirty 範囲の明示化
-4. タイルキャッシュ導入
-5. オーバーレイの独立描画
-6. 合成モード拡張
+1. ✅ 安定提示（`present_quads` 純データ DTO → `presenter` GPU 提示。旧 `RenderFrame` 経路は撤去）
+2. ✅ view 変換の集約（`canvas-geometry::CanvasViewGeometry` 単一経路 + `editor-state` の `view_policy`）
+3. ✅ dirty 範囲の明示化（`PaintPlan.dirty` / `LayerDirtyAccumulator`）
+4. タイルキャッシュ導入（未着手）
+5. オーバーレイの独立描画（GPU 直描画化済み。さらなる独立更新は将来）
+6. 合成モード拡張（将来）
 
 ## この文書の結論
 

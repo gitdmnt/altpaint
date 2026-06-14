@@ -1,0 +1,10 @@
+{
+  "id": "builtin.app-actions",
+  "title": "ファイル",
+  "default_size": { "width": 240, "height": 320 },
+  "preset": {
+    "anchor": "top-left",
+    "position": { "x": 356, "y": 72 },
+    "size": { "width": 320, "height": 240 }
+  }
+}

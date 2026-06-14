@@ -1,0 +1,29 @@
+<div class="panel">
+  <header class="panel-title">ワークスペース</header>
+  <div class="alt-section">
+    <div class="alt-section-title">プリセット</div>
+    <label>
+      <span>既存プリセット</span>
+      <select id="workspace.preset.selector" data-action="altp:select:select_workspace"></select>
+    </label>
+    <label>
+      <span>ID</span>
+      <input type="text" id="workspace.preset.id" placeholder="default-floating"
+             data-action="altp:input:edit_workspace_id">
+    </label>
+    <label>
+      <span>表示名</span>
+      <input type="text" id="workspace.preset.label" placeholder="Default floating workspace"
+             data-action="altp:input:edit_workspace_label">
+    </label>
+    <div class="row">
+      <button class="btn" id="workspace.load" data-action="altp:activate:load_workspace">読込</button>
+      <button class="btn" id="workspace.save" data-action="altp:activate:save_workspace">保存</button>
+    </div>
+    <div class="row">
+      <button class="btn" id="workspace.export" data-action="altp:activate:export_workspace">書き出し</button>
+      <button class="btn" id="workspace.reload" data-action="altp:activate:reload_workspaces">再読込</button>
+    </div>
+    <p class="muted">現在のパネル配置と plugin 設定を preset として保存・書き出しできます。</p>
+  </div>
+</div>

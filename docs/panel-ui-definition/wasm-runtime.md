@@ -192,7 +192,6 @@ Wasm は Rust 等からコンパイルする処理モジュールである。
 | フィールド       | 型       | 説明                               |
 | ---------------- | -------- | ---------------------------------- |
 | `handler_name`   | `string` | UI DSL 側で bind された handler 名 |
-| `event_kind`     | `string` | `click` / `change` など            |
 | `event_payload`  | object   | イベント固有 payload               |
 | `state_snapshot` | object   | 現在の panel local state           |
 | `host_snapshot`  | object   | host が渡す読み取り専用 snapshot   |
@@ -265,8 +264,8 @@ command("tool.set_active").string("tool", "pen")
 
 ```rust
 plugin_sdk::commands::tool::set_active(plugin_sdk::commands::Tool::Pen)
-plugin_sdk::commands::project::save()
-plugin_sdk::commands::project::new_sized(320, 240)
+plugin_sdk::services::project_io::save_current()
+plugin_sdk::services::project_io::new_document_sized(320, 240)
 ```
 
 これにより、少なくとも Rust 側では command 名・payload key・代表的な enum 値の typo をコンパイル時に減らせる。
@@ -338,8 +337,8 @@ plugin 作者には host 内部 crate を直接依存させない。
 
 - `commands::tool::set_active(Tool::Pen)`
 - `commands::tool::set_color_rgb(RgbColor::new(...))`
-- `commands::project::save()`
-- `commands::project::new_sized(width, height)`
+- `services::project_io::save_current()`
+- `services::project_io::new_document_sized(width, height)`
 - `host::tool::pen_name()`
 - `host::document::title()`
 - `StatePatch::set("selectedTool", "brush")`
@@ -349,13 +348,11 @@ plugin 作者には host 内部 crate を直接依存させない。
 
 重要なのは、plugin 作者が `.altp-panel` から `host.*` を直接読むのではなく、Wasm handler 内で `plugin_sdk::host::*` を使って取得し、その値を local state へ mirror することだ。
 
-escape hatch としては、必要に応じて従来の `command("...")` builder も残してよい。
+escape hatch としては、必要に応じて `CommandDescriptor::new("...")` を直接構築してもよい。
 
 ビルトイン移植後に必要な helper は、少なくとも次を含む。
 
-- `.bool("value", true)`
-- `.color("color", "#1E88E5")`
-- `StatePatch::replace("selected_id", "layer-1")`
+- `StatePatch::set("selected_id", "layer-1")`
 
 ### SDK サンプル
 

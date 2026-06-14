@@ -48,7 +48,7 @@
               }
             },
             {
-              "id": "builtin.layers-panel",
+              "id": "builtin.layers",
               "visible": true,
               "anchor": "top-left",
               "position": {
@@ -87,7 +87,7 @@
               }
             },
             {
-              "id": "builtin.pen-settings",
+              "id": "builtin.tool-settings",
               "visible": true,
               "anchor": "bottom-right",
               "position": {
@@ -113,7 +113,7 @@
               }
             },
             {
-              "id": "builtin.snapshot-panel",
+              "id": "builtin.snapshots",
               "visible": false,
               "anchor": "top-left",
               "position": {
@@ -223,7 +223,7 @@
               }
             },
             {
-              "id": "builtin.layers-panel",
+              "id": "builtin.layers",
               "visible": true,
               "anchor": "top-left",
               "position": {
@@ -262,7 +262,7 @@
               }
             },
             {
-              "id": "builtin.pen-settings",
+              "id": "builtin.tool-settings",
               "visible": true,
               "anchor": "bottom-right",
               "position": {
@@ -288,7 +288,7 @@
               }
             },
             {
-              "id": "builtin.snapshot-panel",
+              "id": "builtin.snapshots",
               "visible": false,
               "anchor": "top-left",
               "position": {

@@ -80,7 +80,7 @@ active_tool と一致するボタンは active=true になります。
 
 - ペン一覧はまだ Prev/Next 切替のみです
 - ショートカット表示は補助テキストであり、パネル自身がキーバインド解決を持つわけではありません
-- 幅の詳細調整は `builtin.pen-settings` 側で行います
+- 幅の詳細調整は `builtin.tool-settings` 側で行います
 - 任意の新規ツールをボタン群へ自動展開する仕組みはまだなく、追加ツールの一般選択 UI は dropdown が担います
 
 補足: 現時点では Pen / Eraser をキャプチャ対象にしつつ、Bucket / Lasso Bucket も設定値として保持します。

@@ -12,7 +12,7 @@ Phase 9E (2026-04-26) で DSL パネルの CPU ラスタライザ (`render::pane
 これにより**パネルとステータスバーの描画パスは `HtmlPanelEngine` 一本**となった。
 
 ところが `apps/desktop` の `html-panel` feature は **default OFF のまま放置**されており、
-`cargo run -p desktop` (feature 指定なし) でビルドすると次のような実行時挙動になる:
+`cargo run -p altpaint-desktop` (feature 指定なし) でビルドすると次のような実行時挙動になる:
 
 ```rust
 #[cfg(not(feature = "html-panel"))]
@@ -71,7 +71,7 @@ let status_quad: Option<GpuPanelQuad<'_>> = None;
   参照が 0 件
 - `Cargo.toml` 内の `html-panel` feature 定義が 0 件 (`apps/desktop` /
   `panel-runtime`)
-- `cargo run -p desktop` (feature 指定なし) でパネル＋ステータスバーが正常表示される
+- `cargo run -p altpaint-desktop` (feature 指定なし) でパネル＋ステータスバーが正常表示される
 - `cargo build --workspace` 成功
 - `cargo test --workspace` ベースライン同等（並列実行時の flaky 1 件は
   単独実行で PASS、9E-5 由来）

@@ -1,21 +1,22 @@
 //! service request から desktop host service handler へ届く経路を検証する。
 
-use desktop_support::{WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog};
-use panel_api::{HostAction, ServiceRequest, services::names};
-use workspace_persistence::WorkspaceUiState;
+use crate::features::workspace::{
+    WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog,
+};
+use panel_runtime::{HostRequest, ServiceRequest, services::names};
+use panel_workspace::WorkspaceUiState;
 
 use super::{
     TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_workspace_preset_path,
     unique_test_path,
 };
 
-/// 要求 サービス 新規 ドキュメント sized updates ビットマップ が期待どおりに動作することを検証する。
 #[test]
 fn request_service_new_document_sized_updates_bitmap() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
 
     assert!(
-        app.execute_host_action(HostAction::RequestService(
+        app.execute_host_request(HostRequest::RequestService(
             ServiceRequest::new(names::PROJECT_NEW_DOCUMENT_SIZED)
                 .with_value("width", 128)
                 .with_value("height", 96),
@@ -26,21 +27,19 @@ fn request_service_new_document_sized_updates_bitmap() {
     assert_eq!((bitmap.width, bitmap.height), (128, 96));
 }
 
-/// 要求 サービス 保存 プロジェクト enqueues 背景 task が期待どおりに動作することを検証する。
 #[test]
 fn request_service_save_project_enqueues_background_task() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
 
     assert!(
-        app.execute_host_action(HostAction::RequestService(ServiceRequest::new(
+        app.execute_host_request(HostRequest::RequestService(ServiceRequest::new(
             names::PROJECT_SAVE_CURRENT,
         )))
     );
 
-    assert_eq!(app.io_state.pending_jobs.len(), 1);
+    assert_eq!(app.background_jobs.len(), 1);
 }
 
-/// 要求 サービス 保存 ワークスペース preset persists カタログ が期待どおりに動作することを検証する。
 #[test]
 fn request_service_save_workspace_preset_persists_catalog() {
     let preset_path = unique_test_path("service-workspace-presets");
@@ -60,25 +59,24 @@ fn request_service_save_workspace_preset_persists_catalog() {
     );
 
     assert!(
-        app.execute_host_action(HostAction::RequestService(
+        app.execute_host_request(HostRequest::RequestService(
             ServiceRequest::new(names::WORKSPACE_SAVE_PRESET)
                 .with_value("preset_id", "review")
                 .with_value("label", "Review"),
         ))
     );
 
-    let reloaded = desktop_support::load_workspace_preset_catalog(&preset_path);
+    let reloaded = crate::features::workspace::load_workspace_preset_catalog(&preset_path, app.default_workspace_preset_catalog());
     assert!(reloaded.presets.iter().any(|preset| preset.id == "review"));
 }
 
-/// スナップショット 作成 サービス request increases スナップショット 件数 が期待どおりに動作することを検証する。
 #[test]
 fn snapshot_create_service_increases_snapshot_count() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
     assert_eq!(app.snapshots.len(), 0);
 
     assert!(
-        app.execute_host_action(HostAction::RequestService(
+        app.execute_host_request(HostRequest::RequestService(
             ServiceRequest::new(names::SNAPSHOT_CREATE).with_value("label", "test-snap"),
         ))
     );
@@ -86,30 +84,100 @@ fn snapshot_create_service_increases_snapshot_count() {
     assert_eq!(app.snapshots.len(), 1);
 }
 
-/// スナップショット 復元 サービス request restores ドキュメント が期待どおりに動作することを検証する。
 #[test]
 fn snapshot_restore_service_restores_document() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let id = app.snapshots.push("baseline", app.document.clone());
+    let id = app.snapshots.push(app.document.clone());
 
     assert!(
-        app.execute_host_action(HostAction::RequestService(
+        app.execute_host_request(HostRequest::RequestService(
             ServiceRequest::new(names::SNAPSHOT_RESTORE).with_value("snapshot_id", id),
         ))
     );
 }
 
-/// 要求 サービス 再読込 ペン presets refreshes ドキュメント 状態 が期待どおりに動作することを検証する。
+/// `workspace_layout.set_panel_visibility` がパネル可視性を切り替える。
+#[test]
+fn request_service_workspace_layout_set_panel_visibility_toggles_visibility() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    assert!(
+        app.panel_workspace
+            .is_panel_visible("builtin.tool-palette"),
+        "tool-palette defaults to visible"
+    );
+
+    assert!(
+        app.execute_host_request(HostRequest::RequestService(
+            ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+                .with_value("panel_id", "builtin.tool-palette")
+                .with_value("visible", false),
+        ))
+    );
+
+    assert!(
+        !app.panel_workspace
+            .is_panel_visible("builtin.tool-palette"),
+        "tool-palette should be hidden after service call"
+    );
+}
+
+/// BL-062: `workspace_layout.move_panel` がパネルの並び順を入れ替える。
+#[test]
+fn request_service_workspace_layout_move_panel_reorders_layout() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let index_of = |app: &crate::app::DesktopApp, id: &str| {
+        app.panel_workspace
+            .workspace_layout()
+            .panels
+            .iter()
+            .position(|entry| entry.id == id)
+    };
+    let before = index_of(&app, "builtin.layers").expect("layers panel exists");
+    assert!(before > 0, "前提: layers は先頭ではない (上に移動できる)");
+
+    assert!(
+        app.execute_host_request(HostRequest::RequestService(
+            ServiceRequest::new(names::WORKSPACE_LAYOUT_MOVE_PANEL)
+                .with_value("panel_id", "builtin.layers")
+                .with_value("direction", "up"),
+        ))
+    );
+
+    let after = index_of(&app, "builtin.layers").expect("layers panel exists");
+    assert_eq!(after, before - 1, "up で 1 つ前へ移動する");
+}
+
+/// `koma_nav.*` service がコマ選択へ届く (K6 wire 改名の操作経路生存確認)。
+#[test]
+fn request_service_koma_nav_add_and_select_changes_active_koma() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    assert_eq!(app.document.active_koma_index(), 0);
+
+    assert!(
+        app.execute_host_request(HostRequest::RequestService(ServiceRequest::new(
+            names::KOMA_NAV_ADD,
+        )))
+    );
+    assert_eq!(app.document.active_koma_index(), 1);
+
+    assert!(
+        app.execute_host_request(HostRequest::RequestService(
+            ServiceRequest::new(names::KOMA_NAV_SELECT).with_value("index", 0),
+        ))
+    );
+    assert_eq!(app.document.active_koma_index(), 0);
+}
+
 #[test]
 fn request_service_reload_pen_presets_refreshes_document_state() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    app.document.pen_presets.clear();
+    app.document.session.pen_presets.clear();
 
     assert!(
-        app.execute_host_action(HostAction::RequestService(ServiceRequest::new(
+        app.execute_host_request(HostRequest::RequestService(ServiceRequest::new(
             names::TOOL_CATALOG_RELOAD_PEN_PRESETS,
         )))
     );
 
-    assert!(!app.document.pen_presets.is_empty());
+    assert!(!app.document.session.pen_presets.is_empty());
 }

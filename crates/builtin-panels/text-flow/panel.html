@@ -1,0 +1,30 @@
+<div class="panel">
+  <header class="panel-title">テキスト</header>
+  <div class="alt-section">
+    <div class="alt-section-title">テキスト入力</div>
+    <input type="text" id="input-text" placeholder="テキストを入力"
+           data-action="altp:input:update_text">
+  </div>
+  <div class="alt-section">
+    <div class="alt-section-title">サイズ・位置</div>
+    <label>
+      <span>サイズ: <span id="font-size-label">32</span></span>
+      <input type="range" id="font-size" min="8" max="200" value="32"
+             data-action="altp:slider:update_font_size">
+    </label>
+    <label>
+      <span>X: <span id="x-label">100</span></span>
+      <input type="range" id="x" min="0" max="8192" value="100"
+             data-action="altp:slider:update_x">
+    </label>
+    <label>
+      <span>Y: <span id="y-label">100</span></span>
+      <input type="range" id="y" min="0" max="8192" value="100"
+             data-action="altp:slider:update_y">
+    </label>
+  </div>
+  <div class="alt-section">
+    <div class="alt-section-title">描画</div>
+    <button class="btn" id="render" data-action="altp:activate:render_text">テキストを描画</button>
+  </div>
+</div>

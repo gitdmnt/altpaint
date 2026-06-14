@@ -536,7 +536,7 @@
           { id: 'drawing.eraser', name: '消しゴムで消去', desc: '消しゴムツールで描画内容を消す' },
           { id: 'drawing.bucket', name: 'バケツ塗りつぶし', desc: 'バケツツールで領域塗りつぶし' },
           { id: 'drawing.lasso_bucket', name: '囲って塗る（ラッソ）', desc: 'ラッソバケツで囲んだ範囲を塗る' },
-          { id: 'drawing.panel_rect', name: 'コマ矩形描画', desc: 'コマ矩形ツールで新しいコマを引く' },
+          { id: 'drawing.koma_rect', name: 'コマ矩形描画', desc: 'コマ矩形ツールで新しいコマを引く' },
           { id: 'drawing.undo', name: 'Undo（元に戻す）', desc: 'ファイルパネルまたはショートカットでUndo' },
           { id: 'drawing.redo', name: 'Redo（やり直し）', desc: 'ファイルパネルまたはショートカットでRedo' },
         ],
@@ -572,7 +572,7 @@
           { id: 'tool.btn_eraser', name: '消しゴムボタン', desc: '⌫ 消しゴム ボタン' },
           { id: 'tool.btn_bucket', name: '塗りつぶしボタン', desc: '🪣 塗りつぶし ボタン' },
           { id: 'tool.btn_lasso', name: '囲って塗るボタン', desc: '⬠ 囲って塗る ボタン' },
-          { id: 'tool.btn_panel_rect', name: 'コマ矩形ボタン', desc: '▭ コマ矩形 ボタン' },
+          { id: 'tool.btn_koma_rect', name: 'コマ矩形ボタン', desc: '▭ コマ矩形 ボタン' },
           { id: 'tool.pen_prev', name: 'ペン切替（前へ）', desc: '◀ 前へ ボタン' },
           { id: 'tool.pen_next', name: 'ペン切替（次へ）', desc: '次へ ▶ ボタン' },
           { id: 'tool.pen_reload', name: 'ペン再読込', desc: '⟳ ペン再読込' },
@@ -582,8 +582,8 @@
         ],
       },
       {
-        id: 'panel-pen-settings',
-        title: '筆設定パネル (builtin.pen-settings)',
+        id: 'panel-tool-settings',
+        title: 'ツール設定パネル (builtin.tool-settings)',
         items: [
           { id: 'pen.size_slider', name: 'サイズスライダー', desc: 'スライダー操作でサイズ変更' },
           { id: 'pen.size_input', name: 'サイズ数値入力', desc: 'テキストフィールドで数値入力' },
@@ -604,7 +604,7 @@
       },
       {
         id: 'panel-layers',
-        title: 'レイヤーパネル (builtin.layers-panel)',
+        title: 'レイヤーパネル (builtin.layers)',
         items: [
           { id: 'layer.add', name: 'レイヤー追加', desc: '＋ 追加ボタン' },
           { id: 'layer.remove', name: 'レイヤー削除', desc: '－ 削除ボタン' },
@@ -632,8 +632,8 @@
         ],
       },
       {
-        id: 'panel-panel-list',
-        title: 'コマ一覧パネル (builtin.panel-list)',
+        id: 'panel-koma-list',
+        title: 'コマ一覧パネル (builtin.koma-list)',
         items: [
           { id: 'panel_list.add', name: 'コマ追加', desc: '＋ 追加 ボタン' },
           { id: 'panel_list.remove', name: 'コマ削除', desc: '－ 削除 ボタン' },
