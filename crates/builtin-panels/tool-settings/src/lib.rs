@@ -2,13 +2,30 @@
 
 use panel_sdk::{
     commands,
-    dom::{clear_attribute, html_escape, query_selector, set_attribute, set_inner_html},
-    host,
-    runtime::{emit_command, error, event_string},
+    dom::{set_button_active, set_slider, set_text, set_visible},
+    host_state::{ToolState, section},
+    runtime::{emit_request, error, host_section},
+    serde::Deserialize,
 };
 
 const LOG_SIZE_SLIDER_MAX: i32 = 1000;
 const MAX_TOOL_SIZE: f32 = 10000.0;
+
+/// スライダー入力 payload (`altp:slider:*` は `event_payload.value` を整数で運ぶ)。
+#[derive(Default, Deserialize)]
+#[serde(crate = "panel_sdk::serde")]
+struct SliderValue {
+    #[serde(default)]
+    value: i32,
+}
+
+/// テキスト入力 payload (`altp:input:*` は `event_payload.value` を文字列で運ぶ)。
+#[derive(Default, Deserialize)]
+#[serde(crate = "panel_sdk::serde")]
+struct TextValue {
+    #[serde(default)]
+    value: String,
+}
 
 fn size_to_slider(size: i32) -> i32 {
     if size <= 1 {
@@ -37,53 +54,27 @@ fn parse_size_input(value: &str) -> Result<u32, &'static str> {
     Ok(parsed.clamp(1, MAX_TOOL_SIZE as u32))
 }
 
-fn set_visible(selector: &str, visible: bool) {
-    if let Some(node) = query_selector(selector) {
-        if visible {
-            clear_attribute(node, "hidden");
-        } else {
-            set_attribute(node, "hidden", "");
-        }
-    }
-}
-
-fn set_text(selector: &str, text: &str) {
-    if let Some(node) = query_selector(selector) {
-        set_inner_html(node, &html_escape(text));
-    }
-}
-
-fn set_button_active(selector: &str, active: bool) {
-    if let Some(btn) = query_selector(selector) {
-        let cls = if active { "btn active" } else { "btn" };
-        set_attribute(btn, "class", cls);
-    }
-}
-
 fn render_dom() {
-    let snapshot = host::tool::snapshot();
-    let capabilities = host::tool::capabilities();
-    let size = snapshot.pen_size.max(1);
+    // BL-142: tool セクションを型付き DTO として 1 回取得する。
+    let Some(tool) = host_section::<ToolState>(section::TOOL) else {
+        return;
+    };
+    let size = tool.pen_size.max(1) as i32;
 
-    set_text("#active-tool-label", &snapshot.active_label);
-    set_text("#pen-name", &snapshot.pen_name);
-    set_text("#size-display", &size.to_string());
+    set_text("#active-tool-label", &tool.active_label);
+    set_text("#pen-name", &tool.pen_name);
+    set_slider("#pen\\.size", size_to_slider(size), "#size-display");
+    set_slider("#pen\\.size\\.input", size, "");
+    set_slider(
+        "#pen\\.stabilization",
+        tool.pen_stabilization as i32,
+        "#stabilization-display",
+    );
 
-    if let Some(slider) = query_selector("#pen\\.size") {
-        set_attribute(slider, "value", &size_to_slider(size).to_string());
-    }
-    if let Some(input) = query_selector("#pen\\.size\\.input") {
-        set_attribute(input, "value", &size.to_string());
-    }
-    if let Some(slider) = query_selector("#pen\\.stabilization") {
-        set_attribute(slider, "value", &host::tool::pen_stabilization().to_string());
-    }
-    set_text("#stabilization-display", &host::tool::pen_stabilization().to_string());
-
-    let supports_size = capabilities.supports_size;
-    let supports_pressure = capabilities.supports_pressure_enabled;
-    let supports_antialias = capabilities.supports_antialias;
-    let supports_stabilization = capabilities.supports_stabilization;
+    let supports_size = tool.supports_size;
+    let supports_pressure = tool.supports_pressure_enabled;
+    let supports_antialias = tool.supports_antialias;
+    let supports_stabilization = tool.supports_stabilization;
     let has_settings =
         supports_size || supports_pressure || supports_antialias || supports_stabilization;
 
@@ -91,12 +82,19 @@ fn render_dom() {
     set_visible("#pen\\.pressure", supports_pressure);
     set_visible("#pen\\.antialias", supports_antialias);
     set_visible("#stabilization-row", supports_stabilization);
-    set_visible("#characteristics-section",
-        supports_pressure || supports_antialias || supports_stabilization);
+    set_visible(
+        "#characteristics-section",
+        supports_pressure || supports_antialias || supports_stabilization,
+    );
     set_visible("#no-settings-section", !has_settings);
 
-    set_button_active("#pen\\.pressure", host::tool::pen_pressure_enabled());
-    set_button_active("#pen\\.antialias", host::tool::pen_antialias());
+    set_button_active("#pen\\.pressure", tool.pen_pressure_enabled);
+    set_button_active("#pen\\.antialias", tool.pen_antialias);
+}
+
+/// 現在の host tool 状態 (pen_pressure_enabled / pen_antialias) を読む補助。
+fn host_tool() -> Option<ToolState> {
+    host_section::<ToolState>(section::TOOL)
 }
 
 #[panel_sdk::panel_init]
@@ -110,40 +108,41 @@ fn on_host_change() {
 }
 
 #[panel_sdk::panel_handler]
-fn set_pen_size(value: i32) {
-    let size = slider_to_size(value);
-    emit_command(&commands::tool::set_size(size));
+fn set_pen_size(payload: SliderValue) {
+    let size = slider_to_size(payload.value);
+    emit_request(&commands::tool::set_size(size));
     render_dom();
 }
 
 #[panel_sdk::panel_handler]
-fn set_pen_size_text() {
-    let value = event_string("value");
-    let Ok(size) = parse_size_input(&value) else {
+fn set_pen_size_text(payload: TextValue) {
+    let Ok(size) = parse_size_input(&payload.value) else {
         error("width must be a positive integer");
         return;
     };
-    emit_command(&commands::tool::set_size(size));
+    emit_request(&commands::tool::set_size(size));
     render_dom();
 }
 
 #[panel_sdk::panel_handler]
 fn toggle_pressure() {
-    emit_command(&commands::tool::set_pressure_enabled(
-        !host::tool::pen_pressure_enabled(),
-    ));
+    let enabled = host_tool().is_some_and(|tool| tool.pen_pressure_enabled);
+    emit_request(&commands::tool::set_pressure_enabled(!enabled));
     render_dom();
 }
 
 #[panel_sdk::panel_handler]
 fn toggle_antialias() {
-    emit_command(&commands::tool::set_antialias(!host::tool::pen_antialias()));
+    let enabled = host_tool().is_some_and(|tool| tool.pen_antialias);
+    emit_request(&commands::tool::set_antialias(!enabled));
     render_dom();
 }
 
 #[panel_sdk::panel_handler]
-fn set_stabilization(value: i32) {
-    emit_command(&commands::tool::set_stabilization(value.clamp(0, 100) as u8));
+fn set_stabilization(payload: SliderValue) {
+    emit_request(&commands::tool::set_stabilization(
+        payload.value.clamp(0, 100) as u8,
+    ));
     render_dom();
 }
 
@@ -168,14 +167,13 @@ mod tests {
         assert!(parse_size_input("abc").is_err());
     }
 
-    #[test]
-    fn entrypoints_callable_on_native() {
-        init();
-        on_host_change();
-        set_pen_size(400);
-        set_pen_size_text();
-        toggle_pressure();
-        toggle_antialias();
-        set_stabilization(24);
-    }
+    panel_sdk::assert_entrypoints!(entrypoints_callable_on_native => {
+        init(),
+        on_host_change(),
+        set_pen_size(SliderValue { value: 400 }),
+        set_pen_size_text(TextValue { value: "24".to_string() }),
+        toggle_pressure(),
+        toggle_antialias(),
+        set_stabilization(SliderValue { value: 24 }),
+    });
 }
