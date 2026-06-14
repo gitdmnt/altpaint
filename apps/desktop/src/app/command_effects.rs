@@ -98,8 +98,8 @@ impl DesktopApp {
             SessionCommand::SetActiveTool { .. }
             | SessionCommand::SelectTool { .. }
             | SessionCommand::SelectChildTool { .. }
-            | SessionCommand::SelectNextPenPreset
-            | SessionCommand::SelectPreviousPenPreset => {
+            | SessionCommand::SelectNextPenPreset { .. }
+            | SessionCommand::SelectPreviousPenPreset { .. } => {
                 self.sync_ui_from_section("tool");
                 self.mark_status_dirty();
                 true

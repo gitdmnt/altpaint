@@ -9,7 +9,14 @@ pub enum SessionCommand {
     /// 現在のアクティブツールを切り替える。
     SetActiveTool { tool: ToolKind },
     /// 登録済みツール ID を指定して現在のアクティブツールを切り替える。
-    SelectTool { tool_id: String },
+    ///
+    /// `remember_size` が真のとき、切替前のツール/ペンへ現在のペンサイズを退避し、
+    /// 切替後のツール/ペンに記憶済みサイズがあれば復元する (ツール別サイズ記憶)。
+    /// ドロップダウン経由の選択など記憶不要な経路は偽で発行する。
+    SelectTool {
+        tool_id: String,
+        remember_size: bool,
+    },
     /// 子ツール ID を指定してアクティブ子ツールを切り替える。
     SelectChildTool { child_id: String },
     /// 現在のアクティブペンサイズを切り替える。
@@ -21,9 +28,13 @@ pub enum SessionCommand {
     /// アクティブペンの手ぶれ補正強さを切り替える。
     SetActivePenStabilization { amount: u8 },
     /// 次のペンプリセットをアクティブにする。
-    SelectNextPenPreset,
+    ///
+    /// `remember_size` が真のとき、切替前後のペンでツール別サイズ記憶を退避/復元する。
+    SelectNextPenPreset { remember_size: bool },
     /// 前のペンプリセットをアクティブにする。
-    SelectPreviousPenPreset,
+    ///
+    /// `remember_size` が真のとき、切替前後のペンでツール別サイズ記憶を退避/復元する。
+    SelectPreviousPenPreset { remember_size: bool },
     /// 現在のブラシ色を切り替える。
     SetActiveColor { color: ColorRgba8 },
     /// キャンバス表示倍率を設定する。

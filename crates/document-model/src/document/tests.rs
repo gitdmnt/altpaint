@@ -210,6 +210,7 @@ fn apply_command_selects_registered_tool_by_id() {
 
     document.apply_session_command(&SessionCommand::SelectTool {
         tool_id: "builtin.eraser".to_string(),
+        remember_size: false,
     });
 
     assert_eq!(document.session.active_tool(), ToolKind::Eraser);

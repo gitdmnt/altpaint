@@ -4,6 +4,8 @@
 //! 編集セッション状態と、その整合・適用ロジックをまとめる。`document-model` の
 //! `Document` が本セッションを `session` フィールドとして保持する。
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::SessionCommand;
@@ -438,6 +440,15 @@ pub struct EditorSession {
     /// 現在の可変幅ペンサイズ。
     #[serde(default = "default_pen_size")]
     pub active_pen_size: u32,
+    /// ツール/ペン別に記憶したペンサイズ。
+    ///
+    /// キーは `{tool_wire}:{pen_id}` (例: `pen:builtin.round-pen`)。ペン/消しゴム
+    /// のみ記憶する (塗り系はサイズ概念を持たない)。ツール/ペン切替時に「離脱側へ
+    /// 現サイズを退避 → 入場側の記憶サイズを復元」する記憶機構の単一真実。以前は
+    /// tool-palette パネルが `config.size_memory` blob としてローカル保持していたが、
+    /// ホスト側の本フィールドへ集約した (BL-149)。
+    #[serde(default)]
+    pub per_tool_sizes: BTreeMap<String, u32>,
     /// キャンバスの表示変換状態。
     #[serde(default)]
     pub view_transform: CanvasViewTransform,
@@ -468,6 +479,7 @@ impl Default for EditorSession {
             pen_presets,
             active_pen_preset_id,
             active_pen_size,
+            per_tool_sizes: BTreeMap::new(),
             view_transform: CanvasViewTransform::default(),
         }
     }
@@ -730,11 +742,76 @@ impl EditorSession {
         )
     }
 
+    /// 現在のツール/ペンに対するサイズ記憶キーを返す。
+    ///
+    /// ペン/消しゴムのみ記憶対象 (塗り系・コマはサイズ概念を持たない)。キーは
+    /// `{tool_wire}:{pen_id}` 形式で、ツールとペンプリセットの両方に依存する。
+    fn size_memory_key(&self) -> Option<String> {
+        let pen_id = self.active_pen_preset().map(|preset| preset.id.as_str())?;
+        match self.active_tool() {
+            ToolKind::Pen | ToolKind::Eraser => {
+                Some(format!("{}:{pen_id}", self.active_tool().as_str()))
+            }
+            ToolKind::Bucket | ToolKind::LassoBucket | ToolKind::KomaRect => None,
+        }
+    }
+
+    /// 現在のアクティブペンサイズを現在のツール/ペンキーへ退避する。
+    fn remember_active_size(&mut self) {
+        if let Some(key) = self.size_memory_key() {
+            self.per_tool_sizes.insert(key, self.active_pen_size.max(1));
+        }
+    }
+
+    /// 現在のツール/ペンキーに記憶済みサイズがあれば復元する。
+    ///
+    /// 記憶が無ければ現在のサイズ (切替で設定された既定値) を保つ。
+    fn restore_active_size(&mut self) {
+        if let Some(key) = self.size_memory_key()
+            && let Some(size) = self.per_tool_sizes.get(&key).copied()
+        {
+            self.set_active_pen_size(size);
+        }
+    }
+
+    /// ツール切替時にサイズ記憶を退避/復元しつつアクティブツールを切り替える。
+    ///
+    /// 「離脱ツールへ現サイズを退避 → 入場ツールの記憶サイズを復元」を 1 操作で行う。
+    pub fn remember_and_select_tool_by_id(&mut self, tool_id: &str) -> bool {
+        self.remember_active_size();
+        let switched = self.set_active_tool_by_id(tool_id);
+        if switched {
+            self.restore_active_size();
+        }
+        switched
+    }
+
+    /// サイズ記憶を退避/復元しつつ次のペンプリセットへ切り替える。
+    pub fn remember_and_select_next_pen_preset(&mut self) {
+        self.remember_active_size();
+        self.select_next_pen_preset();
+        self.restore_active_size();
+    }
+
+    /// サイズ記憶を退避/復元しつつ前のペンプリセットへ切り替える。
+    pub fn remember_and_select_previous_pen_preset(&mut self) {
+        self.remember_active_size();
+        self.select_previous_pen_preset();
+        self.restore_active_size();
+    }
+
     /// エディタセッションコマンド (ツール/色/ペン/ビュー) を適用する。
     pub fn apply_session_command(&mut self, command: &SessionCommand) {
         match command {
-            SessionCommand::SelectTool { tool_id } => {
-                let _ = self.set_active_tool_by_id(tool_id);
+            SessionCommand::SelectTool {
+                tool_id,
+                remember_size,
+            } => {
+                if *remember_size {
+                    let _ = self.remember_and_select_tool_by_id(tool_id);
+                } else {
+                    let _ = self.set_active_tool_by_id(tool_id);
+                }
             }
             SessionCommand::SelectChildTool { child_id } => {
                 if let Some(parent) = self.active_tool_definition()
@@ -758,11 +835,19 @@ impl EditorSession {
             SessionCommand::SetActivePenStabilization { amount } => {
                 self.set_active_pen_stabilization(*amount);
             }
-            SessionCommand::SelectNextPenPreset => {
-                self.select_next_pen_preset();
+            SessionCommand::SelectNextPenPreset { remember_size } => {
+                if *remember_size {
+                    self.remember_and_select_next_pen_preset();
+                } else {
+                    self.select_next_pen_preset();
+                }
             }
-            SessionCommand::SelectPreviousPenPreset => {
-                self.select_previous_pen_preset();
+            SessionCommand::SelectPreviousPenPreset { remember_size } => {
+                if *remember_size {
+                    self.remember_and_select_previous_pen_preset();
+                } else {
+                    self.select_previous_pen_preset();
+                }
             }
             SessionCommand::SetActiveColor { color } => {
                 self.set_active_color(*color);
@@ -804,6 +889,103 @@ impl EditorSession {
                 self.view_transform = CanvasViewTransform::default();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod size_memory_tests {
+    use super::*;
+
+    /// pen / eraser を別々にした 2 ペンプリセットで初期化したセッション。
+    fn session_with_two_pens() -> EditorSession {
+        let mut session = EditorSession::default();
+        session.replace_pen_presets(vec![
+            PenPreset {
+                id: "p1".to_string(),
+                name: "P1".to_string(),
+                size: 4,
+                ..PenPreset::default()
+            },
+            PenPreset {
+                id: "p2".to_string(),
+                name: "P2".to_string(),
+                size: 8,
+                ..PenPreset::default()
+            },
+        ]);
+        session
+    }
+
+    /// ツール切替で離脱ツールへサイズを退避し、入場ツールの記憶を復元する。
+    #[test]
+    fn switching_tool_remembers_and_restores_per_tool_size() {
+        let mut session = session_with_two_pens();
+        // pen で 20 に設定 → eraser へ記憶付き切替。
+        session.set_active_tool(ToolKind::Pen);
+        session.set_active_pen_size(20);
+        assert!(session.remember_and_select_tool_by_id("builtin.eraser"));
+        // eraser には記憶が無いので、切替時のサイズ (= 直前 20) を保つ。
+        assert_eq!(session.active_pen_size, 20);
+        // eraser を 5 にして pen へ戻すと pen の記憶 (20) が復元される。
+        session.set_active_pen_size(5);
+        assert!(session.remember_and_select_tool_by_id("builtin.pen"));
+        assert_eq!(session.active_pen_size, 20);
+        // 再び eraser へ戻すと eraser の記憶 (5) が復元される。
+        assert!(session.remember_and_select_tool_by_id("builtin.eraser"));
+        assert_eq!(session.active_pen_size, 5);
+    }
+
+    /// 記憶はペンプリセット単位でも区別される (キーに pen_id を含む)。
+    #[test]
+    fn size_memory_is_keyed_per_pen_preset() {
+        let mut session = session_with_two_pens();
+        session.set_active_tool(ToolKind::Pen);
+        // p1 で 30 に設定 → p2 へ記憶付き切替 (p2 の既定サイズ 8 を保つ)。
+        session.set_active_pen_size(30);
+        session.remember_and_select_next_pen_preset();
+        assert_eq!(session.active_pen_preset_id, "p2");
+        assert_eq!(session.active_pen_size, 8);
+        // p2 を 12 にして p1 へ戻すと p1 の記憶 (30) が復元される。
+        session.set_active_pen_size(12);
+        session.remember_and_select_previous_pen_preset();
+        assert_eq!(session.active_pen_preset_id, "p1");
+        assert_eq!(session.active_pen_size, 30);
+        // 再び p2 へ進むと p2 の記憶 (12) が復元される。
+        session.remember_and_select_next_pen_preset();
+        assert_eq!(session.active_pen_preset_id, "p2");
+        assert_eq!(session.active_pen_size, 12);
+    }
+
+    /// 塗り系ツールはサイズ記憶対象外 (キーを生成しない)。
+    #[test]
+    fn fill_tools_do_not_record_size_memory() {
+        let mut session = session_with_two_pens();
+        session.set_active_tool(ToolKind::Pen);
+        session.set_active_pen_size(25);
+        // bucket へ記憶付き切替しても per_tool_sizes には pen の退避のみが残る。
+        assert!(session.remember_and_select_tool_by_id("builtin.bucket"));
+        assert!(session.per_tool_sizes.keys().all(|key| !key.starts_with("bucket")));
+        assert_eq!(session.per_tool_sizes.get("pen:p1").copied(), Some(25));
+    }
+
+    /// `remember_size: false` のコマンドは記憶/復元せず単純切替する。
+    #[test]
+    fn select_tool_without_remember_does_not_restore() {
+        let mut session = session_with_two_pens();
+        session.set_active_tool(ToolKind::Pen);
+        session.set_active_pen_size(20);
+        session.apply_session_command(&SessionCommand::SelectTool {
+            tool_id: "builtin.eraser".to_string(),
+            remember_size: false,
+        });
+        session.set_active_pen_size(5);
+        // remember_size: false で pen へ戻すと記憶は無く現サイズ (5) を保つ。
+        session.apply_session_command(&SessionCommand::SelectTool {
+            tool_id: "builtin.pen".to_string(),
+            remember_size: false,
+        });
+        assert_eq!(session.active_pen_size, 5);
+        assert!(session.per_tool_sizes.is_empty());
     }
 }
 

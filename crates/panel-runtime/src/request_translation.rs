@@ -66,6 +66,18 @@ fn payload_u64(value: &Value) -> Option<u64> {
         .or_else(|| value.as_str().and_then(|text| text.parse::<u64>().ok()))
 }
 
+/// `remember_size` payload を解釈する (省略時は false = 記憶しない)。
+///
+/// ツール別サイズ記憶 (BL-149) はホスト `EditorSession` が担い、記憶の要否のみを
+/// パネルが本フラグで表明する。ドロップダウン選択など記憶不要な経路はフラグ無し。
+fn payload_remember_size(descriptor: &RequestDescriptor) -> bool {
+    descriptor
+        .payload
+        .get("remember_size")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
 /// `tool.*` 名前空間: ツール/色/ペン操作の SessionCommand と、ペン import/reload の
 /// I/O サービス要求。
 fn translate_tool(descriptor: &RequestDescriptor) -> TranslateOutcome {
@@ -79,6 +91,7 @@ fn translate_tool(descriptor: &RequestDescriptor) -> TranslateOutcome {
                 .ok_or_else(|| format!("{} is missing payload.tool_id", tool::SELECT))?;
             return session(SessionCommand::SelectTool {
                 tool_id: tool_id.to_string(),
+                remember_size: payload_remember_size(descriptor),
             });
         }
         tool::SELECT_CHILD => {
@@ -127,8 +140,16 @@ fn translate_tool(descriptor: &RequestDescriptor) -> TranslateOutcome {
                 amount: amount.min(100) as u8,
             });
         }
-        tool::PEN_NEXT => return session(SessionCommand::SelectNextPenPreset),
-        tool::PEN_PREV => return session(SessionCommand::SelectPreviousPenPreset),
+        tool::PEN_NEXT => {
+            return session(SessionCommand::SelectNextPenPreset {
+                remember_size: payload_remember_size(descriptor),
+            });
+        }
+        tool::PEN_PREV => {
+            return session(SessionCommand::SelectPreviousPenPreset {
+                remember_size: payload_remember_size(descriptor),
+            });
+        }
         tool::SET_COLOR => {
             let color = descriptor
                 .payload
@@ -351,6 +372,41 @@ mod tests {
                 assert_eq!(color, editor_state::ColorRgba8::new(0x11, 0x22, 0x33, 0xff));
             }
             other => panic!("expected SetActiveColor, got {other:?}"),
+        }
+    }
+
+    /// `tool.select` の `remember_size` payload が SessionCommand へ伝播する (BL-149)。
+    #[test]
+    fn tool_select_carries_remember_size_flag() {
+        let registry = registry();
+        // payload に remember_size=true を含めた select。
+        let mut descriptor = RequestDescriptor::new(tool::SELECT);
+        descriptor
+            .payload
+            .insert("tool_id".to_string(), json!("builtin.eraser"));
+        descriptor
+            .payload
+            .insert("remember_size".to_string(), json!(true));
+        match registry.translate(&descriptor).expect("tool.select translates") {
+            TranslatedRequest::Session(SessionCommand::SelectTool {
+                tool_id,
+                remember_size,
+            }) => {
+                assert_eq!(tool_id, "builtin.eraser");
+                assert!(remember_size);
+            }
+            other => panic!("expected SelectTool, got {other:?}"),
+        }
+
+        // remember_size を省略すると false (記憶しない経路)。
+        match registry
+            .translate(&descriptor_with(tool::SELECT, "tool_id", json!("builtin.pen")))
+            .expect("tool.select translates")
+        {
+            TranslatedRequest::Session(SessionCommand::SelectTool { remember_size, .. }) => {
+                assert!(!remember_size);
+            }
+            other => panic!("expected SelectTool, got {other:?}"),
         }
     }
 

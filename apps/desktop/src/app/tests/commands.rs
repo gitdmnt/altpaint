@@ -51,10 +51,40 @@ fn execute_command_select_tool_updates_document_tool_id() {
 
     let _ = app.apply_session_command(&SessionCommand::SelectTool {
         tool_id: "builtin.eraser".to_string(),
+        remember_size: false,
     });
 
     assert_eq!(app.document.session.active_tool(), ToolKind::Eraser);
     assert_eq!(app.document.session.active_tool_id, "builtin.eraser");
+}
+
+/// BL-149: `SelectTool { remember_size: true }` 経由でツール別サイズ記憶が
+/// ホスト `EditorSession` に退避/復元される (旧 tool-palette ローカル blob 廃止)。
+#[test]
+fn select_tool_remembering_restores_per_tool_size() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+
+    // pen を 20px に設定し、記憶付きで eraser へ切替。
+    let _ = app.apply_session_command(&SessionCommand::SetActivePenSize { size: 20 });
+    let _ = app.apply_session_command(&SessionCommand::SelectTool {
+        tool_id: "builtin.eraser".to_string(),
+        remember_size: true,
+    });
+    // eraser を 5px にして、記憶付きで pen へ戻すと pen の 20px が復元される。
+    let _ = app.apply_session_command(&SessionCommand::SetActivePenSize { size: 5 });
+    let _ = app.apply_session_command(&SessionCommand::SelectTool {
+        tool_id: "builtin.pen".to_string(),
+        remember_size: true,
+    });
+    assert_eq!(app.document.session.active_tool(), ToolKind::Pen);
+    assert_eq!(app.document.session.active_pen_size, 20);
+
+    // 再び eraser へ戻すと eraser の 5px が復元される。
+    let _ = app.apply_session_command(&SessionCommand::SelectTool {
+        tool_id: "builtin.eraser".to_string(),
+        remember_size: true,
+    });
+    assert_eq!(app.document.session.active_pen_size, 5);
 }
 
 #[test]
@@ -63,6 +93,7 @@ fn execute_command_select_child_tool_updates_active_child_tool_id() {
     // Pen tool must be loaded so we can select one of its children
     let _ = app.apply_session_command(&SessionCommand::SelectTool {
         tool_id: "builtin.pen".to_string(),
+        remember_size: false,
     });
     // Inject a child tool definition into the tool catalog
     if let Some(pen_def) = app

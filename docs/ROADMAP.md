@@ -50,23 +50,18 @@
 - 目標構造は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 実コードの構造は [docs/CURRENT_ARCHITECTURE.md](docs/CURRENT_ARCHITECTURE.md)
 
-### 今後の検討項目 (機能変更を伴う繰り越し)
+### 完了済み (旧「今後の検討項目」)
 
-- **tool-palette サイズ記憶のホスト移管 (旧 BL-149)**: 現状はパネル側 `config.size_memory`
-  JSON blob (`tool:pen_id` / `eraser:pen_id` キー → サイズ) に保持し、`activate_pen` /
-  `activate_eraser` / `previous_pen` / `next_pen` ハンドラのみで「現サイズを記憶 → 切替 →
-  目標サイズを復元」する。これをホスト `EditorSession` の tool 状態へ移すには、(1)
-  `EditorSession` への永続フィールド追加 (= session 保存形式の変更)、(2) UI 経路で挙動が
-  分岐する現状 (ドロップダウン `select_tool` ・バケツ系はサイズ記憶しないが、同一の
-  `SessionCommand::SelectTool` / `SelectNextPenPreset` を発行する) を保つための
-  コマンド分割または引数追加、が必要で、純粋な「ホストへ寄せる整理」ではなく挙動を
-  変える機能設計になる。ADR 018 の B10 (文書確定) スコープを越えるため繰り越し。
-  着手時の受け入れ条件: 4 UI 経路 (ペン/消しゴム切替・前後ペン・ドロップダウン・バケツ系)
-  の記憶/非記憶挙動を再現するゴールデンテスト、session round-trip の後方互換 (旧
-  session JSON が新フィールド欠落でも既定値で読める serde `#[serde(default)]`)。
-  なお旧 BL-149 が併記していた「ペン rotation 自前計算」は既に該当コードが存在せず
-  (`PenPreset.rotation_degrees` は `editor-state` 所有で host `ToolState` revision に反映済み)、
-  移管対象なし。
+- **tool-palette サイズ記憶のホスト移管 (BL-149) — 実装済み**: パネル側
+  `config.size_memory` JSON blob とローカルなキー計算/ペン index 二重計算を撤去し、
+  ホスト `EditorSession.per_tool_sizes` (`{tool_wire}:{pen_id}` → サイズ,
+  `#[serde(default)]`) へ集約した。UI 経路別の記憶/非記憶分岐は `SessionCommand`
+  (`SelectTool` / `SelectNextPenPreset` / `SelectPreviousPenPreset`) の `remember_size`
+  フラグで表明する: ペン/消しゴムボタン・前後ペンは記憶 (`select_tool_remembering` 等)、
+  ドロップダウン選択・バケツ系は非記憶。退避/復元のメカニズム (キー計算・per-tool マップ)
+  はホストが単一真実として持つ。session 保存形式は新フィールド追加で変わるが alpha 方針で
+  後方互換不要、`#[serde(default)]` により旧 session JSON も既定値で読める。ペン rotation
+  自前計算は該当コード消滅済みで対象外。
 
 ---
 

@@ -15,7 +15,6 @@ use panel_sdk::{
     shortcut::{Outcome, ShortcutRegistry},
     state,
 };
-use std::collections::BTreeMap;
 
 const SHOW_SHORTCUTS: state::BoolKey = state::bool("show_shortcuts");
 const CAPTURE_TARGET: state::StringKey = state::string("session.capture_target");
@@ -24,7 +23,6 @@ const ERASER_SHORTCUT: state::StringKey = state::string("config.eraser_shortcut"
 const BUCKET_SHORTCUT: state::StringKey = state::string("config.bucket_shortcut");
 const LASSO_BUCKET_SHORTCUT: state::StringKey = state::string("config.lasso_bucket_shortcut");
 const KOMA_RECT_SHORTCUT: state::StringKey = state::string("config.koma_rect_shortcut");
-const SIZE_MEMORY: state::StringKey = state::string("config.size_memory");
 const LAST_IMPORT_SUMMARY: state::StringKey = state::string("config.last_import_summary");
 const LAST_IMPORT_PREVIEW: state::StringKey = state::string("config.last_import_preview");
 const LAST_IMPORT_ISSUES: state::StringKey = state::string("config.last_import_issues");
@@ -175,84 +173,16 @@ fn capture_shortcut(target: &str) {
     render_dom();
 }
 
-// === サイズ記憶 (config.size_memory blob; BL-149 のホスト移管は tools feature の所管) ===
+// === ツール別サイズ記憶 ===
+//
+// 記憶の保持・キー計算・退避/復元はすべてホスト `EditorSession` が担う (BL-149)。
+// パネルは「サイズを覚える経路か」だけを remembering コマンドで表明する。ペン/消しゴム
+// ボタンと前後ペン切替が記憶経路、ドロップダウン選択とバケツ系は非記憶経路。
 
-fn size_binding_key(tool_name: &str, pen_id: &str) -> Option<String> {
-    match tool_name.to_ascii_lowercase().as_str() {
-        SLOT_PEN | SLOT_ERASER => Some(format!("{}:{pen_id}", tool_name.to_ascii_lowercase())),
-        _ => None,
-    }
-}
-
-fn parse_size_memory(serialized: &str) -> BTreeMap<String, u32> {
-    serde_json::from_str(serialized).unwrap_or_default()
-}
-
-fn serialize_size_memory(memory: &BTreeMap<String, u32>) -> String {
-    serde_json::to_string(memory).unwrap_or_else(|_| "{}".to_string())
-}
-
-fn host_pen_ids() -> Vec<String> {
-    let json = host_tool().map(|tool| tool.pen_presets_json).unwrap_or_default();
-    serde_json::from_str::<Vec<Value>>(&json)
-        .ok()
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| {
-            entry
-                .get("id")
-                .and_then(Value::as_str)
-                .map(ToString::to_string)
-        })
-        .collect()
-}
-
-fn remember_current_size() {
-    let Some(tool) = host_tool() else {
-        return;
-    };
-    let Some(key) = size_binding_key(&tool.active, &tool.pen_id) else {
-        return;
-    };
-    let mut memory = parse_size_memory(&state_string(SIZE_MEMORY));
-    memory.insert(key, (tool.pen_size.max(1)) as u32);
-    set_state_string(SIZE_MEMORY, serialize_size_memory(&memory));
-}
-
-fn restore_size(tool_name: &str, pen_id: &str) {
-    let Some(key) = size_binding_key(tool_name, pen_id) else {
-        return;
-    };
-    let memory = parse_size_memory(&state_string(SIZE_MEMORY));
-    if let Some(size) = memory.get(&key).copied() {
-        emit_request(&commands::tool::set_size(size.max(1)));
-    }
-}
-
-fn switch_tool_with_size_restore(slot: &str) {
-    let Some(command) = build_tool_command(slot) else {
-        return;
-    };
-    remember_current_size();
-    let pen_id = host_tool().map(|tool| tool.pen_id).unwrap_or_default();
-    emit_request(&command);
-    restore_size(slot, &pen_id);
-}
-
-fn switch_pen_with_size_restore(delta: isize) {
-    remember_current_size();
-    let pen_ids = host_pen_ids();
-    let current_index = host_tool().map(|tool| tool.pen_index.max(0) as usize).unwrap_or(0);
-    let target_index =
-        (current_index as isize + delta).rem_euclid(pen_ids.len().max(1) as isize) as usize;
-    if delta < 0 {
-        emit_request(&commands::tool::select_previous_pen());
-    } else {
-        emit_request(&commands::tool::select_next_pen());
-    }
-    if let Some(target_pen_id) = pen_ids.get(target_index) {
-        let active = host_tool().map(|tool| tool.active).unwrap_or_default();
-        restore_size(&active, target_pen_id);
+/// カタログ id ベースでツールを切り替え、ホストにサイズ記憶を退避/復元させる。
+fn activate_slot_remembering(slot: &str) {
+    if let Some(catalog_id) = slot_catalog_id(slot) {
+        emit_request(&commands::tool::select_tool_remembering(catalog_id));
     }
 }
 
@@ -265,12 +195,12 @@ fn activate_slot(slot: &str) {
 
 #[panel_sdk::panel_handler]
 fn activate_pen() {
-    switch_tool_with_size_restore(SLOT_PEN);
+    activate_slot_remembering(SLOT_PEN);
 }
 
 #[panel_sdk::panel_handler]
 fn activate_eraser() {
-    switch_tool_with_size_restore(SLOT_ERASER);
+    activate_slot_remembering(SLOT_ERASER);
 }
 
 #[panel_sdk::panel_handler]
@@ -299,12 +229,12 @@ fn select_child_tool(payload: SelectValue) {
 
 #[panel_sdk::panel_handler]
 fn previous_pen() {
-    switch_pen_with_size_restore(-1);
+    emit_request(&commands::tool::select_previous_pen_remembering());
 }
 
 #[panel_sdk::panel_handler]
 fn next_pen() {
-    switch_pen_with_size_restore(1);
+    emit_request(&commands::tool::select_next_pen_remembering());
 }
 
 #[panel_sdk::panel_handler]
@@ -428,11 +358,14 @@ mod tests {
         assert_eq!(opts, vec![("a".to_string(), "A".to_string())]);
     }
 
+    /// ペン/消しゴムボタンは記憶付き select_tool を発行する (BL-149)。
     #[test]
-    fn size_memory_roundtrip() {
-        let mut m = BTreeMap::new();
-        m.insert("pen:p".to_string(), 4);
-        let s = serialize_size_memory(&m);
-        assert_eq!(parse_size_memory(&s), m);
+    fn activate_pen_emits_remembering_select() {
+        let c = commands::tool::select_tool_remembering("builtin.pen");
+        assert_eq!(c.name, panel_sdk::names::tool::SELECT);
+        assert_eq!(
+            c.payload.get("remember_size"),
+            Some(&panel_sdk::serde_json::json!(true))
+        );
     }
 }

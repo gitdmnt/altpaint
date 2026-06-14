@@ -34,6 +34,18 @@ pub mod tool {
         descriptor
     }
 
+    /// ツールを切り替え、ホスト側でツール別サイズ記憶を退避/復元させる (BL-149)。
+    ///
+    /// ペン/消しゴムボタンなど「サイズを覚える」経路で使う。ドロップダウン選択など
+    /// 記憶不要な経路は [`select_tool`] を使う。
+    pub fn select_tool_remembering(tool_id: impl Into<String>) -> RequestDescriptor {
+        let mut descriptor = select_tool(tool_id);
+        descriptor
+            .payload
+            .insert("remember_size".to_string(), json!(true));
+        descriptor
+    }
+
     pub fn set_color_hex(color: impl Into<String>) -> RequestDescriptor {
         let mut descriptor = RequestDescriptor::new(wire::SET_COLOR);
         descriptor
@@ -82,6 +94,24 @@ pub mod tool {
 
     pub fn select_previous_pen() -> RequestDescriptor {
         RequestDescriptor::new(wire::PEN_PREV)
+    }
+
+    /// 次のペンへ切り替え、ホスト側でツール別サイズ記憶を退避/復元させる (BL-149)。
+    pub fn select_next_pen_remembering() -> RequestDescriptor {
+        let mut descriptor = RequestDescriptor::new(wire::PEN_NEXT);
+        descriptor
+            .payload
+            .insert("remember_size".to_string(), json!(true));
+        descriptor
+    }
+
+    /// 前のペンへ切り替え、ホスト側でツール別サイズ記憶を退避/復元させる (BL-149)。
+    pub fn select_previous_pen_remembering() -> RequestDescriptor {
+        let mut descriptor = RequestDescriptor::new(wire::PEN_PREV);
+        descriptor
+            .payload
+            .insert("remember_size".to_string(), json!(true));
+        descriptor
     }
 
     pub fn reload_pen_presets() -> RequestDescriptor {
