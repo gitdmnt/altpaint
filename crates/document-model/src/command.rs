@@ -19,12 +19,19 @@ pub enum DocumentCommand {
     AddRasterLayer,
     /// 現在のアクティブレイヤーを削除する。
     RemoveActiveLayer,
-    /// アクティブレイヤーを指定 index に切り替える。
-    SelectLayer { index: usize },
+    /// アクティブレイヤーを安定 id (`RasterLayer.id`) で切り替える (BL-148)。
+    ///
+    /// 表示順 index ではなく安定 id を使うことで、UI 並べ替えで意味が変わる index 依存
+    /// (パネル側の二重 index 反転) を解消する。未知 id は無視 (no-op)。
+    SelectLayer { id: super::LayerNodeId },
     /// アクティブレイヤー名を変更する。
     RenameActiveLayer { name: String },
-    /// レイヤー順を指定 index 間で移動する。
-    MoveLayer { from_index: usize, to_index: usize },
+    /// レイヤー順を安定 id 間で移動する (BL-148)。`from_id` のレイヤーを `to_id` の
+    /// 位置へ移す。未知 id は無視 (no-op)。
+    MoveLayer {
+        from_id: super::LayerNodeId,
+        to_id: super::LayerNodeId,
+    },
     /// 次のレイヤーをアクティブにする。
     SelectNextLayer,
     /// アクティブレイヤーの合成モードを循環させる。

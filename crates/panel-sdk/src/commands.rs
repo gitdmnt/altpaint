@@ -172,9 +172,10 @@ pub mod layer {
         RequestDescriptor::new(wire::REMOVE)
     }
 
-    pub fn select(index: usize) -> RequestDescriptor {
+    /// 安定 id (`RasterLayer.id`) でレイヤーを選択する (BL-148)。
+    pub fn select(id: u64) -> RequestDescriptor {
         let mut descriptor = RequestDescriptor::new(wire::SELECT);
-        descriptor.payload.insert("index".to_string(), json!(index));
+        descriptor.payload.insert("id".to_string(), json!(id));
         descriptor
     }
 
@@ -186,14 +187,13 @@ pub mod layer {
         descriptor
     }
 
-    pub fn move_to(from_index: usize, to_index: usize) -> RequestDescriptor {
+    /// 安定 id (`RasterLayer.id`) 間でレイヤー順を移動する (BL-148)。
+    pub fn move_to(from_id: u64, to_id: u64) -> RequestDescriptor {
         let mut descriptor = RequestDescriptor::new(wire::MOVE);
         descriptor
             .payload
-            .insert("from_index".to_string(), json!(from_index));
-        descriptor
-            .payload
-            .insert("to_index".to_string(), json!(to_index));
+            .insert("from_id".to_string(), json!(from_id));
+        descriptor.payload.insert("to_id".to_string(), json!(to_id));
         descriptor
     }
 

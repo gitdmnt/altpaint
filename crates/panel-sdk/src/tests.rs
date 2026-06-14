@@ -81,13 +81,14 @@ fn typed_tool_commands_cover_remaining_variants() {
 
 #[test]
 fn typed_layer_commands_hide_payload_keys() {
-    let move_descriptor = commands::layer::move_to(2, 0);
+    // BL-148: move は安定 id 間で指定する。
+    let move_descriptor = commands::layer::move_to(20, 10);
     let blend_descriptor = commands::layer::set_blend_mode_enum(commands::layer::BlendMode::Screen);
     let rename_descriptor = commands::layer::rename_active("Ink");
 
     assert_eq!(commands::layer::remove().name, names::layer::REMOVE);
-    assert_eq!(move_descriptor.payload.get("from_index"), Some(&json!(2)));
-    assert_eq!(move_descriptor.payload.get("to_index"), Some(&json!(0)));
+    assert_eq!(move_descriptor.payload.get("from_id"), Some(&json!(20)));
+    assert_eq!(move_descriptor.payload.get("to_id"), Some(&json!(10)));
     assert_eq!(blend_descriptor.payload.get("mode"), Some(&json!("screen")));
     assert_eq!(rename_descriptor.name, names::layer::RENAME_ACTIVE);
     assert_eq!(rename_descriptor.payload.get("name"), Some(&json!("Ink")));
@@ -99,8 +100,9 @@ fn typed_layer_commands_cover_remaining_variants() {
     assert_eq!(commands::layer::BlendMode::Multiply.as_str(), "multiply");
     assert_eq!(commands::layer::BlendMode::Add.as_str(), "add");
     assert_eq!(commands::layer::add().name, names::layer::ADD);
+    // BL-148: select は安定 id (`RasterLayer.id`) を運ぶ。
     assert_eq!(
-        commands::layer::select(3).payload.get("index"),
+        commands::layer::select(3).payload.get("id"),
         Some(&json!(3))
     );
     assert_eq!(commands::layer::select_next().name, names::layer::SELECT_NEXT);

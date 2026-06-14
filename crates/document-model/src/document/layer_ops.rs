@@ -231,6 +231,22 @@ impl Document {
         }
     }
 
+    /// アクティブコマ内で安定 id (`RasterLayer.id`) のレイヤーをアクティブにする (BL-148)。
+    ///
+    /// id が見つからなければ何もしない (no-op)。表示順 index 反転をホスト側に集約する
+    /// ため、パネルは index ではなく id を指定する。
+    pub fn select_layer_by_id(&mut self, id: LayerNodeId) {
+        if let Some(index) = self.active_layer_index_by_id(id) {
+            self.select_layer(index);
+        }
+    }
+
+    /// アクティブコマ内で `id` のレイヤーの現在の index を返す (BL-148)。
+    fn active_layer_index_by_id(&self, id: LayerNodeId) -> Option<usize> {
+        self.active_koma()
+            .and_then(|koma| koma.layers.iter().position(|layer| layer.id == id))
+    }
+
     pub fn rename_active_layer(&mut self, name: &str) {
         if let Some(koma) = self.active_koma_mut() {
             ensure_koma_layers(koma);
@@ -238,6 +254,20 @@ impl Document {
                 layer.name = name.to_string();
             }
         }
+    }
+
+    /// アクティブコマ内で安定 id 間でレイヤー順を移動する (BL-148)。
+    ///
+    /// `from_id` のレイヤーを `to_id` のレイヤーの位置へ移す。いずれかの id が見つから
+    /// なければ何もしない (no-op)。
+    pub fn move_layer_by_id(&mut self, from_id: LayerNodeId, to_id: LayerNodeId) {
+        let (Some(from_index), Some(to_index)) = (
+            self.active_layer_index_by_id(from_id),
+            self.active_layer_index_by_id(to_id),
+        ) else {
+            return;
+        };
+        self.move_layer(from_index, to_index);
     }
 
     pub fn move_layer(&mut self, from_index: usize, to_index: usize) {

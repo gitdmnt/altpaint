@@ -179,13 +179,14 @@ fn translate_layer(descriptor: &RequestDescriptor) -> TranslateOutcome {
         layer::ADD => document(DocumentCommand::AddRasterLayer),
         layer::REMOVE => document(DocumentCommand::RemoveActiveLayer),
         layer::SELECT => {
-            let index = descriptor
+            // BL-148: 表示順 index ではなく安定 id (`RasterLayer.id`) で選択する。
+            let id = descriptor
                 .payload
-                .get("index")
+                .get("id")
                 .and_then(payload_u64)
-                .ok_or_else(|| format!("{} is missing payload.index", layer::SELECT))?;
+                .ok_or_else(|| format!("{} is missing payload.id", layer::SELECT))?;
             document(DocumentCommand::SelectLayer {
-                index: index as usize,
+                id: document_model::LayerNodeId(id),
             })
         }
         layer::RENAME_ACTIVE => {
@@ -199,19 +200,20 @@ fn translate_layer(descriptor: &RequestDescriptor) -> TranslateOutcome {
             })
         }
         layer::MOVE => {
-            let from_index = descriptor
+            // BL-148: 表示順 index ではなく安定 id 間で並べ替える。
+            let from_id = descriptor
                 .payload
-                .get("from_index")
+                .get("from_id")
                 .and_then(payload_u64)
-                .ok_or_else(|| format!("{} is missing payload.from_index", layer::MOVE))?;
-            let to_index = descriptor
+                .ok_or_else(|| format!("{} is missing payload.from_id", layer::MOVE))?;
+            let to_id = descriptor
                 .payload
-                .get("to_index")
+                .get("to_id")
                 .and_then(payload_u64)
-                .ok_or_else(|| format!("{} is missing payload.to_index", layer::MOVE))?;
+                .ok_or_else(|| format!("{} is missing payload.to_id", layer::MOVE))?;
             document(DocumentCommand::MoveLayer {
-                from_index: from_index as usize,
-                to_index: to_index as usize,
+                from_id: document_model::LayerNodeId(from_id),
+                to_id: document_model::LayerNodeId(to_id),
             })
         }
         layer::SELECT_NEXT => document(DocumentCommand::SelectNextLayer),

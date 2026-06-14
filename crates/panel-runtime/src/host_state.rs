@@ -278,6 +278,8 @@ impl HostStateSection for DocumentSection {
         let active_layer_index = active_koma.map(|p| p.active_layer_index).unwrap_or(0);
 
         // index 0 が最下層のため逆順で返す（UI の先頭 = 前面レイヤー）。
+        // BL-148: 表示順 index ではなく安定 id (`RasterLayer.id`) を含め、選択/並べ替えの
+        // request を id 指定にする。これによりパネル側の二重 index 反転を撤去する。
         let layers = active_koma
             .map(|koma| {
                 koma.layers
@@ -285,6 +287,7 @@ impl HostStateSection for DocumentSection {
                     .rev()
                     .map(|layer| {
                         json!({
+                            "id": layer.id.0,
                             "name": layer.name,
                             "blend_mode": layer.blend_mode.as_str(),
                             "visible": layer.visible,

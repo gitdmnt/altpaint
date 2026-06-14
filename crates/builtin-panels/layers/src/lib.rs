@@ -1,113 +1,113 @@
 //! `builtin.layers` パネル (Phase 10 DOM mutation 版)。
 
-use std::cell::RefCell;
-
 use panel_sdk::{
     commands,
-    dom::{html_escape, query_selector, set_attribute, set_inner_html},
-    host,
-    runtime::{
-        emit_command, event_string, set_state_string, state_string,
+    dom::{
+        ActionListItem, html_escape, query_selector, render_action_list, render_options,
+        set_attribute, set_inner_html, set_text,
     },
+    host_state::{DocumentState, LayerState, section},
+    runtime::{emit_request, host_section, set_state_string, state_string},
+    serde_json::json,
     state,
 };
 
+/// レイヤー名の単一真実 (BL-151: RENAME_BUF thread_local との二重真実を撤去)。
 const RENAME_TEXT: state::StringKey = state::string("rename_text");
 
-thread_local! {
-    static RENAME_BUF: RefCell<String> = const { RefCell::new(String::new()) };
+/// テキスト入力 payload (`altp:input:*` は `event_payload.value` を文字列で運ぶ)。
+#[derive(Default, panel_sdk::serde::Deserialize)]
+#[serde(crate = "panel_sdk::serde")]
+struct TextValue {
+    #[serde(default)]
+    value: String,
 }
 
-#[derive(Default, serde::Deserialize)]
-struct LayerEntry {
+/// 合成モード選択 payload (`altp:select:*` は `event_payload.value` を文字列で運ぶ)。
+#[derive(Default, panel_sdk::serde::Deserialize)]
+#[serde(crate = "panel_sdk::serde")]
+struct BlendModeValue {
     #[serde(default)]
-    name: String,
-    #[serde(default)]
-    blend_mode: String,
-    #[serde(default)]
-    visible: bool,
-    #[serde(default)]
-    masked: bool,
+    value: String,
 }
 
-fn render_layer_list(layers_json: &str, active_index: i32) -> String {
-    let layers: Vec<LayerEntry> = serde_json::from_str(layers_json).unwrap_or_default();
-    let mut out = String::new();
-    for (idx, layer) in layers.iter().enumerate() {
-        let class = if idx as i32 == active_index { "active" } else { "" };
+/// レイヤー選択 payload (BL-148: 表示順 index ではなく安定 id を運ぶ)。
+#[derive(Default, panel_sdk::serde::Deserialize)]
+#[serde(crate = "panel_sdk::serde")]
+struct SelectLayer {
+    #[serde(default)]
+    id: u64,
+}
+
+const BLEND_MODE_OPTIONS: [(&str, &str); 5] = [
+    ("normal", "通常"),
+    ("multiply", "乗算"),
+    ("screen", "スクリーン"),
+    ("add", "加算"),
+    ("max(src,dst)", "比較(明)"),
+];
+
+/// レイヤー一覧 (UI 順 = 先頭が前面) を `<li>` 列へ変換する (BL-148)。
+///
+/// 各項目の `data-args` には安定 id (`RasterLayer.id`) を埋め、`active_index` (UI 順)
+/// と一致する項目を active 表示にする。表示順 index 反転はホスト側へ集約済みのため、
+/// パネルは index を一切計算しない。
+fn render_layer_list(layers: &[LayerState], active_index: i32) -> String {
+    let items = layers.iter().enumerate().map(|(idx, layer)| {
         let detail = format!(
             "{} {}{}",
             html_escape(&layer.blend_mode),
             if layer.visible { "👁" } else { "·" },
             if layer.masked { " ◫" } else { "" },
         );
-        out.push_str(&format!(
-            r#"<li class="{class}" data-action="altp:activate:handle_layer_list" data-args='{{"value":{idx}}}'><span>{name}</span><span class="meta">{detail}</span></li>"#,
-            class = class,
-            idx = idx,
-            name = html_escape(&layer.name),
-            detail = detail,
-        ));
-    }
-    out
+        let body = format!(
+            r#"<span>{}</span><span class="meta">{}</span>"#,
+            html_escape(&layer.name),
+            detail,
+        );
+        ActionListItem::new("select_layer", body)
+            .with_args(json!({ "id": layer.id.unwrap_or_default() }))
+            .active(idx as i32 == active_index)
+    });
+    render_action_list(items)
 }
 
 fn render_dom() {
-    if let Some(node) = query_selector("#title") {
-        set_inner_html(node, &html_escape(&host::document::title()));
-    }
-    if let Some(node) = query_selector("#page-count") {
-        set_inner_html(node, &host::document::page_count().to_string());
-    }
-    if let Some(node) = query_selector("#panel-count") {
-        set_inner_html(node, &host::document::koma_count().to_string());
-    }
-    if let Some(node) = query_selector("#layer-count") {
-        set_inner_html(node, &host::document::layer_count().to_string());
-    }
-    if let Some(node) = query_selector("#active-layer-index") {
-        set_inner_html(node, &host::document::active_layer_index().to_string());
-    }
-    if let Some(node) = query_selector("#active-layer-visible") {
-        set_inner_html(node, &host::document::active_layer_visible().to_string());
-    }
-    if let Some(node) = query_selector("#active-layer-masked") {
-        set_inner_html(node, &host::document::active_layer_masked().to_string());
-    }
+    let Some(document) = host_section::<DocumentState>(section::DOCUMENT) else {
+        return;
+    };
 
-    let layer_name = host::document::active_layer_name();
-    RENAME_BUF.with(|buf| *buf.borrow_mut() = layer_name.clone());
-    set_state_string(RENAME_TEXT, &layer_name);
+    set_text("#title", &document.title);
+    set_text("#page-count", &document.page_count.to_string());
+    set_text("#panel-count", &document.koma_count.to_string());
+    set_text("#layer-count", &document.layer_count.to_string());
+    set_text("#active-layer-index", &document.active_layer_index.to_string());
+    set_text(
+        "#active-layer-visible",
+        &document.active_layer_visible.to_string(),
+    );
+    set_text(
+        "#active-layer-masked",
+        &document.active_layer_masked.to_string(),
+    );
+
+    // BL-151: rename text の単一真実はパネルローカル state。host のアクティブ名を反映する。
+    set_state_string(RENAME_TEXT, &document.active_layer_name);
     if let Some(input) = query_selector("#layers\\.name") {
-        set_attribute(input, "value", &layer_name);
+        set_attribute(input, "value", &document.active_layer_name);
     }
 
-    let blend_mode = host::document::active_layer_blend_mode();
     if let Some(select) = query_selector("#layers\\.blend_mode") {
-        let modes = [
-            ("normal", "通常"),
-            ("multiply", "乗算"),
-            ("screen", "スクリーン"),
-            ("add", "加算"),
-            ("max(src,dst)", "比較(明)"),
-        ];
-        let mut html = String::new();
-        for (val, label) in modes {
-            let mark = if val == blend_mode { " selected" } else { "" };
-            html.push_str(&format!(
-                r#"<option value="{}"{}>{}</option>"#,
-                html_escape(val),
-                mark,
-                html_escape(label),
-            ));
-        }
-        set_inner_html(select, &html);
+        let options = BLEND_MODE_OPTIONS.iter().copied();
+        set_inner_html(
+            select,
+            &render_options(options, &document.active_layer_blend_mode),
+        );
     }
 
     if let Some(list) = query_selector("#layers-list") {
-        let layers_json = host::document::layers_json();
-        let active = host::document::active_layer_index();
-        set_inner_html(list, &render_layer_list(&layers_json, active));
+        let html = render_layer_list(&document.layers(), document.active_layer_index as i32);
+        set_inner_html(list, &html);
     }
 }
 
@@ -123,84 +123,77 @@ fn on_host_change() {
 
 #[panel_sdk::panel_handler]
 fn add_layer() {
-    emit_command(&commands::layer::add());
+    emit_request(&commands::layer::add());
 }
 
 #[panel_sdk::panel_handler]
 fn remove_layer() {
-    emit_command(&commands::layer::remove());
+    emit_request(&commands::layer::remove());
 }
 
 #[panel_sdk::panel_handler]
-fn handle_layer_list(value: i32) {
-    let layer_count = host::document::layer_count() as usize;
-    let ui_target = value.max(0) as usize;
-    let actual_target = layer_count.saturating_sub(1).saturating_sub(ui_target);
-    if let Ok(ui_from) = event_string("from").parse::<usize>() {
-        let actual_from = layer_count.saturating_sub(1).saturating_sub(ui_from);
-        if actual_from != actual_target {
-            emit_command(&commands::layer::move_to(actual_from, actual_target));
-        }
-    }
-    emit_command(&commands::layer::select(actual_target));
+fn select_layer(payload: SelectLayer) {
+    // BL-148: 安定 id で選択する (表示順 index 反転はホスト側に集約済み)。
+    emit_request(&commands::layer::select(payload.id));
 }
 
 #[panel_sdk::panel_handler]
-fn update_rename_text() {
-    let name = event_string("value");
-    RENAME_BUF.with(|buf| *buf.borrow_mut() = name.clone());
-    set_state_string(RENAME_TEXT, &name);
+fn update_rename_text(payload: TextValue) {
+    // BL-151: rename text はパネルローカル state を唯一の真実とする。
+    set_state_string(RENAME_TEXT, &payload.value);
 }
 
 #[panel_sdk::panel_handler]
 fn confirm_rename() {
-    let name = RENAME_BUF.with(|buf| buf.borrow().clone());
-    let name = if name.is_empty() {
-        state_string(RENAME_TEXT)
-    } else {
-        name
-    };
+    let name = state_string(RENAME_TEXT);
     if !name.is_empty() {
-        emit_command(&commands::layer::rename_active(name));
+        emit_request(&commands::layer::rename_active(name));
     }
 }
 
 #[panel_sdk::panel_handler]
-fn set_blend_mode() {
-    let mode = event_string("value");
-    if mode.is_empty() {
+fn set_blend_mode(payload: BlendModeValue) {
+    if payload.value.is_empty() {
         return;
     }
-    emit_command(&commands::layer::set_blend_mode(mode));
+    emit_request(&commands::layer::set_blend_mode(payload.value));
 }
 
 #[panel_sdk::panel_handler]
 fn toggle_layer_visibility() {
-    emit_command(&commands::layer::toggle_visibility());
+    emit_request(&commands::layer::toggle_visibility());
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn entrypoints_callable_on_native() {
-        init();
-        on_host_change();
-        add_layer();
-        remove_layer();
-        handle_layer_list(0);
-        update_rename_text();
-        confirm_rename();
-        set_blend_mode();
-        toggle_layer_visibility();
-    }
+    panel_sdk::assert_entrypoints!(entrypoints_callable_on_native => {
+        init(),
+        on_host_change(),
+        add_layer(),
+        remove_layer(),
+        select_layer(SelectLayer { id: 1 }),
+        update_rename_text(TextValue { value: "Ink".to_string() }),
+        confirm_rename(),
+        set_blend_mode(BlendModeValue { value: "multiply".to_string() }),
+        toggle_layer_visibility(),
+    });
 
     #[test]
-    fn render_layer_list_escapes_html() {
-        let payload = r#"[{"name":"<script>","blend_mode":"normal","visible":true,"masked":false}]"#;
-        let out = render_layer_list(payload, 0);
+    fn render_layer_list_escapes_html_and_uses_stable_id() {
+        let layers = vec![LayerState {
+            id: Some(42),
+            name: "<script>".to_string(),
+            blend_mode: "normal".to_string(),
+            visible: true,
+            masked: false,
+        }];
+        let out = render_layer_list(&layers, 0);
         assert!(!out.contains("<script>"));
         assert!(out.contains("&lt;script&gt;"));
+        // BL-148: data-args は安定 id を運ぶ (表示順 index ではない)。
+        assert!(out.contains(r#"altp:activate:select_layer"#), "out={out}");
+        assert!(out.contains(r#"&quot;id&quot;:42"#), "out={out}");
     }
 }

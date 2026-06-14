@@ -597,17 +597,14 @@ impl Document {
             DocumentCommand::RemoveActiveLayer => {
                 self.remove_active_layer();
             }
-            DocumentCommand::SelectLayer { index } => {
-                self.select_layer(*index);
+            DocumentCommand::SelectLayer { id } => {
+                self.select_layer_by_id(*id);
             }
             DocumentCommand::RenameActiveLayer { name } => {
                 self.rename_active_layer(name);
             }
-            DocumentCommand::MoveLayer {
-                from_index,
-                to_index,
-            } => {
-                self.move_layer(*from_index, *to_index);
+            DocumentCommand::MoveLayer { from_id, to_id } => {
+                self.move_layer_by_id(*from_id, *to_id);
             }
             DocumentCommand::SelectNextLayer => {
                 self.select_next_layer();

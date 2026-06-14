@@ -534,9 +534,15 @@ fn move_layer_reorders_layers_and_tracks_active_selection() {
     document.apply(&DocumentCommand::AddRasterLayer);
     document.apply(&DocumentCommand::AddRasterLayer);
 
+    // BL-148: id 指定で index 2 のレイヤーを index 0 のレイヤー位置へ移動する。
+    let layer_ids: Vec<_> = document.work.pages[0].komas[0]
+        .layers
+        .iter()
+        .map(|layer| layer.id)
+        .collect();
     document.apply(&DocumentCommand::MoveLayer {
-        from_index: 2,
-        to_index: 0,
+        from_id: layer_ids[2],
+        to_id: layer_ids[0],
     });
 
     let koma = &document.work.pages[0].komas[0];
@@ -547,6 +553,32 @@ fn move_layer_reorders_layers_and_tracks_active_selection() {
         .collect::<Vec<_>>();
     assert_eq!(names, vec!["Layer 3", "Layer 1", "Layer 2"]);
     assert_eq!(koma.active_layer_index, 0);
+}
+
+#[test]
+fn select_layer_by_id_resolves_stable_id_to_index() {
+    // BL-148: 表示順に依存せず安定 id でアクティブレイヤーを選べる。
+    let mut document = Document::default();
+    document.apply(&DocumentCommand::AddRasterLayer);
+    document.apply(&DocumentCommand::AddRasterLayer);
+
+    let layer_ids: Vec<_> = document.work.pages[0].komas[0]
+        .layers
+        .iter()
+        .map(|layer| layer.id)
+        .collect();
+
+    document.apply(&DocumentCommand::SelectLayer { id: layer_ids[0] });
+    assert_eq!(document.work.pages[0].komas[0].active_layer_index, 0);
+
+    document.apply(&DocumentCommand::SelectLayer { id: layer_ids[2] });
+    assert_eq!(document.work.pages[0].komas[0].active_layer_index, 2);
+
+    // 未知 id は no-op (選択は変わらない)。
+    document.apply(&DocumentCommand::SelectLayer {
+        id: LayerNodeId(999_999),
+    });
+    assert_eq!(document.work.pages[0].komas[0].active_layer_index, 2);
 }
 
 #[test]

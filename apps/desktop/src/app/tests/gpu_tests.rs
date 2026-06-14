@@ -213,9 +213,17 @@ fn selecting_layer_preserves_gpu_layer_pixels() {
             .read_back_full(koma_key, 0)
             .expect("readback before");
 
-        // レイヤー選択を動かして戻す (None 同期)。
-        app.apply_document_command(&DocumentCommand::SelectLayer { index: 1 });
-        app.apply_document_command(&DocumentCommand::SelectLayer { index: 0 });
+        // レイヤー選択を動かして戻す (None 同期)。BL-148: id 指定。
+        let layer_ids: Vec<_> = app
+            .document
+            .active_koma()
+            .unwrap()
+            .layers
+            .iter()
+            .map(|layer| layer.id)
+            .collect();
+        app.apply_document_command(&DocumentCommand::SelectLayer { id: layer_ids[1] });
+        app.apply_document_command(&DocumentCommand::SelectLayer { id: layer_ids[0] });
 
         let after = app
             .layer_texture_store()
