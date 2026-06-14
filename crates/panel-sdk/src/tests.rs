@@ -229,3 +229,14 @@ fn macro_annotated_functions_remain_directly_callable() {
     slider_for_macro_test(42);
     typed_payload_for_macro_test(MoveLayerPayload::default());
 }
+
+// BL-150: `assert_entrypoints!` が no-arg / i32 / typed payload いずれの handler 呼び
+// 出し式も受け取り、native スモークテストを生成できることを検証する。各パネルは
+// この 1 行で従来のコピペ `entrypoints_callable_on_native` を置換する。
+crate::assert_entrypoints!(generated_entrypoints_smoke => {
+    init_for_macro_test(),
+    save_for_macro_test(),
+    on_host_change_for_macro_test(),
+    slider_for_macro_test(42),
+    typed_payload_for_macro_test(MoveLayerPayload::default()),
+});

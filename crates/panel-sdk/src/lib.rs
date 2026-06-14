@@ -11,6 +11,7 @@ pub mod runtime;
 pub mod services;
 pub mod shortcut;
 pub mod state;
+pub mod test_macros;
 
 pub use panel_protocol::host_state;
 pub use panel_protocol::keyboard;
