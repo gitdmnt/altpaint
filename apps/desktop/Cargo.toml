@@ -21,7 +21,6 @@ gpu-paint = { path = "../../crates/gpu-paint" }
 paint-engine = { path = "../../crates/paint-engine" }
 frame-profiler = { path = "../../crates/frame-profiler" }
 panel-runtime = { path = "../../crates/panel-runtime" }
-keyboard-types = "0.7"
 png = "0.17"
 pollster.workspace = true
 canvas-geometry = { path = "../../crates/canvas-geometry" }

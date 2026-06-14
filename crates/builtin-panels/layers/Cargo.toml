@@ -10,5 +10,4 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 panel-sdk = { path = "../../panel-sdk" }
-serde = { workspace = true }
 serde_json = { workspace = true }
