@@ -24,7 +24,6 @@ pub mod workspace {
 
 /// ツール操作コマンド (`tool.*`) とツールカタログサービス (`tool_catalog.*`)。
 pub mod tool {
-    pub const SET_ACTIVE: &str = "tool.set_active";
     pub const SELECT: &str = "tool.select";
     pub const SELECT_CHILD: &str = "tool.select_child";
     pub const SET_SIZE: &str = "tool.set_size";
@@ -157,7 +156,6 @@ mod tests {
         workspace::SAVE_PRESET,
         workspace::EXPORT_PRESET,
         workspace::EXPORT_PRESET_TO_PATH,
-        tool::SET_ACTIVE,
         tool::SELECT,
         tool::SELECT_CHILD,
         tool::SET_SIZE,
@@ -261,7 +259,6 @@ mod tests {
             workspace::EXPORT_PRESET_TO_PATH,
             "workspace.export_preset_to_path"
         );
-        assert_eq!(tool::SET_ACTIVE, "tool.set_active");
         assert_eq!(tool::SELECT, "tool.select");
         assert_eq!(tool::SELECT_CHILD, "tool.select_child");
         assert_eq!(tool::SET_SIZE, "tool.set_size");

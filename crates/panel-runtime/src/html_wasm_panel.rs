@@ -585,10 +585,10 @@ mod tests {
     #[test]
     fn translation_failure_yields_no_host_request() {
         let registry = default_translator_registry();
-        // tool.set_active without payload.tool は翻訳失敗。
+        // tool.select without payload.tool_id は翻訳失敗。
         let action = request_descriptor_to_host_request(
             &registry,
-            RequestDescriptor::new(tool::SET_ACTIVE),
+            RequestDescriptor::new(tool::SELECT),
         );
         assert!(action.is_none());
     }

@@ -1,27 +1,5 @@
 //! 文字列キーを隠蔽する型付きコマンド生成 API を提供する。
 
-/// ツール識別子を型として表す。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Tool {
-    Pen,
-    Eraser,
-    Bucket,
-    LassoBucket,
-    KomaRect,
-}
-
-impl Tool {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Pen => "pen",
-            Self::Eraser => "eraser",
-            Self::Bucket => "bucket",
-            Self::LassoBucket => "lasso_bucket",
-            Self::KomaRect => "koma_rect",
-        }
-    }
-}
-
 /// RGB 色を 8bit 成分で表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RgbColor {
@@ -42,19 +20,12 @@ impl RgbColor {
 
 /// ツール操作コマンド群。
 pub mod tool {
-    use super::{RgbColor, Tool};
+    use super::RgbColor;
     use panel_protocol::RequestDescriptor;
     use panel_protocol::names::tool as wire;
     use serde_json::json;
 
-    pub fn set_active(tool: Tool) -> RequestDescriptor {
-        let mut descriptor = RequestDescriptor::new(wire::SET_ACTIVE);
-        descriptor
-            .payload
-            .insert("tool".to_string(), json!(tool.as_str()));
-        descriptor
-    }
-
+    /// カタログ id (`builtin.pen` 等) でツールをアクティブにする (P28: `tool.set_active` 廃止後の単一経路)。
     pub fn select_tool(tool_id: impl Into<String>) -> RequestDescriptor {
         let mut descriptor = RequestDescriptor::new(wire::SELECT);
         descriptor

@@ -47,17 +47,16 @@ fn typed_service_requests_hide_service_names() {
 
 #[test]
 fn typed_tool_commands_hide_payload_keys() {
-    let tool = commands::tool::set_active(commands::Tool::Eraser);
+    let tool = commands::tool::select_tool("builtin.eraser");
     let color = commands::tool::set_color_rgb(commands::RgbColor::new(0x0c, 0x22, 0x38));
 
-    assert_eq!(tool.payload.get("tool"), Some(&json!("eraser")));
+    assert_eq!(tool.name, names::tool::SELECT);
+    assert_eq!(tool.payload.get("tool_id"), Some(&json!("builtin.eraser")));
     assert_eq!(color.payload.get("color"), Some(&json!("#0C2238")));
 }
 
 #[test]
 fn typed_tool_commands_cover_remaining_variants() {
-    assert_eq!(commands::Tool::Pen.as_str(), "pen");
-    assert_eq!(commands::Tool::KomaRect.as_str(), "koma_rect");
     assert_eq!(
         commands::tool::set_color_hex("#ABCDEF")
             .payload

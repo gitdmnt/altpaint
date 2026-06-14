@@ -182,9 +182,9 @@ mod tests {
 
     #[test]
     fn request_descriptor_starts_with_empty_payload() {
-        let descriptor = RequestDescriptor::new(crate::names::tool::SET_ACTIVE);
+        let descriptor = RequestDescriptor::new(crate::names::tool::SELECT);
 
-        assert_eq!(descriptor.name, crate::names::tool::SET_ACTIVE);
+        assert_eq!(descriptor.name, crate::names::tool::SELECT);
         assert!(descriptor.payload.is_empty());
     }
 

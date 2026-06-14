@@ -2,7 +2,7 @@
 
 use panel_sdk::{
     RequestDescriptor,
-    commands::{self, Tool},
+    commands,
     dom::{query_selector, render_options, set_button_active, set_inner_html, set_text, set_visible},
     host_state::{ToolState, section},
     runtime::{
@@ -29,12 +29,24 @@ const LAST_IMPORT_SUMMARY: state::StringKey = state::string("config.last_import_
 const LAST_IMPORT_PREVIEW: state::StringKey = state::string("config.last_import_preview");
 const LAST_IMPORT_ISSUES: state::StringKey = state::string("config.last_import_issues");
 
-/// ショートカットスロット ID。
+/// ショートカットスロット ID。host `ToolState.active` の値と一致する。
 const SLOT_PEN: &str = "pen";
 const SLOT_ERASER: &str = "eraser";
 const SLOT_BUCKET: &str = "bucket";
 const SLOT_LASSO_BUCKET: &str = "lasso_bucket";
 const SLOT_KOMA_RECT: &str = "koma_rect";
+
+/// ビルトインツールのカタログ id (P28: `tool.select` の `tool_id` payload に使う)。
+fn slot_catalog_id(slot: &str) -> Option<&'static str> {
+    match slot {
+        SLOT_PEN => Some("builtin.pen"),
+        SLOT_ERASER => Some("builtin.eraser"),
+        SLOT_BUCKET => Some("builtin.bucket"),
+        SLOT_LASSO_BUCKET => Some("builtin.lasso-bucket"),
+        SLOT_KOMA_RECT => Some("builtin.koma-rect"),
+        _ => None,
+    }
+}
 
 /// セレクト入力 payload (`altp:select:*` は `event_payload.value` を文字列で運ぶ)。
 #[derive(Default, Deserialize)]
@@ -52,8 +64,9 @@ struct KeyEvent {
     shortcut: String,
 }
 
-fn build_tool_command(tool: Tool) -> RequestDescriptor {
-    commands::tool::set_active(tool)
+/// スロット ID からカタログ id ベースの `tool.select` request を作る (P28)。
+fn build_tool_command(slot: &str) -> Option<RequestDescriptor> {
+    slot_catalog_id(slot).map(commands::tool::select_tool)
 }
 
 fn build_tool_options(catalog_json: &str) -> Vec<(String, String)> {
@@ -216,11 +229,14 @@ fn restore_size(tool_name: &str, pen_id: &str) {
     }
 }
 
-fn switch_tool_with_size_restore(tool: Tool) {
+fn switch_tool_with_size_restore(slot: &str) {
+    let Some(command) = build_tool_command(slot) else {
+        return;
+    };
     remember_current_size();
     let pen_id = host_tool().map(|tool| tool.pen_id).unwrap_or_default();
-    emit_request(&build_tool_command(tool));
-    restore_size(tool.as_str(), &pen_id);
+    emit_request(&command);
+    restore_size(slot, &pen_id);
 }
 
 fn switch_pen_with_size_restore(delta: isize) {
@@ -240,29 +256,36 @@ fn switch_pen_with_size_restore(delta: isize) {
     }
 }
 
+/// カタログ id ベースでツールを切り替える (size 記憶なし; P28)。
+fn activate_slot(slot: &str) {
+    if let Some(command) = build_tool_command(slot) {
+        emit_request(&command);
+    }
+}
+
 #[panel_sdk::panel_handler]
 fn activate_pen() {
-    switch_tool_with_size_restore(Tool::Pen);
+    switch_tool_with_size_restore(SLOT_PEN);
 }
 
 #[panel_sdk::panel_handler]
 fn activate_eraser() {
-    switch_tool_with_size_restore(Tool::Eraser);
+    switch_tool_with_size_restore(SLOT_ERASER);
 }
 
 #[panel_sdk::panel_handler]
 fn activate_bucket() {
-    emit_request(&build_tool_command(Tool::Bucket));
+    activate_slot(SLOT_BUCKET);
 }
 
 #[panel_sdk::panel_handler]
 fn activate_lasso_bucket() {
-    emit_request(&build_tool_command(Tool::LassoBucket));
+    activate_slot(SLOT_LASSO_BUCKET);
 }
 
 #[panel_sdk::panel_handler]
 fn activate_koma_rect() {
-    emit_request(&build_tool_command(Tool::KomaRect));
+    activate_slot(SLOT_KOMA_RECT);
 }
 
 #[panel_sdk::panel_handler]
@@ -390,9 +413,13 @@ mod tests {
     });
 
     #[test]
-    fn tool_command_embeds_tool_name() {
-        let c = build_tool_command(Tool::Eraser);
-        assert_eq!(c.name, panel_sdk::names::tool::SET_ACTIVE);
+    fn tool_command_uses_catalog_id_select() {
+        let c = build_tool_command(SLOT_ERASER).expect("known slot");
+        assert_eq!(c.name, panel_sdk::names::tool::SELECT);
+        assert_eq!(
+            c.payload.get("tool_id"),
+            Some(&panel_sdk::serde_json::json!("builtin.eraser"))
+        );
     }
 
     #[test]

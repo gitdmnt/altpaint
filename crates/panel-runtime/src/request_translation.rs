@@ -15,7 +15,7 @@
 //! [`TranslatorRegistry`]: crate::translator_registry::TranslatorRegistry
 
 use document_model::DocumentCommand;
-use editor_state::{SessionCommand, ToolKind};
+use editor_state::SessionCommand;
 use panel_protocol::RequestDescriptor;
 use panel_protocol::names::{
     export, history, koma_nav, layer, project_io, snapshot, text_render, tool, view, workspace,
@@ -71,16 +71,6 @@ fn payload_u64(value: &Value) -> Option<u64> {
 fn translate_tool(descriptor: &RequestDescriptor) -> TranslateOutcome {
     let session = |command| Ok(Some(TranslatedRequest::Session(command)));
     let translated = match descriptor.name.as_str() {
-        tool::SET_ACTIVE => {
-            let tool = descriptor
-                .payload
-                .get("tool")
-                .and_then(Value::as_str)
-                .ok_or_else(|| format!("{} is missing payload.tool", tool::SET_ACTIVE))?;
-            let tool = ToolKind::from_wire(tool)
-                .ok_or_else(|| format!("unsupported tool kind: {tool}"))?;
-            return session(SessionCommand::SetActiveTool { tool });
-        }
         tool::SELECT => {
             let tool_id = descriptor
                 .payload
@@ -427,7 +417,6 @@ mod tests {
             workspace::SAVE_PRESET,
             workspace::EXPORT_PRESET,
             workspace::EXPORT_PRESET_TO_PATH,
-            tool::SET_ACTIVE,
             tool::SELECT,
             tool::SELECT_CHILD,
             tool::SET_SIZE,

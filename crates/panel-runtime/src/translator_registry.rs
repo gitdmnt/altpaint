@@ -143,11 +143,11 @@ mod tests {
     fn translates_tool_namespace_to_session_command() {
         let registry = registry();
         let translated = registry
-            .translate(&descriptor_with(tool::SET_ACTIVE, "tool", json!("pen")))
-            .expect("tool.set_active translates");
+            .translate(&descriptor_with(tool::SELECT, "tool_id", json!("builtin.pen")))
+            .expect("tool.select translates");
         assert!(matches!(
             translated,
-            TranslatedRequest::Session(SessionCommand::SetActiveTool { .. })
+            TranslatedRequest::Session(SessionCommand::SelectTool { .. })
         ));
     }
 
@@ -205,11 +205,11 @@ mod tests {
     #[test]
     fn translation_failure_yields_diagnostic_with_reason() {
         let registry = registry();
-        // tool.set_active without payload.tool は翻訳失敗。
-        let result = registry.translate(&descriptor(tool::SET_ACTIVE));
+        // tool.select without payload.tool_id は翻訳失敗。
+        let result = registry.translate(&descriptor(tool::SELECT));
         match result {
             Err(TranslationDiagnostic::TranslationFailed { name, .. }) => {
-                assert_eq!(name, tool::SET_ACTIVE);
+                assert_eq!(name, tool::SELECT);
             }
             other => panic!("expected translation failure diagnostic, got {other:?}"),
         }
