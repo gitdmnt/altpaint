@@ -3,14 +3,17 @@
 use panel_sdk::{
     RequestDescriptor,
     dom::{
-        clear_attribute, html_escape, parse_option_list, query_selector, set_attribute,
-        set_inner_html,
+        parse_option_list, query_selector, render_options, set_attribute, set_button_active,
+        set_inner_html, set_text, set_visible,
     },
     runtime::{
-        StatePatchBuffer, emit_service, error, event_string, set_state_bool, set_state_string,
-        state_bool, state_string, toggle_state,
+        StatePatchBuffer, emit_request, error, set_state_bool, set_state_string, state_bool,
+        state_string,
     },
-    services, state,
+    serde::Deserialize,
+    services,
+    shortcut::{Outcome, ShortcutRegistry},
+    state,
 };
 
 const SHOW_NEW: state::BoolKey = state::bool("show_new");
@@ -25,6 +28,29 @@ const NEW_SHORTCUT: state::StringKey = state::string("config.new_shortcut");
 const SAVE_SHORTCUT: state::StringKey = state::string("config.save_shortcut");
 const SAVE_AS_SHORTCUT: state::StringKey = state::string("config.save_as_shortcut");
 const OPEN_SHORTCUT: state::StringKey = state::string("config.open_shortcut");
+
+/// ショートカットスロット ID (capture_target / 設定 config キーと対応する)。
+const SLOT_NEW: &str = "new";
+const SLOT_SAVE: &str = "save";
+const SLOT_SAVE_AS: &str = "save_as";
+const SLOT_OPEN: &str = "open";
+
+/// テキスト/セレクト入力 payload (`altp:input:*` / `altp:select:*` は
+/// `event_payload.value` を文字列で運ぶ)。
+#[derive(Default, Deserialize)]
+#[serde(crate = "panel_sdk::serde")]
+struct TextValue {
+    #[serde(default)]
+    value: String,
+}
+
+/// keyboard イベント payload (`event_payload.shortcut`)。
+#[derive(Default, Deserialize)]
+#[serde(crate = "panel_sdk::serde")]
+struct KeyEvent {
+    #[serde(default)]
+    shortcut: String,
+}
 
 fn parse_dimension(value: &str) -> Result<usize, &'static str> {
     let trimmed = value.trim();
@@ -57,6 +83,45 @@ fn apply_template_size(size: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
+/// 永続 config から SDK ショートカットレジストリ (BL-144) を構築する。
+///
+/// slot のバインディングはパネルローカル config を唯一の真実とし、capture 中なら
+/// その slot を capture モードへ復元する。
+fn build_registry() -> ShortcutRegistry {
+    let mut registry = ShortcutRegistry::new();
+    registry.define(SLOT_NEW, state_string(NEW_SHORTCUT));
+    registry.define(SLOT_SAVE, state_string(SAVE_SHORTCUT));
+    registry.define(SLOT_SAVE_AS, state_string(SAVE_AS_SHORTCUT));
+    registry.define(SLOT_OPEN, state_string(OPEN_SHORTCUT));
+    let capture_target = state_string(CAPTURE_TARGET);
+    if !capture_target.is_empty() {
+        registry.begin_capture(capture_target);
+    }
+    registry
+}
+
+/// slot のバインディングを対応する config キーへ保存する (BL-144 Assigned 処理)。
+fn save_slot_binding(slot: &str, shortcut: &str) {
+    match slot {
+        SLOT_NEW => set_state_string(NEW_SHORTCUT, shortcut),
+        SLOT_SAVE => set_state_string(SAVE_SHORTCUT, shortcut),
+        SLOT_SAVE_AS => set_state_string(SAVE_AS_SHORTCUT, shortcut),
+        SLOT_OPEN => set_state_string(OPEN_SHORTCUT, shortcut),
+        _ => {}
+    }
+}
+
+/// 発火した slot のアクションを実行する (BL-144 Triggered 処理)。
+fn run_slot_action(slot: &str) {
+    match slot {
+        SLOT_NEW => show_new_form(),
+        SLOT_SAVE => save_project(),
+        SLOT_SAVE_AS => save_project_as(),
+        SLOT_OPEN => load_project(),
+        _ => {}
+    }
+}
+
 fn render_dom() {
     let show_new = state_bool(SHOW_NEW);
     let show_shortcuts = state_bool(SHOW_SHORTCUTS);
@@ -66,10 +131,10 @@ fn render_dom() {
     set_visible("#shortcuts-section", show_shortcuts);
     set_visible("#capture-hint", !capture_target.is_empty());
 
-    set_text_node("#new-shortcut", &state_string(NEW_SHORTCUT));
-    set_text_node("#save-shortcut", &state_string(SAVE_SHORTCUT));
-    set_text_node("#save-as-shortcut", &state_string(SAVE_AS_SHORTCUT));
-    set_text_node("#open-shortcut", &state_string(OPEN_SHORTCUT));
+    set_text("#new-shortcut", &state_string(NEW_SHORTCUT));
+    set_text("#save-shortcut", &state_string(SAVE_SHORTCUT));
+    set_text("#save-as-shortcut", &state_string(SAVE_AS_SHORTCUT));
+    set_text("#open-shortcut", &state_string(OPEN_SHORTCUT));
 
     if let Some(input) = query_selector("#app\\.new\\.width") {
         set_attribute(input, "value", &state_string(NEW_WIDTH));
@@ -79,50 +144,21 @@ fn render_dom() {
     }
 
     if let Some(select) = query_selector("#app\\.new\\.template") {
+        // BL-105: 構造化 JSON 配列 [{size,label}] を読み、option を構築する。
         let raw = state_string(TEMPLATE_OPTIONS);
         let selected = state_string(SELECTED_TEMPLATE);
-        let mut html = String::new();
-        // BL-105: 構造化 JSON 配列 [{size,label}] を読み、option を構築する。
-        for (size, label) in parse_option_list(&raw, "size", "label") {
-            let mark = if size == selected { " selected" } else { "" };
-            html.push_str(&format!(
-                r#"<option value="{}"{}>{}</option>"#,
-                html_escape(&size),
-                mark,
-                html_escape(&label),
-            ));
-        }
-        set_inner_html(select, &html);
+        let pairs = parse_option_list(&raw, "size", "label");
+        let options = pairs
+            .iter()
+            .map(|(size, label)| (size.as_str(), label.as_str()));
+        set_inner_html(select, &render_options(options, &selected));
     }
 
     set_button_active("#app\\.shortcuts", show_shortcuts);
-    set_button_active("#app\\.shortcut\\.new", capture_target == "new");
-    set_button_active("#app\\.shortcut\\.save", capture_target == "save");
-    set_button_active("#app\\.shortcut\\.save_as", capture_target == "save_as");
-    set_button_active("#app\\.shortcut\\.open", capture_target == "open");
-}
-
-fn set_visible(selector: &str, visible: bool) {
-    if let Some(node) = query_selector(selector) {
-        if visible {
-            clear_attribute(node, "hidden");
-        } else {
-            set_attribute(node, "hidden", "");
-        }
-    }
-}
-
-fn set_text_node(selector: &str, text: &str) {
-    if let Some(node) = query_selector(selector) {
-        set_inner_html(node, &html_escape(text));
-    }
-}
-
-fn set_button_active(selector: &str, active: bool) {
-    if let Some(btn) = query_selector(selector) {
-        let cls = if active { "btn active" } else { "btn" };
-        set_attribute(btn, "class", cls);
-    }
+    set_button_active("#app\\.shortcut\\.new", capture_target == SLOT_NEW);
+    set_button_active("#app\\.shortcut\\.save", capture_target == SLOT_SAVE);
+    set_button_active("#app\\.shortcut\\.save_as", capture_target == SLOT_SAVE_AS);
+    set_button_active("#app\\.shortcut\\.open", capture_target == SLOT_OPEN);
 }
 
 #[panel_sdk::panel_init]
@@ -144,28 +180,10 @@ fn on_host_change() {
     render_dom();
 }
 
-fn set_capture_target(target: &str) {
-    set_state_string(CAPTURE_TARGET, target);
-}
-
 fn capture_shortcut(target: &str) {
-    set_capture_target(target);
+    set_state_string(CAPTURE_TARGET, target);
     set_state_bool(SHOW_SHORTCUTS, true);
     render_dom();
-}
-
-fn assign_captured_shortcut(target: &str, shortcut: &str) {
-    match target {
-        "new" => set_state_string(NEW_SHORTCUT, shortcut),
-        "save" => set_state_string(SAVE_SHORTCUT, shortcut),
-        "save_as" => set_state_string(SAVE_AS_SHORTCUT, shortcut),
-        "open" => set_state_string(OPEN_SHORTCUT, shortcut),
-        _ => {}
-    }
-}
-
-fn shortcut_matches(configured: &str, incoming: &str) -> bool {
-    !configured.is_empty() && configured.eq_ignore_ascii_case(incoming)
 }
 
 #[panel_sdk::panel_handler]
@@ -190,43 +208,41 @@ fn cancel_forms() {
 
 #[panel_sdk::panel_handler]
 fn toggle_shortcuts() {
-    toggle_state(SHOW_SHORTCUTS);
+    set_state_bool(SHOW_SHORTCUTS, !state_bool(SHOW_SHORTCUTS));
     render_dom();
 }
 
 #[panel_sdk::panel_handler]
 fn capture_new_shortcut() {
-    capture_shortcut("new");
+    capture_shortcut(SLOT_NEW);
 }
 
 #[panel_sdk::panel_handler]
 fn capture_save_shortcut() {
-    capture_shortcut("save");
+    capture_shortcut(SLOT_SAVE);
 }
 
 #[panel_sdk::panel_handler]
 fn capture_save_as_shortcut() {
-    capture_shortcut("save_as");
+    capture_shortcut(SLOT_SAVE_AS);
 }
 
 #[panel_sdk::panel_handler]
 fn capture_open_shortcut() {
-    capture_shortcut("open");
+    capture_shortcut(SLOT_OPEN);
 }
 
 #[panel_sdk::panel_handler]
-fn edit_new_width() {
-    let value = event_string("value");
-    if !value.is_empty() {
-        set_state_string(NEW_WIDTH, &value);
+fn edit_new_width(payload: TextValue) {
+    if !payload.value.is_empty() {
+        set_state_string(NEW_WIDTH, &payload.value);
     }
 }
 
 #[panel_sdk::panel_handler]
-fn edit_new_height() {
-    let value = event_string("value");
-    if !value.is_empty() {
-        set_state_string(NEW_HEIGHT, &value);
+fn edit_new_height(payload: TextValue) {
+    if !payload.value.is_empty() {
+        set_state_string(NEW_HEIGHT, &payload.value);
     }
 }
 
@@ -238,17 +254,16 @@ fn new_project() {
         error("width and height must be positive integers");
         return;
     };
-    emit_service(&command);
+    emit_request(&command);
     cancel_forms();
 }
 
 #[panel_sdk::panel_handler]
-fn select_template() {
-    let value = event_string("value");
-    if value.is_empty() {
+fn select_template(payload: TextValue) {
+    if payload.value.is_empty() {
         return;
     }
-    if let Err(message) = apply_template_size(&value) {
+    if let Err(message) = apply_template_size(&payload.value) {
         error(message);
     }
     render_dom();
@@ -256,62 +271,72 @@ fn select_template() {
 
 #[panel_sdk::panel_handler]
 fn save_project() {
-    emit_service(&services::project_io::save_current());
+    emit_request(&services::project_io::save_current());
 }
 
 #[panel_sdk::panel_handler]
 fn save_project_as() {
-    emit_service(&services::project_io::save_as());
+    emit_request(&services::project_io::save_as());
 }
 
 #[panel_sdk::panel_handler]
 fn load_project() {
-    emit_service(&services::project_io::load_dialog());
+    emit_request(&services::project_io::load_dialog());
 }
 
 #[panel_sdk::panel_handler]
 fn undo() {
-    emit_service(&services::history::undo());
+    emit_request(&services::history::undo());
 }
 
 #[panel_sdk::panel_handler]
 fn redo() {
-    emit_service(&services::history::redo());
+    emit_request(&services::history::redo());
 }
 
 #[panel_sdk::panel_handler]
-fn keyboard() {
-    let shortcut = event_string("shortcut");
-    if shortcut.is_empty() {
+fn keyboard(payload: KeyEvent) {
+    if payload.shortcut.is_empty() {
         return;
     }
-    let target = state_string(CAPTURE_TARGET);
-    if !target.is_empty() {
-        assign_captured_shortcut(&target, &shortcut);
-        set_capture_target("");
-        render_dom();
-        return;
-    }
-    if shortcut_matches(&state_string(NEW_SHORTCUT), &shortcut) {
-        show_new_form();
-        return;
-    }
-    if shortcut_matches(&state_string(SAVE_SHORTCUT), &shortcut) {
-        save_project();
-        return;
-    }
-    if shortcut_matches(&state_string(SAVE_AS_SHORTCUT), &shortcut) {
-        save_project_as();
-        return;
-    }
-    if shortcut_matches(&state_string(OPEN_SHORTCUT), &shortcut) {
-        load_project();
+    // BL-144: capture→割当→マッチを SDK ショートカットレジストリへ集約する。
+    let mut registry = build_registry();
+    match registry.handle_key(&payload.shortcut) {
+        Outcome::Assigned { slot, shortcut } => {
+            save_slot_binding(&slot, &shortcut);
+            set_state_string(CAPTURE_TARGET, "");
+            render_dom();
+        }
+        Outcome::Triggered { slot } => run_slot_action(&slot),
+        Outcome::Ignored => {}
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    panel_sdk::assert_entrypoints!(entrypoints_callable_on_native => {
+        init(),
+        on_host_change(),
+        show_new_form(),
+        cancel_forms(),
+        toggle_shortcuts(),
+        select_template(TextValue::default()),
+        edit_new_width(TextValue { value: "320".to_string() }),
+        edit_new_height(TextValue { value: "240".to_string() }),
+        capture_new_shortcut(),
+        capture_save_shortcut(),
+        capture_save_as_shortcut(),
+        capture_open_shortcut(),
+        new_project(),
+        save_project(),
+        save_project_as(),
+        load_project(),
+        keyboard(KeyEvent::default()),
+        undo(),
+        redo(),
+    });
 
     #[test]
     fn new_project_command_trims_dimensions() {
@@ -323,34 +348,5 @@ mod tests {
     fn new_project_command_rejects_missing_dimensions() {
         assert!(build_new_project_command("", "240").is_err());
         assert!(build_new_project_command("320px", "240").is_err());
-    }
-
-    #[test]
-    fn shortcut_match_is_case_insensitive() {
-        assert!(shortcut_matches("Ctrl+S", "ctrl+s"));
-        assert!(!shortcut_matches("", "Ctrl+S"));
-    }
-
-    #[test]
-    fn entrypoints_callable_on_native() {
-        init();
-        on_host_change();
-        show_new_form();
-        cancel_forms();
-        toggle_shortcuts();
-        select_template();
-        edit_new_width();
-        edit_new_height();
-        capture_new_shortcut();
-        capture_save_shortcut();
-        capture_save_as_shortcut();
-        capture_open_shortcut();
-        new_project();
-        save_project();
-        save_project_as();
-        load_project();
-        keyboard();
-        undo();
-        redo();
     }
 }
