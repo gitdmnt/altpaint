@@ -76,14 +76,16 @@ plugin-sdk = { path = "../../crates/plugin-sdk" }
 最小例:
 
 ```rust
-use plugin_sdk::{runtime::emit_service, services};
+use panel_sdk::{runtime::emit_request, services};
 
-#[plugin_sdk::panel_init]
+#[panel_sdk::panel_init]
 fn init() {}
 
-#[plugin_sdk::panel_handler]
+#[panel_sdk::panel_handler]
 fn save_project() {
-  emit_service(&services::project_io::save_current());
+  // B9 P27: request 発行は単一 API `emit_request`。command/service の区別は
+  // host 側 translator registry が静的に振り分ける。
+  emit_request(&services::project_io::save_current());
 }
 ```
 
@@ -169,19 +171,20 @@ release 生成したい場合:
 
 ## 現在使える主な runtime helper
 
-`plugin-sdk::runtime` では少なくとも次を使えます。
+`panel-sdk::runtime` では少なくとも次を使えます（B9 BL-147 で `abi` / `state` / `events` / `diagnostics` に分割済み）。
 
-- `emit_command_descriptor(...)`
-- `toggle_state(...)`
-- `set_state_bool(...)`
-- `state_i32(...)`
-- `info(...)`
-- `warn(...)`
-- `error(...)`
+- `emit_request(&RequestDescriptor)`（request 発行の単一 API。B9 P27。旧 `emit_command` / `emit_service` / `emit_*_descriptor` は撤去）
+- `set_state_bool(...)` / `set_state_string(...)` / `state_bool(...)` / `state_string(...)`（state キーは 2 層化 `session.*` / `config.*`。B9 BL-145）
+- `info(...)` / `warn(...)` / `error(...)`
 
-host snapshot 同期専用 lifecycle として次も使えます。
+DOM 書換えは `panel-sdk::dom` の水平ヘルパ（B9 BL-143）を使います。
 
-- `#[plugin_sdk::panel_sync_host]`
+- `set_text(selector, text)` / `set_visible(selector, bool)` / `set_button_active(selector, bool)` / `set_slider(selector, value, display_selector)`
+- `render_options(options, selected)` / `render_action_list(items)`（いずれも HTML escape 内蔵）
+
+host state 変化時の再描画 lifecycle として次も使えます。
+
+- `#[panel_sdk::panel_on_host_change]`（B9 P26 / BL-146: 旧 `#[plugin_sdk::panel_sync_host]`）。host 値は `.altp-panel` から直接読まず `panel_sdk::host_state::*` の typed セクション DTO（`ToolState` / `LayerState` 等。B9 BL-142）で取得して `state.*` へ反映します
 
 ## 現在使える主な UI ノード
 
@@ -201,10 +204,10 @@ host snapshot 同期専用 lifecycle として次も使えます。
 
 ## 実装上の注意
 
-- Wasm 側は `Command` enum を直接知らず、command descriptor を返します
-- ドキュメント本体は host が持ち、Wasm は local state と command 発行だけを行います
-- host の現在値は `.altp-panel` から直接読まず、`plugin_sdk::host::*` で取得して `#[plugin_sdk::panel_sync_host] fn sync_host()` から `state.*` へ反映します
-- `sync_host` は予約済み lifecycle 名なので、`.altp-panel` の `on:click` / `on:change` には bind しません
+- Wasm 側は `Command` enum を直接知らず、`RequestDescriptor` を `emit_request` で発行します
+- ドキュメント本体は host が持ち、Wasm は local state と request 発行だけを行います
+- host の現在値は `.altp-panel` から直接読まず、`panel_sdk::host_state::*` の typed セクション DTO（B9 BL-142）で取得して `#[panel_sdk::panel_on_host_change] fn on_host_change()`（B9 P26）から `state.*` へ反映します
+- `on_host_change` は予約済み lifecycle 名なので、`.altp-panel` の `on:click` / `on:change` には bind しません
 - `.wasm` を直接編集せず、必ず Rust ソースか `.wat` から再生成します
 
 ## 新しい組み込みパネルを足す手順

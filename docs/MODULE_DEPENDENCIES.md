@@ -379,8 +379,8 @@ graph TD
 担当:
 
 - `#[panel_init]`
-- `#[panel_handler]`
-- `#[panel_sync_host]`
+- `#[panel_handler]`（B9 BL-141: 引数を 1 個取れば serde `Deserialize` 済み typed payload を受ける。`event_string` 暗黙読みは廃止）
+- `#[panel_on_host_change]`（B9 P26 / BL-146: 旧 `#[panel_sync_host]` を改名。host 状態変化時の再描画フック）
 
 意味:
 
@@ -392,10 +392,12 @@ graph TD
 担当:
 
 - パネル作者向け安定表面 API
-- typed `commands::*` / `services::*` / `state::*`
-- host state accessor（`host.rs`）
-- DOM mutation API（`dom.rs`: `query_selector` / `set_attribute` / `set_inner_html` 等 — Phase 10）
-- runtime helper
+- typed `commands::*` / `services::*`。ツールは catalog id ベース `commands::tool::select_tool(tool_id)` に一本化（B9 P28: 旧 `Tool` enum + `tool.set_active` 撤去）
+- 2 層化 state キー `state::string("session.*"/"config.*")`（B9 BL-145: 素キー廃止）
+- host state accessor（`host_state.rs`: セクション JSON 1 回取得 + serde の typed DTO `ToolState` / `LayerState` / `DocumentState` 等。B9 BL-142）
+- DOM mutation API（`dom.rs`: `query_selector` / `set_inner_html` 等の低位 + B9 BL-143 で吸い上げた水平ヘルパ `set_text` / `set_visible` / `set_button_active` / `set_slider` / `render_options` / `render_action_list`。escape 内蔵で 12 パネルのコピペを解消）
+- shortcut レジストリ（`shortcut.rs`: `ShortcutRegistry` + `Outcome`。B9 BL-144 で tool-palette / app-actions の二重状態機械を置換）
+- runtime helper（`runtime/` を `abi` / `state` / `events` / `diagnostics` へ分割。B9 BL-147 / P27）。request 発行は単一 API `emit_request(&RequestDescriptor)`（旧 `emit_command` / `emit_service` / `emit_*_descriptor` は撤去）
 - `panel-macros` の再 export
 
 意味:
@@ -414,7 +416,7 @@ graph TD
 - DOM mutation host functions（`dom_api.rs`: Blitz `DocumentMutator` を Wasm に公開 — Phase 10）
 - host import の登録は関心別 register モジュール（`state_api` / `host_state_api` / `request_api` / `dom_api`）に分割（BL-038）
 - Wasm memory 読み書き（`memory.rs` の共通ヘルパ。文字列コピー host fn の 4 重複と read_utf8/current_memory 二重定義を解消 — BL-037）
-- `panel_init` / `panel_handle_event` / `panel_sync_host` / `panel_handle_keyboard` の橋渡し
+- `panel_init` / `panel_handle_event` / `panel_on_host_change`（B9 P26: 旧 `panel_sync_host`） / `panel_handle_keyboard` の橋渡し
 
 重要事項:
 
