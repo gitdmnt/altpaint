@@ -634,6 +634,35 @@ mod tests {
         );
     }
 
+    /// BL-148: layers_json は各レイヤーの安定 id (`RasterLayer.id`) を含む。
+    #[test]
+    fn layers_json_carries_stable_layer_ids() {
+        let mut document = Document::default();
+        document.apply(&document_model::DocumentCommand::AddRasterLayer);
+        let mut registry = HostStateRegistry::default();
+
+        let value = build(&mut registry, &document);
+        let layers_json = value["document"]["layers_json"]
+            .as_str()
+            .expect("layers_json is string");
+        let layers: Vec<panel_protocol::host_state::LayerState> =
+            serde_json::from_str(layers_json).expect("layers parse");
+
+        // 各レイヤーに id が供給される (BL-148 の id 指定 request の前提)。
+        assert!(layers.iter().all(|layer| layer.id.is_some()), "{layers_json}");
+        // モデルの実 id と一致する (UI 順 = 逆順)。
+        let model_ids: Vec<u64> = document
+            .active_koma()
+            .unwrap()
+            .layers
+            .iter()
+            .rev()
+            .map(|layer| layer.id.0)
+            .collect();
+        let json_ids: Vec<u64> = layers.iter().filter_map(|layer| layer.id).collect();
+        assert_eq!(json_ids, model_ids, "{layers_json}");
+    }
+
     /// BL-093: コマ bounds 変更が次回 build の komas_json に反映される。
     #[test]
     fn koma_bounds_change_is_reflected_in_next_host_state() {
