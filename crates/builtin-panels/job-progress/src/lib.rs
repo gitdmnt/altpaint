@@ -1,8 +1,9 @@
 //! `builtin.job-progress` パネル (Phase 10 DOM mutation 版)。
 
 use panel_sdk::{
-    dom::{html_escape, query_selector, set_inner_html},
-    host,
+    dom::set_text,
+    host_state::{DocumentState, JobsState, section},
+    runtime::host_section,
 };
 
 #[panel_sdk::panel_init]
@@ -10,22 +11,23 @@ fn init() {}
 
 #[panel_sdk::panel_on_host_change]
 fn on_host_change() {
-    let active = host::jobs::active();
-    if let Some(node) = query_selector("#active") {
-        set_inner_html(node, &active.to_string());
-    }
-    if let Some(node) = query_selector("#queued") {
-        set_inner_html(node, &host::jobs::queued().to_string());
-    }
-    if let Some(node) = query_selector("#status") {
-        // BL-094: host state は生データのみ。status 文字列の整形はパネル側で行う。
-        let status = format_status(active, &host::document::title());
-        set_inner_html(node, &html_escape(&status));
-    }
+    // BL-142: 個別 getter ではなくセクション JSON を 1 回取得し型付き DTO へ落とす。
+    let jobs = host_section::<JobsState>(section::JOBS).unwrap_or(JobsState {
+        active: 0,
+        queued: 0,
+    });
+    let title = host_section::<DocumentState>(section::DOCUMENT)
+        .map(|document| document.title)
+        .unwrap_or_default();
+
+    set_text("#active", &jobs.active.to_string());
+    set_text("#queued", &jobs.queued.to_string());
+    // BL-094: host state は生データのみ。status 文字列の整形はパネル側で行う。
+    set_text("#status", &format_status(jobs.active, &title));
 }
 
 /// アクティブジョブ数と作品タイトルから status 文字列を整形する (BL-094)。
-fn format_status(active: i32, work_title: &str) -> String {
+fn format_status(active: i64, work_title: &str) -> String {
     if active <= 0 {
         format!("idle / work={work_title}")
     } else {
@@ -37,11 +39,10 @@ fn format_status(active: i32, work_title: &str) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn entrypoints_callable_on_native() {
-        init();
-        on_host_change();
-    }
+    panel_sdk::assert_entrypoints!(entrypoints_callable_on_native => {
+        init(),
+        on_host_change(),
+    });
 
     #[test]
     fn format_status_idle_includes_work_title() {
