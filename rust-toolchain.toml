@@ -1,0 +1,6 @@
+# 旧コード (legacy-final) をビルドするツールチェインを固定する (ADR 020 11 章 2.2)。
+# 撤退して旧コードに戻る場合も、同じツールチェインでビルドできるようにする。
+[toolchain]
+channel = "1.94.0"
+components = ["clippy", "rustfmt"]
+targets = ["wasm32-unknown-unknown"]
