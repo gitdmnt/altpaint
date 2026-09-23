@@ -35,6 +35,8 @@ pub(crate) struct ComposedFrame {
     canvas: Option<CanvasSurfaceData>,
     panel_quads: Vec<GpuPanelQuad>,
     status_quad: Option<GpuPanelQuad>,
+    /// オーバーレイ scissor 用のキャンバスホスト矩形 (ADR 019 Phase 5)。
+    canvas_host_rect: geometry::WindowRect,
     /// このフレームでキャンバスが更新されたか (profiler 計測用)。
     pub(crate) canvas_updated: bool,
 }
@@ -111,6 +113,7 @@ impl ComposedFrame {
             panel_quads: &self.panel_quads,
             foreground_quads: &self.foreground_quads,
             status_quad: self.status_quad.as_ref(),
+            canvas_host_rect: self.canvas_host_rect,
         }
     }
 }
@@ -172,6 +175,11 @@ impl DesktopApp {
                 screen_rect: entry.screen_rect,
             });
 
+        let canvas_host_rect = crate::present_quads::canvas_host_rect(
+            window_width as usize,
+            window_height as usize,
+        );
+
         ComposedFrame {
             background_quads,
             foreground_quads,
@@ -181,6 +189,7 @@ impl DesktopApp {
             canvas,
             panel_quads,
             status_quad,
+            canvas_host_rect,
             canvas_updated: update.canvas_updated,
         }
     }

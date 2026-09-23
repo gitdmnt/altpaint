@@ -23,6 +23,23 @@ pub(crate) use solid_quad::{
 
 pub(crate) type TextureQuad = canvas_geometry::TextureQuad;
 
+/// キャンバスホスト領域（ヘッダ/フッタ/余白を除いた内側矩形）を計算する。
+///
+/// ウィンドウ寸法のみに依存する純粋関数。presenter のオーバーレイ scissor
+/// (ADR 019 Phase 5) と `DesktopLayout` の双方が単一定義としてここを参照する。
+pub(crate) fn canvas_host_rect(window_width: usize, window_height: usize) -> WindowRect {
+    WindowRect {
+        x: WINDOW_PADDING,
+        y: WINDOW_PADDING + HEADER_HEIGHT + WINDOW_PADDING,
+        width: window_width.saturating_sub(WINDOW_PADDING * 2).max(1),
+        height: window_height
+            .saturating_sub(HEADER_HEIGHT)
+            .saturating_sub(FOOTER_HEIGHT)
+            .saturating_sub(WINDOW_PADDING * 3)
+            .max(1),
+    }
+}
+
 /// デスクトップ UI の固定レイアウト情報。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DesktopLayout {
@@ -44,16 +61,7 @@ impl DesktopLayout {
             width: window_width.max(1),
             height: window_height.max(1),
         };
-        let canvas_host_rect = WindowRect {
-            x: WINDOW_PADDING,
-            y: WINDOW_PADDING + HEADER_HEIGHT + WINDOW_PADDING,
-            width: window_width.saturating_sub(WINDOW_PADDING * 2).max(1),
-            height: window_height
-                .saturating_sub(HEADER_HEIGHT)
-                .saturating_sub(FOOTER_HEIGHT)
-                .saturating_sub(WINDOW_PADDING * 3)
-                .max(1),
-        };
+        let canvas_host_rect = canvas_host_rect(window_width, window_height);
         let canvas_display_rect =
             fit_rect(canvas_width.max(1), canvas_height.max(1), canvas_host_rect);
 

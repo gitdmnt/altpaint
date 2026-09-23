@@ -6,6 +6,6 @@
   "preset": {
     "anchor": "bottom-left",
     "position": { "x": 376, "y": 24 },
-    "size": { "width": 280, "height": 180 }
+    "size": { "width": 320, "height": 200 }
   }
 }

@@ -141,6 +141,36 @@ pub struct PresentFrame<'a> {
     pub panel_quads: &'a [GpuPanelQuad],
     pub foreground_quads: &'a [SolidQuad],
     pub status_quad: Option<&'a GpuPanelQuad>,
+    /// オーバーレイ (L2) を閉じ込めるキャンバスホスト矩形。scissor 最終防壁に使う。
+    pub canvas_host_rect: geometry::WindowRect,
+}
+
+/// `rect` を surface 矩形と交差させ、wgpu の `set_scissor_rect` 用 `(x, y, w, h)` を返す。
+/// 交差が空なら `None`（そのレイヤーの描画をスキップする合図）。
+///
+/// presenter が持つ唯一の GPU クリップ最終防壁 (ADR 019 Phase 5)。上流 CPU クランプの
+/// 取りこぼしがウィンドウ全体の視覚破壊へ波及するのを防ぐ。
+fn scissor_of(
+    rect: geometry::WindowRect,
+    surface_w: u32,
+    surface_h: u32,
+) -> Option<(u32, u32, u32, u32)> {
+    let surface = geometry::WindowRect {
+        x: 0,
+        y: 0,
+        width: surface_w as usize,
+        height: surface_h as usize,
+    };
+    let clipped = rect.intersect(surface)?;
+    if clipped.width == 0 || clipped.height == 0 {
+        return None;
+    }
+    Some((
+        clipped.x as u32,
+        clipped.y as u32,
+        clipped.width as u32,
+        clipped.height as u32,
+    ))
 }
 
 impl WgpuPresenter {
@@ -332,21 +362,34 @@ impl WgpuPresenter {
                 }
             }
 
-            // L3a: 一時オーバーレイの AABB 単色矩形（マスク・コマプレビュー・navigator）
-            self.solid_quad_pipeline.record(&mut pass, overlay_solid_range);
-            // L3b: ブラシプレビュー円リング（SDF）
-            self.overlay_circle_pipeline.record(&mut pass, circle_range);
-            // L3c: ラッソ線分（カプセル SDF）
-            self.overlay_line_pipeline.record(&mut pass, line_range);
+            // L2 オーバーレイ (マスク・コマプレビュー・navigator・円・線) は
+            // キャンバスホスト領域へ scissor で閉じ込める。カーソルがキャンバス外へ
+            // 出てもプレビュー円/線が UI 領域へはみ出さない (ADR 019 Phase 5)。
+            if let Some((x, y, w, h)) = scissor_of(frame.canvas_host_rect, surface_w, surface_h) {
+                pass.set_scissor_rect(x, y, w, h);
+                // L2a: 一時オーバーレイの AABB 単色矩形
+                self.solid_quad_pipeline.record(&mut pass, overlay_solid_range);
+                // L2b: ブラシプレビュー円リング（SDF）
+                self.overlay_circle_pipeline.record(&mut pass, circle_range);
+                // L2c: ラッソ線分（カプセル SDF）
+                self.overlay_line_pipeline.record(&mut pass, line_range);
+                pass.set_scissor_rect(0, 0, surface_w, surface_h);
+            }
 
-            // L3: HTML パネル群（GPU 直描画）
+            // L3: HTML パネル群（GPU 直描画）。各パネルを自身の screen_rect ∩ surface へ
+            // scissor し、リサイズ途中やサイズ不整合でテクスチャがウィンドウ外/他 UI 上へ
+            // はみ出すのを最終防壁として防ぐ (ADR 019 Phase 5)。
             pass.set_pipeline(&self.present.pipeline);
             for quad in frame.panel_quads {
-                if let Some(entry) = self.panel_bind_groups.get(&quad.panel_id) {
+                if let Some(entry) = self.panel_bind_groups.get(&quad.panel_id)
+                    && let Some((x, y, w, h)) = scissor_of(quad.screen_rect, surface_w, surface_h)
+                {
+                    pass.set_scissor_rect(x, y, w, h);
                     pass.set_bind_group(0, &entry.bind_group, &[]);
                     pass.draw(0..6, 0..1);
                 }
             }
+            pass.set_scissor_rect(0, 0, surface_w, surface_h);
 
             // L4: 前景 solid quads（アクティブ UI パネル枠線）
             self.solid_quad_pipeline.record(&mut pass, foreground_range);
@@ -554,5 +597,42 @@ impl WgpuPresenter {
                 &quad_uniform_bytes(quad, surface_width, surface_height),
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scissor_of;
+    use geometry::WindowRect;
+
+    fn rect(x: usize, y: usize, w: usize, h: usize) -> WindowRect {
+        WindowRect {
+            x,
+            y,
+            width: w,
+            height: h,
+        }
+    }
+
+    #[test]
+    fn scissor_keeps_rect_fully_inside_surface() {
+        assert_eq!(
+            scissor_of(rect(10, 20, 100, 50), 1280, 800),
+            Some((10, 20, 100, 50))
+        );
+    }
+
+    #[test]
+    fn scissor_clamps_overflow_to_surface_bounds() {
+        // 右下がサーフェスを超える → surface 境界でクリップされ、はみ出さない。
+        assert_eq!(
+            scissor_of(rect(1200, 760, 200, 200), 1280, 800),
+            Some((1200, 760, 80, 40))
+        );
+    }
+
+    #[test]
+    fn scissor_returns_none_when_fully_outside_surface() {
+        assert_eq!(scissor_of(rect(2000, 2000, 100, 100), 1280, 800), None);
     }
 }

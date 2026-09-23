@@ -50,18 +50,19 @@ fn meta_derived_default_preset_matches_golden_layout() {
         .expect("default preset exists");
     let panels = &preset.ui_state.workspace_layout.panels;
 
-    // 期待値: (id, anchor, x, y, width, height) — 旧 default_workspace_preset_catalog と同値。
+    // 期待値: (id, anchor, x, y, width, height)。位置は従来同値、size は ADR 019 Phase 4 で
+    // default_size == preset.size に統一した確定値 (要素ごと最大, min-width 240)。
     let golden: &[(&str, WorkspacePanelAnchor, usize, usize, usize, usize)] = &[
-        ("builtin.workspace-layout", WorkspacePanelAnchor::TopLeft, 24, 72, 320, 280),
-        ("builtin.tool-palette", WorkspacePanelAnchor::TopLeft, 24, 384, 300, 280),
-        ("builtin.app-actions", WorkspacePanelAnchor::TopLeft, 356, 72, 320, 240),
-        ("builtin.workspace-presets", WorkspacePanelAnchor::TopRight, 24, 616, 320, 180),
-        ("builtin.layers", WorkspacePanelAnchor::TopRight, 24, 72, 320, 320),
+        ("builtin.workspace-layout", WorkspacePanelAnchor::TopLeft, 24, 72, 320, 320),
+        ("builtin.tool-palette", WorkspacePanelAnchor::TopLeft, 24, 384, 300, 320),
+        ("builtin.app-actions", WorkspacePanelAnchor::TopLeft, 356, 72, 320, 320),
+        ("builtin.workspace-presets", WorkspacePanelAnchor::TopRight, 24, 616, 320, 280),
+        ("builtin.layers", WorkspacePanelAnchor::TopRight, 24, 72, 320, 360),
         ("builtin.color-palette", WorkspacePanelAnchor::BottomLeft, 24, 24, 320, 320),
-        ("builtin.tool-settings", WorkspacePanelAnchor::BottomRight, 24, 24, 320, 260),
+        ("builtin.tool-settings", WorkspacePanelAnchor::BottomRight, 24, 24, 320, 360),
         ("builtin.view-controls", WorkspacePanelAnchor::BottomRight, 376, 24, 320, 260),
-        ("builtin.job-progress", WorkspacePanelAnchor::BottomLeft, 376, 24, 280, 180),
-        ("builtin.snapshots", WorkspacePanelAnchor::TopRight, 24, 424, 280, 180),
+        ("builtin.job-progress", WorkspacePanelAnchor::BottomLeft, 376, 24, 320, 200),
+        ("builtin.snapshots", WorkspacePanelAnchor::TopRight, 24, 424, 320, 320),
     ];
 
     for (id, anchor, x, y, w, h) in golden {

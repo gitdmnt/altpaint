@@ -270,11 +270,15 @@ impl DesktopApp {
                     width: mw as usize,
                     height: mh as usize,
                 });
+            // 位置クランプ (workspace) と描画幅高 (measured) のソース差でウィンドウ境界を
+            // 超えないよう、幅高を残余領域へ最終クランプする (ADR 019 Phase 5)。
+            let x = position_rect.x;
+            let y = position_rect.y;
             panel_rects.push(geometry::WindowRect {
-                x: position_rect.x,
-                y: position_rect.y,
-                width: mw as usize,
-                height: mh as usize,
+                x,
+                y,
+                width: (mw as usize).min(window_width.saturating_sub(x)),
+                height: (mh as usize).min(window_height.saturating_sub(y)),
             });
             // viewport はクランプ上限としてそのまま渡し、View 側でクランプさせる
             sized.push((id.clone(), window_width as u32, window_height as u32));

@@ -7,6 +7,7 @@ mod persistent_config;
 pub mod host_state;
 mod loader;
 mod meta;
+mod panel_theme_css;
 mod runtime;
 pub mod services;
 

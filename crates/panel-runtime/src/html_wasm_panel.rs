@@ -92,7 +92,9 @@ impl HtmlWasmPanel {
         let meta: PanelMeta = serde_json::from_str(&meta_raw)?;
         let default_size = meta.default_size.as_tuple();
 
-        let mut view = HtmlPanelView::new(&html, &css);
+        // 共有ベース CSS (ADR 019) を先頭結合し、全パネルへ単一テーマを注入する。
+        let composed_css = crate::panel_theme_css::compose_panel_css(&css);
+        let mut view = HtmlPanelView::new(&html, &composed_css);
         view.set_panel_size(restored_size.unwrap_or(default_size));
         let mut wasm = PanelWasmInstance::load(directory.join(wasm_filename))?;
 
