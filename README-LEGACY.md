@@ -30,3 +30,8 @@ altpaint は ADR 020 ([docs/adr/020-codebase-rebuild-strategy.md](docs/adr/020-c
 | 時点 | 環境 | passed / failed / ignored |
 |---|---|---|
 | B10 の記録 (docs/IMPLEMENTATION_STATUS.md:174、2026-06-14) | 記録なし | 568 / 0 / 9 |
+| クリーンな clone での実測 (ADR 020 11 章 2.3、2026-10-12) | Windows 11、NVIDIA GeForce RTX 2070、rustc 1.94.0、上の手順 1〜3 のとおり | 568 / 0 / 9 |
+
+実測は B10 の記録と一致し、ずれは無かった。
+GPU を使うテストは飛ばされずに実行された (「no GPU device」で飛ばした旨の出力は 0 件)。
+未コミットだった ADR 019 の作業 (テスト 8 件を含む) は `legacy-adr019-wip` タグにあり、この件数には含まない。
