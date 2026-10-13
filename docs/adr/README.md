@@ -46,7 +46,7 @@ ADR 020 が「止血案」の ADR に置き換わった場合は (ADR 020 の 6 
 | [019](019-ui-theme-and-clipping.md) | UI 整理: 共有テーマ CSS、アイコンフォント、クリッピング、DPI | Superseded-by 020 | 2026-07-07 | 決定の全部 (ADR 020 が引き継ぎ、作業途中のコードは `legacy-adr019-wip` タグから移植する) |
 | [020](020-codebase-rebuild-strategy.md) | コードベース再建方針: 骨格再建・選別移植方式 | Proposed | 2026-09-23 | — |
 
-ADR 020 は 6 つのファイルからなる: [本体](020-codebase-rebuild-strategy.md)、[5 章](020-architecture.md)、[6 章と 11 章](020-plan.md)、[8 章](020-process-rules.md)、[付録 A〜F と H](020-appendix-audit.md)、[付録 G](020-appendix-enforcement.md)。
+ADR 020 は 5 つのファイルからなる: [本体](020-codebase-rebuild-strategy.md)、[5 章](020-architecture.md)、[6 章と 11 章](020-plan.md)、[8 章](020-process-rules.md)、[付録](020-appendix-audit.md)。付録 G (強制の設計) は、2026-10-14 に取り下げた。
 ADR 021 (骨格の凍結) は、ADR 020 の Phase 4 で作る予定である。
 
 ## ADR 020 の指摘との対応
