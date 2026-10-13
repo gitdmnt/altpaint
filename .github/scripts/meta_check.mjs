@@ -35,7 +35,7 @@ export const refIds = (body) =>
 
 // 受け入れ ID は、ACCEPTANCE.md の表の先頭の列にあるものだけを数える。
 // 接頭辞だけ (A-R)、例示 (A-xx)、本文の中の言及は ID として扱わない。
-const ID_CELL = /^| `?(A-[A-Z]+[0-9-][A-Za-z0-9-]*)`?(?: (d+))? |/gm;
+const ID_CELL = /^\| `?(A-[A-Z]+[0-9-][A-Za-z0-9-]*)`?(?: \(\d+\))? \|/gm;
 export const acceptanceIds = (acceptance) =>
   new Set([...acceptance.matchAll(ID_CELL)].map(([, id]) => id));
 
