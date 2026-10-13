@@ -1,4 +1,5 @@
 [workspace]
+exclude = ["spikes"]
 members = [
   "crates/builtin-panels/view-controls",
   "crates/builtin-panels/job-progress",
