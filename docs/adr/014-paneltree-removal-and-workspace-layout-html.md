@@ -1,8 +1,8 @@
 # ADR 014: PanelTree/PanelNode 撤廃と workspace-layout の HTML パネル化 (Phase 12)
 
-- 作業日時: 2026-05-15
-- 作業 Agent: claude-opus-4-7 (1M context)
-- ステータス: Accepted (実装完了)
+- 作業日時: 2026-05-15、2026-10-13 (状態の更新)
+- 作業 Agent: claude-opus-4-7 (1M context)。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Accepted (PanelTree の撤廃と workspace-layout の HTML 化は有効。IME の編集をホストから外した決定と、文字列のサービスと host snapshot による接続は、ADR 020 の 5 章「UI 技術」が置き換える)
 
 ## Context
 

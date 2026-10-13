@@ -1,11 +1,8 @@
 # ADR-005: GPU キャンバス Phase 8D — CPU-GPU 通信最小化
 
-- 作業日時: 2026-04-25
-- 作業モデル: claude-opus-4-7
-
-## ステータス
-
-採択
+- 作業日時: 2026-04-25、2026-10-13 (状態の更新)
+- 作業 Agent: claude-opus-4-7。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Superseded-by 020 (画素の正本を CPU のタイルに一本化し、undo を文書ルートの差し替えにするため。5 章「画素の正本」「Undo」)
 
 ## 背景
 

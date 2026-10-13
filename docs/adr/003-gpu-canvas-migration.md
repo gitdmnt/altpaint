@@ -1,11 +1,8 @@
 # ADR-003: GPU キャンバスクレートの新設 (Phase 8A)
 
-- 作業日時: 2026-03-16
-- 作業モデル: claude-sonnet-4-6
-
-## ステータス
-
-採択
+- 作業日時: 2026-03-16、2026-10-13 (状態の更新)
+- 作業 Agent: claude-sonnet-4-6。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Superseded-by 020 (画素の正本を CPU のタイルにし、GPU を表示専用にするため。5 章「画素の正本」。gpu feature を任意にする決定は 2026-04-26 の変更で、全同期と単一レイヤー限定は ADR 005・006 で、先に覆された)
 
 ## 背景
 
@@ -60,7 +57,7 @@ Rgba8Unorm を採用する。STORAGE_READ_WRITE のサポート有無は `suppor
 # ADR-003 追補: GPU リソース初期化と表示切り替え (Phase 8B + 8C)
 
 - 作業日時: 2026-04-25
-- 作業モデル: claude-sonnet-4-6
+- 作業 Agent: claude-sonnet-4-6
 
 ## Phase 8B: GPU リソース初期化
 

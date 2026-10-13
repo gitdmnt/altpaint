@@ -1,7 +1,8 @@
 # ADR 004: カラーパレット マルチ色空間対応
 
-- **日時**: 2026-04-22
-- **作業 Agent**: claude-sonnet-4-6
+- 作業日時: 2026-04-22、2026-10-13 (状態の更新)
+- 作業 Agent: claude-sonnet-4-6。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Superseded-by 010 (決定事項のスライダーの i32 化は、PanelHitKind ごと ADR 010 で消えた。HSV / Lab / Oklch の切替と色空間変換は実装として残り、ADR 020 の 7 章と 6 章 Phase 2・Phase 5 で移植する)
 
 ---
 

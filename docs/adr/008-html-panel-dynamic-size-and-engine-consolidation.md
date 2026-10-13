@@ -1,8 +1,8 @@
 # ADR 008: HTML パネル枠サイズの動的化と Engine への責務集約
 
-- 作業日時: 2026-04-25
-- 作業 Agent: claude-opus-4-7 (1M context)
-- ステータス: Accepted
+- 作業日時: 2026-04-25、2026-10-13 (状態の更新)
+- 作業 Agent: claude-opus-4-7 (1M context)。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Superseded-by 013 (コンテンツに合わせた自動サイズを撤去したため)
 
 ## コンテキスト
 

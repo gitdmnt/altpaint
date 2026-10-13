@@ -1,8 +1,8 @@
 # ADR 017: 座標系の型レベル区別と依存グラフの階層化 (Phase 15)
 
-- 作業日時: 2026-06-12
-- 作業 Agent: claude-fable-5 (Claude Code)
-- ステータス: 完了
+- 作業日時: 2026-06-12、2026-10-13 (状態の更新)
+- 作業 Agent: claude-fable-5 (Claude Code)。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Accepted (座標の型の区別は、ADR 020 の 7 章で geom へ移植する。panel-runtime の facade は ADR 018 で解体され、DesktopApp の状態の構造は ADR 020 の 7 章で捨てる)
 
 ## 背景
 

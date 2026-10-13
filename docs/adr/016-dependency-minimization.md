@@ -1,8 +1,8 @@
 # ADR 016: クレート依存構造の最小化リアーキテクト
 
-- 作業日時: 2026-06-12
-- 作業 Agent: claude-fable-5 (1M context)
-- ステータス: Accepted (実装完了)
+- 作業日時: 2026-06-12、2026-10-13 (状態の更新)
+- 作業 Agent: claude-fable-5 (1M context)。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Accepted (死にコードと未使用依存の削除、ui-shell から panel-runtime への依存の切断、panel-html への改名は有効。workspace-persistence の app-core への統合は ADR 018 で、採らなかった 2 案は ADR 017 で覆された。クレート構成の全体は、ADR 020 の 5 章「クレート構成」が置き換える)
 
 ## Context
 

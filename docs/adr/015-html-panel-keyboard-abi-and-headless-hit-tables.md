@@ -1,8 +1,8 @@
 # ADR 015: HTML パネルのキーボード ABI 配線と hit テーブルの GPU 非依存化 (Phase 13)
 
-- 作業日時: 2026-06-11
-- 作業 Agent: claude-fable-5 (1M context)
-- ステータス: Accepted (実装完了)
+- 作業日時: 2026-06-11、2026-10-13 (状態の更新)
+- 作業 Agent: claude-fable-5 (1M context)。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Accepted (ヘッドレスのヒット収集は、ADR 020 の 7 章で移植する。キーボードの一斉配信とパネル内のショートカットは、ADR 020 の 5 章「UI 技術」が置き換える)
 
 ## Context
 
