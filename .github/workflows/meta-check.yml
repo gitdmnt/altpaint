@@ -1,0 +1,22 @@
+# PR のメタ検査 (ADR 020 の 8 章 1)。全 PR で起動し、差分の行数・変更ファイル数・ID の参照を調べる。
+# PR の本文とラベルを変えたときにも検査し直す。
+name: meta-check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  meta-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: 検査スクリプトの単体テスト
+        run: node --test .github/scripts/tests/meta_check.test.mjs
+      - name: メタ検査
+        run: node .github/scripts/meta_check.mjs
