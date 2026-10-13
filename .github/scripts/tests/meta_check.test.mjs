@@ -76,7 +76,7 @@ test('手書きのソースが 400 行を超えると不合格になる', () => 
     files: [file('crates/doc/src/lib.rs', 401)],
     body: 'Refs: A-R1',
     labels: [],
-    acceptance: 'A-R1',
+    acceptance: '| A-R1 | 条件 |',
   });
   assert.deepEqual(failed(result), ['lines']);
 });
@@ -86,7 +86,7 @@ test('Ported-from がある移植 PR は 800 行まで', () => {
     files: [file('crates/pen-io/src/abr.rs', 800)],
     body: 'Refs: #3\nPorted-from: legacy-final:crates/pen-io/src/abr.rs',
     labels: [],
-    acceptance: 'A-R1',
+    acceptance: '| A-R1 | 条件 |',
   };
   assert.equal(evaluate(input).ok, true);
   assert.deepEqual(
@@ -99,13 +99,13 @@ test('Ported-from がある移植 PR は 800 行まで', () => {
 
 test('変更ファイルが 15 を超えると不合格になる', () => {
   const files = Array.from({ length: 16 }, (_, i) => file(`crates/doc/src/m${i}.rs`, 1));
-  const result = evaluate({ files, body: 'Refs: A-R1', labels: [], acceptance: 'A-R1' });
+  const result = evaluate({ files, body: 'Refs: A-R1', labels: [], acceptance: '| A-R1 | 条件 |' });
   assert.deepEqual(failed(result), ['files']);
 });
 
 test('文書だけの PR はファイル数と ID の参照を免除する', () => {
   const files = Array.from({ length: 30 }, (_, i) => file(`docs/adr/00${i}.md`, 50));
-  const result = evaluate({ files, body: '', labels: [], acceptance: 'A-R1' });
+  const result = evaluate({ files, body: '', labels: [], acceptance: '| A-R1 | 条件 |' });
   assert.equal(result.ok, true);
 });
 
@@ -114,14 +114,14 @@ test('.github だけの PR は ID の参照を免除するが、行数とファ�
     files: [file('.github/workflows/meta-check.yml', 30)],
     body: '',
     labels: [],
-    acceptance: 'A-R1',
+    acceptance: '| A-R1 | 条件 |',
   });
   assert.equal(ok.ok, true);
   const tooLong = evaluate({
     files: [file('.github/scripts/meta_check.mjs', 401)],
     body: '',
     labels: [],
-    acceptance: 'A-R1',
+    acceptance: '| A-R1 | 条件 |',
   });
   assert.deepEqual(failed(tooLong), ['lines']);
 });
@@ -141,7 +141,7 @@ test('ID を参照しない PR は不合格になる', () => {
     files: [file('crates/doc/src/lib.rs', 10)],
     body: '説明だけ',
     labels: [],
-    acceptance: 'A-R1',
+    acceptance: '| A-R1 | 条件 |',
   });
   assert.deepEqual(failed(result), ['refs']);
 });
@@ -161,7 +161,7 @@ test('ACCEPTANCE.md に無い受け入れ ID は不合格になる', () => {
 
 test('size-exempt は行数とファイル数を、files-exempt はファイル数だけを免除する', () => {
   const files = Array.from({ length: 20 }, (_, i) => file(`crates/doc/src/m${i}.rs`, 100));
-  const base = { files, body: 'Refs: A-R1', acceptance: 'A-R1' };
+  const base = { files, body: 'Refs: A-R1', acceptance: '| A-R1 | 条件 |' };
   assert.deepEqual(failed(evaluate({ ...base, labels: [] })), ['lines', 'files']);
   assert.deepEqual(failed(evaluate({ ...base, labels: ['files-exempt'] })), ['lines']);
   assert.equal(evaluate({ ...base, labels: ['size-exempt'] }).ok, true);
@@ -172,7 +172,7 @@ test('免除ラベルは ID の参照を免除しない', () => {
     files: [file('crates/doc/src/lib.rs', 10)],
     body: '',
     labels: ['size-exempt'],
-    acceptance: 'A-R1',
+    acceptance: '| A-R1 | 条件 |',
   });
   assert.deepEqual(failed(result), ['refs']);
 });
@@ -185,7 +185,33 @@ test('PR テンプレートを書き換えないままでは、ID の参照に�
     files: [file('crates/doc/src/lib.rs', 401)],
     body: template,
     labels: [],
-    acceptance: 'A-R1',
+    acceptance: '| A-R1 | 条件 |',
   });
   assert.deepEqual(failed(result), ['lines', 'refs']);
+});
+
+test('受け入れ ID として数えるのは、ACCEPTANCE.md の表の先頭の列にある ID だけ', async () => {
+  const { acceptanceIds } = await import('../meta_check.mjs');
+  const acceptance = [
+    '| A-R | 接頭辞の説明 | 23 |',
+    '| A-SPK | スパイク | 5 |',
+    'PR の本文には `Refs: A-xx` のように書く。原因は A-R12a と同じ。',
+    '| ID | 条件 | 状態 |',
+    '|---|---|---|',
+    '| A-R1 | 画素が残る | 未着手 |',
+    '| A-R4-png | PNG に線が入る | 未着手 |',
+    '| A-SPK-a (1) | IME の未確定文字列が表示される | 未 |',
+    '| A-SPK-a (2) | 候補窓が近くに出る | 未 |',
+    '| `A-PH2-03` | 障害を注入するとトーストが出る | 未着手 |',
+  ].join('\n');
+  assert.deepEqual([...acceptanceIds(acceptance)].sort(), ['A-PH2-03', 'A-R1', 'A-R4-png', 'A-SPK-a']);
+
+  const input = { files: [file('crates/doc/src/lib.rs', 10)], labels: [], acceptance };
+  // 接頭辞だけ、例示、分ける前の親の ID は、本文にあっても通さない
+  ['A-R', 'A-xx', 'A-R12a', 'A-R4', 'A-SPK'].forEach((id) =>
+    assert.deepEqual(failed(evaluate({ ...input, body: `Refs: ${id}` })), ['refs'], id),
+  );
+  ['A-R1', 'A-R4-png', 'A-SPK-a', 'A-PH2-03'].forEach((id) =>
+    assert.equal(evaluate({ ...input, body: `Refs: ${id}` }).ok, true, id),
+  );
 });

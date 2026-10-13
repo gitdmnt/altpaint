@@ -33,8 +33,11 @@ export const refIds = (body) =>
     .filter((rest) => new RegExp(`^(${REF_ID.source})`).test(rest))
     .flatMap((rest) => rest.match(REF_ID) ?? []);
 
-const acceptanceHas = (acceptance, id) =>
-  new RegExp(`(^|[^A-Za-z0-9-])${id}([^A-Za-z0-9-]|$)`).test(acceptance);
+// 受け入れ ID は、ACCEPTANCE.md の表の先頭の列にあるものだけを数える。
+// 接頭辞だけ (A-R)、例示 (A-xx)、本文の中の言及は ID として扱わない。
+const ID_CELL = /^| `?(A-[A-Z]+[0-9-][A-Za-z0-9-]*)`?(?: (d+))? |/gm;
+export const acceptanceIds = (acceptance) =>
+  new Set([...acceptance.matchAll(ID_CELL)].map(([, id]) => id));
 
 const checkLines = ({ files, body, labels }) => {
   const limit = PORTED_FROM.test(body) ? LIMITS.portedLines : LIMITS.lines;
@@ -72,7 +75,8 @@ const checkRefs = ({ files, body, acceptance }) => {
     return { name: 'refs', ok: true, detail: `ID の参照は免除 (${exemptReason})` };
   }
   const ids = refIds(body);
-  const unknown = ids.filter((id) => id.startsWith('A-') && !acceptanceHas(acceptance, id));
+  const known = acceptanceIds(acceptance);
+  const unknown = ids.filter((id) => id.startsWith('A-') && !known.has(id));
   const detail =
     ids.length === 0
       ? '本文に "Refs: A-xx" か "Refs: #番号" の行が無い'
