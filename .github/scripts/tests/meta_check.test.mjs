@@ -215,3 +215,35 @@ test('受け入れ ID として数えるのは、ACCEPTANCE.md の表の先頭�
     assert.equal(evaluate({ ...input, body: `Refs: ${id}` }).ok, true, id),
   );
 });
+
+test('write 権限を求めるワークフローは不合格になる', async () => {
+  const { workflowProblems } = await import('../meta_check.mjs');
+  const head = 'name: x\non: pull_request\n';
+  const job = 'jobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n';
+  const bad = [
+    `${head}permissions:\n  contents: write\n${job}`,
+    `${head}permissions: write-all\n${job}`,
+    `${head}permissions: { pull-requests: write }\n${job}`,
+    `${head}${job}    permissions:\n      issues: write\n`,
+    `name: x\non: pull_request_target\npermissions:\n  contents: read\n${job}`,
+    `name: x\non:\n  workflow_run:\n    workflows: [meta-check]\n${job}`,
+  ];
+  bad.forEach((text) => assert.notDeepEqual(workflowProblems(text), [], text));
+  const good = [
+    `${head}permissions:\n  contents: read\n${job}`,
+    `${head}# pull_request_target は使わない。contents: write も求めない\npermissions:\n  contents: read\n${job}`,
+    `${head}permissions: {}\n${job}`,
+  ];
+  good.forEach((text) => assert.deepEqual(workflowProblems(text), [], text));
+});
+
+test('ワークフローの検査は、文書だけの PR でも免除しない', () => {
+  const workflows = [
+    { path: '.github/workflows/meta-check.yml', text: 'on: pull_request\npermissions:\n  contents: read\n' },
+    { path: '.github/workflows/auto.yml', text: 'on: pull_request\npermissions:\n  contents: write\n' },
+  ];
+  const input = { files: [file('docs/STATUS.md')], body: '', labels: ['size-exempt'], acceptance: null };
+  assert.deepEqual(failed(evaluate({ ...input, workflows })), ['workflows']);
+  assert.equal(evaluate({ ...input, workflows: workflows.slice(0, 1) }).ok, true);
+  assert.equal(evaluate(input).ok, true);
+});
