@@ -508,3 +508,15 @@ ADR 020 は 40 回の簡易レビューを経て ISSUE 0 件で収束した。
 - 2026-09-24 手順 2: `af4ec88` から `chore/legacy-freeze` を作り、Cargo.lock・rust-toolchain.toml・README-LEGACY.md の追加と、.gitignore の修正を入れた (`0b2a199`)。
 - 2026-10-12 手順 3: クリーンな clone で README-LEGACY.md の手順どおりにビルドした。`cargo test --workspace` は 568 passed / 0 failed / 9 ignored で、B10 の記録と一致した (`fcfa119`)。
 - 2026-10-13 手順 4: PR #11 を `main` にマージした (マージコミット `ff64794`。内容は `fcfa119` と一致する)。11 章 2.4 は「マージはオーナーが行う」としているが、オーナーの指示により、エージェントがオーナーのアカウントで `gh pr merge --merge` を実行した。開いたままだった PR #10 (refactor/naming-and-boundaries) は、これで GitHub 上でマージ済みになった。マージコミットに `legacy-final` タグを打ち、`legacy-adr019-wip` と一緒に origin へ push した。
+- 2026-10-13 手順 5: ADR 020 (4 ファイルと付録) と、状態を Superseded-by 020 にした ADR 019 を、PR #12 で `main` に入れた (マージコミット `5e6d756`。マージは、オーナーの指示でエージェントが実行した)。
+- 2026-10-13 手順 6: 再現テストの worktree 2 つをコミットし、`legacy-repro-gpu` (`4891286`) と `legacy-repro-nongpu` (`7b4862e`) のタグを打って、worktree とブランチを削除した。R15 の再現テストは `legacy-repro-gpu` の側にある。2 つのタグのコミットメッセージは、R15 を `legacy-repro-nongpu` の側に書いているが、これは誤りである (タグは保護の対象なので、打ち直さない)。
+- 2026-10-13 手順 7: オーナーが一覧を確認したうえで、放置ブランチ 13 本とローカルの main の先端 (`bf4062b`) に `archive/*` タグを打ち (14 個)、origin へ push してから、ローカルとリモートのブランチを削除した。リモートに既に無かった `feat/html-panel-overhaul` は、先端 (`0f3b5d7`) にタグだけを打った。リポジトリの外にあった fix/pen-input の worktree も片付けた。
+- 2026-10-13 手順 8: `legacy-*` の 4 つと `archive/*` の 14 個のタグを origin へ push し、リモート側の指す先を確かめた。
+- 2026-10-13: 2 章の 8 番の根拠を訂正した。元の `crates/paint-engine/src/gesture.rs:147-160` は投げ縄塗りの分岐で、ストロークの分岐は 163-177 行である。R8 の根拠は gesture.rs ではなく、履歴を消す処理が無いことである。
+
+### H.4 制作シナリオの聞き取り (2026-10-13、11 章 3)
+
+- 作品は 32 ページ以上。本文は B5・モノクロ・600dpi (断ち切り込みで約 4,300×6,070px)、表紙と口絵はカラー。出し先は印刷所への入稿と Web での公開。
+- 台本を先に文字で書き、ネームの段階からコマに流し込む。ペンタブは XP-Pen か Huion で、Windows Ink はオン。今のソフトは CLIP STUDIO PAINT。
+- 使う工程は、下描きとペン入れの分離、コマ枠ツール、定規と効果線、3D や写真の下敷き。濃淡はグレーで塗り、書き出すときに網点にする。最優先はペンの描き味。
+- 結果は docs/PRODUCT.md の 1 章と docs/ACCEPTANCE.md の A-SCN にまとめた。フェーズの順番は変えない。計画に無い要望 (網点化、ノンブル、定規と効果線) は PRODUCT.md の後回しに置き、Phase 1 の出口ゲートで計画に入れるかどうかを決める。

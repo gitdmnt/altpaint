@@ -1,8 +1,9 @@
 # ADR 007: HTML/CSS パネル実験層の追加（Blitz バックエンド）
 
-- 作業日時: 2026-04-25
-- 作業モデル: claude-opus-4-7 (1M context)
-- 関連プラン: `C:\Users\tofuh\.claude\plans\servo-html-css-buzzing-moler.md`
+- 作業日時: 2026-04-25、2026-10-13 (状態の更新)
+- 作業 Agent: claude-opus-4-7 (1M context)。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Accepted (Blitz と vello による GPU 直描画は、ADR 020 の 5 章「UI 技術」で続ける。feature gate は ADR 011 で、DSL との並存は ADR 009 と 012 で、data-bind は ADR 012 で撤去した。data-action と data-args は、ADR 020 が data-on-* と data-id に置き換える)
+- 関連プラン: `~/.claude/plans/servo-html-css-buzzing-moler.md` (追跡外)
 - 改訂履歴:
   - 2026-04-25: 初稿（自作 HTML/CSS サブセットでの PoC）
   - 2026-04-25: **第 2 稿**。ユーザーから「自作にした根拠が弱い」「Blitz を実際に試すべき」との指摘を受け、自作層を破棄して Blitz をバックエンドに採用

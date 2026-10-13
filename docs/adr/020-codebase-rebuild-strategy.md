@@ -1,6 +1,6 @@
 # ADR 020: コードベース再建方針 — 骨格再建・選別移植方式
 
-- 作業日時: 2026-09-23 (調査開始 午前、初版の確定 17:07 JST、4 ファイルへの分割と Q1〜Q7 の回答の反映 22:15〜22:45 JST)
+- 作業日時: 2026-09-23 (調査開始 午前、初版の確定 17:07 JST、4 ファイルへの分割と Q1〜Q7 の回答の反映 22:15〜22:45 JST)、2026-10-13 (2 章の 8 番の根拠の訂正と、付録 H への追記)
 - 作業 Agent: Claude Opus 5.5 (claude-opus-5-5, Claude Code)。調査・検証・方針案はサブエージェント群 (監査 9、検証 6、方針 6) で作成し、本 ADR に統合した
 - ステータス: **Proposed** (Q1〜Q7 は回答済み (10 章)。Phase 1 の試行判定を経て Accepted にする)
 - 対象: ブランチ refactor/ui-theme-and-clipping の HEAD af4ec88。未コミットの ADR 019 作業は評価対象外
@@ -79,7 +79,7 @@ SKETCH の行番号は `legacy-final` 時点の docs/SKETCH.md のものであ�
 | 5 | undo 1 回で、重なっていた前のストロークまで消える。塗りつぶしの undo も同じ | R3 (交差部 81 画素)。`features/paint/backend/gpu.rs:177-186,204-208` |
 | 6 | PNG 書き出しとスナップショットに描いた内容が入らない。テキストは画面に出ない | R4、R5。`app/background_tasks.rs:56-62`、`features/snapshots/service.rs:24-43`、`features/text/service.rs:40-63` |
 | 7 | コマを追加・削除すると、全コマの画素が最近傍法でリサンプルされ、元に戻せない | R7 (往復で 76,800 画素中 35,328 が変化)。`crates/document-model/src/document.rs:708-755` |
-| 8 | タップや、ペンを止めてから離す操作で履歴が閉じない。新規作成・読込の後は旧文書のパッチが新文書に当たる | R6、R8。`crates/paint-engine/src/gesture.rs:147-160` |
+| 8 | タップや、ペンを止めてから離す操作で履歴が閉じない。新規作成・読込の後は旧文書のパッチが新文書に当たる | R6、R8。R6 は `crates/paint-engine/src/gesture.rs:163-177`。R8 は `apps/desktop/src/app/command_effects.rs:77-83` と `features/project/service.rs:73-100` (履歴を消す処理が無い) |
 | 9 | 初回起動時にデータディレクトリを作らず、session・preset・既定パスへの保存がすべて失敗する | R11。本番コードに `create_dir_all` が 0 件。そのため開発機にも `%APPDATA%\altpaint` が存在しない |
 | 10 | パネルのスライダーに触ると値が最小値に書き換わる。文字入力・IME・select・リスト選択が効かない。クリックがキャンバスへ素通りして線が引かれる | R12a〜d。`crates/panel-runtime/src/html_wasm_panel.rs:348-353`、`app/present.rs:296` |
 | 11 | 2 コマ以上のページでコマがページ中央に表示され、入力位置と表示位置が 120px ずれる | R15。`presenter/shaders.rs` の `PRESENT_SHADER` の `fs_main` |

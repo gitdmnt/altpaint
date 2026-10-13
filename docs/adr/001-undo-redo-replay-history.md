@@ -1,7 +1,8 @@
 # ADR-001: Undo/Redo 基盤 — replay 方式・CommandHistory 設計
 
-- 作業日時: 2026-03-13
-- 作業 Agent: claude-sonnet-4-6
+- 作業日時: 2026-03-13、2026-10-13 (状態の更新)
+- 作業 Agent: claude-sonnet-4-6。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Superseded-by 016 (replay 方式は 2026-03-15 に BitmapPatch 方式へ置き換わり、ADR 016 が残骸を削除した。undo の方式全体は、ADR 020 の 5 章「Undo」が置き換える)
 
 ## 背景
 

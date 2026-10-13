@@ -1,8 +1,8 @@
 # ADR 010: `crates/render` クレート物理削除と `PresentScene` レイヤー再編成
 
-- 作業日時: 2026-04-29
-- 作業 Agent: claude-opus-4-7 (1M context)
-- ステータス: Accepted
+- 作業日時: 2026-04-29、2026-10-13 (状態の更新)
+- 作業 Agent: claude-opus-4-7 (1M context)。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Accepted (render クレートの削除は覆されていない。presenter は ADR 020 の 7 章で移植する。CpuCanvasSnapshot は ADR 020 で捨てる)
 
 ## コンテキスト
 

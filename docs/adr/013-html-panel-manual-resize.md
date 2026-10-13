@@ -1,8 +1,8 @@
 # ADR 013: HTML パネル手動リサイズと自動サイズ撤去
 
-## Status
-
-Accepted (Phase 11, 2026-05-12, Claude Opus 4.7)
+- 作業日時: 2026-05-12、2026-10-13 (状態の更新)
+- 作業 Agent: Claude Opus 4.7。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Accepted (8 ハンドルの手動リサイズは、ADR 020 の 7 章で移植する。default_size の扱いは ADR 019 の決定 4 が改め、ADR 020 が引き継ぐ)
 
 ## Context
 

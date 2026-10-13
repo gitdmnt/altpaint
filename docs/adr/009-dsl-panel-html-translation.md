@@ -1,8 +1,8 @@
 # ADR 009: DSL パネルの HTML/CSS 翻訳器導入と HtmlPanelEngine 統合
 
-- 作業日時: 2026-04-26
-- 作業 Agent: claude-opus-4-7 (1M context)
-- ステータス: Accepted
+- 作業日時: 2026-04-26、2026-10-13 (状態の更新)
+- 作業 Agent: claude-opus-4-7 (1M context)。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Superseded-by 012 (DSL と、DSL から HTML への翻訳器を撤去したため)
 
 ## コンテキスト
 

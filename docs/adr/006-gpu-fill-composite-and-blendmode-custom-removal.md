@@ -1,7 +1,8 @@
 # ADR 006: GPU 塗りつぶし + レイヤー合成と `BlendMode::Custom` 削除
 
-- 作成日: 2026-04-25
-- 作業 Agent: claude-opus-4-7 (1M context)
+- 作業日時: 2026-04-25、2026-10-13 (状態の更新)
+- 作業 Agent: claude-opus-4-7 (1M context)。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Superseded-by 020 (塗りつぶしと合成を CPU で行うため。5 章「画素の正本」、6 章 Phase 5。BlendMode::Custom の削除は有効のまま)
 - 関連: [ADR 003 GPU キャンバス移行](003-gpu-canvas-migration.md) / [ADR 005 Phase 8D CPU-GPU 通信最小化](005-gpu-canvas-phase-8d-communication-minimization.md)
 
 ## コンテキスト

@@ -1,8 +1,8 @@
 # ADR 011: `html-panel` feature gate の完全撤去
 
-- 作業日時: 2026-05-02
-- 作業 Agent: claude-opus-4-7 (1M context)
-- ステータス: Accepted
+- 作業日時: 2026-05-02、2026-10-13 (状態の更新)
+- 作業 Agent: claude-opus-4-7 (1M context)。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Accepted (feature gate の撤去は覆されていない)
 
 ## コンテキスト
 

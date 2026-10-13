@@ -1,7 +1,8 @@
 # ADR-002: PNG Export と汎用バックグラウンドジョブ基盤（フェーズ7-3）
 
-- 作業日時: 2026-03-13
-- 作業 Agent: claude-sonnet-4-6
+- 作業日時: 2026-03-13、2026-10-13 (状態の更新)
+- 作業 Agent: claude-sonnet-4-6。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Superseded-by 020 (ジョブの基盤は 5 章「非同期」の JobRunner に、PNG の書き出しは 6 章 Phase 3 に置き換える。DesktopDialogs は 7 章で移植する)
 
 ## 背景
 

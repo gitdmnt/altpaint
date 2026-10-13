@@ -1,8 +1,8 @@
 # ADR 018: 用語体系の確立と垂直スライス再編 (大規模リファクタリング)
 
-- 作業日時: 2026-06-12 (起票) / 2026-06-14 (B10 で確定)
-- 作業 Agent: claude-fable-5 (Claude Code) / claude-opus-4-8[1m] (B10 確定)
-- ステータス: 完了 (B0〜B10 全バッチ実装・検証済み)
+- 作業日時: 2026-06-12 (起票) / 2026-06-14 (B10 で確定)、2026-10-13 (状態の更新)
+- 作業 Agent: claude-fable-5 (Claude Code) / claude-opus-4-8[1m] (B10 確定)。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Superseded-by 020 (クレート構成、垂直スライス、コマンドの経路、CPU / GPU の二重バックエンド、互換性の方針を、5 章と 7 章が置き換える。用語体系 (Koma ほか) は引き続き使う)
 - 設計書: [docs/refactor/2026-06-naming-and-boundaries.md](../refactor/2026-06-naming-and-boundaries.md)
 - 確定時点の検証: テスト 562 passed / 0 failed / 9 ignored、clippy 警告 0、ワークスペース 30 メンバー
 

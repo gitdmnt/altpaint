@@ -1,8 +1,8 @@
 # ADR 012: `.altp-panel` DSL 撤去と HTML/CSS/Wasm-DOM 直接記述化 (Phase 10)
 
-- 作業日時: 2026-05-03
-- 作業 Agent: claude-opus-4-7 (1M context)
-- ステータス: Accepted (実装完了)
+- 作業日時: 2026-05-03、2026-10-13 (状態の更新)
+- 作業 Agent: claude-opus-4-7 (1M context)。状態の更新は Claude Opus 5.5 (claude-opus-5-5, Claude Code)
+- ステータス: Accepted (HTML + CSS + Wasm で DOM を書き換える方式は、ADR 020 の 5 章「UI 技術」で続ける。builtin-panels クレートの形は ADR 017 で、合成 API を持たない方針は ADR 018 で変わった)
 
 ## コンテキスト
 
