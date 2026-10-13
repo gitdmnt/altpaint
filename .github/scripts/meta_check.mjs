@@ -1,7 +1,7 @@
-// PR のメタ検査 (ADR 020 の 8 章 1)。差分の行数・変更ファイル数・ID の参照を調べる。
+// PR のメタ検査 (ADR 020 の 8 章 1 と 16)。差分の行数・変更ファイル数・ID の参照と、ワークフローの権限を調べる。
 // 判定は純関数 evaluate に集め、入出力は main だけが行う。
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 export const LIMITS = { lines: 400, portedLines: 800, files: 15 };
@@ -86,11 +86,47 @@ const checkRefs = ({ files, body, acceptance }) => {
   return { name: 'refs', ok: ids.length > 0 && unknown.length === 0, detail };
 };
 
-// input: { files: [{path, added}], body: string, labels: string[], acceptance: string | null }
+// ワークフローが求める権限とトリガーを調べる (8 章 16)。コメントは読まない。
+// write 権限は PR のマージやラベルの付与に使え、pull_request_target と workflow_run は base の側の権限で動く。
+export const workflowProblems = (text) => {
+  const body = text.replace(/(^|\s)#.*$/gm, '$1');
+  const asksWrite =
+    /^\s*permissions:\s*write-all\s*$/m.test(body) ||
+    /^\s*permissions:\s*\{[^}]*\bwrite\b/m.test(body) ||
+    /^\s*[a-z-]+:\s*write\s*$/m.test(body);
+  return [
+    asksWrite ? 'write 権限を求めている' : null,
+    /\bpull_request_target\b/.test(body) ? 'pull_request_target を使っている' : null,
+    /\bworkflow_run\b/.test(body) ? 'workflow_run を使っている' : null,
+  ].filter((problem) => problem !== null);
+};
+
+// 文書だけの PR でも、ラベルでも免除しない。
+const checkWorkflows = ({ workflows = [] }) => {
+  const bad = workflows
+    .map(({ path, text }) => ({ path, problems: workflowProblems(text) }))
+    .filter(({ problems }) => problems.length > 0)
+    .map(({ path, problems }) => `${path} (${problems.join('、')})`);
+  return {
+    name: 'workflows',
+    ok: bad.length === 0,
+    detail: bad.length === 0 ? `ワークフロー ${workflows.length} 本は write 権限を求めていない` : bad.join('; '),
+  };
+};
+
+// input: { files: [{path, added}], body: string, labels: string[], acceptance: string | null,
+//          workflows: [{path, text}] }
 export const evaluate = (input) => {
-  const checks = [checkLines(input), checkFiles(input), checkRefs(input)];
+  const checks = [checkLines(input), checkFiles(input), checkRefs(input), checkWorkflows(input)];
   return { ok: checks.every((c) => c.ok), checks };
 };
+
+const WORKFLOW_DIR = '.github/workflows';
+const readWorkflows = () =>
+  (existsSync(WORKFLOW_DIR) ? readdirSync(WORKFLOW_DIR) : [])
+    .filter((name) => /\.ya?ml$/.test(name))
+    .map((name) => `${WORKFLOW_DIR}/${name}`)
+    .map((path) => ({ path, text: readFileSync(path, 'utf8') }));
 
 const main = () => {
   const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
@@ -106,6 +142,7 @@ const main = () => {
     body: (pr.body ?? '').replace(/\r\n/g, '\n'),
     labels: pr.labels.map((label) => label.name),
     acceptance: existsSync(acceptancePath) ? readFileSync(acceptancePath, 'utf8') : null,
+    workflows: readWorkflows(),
   });
   result.checks.forEach((c) => console.log(`${c.ok ? 'OK  ' : 'FAIL'} ${c.name}: ${c.detail}`));
   process.exitCode = result.ok ? 0 : 1;
