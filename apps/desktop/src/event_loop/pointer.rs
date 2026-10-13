@@ -1,0 +1,361 @@
+//! ポインタ・ホイール・タッチ入力を `DesktopEventLoop` へ追加する。
+//!
+//! 可能な限り座標変換や蓄積ロジックを小さな関数へ分け、
+//! OS イベント処理とドキュメント更新の接点を読みやすく保つ。
+
+use std::time::Instant;
+
+use editor_state::SessionCommand;
+use panel_runtime::{PanelPointerInput, PanelPointerKind};
+use winit::event::{ElementState, Force, MouseScrollDelta, TouchPhase};
+
+use super::DesktopEventLoop;
+
+#[derive(Clone, Copy)]
+pub(super) enum HtmlPointerKind {
+    Down,
+    Up,
+    Move,
+}
+
+impl DesktopEventLoop {
+    fn wheel_delta_lines(delta: MouseScrollDelta) -> (f32, f32) {
+        match delta {
+            MouseScrollDelta::LineDelta(x, y) => (x, y),
+            MouseScrollDelta::PixelDelta(position) => {
+                // 9E-4: 旧 panel_workspace::text_line_height() (font8x8 由来) を撤去。
+                // wheel pixel → line 換算用に system-ui の標準行高 16px を採用する。
+                const PIXELS_PER_LINE: f32 = 16.0;
+                (
+                    position.x as f32 / PIXELS_PER_LINE,
+                    position.y as f32 / PIXELS_PER_LINE,
+                )
+            }
+        }
+    }
+
+    pub(super) fn handle_mouse_cursor_moved(&mut self, x: i32, y: i32) -> bool {
+        if self.active_touch_id.is_some() {
+            return false;
+        }
+
+        let position = (x, y);
+        self.last_cursor_position = Some(position);
+        self.last_cursor_position_f64 = Some((x as f64, y as f64));
+        self.profiler
+            .record("canvas_input_window_event", std::time::Duration::ZERO);
+
+        // Phase 11: リサイズハンドル hover に応じて OS カーソル icon を更新する。
+        // active resize 中はその handle を、それ以外なら hover 先の handle を採用。
+        self.update_cursor_icon_for_pointer(x, y);
+
+        // HTML パネル領域内なら Blitz に PointerMove を転送（:hover を動かすため）
+        let html_changed = self.forward_html_pointer(x, y, HtmlPointerKind::Move);
+
+        let hover_changed = self.app.update_canvas_hover(position.0, position.1);
+        let changed = self.app.handle_pointer_dragged(position.0, position.1)
+            || hover_changed
+            || html_changed;
+        self.record_canvas_input_if_needed(changed)
+    }
+
+    /// Phase 11: 現在のポインタ位置に応じて OS カーソルアイコンを更新する。
+    /// active resize 中はその handle を優先 (hover hit 判定をスキップ)。
+    fn update_cursor_icon_for_pointer(&self, x: i32, y: i32) {
+        use crate::app::cursor::cursor_icon_for_resize_handle;
+        use winit::window::Cursor;
+
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        let active_handle = self
+            .app
+            .panel_interaction
+            .active_panel_resize
+            .as_ref()
+            .map(|s| s.handle);
+        let handle = active_handle.or_else(|| {
+            self.app
+                .panel_resize_hit_from_window(geometry::WindowPoint::new(x, y))
+                .map(|(_, handle)| handle)
+        });
+        let icon = cursor_icon_for_resize_handle(handle);
+        window.set_cursor(Cursor::Icon(icon));
+    }
+
+    pub(super) fn handle_raw_mouse_motion(&mut self, delta_x: f64, delta_y: f64) -> bool {
+        if self.active_touch_id.is_some() || !self.app.is_canvas_interacting() {
+            return false;
+        }
+
+        let Some((cursor_x, cursor_y)) = self.last_cursor_position_f64 else {
+            return false;
+        };
+
+        let next_x = cursor_x + delta_x;
+        let next_y = cursor_y + delta_y;
+        self.last_cursor_position_f64 = Some((next_x, next_y));
+        let next_position = (next_x.round() as i32, next_y.round() as i32);
+        if Some(next_position) == self.last_cursor_position {
+            return false;
+        }
+
+        self.last_cursor_position = Some(next_position);
+        self.profiler
+            .record("canvas_input_raw_event", std::time::Duration::ZERO);
+        let changed = self
+            .app
+            .handle_pointer_dragged(next_position.0, next_position.1);
+        self.record_canvas_input_if_needed(changed)
+    }
+
+    pub(super) fn handle_mouse_button(&mut self, state: ElementState) -> bool {
+        if self.active_touch_id.is_some() {
+            return false;
+        }
+
+        let Some((x, y)) = self.last_cursor_position else {
+            return false;
+        };
+
+        // HTML パネル領域内なら Blitz に PointerDown/Up を転送（<details>/<button> click 経路）
+        let html_kind = match state {
+            ElementState::Pressed => HtmlPointerKind::Down,
+            ElementState::Released => HtmlPointerKind::Up,
+        };
+        let html_changed = self.forward_html_pointer(x, y, html_kind);
+
+        let canvas_changed = match state {
+            ElementState::Pressed => {
+                let changed = self.app.handle_pointer_pressed_with_pressure(x, y, 1.0);
+                self.record_canvas_input_if_needed(changed)
+            }
+            ElementState::Released => self.app.handle_pointer_released_with_pressure(x, y, 1.0),
+        };
+        canvas_changed || html_changed
+    }
+
+    pub(super) fn has_pending_wheel_animation(&self) -> bool {
+        self.pending_wheel_pan.0.abs() > f32::EPSILON
+            || self.pending_wheel_pan.1.abs() > f32::EPSILON
+            || self.pending_wheel_zoom_lines.abs() > f32::EPSILON
+    }
+
+    fn take_animated_step(pending: &mut f32, min_step: f32) -> f32 {
+        if pending.abs() <= min_step {
+            let step = *pending;
+            *pending = 0.0;
+            return step;
+        }
+
+        let mut step = *pending * Self::WHEEL_ANIMATION_BLEND;
+        if step.abs() < min_step {
+            step = pending.signum() * min_step;
+        }
+        *pending -= step;
+        step
+    }
+
+    pub(super) fn advance_wheel_animation(&mut self) -> bool {
+        let pan_x =
+            Self::take_animated_step(&mut self.pending_wheel_pan.0, Self::WHEEL_PAN_MIN_STEP);
+        let pan_y =
+            Self::take_animated_step(&mut self.pending_wheel_pan.1, Self::WHEEL_PAN_MIN_STEP);
+        let zoom_lines = Self::take_animated_step(
+            &mut self.pending_wheel_zoom_lines,
+            Self::WHEEL_ZOOM_MIN_STEP_LINES,
+        );
+
+        let mut changed = false;
+        if pan_x.abs() > f32::EPSILON || pan_y.abs() > f32::EPSILON {
+            // BL-064: 入力層は相対量 (lines) のみを発行し、32px/line の換算は
+            // ドメイン側 (view_policy / apply_session_command) が行う。
+            let t = Instant::now();
+            changed |= self
+                .app
+                .apply_session_command(&SessionCommand::PanViewByLines {
+                    x_lines: pan_x,
+                    y_lines: pan_y,
+                });
+            self.profiler.record("pan_step", t.elapsed());
+        }
+
+        if zoom_lines.abs() > f32::EPSILON {
+            // BL-064: 倍率 (1.1^lines) と clamp はドメイン側が所有する。入力層は
+            // view_policy で飽和 (上下限到達) を検出して pending を打ち切るだけ。
+            let current = self.app.current_zoom();
+            let next_zoom = editor_state::view_policy::zoom_after_lines(current, zoom_lines);
+            if (next_zoom - current).abs() > f32::EPSILON {
+                let t = Instant::now();
+                changed |= self
+                    .app
+                    .apply_session_command(&SessionCommand::ZoomViewBy { lines: zoom_lines });
+                self.profiler.record("zoom_step", t.elapsed());
+            } else {
+                self.pending_wheel_zoom_lines = 0.0;
+            }
+        }
+
+        changed
+    }
+
+    pub(super) fn handle_mouse_wheel(&mut self, delta: MouseScrollDelta) -> bool {
+        let Some((x, y)) = self.last_cursor_position else {
+            return false;
+        };
+        let Some(layout) = self.app.layout() else {
+            return false;
+        };
+        let point = geometry::WindowPoint::new(x, y);
+        let on_panel = self.app.panel_is_hovered(point);
+        let on_canvas = layout.canvas_host_rect.contains(point);
+        let (delta_x_lines, delta_y_lines) = Self::wheel_delta_lines(delta);
+
+        if on_panel {
+            // パネルスクロールは View 内部で完結するため、ここでは
+            // キャンバスへのフォールスルーだけを防ぐ。
+            return false;
+        }
+
+        if !on_canvas {
+            return false;
+        }
+
+        self.profiler
+            .record("canvas_input_wheel_event", std::time::Duration::ZERO);
+
+        if self.modifiers.control_key() {
+            if delta_y_lines.abs() <= f32::EPSILON {
+                return false;
+            }
+            self.pending_wheel_zoom_lines += delta_y_lines;
+            return self.advance_wheel_animation();
+        }
+
+        // BL-064: 入力層は line 単位の相対量だけを蓄積する。32px/line の換算は
+        // ドメイン側 (view_policy / apply_session_command) が行う。
+        let mut delta_x_lines = delta_x_lines;
+        let mut delta_y_lines = delta_y_lines;
+        if self.modifiers.shift_key() && delta_x_lines.abs() <= f32::EPSILON {
+            delta_x_lines = delta_y_lines;
+            delta_y_lines = 0.0;
+        }
+        if delta_x_lines.abs() <= f32::EPSILON && delta_y_lines.abs() <= f32::EPSILON {
+            return false;
+        }
+
+        self.pending_wheel_pan.0 += delta_x_lines;
+        self.pending_wheel_pan.1 += delta_y_lines;
+        self.advance_wheel_animation()
+    }
+
+    pub(super) fn handle_touch_phase(
+        &mut self,
+        touch_id: u64,
+        phase: TouchPhase,
+        x: i32,
+        y: i32,
+        force: Option<Force>,
+    ) -> bool {
+        let position = (x, y);
+
+        match phase {
+            TouchPhase::Started => {
+                if matches!(self.active_touch_id, Some(active_id) if active_id != touch_id) {
+                    return false;
+                }
+
+                let pressure = normalized_pressure(force, 1.0);
+                self.active_touch_id = Some(touch_id);
+                self.last_touch_pressure = pressure;
+                self.last_cursor_position = Some(position);
+                self.last_cursor_position_f64 = Some((position.0 as f64, position.1 as f64));
+                let changed = self
+                    .app
+                    .handle_pointer_pressed_with_pressure(position.0, position.1, pressure);
+                self.record_canvas_input_if_needed(changed)
+            }
+            TouchPhase::Moved => {
+                if self.active_touch_id != Some(touch_id) {
+                    return false;
+                }
+
+                let pressure = normalized_pressure(force, self.last_touch_pressure);
+                self.last_touch_pressure = pressure;
+                self.last_cursor_position = Some(position);
+                self.last_cursor_position_f64 = Some((position.0 as f64, position.1 as f64));
+                let changed = self
+                    .app
+                    .handle_pointer_dragged_with_pressure(position.0, position.1, pressure);
+                self.record_canvas_input_if_needed(changed)
+            }
+            TouchPhase::Ended | TouchPhase::Cancelled => {
+                if self.active_touch_id != Some(touch_id) {
+                    return false;
+                }
+
+                let pressure = normalized_pressure(force, 0.0);
+                self.last_cursor_position = Some(position);
+                self.last_cursor_position_f64 = Some((position.0 as f64, position.1 as f64));
+                self.active_touch_id = None;
+                self.last_touch_pressure = 1.0;
+                self.app
+                    .handle_pointer_released_with_pressure(position.0, position.1, pressure)
+            }
+        }
+    }
+
+    /// HTML パネル body 領域内なら、対応 Blitz `UiEvent` を View に転送する。
+    /// 戻り値: 転送した場合 true（再描画トリガに使う）。
+    pub(super) fn forward_html_pointer(
+        &mut self,
+        x: i32,
+        y: i32,
+        kind: HtmlPointerKind,
+    ) -> bool {
+        let Some((panel_id, local)) = self
+            .app
+            .panel_workspace
+            .panel_at(geometry::WindowPoint::new(x, y))
+        else {
+            return false;
+        };
+        // local は chrome を含む panel 全体原点（screen_rect 基準）。body オフセット
+        // (chrome_height) は View 側で扱う。blitz `UiEvent` への変換は panel-runtime が
+        // 内部で行うため、ここでは panel-runtime 定義の入力 DTO を組み立てる (BL-091)。
+        let input = PanelPointerInput {
+            kind: match kind {
+                HtmlPointerKind::Down => PanelPointerKind::Down,
+                HtmlPointerKind::Up => PanelPointerKind::Up,
+                HtmlPointerKind::Move => PanelPointerKind::Move,
+            },
+            local_x: local.x as f32,
+            local_y: local.y as f32,
+            screen_x: x as f32,
+            screen_y: y as f32,
+        };
+        self.app.forward_panel_input(&panel_id, input)
+    }
+
+    pub(super) fn record_canvas_input_if_needed(&mut self, changed: bool) -> bool {
+        if changed && self.app.is_canvas_interacting() {
+            self.profiler
+                .record("canvas_input_dispatch", std::time::Duration::ZERO);
+            self.profiler.record_canvas_input();
+        }
+        changed
+    }
+}
+
+fn normalized_pressure(force: Option<Force>, fallback: f32) -> f32 {
+    match force {
+        Some(Force::Calibrated {
+            force,
+            max_possible_force,
+            ..
+        }) if max_possible_force > f64::EPSILON => (force / max_possible_force) as f32,
+        Some(Force::Normalized(value)) => value as f32,
+        _ => fallback,
+    }
+    .clamp(0.0, 1.0)
+}

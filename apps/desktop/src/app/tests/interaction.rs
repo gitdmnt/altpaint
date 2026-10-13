@@ -1,83 +1,68 @@
 //! `DesktopApp` の入力処理と描画操作に関するテストをまとめる。
 
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use app_core::{
-    CanvasPoint, CanvasViewportPoint, ColorRgba8, Command, ToolKind, WindowPoint,
-};
-use canvas::{CanvasPointerEvent, map_view_to_canvas_with_transform};
-use desktop_support::{DesktopProfiler, StageStats, ValueStats};
+use document_model::DocumentCommand;
+use editor_state::{ColorRgba8, SessionCommand, ToolKind};
+use geometry::{CanvasViewportPoint, PagePoint, WindowPoint, WindowRect};
+use frame_profiler::{FrameProfiler, StageStats, ValueStats};
+use paint_engine::CanvasPointerAction;
 
 use super::{TestDialogs, test_app_with_dialogs};
 use crate::app::DesktopApp;
-use crate::app::canvas_frame::build_canvas_frame;
+use crate::app::cpu_canvas_snapshot::build_cpu_canvas_snapshot;
 
-/// 矩形 within パネル サーフェス を計算して返す。
-fn rect_within_panel_surface(rect: crate::frame::Rect, surface: &ui_shell::PanelSurface) -> bool {
-    rect.x >= surface.x
-        && rect.y >= surface.y
-        && rect.x + rect.width <= surface.x + surface.width
-        && rect.y + rect.height <= surface.y + surface.height
-}
-
-/// キャンバス position maps ビュー center into ビットマップ 範囲 が期待どおりに動作することを検証する。
 #[test]
 fn canvas_position_maps_view_center_into_bitmap_bounds() {
-    let position = map_view_to_canvas_with_transform(
+    let position = canvas_geometry::CanvasViewGeometry::compute(
+        WindowRect::new(0, 0, 640, 640),
         64,
         64,
-        CanvasPointerEvent {
-            position: CanvasViewportPoint::new(320, 320),
-            width: 640,
-            height: 640,
-        },
-        app_core::CanvasViewTransform::default(),
-    );
+        editor_state::CanvasViewTransform::default(),
+    )
+    .and_then(|geometry| geometry.map_view_to_canvas(CanvasViewportPoint::new(320, 320)));
 
-    assert_eq!(position, Some(CanvasPoint::new(32, 32)));
+    assert_eq!(position, Some(PagePoint::new(32, 32)));
 }
 
-/// 消しゴム drag clears existing pixels が期待どおりに動作することを検証する。
 #[test]
 fn eraser_drag_clears_existing_pixels() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
-    app.handle_canvas_pointer("up", WindowPoint::new(center_x, center_y), 1.0);
-    let _ = app.execute_command(Command::SetActiveTool {
+    app.handle_canvas_pointer(CanvasPointerAction::Down, WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Up, WindowPoint::new(center_x, center_y), 1.0);
+    let _ = app.apply_session_command(&SessionCommand::SetActiveTool {
         tool: ToolKind::Eraser,
     });
-    app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
-    app.handle_canvas_pointer("up", WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Down, WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Up, WindowPoint::new(center_x, center_y), 1.0);
 
-    let frame = build_canvas_frame(&app.document);
+    let frame = build_cpu_canvas_snapshot(&app.document);
     let bitmap_x = frame.width / 2;
     let bitmap_y = frame.height / 2;
     let index = (bitmap_y * frame.width + bitmap_x) * 4;
     assert_eq!(&frame.pixels[index..index + 4], &[255, 255, 255, 255]);
 }
 
-/// キャンバス drag draws black pixels が期待どおりに動作することを検証する。
 #[test]
 fn canvas_drag_draws_black_pixels() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
-    app.handle_canvas_pointer("drag", WindowPoint::new(center_x + 20, center_y), 1.0);
-    app.handle_canvas_pointer("up", WindowPoint::new(center_x + 20, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Down, WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Drag, WindowPoint::new(center_x + 20, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Up, WindowPoint::new(center_x + 20, center_y), 1.0);
 
-    let frame = build_canvas_frame(&app.document);
+    let frame = build_cpu_canvas_snapshot(&app.document);
     assert!(
         frame
             .pixels
@@ -86,23 +71,22 @@ fn canvas_drag_draws_black_pixels() {
     );
 }
 
-/// キャンバス drag draws using 選択中 色 が期待どおりに動作することを検証する。
 #[test]
 fn canvas_drag_draws_using_selected_color() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    let _ = app.execute_command(Command::SetActiveColor {
+    let _ = app.apply_session_command(&SessionCommand::SetActiveColor {
         color: ColorRgba8::new(0x43, 0xa0, 0x47, 0xff),
     });
-    app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
-    app.handle_canvas_pointer("up", WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Down, WindowPoint::new(center_x, center_y), 1.0);
+    app.handle_canvas_pointer(CanvasPointerAction::Up, WindowPoint::new(center_x, center_y), 1.0);
 
-    let frame = build_canvas_frame(&app.document);
+    let frame = build_cpu_canvas_snapshot(&app.document);
     assert!(
         frame
             .pixels
@@ -111,14 +95,13 @@ fn canvas_drag_draws_using_selected_color() {
     );
 }
 
-/// パネル 矩形 ツール creates パネル from dragged ページ 矩形 が期待どおりに動作することを検証する。
 #[test]
-fn panel_rect_tool_creates_panel_from_dragged_page_rect() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+fn koma_rect_tool_creates_koma_from_dragged_page_rect() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
-    assert!(app.execute_command(Command::SetActiveTool {
-        tool: ToolKind::PanelRect,
+    assert!(app.apply_session_command(&SessionCommand::SetActiveTool {
+        tool: ToolKind::KomaRect,
     }));
 
     let layout = app.layout.clone().expect("layout exists");
@@ -138,16 +121,16 @@ fn panel_rect_tool_creates_panel_from_dragged_page_rect() {
         .expect("end page position");
 
     assert!(app.handle_canvas_pointer(
-        "down",
+        CanvasPointerAction::Down,
         WindowPoint::new(start_window.0, start_window.1),
         1.0,
     ));
-    assert!(app.handle_canvas_pointer("drag", WindowPoint::new(end_window.0, end_window.1), 1.0,));
-    assert!(app.handle_canvas_pointer("up", WindowPoint::new(end_window.0, end_window.1), 1.0,));
+    assert!(app.handle_canvas_pointer(CanvasPointerAction::Drag, WindowPoint::new(end_window.0, end_window.1), 1.0,));
+    assert!(app.handle_canvas_pointer(CanvasPointerAction::Up, WindowPoint::new(end_window.0, end_window.1), 1.0,));
 
     let page = app.document.active_page().expect("active page");
-    assert_eq!(page.panels.len(), 2);
-    let created = page.panels.last().expect("created panel");
+    assert_eq!(page.komas.len(), 2);
+    let created = page.komas.last().expect("created panel");
     assert_eq!(created.bounds.x, start.x.min(end.x));
     assert_eq!(created.bounds.y, start.y.min(end.y));
     assert_eq!(
@@ -158,25 +141,13 @@ fn panel_rect_tool_creates_panel_from_dragged_page_rect() {
         created.bounds.height,
         start.y.max(end.y) - start.y.min(end.y) + 1
     );
-    assert_eq!(app.document.active_panel_index(), 1);
+    assert_eq!(app.document.active_koma_index(), 1);
 }
 
-/// パネル スクロール requests サーフェス オフセット change が期待どおりに動作することを検証する。
-#[test]
-fn panel_scroll_requests_surface_offset_change() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
-    let _ = app.prepare_present_frame(1280, 120, &mut profiler);
-
-    assert!(!app.scroll_panel_surface(6));
-    assert_eq!(app.panel_presentation.panel_scroll_offset(), 0);
-}
-
-/// パネル 色 ホイール updates ドキュメント 色 が期待どおりに動作することを検証する。
 #[test]
 fn panel_color_wheel_updates_document_color() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    assert!(app.dispatch_panel_event(panel_api::PanelEvent::SetText {
+    assert!(app.dispatch_panel_event(panel_runtime::PanelEvent::SetText {
         panel_id: "builtin.color-palette".to_string(),
         node_id: "color.wheel".to_string(),
         value: "120,100,100".to_string(),
@@ -189,98 +160,116 @@ fn panel_color_wheel_updates_document_color() {
 // 撤去された。color wheel への入力は `panel_color_wheel_updates_document_color`
 // (`dispatch_panel_event` 直叩き) で代替検証されている。
 
-/// overlapping パネル button press takes priority over キャンバス 入力 が期待どおりに動作することを検証する。
-///
-/// Phase 9F 以降は HTML panel hit-table を `update_html_panel_hits` で synthetic に
-/// 構築してテストする (本来は GPU 描画ループが populate するが、テスト環境では
-/// presenter が無いため手動注入する)。
+/// Phase 13 (ADR 015) 以降、hit-table は `prepare_present_frame` が実レイアウトから
+/// GPU 非依存で更新するため、synthetic 注入ではなく実 hit テーブルで検証する。
 #[test]
 fn overlapping_panel_button_press_takes_priority_over_canvas_input() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
 
+    // 他パネルの chrome / hit 領域との重なりを避けるため tool-palette のみ表示する
+    for id in app.panel_runtime.panel_ids_with_gpu() {
+        if id != "builtin.tool-palette" {
+            let _ = app.panel_workspace.set_panel_visibility(&id, false);
+        }
+    }
+    // ボタンが body 内に収まるよう十分な高さを確保し、キャンバス上へ移動する
+    assert!(
+        app.panel_runtime
+            .restore_panel_size("builtin.tool-palette", (280, 640))
+    );
     let panel_x = layout.canvas_display_rect.x + 24;
     let panel_y = layout.canvas_display_rect.y + 24;
-    assert!(app.panel_presentation.move_panel_to(
+    assert!(app.panel_workspace.move_panel_to(
         "builtin.tool-palette",
         panel_x,
         panel_y,
         layout.window_rect.width,
         layout.window_rect.height,
     ));
-    app.mark_panel_surface_dirty();
+    app.request_panel_reconcile();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
-    let panel_screen_rect = render_types::PixelRect {
-        x: panel_x,
-        y: panel_y,
-        width: 200,
-        height: 100,
-    };
-    let button_rect = render_types::PixelRect {
-        x: 8,
-        y: 8,
-        width: 64,
-        height: 24,
-    };
-    app.panel_presentation.update_html_panel_hits(
-        "builtin.tool-palette",
-        panel_screen_rect,
-        vec![("tool.eraser".to_string(), button_rect)],
+    // 実 hit テーブルから消しゴムボタンの screen 座標を解決する
+    let full_rect = app
+        .panel_workspace
+        .panel_full_rect("builtin.tool-palette")
+        .expect("tool-palette full rect exists");
+    let chrome_h = crate::app::PANEL_CHROME_HEIGHT as usize;
+    let hits = app.panel_runtime.collect_panel_hits(
+        &[("builtin.tool-palette".to_string(), 1280, 800)],
+        1.0,
+        crate::app::PANEL_CHROME_HEIGHT,
     );
-    let button_x = (panel_x + button_rect.x + button_rect.width / 2) as i32;
-    let button_y = (panel_y + button_rect.y + button_rect.height / 2) as i32;
+    let eraser_rect = hits
+        .iter()
+        .find(|(panel_id, _)| panel_id == "builtin.tool-palette")
+        .and_then(|(_, panel_hits)| {
+            panel_hits
+                .iter()
+                .find(|hit| hit.element_id.as_deref() == Some("tool.eraser"))
+        })
+        .expect("eraser button hit exists")
+        .rect;
+    let button_x = (full_rect.x + eraser_rect.x as usize + eraser_rect.width as usize / 2) as i32;
+    let button_y = (full_rect.y
+        + chrome_h
+        + eraser_rect.y as usize
+        + eraser_rect.height as usize / 2) as i32;
 
     assert!(app.handle_pointer_pressed(button_x, button_y));
     assert!(app.handle_pointer_released(button_x, button_y));
-    assert_eq!(app.document.active_tool, ToolKind::Eraser);
+    assert_eq!(app.document.session.active_tool(), ToolKind::Eraser);
 }
 
-/// overlapping パネル drag takes priority over キャンバス 入力 が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
+/// Phase 13 (ADR 015) 以降、move handle (タイトルバー chrome) は
+/// `prepare_present_frame` が実レイアウトから GPU 非依存で更新するため、
+/// synthetic 注入ではなく実 move handle で検証する。
 #[test]
 fn overlapping_panel_drag_takes_priority_over_canvas_input() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
 
+    // 他パネルの chrome / hit 領域との重なりを避けるため layers のみ表示する
+    for id in app.panel_runtime.panel_ids_with_gpu() {
+        if id != "builtin.layers" {
+            let _ = app.panel_workspace.set_panel_visibility(&id, false);
+        }
+    }
     let panel_x = layout.canvas_display_rect.x + 32;
     let panel_y = layout.canvas_display_rect.y + 32;
-    assert!(app.panel_presentation.move_panel_to(
-        "builtin.layers-panel",
+    assert!(app.panel_workspace.move_panel_to(
+        "builtin.layers",
         panel_x,
         panel_y,
         layout.window_rect.width,
         layout.window_rect.height,
     ));
-    app.mark_panel_surface_dirty();
+    app.request_panel_reconcile();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
-    // GPU 描画ループが populate する move handle を synthetic に登録する。
-    let move_handle_rect = render_types::PixelRect {
-        x: panel_x,
-        y: panel_y,
-        width: 200,
-        height: 24,
-    };
-    app.panel_presentation
-        .update_html_panel_move_handle("builtin.layers-panel", move_handle_rect);
+    // 実 move handle (タイトルバー chrome) は prepare_present_frame が更新済み
+    let full_rect = app
+        .panel_workspace
+        .panel_full_rect("builtin.layers")
+        .expect("layers panel full rect exists");
 
     let before_position = app
-        .panel_presentation
+        .panel_workspace
         .workspace_layout()
         .panels
         .into_iter()
-        .find(|panel| panel.id == "builtin.layers-panel")
+        .find(|panel| panel.id == "builtin.layers")
         .and_then(|panel| panel.position)
         .expect("stored panel position exists");
+    // リサイズハンドル (上端 6px の辺 / 12px の角) を避けて chrome 中央を掴む
     let press = WindowPoint::new(
-        (move_handle_rect.x + move_handle_rect.width / 2) as i32,
-        (move_handle_rect.y + move_handle_rect.height / 2) as i32,
+        (full_rect.x + full_rect.width / 2) as i32,
+        (full_rect.y + 16) as i32,
     );
     let drag = WindowPoint::new(press.x + 96, press.y + 48);
 
@@ -290,15 +279,15 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
     let after = app
-        .panel_presentation
-        .panel_rect("builtin.layers-panel")
+        .panel_workspace
+        .panel_rect("builtin.layers", 1280, 800)
         .expect("panel rect exists");
     let after_position = app
-        .panel_presentation
+        .panel_workspace
         .workspace_layout()
         .panels
         .into_iter()
-        .find(|panel| panel.id == "builtin.layers-panel")
+        .find(|panel| panel.id == "builtin.layers")
         .and_then(|panel| panel.position)
         .expect("stored panel position exists");
     assert_ne!(
@@ -312,85 +301,51 @@ fn overlapping_panel_drag_takes_priority_over_canvas_input() {
 // 削除: layer_list_drag_keeps_dragged_layer_selected_while_reordering (Phase 9F)
 // `PanelDragState::Control` ベースのドラッグソース追跡機構は Phase 9F で撤去済み。
 // HTML パネル側のレイヤー再配置は `dispatch_panel_event(DragValue { ... })` を
-// 直接 layers-panel Wasm handler が消費する経路に統一されている。
-/// スクロール refresh does not trigger ui 更新 が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
-#[test]
-fn scroll_refresh_does_not_trigger_ui_update() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
-    let _ = app.prepare_present_frame(1280, 120, &mut profiler);
-    profiler.stats.clear();
-
-    assert!(!app.scroll_panel_surface(6));
-    let update = app.prepare_present_frame(1280, 120, &mut profiler);
-
-    assert!(!profiler.stats.contains_key("ui_update"));
-    assert!(!profiler.stats.contains_key("compose_full_frame"));
-    assert_eq!(update.background_dirty_rect, None);
-    assert_eq!(update.temp_overlay_dirty_rect, None);
-    assert!(!update.canvas_updated);
-    assert_eq!(
-        profiler.stats.get("panel_surface").map(|stat| stat.calls),
-        None
-    );
-}
+// 直接 layers パネル Wasm handler が消費する経路に統一されている。
+// 削除: scroll_refresh_does_not_trigger_ui_update (依存最小化リアーキテクト)
+// パネル上ホイールの `scroll_panel_surface` 経路は常に no-op のスタブだったため
+// 撤去された。パネル上ホイールは pointer.rs がキャンバスへのフォールスルーを
+// 防ぐだけの経路に統一されている。
 
 // 削除: panel_move_recomposes_without_rerasterizing_panel_content (Phase 9E-5)
 // CPU panel rasterize / panel_surface_rasterized_panels / panel_surface_composited_panels
 // 計測は 9E-3 で削除済み。代替検証は workspace_manager_panel_can_be_moved (パネル位置変更
 // が反映されること) で十分カバー済みのため、本テストは削除する。
 
-/// ワークスペース manager パネル can be moved が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn workspace_manager_panel_can_be_moved() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
     let before = app
-        .panel_presentation
-        .panel_rect("builtin.workspace-layout")
+        .panel_workspace
+        .panel_rect("builtin.workspace-layout", 1280, 200)
         .expect("workspace panel rect exists");
 
-    assert!(app.panel_presentation.move_panel_to(
+    assert!(app.panel_workspace.move_panel_to(
         "builtin.workspace-layout",
         before.x + 80,
         before.y + 24,
         layout.window_rect.width,
         layout.window_rect.height,
     ));
-    app.mark_panel_surface_dirty();
+    app.request_panel_reconcile();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
 
     let after = app
-        .panel_presentation
-        .panel_rect("builtin.workspace-layout")
+        .panel_workspace
+        .panel_rect("builtin.workspace-layout", 1280, 200)
         .expect("workspace panel rect exists");
     assert_ne!(after, before);
     assert!(after.x >= before.x + 80 || after.y >= before.y + 24);
 }
 
-// 削除: panel_move_dirty_rect_covers_previous_and_current_overlay_bounds (Phase 9E-5)
-// L4 ui_panel_layer は 9E-3 で dummy 化されたため `ui_panel_dirty_rect` は常に None。
-// パネル GPU 直描画後の dirty rect 監視は Phase 9F で `panel_quads` レイヤー再構成
-// (PresentScene 改名) と一緒に書き直す。
-
-// 削除: overlapping_panel_and_canvas_overlay_updates_union_dirty_rects (Phase 9E-5)
-// 同上。`ui_panel_dirty_rect` 検証経路が dummy 化されたため、Phase 9F で
-// L3/L5 を統合した dirty rect 検証として書き直す。
-
-/// profile 色 ホイール drag for ten seconds が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 #[ignore = "manual performance profiling"]
 fn profile_color_wheel_drag_for_ten_seconds() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let viewport = (1280, 800);
     let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
     profiler.stats.clear();
@@ -432,14 +387,11 @@ fn profile_color_wheel_drag_for_ten_seconds() {
     );
 }
 
-/// profile 色 ホイール events for ten seconds が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 #[ignore = "manual performance profiling"]
 fn profile_color_wheel_events_for_ten_seconds() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let viewport = (1280, 800);
     let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
     profiler.stats.clear();
@@ -453,7 +405,7 @@ fn profile_color_wheel_events_for_ten_seconds() {
     while started.elapsed() < duration {
         let saturation = 40 + (hue % 61);
         let value = 40 + ((hue * 3) % 61);
-        assert!(app.dispatch_panel_event(panel_api::PanelEvent::SetText {
+        assert!(app.dispatch_panel_event(panel_runtime::PanelEvent::SetText {
             panel_id: "builtin.color-palette".to_string(),
             node_id: "color.wheel".to_string(),
             value: format!("{hue},{saturation},{value}"),
@@ -474,20 +426,17 @@ fn profile_color_wheel_events_for_ten_seconds() {
     );
 }
 
-/// profile slider drag for ten seconds が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 #[ignore = "manual performance profiling"]
 fn profile_slider_drag_for_ten_seconds() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let viewport = (1280, 800);
     let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
     profiler.stats.clear();
     profiler.value_stats.clear();
 
-    let points = control_points_from_surface(&app, "builtin.pen-settings", "pen.size");
+    let points = control_points_from_surface(&app, "builtin.tool-settings", "pen.size");
     assert!(points.len() >= 8, "slider points exist");
 
     let duration = perf_duration();
@@ -523,14 +472,11 @@ fn profile_slider_drag_for_ten_seconds() {
     );
 }
 
-/// profile パネル drag for ten seconds が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 #[ignore = "manual performance profiling"]
 fn profile_panel_drag_for_ten_seconds() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let viewport = (1280, 800);
     let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
     profiler.stats.clear();
@@ -556,15 +502,15 @@ fn profile_panel_drag_for_ten_seconds() {
     while started.elapsed() < duration {
         let layout = app.layout.clone().expect("layout exists");
         let (x, y) = positions[position_index % positions.len()];
-        let changed = app.panel_presentation.move_panel_to(
-            "builtin.layers-panel",
+        let changed = app.panel_workspace.move_panel_to(
+            "builtin.layers",
             x,
             y,
             layout.window_rect.width,
             layout.window_rect.height,
         );
         if changed {
-            app.mark_panel_surface_dirty();
+            app.request_panel_reconcile();
         }
 
         let update = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
@@ -577,12 +523,11 @@ fn profile_panel_drag_for_ten_seconds() {
     emit_panel_perf("panel-perf", &profiler, elapsed, iterations);
 }
 
-/// profile ビュー 変換 for ten seconds が期待どおりに動作することを検証する。
 #[test]
 #[ignore = "manual performance profiling"]
 fn profile_view_transform_for_ten_seconds() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let viewport = (1280, 800);
     let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
 
@@ -597,7 +542,7 @@ fn profile_view_transform_for_ten_seconds() {
         per_case_duration,
         |app, iteration| {
             let direction = if iteration % 2 == 0 { 18.0 } else { -18.0 };
-            app.execute_command(Command::PanView {
+            app.apply_session_command(&SessionCommand::PanView {
                 delta_x: direction,
                 delta_y: direction * 0.5,
             })
@@ -612,8 +557,8 @@ fn profile_view_transform_for_ten_seconds() {
         per_case_duration,
         |app, iteration| {
             let zoom = if iteration % 2 == 0 { 1.08 } else { 0.92 };
-            let next = (app.document.view_transform.zoom * zoom).clamp(0.25, 16.0);
-            app.execute_command(Command::SetViewZoom { zoom: next })
+            let next = (app.document.session.view_transform.zoom * zoom).clamp(0.25, 16.0);
+            app.apply_session_command(&SessionCommand::SetViewZoom { zoom: next })
         },
     );
 
@@ -625,8 +570,8 @@ fn profile_view_transform_for_ten_seconds() {
         per_case_duration,
         |app, iteration| {
             let delta = if iteration % 2 == 0 { 7.5 } else { -7.5 };
-            let next = app.document.view_transform.rotation_degrees + delta;
-            app.execute_command(Command::SetViewRotation {
+            let next = app.document.session.view_transform.rotation_degrees + delta;
+            app.apply_session_command(&SessionCommand::SetViewRotation {
                 rotation_degrees: next,
             })
         },
@@ -636,8 +581,8 @@ fn profile_view_transform_for_ten_seconds() {
 /// ズーム操作の prepare_present_frame が 240fps の CPU 予算内に収まることを検証する。
 #[test]
 fn zoom_perf_meets_240fps_target() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
     let iterations = 1000u32;
@@ -645,8 +590,8 @@ fn zoom_perf_meets_240fps_target() {
 
     for i in 0..iterations {
         let zoom = if i % 2 == 0 { 1.08_f32 } else { 0.92_f32 };
-        let next = (app.document.view_transform.zoom * zoom).clamp(0.25, 16.0);
-        app.execute_command(Command::SetViewZoom { zoom: next });
+        let next = (app.document.session.view_transform.zoom * zoom).clamp(0.25, 16.0);
+        app.apply_session_command(&SessionCommand::SetViewZoom { zoom: next });
         let start = std::time::Instant::now();
         let _ = app.prepare_present_frame(1280, 800, &mut profiler);
         times_us.push(start.elapsed().as_micros());
@@ -665,12 +610,11 @@ fn zoom_perf_meets_240fps_target() {
     );
 }
 
-/// profile キャンバス ブラシ sizes for ten seconds が期待どおりに動作することを検証する。
 #[test]
 #[ignore = "manual performance profiling"]
 fn profile_canvas_brush_sizes_for_ten_seconds() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let viewport = (1280, 800);
     let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
 
@@ -695,8 +639,8 @@ fn profile_canvas_brush_sizes_for_ten_seconds() {
     let per_case_duration = Duration::from_secs_f64(per_case_seconds);
 
     for (tool, size) in combinations {
-        assert!(app.execute_command(Command::SetActiveTool { tool }));
-        assert!(app.execute_command(Command::SetActivePenSize { size }));
+        assert!(app.apply_session_command(&SessionCommand::SetActiveTool { tool }));
+        assert!(app.apply_session_command(&SessionCommand::SetActivePenSize { size }));
         let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
         profiler.stats.clear();
         profiler.value_stats.clear();
@@ -710,19 +654,19 @@ fn profile_canvas_brush_sizes_for_ten_seconds() {
             } else {
                 (end_x, start_x)
             };
-            app.handle_canvas_pointer("down", WindowPoint::new(down_x, center_y), 1.0);
+            app.handle_canvas_pointer(CanvasPointerAction::Down, WindowPoint::new(down_x, center_y), 1.0);
             let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
 
             for step in 1..=8 {
                 let x = down_x + ((up_x - down_x) * step / 8);
-                app.handle_canvas_pointer("drag", WindowPoint::new(x, center_y), 1.0);
+                app.handle_canvas_pointer(CanvasPointerAction::Drag, WindowPoint::new(x, center_y), 1.0);
                 let update = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
                 if update.canvas_dirty_rect.is_some() {
                     iterations += 1;
                 }
             }
 
-            app.handle_canvas_pointer("up", WindowPoint::new(up_x, center_y), 1.0);
+            app.handle_canvas_pointer(CanvasPointerAction::Up, WindowPoint::new(up_x, center_y), 1.0);
             let _ = app.prepare_present_frame(viewport.0, viewport.1, &mut profiler);
             forward = !forward;
         }
@@ -738,49 +682,59 @@ fn profile_canvas_brush_sizes_for_ten_seconds() {
     }
 }
 
-/// フォーカス refresh does not trigger ui 更新 が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
-///
 /// Phase 9E-5: L4 ui_panel_layer は dummy 化されたため `ui_panel_dirty_rect` ではなく
 /// 「フルリコンポーズ / canvas 更新が起きない」という弱検証に書き換えた。
 /// パネル本体の dirty 検証は 9F で `panel_quads` 経路に対応する形で再導入する。
 #[test]
 fn focus_refresh_does_not_trigger_ui_update() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();
 
+    // ADR 014 以降、focus は HTML hit table を辿る経路に統一されたため、
+    // テストでは事前に hit を 1 件 inject して focus 対象を用意する。
+    // chrome 0 で full_rect == body_rect とし、hit 矩形を body 原点基準で渡す (BL-096)。
+    app.panel_workspace.update_panel_geometry(
+        "builtin.app-actions",
+        geometry::WindowRect {
+            x: 100,
+            y: 50,
+            width: 200,
+            height: 32,
+        },
+        0,
+        vec![(
+            "app.save".to_string(),
+            geometry::WindowRect {
+                x: 8,
+                y: 4,
+                width: 80,
+                height: 24,
+            },
+        )],
+    );
+
     assert!(app.focus_next_panel_control());
     let update = app.prepare_present_frame(1280, 200, &mut profiler);
-    let surface = app.panel_surface.clone().expect("panel surface exists");
 
     // フォーカス移動はキャンバス再描画も full recompose も起こしてはならない。
     assert!(!profiler.stats.contains_key("ui_update"));
     assert!(!profiler.stats.contains_key("compose_full_frame"));
     assert_eq!(update.background_dirty_rect, None);
     assert!(!update.canvas_updated);
-
-    // 9E-5: L4 dummy 化により `ui_panel_dirty_rect` は通常 None。値があれば
-    // panel surface 範囲内に収まることだけ確認する (将来 GPU dirty 経路で意味を持つ)。
-    if let Some(panel_dirty) = update.ui_panel_dirty_rect {
-        assert!(rect_within_panel_surface(panel_dirty, &surface));
-    }
+    assert_eq!(update.ui_panel_dirty_rect, None);
 }
 
-/// ツール change updates ステータス without full recompose が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn tool_change_updates_status_without_full_recompose() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();
     let _layout = app.layout.clone().expect("layout exists");
 
-    assert!(app.execute_command(Command::SetActiveTool {
+    assert!(app.apply_session_command(&SessionCommand::SetActiveTool {
         tool: ToolKind::Eraser,
     }));
     let update = app.prepare_present_frame(1280, 200, &mut profiler);
@@ -789,37 +743,34 @@ fn tool_change_updates_status_without_full_recompose() {
     // ピクセル比較は不要。ツール変更で full recompose にならず canvas が更新されないことだけ検証する。
     assert!(!profiler.stats.contains_key("compose_full_frame"));
     assert!(!update.canvas_updated);
-    let surface = app.panel_surface.clone().expect("panel surface exists");
-    if let Some(panel_dirty) = update.ui_panel_dirty_rect {
-        assert!(rect_within_panel_surface(panel_dirty, &surface));
-    }
+    assert_eq!(update.ui_panel_dirty_rect, None);
 }
 
-/// パネル release without matching press does not activate 保存 が期待どおりに動作することを検証する。
-///
-/// Phase 9F 以降は HTML panel hit-table を `update_html_panel_hits` で synthetic に
+/// Phase 9F 以降は HTML panel hit-table を `update_panel_geometry` で synthetic に
 /// 構築してテストする。
 #[test]
 fn panel_release_without_matching_press_does_not_activate_save() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
 
-    let panel_screen_rect = render_types::PixelRect {
+    let panel_screen_rect = geometry::WindowRect {
         x: 100,
         y: 100,
         width: 200,
         height: 60,
     };
-    let save_button_rect = render_types::PixelRect {
+    let save_button_rect = geometry::WindowRect {
         x: 8,
         y: 8,
         width: 64,
         height: 24,
     };
-    app.panel_presentation.update_html_panel_hits(
+    // chrome 0 で full_rect == body_rect とし、hit 矩形を body 原点基準で渡す (BL-096)。
+    app.panel_workspace.update_panel_geometry(
         "builtin.app-actions",
         panel_screen_rect,
+        0,
         vec![("app.save".to_string(), save_button_rect)],
     );
     let save_x = (panel_screen_rect.x + save_button_rect.x + save_button_rect.width / 2) as i32;
@@ -829,12 +780,10 @@ fn panel_release_without_matching_press_does_not_activate_save() {
     assert_eq!(app.pending_save_task_count(), 0);
 }
 
-/// avg stage ms を計算して返す。
-fn avg_stage_ms(profiler: &DesktopProfiler, label: &'static str) -> f64 {
+fn avg_stage_ms(profiler: &FrameProfiler, label: &'static str) -> f64 {
     profiler.stats.get(label).map_or(0.0, avg_stage_stat_ms)
 }
 
-/// avg stage stat ms を計算して返す。
 fn avg_stage_stat_ms(stat: &StageStats) -> f64 {
     if stat.calls == 0 {
         0.0
@@ -843,20 +792,17 @@ fn avg_stage_stat_ms(stat: &StageStats) -> f64 {
     }
 }
 
-/// max stage ms を計算して返す。
-fn max_stage_ms(profiler: &DesktopProfiler, label: &'static str) -> f64 {
+fn max_stage_ms(profiler: &FrameProfiler, label: &'static str) -> f64 {
     profiler
         .stats
         .get(label)
         .map_or(0.0, |stat| stat.max.as_secs_f64() * 1000.0)
 }
 
-/// avg 値 を計算して返す。
-fn avg_value(profiler: &DesktopProfiler, label: &'static str) -> f64 {
+fn avg_value(profiler: &FrameProfiler, label: &'static str) -> f64 {
     profiler.value_stats.get(label).map_or(0.0, avg_value_stat)
 }
 
-/// avg 値 stat を計算して返す。
 fn avg_value_stat(stat: &ValueStats) -> f64 {
     if stat.samples == 0 {
         0.0
@@ -865,7 +811,6 @@ fn avg_value_stat(stat: &ValueStats) -> f64 {
     }
 }
 
-/// 入力を解析して duration に変換する。
 fn perf_duration() -> Duration {
     std::env::var("ALTPAINT_PANEL_PERF_DURATION_SECS")
         .ok()
@@ -874,11 +819,10 @@ fn perf_duration() -> Duration {
         .unwrap_or_else(|| Duration::from_secs(10))
 }
 
-/// 入力や種別に応じて処理を振り分ける。
 fn emit_canvas_perf(
     tool: ToolKind,
     size: u32,
-    profiler: &DesktopProfiler,
+    profiler: &FrameProfiler,
     elapsed: f64,
     iterations: u64,
 ) {
@@ -887,18 +831,18 @@ fn emit_canvas_perf(
         ToolKind::Eraser => "eraser",
         ToolKind::Bucket => "bucket",
         ToolKind::LassoBucket => "lasso-bucket",
-        ToolKind::PanelRect => "panel-rect",
+        ToolKind::KomaRect => "koma-rect",
     };
     eprintln!(
         "[canvas-perf] tool={tool_name} size={size} duration={elapsed:.2}s iterations={iterations} rate={:.1}Hz",
         iterations as f64 / elapsed
     );
     eprintln!(
-        "[canvas-perf] tool={tool_name} size={size} prepare_frame avg={:.3}ms max={:.3}ms | prepare_canvas_scene avg={:.3}ms max={:.3}ms",
+        "[canvas-perf] tool={tool_name} size={size} prepare_frame avg={:.3}ms max={:.3}ms | compute_canvas_view_geometry avg={:.3}ms max={:.3}ms",
         avg_stage_ms(profiler, "prepare_frame"),
         max_stage_ms(profiler, "prepare_frame"),
-        avg_stage_ms(profiler, "prepare_canvas_scene"),
-        max_stage_ms(profiler, "prepare_canvas_scene"),
+        avg_stage_ms(profiler, "compute_canvas_view_geometry"),
+        max_stage_ms(profiler, "compute_canvas_view_geometry"),
     );
     eprintln!(
         "[canvas-perf] tool={tool_name} size={size} canvas upload avg={:.2}% ({:.0}px) | overlay upload avg={:.2}% ({:.0}px)",
@@ -909,20 +853,17 @@ fn emit_canvas_perf(
     );
 }
 
-/// Emit パネル perf に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
-fn emit_panel_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterations: u64) {
+fn emit_panel_perf(label: &str, profiler: &FrameProfiler, elapsed: f64, iterations: u64) {
     eprintln!(
         "[{label}] duration={elapsed:.2}s iterations={iterations} rate={:.1}Hz",
         iterations as f64 / elapsed
     );
     eprintln!(
-        "[{label}] prepare_frame avg={:.3}ms max={:.3}ms | panel_surface avg={:.3}ms max={:.3}ms | compose_dirty_panel avg={:.3}ms max={:.3}ms",
+        "[{label}] prepare_frame avg={:.3}ms max={:.3}ms | panel_reconcile avg={:.3}ms max={:.3}ms | compose_dirty_panel avg={:.3}ms max={:.3}ms",
         avg_stage_ms(profiler, "prepare_frame"),
         max_stage_ms(profiler, "prepare_frame"),
-        avg_stage_ms(profiler, "panel_surface"),
-        max_stage_ms(profiler, "panel_surface"),
+        avg_stage_ms(profiler, "panel_reconcile"),
+        max_stage_ms(profiler, "panel_reconcile"),
         avg_stage_ms(profiler, "compose_dirty_panel"),
         max_stage_ms(profiler, "compose_dirty_panel"),
     );
@@ -950,20 +891,19 @@ fn emit_panel_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterat
     // Phase 9F: base_upload_* / panel_surface_hit_regions は record 側を撤去済み。
 }
 
-/// Emit ビュー perf に必要な描画内容を組み立てる。
-fn emit_view_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterations: u64) {
+fn emit_view_perf(label: &str, profiler: &FrameProfiler, elapsed: f64, iterations: u64) {
     eprintln!(
         "[view-perf] case={label} duration={elapsed:.2}s iterations={iterations} rate={:.1}Hz",
         iterations as f64 / elapsed
     );
     eprintln!(
-        "[view-perf] case={label} prepare_frame avg={:.3}ms max={:.3}ms | prepare_canvas_scene avg={:.3}ms max={:.3}ms | panel_surface avg={:.3}ms max={:.3}ms",
+        "[view-perf] case={label} prepare_frame avg={:.3}ms max={:.3}ms | compute_canvas_view_geometry avg={:.3}ms max={:.3}ms | panel_reconcile avg={:.3}ms max={:.3}ms",
         avg_stage_ms(profiler, "prepare_frame"),
         max_stage_ms(profiler, "prepare_frame"),
-        avg_stage_ms(profiler, "prepare_canvas_scene"),
-        max_stage_ms(profiler, "prepare_canvas_scene"),
-        avg_stage_ms(profiler, "panel_surface"),
-        max_stage_ms(profiler, "panel_surface"),
+        avg_stage_ms(profiler, "compute_canvas_view_geometry"),
+        max_stage_ms(profiler, "compute_canvas_view_geometry"),
+        avg_stage_ms(profiler, "panel_reconcile"),
+        max_stage_ms(profiler, "panel_reconcile"),
     );
     eprintln!(
         "[view-perf] case={label} ui_update avg={:.3}ms max={:.3}ms | overlay upload avg={:.2}% ({:.0}px)",
@@ -974,13 +914,10 @@ fn emit_view_perf(label: &str, profiler: &DesktopProfiler, elapsed: f64, iterati
     );
 }
 
-/// Profile ビュー perf case に必要な差分領域だけを描画または合成する。
-///
-/// 必要に応じて dirty 状態も更新します。
 fn profile_view_perf_case(
     label: &str,
     app: &mut DesktopApp,
-    profiler: &mut DesktopProfiler,
+    profiler: &mut FrameProfiler,
     viewport: (usize, usize),
     duration: Duration,
     mut step: impl FnMut(&mut DesktopApp, u64) -> bool,
@@ -1006,12 +943,9 @@ fn profile_view_perf_case(
     emit_view_perf(label, profiler, started.elapsed().as_secs_f64(), iterations);
 }
 
-/// 既存データを走査して control points from パネル を組み立てる。
-///
-/// Phase 9F 以降、HTML パネル hit-test (`html_panel_hit_at`) で (panel_id, node_id) を
+/// Phase 9F 以降、HTML パネル hit-test (`panel_hit_at`) で (panel_id, node_id) を
 /// 解決する。slider / color-wheel 等の細かいサブ領域分割は DSL surface 経路と一緒に
 /// 撤去されたため、ここでは hit する全ピクセルを stride サンプリングで返す。
-#[allow(dead_code)]
 fn control_points_from_surface(
     app: &DesktopApp,
     target_panel_id: &str,
@@ -1021,7 +955,10 @@ fn control_points_from_surface(
     let mut points = Vec::new();
     for y in 0..layout.window_rect.height {
         for x in 0..layout.window_rect.width {
-            let Some((panel_id, node_id)) = app.panel_presentation.html_panel_hit_at(x, y) else {
+            let Some((panel_id, node_id)) = app
+                .panel_workspace
+                .panel_hit_at(geometry::WindowPoint::new(x as i32, y as i32))
+            else {
                 continue;
             };
             if panel_id == target_panel_id && node_id == target_node_id {
@@ -1035,17 +972,14 @@ fn control_points_from_surface(
     points.into_iter().step_by(stride).take(32).collect()
 }
 
-/// pan ビュー updates キャンバス without ステータス recompose が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn pan_view_updates_canvas_without_status_recompose() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();
 
-    assert!(app.execute_command(Command::PanView {
+    assert!(app.apply_session_command(&SessionCommand::PanView {
         delta_x: 32.0,
         delta_y: 0.0,
     }));
@@ -1053,9 +987,9 @@ fn pan_view_updates_canvas_without_status_recompose() {
 
     assert!(!profiler.stats.contains_key("compose_full_frame"));
     assert!(!profiler.stats.contains_key("compose_dirty_status"));
-    assert!(profiler.stats.contains_key("prepare_canvas_scene"));
+    assert!(profiler.stats.contains_key("compute_canvas_view_geometry"));
     assert!(!profiler.stats.contains_key("compose_dirty_panel"));
-    assert!(!profiler.stats.contains_key("panel_surface"));
+    assert!(!profiler.stats.contains_key("panel_reconcile"));
     // 9C-1: L1 背景は GPU の solid quad パイプラインで毎フレーム描画されるため
     // パン操作時に CPU の compose_dirty_canvas_base は呼ばれない。
     assert!(!profiler.stats.contains_key("compose_dirty_canvas_base"));
@@ -1068,17 +1002,14 @@ fn pan_view_updates_canvas_without_status_recompose() {
     assert_eq!(update.temp_overlay_dirty_rect, None);
 }
 
-/// pan ビュー updates キャンバス quad without ビットマップ reupload が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn pan_view_updates_canvas_quad_without_bitmap_reupload() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let original_quad = app.canvas_texture_quad().expect("canvas quad exists");
 
-    assert!(app.execute_command(Command::PanView {
+    assert!(app.apply_session_command(&SessionCommand::PanView {
         delta_x: 0.0,
         delta_y: -32.0,
     }));
@@ -1090,15 +1021,14 @@ fn pan_view_updates_canvas_quad_without_bitmap_reupload() {
     assert_ne!(original_quad.destination, moved_quad.destination);
 }
 
-/// pan can expand キャンバス quad into ホスト margin が期待どおりに動作することを検証する。
 #[test]
 fn pan_can_expand_canvas_quad_into_host_margin() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
 
-    assert!(app.execute_command(Command::PanView {
+    assert!(app.apply_session_command(&SessionCommand::PanView {
         delta_x: -96.0,
         delta_y: 0.0,
     }));
@@ -1108,66 +1038,61 @@ fn pan_can_expand_canvas_quad_into_host_margin() {
     assert!(moved_quad.destination.x < layout.canvas_display_rect.x);
 }
 
-/// 新規 ドキュメント sized resets アクティブ interactions が期待どおりに動作することを検証する。
 #[test]
 fn new_document_sized_resets_active_interactions() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    assert!(app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0));
+    assert!(app.handle_canvas_pointer(CanvasPointerAction::Down, WindowPoint::new(center_x, center_y), 1.0));
     assert!(app.update_canvas_hover(center_x, center_y));
-    assert!(app.canvas_input.is_drawing);
-    assert!(app.hover_canvas_position.is_some());
+    assert!(app.paint.canvas_input.is_drawing);
+    assert!(app.paint.hover_canvas_position.is_some());
 
-    assert!(app.execute_command(Command::NewDocumentSized {
+    assert!(app.apply_document_command(&DocumentCommand::NewDocumentSized {
         width: 48,
         height: 32,
     }));
-    assert!(!app.canvas_input.is_drawing);
-    assert!(app.canvas_input.last_position.is_none());
-    assert!(app.hover_canvas_position.is_none());
+    assert!(!app.paint.canvas_input.is_drawing);
+    assert!(app.paint.canvas_input.last_position.is_none());
+    assert!(app.paint.hover_canvas_position.is_none());
 }
 
-/// test ダイアログ アプリ can prepare フレーム が期待どおりに動作することを検証する。
 #[test]
 fn test_dialog_app_can_prepare_frame() {
     let mut app = super::test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
 
     let update = app.prepare_present_frame(1280, 200, &mut profiler);
 
     assert!(update.canvas_updated);
 }
 
-/// ブラシ プレビュー 差分 矩形 grows with ペン サイズ が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn brush_preview_dirty_rect_grows_with_pen_size() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    let _ = app.execute_command(Command::SetViewZoom { zoom: 8.0 });
-    let _ = app.execute_command(Command::SetActivePenSize { size: 4 });
+    let _ = app.apply_session_command(&SessionCommand::SetViewZoom { zoom: 8.0 });
+    let _ = app.apply_session_command(&SessionCommand::SetActivePenSize { size: 4 });
     assert!(app.update_canvas_hover(center_x, center_y));
     let small_dirty = app
-        .pending_temp_overlay_dirty_rect
+        .invalidation.temp_overlay_dirty_rect
         .expect("small preview dirty exists");
 
-    app.pending_temp_overlay_dirty_rect = None;
-    app.hover_canvas_position = None;
-    let _ = app.execute_command(Command::SetActivePenSize { size: 96 });
+    app.invalidation.temp_overlay_dirty_rect = None;
+    app.paint.hover_canvas_position = None;
+    let _ = app.apply_session_command(&SessionCommand::SetActivePenSize { size: 96 });
     assert!(app.update_canvas_hover(center_x, center_y));
     let large_dirty = app
-        .pending_temp_overlay_dirty_rect
+        .invalidation.temp_overlay_dirty_rect
         .expect("large preview dirty exists");
 
     assert!(large_dirty.width > small_dirty.width);
@@ -1177,27 +1102,27 @@ fn brush_preview_dirty_rect_grows_with_pen_size() {
 /// lasso プレビュー drag が temp_overlay dirty rect を設定することを検証する。
 #[test]
 fn lasso_preview_drag_marks_temp_overlay_dirty() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
     let center_x = (layout.canvas_display_rect.x + layout.canvas_display_rect.width / 2) as i32;
     let center_y = (layout.canvas_display_rect.y + layout.canvas_display_rect.height / 2) as i32;
 
-    let _ = app.execute_command(Command::SetActiveTool {
-        tool: app_core::ToolKind::LassoBucket,
+    let _ = app.apply_session_command(&SessionCommand::SetActiveTool {
+        tool: editor_state::ToolKind::LassoBucket,
     });
 
     // handle_canvas_pointer を直接呼んでパネルインタラクションをバイパス
     // down でラッソ開始 → LassoPreviewChanged
-    app.handle_canvas_pointer("down", WindowPoint::new(center_x, center_y), 1.0);
-    app.pending_temp_overlay_dirty_rect = None;
+    app.handle_canvas_pointer(CanvasPointerAction::Down, WindowPoint::new(center_x, center_y), 1.0);
+    app.invalidation.temp_overlay_dirty_rect = None;
 
     // drag でラッソ点を追加 → LassoPreviewChanged → temp overlay dirty になる
-    let dragged = app.handle_canvas_pointer("drag", WindowPoint::new(center_x + 20, center_y + 10), 1.0);
+    let dragged = app.handle_canvas_pointer(CanvasPointerAction::Drag, WindowPoint::new(center_x + 20, center_y + 10), 1.0);
     assert!(dragged, "lasso drag should request redraw");
     assert!(
-        app.pending_temp_overlay_dirty_rect.is_some(),
+        app.invalidation.temp_overlay_dirty_rect.is_some(),
         "lasso drag should set temp overlay dirty rect"
     );
 }
@@ -1205,22 +1130,22 @@ fn lasso_preview_drag_marks_temp_overlay_dirty() {
 /// ToggleActiveLayerVisibility が全体再構築ではなく差分 dirty rect 更新を行うことを検証する。
 #[test]
 fn toggle_layer_visibility_sets_canvas_dirty_rect_not_full_rebuild() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
-    // canvas_frame を初期化しておく
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
+    // cpu_canvas_snapshot を初期化しておく
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     // 初期化後のフラグをリセット
-    app.needs_full_present_rebuild = false;
-    app.pending_canvas_dirty_rect = None;
+    app.invalidation.needs_full_present_rebuild = false;
+    app.invalidation.canvas_dirty_rect = None;
 
-    let _ = app.execute_command(Command::ToggleActiveLayerVisibility);
+    let _ = app.apply_document_command(&DocumentCommand::ToggleActiveLayerVisibility);
 
     assert!(
-        app.pending_canvas_dirty_rect.is_some(),
+        app.invalidation.canvas_dirty_rect.is_some(),
         "ToggleActiveLayerVisibility should set canvas dirty rect"
     );
     assert!(
-        !app.needs_full_present_rebuild,
+        !app.invalidation.needs_full_present_rebuild,
         "ToggleActiveLayerVisibility should not trigger full present rebuild"
     );
 }

@@ -1,26 +1,36 @@
 [package]
-name = "desktop"
+name = "altpaint-desktop"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[[bin]]
+name = "altpaint"
+path = "src/main.rs"
+
 [dependencies]
 anyhow.workspace = true
-app-core = { path = "../../crates/app-core" }
-gpu-canvas = { path = "../../crates/gpu-canvas" }
-canvas = { path = "../../crates/canvas" }
-desktop-support = { path = "../../crates/desktop-support" }
-panel-api = { path = "../../crates/panel-api" }
+dirs.workspace = true
+font8x8 = { workspace = true }
+document-model = { path = "../../crates/document-model" }
+editor-state = { path = "../../crates/editor-state" }
+geometry = { path = "../../crates/geometry" }
+raster = { path = "../../crates/raster" }
+gpu-paint = { path = "../../crates/gpu-paint" }
+paint-engine = { path = "../../crates/paint-engine" }
+frame-profiler = { path = "../../crates/frame-profiler" }
 panel-runtime = { path = "../../crates/panel-runtime" }
-panel-html-experiment = { path = "../../crates/panel-html-experiment" }
-keyboard-types = "0.7"
+png = "0.17"
 pollster.workspace = true
-render-types = { path = "../../crates/render-types" }
+canvas-geometry = { path = "../../crates/canvas-geometry" }
 serde_json.workspace = true
-storage = { path = "../../crates/storage" }
-ui-shell = { path = "../../crates/ui-shell" }
-workspace-persistence = { path = "../../crates/workspace-persistence" }
+project-store = { path = "../../crates/project-store" }
+pen-io = { path = "../../crates/pen-io" }
+panel-workspace = { path = "../../crates/panel-workspace" }
+serde.workspace = true
+thiserror.workspace = true
+tinyfiledialogs.workspace = true
 wgpu.workspace = true
 winit.workspace = true
 

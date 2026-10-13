@@ -2,7 +2,7 @@
 
 ## この文書の目的
 
-この文書は、2026-03-15 時点の `altpaint` が**実際にどこまで実装されているか**を短く把握するための現況整理である。
+この文書は、2026-06-12 時点の `altpaint` が**実際にどこまで実装されているか**を短く把握するための現況整理である。
 
 この文書は理想図ではなく現況の要約であり、次と役割を分ける。
 
@@ -21,21 +21,23 @@
 - 複数ラスタレイヤー、blend mode、簡易 mask、pan / zoom / rotation / flip
 - dirty rect を使う差分提示
 - マウス / touch / wheel / keyboard を含む入力処理
-- `.altp-panel` + Rust/Wasm による built-in panel 実装
-- `plugins/` 配下 panel の再帰ロード
+- HTML+CSS + Wasm DOM mutation による built-in panel 実装 (Phase 10 で `.altp-panel` DSL を撤去、Phase 12 で workspace-layout も HTML 化し全 12 パネル統一)
+- `crates/builtin-panels/` 配下 panel の再帰ロード
 - `tools/` 配下 tool 定義の再帰ロード
 - `pens/` 配下の外部ペン preset 読込
 - panel local state / host snapshot / persistent config
 - 4隅アンカー基準の workspace panel 配置
+- 全 4 辺 + 4 角の 8 ハンドルによる手動パネルリサイズ (Phase 11、anchor 維持・最小 80x60・viewport クランプ・edge 別カーソル切替)
+- パネルサイズの単一権威化: `panel.meta.json::default_size` を初期値とし、workspace 永続値を SoT とする (Phase 11 で自動サイズ追従撤去)
 - workspace preset の読込 / 切替 / 保存 / 書き出し
 - SQLite ベース project save/load
-- page / panel 単位の project index / 部分ロード
-- layer bitmap の chunk 保存と current panel snapshot 永続化
+- page / koma 単位の project index / 部分ロード
+- layer bitmap の chunk 保存とコマ合成キャッシュ (`koma_composites`) 永続化
 - session save/load
 - profiler と実行時間計測
-- **Undo/Redo 基盤 (フェーズ7-0〜7-2b)**: replay 方式 `CommandHistory`・`BitmapEditRecord`・
-  `CanvasRuntime::replay_paint_record`・`execute_undo()`/`execute_redo()` サービスハンドラ・
-  host snapshot への `can_undo`/`can_redo` 反映・app-actions パネルの undo/redo ボタン
+- **Undo/Redo 基盤 (フェーズ7-0〜7-2b、Phase 14 で BitmapPatch 方式に一本化)**: `CommandHistory`・
+  `execute_undo()`/`execute_redo()` サービスハンドラ・host snapshot への `can_undo`/`can_redo` 反映・
+  app-actions パネルの undo/redo ボタン (replay 方式の `BitmapEditRecord` 系は ADR 016 で削除)
 - **テキスト描画基盤 (フェーズ7-5b〜7-6)**: `TextRenderer` trait・`Font8x8Renderer`・`render_text_to_bitmap_edit` canvas op・`text_render.render_to_layer` service・`plugins/text-flow` panel plugin・host handler
 - **レンダー層分離 (2026-03-15)**: overlay 単層を L3 TempOverlay（canvas ブラシ/lasso）と L4 UiPanel（フローティング UI）に分割。`compose_temp_overlay_frame` / `compose_ui_panel_frame` / `LayerGroupDirtyPlan` 導入。各層が独立した dirty rect で更新され、不要な CPU 合成を削減。
 - **起動時間改善 (2026-03-16)**: `plugin-host` の `WasmPanelRuntime::load` が Panel 毎に `Engine::default()` を生成し wasmtime JIT が 11 回フルコンパイルして起動に 4+ 秒かかっていた問題を修正。wasmtime `cache` feature を有効化し `Config::cache_config_load_default()` を使うことでコンパイル済みモジュールをディスクキャッシュし、2 回目以降の起動を大幅短縮。
@@ -49,44 +51,175 @@
   - **プランA（Wasm 再ビルド）**: `.\scripts\build-ui-wasm.ps1` で全 11 プラグインの `.wasm` を再ビルド。app-actions・undo/redo・panel_rect 等の export エラーを解消。
 - **Phase 9F 完了 (2026-04-29)**: `crates/render/` クレート物理削除。`RenderFrame` を `apps/desktop/src/app/canvas_frame.rs::CanvasFrame` へ吸収、`PresentScene` から dummy 化されていた `base_layer` (L1) と `ui_panel_layer` (L4) を撤去、`html_panel_quads` を `panel_quads` にリネーム。`PresentTimings` から `base_upload`/`ui_panel_upload` 系フィールド削除。さらに dead code 撤去として `PanelHitKind`/`PanelHitRegion`/`PanelSurface::hit_regions` 一式、`PanelDragState::Control` ヴァリアント、`refresh_canvas_frame_region`、`panel_surface_hit_regions` profiler value を削除。HTML パネル hit-test を `html_panel_hit_at`/`html_panel_move_handle_at` に統一し、関連テストを synthetic hit-table 注入で書き直し。最終ベースライン: 127 passed / 0 failed / 6 ignored、clippy 警告 83 件 (着手前と同数)。詳細: `docs/adr/010-render-crate-removal.md`。
 - **Phase 9G 完了 (2026-05-02)**: `html-panel` feature gate を完全撤去。Phase 9E で CPU パネルラスタライザを撤去した結果、`HtmlPanelEngine` 経路がパネル描画の唯一の手段となっていたが、`apps/desktop` の `html-panel` feature が default OFF のまま放置されており、`cargo run -p desktop` (feature 指定なし) では `panel_quads = &[]` / `status_quad = None` となり全パネル＋ステータスバーが画面から消える状態だった。`apps/desktop/Cargo.toml` と `crates/panel-runtime/Cargo.toml` から `[features]` テーブル削除、`panel-html-experiment` / `keyboard-types` を必須依存へ昇格、`apps/desktop` 内 14 箇所と `panel-runtime` 内 23 箇所の `cfg(feature = "html-panel")` / `cfg(not(feature = "html-panel"))` 分岐を完全撤去。clippy 警告 83 → 70 件 (13 件減)。あわせて `crates/panel-runtime/src/dsl_to_html.rs` の `PanelNode::Section` 翻訳を `<details><summary>` から `<div class="alt-section">` へ切り替え (Blitz/stylo がネストした `<details>` の primary style 解決に失敗して panic する潜在バグ回避)。詳細: `docs/adr/011-html-panel-feature-removal.md`。
+- **Phase 12 完了 (2026-05-15)**: ADR 014 — `PanelTree` / `PanelNode` / `PanelView` 型と `PanelPlugin::panel_tree()` / `view()` trait method を完全撤去 (ADR 012 で宣言済みだったが残置されていた DSL 時代の中間表現 / dead code を一括清算)。並行して、唯一 Rust ネイティブ実装で残っていた `builtin.workspace-layout` (パネル表示/非表示管理 UI) を 12 番目の HTML+CSS+Wasm パネルとして再実装し、HTML 経路へ完全統一。新規サービス `workspace_layout.set_panel_visibility` と新規 host snapshot field `workspace.panels_json` を追加し、Wasm パネル handler がチェック切替で可視性を制御する経路を整備。同時に DSL 時代の `tree_query.rs` / `focus.rs` の dropdown / text_input 走査 / `TextInputEditorState` / winit IME 編集経路を撤去 (HTML パネル内部完結に統一)。約 800 行縮小、clippy 警告 84 → 76 件 (8 件減)、テスト 139 passed / 5 failed (failure はベースライン e6f84f6 と完全一致、新規 failure ゼロ)。詳細: `docs/adr/014-paneltree-removal-and-workspace-layout-html.md`。
+- **Phase 13 完了 (2026-06-11)**: ADR 015 — HTML パネルのキーボード ABI 配線 + hit テーブル GPU 非依存化。ADR 014 が follow-up としていたキーボード系 5 テスト失敗を解消しテスト失敗ゼロ化 (desktop 144 passed / 0 failed / 6 ignored、並列 2 回連続で安定)。(1) `BuiltinPanelPlugin` に `PanelEvent::Keyboard` → Wasm `panel_handle_keyboard` 転送と `handles_keyboard_event()` (load 時 export 検出) を配線。(2) `HtmlPanelEngine::resolve_action_rects` / `PanelRuntime::collect_panel_hits` を新設し、hit / move handle / full rect テーブル更新を GPU ループから `prepare_present_frame` (CPU 側) へ移動 — headless テストでフォーカス巡回・hit-test が実経路で検証可能になり、GPU ループ (runtime.rs) は quad 組み立て専属に約 120 行縮小。`PanelGpuFrame::hit_regions` / `rendered_this_frame` dead code 削除。(3) Phase 10 の DSL 撤去で喪失していた初期 state デフォルト (app-actions: `Ctrl+N`/`Ctrl+S`/`Ctrl+Shift+S`/`Ctrl+O`、tool-palette: `P`/`E`/`G`/`Shift+G`/`K`) を各パネル `init()` に復元し Wasm 再ビルド。(4) stylo (Blitz resolve) のグローバル rayon プールが複数ドキュメント並行 resolve で atomic_refcell panic するレースを `STYLE_RESOLVE_LOCK` で直列化 (プロダクションは単一 UI スレッドのため実コストゼロ、8 スレッド並行の回帰ストレステスト付き)。(5) テストが実ユーザーの session / workspace preset ファイルを共有・汚染していた問題を、project / session / preset 全パスのテスト毎一意化で解消。詳細: `docs/adr/015-html-panel-keyboard-abi-and-headless-hit-tables.md`。
+- **Phase 14 完了 (2026-06-12)**: ADR 016 — クレート依存構造の最小化リアーキテクト。(1) replay 方式 undo の残骸を全削除 (`HistoryEntry::BitmapOp` / `BitmapEditRecord` / `BitmapEditOperation` / `CanvasRuntime::replay_paint_record` / `PaintResult` / `canvas::edit_record`。`execute_paint_input` は `Option<Vec<BitmapEdit>>` を返す)。(2) ui-shell の Phase 9E 互換スタブ群 (1×1 ダミー `PanelSurface`・常時 no-op の scroll / dirty マーク・定数スタブ・`PresentationEventResult`) を削除し、`reconcile_panels(panel_ids)` 化で **ui-shell → panel-runtime 依存を切断**。render-types の `PanelPlan` / `PanelSurfaceSource`、desktop の `panel_surface` フィールドとダミープロファイラ計測も撤去 (`needs_panel_reconcile` / `request_panel_reconcile` に改名、新計測キー `panel_reconcile`)。(3) **`workspace-persistence` クレートを削除**し `WorkspaceUiState` / `PluginConfigs` を `app-core::workspace` へ統合 (workspace メンバー 29 → 28、クレート間エッジ 47 → 42)。(4) **`panel-html-experiment` を `panel-html` に正式名称化**。(5) 未使用依存 7 件 (gpu-canvas/storage の anyhow、tool-palette の serde、panel-html の anyrender/serde/tracing、ルートの ab_glyph)・小物 dead code (`SnapshotStore::entries` / `StatusPanel::last_snapshot`・`measured_size` / `collect_text` / `past_entries`)・`tools/experimental/phase6-sample`・stale な `apps/desktop/ARCH_GREP.md` を削除。検証: workspace テスト 412 passed / 0 failed / 8 ignored (ベースライン 415 との差分 3 件は削除した dead 機能のテスト)、clippy 警告 84 → 79、cargo machete クリーン、アプリ起動スモーク確認 (12 秒、クラッシュなし)。詳細: `docs/adr/016-dependency-minimization.md`。
+- **Phase 15 完了 (2026-06-12)**: ADR 017 — 座標系の型レベル区別と依存グラフの階層化。(1) **座標型の徹底**: `CanvasPointF` (サブピクセルキャンバス座標) 新設、ui-shell hit-test API を `WindowPoint` 受け / `PanelSurfacePoint` 返しに統一 (負値ガード・手書き矩形判定の重複を `PixelRect::contains` / `to_local_point` / `contains_local` に集約)、`gpu-canvas` を `BrushStrokeParams` + `PanelLocalPoint` / `CanvasDirtyRect` 受けに構造化 (too_many_arguments 解消)、render-types の UV を `SourceUv` / `RotatedUv` の 2 型に分離、`PanelResizeState` / `PanelDragState` / 手ぶれ補正の生タプルを排除。(2) **依存階層化**: `builtin-panels` umbrella クレートを `panel-runtime::loader` へ統合 (workspace 28 → 27)、panel-runtime が panel-api 型と panel-html (`panel_runtime::html`) を facade 再公開し **desktop の直接依存 11 → 8** (パネル系入口は panel-runtime / ui-shell の 2 系統)。(3) **中間層・dead code 削減**: `canvas/render_bridge.rs`・`canvas/registry.rs`・`app/drawing.rs`・`app/commands.rs`・`frame/geometry.rs` の未使用変換 2 関数・`SnapshotStore::label` を削除。(4) **命名と状態の構造化**: `panel-runtime/registry.rs` → `runtime.rs`、`app/state.rs` → `canvas_state.rs`、提示無効化フラグ 9 個を `PresentInvalidation` に、GPU リソース 5 Option を `Option<GpuPaintEngine>` (all-or-nothing) に集約、`pending_jobs` を io_state から `DesktopApp::background_jobs` へ分離。DesktopApp フィールド 31 → 18。検証: workspace テスト 415 passed / 0 failed / 8 ignored (ベースライン 412 に対し新規座標型テスト +5・削除 dead code テスト −2)、clippy 警告 79 → 0、cargo machete クリーン、アプリ起動スモーク確認 (25 秒、クラッシュなし)、正味 約 −800 行。詳細: `docs/adr/017-coordinate-types-and-dependency-layering.md`。
+- **Phase 16 / B0 完了 (2026-06-12)**: ADR 018 — 大規模リファクタリング (設計書 `docs/refactor/2026-06-naming-and-boundaries.md`) のバッチ B0「死コード一掃と文書浄化」(挙動不変)。28 コミット、145 ファイル / +412 −5,143 行。主な削除: (1) `LayerNode` / `Panel.root_layer` / `sync_root_layer_summary` と SQLite 該当カラム (BL-003、保全は保存→読込ラウンドトリップテスト先行で担保)。(2) プロジェクトのレガシー読込 (JSON / ALTPBIN フォールバック) とペン形式 v1 受理の全廃 — SQLite / pen v2 のみ受理し旧形式は明示的拒否 (BL-008)。(3) `FramePlan` / `CanvasCompositeSource` を削除し `CanvasPlan` 直渡しへ (BL-007)、exposed background 機構と render-types 死 API 一掃 (BL-005/006)、デモ用レイヤーマスク切替経路 (BL-004)、`apply_command` 返値の `()` 化 (BL-002)。(4) gpu-canvas の書込み専用 `GpuPenTipCache` 一式 + 孤立 brush_stamp.wgsl (BL-018)。(5) パネル系: 旧 init プロトコル (`PanelInitRequest/Response`、`WasmPanelRuntime::initialize` ほか) (BL-012)、`StatePatchOp::Replace` (BL-013)、`PanelEventRequest.event_kind` (BL-014)、SDK commands 第 2 経路 (project/workspace/view/panel) + dom 未使用 5 関数 + iterator handle 機構 + host 未使用 getter (BL-019)、panel-api の `InvokePanelHandler` / `commands()` / `debug_summary()` (BL-011)、panel-html 死 API と `on_input` 返値の `()` 化 (BL-015/024)、ui-shell の一度も書かれない `rendered_panel_rects` (BL-016)、host state の Value 版二重埋め込み (BL-017)。(6) storage / desktop-support の死 public API 削除・crate 内部化 (BL-009/010)、`CoreError` (BL-001)、workspace 依存掃除 (BL-020)。(7) 機械生成テンプレ doc コメント 1065 ブロックと生成スクリプト `tools/rewrite_rust_function_docs.py` の全廃 (BL-022)。skip: BL-023 (`paint_params` 削除) は `MAX_STAMP_STEPS` が gpu-canvas からも参照されるため B8 の PaintPlan 化と同時に解決、BL-009 の一部公開 API (manifest 系ほか) は live 設計要素のため B7 で再判断。検証: workspace テスト 415 → 405 passed / 0 failed / 7 ignored (減少は死 API 専用テストの削除によるもの。ラウンドトリップ/旧形式拒否テストを新規追加した上での正味 −10)、clippy 警告 0、wasm ビルド成功。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+- **Phase 17 / B1 完了 (2026-06-12)**: ADR 018 — バッチ B1「用語統一第 1 波 — Koma」(挙動不変、wire/スキーマ変更含む)。コミット 17b20cc..6139d36 の 23 コミット (118 ファイル / +1,785 −1,477 行)。最大の両義 (コマ義 `Panel` と UI パネルの衝突) を解消: (1) **BL-036 (冒頭で先行実施)**: wire 名定数を `panel-schema::names` の feature 別モジュールへ一元化し、panel-api 定数 / SDK リテラル / runtime match の 3 重複を単一定義点参照に置換 (probe フォールバックの silent no-op リスクを構造的に排除)。(2) **K1〜K13** (K11 は引数名改名のみ、型付き `KomaId` キー化は B8): `app_core::Panel` → `Koma` と派生型 (`KomaId` / `KomaBounds` / `KomaLocalPoint`)、`Page.panels` / `Document.active_panel_index` → `komas` / `active_koma_index` (serde キー含む)、`Command` のコマ操作 variant → `{Create,Add,RemoveActive,Select,SelectNext,SelectPrevious,FocusActive}Koma`、`ToolKind::PanelRect` → `KomaRect` (SDK `Tool::KomaRect` / wire `koma_rect` / カタログ id `builtin.koma-rect` 追随)、サービス wire `panel_nav.*` → `koma_nav.*`、host state キー → `document.komas_json` / `page_koma_count` / `active_koma_*`、SQLite スキーマ → `komas` / `koma_composites` / `layers.koma_id` (マイグレーションなし = alpha 方針で旧プロジェクトファイル非互換)、永続化型 → `ProjectKomaSummary` / `PersistedKomaComposite`、`KomaNavigatorOverlay` 系、コマ用色定数 → `ACTIVE_KOMA_*` / `KOMA_PREVIEW_*` / `KOMA_NAVIGATOR_*`、paint 系派生 → `koma_creation_preview_bounds` / `KomaRectCommitted`。(3) **C14〜C17**: ビルトインパネル改名 `panel-list` → `koma-list` / `layers-panel` → `layers` / `snapshot-panel` → `snapshots` / `pen-settings` → `tool-settings` (id も `builtin.koma-list` 等へ)。(4) **D16**: `SnapshotStore` → `DocumentSnapshotStore` (snapshot 多義解消)。(5) **検証修正**: バッチ検証 grep で app-core ドメインモジュール (document.rs / layer_ops.rs / history.rs) に残存していたコマ義 panel 識別子 (`select_panel` 系コマ操作・`*_panel_layer_*` 系レイヤー操作・`HistoryEntry.panel_id` ほか) と desktop 呼出側 (`PendingStroke` / `recomposite_koma` / status_text) を一掃。検証: workspace テスト 408 passed / 0 failed / 7 ignored (B0 比 +3 は wire 名定数モジュールのテスト追加)、clippy 警告 0、wasm ビルド成功、起動スモーク確認 (パニックなし)、`koma_nav.*` 操作経路はサービス dispatch テスト (`request_service_koma_nav_add_and_select_changes_active_koma`) で生存確認。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+
+- **Phase 18 / B2 完了 (2026-06-12)**: ADR 018 — バッチ B2「用語統一第 2 波 — クレート・型・モジュール機械改名」(挙動不変・改名のみ。コード移動/分割なし)。コミット 7f71efe..59a4272 の 50 コミット。クレート改名 (C1〜C8/C13) の新旧対応:
+
+  | 旧クレート名 | 新クレート名 | 根拠 |
+  | --- | --- | --- |
+  | `canvas` | `paint-engine` | 実責務は入力解釈 + ペイント差分生成 |
+  | `gpu-canvas` | `gpu-paint` | brush/fill/composite を含む GPU ペイントエンジン |
+  | `render-types` | `canvas-geometry` | 実体はキャンバス表示幾何 (「types」は虚偽) |
+  | `plugin-host` | `panel-wasm-host` | パネル専用 Wasm 実行器。「plugin」予約語化 |
+  | `plugin-sdk` | `panel-sdk` | 内容は 100% パネル作成用 |
+  | `plugin-macros` | `panel-macros` | 3 マクロすべて panel_* |
+  | `panel-schema` | `panel-protocol` | 実態は host↔Wasm プロトコル契約 |
+  | `ui-shell` | `panel-workspace` | 実責務はパネルの配置・focus・hit テスト |
+  | `desktop` (package) | `altpaint-desktop` (bin `altpaint`) | 成果物バイナリにアプリ名を含める |
+
+  主な型・関数・モジュール改名 (R/P/D 系 40 項目): `CanvasRuntime`→`PaintEngine`・`execute_paint_input`→`compute_paint_edits` (desktop 側は `apply_paint_input`)、`CanvasPoint`/`CanvasPointF`/`CanvasDirtyRect`→`PagePoint`/`PagePointF`/`PageDirtyRect`、`CanvasScene`→`CanvasViewGeometry` (`prepare_canvas_scene`→`CanvasViewGeometry::compute`)、`GpuCanvasPool`→`LayerTextureStore`・`GpuLayerTexture`→`GpuRgbaTexture`・`Gpu{Brush,Fill}Dispatch`/`GpuLayerCompositor`→`{Brush,Fill,Composite}Pipeline`、`CommandHistory`→`EditHistory`、`normalize_phase9_state`→`normalize_after_load`、`StorageError`→`ProjectStoreError`・`ProjectIndex`→`ProjectManifest`・`pen_presets`→`pen_catalog`・`PenEngine`→`StoredPenEngine`、`DesktopProfiler`→`FrameProfiler`・`CanvasTemplate`→`CanvasSizePreset`、`PluginConfigs`→`PanelConfigs`、`pen_state`→`tool_state`・描画サイズ関数を `brush_size_for_pressure` へ一本化、`Koma.bitmap`→`Koma.composite_cache`、`BuiltinPanelPlugin`→`HtmlWasmPanel`、`CommandDescriptor`→`RequestDescriptor`・`HandlerResult`→`HandlerEffects`、`WasmPanelRuntime`→`PanelWasmInstance`・`RuntimeCollector`→`HostCallContext`・`PluginHostError`→`PanelWasmHostError`、host snapshot 用語→host state (`host_sync`→`host_state`・`HostSnapshotCache`→`HostStateCache`)、`PanelPresentation`→`PanelWorkspace`・`html_panel_*` 接頭辞除去・`ResizeEdge`→`ResizeHandle`、`HtmlPanelEngine`→`HtmlPanelView`・`RenderedPanelHit`→`ActionRect`・`measured_size`/`on_load`→`panel_size`/`set_panel_size`、`Runtime{Dispatch,Keyboard}Result`→`Panel{Dispatch,Keyboard}Result`・`PanelGpuFrame`→`RenderedPanelTexture`、desktop の `runtime.rs`/`DesktopRuntime`→`event_loop.rs`/`DesktopEventLoop`・`PresentScene`→`PresentFrame`・`frame/`→`present_quads/`・`StatusPanel`→`StatusBar`・`CanvasFrame`→`CpuCanvasSnapshot`・`CanvasLayer` 系→`CanvasSurface` 系・`present_state.rs`→`invalidation.rs`。計画どおりの保留: R11/R12 (`CanvasBitmap`→`RgbaBitmap`) は B5、R21/R22 は B8、D2/D12/D13/D15 は B7、P6 は B6。検証: workspace テスト 408 passed / 0 failed / 7 ignored (B1 と同数 = 改名のみ)、clippy 警告 0、wasm ビルド成功、起動スモーク 22 秒パニックなし、旧名残存 grep 0 件。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+
+  注: 本文書のフェーズ完了履歴・過去フェーズの記録セクション、および「実装済みの主要領域」以下の B2 以前に書かれた現況節に現れる旧クレート名・旧型名は、当時の記述としてそのまま残す (本表で新名に読み替える。全面改稿は B10 = BL-160〜165。最新の依存関係と名称は `docs/MODULE_DEPENDENCIES.md` が正本)。
+
+- **Phase 19 / B3 完了 (2026-06-13)**: ADR 018 — バッチ B3「重複一本化と既知バグ修正」。コミット f3ffd8e..c428ede の 21 コミット (BL-030〜051、BL-036 は B1 冒頭で実施済みのため除く)。**ユーザー可視バグ 3 件を TDD で修正 (いずれも挙動変更。修正後が正)**:
+  - **BL-030 筆圧カーブ二重適用** (挙動変更): 筆圧→実効サイズの解決を context 解決時 (`Document::brush_size_for_pressure`) の 1 回に統一し、`paint-engine/ops/stamp.rs` の `effective_size` 再適用を削除。筆圧 < 1.0 の CPU 経路の線幅が従来の `round(round(base*f)*f)` から `round(base*f)` へ太くなり GPU 経路 (`BrushStrokeParams.radius`) と一致する。CPU/GPU 半径一致回帰テスト (`cpu_stamp_radius_matches_gpu_brush_radius`) を追加。
+  - **BL-031 HostStateCache stale 配信** (挙動変更): キャッシュ無効化を件数+index から内容ベースへ変更 (layers キーに name/visible/blend_mode/masked、komas キーに bounds、pen_presets キーにプリセット内容を含める)。従来は名前変更やプリセット内容編集がパネルへ反映されなかったのが、変更時に正しく再 render されるようになる。layers_json 反映の回帰テスト追加。
+  - **BL-051 panel_rect の usize::MAX フォールバック** (挙動変更): viewport なし版 `panel_rect` を廃止し viewport 必須 API へ統合。右/下アンカーパネルが従来は画面外座標 (usize::MAX 由来) を返し dirty rect が無効化されていたのを修正。右下アンカー解決の回帰テスト (`panel_rect_resolves_bottom_right_anchor_within_viewport`) 追加。
+  - **重複一本化 (挙動不変)**: BL-032 ピクセルブレンドを `app_core::blend` 単一モジュール (`composite_pixel` / `source_over_coverage_pixel` / `composite_layers` / `composite_layer_region_into`) へ統合し旧 4 箇所 (app-core layer_ops/painting/bitmap + storage/project_sqlite) と paint-engine の複製を削除 (CPU 合成ゴールデンテストで等価性を固定してから差し替え)。BL-033 `extract_region` を `CanvasBitmap` メソッドへ一本化。BL-034 `parse_document_size` + 上限定数を app-core 1 箇所へ統合。BL-035 `StatePatch` 適用を `panel-protocol::apply_patches` へ一本化。BL-037/038 panel-wasm-host の host fn を memory ヘルパ + register モジュールへ分割。BL-039/040 gpu-paint の build_pipeline 重複統合 + 矩形 3 流儀を半開矩形型へ統一。BL-041/042 `PixelRect` を `app_core::WindowRect` へ統合し `view_mapping.rs` ラッパー廃止。BL-043 panel-html の viewport クランプ規則を `local_render_size` 抽出。BL-044 `ToolKind` の wire/表示マッピングを app-core へ集約。BL-045〜047 desktop の dirty rect 畳み込み (`merged_dirty`) / ピクセル→NDC 変換 (`pixel_rect_to_ndc`) / コマンド後副作用 (`invalidate_document_structure`) を集約。BL-048 storage のディレクトリ走査を `collect_files` へ共通化。BL-049 JSON 設定ロードを Loaded/Missing/Corrupt 区別の共通ローダへ統一 (破損時のユーザー編集消失を防止)。BL-050 gesture の Down 経路から未使用 stabilization 引数を除去。検証: workspace テスト 438 passed / 0 failed / 7 ignored (B2 の 408 から +30: バグ修正 3 件の回帰テスト + CPU 合成ゴールデン + storage 再計算 + 各重複統合のテスト)、clippy 警告 0、wasm ビルド成功、gpu-paint GPU スモーク (ローカル NVIDIA RTX 2070) 22 passed、起動スモーク 20 秒パニックなし。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+
+- **Phase 20 / B4 完了 (2026-06-13)**: ADR 018 — バッチ B4「コマンド経路一本化」。コミット 53327de..3bc830c の 7 コミット (34 ファイル / +1,498 −686 行)。**Command 二重ディスパッチ・三重語彙の構造的解消** (挙動不変):
+  - **BL-060 Command 分割 + I/O 一本化**: 旧 `Command` enum を `DocumentCommand` (純粋なドキュメント変異) と `SessionCommand` (ツール/色/ペン/ビューのセッション変更) に 2 分割し、I/O 系 variant (保存・読込・preset 入出力・新規作成・undo/redo) は enum から削除して `ServiceRequest` 経路 (`execute_service_request`) に一本化。旧 `execute_command` の二重ディスパッチ (`apply_command` が I/O を no-op で握り潰し `command_router` が再変換する経路) を撤去。desktop は `apply_document_command` / `apply_session_command` がドキュメント/セッション適用と UI 同期を担い、`command_router.rs` には「Command → ServiceRequest 再変換」コードが存在しない。K14 (`NewDocument` 用語) は B4 で同時実施し、純粋変異は `DocumentCommand::NewDocumentSized` (ファイルダイアログ等の I/O は project_io サービス) へ。
+  - **BL-061 translator registry 化**: `command_from_descriptor` (旧 `commands.rs`) の巨大 match を名前空間 prefix 単位の `TranslatorRegistry` (`translator_registry.rs` + `request_translation.rs`) へ置換。`tool.` / `layer.` は command/session へ翻訳し、I/O サービス名前空間は `ServiceRequest` として pass-through。未登録 prefix/name・翻訳失敗は黙殺せず `TranslationDiagnostic` として呼び出し側へ返し `eprintln!` でログ出力 (黙殺廃止)。未登録名の診断経路テスト (`unregistered_namespace_yields_diagnostic_not_silent_swallow` / `unregistered_name_in_known_namespace_yields_diagnostic` / `unregistered_service_name_yields_diagnostic` / `all_wire_names_are_registered`) を追加。
+  - **BL-062 パネル可視性/並び替えの service 統一**: `HostAction::SetPanelVisibility` / `MovePanel` を desktop `execute_host_action` で `workspace_layout.set_panel_visibility` / `workspace_layout.move_panel` サービス経路へ変換し二重経路を一本化 (panel-api の専用 variant は B6 P3 で削除予定)。
+  - **BL-063 新規ドキュメントの panel 逆依存解消**: 旧 `NewDocument` が app-actions パネルの activation に委譲していた逆転を直接 service ルーティングへ修正。
+  - **BL-064 ビュー操作ポリシーのドメイン移動**: ズーム倍率 (`view_policy::ZOOM_LINE_BASE = 1.1` の `1.1^lines`)・clamp (`ZOOM_MIN = 0.25` 〜 `ZOOM_MAX = 16.0`)・パン量 (`PAN_PIXELS_PER_LINE = 32.0`) を入力層 (`event_loop/pointer.rs`) からドメイン側 (`app_core::view_policy` + `SessionCommand::ZoomViewBy{lines}` / `PanViewByLines`) へ移動。入力層は相対量のみを発行し飽和検出のみ行う。従来値一致の回帰テスト (`one_notch_applies_base_multiplier` / `saturates_at_upper_and_lower_bounds` / `clamp_zoom_matches_bounds`) を追加。
+  - **BL-065 バックグラウンドジョブ二重回収の一本化**: `poll_background_tasks` の host action ごとの二重回収を `prepare_present_frame` 側 (毎フレーム冒頭 1 回) へ一本化。
+  - 検証: workspace テスト 462 passed / 0 failed / 7 ignored (B3 の 438 から +24)、clippy 警告 0、wasm ビルド成功 (12 パネル)、起動スモーク 22 秒パニックなし。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+
+- **Phase 21 / B5 完了 (2026-06-13)**: ADR 018 — バッチ B5「土台再編 — app-core 解体」(挙動不変)。コミット a7c153b..710137d。**God オブジェクト `app-core` を完全解体しワークスペースから削除**し、責務別の水平土台 4 クレートへ分割 (workspace 27 → 30 メンバー: app-core 削除 −1、geometry/raster/document-model/editor-state 追加 +4 = 正味 +3)。各クレートは「再エクスポート段で新設 → 参照付け替え → 再エクスポート削除」の段階移行で導入した:
+  - **`geometry`** (BL-070): 座標型 (`WindowPoint` / `PagePoint` / `KomaLocalPoint` / `PanelSurfacePoint` 等) と矩形 (`WindowRect` / `PanelSurfaceRect`)、dirty rect 演算 (`accumulate_dirty_rect` / `union_optional_rect`) を提供。**ローカルクレート依存ゼロ** (`serde` のみ)。
+  - **`raster`** (BL-071): 汎用 RGBA8 ビットマップ `RgbaBitmap` (旧 `CanvasBitmap`、R11/R12 をここで実施)、ピクセルブレンドの単一実装 (`BlendMode` / `composite_pixel` / `source_over_coverage_pixel`)、ラスタライズ、ビットマップ編集差分 (`BitmapEdit` / `BitmapCompositor`)、`MAX_STAMP_STEPS` を提供。**依存は `geometry` のみ** (ドメインモデル・GPU 非依存)。
+  - **`document-model`** (BL-072): 作品ドメイン `Work` / `Page` / `Koma` / `RasterLayer` / `LayerMask`、変更入口 `DocumentCommand`、ロード後不変条件修復 `normalize_after_load`、コマグリッドレイアウト、レイヤー合成を提供。依存は `editor-state` / `geometry` / `raster`。
+  - **`editor-state`** (BL-073): エディタの一過性編集状態 `EditorSession`、ツール/ペン定義 (`ToolDefinition` / `PenPreset` / `ToolKind` 等)、`SessionCommand`、`tool_state`、ビュー操作ポリシー `view_policy` を提供。作品データに依存しない (循環回避のため document-model 非依存、`serde` のみ)。
+  - **Document↔EditorSession 分割** (BL-072): `Document` を作品コンテンツ (`Work` 中心) と編集セッション (`EditorSession`) に分離。
+  - **保存境界の分離** (BL-079): project ファイルは `Document` (作品) のみを保存し、`EditorSession` は session 永続化 (`desktop-support`) へ移す。
+  - **`canvas-geometry` の縮約**: `CanvasViewGeometry` 単一経路 (view↔page 座標写像 + `TextureQuad`) へ縮約し、`CanvasPlan` / overlay DTO は desktop へ移管 (依存は `geometry` / `editor-state` のみ)。
+  - **履歴の desktop 移管** (`apps/desktop/src/app/paint/`): 履歴を desktop へ移し `PaintPatch` enum (`Cpu` / `Gpu`) で型付き化、`OpaqueGpuData` (`Arc<dyn Any>`) + downcast を全廃。
+  - **`WorkspaceUiState` / `WorkspacePanelState` を `panel-workspace` へ移設** (BL-075)。
+  - **`composite_cache` 再計算をレイヤー変異の単一入口に集約** (BL-080)。
+  - コマ作成ジェスチャ・テキストラスタライズを paint-engine から desktop へ分離 (BL-081/082)、painting (`PaintInput` / `PaintPluginContext` / `PaintPlugin`) を paint-engine へ移設。
+  - 検証: workspace テスト 465 passed / 0 failed / 7 ignored (B4 の 462 から +3)、clippy 警告 0、wasm ビルド成功、依存制約クリア (document-model/editor-state は wgpu/winit/wasmtime/blitz 非依存、geometry はローカル依存ゼロ、raster は geometry のみ)。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+
+- **Phase 22 / B6 完了 (2026-06-13)**: ADR 018 — バッチ B6「パネル境界整理」。コミット 7aa81d3..38edc2e の 20 コミット (84 ファイル / +3,875 −2,532 行)。**パネル基盤を feature 非依存の水平土台として完成**させ、実バグ恒久修正 + 提示経路 unsafe 全廃を達成 (一部挙動変更を含む):
+  - **C9 panel-api 解体 + P1/P3 (BL-090)**: `panel-api` クレートを解体しワークスペースから削除 (members から除去、`crates/panel-api/` ディレクトリ消滅、コード内 `panel-api`/`panel_api` 参照ゼロ)。`PanelEvent` / `HostRequest` / `ServiceRequest` → panel-runtime、`ResizeHandle` / `PanelMoveDirection` → panel-workspace へ移設。`HostAction` を `HostRequest` へ改名 (P3) し `DispatchCommand` を `RequestDescriptor` ベース化、デッド variant を削除。`PanelPlugin` trait を撤去 (P1) し `PanelRuntime` は `Vec<HtmlWasmPanel>` を具象保持、downcast 5 箇所を撤去。`update` の個別引数 (can_undo 等) を `HostState` DTO に集約。
+  - **BL-091/092 facade 絞り込み + unsafe 全廃**: panel-runtime の `pub use panel_html as html` 素通しを廃止し desktop が必要とする最小面のみ選別再公開。`gpu_context_parts` 4 連 tuple を `HtmlSurfaceRenderer` ハンドル型へ、presenter へのテクスチャ受け渡しを `Arc<wgpu::Texture>` 化し **raw pointer + unsafe を全廃** (event_loop.rs 2 箇所・render_panels 1 箇所)。`rg unsafe apps/desktop crates/panel-runtime` の提示経路 unsafe は 0 件 (残存ヒットは「unsafe 撤去済み」を説明するコメントのみ)。
+  - **BL-093/094 HostState section registry 化**: 旧 `build_host_state` (230 行) を `HostStateRegistry` + per-section `HostStateSection { key, revision, build }` に解体。**キャッシュ無効化を内容 revision ベースに完全化** (旧件数+index キーの stale 配信バグの恒久対応)。パネルは meta.json で購読セクションを宣言し購読セクションの revision 変化時のみ再 render。host state からプレゼンテーション文字列 (「コマ {}」等) を排除し生データ化、ラベル整形はパネル側へ。
+  - **BL-095/101/105 meta.json defaults + ビルトイン ID ハードコード全廃**: パネル既定値 (anchor/position/hidden_by_default/always_visible/preset/購読トピック) を `panel.meta.json` へ宣言移動。`WORKSPACE_PANEL_ID` 特別扱い・`default_workspace_preset_catalog` のビルトイン ID ハードコード・`TOOL_PANEL_IDS` を全廃し、meta の購読宣言で解決 (production の panel-workspace / desktop 水平層にビルトイン ID 文字列が存在しない。残存は input 層の Ctrl+N→app-actions 起動 1 箇所 (BL-063 既知の意図的バインド) とテスト/カタログ定義のみ)。ホストの config スキーマ直書き ("template_options" 等) を panel-protocol の型付き config キー定数へ、dropdown_option の "WxH:Label" 文字列契約を構造化 JSON 配列へ置換。
+  - **BL-096 パネルジオメトリ統合**: 3 本の並列 BTreeMap を `PanelGeometry { full_rect, move_handle_rect, body_rect, node_hits }` 1 map + 原子的 `update_panel_geometry` / `remove_panel_geometry` API へ。chrome/body 分割計算を panel-workspace 側へ。
+  - **BL-097/098 config 変化検知一本化 + Box::leak 撤去**: persistent config 変化検知 3 重実装を runtime の対象パネル単体比較へ一本化。`id()/title()` の `&'static str` 要求を `&str` へ緩和し Box::leak を廃止。
+  - **BL-099/100 panel-html からの規約返上 + 内部分割**: chrome タイトルバー描画 (テーマ色) と details/data-action 規約知識を panel-html から panel-runtime 側へ返上。`HtmlPanelView` を責務別 4 モジュール (DOM 管理 / layout+サイズ / GPU 提示 / action 矩形収集) へ分割。
+  - **BL-102 diagnostics 消費経路 + P6**: `HandlerEffects.diagnostics` を `emit_handler_diagnostics` で診断ログ (stderr) へ必ず流す経路を追加 (パネル内エラー黙殺廃止、消費件数をテストで検証)。`PanelEventRequest` を `HostCallInput` (state/host_state/event_payload を持つ呼出しコンテキスト) へ再設計し sync_host の疑似イベント捏造を解消 (P6、挙動変更)。
+  - **BL-103/104 protocol 定数集約 + DomCtx unsafe 集約**: DiagnosticLevel↔i32・export/import 名・"value" キー規約を panel-protocol abi モジュールへ集約。DomCtx の unsafe 不変条件を `with_document(caller, |doc| ...)` 1 箇所へ集約。
+  - **BL-051 回帰テスト**: 右/下アンカーパネルの矩形解決テスト (`panel_rect_resolves_bottom_right_anchor_within_viewport` ほか panel-workspace tests) が green (旧 viewport なし版の usize::MAX フォールバックによる画面外座標バグの回帰防止)。BL-095 ゴールデンテスト (`reconcile_applies_declared_layout_defaults`) と bootstrap 既定配置ゴールデン (`bootstrap_tests.rs`) が green。
+  - 検証: workspace テスト 493 passed / 0 failed / 7 ignored (B5 の 465 から +28)、clippy 警告 0、wasm ビルド成功 (12 パネル)、起動スモーク 22 秒パニックなし (12 パネル既定配置で表示)、依存制約クリア (panel-protocol は serde/serde_json のみ、panel-runtime の document-model/editor-state 依存は host_state/translator の正当な参照)。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+
+- **Phase 23 / B7-part1 完了 (2026-06-13)**: ADR 018 — バッチ B7「desktop 垂直分割」の前半 (クレート解体)。コミット 51a8844..0ba85da。**God クレート `storage` / `desktop-support` を解体しワークスペースから削除**し、再利用可能な永続化/計測コアを独立クレートへ、desktop 固有の I/O・ダイアログ・パス・session/preset を desktop 内部の `platform/` / `features/` 垂直スライスへ移管した (workspace 29 → 30 メンバー: storage 削除 −1・desktop-support 削除 −1・project-store/pen-io 追加 +2・frame-profiler 追加 +1 = 正味 +1):
+  - **`project-store` 切り出し**: 旧 `storage` の SQLite project save/load (`save_project_to_path` / `load_project_from_path` / `ProjectManifest` / `ProjectStoreError` / koma 部分読込 / zstd チャンク / `koma_composites`) を独立クレート化。ローカル依存は `document-model` / `panel-workspace` / `raster` のみで **wgpu/winit 非依存**。
+  - **`pen-io` 切り出し**: 旧 `storage` のペンプリセット読込 / import/export (`StoredPenEngine` / `pen_format.rs` の runtime↔storage 変換) を独立クレート化。ローカル依存は `editor-state` のみで **wgpu/winit 非依存**。
+  - **`frame-profiler` 切り出し**: 旧 `desktop-support` のフレーム計測 (`FrameProfiler`) を独立クレート化 (ローカル依存ゼロ)。レポート文字列の整形責務は desktop 側へ分離。
+  - **desktop-support 解体 → desktop 内部へ**: PNG export → `features/export`、ツールカタログ読込 → `features/tools`、session save/load・canvas size preset → `features/project`、workspace preset → `features/workspace`、共通 JSON 設定ローダ → `features/json_store.rs`、native dialog / テーマ → `platform/`。
+  - **パス解決の dirs 化 (BL-113)**: 永続化パスを CWD 相対 (session/preset) と `CARGO_MANIFEST_DIR` 相対 (同梱アセット) から **`dirs::data_dir()/altpaint` ベース**へ変更 (配布バイナリで書込み不能/不在ディレクトリを指す破綻を解消)。同梱アセットは実行ファイル隣接を優先し、開発時のみソースツリー相対へフォールバック (OS 固有 cfg は書かず `dirs` が OS 差異を吸収)。`platform/paths.rs::resolve_user_data_dir` / `resolve_asset_dir` を純関数化してユニットテスト。
+  - 検証: workspace テスト 500 passed / 0 failed / 7 ignored、clippy 警告 0、wasm ビルド成功 (12 パネル)、起動スモーク 約 22 秒パニックなし、構造検証 (storage/desktop-support クレート消滅・コード内 `storage`/`desktop-support` 参照 0 件 [docs 除く]・`platform/` と `features/` 存在)、cargo tree 確認 (project-store / pen-io ともに wgpu/winit 非依存)。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+
+- **Phase 23 / B7-part2 (features 完全移行) (2026-06-14)**: ADR 018 — バッチ B7「desktop 垂直分割」の後半 (features/ スライス完成)。**`app/services/*` の 10 連 if-let チェーンを名前空間 registry へ置換**し、各サービスハンドラを feature 垂直スライスへ移設した (挙動不変):
+  - **BL-111 service registry 化**: `app/services/registry.rs` の `SERVICE_HANDLERS` (各 feature ハンドラの fn ポインタ表) を導入し、`execute_service_request` を registry 順次試行へ置換。新 feature 追加は registry へ 1 行追加するだけで済む。
+  - **feature 移設**: text (`features/text/` = raster + service / BL-082)、snapshots (`features/snapshots/` = store + service / D16)、export (`features/export/` = png + service)、tools (`features/tools/` = catalog + default_catalog + service)、view (`features/view/`)、koma (`features/koma/` = gesture + service / BL-081)、workspace (`features/workspace/` = presets + service + layout_service)、project (`features/project/service.rs` = I/O 部) を移設。
+  - **D9 ペイント/I/O 分離**: `services/project_io.rs` のペイント実行+履歴部 (8 割) を `features/paint/execute.rs` へ、I/O 部 (save/load、2 割) を `features/project/service.rs` へ分離。`PendingStroke` は paint feature が所有。`app/paint/`・`app/paint_preview.rs` も `features/paint/` へ。
+  - **D10 command_router 分離**: `command_router.rs` を「ルーティング」(apply 入口) と「宣言的副作用表」(`command_effects.rs` の `document_command_effects` / `session_command_effects`) に分離。
+  - **D14 panel_dispatch 分割**: `panel_dispatch.rs` を幾何ステートマシン (`features/panel_interaction/state.rs` = drag/resize/press) とルータ (`app/host_request_router.rs`) に分割。
+  - **D12 io_state 分離**: `DesktopIoState` を `ProjectPaths` (`app/project_paths.rs`、パス状態) と `DesktopApp` 直下の `dialogs` ポートに分離。
+  - **能力境界の pub(crate) 化**: DirtyMarker (append_*_dirty_rect / sync_ui_* / rebuild_present_frame / mark_status_dirty / request_panel_reconcile* / invalidate_document_structure)・SessionPersister (persist_session_state / session_state)・GpuLayers 系・paint 系 (apply_bitmap_edits / refresh_cpu_canvas_snapshot / clear_edit_history) を features から呼べるよう pub(super) → pub(crate) に拡張 (能力 trait の正式導入は後続)。
+  - **BL-110 後半 DesktopApp フィールド private 化**: `event_loop` の `DesktopApp` 直接フィールドアクセスを `app/present_api.rs` のメソッド境界へ置換 (current_zoom / layout / forward_panel_input / mark_all_panels_dirty / install_panel_gpu_context / render_visible_panels / canvas_gpu_source_spec / render_status_bar)。RedrawRequested アーム内の panel 描画・GPU ソース解決・ステータスバー描画の複数フィールド借用順序を app 側メソッドへ封じ込めた。feature ハンドラ (`features/*` の `impl DesktopApp`) が co-own する状態 (document / panel_runtime / panel_workspace / paths / dialogs / workspace / paint / layout / snapshots / panel_interaction / gpu) は `pub(crate)` を維持し、feature から参照されない app 内部状態 (koma_gesture / status_bar / invalidation / background_jobs) は可視性指定なし (app モジュール内のみ) へ縮小。DesktopApp は subsystem を保持・配線する composition root に縮小。
+  - **BL-118 prepare_present_frame フェーズ分割**: 単一 165 行関数を `present_phase_layout` (背景タスク回収 + レイアウト再計算) / `present_phase_panel_sync` (workspace パネル一覧注入 + dirty パネル同期) / `present_phase_hit_tables` (hit/move handle テーブル更新 + パネル再整合) / `present_phase_invalidation_drain` (保留 dirty rect・再構築フラグ消化 → `PresentFrameUpdate` 確定) の 4 フェーズに分割。処理順・副作用・profiler 計測点は不変。
+  - **BL-117 GPU 同期粒度の宣言化**: 「選択変更で全ページ全コマ全転送が走る」性能問題を解消。`GpuSyncGranularity` enum (None / RecompositeActiveKoma / ActiveKomaLayers / Full) を導入し、`command_effects` で `DocumentCommand` 種別ごとに必要な GPU 同期粒度を宣言的に分類 — コマ/レイヤー選択・リネームは None (テクスチャ不変・同期不要)、blend mode 循環は RecompositeActiveKoma、レイヤー追加/削除/並べ替えは ActiveKomaLayers (当該コマだけ差分同期)、コマ集合変更・新規ドキュメントのみ Full。gpu-paint に差分同期 API (`LayerTextureStore::sync_koma_layers` + `LayerUpload` DTO + `layer_count_for_koma`) を追加し、desktop の `sync_all_layers_to_gpu` を per-koma の `sync_koma_layers_to_gpu` へ分解 + `sync_active_koma_layers_to_gpu` (差分) を新設。frame-profiler 計測下地として `gpu_sync_full_count` / `gpu_sync_differential_count` をフレーム区間ごとに記録 (B8 前後比較用)。挙動は同値 (GPU 転送量のみ削減)、選択変更後の GPU テクスチャ不変・差分同期が別コマに触れないことを実 GPU 回帰テストで担保。
+  - 検証: desktop テスト 193 passed / 0 failed / 6 ignored、gpu-paint 23 passed (差分同期テスト +1)、workspace 505 passed / 0 failed / 7 ignored、clippy 警告 0 (全ターゲット)、挙動不変 (BL-117 は GPU 転送量のみ改善)。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+
+- **Phase 23 / B7 バッチ完了 (part1 + part2) (2026-06-14)**: ADR 018 — バッチ B7「desktop 垂直分割と残存クレート解体」を全体として完了。設計書 §4 B7 完了条件を満たすことをバッチ検証で確認した:
+  - **垂直スライス確立**: `apps/desktop/src/features/` 配下に 11 スライス (`paint` / `project` / `export` / `workspace` / `tools` / `koma` / `view` / `snapshots` / `text` / `panel_interaction` / `status_bar`) + 横断ローダ `json_store.rs` が存在。各スライスが「サービスハンドラ + サブ状態 + 翻訳器」を所有し、新 feature 追加時の水平横断編集を不要化。
+  - **残存 God クレート解体完了**: `crates/desktop-support` / `crates/storage` がワークスペースから消滅 (part1 で実施、本バッチで再確認)。永続化/計測コアは `project-store` / `pen-io` / `frame-profiler` の独立クレートへ、desktop 固有 I/O は `platform/` / `features/` へ移管済み。
+  - **service registry 化**: `app/services/registry.rs` の `SERVICE_HANDLERS` (10 feature ハンドラの fn ポインタ表) + `execute_service_request` の単一ループにより、旧 10 連 if-let チェーンが構造的に消滅。
+  - **presenter 分割 (D2 / BL-116)**: 旧 2218 行単一ファイル `wgpu_canvas.rs` が消滅し、`presenter/` (`frame.rs` 558 行 / `mod.rs` / `shaders.rs` / `textures.rs` / `theme.rs` / `pipelines/`) へ分割。
+  - **event_loop 縮小 (BL-115)**: `event_loop.rs` (287 行) の `RedrawRequested` アームは `render_frame` (compose_frame + presenter.render) への委譲 7 行へ縮小 (旧 270 行アームを抽出)。
+  - **DesktopApp 縮小 (BL-110)**: フィールドはすべて `pub(crate)` 以下 (fully-`pub` フィールドゼロ)。feature が co-own する状態は `pub(crate)`、app 内部状態 (koma_gesture / status_bar / invalidation / background_jobs) は可視性指定なし。`event_loop` はメソッド境界経由でアクセスし直接フィールド参照ゼロ。DesktopApp は subsystem を保持・配線する composition root に縮小。
+  - バッチ検証: cargo test --workspace 504 passed / 0 failed / 7 ignored、clippy 警告 0 (全ターゲット)、wasm ビルド成功 (12 パネル)、起動スモーク 20 秒パニックなし、構造検証 (desktop-support/storage 消滅・features/ 11 スライス・registry・presenter 分割・wgpu_canvas.rs 消滅・DesktopApp フィールド private) 全通過、B7 コミット 29 件 (`refactor(B7):` / `docs(B7):` 形式統一)。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+
+- **Phase 24 / B8 完了 (2026-06-14)**: ADR 018 — バッチ B8「描画パイプライン再設計」。コミット b4c7f97..774af16 の 11 コミット + 検証修正 1 件。**CPU/GPU 混在を解消し `PaintPlan` / `PaintBackend` 境界を確立、GPU 専用経路を完成**させた:
+  - **PaintPlan 導入 (BL-130)**: `paint-engine::plan_paint` が `PaintInput` を解決し **画素を一切作らずに** 純データ計画 `PaintPlan`（`PaintOp::{Stroke{stamps,radius,color,mode}, FloodFill{seed,color,target_layer}, LassoFill{polygon,color,target_layer}}` + `dirty`）を生成する。GPU 経路の「全画素 CPU 生成→捨てる」と flood fill の計画段階での全面 visited 走査を廃止 (visited 解決は GPU ピンポンマスク)。`crates/paint-engine/src/plan.rs`。
+  - **PaintBackend 体系 (BL-131 / R5)**: `apps/desktop/src/features/paint/backend/` に `PaintBackend` trait + `CpuPaintBackend`（CPU ops 参照実装）/ `GpuPaintBackend`（`gpu-paint` の `BrushPipeline`/`FillPipeline` へ機械変換し compute shader dispatch）を実装。CPU/GPU 二重実装 (旧 `execute_paint_input` 3 分岐 / `execute_gpu_fill` / `commit_stroke`) を 1 境界へ閉じた。登録 1 個固定の形骸 `PaintPlugin` trait + registry は撤去 (R5)。
+  - **CPU/GPU 統合 + encoder 集約 (BL-133)**: `BrushPipeline::dispatch_stroke(&mut encoder, ...)` は compute pass を積むだけで submit せず、ストローク区間の brush + composite を 1 encoder へまとめ 1 submit へ集約 (params/positions バッファをストローク区間で使い回す)。lasso fill も mark+apply を 1 submit へ統合。
+  - **StrokeMode (R21)**: `BrushStrokeParams.tool_kind`（アプリ層 ToolKind の GPU 漏出）を `mode: StrokeMode { Paint, Erase }` へ置換。
+  - **gpu モジュール分割 (BL-135 / R22 / K11後段)**: `gpu-paint` の `gpu` モジュールを `context` / `texture` / `store` / `snapshot` / `readback` / `mask` の 6 モジュールへ分割、キーを `KomaTextureId(pub u64)` 型付き化。
+  - **ToolDescriptor (BL-134)**: `editor-state::ToolDescriptor` がツール種別から gesture 種別 / 合成モード / サイズ解決を導出し、paint-engine / desktop の `ToolKind` クローズド match 散在を吸収。
+  - **GPU 非必須を維持 (BL-136)**: `CpuPaintBackend` を GPU 初期化失敗時のフォールバックとして残し、`CpuCanvasSnapshot`（旧 `CanvasFrame`）を表示経路へ統合。GPU 必須化はしない。`paint_params` モジュール撤去 (BL-023) で `MAX_STAMP_STEPS` は `raster` のみに定義。
+  - 検証 (claude-opus-4-8[1m] によるバッチ検証): cargo test --workspace 0 failed (desktop 197+1 / paint-engine 54 / gpu-paint 23 / 他)、clippy 警告 0 (全ターゲット)、wasm ビルド成功 (12 パネル)、起動スモーク 25 秒パニックなし、gpu-paint 実 GPU テスト 23 passed (NVIDIA/Vulkan)、CPU/GPU ゴールデン等価テスト green、ストローク中 CPU 画素非生成テスト (flood fill 含む) green。ストロークレイテンシは構造的に悪化しない (CPU 全画素生成廃止 + submit 集約 + GPU 同期差分化)。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+- **Phase 25 / B9 完了 (2026-06-14)**: ADR 018 — バッチ B9「パネル API 再設計」。SDK の発行 API・wire 名前空間・runtime 分割を先行実施し、12 パネルを typed payload + typed DTO + SDK 水平ヘルパへ移行してパネル作者向け表面を最終形にした:
+  - **wire 名前空間統一 (P31 / BL-140)**: services の wire 名前空間サフィックス無規約を解消し 1 操作 1 名前へ統一 (`project_io.`→`project.` / `workspace_io.`→`workspace.` / `view_service.`→`view.` / `text_render.`→`text.`)。定義の正本 `panel-protocol::names` の定数値とピン留めテストを書換え、`panel-runtime` の translator registry prefix 登録を追随。SDK/desktop は定数参照のため自動追随。UI レイアウトの `workspace_layout.` と `tool_catalog.` / `koma_nav.` は別操作群/正準形として温存。
+  - **SDK runtime 分割 + emit_request (BL-147 / P27)**: `panel-sdk` の単一 `runtime.rs` を関心別 4 サブモジュール (`abi` / `state` / `events` / `diagnostics`) へ分割し、wasm/native 対を `abi::wasm_or_native!` 宣言マクロで畳んだ。`emit_request(&RequestDescriptor)` を request 発行の単一 API として確立 (command/service の区別は host 側 translator registry の静的振り分けに委ねる)。旧 `emit_command`/`emit_service`/`emit_*_descriptor` は `emit_request` の薄い別名として移行期間のみ残置 (12 パネル移行完了時に撤去)。
+  - **typed payload + typed DTO (BL-141 / BL-142)**: `#[panel_handler]` を引数 1 個の serde `Deserialize` 構造体対応に拡張し `event_string` 暗黙読みを廃止。host state は 1 値 1 往復の文字列 path ABI からセクション JSON 1 回取得 + serde の typed DTO (`ToolState` / `LayerState` / `DocumentState` 等) へ。12 パネルを順次移行 (1 パネル 1 コミット)。
+  - **SDK 水平 DOM ヘルパ + shortcut レジストリ (BL-143 / BL-144)**: `dom::{set_text, set_visible, set_button_active, set_slider, render_options, render_action_list}` (HTML escape 内蔵) を SDK へ吸い上げ、12 パネルのコピペを削除。`shortcut::{ShortcutRegistry, Outcome}` で tool-palette / app-actions の二重状態機械を置換。
+  - **ABI 改名 + エントリポイントテスト (BL-146 / P26 / BL-150)**: `panel_sync_host` ABI を `panel_on_host_change` へ改名。`assert_entrypoints!` マクロで 12 パネルのコピペテストを置換。
+  - **state 2 層化 + 命名統一 (BL-145 / P33)**: state キーを `session.*` / `config.*` の 2 層へ (素キー廃止)。`set_text_node` → `dom::set_text` へ命名統一。
+  - **layers 安定 id 化 (BL-148)**: `LayerState` DTO に `RasterLayer.id` を含め、選択・並べ替え request を表示順 index ではなく安定 id 指定に。index 反転をホスト側 (`host_state.rs`) 1 箇所へ集約しパネル側の二重反転を撤去。
+  - **emit 一本化 + Tool enum 撤去 (P27 / P28、バッチ検証で完了)**: `emit_request` への一本化を完了し旧 `emit_command` / `emit_service` / `emit_*_descriptor` を撤去。SDK `Tool` enum + wire `tool.set_active` を撤去し、ツール起動を catalog id ベース `commands::tool::select_tool(tool_id)` (`tool.select`) に一本化 (tool-palette 専用ボタンは slot→catalog id 変換経由)。
+  - バッチ検証 (claude-opus-4-8[1m]): cargo test --workspace 0 failed、clippy 警告 0 (panel-sdk は native + wasm 両ターゲット)、`.\scripts\build-ui-wasm.ps1` 成功 (12 パネル)、起動スモーク 22 秒パニックなし (GPU=Vulkan/RTX2070、ICU4X ja-segmentation 警告は無害)、構造検証 grep (`event_string` が panel コードに 0 件 / 旧 wire サフィックスリテラル 0 件 / `emit_command`・`emit_service` コード消滅 / SDK DOM 水平ヘルパ存在 / `panel_on_host_change` ABI / SDK `Tool` enum 消滅 / shortcut レジストリを tool-palette・app-actions が使用 / layers が安定 id ベース) 全通過。検証修正コミット 1 件 (P28 完了)。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
+- **Phase 26 / B10 完了 — 大規模リファクタリング全完了 (2026-06-14)**: ADR 018 — バッチ B10「文書全面改稿と最終クリーンアップ」+ BL-149。**B0〜B10 の全バッチ完了をもって ADR 018 (用語体系の確立と垂直スライス再編) を確定**した。
+  - **文書全面改稿 (BL-160〜163, 165)**: `docs/ARCHITECTURE.md` / `docs/MODULE_DEPENDENCIES.md` を最終 30 メンバー構成 (水平土台 / パネル基盤 / 垂直 feature の 3 層) で全面改稿、`docs/RENDERING-ENGINE.md` を現行 GPU 経路 (`PaintInput`→`plan_paint`→`PaintPlan`→`PaintBackend`→compute dispatch) へ書き直し、`docs/SKETCH.md` をアーカイブ明示、`CLAUDE.md` / `docs/builtin-plugins/PLUGIN_DEVELOPMENT.md` をパネル API 最終形へ更新。
+  - **ADR 確定 + 仮想 feature ウォークスルー (BL-164)**: 用語体系・Koma 採用理由・最終クレート構成・wire 名定数の `panel-protocol::names` 例外・GPU 非必須 (BL-136)・即時合成維持 (BL-080)・perf in/out 基準・不採用リストを確定記録。§1.1 原則 2 の受け入れ検証として「レイヤー不透明度スライダー」を例に touch point を列挙 — **正直な結論**: service 系 feature は wire 名の additive 追記 + 自スライス + 自パネルに閉じる (原則成立)、一方ドキュメントモデル属性追加型 feature は `DocumentCommand` / `document.rs::apply` / `translate_layer` / `LayerState` / `DocumentSection` の 5 水平箇所への横断編集が必要 (layer 操作を水平 document-model に集約した設計選択の帰結。ROADMAP 改善候補として明記)。
+  - **BL-149 (サイズ記憶ホスト移管)**: 当初「繰り越し」としたが再評価でクリーンに実装可能と判断し実施。tool-palette の `config.size_memory` blob とローカルなキー/ペン index 計算を撤去し、`EditorSession.per_tool_sizes` (`#[serde(default)]`) へ単一真実化。`SessionCommand::{SelectTool, SelectNextPenPreset, SelectPreviousPenPreset}` に `remember_size: bool` を追加し、記憶の*要否判断*はパネル / *メカニズム*はホストへ分離。挙動不変 (TDD: editor-state 4 / desktop 1 / panel-runtime 1)。
+  - **最終監査**: cargo test --workspace **568 passed / 0 failed / 9 ignored**、clippy 警告 0、`cargo build --release --workspace` 成功、`.\scripts\build-ui-wasm.ps1` 成功 (12 パネル)、起動スモーク パニックなし。依存グラフ否定形チェック全通過 (`document-model`/`editor-state` に wgpu/winit/wasmtime/blitz なし、`geometry` ローカル依存ゼロ、`raster` は `geometry` のみ、`panel-protocol` は serde/serde_json のみ、`panel-runtime` は垂直 feature 非参照)。用語 grep 監査: 旧クレート名・旧型名のコード内残存は歴史コメントのみ。
+  - **最終到達点**: ワークスペース 30 メンバー、リファクタリング全体で約 250 コミット。`app-core` / `panel-api` / `storage` / `desktop-support` / `builtin-panels` umbrella を解体。用語体系 (Koma/panel/page/canvas/paint/frame/host state/snapshot/runtime/session) を確立。Command 二重ディスパッチ解消、描画パイプライン再設計 (PaintPlan→PaintBackend)、パネル API 再設計 (typed payload/emit_request/SDK 水平ヘルパ)、unsafe 全廃、既知バグ 3 件修正。水平土台 (geometry/raster/document-model/editor-state/canvas-geometry/frame-profiler) と垂直 feature (paint-engine/gpu-paint/project-store/pen-io + desktop features/ 11 スライス + ビルトインパネル 12) の構造を確立。詳細: `docs/adr/018-naming-and-vertical-slice-rearchitecture.md`。
 
 ## 現在の workspace 構成
 
 ### 中核 crate
 
-- `app-core`
-- `canvas`
-- `render-types`
-- `storage`
-- `desktop-support`
-- `panel-api`
+- `geometry`（ADR 018 B5 で app-core から分割。座標型・矩形・dirty rect 演算、ローカル依存ゼロ）
+- `raster`（ADR 018 B5 で app-core から分割。`RgbaBitmap`・ブレンド・ラスタライズ・`BitmapEdit`、`geometry` のみ依存）
+- `document-model`（ADR 018 B5 で app-core から分割。`Work`/`Page`/`Koma`/`RasterLayer`・`DocumentCommand`・`normalize_after_load`）
+- `editor-state`（ADR 018 B5 で app-core から分割。`EditorSession`・`ToolDefinition`/`PenPreset`・`SessionCommand`・`view_policy`）
+- `paint-engine`（旧 `canvas`、ADR 018 B2 で改名）
+- `gpu-paint`（旧 `gpu-canvas`、ADR 018 B2 で改名）
+- `canvas-geometry`（旧 `render-types`、ADR 018 B2 で改名。B5 で `CanvasViewGeometry` 単一経路へ縮約）
+- `project-store`（ADR 018 B7-part1 で旧 `storage` から SQLite project 永続化を切り出し。`document-model`/`panel-workspace`/`raster` 依存、wgpu/winit 非依存）
+- `pen-io`（ADR 018 B7-part1 で旧 `storage` からペンプリセット I/O を切り出し。`editor-state` のみ依存、wgpu/winit 非依存）
+- `frame-profiler`（ADR 018 B7-part1 で旧 `desktop-support` からフレーム計測を切り出し。ローカル依存ゼロ）
 - `panel-runtime`
-- `ui-shell`
-- `workspace-persistence`
-- `plugin-host`
-- `panel-dsl`
-- `panel-schema`
-- `plugin-macros`
-- `plugin-sdk`
-- `apps/desktop`
-
-### workspace member の built-in panel plugin
-
-- `plugins/app-actions`
-- `plugins/workspace-presets`
-- `plugins/tool-palette`
-- `plugins/view-controls`
-- `plugins/panel-list`
-- `plugins/layers-panel`
-- `plugins/color-palette`
-- `plugins/pen-settings`
-- `plugins/job-progress`
-- `plugins/snapshot-panel`
-- `plugins/text-flow`
+- `panel-workspace`（旧 `ui-shell`、ADR 018 B2 で改名）
+- `panel-wasm-host`（旧 `plugin-host`、ADR 018 B2 で改名）
+- `panel-protocol`（旧 `panel-schema`、ADR 018 B2 で改名）
+- `panel-macros`（旧 `plugin-macros`、ADR 018 B2 で改名）
+- `panel-sdk`（旧 `plugin-sdk`、ADR 018 B2 で改名）
+- `panel-html`
+- `apps/desktop`（package `altpaint-desktop`、bin `altpaint`、ADR 018 B2 で改名）
 
 補足:
 
-- `tools/experimental/phase6-sample` へ DSL/WAT sample を移し、既定 `plugins/` 探索対象から外した。
+- 旧 `app-core` クレートは Phase 21 (ADR 018 B5) で完全解体し、`geometry` / `raster` / `document-model` / `editor-state` の水平土台 4 クレートへ分割してワークスペースから削除した。本文書の B5 以前の現況節 (「実装済みの主要領域」以下) に現れる `app-core` / `Command` / `CanvasBitmap` / `CanvasRuntime` などの旧名は当時の記述としてそのまま残す (最新の依存関係と名称は `docs/MODULE_DEPENDENCIES.md` が正本)。
+- 旧 `builtin-panels` umbrella crate は Phase 15 (ADR 017) で `panel-runtime::loader` へ統合し削除した。
+
+### workspace member の built-in panel plugin (Phase 10 で `crates/builtin-panels/` 配下に移行)
+
+- `crates/builtin-panels/app-actions`
+- `crates/builtin-panels/workspace-presets`
+- `crates/builtin-panels/tool-palette`
+- `crates/builtin-panels/view-controls`
+- `crates/builtin-panels/koma-list`
+- `crates/builtin-panels/layers`
+- `crates/builtin-panels/color-palette`
+- `crates/builtin-panels/tool-settings`
+- `crates/builtin-panels/job-progress`
+- `crates/builtin-panels/snapshots`
+- `crates/builtin-panels/text-flow`
+- `crates/builtin-panels/workspace-layout` (Phase 12 で追加、ADR 014)
+
+補足:
+
+- 旧 DSL/WAT sample (`tools/experimental/phase6-sample`) は参照ゼロのため Phase 14 (ADR 016) で削除した。
 
 ## 実装済みの主要領域
 
@@ -112,7 +245,7 @@
 `app-core` には次がある。
 
 - `Document`
-- `Work`, `Page`, `Panel`, `LayerNode`, `RasterLayer`
+- `Work`, `Page`, `Koma` (旧 `Panel`、ADR 018 B1 で改名), `RasterLayer`
 - `Command`
 - `CanvasBitmap`
 - `CanvasViewTransform`
@@ -121,7 +254,13 @@
 - `WorkspaceLayout`
 - `BitmapEdit` / `PaintInput` / compositor などの共有 paint primitive
 
-現状の状態変更の中心は `Document::apply_command(...)` である。
+現状の状態変更の中心は `Document::apply(&DocumentCommand)` (純粋なドキュメント変異) と
+`Document::apply_session_command(&SessionCommand)` (ツール/色/ペン/ビューのセッション変更) である。
+B4 (BL-060) で旧 `Command` enum を 2 分割し、I/O 系 variant (保存・読込・preset 入出力・
+新規作成・undo/redo) は enum から削除して `ServiceRequest` 経路 (`execute_service_request`) に
+一本化した。desktop 側では `apply_document_command` / `apply_session_command` が
+ドキュメント/セッション適用と UI 同期を担い、旧 `execute_command` の二重ディスパッチ
+(apply_command no-op → command_router 再変換) は解消済み。
 
 補足:
 
@@ -131,9 +270,9 @@
 
 `canvas` には次がある。
 
-- `CanvasRuntime`
+- `PaintEngine`
 - `CanvasInputState`
-- `CanvasPointerEvent` と view-to-canvas 変換
+- view-to-canvas 変換は `canvas-geometry::map_view_to_canvas_with_transform` を直接呼ぶ (BL-042 でラッパー `view_mapping.rs` / `CanvasPointerEvent` を廃止)
 - `advance_pointer_gesture(...)` による gesture state machine
 - `build_paint_context(...)` による `Document` からの runtime 文脈構築
 - built-in bitmap paint plugin
@@ -166,16 +305,19 @@
 
 現在の panel stack は次で構成される。
 
-- `panel-api`: `PanelTree`, `PanelNode`, `PanelEvent`, `HostAction`, `ServiceRequest`
-- `panel-dsl`: `.altp-panel` parser / validator / normalized IR
+- `panel-api`: `PanelEvent`, `HostAction`, `ServiceRequest` (Phase 12 で `PanelTree` / `PanelNode` / `PanelView` を完全撤去)
 - `panel-schema`: host-Wasm 間 DTO
-- `plugin-sdk`: plugin 作者向け SDK、typed service request builder、macro 再 export
+- `plugin-sdk`: plugin 作者向け SDK、typed service request builder、macro 再 export、`dom` モジュール (DOM mutation API)
 - `plugin-macros`: `plugin-sdk` が再 export する proc-macro 実装
-- `plugin-host`: `wasmtime` ベース runtime
-- `panel-runtime`: panel discovery / DSL-Wasm bridge / host snapshot sync / persistent config
-- `ui-shell`: panel presentation / workspace layout / focus / hit-test / surface render
+- `plugin-host`: `wasmtime` ベース runtime + `dom` host functions (Blitz `DocumentMutator` を Wasm に公開)
+- `panel-html`: `HtmlPanelEngine` (Blitz HTML/CSS + parley + vello、旧名 panel-html-experiment)
+- `panel-runtime`: `BuiltinPanelPlugin` / panel registry / host snapshot sync / persistent config /
+  同梱 12 パネルの `register_builtin_panels` loader / panel-api・panel-html の facade 再公開 (ADR 017)
+- `ui-shell`: panel presentation / workspace layout / focus / hit-test
 
 ### 5. 永続化
+
+注 (ADR 018 B7-part1, 2026-06-13): 下記の `storage` / `desktop-support` は解体済みで、本節は B2 以前に書かれた旧スナップショットである (全面改稿は B10)。現在の正本は `docs/MODULE_DEPENDENCIES.md`。project 永続化は `project-store`、ペンプリセット I/O は `pen-io`、フレーム計測は `frame-profiler` が担い、session / canvas size preset / workspace preset / native dialog / パス解決は desktop の `features/` / `platform/` へ移管した (パス解決は `dirs` ベース)。
 
 `storage` には次がある。
 
@@ -198,10 +340,10 @@
 - canvas template 読込
 - workspace preset catalog の読込 / 保存
 
-`workspace-persistence` には次がある。
+`app-core::workspace` には次がある (Phase 14 / ADR 016 で旧 `workspace-persistence` から統合)。
 
 - project / session で共有する `WorkspaceUiState`
-- `plugin_configs`
+- `plugin_configs` (`PluginConfigs`)
 
 ### 6. built-in panel 群
 
@@ -211,16 +353,16 @@
 - `builtin.workspace-presets`
 - `builtin.tool-palette`
 - `builtin.view-controls`
-- `builtin.panel-list`
-- `builtin.layers-panel`
+- `builtin.koma-list`
+- `builtin.layers`
 - `builtin.color-palette`
-- `builtin.pen-settings`
+- `builtin.tool-settings`
 - `builtin.job-progress`
-- `builtin.snapshot-panel`
+- `builtin.snapshots`
 
 補足:
 
-- これらは `plugins/` 配下に `.altp-panel` と Rust/Wasm 実装を同居させる構成で揃っている。
+- これらは `crates/builtin-panels/<name>/` 配下に `panel.html` + `panel.css` + `panel.meta.json` + Rust/Wasm 実装を同居させる構成で揃っている (Phase 10 で `.altp-panel` DSL から移行)。
 
 ### 7. ツールとペン
 
@@ -228,8 +370,8 @@
 
 - `storage::tool_catalog` が `tools/` から tool 定義を読む
 - `Document` が active tool と設定を保持する
-- `tool-palette` と `pen-settings` が host snapshot を読む
-- `app-actions` / `workspace-presets` / `view-controls` / `panel-list` が host service request を発行する
+- `tool-palette` と `tool-settings` が host snapshot を読む
+- `app-actions` / `workspace-presets` / `view-controls` / `koma-list` が host service request を発行する
 - paint plugin 実行は `canvas::CanvasRuntime` が担当する
 - `storage` が外部ペン preset を読み、`AltPaintPen` 正規化 format を扱う
 
@@ -574,8 +716,7 @@
 
 - `apps/desktop/src/app/panel_dispatch.rs`
   - `drag_panel_interaction()` の `PanelDragState::Move` ブランチ: `move_panel_to()` の前に `panel_presentation.panel_rect()` で以前の矩形をキャプチャし、変更後に `append_canvas_host_dirty_rect(rect)` を呼ぶ
-  - `execute_host_action()` の `HostAction::MovePanel`: 同様に `panel_rect()` キャプチャ + `append_canvas_host_dirty_rect()`
-  - `execute_host_action()` の `HostAction::SetPanelVisibility`: 同様に `panel_rect()` キャプチャ + `append_canvas_host_dirty_rect()`
+  - BL-062 以降、パネル移動/非表示は `workspace_layout.move_panel` / `workspace_layout.set_panel_visibility` サービス (`services/workspace_layout.rs`) に一本化され、そこで `panel_rect_in_window()` キャプチャ + `append_ui_panel_dirty_rect()` を行う (旧 `execute_host_action()` の `HostAction::MovePanel` / `SetPanelVisibility` 直接処理は撤去)。
 
 - `apps/desktop/src/app/tests/panel_dispatch_tests.rs`
   - `drag_panel_move_marks_canvas_host_dirty`: パネルドラッグ移動後に `pending_canvas_host_dirty_rect` が `Some` になることを検証
@@ -714,7 +855,7 @@
 - **BitmapPatch Undo/Redo**: `execute_undo()` / `execute_redo()` を replay 方式 (`HistoryEntry::BitmapOp`) で実装。`BitmapEditRecord` を記録し、`CanvasRuntime::default()` で再生することで正しく元に戻せるようにした。
 - **パネルボタン 2 回目クリック**: `pen-settings` パネルの `||` DSL 演算子対応（`panel-dsl` のパーサー修正）。
 - **lasso bucket の `point_in_polygon`**: 外積判定の符号バグを修正。
-- **app.save のコマンド戻り値**: `app.save` ボタンは `emit_service` 経由で保存するため `dispatch_panel_event_with_command` は `Some(Command::Noop)` を返す。テストの期待値を `SaveProject` → `Noop` に修正し、`pending_jobs.len() == 1` で保存ジョブのキューを検証するよう変更した（`commands.rs` / `panel_dispatch_tests.rs`）。
+- **app.save のコマンド戻り値**: `app.save` ボタンは `emit_service` 経由で保存サービスを発行する。B4 (BL-060) で `dispatch_panel_event_with_command` は `dispatch_panel_event_tracking_actions` に置換され、`activate_focused_panel_control` は `HostAction` が発行されたかを示す `bool` を返すようになった。テストは `app.activate_focused_panel_control()` が `true` を返すこと + `pending_jobs.len() == 1` で保存ジョブのキューを検証する（`commands.rs` / `panel_dispatch_tests.rs`）。
 - **workspace preset テストの競合**: `/tmp/altpaint-test.altp.json` を複数テストが共有していたため、キーボードテストが書き込んだプロジェクト状態が workspace preset テストに干渉していた。`unique_test_path("preset-project")` / `unique_test_path("preset-session")` で競合を解消した（`persistence.rs`）。
 - **layers-panel DSL 回帰**: `plugins/layers-panel/panel.altp-panel` から `<text>{state.title}</text>` が誤って削除されており、`desktop_app_replaces_builtin_panels_with_phase7_dsl_variants` が失敗していた。行を復元した。
 

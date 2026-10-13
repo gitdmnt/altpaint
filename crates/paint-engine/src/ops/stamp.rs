@@ -1,0 +1,210 @@
+use crate::painting::PaintPluginContext;
+use editor_state::PenTipBitmap;
+use geometry::KomaLocalPoint;
+use raster::{BitmapEdit, RgbaBitmap};
+
+use super::{composite, stroke};
+
+pub(crate) fn stamp_edit(
+    at: KomaLocalPoint,
+    context: &PaintPluginContext<'_>,
+) -> Option<BitmapEdit> {
+    stroke::stroke_like_edit(&[at], context)
+}
+
+/// スタンプ径は context 解決時に筆圧カーブ 1 回適用済みの `resolved_size` を
+/// そのまま使う (BL-030: ここでの再適用は二重適用バグ)。
+pub(crate) fn build_stamp(context: &PaintPluginContext<'_>) -> Option<RgbaBitmap> {
+    let size = context.resolved_size.max(1) as usize;
+    let opacity = (context.pen.opacity * context.pen.flow).clamp(0.0, 1.0);
+    let color = composite::stamp_color(context);
+    match context.pen.tip.as_ref() {
+        Some(PenTipBitmap::AlphaMask8 {
+            width,
+            height,
+            data,
+        }) if !data.is_empty() => Some(resample_alpha_tip(
+            *width as usize,
+            *height as usize,
+            data,
+            size,
+            color,
+            opacity,
+        )),
+        Some(PenTipBitmap::Rgba8 {
+            width,
+            height,
+            data,
+        }) if !data.is_empty() => Some(resample_rgba_tip(
+            *width as usize,
+            *height as usize,
+            data,
+            size,
+            color,
+            opacity,
+        )),
+        Some(PenTipBitmap::AlphaMask8 { .. }) | Some(PenTipBitmap::Rgba8 { .. }) => Some(
+            generated_round_stamp(size, color, opacity, context.pen.antialias),
+        ),
+        Some(PenTipBitmap::PngBlob { .. }) | None => Some(generated_round_stamp(
+            size,
+            color,
+            opacity,
+            context.pen.antialias,
+        )),
+    }
+}
+
+/// `build_stamp` が生成するスタンプの幅・高さを画素生成なしで求める。
+///
+/// dirty rect 計画 (`plan_paint`) が画素を作らずにストローク境界を確定するために使う。
+/// 寸法ロジックは `build_stamp` / `resample_*` / `generated_round_stamp` と同一でなければ
+/// CPU 経路の dirty rect とずれる。
+pub(crate) fn stamp_dimensions(context: &PaintPluginContext<'_>) -> (usize, usize) {
+    let size = context.resolved_size.max(1) as usize;
+    match context.pen.tip.as_ref() {
+        Some(PenTipBitmap::AlphaMask8 {
+            width,
+            height,
+            data,
+        })
+        | Some(PenTipBitmap::Rgba8 {
+            width,
+            height,
+            data,
+        }) if !data.is_empty() => resampled_tip_dimensions(*width as usize, *height as usize, size),
+        _ => (size.max(1), size.max(1)),
+    }
+}
+
+/// `resample_alpha_tip` / `resample_rgba_tip` のターゲット寸法計算と同一。
+fn resampled_tip_dimensions(
+    source_width: usize,
+    source_height: usize,
+    target_size: usize,
+) -> (usize, usize) {
+    let aspect = if source_width == 0 {
+        1.0
+    } else {
+        source_height.max(1) as f32 / source_width.max(1) as f32
+    };
+    let target_width = target_size.max(1);
+    let target_height = ((target_size as f32 * aspect).round() as usize).max(1);
+    (target_width, target_height)
+}
+
+fn generated_round_stamp(
+    size: usize,
+    color: [u8; 4],
+    opacity: f32,
+    antialias: bool,
+) -> RgbaBitmap {
+    let size = size.max(1);
+    let radius = size as f32 * 0.5;
+    let center = radius - 0.5;
+    let mut bitmap = RgbaBitmap::transparent(size, size);
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 - center;
+            let dy = y as f32 - center;
+            let distance = (dx * dx + dy * dy).sqrt();
+            let coverage = if antialias {
+                (radius + 0.5 - distance).clamp(0.0, 1.0)
+            } else if distance <= radius {
+                1.0
+            } else {
+                0.0
+            };
+            if coverage <= 0.0 {
+                continue;
+            }
+            let alpha = ((color[3] as f32) * opacity * coverage)
+                .round()
+                .clamp(0.0, 255.0) as u8;
+            let index = (y * bitmap.width + x) * 4;
+            bitmap.pixels[index] = color[0];
+            bitmap.pixels[index + 1] = color[1];
+            bitmap.pixels[index + 2] = color[2];
+            bitmap.pixels[index + 3] = alpha;
+        }
+    }
+    bitmap
+}
+
+fn resample_alpha_tip(
+    source_width: usize,
+    source_height: usize,
+    data: &[u8],
+    target_size: usize,
+    color: [u8; 4],
+    opacity: f32,
+) -> RgbaBitmap {
+    let aspect = if source_width == 0 {
+        1.0
+    } else {
+        source_height.max(1) as f32 / source_width.max(1) as f32
+    };
+    let target_width = target_size.max(1);
+    let target_height = ((target_size as f32 * aspect).round() as usize).max(1);
+    let mut bitmap = RgbaBitmap::transparent(target_width, target_height);
+    for y in 0..target_height {
+        for x in 0..target_width {
+            let src_x = x * source_width.max(1) / target_width.max(1);
+            let src_y = y * source_height.max(1) / target_height.max(1);
+            let src_index = src_y
+                .saturating_mul(source_width.max(1))
+                .saturating_add(src_x);
+            if src_index >= data.len() {
+                continue;
+            }
+            let alpha = ((data[src_index] as f32) * opacity)
+                .round()
+                .clamp(0.0, 255.0) as u8;
+            let index = (y * bitmap.width + x) * 4;
+            bitmap.pixels[index] = color[0];
+            bitmap.pixels[index + 1] = color[1];
+            bitmap.pixels[index + 2] = color[2];
+            bitmap.pixels[index + 3] = alpha;
+        }
+    }
+    bitmap
+}
+
+fn resample_rgba_tip(
+    source_width: usize,
+    source_height: usize,
+    data: &[u8],
+    target_size: usize,
+    tint: [u8; 4],
+    opacity: f32,
+) -> RgbaBitmap {
+    let aspect = if source_width == 0 {
+        1.0
+    } else {
+        source_height.max(1) as f32 / source_width.max(1) as f32
+    };
+    let target_width = target_size.max(1);
+    let target_height = ((target_size as f32 * aspect).round() as usize).max(1);
+    let mut bitmap = RgbaBitmap::transparent(target_width, target_height);
+    for y in 0..target_height {
+        for x in 0..target_width {
+            let src_x = x * source_width.max(1) / target_width.max(1);
+            let src_y = y * source_height.max(1) / target_height.max(1);
+            let src_index = (src_y
+                .saturating_mul(source_width.max(1))
+                .saturating_add(src_x))
+                * 4;
+            if src_index + 3 >= data.len() {
+                continue;
+            }
+            let index = (y * bitmap.width + x) * 4;
+            bitmap.pixels[index] = ((data[src_index] as u16 * tint[0] as u16) / 255) as u8;
+            bitmap.pixels[index + 1] = ((data[src_index + 1] as u16 * tint[1] as u16) / 255) as u8;
+            bitmap.pixels[index + 2] = ((data[src_index + 2] as u16 * tint[2] as u16) / 255) as u8;
+            bitmap.pixels[index + 3] = ((data[src_index + 3] as f32) * opacity)
+                .round()
+                .clamp(0.0, 255.0) as u8;
+        }
+    }
+    bitmap
+}

@@ -1,0 +1,12 @@
+[package]
+name = "document-model"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+editor-state = { path = "../editor-state" }
+geometry = { path = "../geometry" }
+raster = { path = "../raster" }
+serde.workspace = true

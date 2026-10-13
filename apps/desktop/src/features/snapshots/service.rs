@@ -1,0 +1,90 @@
+//! スナップショット service request のハンドラ。
+
+use panel_runtime::{ServiceRequest, services::names};
+
+use crate::app::DesktopApp;
+
+/// snapshot service request を処理する。
+pub(crate) fn handle_snapshot_service_request(
+    app: &mut DesktopApp,
+    request: &ServiceRequest,
+) -> Option<bool> {
+    let changed = match request.name.as_str() {
+        names::SNAPSHOT_CREATE => app.snapshot_create(),
+        names::SNAPSHOT_RESTORE => {
+            let id = request.string("snapshot_id")?;
+            app.snapshot_restore(id.to_string())
+        }
+        _ => return None,
+    };
+    Some(changed)
+}
+
+impl DesktopApp {
+    /// 現在の Document クローンをスナップショットとして保存する。
+    fn snapshot_create(&mut self) -> bool {
+        let document = self.document.clone();
+        let id = self.snapshots.push(document);
+        eprintln!("snapshot created: id={id}");
+        true
+    }
+
+    /// 指定 ID のスナップショットを Document へ復元する。
+    fn snapshot_restore(&mut self, snapshot_id: String) -> bool {
+        let Some(entry) = self.snapshots.get(&snapshot_id) else {
+            eprintln!("snapshot_restore: id={snapshot_id} not found");
+            return false;
+        };
+        self.document = entry.document.clone();
+        // 履歴はスナップショット復元後にクリアして整合性を保つ
+        self.clear_edit_history();
+        self.refresh_cpu_canvas_snapshot();
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use crate::app::{DesktopApp, DesktopAppOptions};
+    use crate::app::tests::unique_test_path;
+    use crate::platform::NativeDesktopDialogs;
+
+    fn make_app() -> DesktopApp {
+        DesktopApp::with_options(DesktopAppOptions {
+            project_path: PathBuf::from("/tmp/altpaint-snapshot-test.altp.json"),
+            dialogs: Box::new(NativeDesktopDialogs),
+            session_path: unique_test_path("snapshot-session"),
+            workspace_preset_path: unique_test_path("snapshot-workspace"),
+            canvas_size_preset_path: unique_test_path("snapshot-canvas-size"),
+        })
+    }
+
+    /// スナップショット作成後に件数が増えることを確認する。
+    #[test]
+    fn snapshot_create_increments_count() {
+        let mut app = make_app();
+        assert_eq!(app.snapshots.len(), 0);
+        let changed = app.snapshot_create();
+        assert!(changed);
+        assert_eq!(app.snapshots.len(), 1);
+    }
+
+    /// 存在するスナップショットへの復元が成功することを確認する。
+    #[test]
+    fn snapshot_restore_succeeds() {
+        let mut app = make_app();
+        let id = app.snapshots.push(app.document.clone());
+        let changed = app.snapshot_restore(id);
+        assert!(changed);
+    }
+
+    /// 存在しない ID への復元が false を返すことを確認する。
+    #[test]
+    fn snapshot_restore_unknown_id_returns_false() {
+        let mut app = make_app();
+        let changed = app.snapshot_restore("999".to_string());
+        assert!(!changed);
+    }
+}

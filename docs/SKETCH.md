@@ -1,3 +1,13 @@
+> **アーカイブ（初期構想）**
+>
+> この文書は altpaint の最初期の構想・要件メモであり、技術スタックや内部構造に関する
+> 一部記述（例: `PanelTree`、独自 UI DSL、`tokio` / `rayon` 前提の並行モデル等）は
+> 現行実装と一致しません。**現状のアーキテクチャ・モジュール構成の正本は
+> [docs/ARCHITECTURE.md](ARCHITECTURE.md) と [docs/MODULE_DEPENDENCIES.md](MODULE_DEPENDENCIES.md)**
+> です。本文は「何を目指すか / 何を重要とみなすか」という設計意図の歴史記録として保持します。
+>
+> ---
+
 # CELSYSがCELSYSすぎるので新しいコミックアプリを作る
 
 ## CSPのどうにかしてくれポイントリスト (随時更新)

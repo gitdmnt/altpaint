@@ -1,0 +1,51 @@
+<div class="panel">
+  <header class="panel-title">ファイル</header>
+  <div class="alt-section">
+    <div class="alt-section-title">編集</div>
+    <div class="row">
+      <button class="btn" id="app.undo" data-action="altp:activate:undo">↩ 元に戻す</button>
+      <button class="btn" id="app.redo" data-action="altp:activate:redo">↪ やり直し</button>
+    </div>
+  </div>
+  <div class="alt-section">
+    <div class="alt-section-title">プロジェクト</div>
+    <button class="btn" id="app.new" data-action="altp:activate:show_new_form">＋ 新規</button>
+    <button class="btn" id="app.save" data-action="altp:activate:save_project">💾 上書き保存</button>
+    <button class="btn" id="app.save_as" data-action="altp:activate:save_project_as">📁 別名で保存</button>
+    <button class="btn" id="app.load" data-action="altp:activate:load_project">📂 開く...</button>
+    <button class="btn" id="app.shortcuts" data-action="altp:activate:toggle_shortcuts">⌨ ショートカット</button>
+
+    <div id="shortcuts-section" class="alt-section" hidden>
+      <div class="alt-section-title">ショートカット</div>
+      <p>新規: <span id="new-shortcut">Ctrl+N</span></p>
+      <button class="btn" id="app.shortcut.new" data-action="altp:activate:capture_new_shortcut">新規を再設定</button>
+      <p>保存: <span id="save-shortcut">Ctrl+S</span></p>
+      <button class="btn" id="app.shortcut.save" data-action="altp:activate:capture_save_shortcut">保存を再設定</button>
+      <p>別名保存: <span id="save-as-shortcut">Ctrl+Shift+S</span></p>
+      <button class="btn" id="app.shortcut.save_as" data-action="altp:activate:capture_save_as_shortcut">別名保存を再設定</button>
+      <p>開く: <span id="open-shortcut">Ctrl+O</span></p>
+      <button class="btn" id="app.shortcut.open" data-action="altp:activate:capture_open_shortcut">開くを再設定</button>
+      <p id="capture-hint" class="muted" hidden>次に押したキーの組み合わせで置き換えます。</p>
+    </div>
+
+    <div id="new-section" class="alt-section" hidden>
+      <div class="alt-section-title">新規ドキュメント</div>
+      <label>
+        <span>テンプレート</span>
+        <select id="app.new.template" data-action="altp:select:select_template"></select>
+      </label>
+      <label>
+        <span>幅</span>
+        <input type="number" id="app.new.width" placeholder="2894" data-action="altp:input:edit_new_width">
+      </label>
+      <label>
+        <span>高さ</span>
+        <input type="number" id="app.new.height" placeholder="4093" data-action="altp:input:edit_new_height">
+      </label>
+      <div class="row">
+        <button class="btn" id="app.new.submit" data-action="altp:activate:new_project">作成</button>
+        <button class="btn" id="app.new.cancel" data-action="altp:activate:cancel_forms">キャンセル</button>
+      </div>
+    </div>
+  </div>
+</div>

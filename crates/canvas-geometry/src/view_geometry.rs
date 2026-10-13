@@ -1,0 +1,358 @@
+use editor_state::CanvasViewTransform;
+use geometry::{
+    CanvasDisplayPoint, CanvasViewportPoint, ClampToCanvasBounds, PageDirtyRect, PagePoint,
+    WindowRect,
+};
+
+/// GPU 上で提示するテクスチャ付き矩形を表す。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextureQuad {
+    pub destination: WindowRect,
+    pub uv_min: [f32; 2],
+    pub uv_max: [f32; 2],
+    pub rotation_degrees: f32,
+    pub bbox_size: [f32; 2],
+    pub flip_x: bool,
+    pub flip_y: bool,
+}
+
+/// `CanvasViewTransform` から導かれる表示用の幾何計画。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CanvasViewGeometry {
+    viewport: WindowRect,
+    source_width: usize,
+    source_height: usize,
+    bbox_width: f32,
+    bbox_height: f32,
+    scale: f32,
+    offset_x: f32,
+    offset_y: f32,
+    rotation_degrees: f32,
+    cos_theta: f32,
+    sin_theta: f32,
+    flip_x: bool,
+    flip_y: bool,
+    texture_quad: Option<TextureQuad>,
+}
+
+impl CanvasViewGeometry {
+    fn uv_transform(&self) -> UvTransform {
+        UvTransform {
+            source_width: self.source_width as f32,
+            source_height: self.source_height as f32,
+            flip_x: self.flip_x,
+            flip_y: self.flip_y,
+            bbox_width: self.bbox_width,
+            bbox_height: self.bbox_height,
+            cos_theta: self.cos_theta,
+            sin_theta: self.sin_theta,
+        }
+    }
+
+    pub fn texture_quad(&self) -> Option<TextureQuad> {
+        self.texture_quad
+    }
+
+    pub fn scale(&self) -> f32 {
+        self.scale
+    }
+
+    pub fn map_canvas_dirty_rect(&self, dirty: PageDirtyRect) -> WindowRect {
+        self.map_source_rect_to_display(dirty)
+            .and_then(|rect| rect.intersect(self.viewport))
+            .unwrap_or(WindowRect {
+                x: self.viewport.x,
+                y: self.viewport.y,
+                width: 0,
+                height: 0,
+            })
+    }
+
+    pub fn brush_preview_rect_for_diameter(
+        &self,
+        canvas_position: PagePoint,
+        brush_diameter: f32,
+    ) -> Option<WindowRect> {
+        let center = self.map_source_point_to_display(canvas_position)?;
+        let radius = ((brush_diameter.max(1.0) * self.scale) * 0.5).max(4.0);
+
+        self.viewport.intersect(WindowRect {
+            x: (center.x - radius - 2.0)
+                .floor()
+                .max(self.viewport.x as f32) as usize,
+            y: (center.y - radius - 2.0)
+                .floor()
+                .max(self.viewport.y as f32) as usize,
+            width: ((center.x + radius + 2.0)
+                .ceil()
+                .min((self.viewport.x + self.viewport.width) as f32)
+                - (center.x - radius - 2.0)
+                    .floor()
+                    .max(self.viewport.x as f32))
+            .max(1.0) as usize,
+            height: ((center.y + radius + 2.0)
+                .ceil()
+                .min((self.viewport.y + self.viewport.height) as f32)
+                - (center.y - radius - 2.0)
+                    .floor()
+                    .max(self.viewport.y as f32))
+            .max(1.0) as usize,
+        })
+    }
+
+    pub fn map_canvas_point_to_display(
+        &self,
+        canvas_position: PagePoint,
+    ) -> Option<CanvasDisplayPoint> {
+        self.map_source_point_to_display(canvas_position)
+    }
+
+    pub fn map_view_to_canvas(&self, point: CanvasViewportPoint) -> Option<PagePoint> {
+        let drawn_width = self.bbox_width * self.scale;
+        let drawn_height = self.bbox_height * self.scale;
+        let local_x = point.x as f32 - self.offset_x;
+        let local_y = point.y as f32 - self.offset_y;
+        if local_x < 0.0 || local_y < 0.0 || local_x >= drawn_width || local_y >= drawn_height {
+            return None;
+        }
+
+        let rotated = RotatedUv {
+            u: (local_x / drawn_width).clamp(0.0, 1.0 - f32::EPSILON),
+            v: (local_y / drawn_height).clamp(0.0, 1.0 - f32::EPSILON),
+        };
+        let source = rotated_to_source_uv(rotated, self.uv_transform());
+        if !(0.0..1.0).contains(&source.u) || !(0.0..1.0).contains(&source.v) {
+            return None;
+        }
+        let canvas_x = (source.u * self.source_width as f32).floor() as usize;
+        let canvas_y = (source.v * self.source_height as f32).floor() as usize;
+
+        Some(PagePoint::new(
+            canvas_x.min(self.source_width.saturating_sub(1)),
+            canvas_y.min(self.source_height.saturating_sub(1)),
+        ))
+    }
+
+    fn map_source_rect_to_display(&self, dirty: PageDirtyRect) -> Option<WindowRect> {
+        let dirty = dirty.clamp_to_canvas_bounds(self.source_width, self.source_height);
+        let corners = [
+            SourceUv {
+                u: dirty.x as f32 / self.source_width as f32,
+                v: dirty.y as f32 / self.source_height as f32,
+            },
+            SourceUv {
+                u: (dirty.x + dirty.width) as f32 / self.source_width as f32,
+                v: dirty.y as f32 / self.source_height as f32,
+            },
+            SourceUv {
+                u: dirty.x as f32 / self.source_width as f32,
+                v: (dirty.y + dirty.height) as f32 / self.source_height as f32,
+            },
+            SourceUv {
+                u: (dirty.x + dirty.width) as f32 / self.source_width as f32,
+                v: (dirty.y + dirty.height) as f32 / self.source_height as f32,
+            },
+        ];
+        let mut min_x = f32::INFINITY;
+        let mut min_y = f32::INFINITY;
+        let mut max_x = f32::NEG_INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+
+        for corner in corners {
+            let rotated = source_to_rotated_uv(corner, self.uv_transform());
+            let display_x = self.offset_x + rotated.u * self.bbox_width * self.scale;
+            let display_y = self.offset_y + rotated.v * self.bbox_height * self.scale;
+            min_x = min_x.min(display_x);
+            min_y = min_y.min(display_y);
+            max_x = max_x.max(display_x);
+            max_y = max_y.max(display_y);
+        }
+
+        (min_x < max_x && min_y < max_y).then_some(WindowRect {
+            x: min_x.floor().max(self.viewport.x as f32) as usize,
+            y: min_y.floor().max(self.viewport.y as f32) as usize,
+            width: (max_x.ceil() - min_x.floor()).max(1.0) as usize,
+            height: (max_y.ceil() - min_y.floor()).max(1.0) as usize,
+        })
+    }
+
+    fn map_source_point_to_display(
+        &self,
+        canvas_position: PagePoint,
+    ) -> Option<CanvasDisplayPoint> {
+        if canvas_position.x >= self.source_width || canvas_position.y >= self.source_height {
+            return None;
+        }
+        let source = SourceUv {
+            u: (canvas_position.x as f32 + 0.5) / self.source_width as f32,
+            v: (canvas_position.y as f32 + 0.5) / self.source_height as f32,
+        };
+        let rotated = source_to_rotated_uv(source, self.uv_transform());
+        Some(CanvasDisplayPoint::new(
+            self.offset_x + rotated.u * self.bbox_width * self.scale,
+            self.offset_y + rotated.v * self.bbox_height * self.scale,
+        ))
+    }
+
+    /// viewport・ソース寸法・ビュー変換からキャンバス表示幾何を計算する。
+    ///
+    /// viewport またはソース寸法が 0 の場合は `None` を返す。
+    pub fn compute(
+        viewport: WindowRect,
+        source_width: usize,
+        source_height: usize,
+        transform: CanvasViewTransform,
+    ) -> Option<CanvasViewGeometry> {
+        if viewport.width == 0 || viewport.height == 0 || source_width == 0 || source_height == 0 {
+            return None;
+        }
+
+        let rotation_degrees = normalized_rotation_degrees(transform.rotation_degrees);
+        let radians = rotation_degrees.to_radians();
+        let cos_theta = radians.cos();
+        let sin_theta = radians.sin();
+        let (bbox_width, bbox_height) = rotated_bounding_box(
+            source_width as f32,
+            source_height as f32,
+            cos_theta,
+            sin_theta,
+        );
+
+        let fit_scale_x = viewport.width as f32 / (source_width as f32).max(f32::EPSILON);
+        let fit_scale_y = viewport.height as f32 / (source_height as f32).max(f32::EPSILON);
+        let scale = (fit_scale_x.min(fit_scale_y) * transform.zoom.max(0.25)).max(f32::EPSILON);
+        let drawn_width = bbox_width * scale;
+        let drawn_height = bbox_height * scale;
+        let offset_x =
+            viewport.x as f32 + (viewport.width as f32 - drawn_width) * 0.5 + transform.pan_x;
+        let offset_y =
+            viewport.y as f32 + (viewport.height as f32 - drawn_height) * 0.5 + transform.pan_y;
+
+        let left = offset_x.floor();
+        let top = offset_y.floor();
+        let right = (offset_x + drawn_width).ceil();
+        let bottom = (offset_y + drawn_height).ceil();
+
+        let clipped_left = left.max(viewport.x as f32);
+        let clipped_top = top.max(viewport.y as f32);
+        let clipped_right = right.min((viewport.x + viewport.width) as f32);
+        let clipped_bottom = bottom.min((viewport.y + viewport.height) as f32);
+
+        let drawn_rect =
+            (clipped_left < clipped_right && clipped_top < clipped_bottom).then_some(WindowRect {
+                x: clipped_left as usize,
+                y: clipped_top as usize,
+                width: (clipped_right - clipped_left) as usize,
+                height: (clipped_bottom - clipped_top) as usize,
+            });
+
+        let texture_quad = drawn_rect.map(|drawn_rect| {
+            let left = ((drawn_rect.x as f32 - offset_x) / scale).clamp(0.0, bbox_width);
+            let top = ((drawn_rect.y as f32 - offset_y) / scale).clamp(0.0, bbox_height);
+            let right = (((drawn_rect.x + drawn_rect.width) as f32 - offset_x) / scale)
+                .clamp(0.0, bbox_width);
+            let bottom = (((drawn_rect.y + drawn_rect.height) as f32 - offset_y) / scale)
+                .clamp(0.0, bbox_height);
+
+            TextureQuad {
+                destination: drawn_rect,
+                uv_min: [left / bbox_width, top / bbox_height],
+                uv_max: [right / bbox_width, bottom / bbox_height],
+                rotation_degrees,
+                bbox_size: [bbox_width, bbox_height],
+                flip_x: transform.flip_x,
+                flip_y: transform.flip_y,
+            }
+        });
+
+        Some(CanvasViewGeometry {
+            viewport,
+            source_width,
+            source_height,
+            bbox_width,
+            bbox_height,
+            scale,
+            offset_x,
+            offset_y,
+            rotation_degrees,
+            cos_theta,
+            sin_theta,
+            flip_x: transform.flip_x,
+            flip_y: transform.flip_y,
+            texture_quad,
+        })
+    }
+}
+
+fn normalized_rotation_degrees(rotation_degrees: f32) -> f32 {
+    rotation_degrees.rem_euclid(360.0)
+}
+
+fn rotated_bounding_box(width: f32, height: f32, cos_theta: f32, sin_theta: f32) -> (f32, f32) {
+    let cos = cos_theta.abs();
+    let sin = sin_theta.abs();
+    (
+        (width * cos + height * sin).max(f32::EPSILON),
+        (width * sin + height * cos).max(f32::EPSILON),
+    )
+}
+
+#[derive(Debug, Clone, Copy)]
+struct UvTransform {
+    source_width: f32,
+    source_height: f32,
+    flip_x: bool,
+    flip_y: bool,
+    bbox_width: f32,
+    bbox_height: f32,
+    cos_theta: f32,
+    sin_theta: f32,
+}
+
+/// 回転適用前のソース画像の正規化 UV 座標 (0.0..=1.0)。
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SourceUv {
+    u: f32,
+    v: f32,
+}
+
+/// 回転適用後の表示バウンディングボックスの正規化 UV 座標 (0.0..=1.0)。
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct RotatedUv {
+    u: f32,
+    v: f32,
+}
+
+fn source_to_rotated_uv(source: SourceUv, uv_transform: UvTransform) -> RotatedUv {
+    let centered_x = source.u * uv_transform.source_width - uv_transform.source_width * 0.5;
+    let centered_y = source.v * uv_transform.source_height - uv_transform.source_height * 0.5;
+    let mut rotated_x = centered_x * uv_transform.cos_theta - centered_y * uv_transform.sin_theta;
+    let mut rotated_y = centered_x * uv_transform.sin_theta + centered_y * uv_transform.cos_theta;
+    if uv_transform.flip_x {
+        rotated_x = -rotated_x;
+    }
+    if uv_transform.flip_y {
+        rotated_y = -rotated_y;
+    }
+    RotatedUv {
+        u: (rotated_x + uv_transform.bbox_width * 0.5) / uv_transform.bbox_width,
+        v: (rotated_y + uv_transform.bbox_height * 0.5) / uv_transform.bbox_height,
+    }
+}
+
+fn rotated_to_source_uv(rotated: RotatedUv, uv_transform: UvTransform) -> SourceUv {
+    let mut rotated_x = rotated.u * uv_transform.bbox_width - uv_transform.bbox_width * 0.5;
+    let mut rotated_y = rotated.v * uv_transform.bbox_height - uv_transform.bbox_height * 0.5;
+    if uv_transform.flip_x {
+        rotated_x = -rotated_x;
+    }
+    if uv_transform.flip_y {
+        rotated_y = -rotated_y;
+    }
+    let source_x = rotated_x * uv_transform.cos_theta + rotated_y * uv_transform.sin_theta;
+    let source_y = -rotated_x * uv_transform.sin_theta + rotated_y * uv_transform.cos_theta;
+    SourceUv {
+        u: (source_x + uv_transform.source_width * 0.5) / uv_transform.source_width,
+        v: (source_y + uv_transform.source_height * 0.5) / uv_transform.source_height,
+    }
+}

@@ -61,7 +61,7 @@
               }
             },
             {
-              "id": "builtin.layers-panel",
+              "id": "builtin.layers",
               "visible": true,
               "anchor": "top-right",
               "position": {
@@ -87,7 +87,7 @@
               }
             },
             {
-              "id": "builtin.pen-settings",
+              "id": "builtin.tool-settings",
               "visible": true,
               "anchor": "bottom-right",
               "position": {
@@ -126,7 +126,7 @@
               }
             },
             {
-              "id": "builtin.snapshot-panel",
+              "id": "builtin.snapshots",
               "visible": true,
               "anchor": "top-right",
               "position": {

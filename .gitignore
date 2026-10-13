@@ -1,7 +1,7 @@
 .vscode/
 target/
-Cargo.lock
 plugins/**/*.wasm
+crates/builtin-panels/**/*.wasm
 *.log
 *.tmp
 *.bak
@@ -17,3 +17,7 @@ logs/
 pens/abr/*.abr
 pens/sut/*.sut
 .context/
+# Claude Code のローカル設定と作業領域 (ADR 020 11 章 2.2)
+.claude/settings.local.json
+.claude/worktrees/
+.claude/scheduled_tasks.lock

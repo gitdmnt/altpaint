@@ -1,0 +1,170 @@
+//! `builtin.workspace-presets` パネル (Phase 10 DOM mutation 版)。
+
+use panel_sdk::{
+    dom::{parse_option_list, query_selector, render_options, set_attribute, set_inner_html},
+    runtime::{emit_request, error, set_state_string, state_string},
+    serde::Deserialize,
+    services, state,
+};
+
+/// テキスト/セレクト入力 payload (`altp:input:*` / `altp:select:*` は
+/// `event_payload.value` を文字列で運ぶ)。
+#[derive(Default, Deserialize)]
+#[serde(crate = "panel_sdk::serde")]
+struct TextValue {
+    #[serde(default)]
+    value: String,
+}
+
+const SELECTED_WORKSPACE: state::StringKey = state::string("config.selected_workspace");
+const SELECTED_WORKSPACE_LABEL: state::StringKey =
+    state::string("config.selected_workspace_label");
+const WORKSPACE_OPTIONS: state::StringKey = state::string("config.workspace_options");
+
+fn selected_workspace_id() -> String {
+    state_string(SELECTED_WORKSPACE)
+}
+
+fn selected_workspace_label() -> String {
+    state_string(SELECTED_WORKSPACE_LABEL)
+}
+
+// BL-105: 構造化 JSON 配列 [{id,label}] をパースする (旧 "id:label" パイプ区切りを置換)。
+fn parse_options(raw: &str) -> Vec<(String, String)> {
+    parse_option_list(raw, "id", "label")
+}
+
+fn option_label_for_id(options: &[(String, String)], id: &str) -> Option<String> {
+    options
+        .iter()
+        .find_map(|(candidate_id, label)| (candidate_id == id).then(|| label.clone()))
+}
+
+fn validate_selection() -> Result<(String, String), &'static str> {
+    let preset_id = selected_workspace_id();
+    let label = selected_workspace_label();
+    if preset_id.trim().is_empty() {
+        return Err("workspace preset id is required");
+    }
+    if label.trim().is_empty() {
+        return Err("workspace preset label is required");
+    }
+    Ok((preset_id, label))
+}
+
+fn render_dom() {
+    let preset_id = selected_workspace_id();
+    let preset_label = selected_workspace_label();
+    let options = parse_options(&state_string(WORKSPACE_OPTIONS));
+
+    if let Some(select) = query_selector("#workspace\\.preset\\.selector") {
+        let pairs = options
+            .iter()
+            .map(|(id, label)| (id.as_str(), label.as_str()));
+        set_inner_html(select, &render_options(pairs, &preset_id));
+    }
+    if let Some(input) = query_selector("#workspace\\.preset\\.id") {
+        set_attribute(input, "value", &preset_id);
+    }
+    if let Some(input) = query_selector("#workspace\\.preset\\.label") {
+        set_attribute(input, "value", &preset_label);
+    }
+}
+
+#[panel_sdk::panel_init]
+fn init() {
+    render_dom();
+}
+
+#[panel_sdk::panel_on_host_change]
+fn on_host_change() {
+    render_dom();
+}
+
+#[panel_sdk::panel_handler]
+fn select_workspace(payload: TextValue) {
+    let value = payload.value;
+    if value.trim().is_empty() {
+        return;
+    }
+    set_state_string(SELECTED_WORKSPACE, &value);
+    let options = parse_options(&state_string(WORKSPACE_OPTIONS));
+    if let Some(label) = option_label_for_id(&options, &value) {
+        set_state_string(SELECTED_WORKSPACE_LABEL, &label);
+    }
+    render_dom();
+    emit_request(&services::workspace_io::apply_preset(value.trim()));
+}
+
+#[panel_sdk::panel_handler]
+fn edit_workspace_id(payload: TextValue) {
+    if payload.value.trim().is_empty() {
+        return;
+    }
+    set_state_string(SELECTED_WORKSPACE, payload.value.trim());
+}
+
+#[panel_sdk::panel_handler]
+fn edit_workspace_label(payload: TextValue) {
+    if payload.value.trim().is_empty() {
+        return;
+    }
+    set_state_string(SELECTED_WORKSPACE_LABEL, payload.value.trim());
+}
+
+#[panel_sdk::panel_handler]
+fn load_workspace() {
+    let Ok((preset_id, _)) = validate_selection() else {
+        error("workspace preset id is required");
+        return;
+    };
+    emit_request(&services::workspace_io::apply_preset(preset_id));
+}
+
+#[panel_sdk::panel_handler]
+fn save_workspace() {
+    let Ok((preset_id, label)) = validate_selection() else {
+        error("workspace preset id and label are required");
+        return;
+    };
+    emit_request(&services::workspace_io::save_preset(preset_id, label));
+}
+
+#[panel_sdk::panel_handler]
+fn export_workspace() {
+    let Ok((preset_id, label)) = validate_selection() else {
+        error("workspace preset id and label are required");
+        return;
+    };
+    emit_request(&services::workspace_io::export_preset(preset_id, label));
+}
+
+#[panel_sdk::panel_handler]
+fn reload_workspaces() {
+    emit_request(&services::workspace_io::reload_presets());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    panel_sdk::assert_entrypoints!(entrypoints_callable_on_native => {
+        init(),
+        on_host_change(),
+        select_workspace(TextValue { value: "review".to_string() }),
+        edit_workspace_id(TextValue { value: "review".to_string() }),
+        edit_workspace_label(TextValue { value: "Review".to_string() }),
+        load_workspace(),
+        save_workspace(),
+        export_workspace(),
+        reload_workspaces(),
+    });
+
+    #[test]
+    fn parse_options_handles_empty_and_pairs() {
+        assert!(parse_options("").is_empty());
+        let v = parse_options(r#"[{"id":"a","label":"A"},{"id":"b","label":"B"}]"#);
+        assert_eq!(v.len(), 2);
+        assert_eq!(v[0], ("a".to_string(), "A".to_string()));
+    }
+}

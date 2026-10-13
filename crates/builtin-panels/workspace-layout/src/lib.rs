@@ -1,0 +1,141 @@
+//! `builtin.workspace-layout` パネル (Phase 12 / ADR 014)。
+//!
+//! ホスト snapshot の `workspace.panels_json` から登録パネル一覧を受け取り、
+//! チェックボックス UI を生成する。チェック切替で
+//! `workspace_layout.set_panel_visibility` を emit してホスト側で可視性を反映する。
+
+use panel_sdk::{
+    dom::{html_escape, query_selector, set_inner_html},
+    host_state::{WorkspaceState, section},
+    runtime::{emit_request, host_section},
+    serde::Deserialize,
+    services,
+};
+
+/// `workspace.panels_json` 内 1 エントリのパネル。
+#[derive(Default, Deserialize)]
+#[serde(crate = "panel_sdk::serde")]
+struct PanelEntry {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    visible: bool,
+}
+
+/// 可視性トグルの payload (`data-args` の value / panel_id を運ぶ)。
+#[derive(Default, Deserialize)]
+#[serde(crate = "panel_sdk::serde")]
+struct VisibilityToggle {
+    #[serde(default)]
+    value: i32,
+    #[serde(default)]
+    panel_id: String,
+}
+
+const SELF_PANEL_ID: &str = "builtin.workspace-layout";
+
+/// `workspace.panels_json` を `<li>` 列に変換する。
+/// 自身 (builtin.workspace-layout) は出力しない。
+fn render_panel_list(workspace_panels_json: &str) -> String {
+    let panels: Vec<PanelEntry> = serde_json::from_str(workspace_panels_json).unwrap_or_default();
+    let mut out = String::new();
+    for panel in panels.iter().filter(|panel| panel.id != SELF_PANEL_ID) {
+        let id_attr = html_escape(&panel.id);
+        let title = html_escape(&panel.title);
+        let next_state: i32 = if panel.visible { 0 } else { 1 };
+        let checked = if panel.visible { " checked=\"checked\"" } else { "" };
+        let data_args = format!(r#"{{"value":{},"panel_id":"{}"}}"#, next_state, id_attr);
+        out.push_str(&format!(
+            r#"<li><label><input type="checkbox" id="workspace.toggle.{id}" data-action="altp:activate:set_visibility" data-args='{args}'{checked}/><span>{title}</span></label></li>"#,
+            id = id_attr,
+            args = data_args,
+            checked = checked,
+            title = title,
+        ));
+    }
+    out
+}
+
+#[panel_sdk::panel_init]
+fn init() {}
+
+#[panel_sdk::panel_on_host_change]
+fn on_host_change() {
+    if let Some(list) = query_selector("#workspace-panels") {
+        // BL-142: workspace セクションを型付き DTO として 1 回取得する。
+        let json = host_section::<WorkspaceState>(section::WORKSPACE)
+            .map(|workspace| workspace.panels_json)
+            .unwrap_or_default();
+        set_inner_html(list, &render_panel_list(&json));
+    }
+}
+
+#[panel_sdk::panel_handler]
+fn set_visibility(payload: VisibilityToggle) {
+    if payload.panel_id.is_empty() {
+        return;
+    }
+    emit_request(&services::workspace_layout::set_panel_visibility(
+        payload.panel_id,
+        payload.value != 0,
+    ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    panel_sdk::assert_entrypoints!(entrypoints_callable_on_native => {
+        init(),
+        on_host_change(),
+        set_visibility(VisibilityToggle { value: 0, panel_id: "builtin.layers".to_string() }),
+        set_visibility(VisibilityToggle { value: 1, panel_id: "builtin.layers".to_string() }),
+    });
+
+    #[test]
+    fn render_panel_list_emits_data_args_with_panel_id() {
+        let json = r#"[{"id":"builtin.tool-palette","title":"ツール","visible":true}]"#;
+        let out = render_panel_list(json);
+        assert!(
+            out.contains(r#"data-action="altp:activate:set_visibility""#),
+            "should set the handler name in data-action"
+        );
+        assert!(
+            out.contains(r#"data-args='{"value":0,"panel_id":"builtin.tool-palette"}'"#),
+            "should embed both value and panel_id in data-args (out={out})"
+        );
+        assert!(out.contains("checked=\"checked\""), "visible panel marked as checked");
+    }
+
+    #[test]
+    fn render_panel_list_emits_value_one_for_hidden_panel() {
+        let json = r#"[{"id":"builtin.koma-list","title":"ページ","visible":false}]"#;
+        let out = render_panel_list(json);
+        assert!(
+            out.contains(r#""value":1"#),
+            "hidden panel: clicking toggles to visible (value=1)"
+        );
+        assert!(!out.contains("checked=\"checked\""));
+    }
+
+    #[test]
+    fn render_panel_list_excludes_self() {
+        let json = r#"[{"id":"builtin.workspace-layout","title":"パネル管理","visible":true},{"id":"builtin.tool-palette","title":"ツール","visible":true}]"#;
+        let out = render_panel_list(json);
+        assert!(
+            !out.contains("workspace-layout"),
+            "self entry must be excluded from the list (out={out})"
+        );
+        assert!(out.contains("builtin.tool-palette"));
+    }
+
+    #[test]
+    fn render_panel_list_escapes_xss_in_title() {
+        let json = r#"[{"id":"builtin.foo","title":"<script>alert(1)</script>","visible":true}]"#;
+        let out = render_panel_list(json);
+        assert!(!out.contains("<script>"), "no raw script in output: {out}");
+        assert!(out.contains("&lt;script&gt;"));
+    }
+}

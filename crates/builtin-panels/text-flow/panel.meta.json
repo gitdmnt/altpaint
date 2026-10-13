@@ -1,0 +1,5 @@
+{
+  "id": "builtin.text-flow",
+  "title": "テキスト",
+  "default_size": { "width": 360, "height": 280 }
+}

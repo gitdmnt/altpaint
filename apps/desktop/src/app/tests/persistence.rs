@@ -2,73 +2,72 @@
 
 use std::path::PathBuf;
 
-use app_core::Command;
-use app_core::{
+use panel_workspace::{
     WorkspacePanelAnchor, WorkspacePanelPosition, WorkspacePanelSize, WorkspacePanelState,
 };
-use desktop_support::{
-    DEFAULT_PROJECT_PATH, DesktopProfiler, WorkspacePreset, WorkspacePresetCatalog,
-    save_workspace_preset_catalog,
+use crate::features::project::{DesktopSessionState, save_session_state};
+use crate::features::workspace::{
+    WorkspacePreset, WorkspacePresetCatalog, save_workspace_preset_catalog,
 };
-use panel_api::{HostAction, PanelMoveDirection};
+use crate::platform::default_project_path;
+use frame_profiler::FrameProfiler;
+use editor_state::{ColorRgba8, EditorSession, SessionCommand};
+use panel_runtime::{ServiceRequest, services::names};
 use serde_json::json;
 use std::collections::BTreeMap;
-use storage::{load_project_from_path, save_project_to_path};
+use project_store::{load_project_from_path, save_project_to_path};
 
 use super::{
     TestDialogs, test_app_with_dialogs, test_app_with_dialogs_and_session_path, unique_test_path,
 };
-use crate::app::DesktopApp;
+use crate::app::{DesktopApp, DesktopAppOptions};
 
-/// execute コマンド 読込 プロジェクト uses native ダイアログ パス が期待どおりに動作することを検証する。
 #[test]
 fn execute_command_load_project_uses_native_dialog_path() {
     let path = std::env::temp_dir().join("altpaint-open-dialog-test.altp.json");
     let mut source_app = test_app_with_dialogs(TestDialogs::default());
-    assert!(
-        source_app.execute_host_action(HostAction::SetPanelVisibility {
-            panel_id: "builtin.tool-palette".to_string(),
-            visible: false,
-        })
-    );
+    assert!(source_app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+            .with_value("panel_id", "builtin.tool-palette")
+            .with_value("visible", false),
+    ));
     save_project_to_path(
         &path,
         &source_app.document,
-        &source_app.panel_presentation.workspace_layout(),
+        &source_app.panel_workspace.workspace_layout(),
         &BTreeMap::new(),
     )
     .expect("project save should succeed");
 
     let mut app = test_app_with_dialogs(TestDialogs::with_open_path(path.clone()));
-    assert!(app.execute_command(Command::LoadProject));
+    assert!(app.execute_service_request(ServiceRequest::new(names::PROJECT_LOAD_DIALOG)));
     app.wait_for_pending_save_tasks();
-    assert_eq!(app.io_state.project_path, path);
+    assert_eq!(app.paths.project_path, path);
     assert!(
-        !app.panel_presentation
-            .panel_trees(&app.panel_runtime)
-            .iter()
-            .any(|panel| panel.id == "builtin.tool-palette")
+        !app.panel_workspace
+            .is_panel_visible("builtin.tool-palette"),
+        "tool-palette visibility was persisted as hidden"
     );
 
-    let _ = std::fs::remove_file(app.io_state.project_path.clone());
+    let _ = std::fs::remove_file(app.paths.project_path.clone());
 }
 
-/// 保存 プロジェクト as updates プロジェクト パス and persists ワークスペース レイアウト が期待どおりに動作することを検証する。
 #[test]
 fn save_project_as_updates_project_path_and_persists_workspace_layout() {
     let path = std::env::temp_dir().join("altpaint-save-as-test.altp.json");
     let mut app = test_app_with_dialogs(TestDialogs::with_save_path(path.clone()));
 
-    assert!(app.execute_host_action(HostAction::SetPanelVisibility {
-        panel_id: "builtin.tool-palette".to_string(),
-        visible: false,
-    }));
-    assert!(app.execute_command(Command::SaveProjectAs));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+            .with_value("panel_id", "builtin.tool-palette")
+            .with_value("visible", false),
+    ));
+    assert!(app.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_AS)));
     assert_eq!(app.pending_save_task_count(), 1);
     app.wait_for_pending_save_tasks();
 
     let loaded = load_project_from_path(&path).expect("saved project should load");
-    assert_eq!(app.io_state.project_path, path);
+    assert_eq!(app.paths.project_path, path);
     assert!(
         loaded
             .ui_state
@@ -78,10 +77,9 @@ fn save_project_as_updates_project_path_and_persists_workspace_layout() {
             .any(|entry| entry.id == "builtin.tool-palette" && !entry.visible)
     );
 
-    let _ = std::fs::remove_file(app.io_state.project_path.clone());
+    let _ = std::fs::remove_file(app.paths.project_path.clone());
 }
 
-/// 保存 and 読込 復元 プラグイン ショートカット configs が期待どおりに動作することを検証する。
 #[test]
 fn save_and_load_restore_plugin_shortcut_configs() {
     let path = std::env::temp_dir().join("altpaint-plugin-config-test.altp.json");
@@ -89,16 +87,16 @@ fn save_and_load_restore_plugin_shortcut_configs() {
     assert!(source_app.activate_panel_control("builtin.app-actions", "app.shortcuts"));
     assert!(source_app.activate_panel_control("builtin.app-actions", "app.shortcut.new"));
     assert!(source_app.dispatch_keyboard_shortcut("Ctrl+Alt+N", "N", false));
-    assert!(source_app.execute_command(Command::SaveProjectAs));
+    assert!(source_app.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_AS)));
     source_app.wait_for_pending_save_tasks();
 
     let loaded = load_project_from_path(&path).expect("saved project should load");
     assert_eq!(
-        loaded.ui_state.plugin_configs.get("builtin.app-actions"),
+        loaded.ui_state.panel_configs.get("builtin.app-actions"),
         Some(&json!({
             "default_template_size": "2894x4093",
             "new_shortcut": "Ctrl+Alt+N",
-            "template_options": "2894x4093:A4 350dpi (2894×4093)|2480x3508:A4 300dpi (2480×3508)|2048x2048:Square 2048 (2048×2048)|1920x1080:HD Landscape (1920×1080)",
+            "template_options": "[{\"label\":\"A4 350dpi (2894×4093)\",\"size\":\"2894x4093\"},{\"label\":\"A4 300dpi (2480×3508)\",\"size\":\"2480x3508\"},{\"label\":\"Square 2048 (2048×2048)\",\"size\":\"2048x2048\"},{\"label\":\"HD Landscape (1920×1080)\",\"size\":\"1920x1080\"}]",
             "save_shortcut": "Ctrl+S",
             "save_as_shortcut": "Ctrl+Shift+S",
             "open_shortcut": "Ctrl+O"
@@ -107,17 +105,17 @@ fn save_and_load_restore_plugin_shortcut_configs() {
     assert_eq!(
         loaded
             .ui_state
-            .plugin_configs
+            .panel_configs
             .get("builtin.workspace-presets"),
         Some(&json!({
-            "workspace_options": "default-floating:Default floating workspace",
+            "workspace_options": "[{\"id\":\"default-floating\",\"label\":\"Default floating workspace\"}]",
             "selected_workspace": "default-floating",
             "selected_workspace_label": "Default floating workspace"
         }))
     );
 
     let mut app = test_app_with_dialogs(TestDialogs::with_open_path(path.clone()));
-    assert!(app.execute_command(Command::LoadProject));
+    assert!(app.execute_service_request(ServiceRequest::new(names::PROJECT_LOAD_DIALOG)));
     assert_eq!(
         app.panel_runtime
             .persistent_panel_configs()
@@ -125,7 +123,7 @@ fn save_and_load_restore_plugin_shortcut_configs() {
         Some(&json!({
             "default_template_size": "2894x4093",
             "new_shortcut": "Ctrl+Alt+N",
-            "template_options": "2894x4093:A4 350dpi (2894×4093)|2480x3508:A4 300dpi (2480×3508)|2048x2048:Square 2048 (2048×2048)|1920x1080:HD Landscape (1920×1080)",
+            "template_options": "[{\"label\":\"A4 350dpi (2894×4093)\",\"size\":\"2894x4093\"},{\"label\":\"A4 300dpi (2480×3508)\",\"size\":\"2480x3508\"},{\"label\":\"Square 2048 (2048×2048)\",\"size\":\"2048x2048\"},{\"label\":\"HD Landscape (1920×1080)\",\"size\":\"1920x1080\"}]",
             "save_shortcut": "Ctrl+S",
             "save_as_shortcut": "Ctrl+Shift+S",
             "open_shortcut": "Ctrl+O"
@@ -136,7 +134,7 @@ fn save_and_load_restore_plugin_shortcut_configs() {
             .persistent_panel_configs()
             .get("builtin.workspace-presets"),
         Some(&json!({
-            "workspace_options": "default-floating:Default floating workspace",
+            "workspace_options": "[{\"id\":\"default-floating\",\"label\":\"Default floating workspace\"}]",
             "selected_workspace": "default-floating",
             "selected_workspace_label": "Default floating workspace"
         }))
@@ -145,26 +143,25 @@ fn save_and_load_restore_plugin_shortcut_configs() {
     let _ = std::fs::remove_file(path);
 }
 
-/// 読込 プロジェクト restores ワークスペース レイアウト が期待どおりに動作することを検証する。
 #[test]
 fn load_project_restores_workspace_layout() {
     let path = std::env::temp_dir().join("altpaint-load-test.altp.json");
     let mut source_app = test_app_with_dialogs(TestDialogs::default());
     let mut moved = false;
     for _ in 0..3 {
-        moved |= source_app.execute_host_action(HostAction::MovePanel {
-            panel_id: "builtin.layers-panel".to_string(),
-            direction: PanelMoveDirection::Up,
-        });
+        moved |= source_app.execute_service_request(
+            ServiceRequest::new(names::WORKSPACE_LAYOUT_MOVE_PANEL)
+                .with_value("panel_id", "builtin.layers")
+                .with_value("direction", "up"),
+        );
     }
     assert!(moved);
-    assert!(
-        source_app.execute_host_action(HostAction::SetPanelVisibility {
-            panel_id: "builtin.tool-palette".to_string(),
-            visible: false,
-        })
-    );
-    let expected_layout = source_app.panel_presentation.workspace_layout();
+    assert!(source_app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+            .with_value("panel_id", "builtin.tool-palette")
+            .with_value("visible", false),
+    ));
+    let expected_layout = source_app.panel_workspace.workspace_layout();
     save_project_to_path(
         &path,
         &source_app.document,
@@ -174,60 +171,56 @@ fn load_project_restores_workspace_layout() {
     .expect("project save should succeed");
 
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    assert!(app.execute_command(Command::LoadProjectFromPath {
-        path: path.to_string_lossy().to_string(),
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::PROJECT_LOAD_FROM_PATH)
+            .with_value("path", path.to_string_lossy().to_string()),
+    ));
 
-    let panels = app.panel_presentation.panel_trees(&app.panel_runtime);
     assert!(
-        !panels
-            .iter()
-            .any(|panel| panel.id == "builtin.tool-palette")
+        !app.panel_workspace
+            .is_panel_visible("builtin.tool-palette"),
+        "tool-palette visibility was persisted as hidden"
     );
-    assert_eq!(app.panel_presentation.workspace_layout(), expected_layout);
+    assert_eq!(app.panel_workspace.workspace_layout(), expected_layout);
 
     let _ = std::fs::remove_file(path);
 }
 
-/// move パネル ホスト action updates ステータス without full recompose が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
-fn move_panel_host_action_updates_status_without_full_recompose() {
-    let mut app = DesktopApp::new(PathBuf::from("/tmp/altpaint-test.altp.json"));
-    let mut profiler = DesktopProfiler::new();
+fn move_panel_service_updates_status_without_full_recompose() {
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();
     let _layout = app.layout.clone().expect("layout exists");
 
-    assert!(app.execute_host_action(HostAction::MovePanel {
-        panel_id: "builtin.layers-panel".to_string(),
-        direction: PanelMoveDirection::Up,
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_MOVE_PANEL)
+            .with_value("panel_id", "builtin.layers")
+            .with_value("direction", "up"),
+    ));
     let _update = app.prepare_present_frame(1280, 200, &mut profiler);
 
     // Phase 9F: status text は GPU 描画化済み、L1/L4 dummy 経路も撤去済み。
-    // MovePanel が full recompose を起こさず ui_update を発火しないことのみ検証する。
+    // move_panel が full recompose を起こさず ui_update を発火しないことのみ検証する。
     // (CPU dirty rect のピクセル一致比較は Phase 9E-4 までで撤去済み。)
     assert!(!profiler.stats.contains_key("ui_update"));
     assert!(!profiler.stats.contains_key("compose_full_frame"));
 }
 
-/// 設定 パネル visibility updates ステータス without full recompose が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
-fn set_panel_visibility_updates_status_without_full_recompose() {
+fn set_panel_visibility_service_updates_status_without_full_recompose() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 200, &mut profiler);
     profiler.stats.clear();
     let _layout = app.layout.clone().expect("layout exists");
 
-    assert!(app.execute_host_action(HostAction::SetPanelVisibility {
-        panel_id: "builtin.tool-palette".to_string(),
-        visible: false,
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+            .with_value("panel_id", "builtin.tool-palette")
+            .with_value("visible", false),
+    ));
     let update = app.prepare_present_frame(1280, 200, &mut profiler);
 
     // 9E-4: status text の compose ピクセル比較は廃止。CPU dirty rect 一致確認も廃止。
@@ -236,35 +229,33 @@ fn set_panel_visibility_updates_status_without_full_recompose() {
     let _ = update;
 }
 
-/// hiding パネル clears 前 オーバーレイ 範囲 when サーフェス shrinks が期待どおりに動作することを検証する。
-///
-/// 必要に応じて dirty 状態も更新します。
 #[test]
 fn hiding_panel_clears_previous_overlay_bounds_when_surface_shrinks() {
     let mut app = test_app_with_dialogs(TestDialogs::default());
-    let mut profiler = DesktopProfiler::new();
+    let mut profiler = FrameProfiler::new();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let layout = app.layout.clone().expect("layout exists");
 
-    assert!(app.panel_presentation.move_panel_to(
+    assert!(app.panel_workspace.move_panel_to(
         "builtin.tool-palette",
         940,
         72,
         layout.window_rect.width,
         layout.window_rect.height,
     ));
-    app.mark_panel_surface_dirty();
+    app.request_panel_reconcile();
     let _ = app.prepare_present_frame(1280, 800, &mut profiler);
     let hidden_panel_rect = app
-        .panel_presentation
-        .panel_rect("builtin.tool-palette")
+        .panel_workspace
+        .panel_rect("builtin.tool-palette", 1280, 800)
         .expect("hidden panel rect exists");
 
     profiler.stats.clear();
-    assert!(app.execute_host_action(HostAction::SetPanelVisibility {
-        panel_id: "builtin.tool-palette".to_string(),
-        visible: false,
-    }));
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+            .with_value("panel_id", "builtin.tool-palette")
+            .with_value("visible", false),
+    ));
     let update = app.prepare_present_frame(1280, 800, &mut profiler);
 
     // 9E-4: compose_dirty_panel プロファイラキー / ui_panel_dirty_rect の厳密一致は廃止。
@@ -273,7 +264,6 @@ fn hiding_panel_clears_previous_overlay_bounds_when_surface_shrinks() {
     let _ = hidden_panel_rect;
 }
 
-/// startup uses 既定 ワークスペース preset when プロジェクト and セッション are empty が期待どおりに動作することを検証する。
 #[test]
 fn startup_uses_default_workspace_preset_when_project_and_session_are_empty() {
     let preset_path = unique_test_path("workspace-preset-catalog");
@@ -285,10 +275,10 @@ fn startup_uses_default_workspace_preset_when_project_and_session_are_empty() {
             presets: vec![WorkspacePreset {
                 id: "test-preset".to_string(),
                 label: "Test preset".to_string(),
-                ui_state: workspace_persistence::WorkspaceUiState::new(
-                    app_core::WorkspaceLayout {
+                ui_state: panel_workspace::WorkspaceUiState::new(
+                    panel_workspace::WorkspaceLayout {
                         panels: vec![WorkspacePanelState {
-                            id: "builtin.layers-panel".to_string(),
+                            id: "builtin.layers".to_string(),
                             visible: true,
                             anchor: WorkspacePanelAnchor::TopRight,
                             position: Some(WorkspacePanelPosition { x: 40, y: 88 }),
@@ -307,18 +297,19 @@ fn startup_uses_default_workspace_preset_when_project_and_session_are_empty() {
 
     // 他のテストが /tmp/altpaint-test.altp.json へ書き込む競合を避けるため
     // 存在しない一意パスを使う（プロジェクトが読み込まれず preset が優先される）。
-    let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        unique_test_path("preset-project"),
-        Box::new(TestDialogs::default()),
-        unique_test_path("preset-session"),
-        preset_path.clone(),
-    );
+    let app = DesktopApp::with_options(DesktopAppOptions {
+        project_path: unique_test_path("preset-project"),
+        dialogs: Box::new(TestDialogs::default()),
+        session_path: unique_test_path("preset-session"),
+        workspace_preset_path: preset_path.clone(),
+        canvas_size_preset_path: unique_test_path("preset-canvas-size"),
+    });
     let entry = app
-        .panel_presentation
+        .panel_workspace
         .workspace_layout()
         .panels
         .into_iter()
-        .find(|entry| entry.id == "builtin.layers-panel")
+        .find(|entry| entry.id == "builtin.layers")
         .expect("layers panel layout exists");
 
     assert_eq!(entry.anchor, WorkspacePanelAnchor::TopRight);
@@ -330,7 +321,6 @@ fn startup_uses_default_workspace_preset_when_project_and_session_are_empty() {
     let _ = std::fs::remove_file(&preset_path);
 }
 
-/// セッション レイアウト overrides 既定 ワークスペース preset が期待どおりに動作することを検証する。
 #[test]
 fn session_layout_overrides_default_workspace_preset() {
     let preset_path = unique_test_path("workspace-preset-catalog");
@@ -342,10 +332,10 @@ fn session_layout_overrides_default_workspace_preset() {
             presets: vec![WorkspacePreset {
                 id: "test-preset".to_string(),
                 label: "Test preset".to_string(),
-                ui_state: workspace_persistence::WorkspaceUiState::new(
-                    app_core::WorkspaceLayout {
+                ui_state: panel_workspace::WorkspaceUiState::new(
+                    panel_workspace::WorkspaceLayout {
                         panels: vec![WorkspacePanelState {
-                            id: "builtin.layers-panel".to_string(),
+                            id: "builtin.layers".to_string(),
                             visible: true,
                             anchor: WorkspacePanelAnchor::TopRight,
                             position: Some(WorkspacePanelPosition { x: 40, y: 88 }),
@@ -362,14 +352,14 @@ fn session_layout_overrides_default_workspace_preset() {
     )
     .expect("preset save should succeed");
     let session_path = unique_test_path("preset-session");
-    desktop_support::save_session_state(
+    save_session_state(
         &session_path,
-        &desktop_support::DesktopSessionState {
+        &DesktopSessionState {
             last_project_path: None,
-            ui_state: workspace_persistence::WorkspaceUiState::new(
-                app_core::WorkspaceLayout {
+            ui_state: panel_workspace::WorkspaceUiState::new(
+                panel_workspace::WorkspaceLayout {
                     panels: vec![WorkspacePanelState {
-                        id: "builtin.layers-panel".to_string(),
+                        id: "builtin.layers".to_string(),
                         visible: true,
                         anchor: WorkspacePanelAnchor::TopLeft,
                         position: Some(WorkspacePanelPosition { x: 12, y: 24 }),
@@ -381,22 +371,24 @@ fn session_layout_overrides_default_workspace_preset() {
                 },
                 BTreeMap::new(),
             ),
+            editor_session: EditorSession::default(),
         },
     )
     .expect("session save should succeed");
 
-    let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from("/tmp/altpaint-test.altp.json"),
-        Box::new(TestDialogs::default()),
-        session_path.clone(),
-        preset_path.clone(),
-    );
+    let app = DesktopApp::with_options(DesktopAppOptions {
+        project_path: PathBuf::from("/tmp/altpaint-test.altp.json"),
+        dialogs: Box::new(TestDialogs::default()),
+        session_path: session_path.clone(),
+        workspace_preset_path: preset_path.clone(),
+        canvas_size_preset_path: unique_test_path("workspace-canvas-size"),
+    });
     let entry = app
-        .panel_presentation
+        .panel_workspace
         .workspace_layout()
         .panels
         .into_iter()
-        .find(|entry| entry.id == "builtin.layers-panel")
+        .find(|entry| entry.id == "builtin.layers")
         .expect("layers panel layout exists");
 
     assert_eq!(entry.anchor, WorkspacePanelAnchor::TopLeft);
@@ -409,7 +401,6 @@ fn session_layout_overrides_default_workspace_preset() {
     let _ = std::fs::remove_file(preset_path);
 }
 
-/// startup restores last opened プロジェクト from セッション が期待どおりに動作することを検証する。
 #[test]
 fn startup_restores_last_opened_project_from_session() {
     let session_path = unique_test_path("desktop-session");
@@ -420,55 +411,129 @@ fn startup_restores_last_opened_project_from_session() {
     );
     source_app.document.work.title = "Recovered Project".to_string();
 
-    assert!(source_app.execute_command(Command::SaveProjectAs));
+    assert!(source_app.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_AS)));
     source_app.wait_for_pending_save_tasks();
 
-    let app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from(DEFAULT_PROJECT_PATH),
-        Box::new(TestDialogs::default()),
-        session_path.clone(),
-        unique_test_path("workspace-presets"),
-    );
+    let app = DesktopApp::with_options(DesktopAppOptions {
+        project_path: default_project_path(),
+        dialogs: Box::new(TestDialogs::default()),
+        session_path: session_path.clone(),
+        workspace_preset_path: unique_test_path("workspace-presets"),
+        canvas_size_preset_path: unique_test_path("recovered-canvas-size"),
+    });
 
-    assert_eq!(app.io_state.project_path, project_path);
+    assert_eq!(app.paths.project_path, project_path);
     assert_eq!(app.document.work.title, "Recovered Project");
 
     let _ = std::fs::remove_file(session_path);
-    let _ = std::fs::remove_file(app.io_state.project_path.clone());
+    let _ = std::fs::remove_file(app.paths.project_path.clone());
 }
 
-/// パネル レイアウト persists across restart via セッション が期待どおりに動作することを検証する。
+/// BL-079: エディタセッション (ツール/色/ペン/ビュー) は project ファイルではなく
+/// session 永続化で round-trip する。色とペンサイズを変えてプロジェクト保存
+/// (session も永続化される) → 再起動で復元されることを検証する。
 #[test]
-fn panel_layout_persists_across_restart_via_session() {
+fn editor_session_round_trips_through_session_save_load() {
+    let session_path = unique_test_path("editor-session");
+    let project_path = unique_test_path("editor-session-project");
+    let mut source_app = test_app_with_dialogs_and_session_path(
+        TestDialogs::with_save_path(project_path.clone()),
+        session_path.clone(),
+    );
+
+    let restored_color = ColorRgba8::new(0x8e, 0x24, 0xaa, 0xff);
+    let _ = source_app.apply_session_command(&SessionCommand::SetActiveColor {
+        color: restored_color,
+    });
+    let _ = source_app.apply_session_command(&SessionCommand::SetActivePenSize { size: 23 });
+    assert_ne!(restored_color, EditorSession::default().active_color);
+
+    // プロジェクト保存は session 永続化も走らせる (save_project_to_path → persist_session_state)。
+    assert!(source_app.execute_service_request(ServiceRequest::new(names::PROJECT_SAVE_AS)));
+    source_app.wait_for_pending_save_tasks();
+
+    let app = DesktopApp::with_options(DesktopAppOptions {
+        project_path: default_project_path(),
+        dialogs: Box::new(TestDialogs::default()),
+        session_path: session_path.clone(),
+        workspace_preset_path: unique_test_path("workspace-presets"),
+        canvas_size_preset_path: unique_test_path("recovered-canvas-size"),
+    });
+
+    assert_eq!(app.document.session.active_color, restored_color);
+    assert_eq!(app.document.session.active_pen_size, 23);
+
+    let _ = std::fs::remove_file(session_path);
+    let _ = std::fs::remove_file(project_path);
+}
+
+/// BL-079: project ファイルは作品コンテンツのみを保存する。project を直接保存して
+/// 読み込むと、保存時のエディタセッション (色) は project には含まれず、読込側の
+/// 現在セッションが温存される。
+#[test]
+fn loading_project_preserves_live_editor_session() {
+    let path = std::env::temp_dir().join(format!(
+        "altpaint-session-boundary-{}.altp.json",
+        std::process::id()
+    ));
+    let mut source_app = test_app_with_dialogs(TestDialogs::default());
+    let saved_color = ColorRgba8::new(0x11, 0x22, 0x33, 0xff);
+    let _ = source_app.apply_session_command(&SessionCommand::SetActiveColor { color: saved_color });
+    save_project_to_path(
+        &path,
+        &source_app.document,
+        &source_app.panel_workspace.workspace_layout(),
+        &BTreeMap::new(),
+    )
+    .expect("project save should succeed");
+
+    // 別アプリで現在セッションの色を変えてから project を読み込む。
+    let mut app = test_app_with_dialogs(TestDialogs::default());
+    let live_color = ColorRgba8::new(0xaa, 0xbb, 0xcc, 0xff);
+    let _ = app.apply_session_command(&SessionCommand::SetActiveColor { color: live_color });
+    assert!(app.execute_service_request(
+        ServiceRequest::new(names::PROJECT_LOAD_FROM_PATH)
+            .with_value("path", path.to_string_lossy().to_string()),
+    ));
+
+    // 読込側の現在セッション (live_color) が温存され、project 保存時の色は反映されない。
+    assert_eq!(app.document.session.active_color, live_color);
+    assert_ne!(app.document.session.active_color, saved_color);
+
+    let _ = std::fs::remove_file(path);
+}
+
+/// パネル visibility round-trip: session 永続化 → 復元後も非表示状態が復元される。
+/// (旧テスト名 `panel_layout_persists_across_restart_via_session` をリネーム + visibility 観点に集約)
+#[test]
+fn panel_visibility_round_trip_through_session_save_load() {
     let session_path = unique_test_path("layout-session");
     let mut source_app =
         test_app_with_dialogs_and_session_path(TestDialogs::default(), session_path.clone());
 
-    assert!(source_app.execute_host_action(HostAction::MovePanel {
-        panel_id: "builtin.layers-panel".to_string(),
-        direction: PanelMoveDirection::Up,
-    }));
-    assert!(
-        source_app.execute_host_action(HostAction::SetPanelVisibility {
-            panel_id: "builtin.tool-palette".to_string(),
-            visible: false,
-        })
-    );
-    let expected_layout = source_app.panel_presentation.workspace_layout();
+    assert!(source_app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_MOVE_PANEL)
+            .with_value("panel_id", "builtin.layers")
+            .with_value("direction", "up"),
+    ));
+    assert!(source_app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_LAYOUT_SET_PANEL_VISIBILITY)
+            .with_value("panel_id", "builtin.tool-palette")
+            .with_value("visible", false),
+    ));
+    let expected_layout = source_app.panel_workspace.workspace_layout();
 
     let app = test_app_with_dialogs_and_session_path(TestDialogs::default(), session_path.clone());
-    let panels = app.panel_presentation.panel_trees(&app.panel_runtime);
     assert!(
-        !panels
-            .iter()
-            .any(|panel| panel.id == "builtin.tool-palette")
+        !app.panel_workspace
+            .is_panel_visible("builtin.tool-palette"),
+        "tool-palette stays hidden after session round-trip"
     );
-    assert_eq!(app.panel_presentation.workspace_layout(), expected_layout);
+    assert_eq!(app.panel_workspace.workspace_layout(), expected_layout);
 
     let _ = std::fs::remove_file(session_path);
 }
 
-/// startup preserves last 選択中 ワークスペース preset ID が期待どおりに動作することを検証する。
 #[test]
 fn startup_preserves_last_selected_workspace_preset_id() {
     let preset_path = unique_test_path("workspace-preset-selected");
@@ -481,15 +546,15 @@ fn startup_preserves_last_selected_workspace_preset_id() {
                 WorkspacePreset {
                     id: "default".to_string(),
                     label: "Default".to_string(),
-                    ui_state: workspace_persistence::WorkspaceUiState::default(),
+                    ui_state: panel_workspace::WorkspaceUiState::default(),
                 },
                 WorkspacePreset {
                     id: "review".to_string(),
                     label: "Review".to_string(),
-                    ui_state: workspace_persistence::WorkspaceUiState::new(
-                        app_core::WorkspaceLayout {
+                    ui_state: panel_workspace::WorkspaceUiState::new(
+                        panel_workspace::WorkspaceLayout {
                             panels: vec![WorkspacePanelState {
-                                id: "builtin.layers-panel".to_string(),
+                                id: "builtin.layers".to_string(),
                                 visible: true,
                                 anchor: WorkspacePanelAnchor::BottomRight,
                                 position: Some(WorkspacePanelPosition { x: 32, y: 40 }),
@@ -507,22 +572,24 @@ fn startup_preserves_last_selected_workspace_preset_id() {
     )
     .expect("preset save should succeed");
 
-    let mut source_app = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from("/tmp/altpaint-test.altp.json"),
-        Box::new(TestDialogs::default()),
-        unique_test_path("selected-preset-session-source"),
-        preset_path.clone(),
-    );
-    assert!(source_app.execute_command(Command::ApplyWorkspacePreset {
-        preset_id: "review".to_string(),
-    }));
+    let mut source_app = DesktopApp::with_options(DesktopAppOptions {
+        project_path: PathBuf::from("/tmp/altpaint-test.altp.json"),
+        dialogs: Box::new(TestDialogs::default()),
+        session_path: unique_test_path("selected-preset-session-source"),
+        workspace_preset_path: preset_path.clone(),
+        canvas_size_preset_path: unique_test_path("selected-preset-canvas-size"),
+    });
+    assert!(source_app.execute_service_request(
+        ServiceRequest::new(names::WORKSPACE_APPLY_PRESET).with_value("preset_id", "review"),
+    ));
 
-    let restarted = DesktopApp::new_with_dialogs_session_path_and_workspace_preset_path(
-        PathBuf::from("/tmp/altpaint-test.altp.json"),
-        Box::new(TestDialogs::default()),
-        source_app.io_state.session_path.clone(),
-        preset_path.clone(),
-    );
+    let restarted = DesktopApp::with_options(DesktopAppOptions {
+        project_path: PathBuf::from("/tmp/altpaint-test.altp.json"),
+        dialogs: Box::new(TestDialogs::default()),
+        session_path: source_app.paths.session_path.clone(),
+        workspace_preset_path: preset_path.clone(),
+        canvas_size_preset_path: unique_test_path("restarted-canvas-size"),
+    });
 
     assert_eq!(
         restarted
@@ -534,6 +601,6 @@ fn startup_preserves_last_selected_workspace_preset_id() {
         Some("review")
     );
 
-    let _ = std::fs::remove_file(source_app.io_state.session_path.clone());
+    let _ = std::fs::remove_file(source_app.paths.session_path.clone());
     let _ = std::fs::remove_file(preset_path);
 }

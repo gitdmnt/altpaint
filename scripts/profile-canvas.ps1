@@ -16,15 +16,15 @@ param(
 $ErrorActionPreference = "Stop"
 $RootDir = Split-Path $PSScriptRoot -Parent
 
-$BuildArgs = @("build", "-p", "canvas")
+$BuildArgs = @("build", "-p", "paint-engine")
 if ($Release) { $BuildArgs += "--release" }
 Write-Host "[profile-canvas] Building..."
 & cargo @BuildArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "[profile-canvas] Running canvas tests ($Iterations iterations)..."
-$TestArgs = @("test", "-p", "canvas", "--", "--nocapture")
-if ($Release) { $TestArgs = @("test", "-p", "canvas", "--release", "--", "--nocapture") }
+$TestArgs = @("test", "-p", "paint-engine", "--", "--nocapture")
+if ($Release) { $TestArgs = @("test", "-p", "paint-engine", "--release", "--", "--nocapture") }
 
 $StartTime = [System.Diagnostics.Stopwatch]::StartNew()
 for ($i = 1; $i -le $Iterations; $i++) {

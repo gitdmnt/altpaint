@@ -1,0 +1,64 @@
+use crate::painting::{PaintInput, PaintPluginContext};
+use document_model::Document;
+
+use crate::ResolvedPaintContext;
+
+pub fn resolved_size_for_input(document: &Document, input: &PaintInput) -> u32 {
+    match input {
+        PaintInput::Stamp { pressure, .. } | PaintInput::StrokeSegment { pressure, .. } => {
+            document.session.brush_size_for_pressure(*pressure)
+        }
+        PaintInput::FloodFill { .. } | PaintInput::LassoFill { .. } => {
+            document.session.active_pen_size.max(1)
+        }
+    }
+}
+
+pub fn build_paint_context<'a>(
+    document: &'a Document,
+    input: &PaintInput,
+) -> Option<ResolvedPaintContext<'a>> {
+    if !points_inside_active_koma(document, input) {
+        return None;
+    }
+
+    let resolved_size = resolved_size_for_input(document, input);
+    let active_tool = document.session.active_tool_definition()?;
+    let active_pen = document.session.active_pen_preset()?;
+    let active_koma = document.active_koma()?;
+    let active_layer_bitmap = document.active_layer_bitmap()?;
+    let composited_bitmap = document.active_bitmap()?;
+
+    Some(ResolvedPaintContext {
+        context: PaintPluginContext {
+            tool: active_tool.kind,
+            tool_id: active_tool.id.as_str(),
+            provider_plugin_id: active_tool.provider_plugin_id.as_str(),
+            drawing_plugin_id: active_tool.drawing_plugin_id.as_str(),
+            tool_settings: active_tool.settings.as_slice(),
+            color: document.session.active_color,
+            pen: active_pen,
+            resolved_size,
+            active_layer_bitmap,
+            composited_bitmap,
+            active_layer_is_background: document.active_layer_is_background().unwrap_or(false),
+            active_layer_index: active_koma.active_layer_index,
+            layer_count: active_koma.layers.len(),
+        },
+    })
+}
+
+fn points_inside_active_koma(document: &Document, input: &PaintInput) -> bool {
+    match input {
+        PaintInput::Stamp { at, .. } | PaintInput::FloodFill { at } => {
+            document.active_koma_contains_local_point(*at)
+        }
+        PaintInput::StrokeSegment { from, to, .. } => {
+            document.active_koma_contains_local_point(*from)
+                || document.active_koma_contains_local_point(*to)
+        }
+        PaintInput::LassoFill { points } => points
+            .iter()
+            .any(|point| document.active_koma_contains_local_point(*point)),
+    }
+}

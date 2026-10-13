@@ -16,7 +16,7 @@
 - 起動時に既定ペンディレクトリを読み込む
 - `builtin.tool-palette` から `Reload Pens` を押して再読込できる
 - `builtin.tool-palette` から前/次のプリセットへ切り替えられる
-- `builtin.pen-settings` から現在のペン幅を変更できる
+- `builtin.tool-settings` から現在のペン幅を変更できる
 - `Pen` ツールは可変幅ストロークを描ける
 - `storage` に `AltPaintPen` 正規化 IR と parse/export module がある
 - Photoshop `ABR` sampled brush の最小 importer がある
@@ -37,16 +37,8 @@
 
 ## ファイル形式
 
-### ver.1 互換形式
-
-```json
-{
-  "format_version": 1,
-  "id": "builtin.round-pen",
-  "name": "Round Pen",
-  "size": 4,
-}
-```
+ver.1 形式の受理は廃止済み (alpha 方針で後方互換を持たない)。
+`format_version: 2` のみ読み込める。
 
 ### ver.2 正規化形式
 
@@ -88,17 +80,6 @@
 ```
 
 ## フィールド
-
-### ver.1
-
-- `format_version`
-  - 現在は `1` 固定
-- `id`
-  - 一意なプリセット ID
-- `name`
-  - UI 表示名
-- `size`
-  - 初期幅
 
 ### ver.2
 
@@ -151,13 +132,15 @@
 
 ## 現在の parse/export module
 
-- `storage::parse_altpaint_pen_json(...)`
-  - `ver.1` / `ver.2` の `*.altp-pen.json` を読む
-- `storage::parse_photoshop_abr_bytes(...)`
+- `storage::parse_pen_file(...)`
+  - 拡張子/内容から形式を判定して読み込む唯一の公開入口
+- `parse_altpaint_pen_json(...)` (crate 内部)
+  - `ver.2` の `*.altp-pen.json` を読む
+- `parse_photoshop_abr_bytes(...)` (crate 内部)
   - Photoshop `ABR` を正規化 `AltPaintPen` 群へ落とす
-- `storage::parse_clip_studio_sut(...)`
+- `parse_clip_studio_sut(...)` (crate 内部)
   - Clip Studio Paint `SUT` を read-only で調査し、正規化 metadata を返す
-- `storage::parse_gimp_gbr_bytes(...)`
+- `parse_gimp_gbr_bytes(...)` (crate 内部)
   - `GIMP GBR` を読む
 - `storage::export_altpaint_pen_json(...)`
   - 正規化 `AltPaintPen` を `*.altp-pen.json` として書き出す

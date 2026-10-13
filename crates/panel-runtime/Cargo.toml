@@ -6,13 +6,14 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-app-core = { path = "../app-core" }
-panel-dsl = { path = "../panel-dsl" }
-panel-api = { path = "../panel-api" }
-panel-schema = { path = "../panel-schema" }
-plugin-host = { path = "../plugin-host" }
-panel-html-experiment = { path = "../panel-html-experiment" }
+document-model = { path = "../document-model" }
+editor-state = { path = "../editor-state" }
+raster = { path = "../raster" }
+panel-protocol = { path = "../panel-protocol" }
+panel-wasm-host = { path = "../panel-wasm-host" }
+panel-html = { path = "../panel-html" }
 thiserror = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 
 [dev-dependencies]

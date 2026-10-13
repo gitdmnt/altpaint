@@ -1,0 +1,16 @@
+{
+  "id": "builtin.workspace-layout",
+  "title": "パネル管理",
+  "default_size": { "width": 280, "height": 320 },
+  "subscribes": ["workspace"],
+  "layout": {
+    "anchor": "top-left",
+    "position": { "x": 24, "y": 72 },
+    "always_visible": true
+  },
+  "preset": {
+    "anchor": "top-left",
+    "position": { "x": 24, "y": 72 },
+    "size": { "width": 320, "height": 280 }
+  }
+}

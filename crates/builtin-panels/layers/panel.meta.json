@@ -1,0 +1,15 @@
+{
+  "id": "builtin.layers",
+  "title": "レイヤー",
+  "default_size": { "width": 320, "height": 360 },
+  "subscribes": ["document"],
+  "layout": {
+    "anchor": "top-right",
+    "position": { "x": 24, "y": 72 }
+  },
+  "preset": {
+    "anchor": "top-right",
+    "position": { "x": 24, "y": 72 },
+    "size": { "width": 320, "height": 320 }
+  }
+}

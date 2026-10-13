@@ -1,0 +1,13 @@
+[package]
+name = "builtin-panel-tool-palette"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+panel-sdk = { path = "../../panel-sdk" }
+serde_json = { workspace = true }

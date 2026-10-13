@@ -1,24 +1,46 @@
 //! フレーム生成と差分更新の責務を `DesktopApp` へ追加する。
 //!
-//! Phase 9F 完了後、`PresentScene` のレイヤーは
-//! `background_quads` / `canvas_layer` / `overlay_*_quads` / `panel_quads` /
+//! Phase 9F 完了後、`PresentFrame` のレイヤーは
+//! `background_quads` / `canvas_surface` / `overlay_*_quads` / `panel_quads` /
 //! `foreground_quads` / `status_quad` のみ。CPU 合成経路は完全撤去済み。
 
 use std::time::Instant;
 
-use desktop_support::DesktopProfiler;
+use frame_profiler::FrameProfiler;
 
 use super::{DesktopApp, PresentFrameUpdate};
-use crate::frame::DesktopLayout;
+use crate::present_quads::DesktopLayout;
 
 impl DesktopApp {
-    /// Prepare 提示 フレーム に必要な差分領域だけを描画または合成する。
+    /// 提示フレーム更新指示を組み立てる。
+    ///
+    /// 処理を 4 フェーズに分割する (BL-118):
+    /// 1. `present_phase_layout` — 背景タスク回収 + レイアウト再計算。
+    /// 2. `present_phase_panel_sync` — workspace パネル一覧注入 + dirty パネル同期。
+    /// 3. `present_phase_hit_tables` — HTML パネルの hit / move handle テーブル更新 +
+    ///    パネル再整合の消化。
+    /// 4. `present_phase_invalidation_drain` — 保留 dirty rect / 再構築フラグを消化し
+    ///    `PresentFrameUpdate` を確定する。
     pub(crate) fn prepare_present_frame(
         &mut self,
         window_width: usize,
         window_height: usize,
-        profiler: &mut DesktopProfiler,
+        profiler: &mut FrameProfiler,
     ) -> PresentFrameUpdate {
+        self.present_phase_layout(window_width, window_height, profiler);
+        self.present_phase_panel_sync(profiler);
+        self.present_phase_hit_tables(window_width, window_height, profiler);
+        self.present_phase_invalidation_drain(window_width, window_height, profiler)
+    }
+
+    /// フェーズ 1: 背景タスクを回収し、ウィンドウ/キャンバス寸法からレイアウトを
+    /// 再計算する。レイアウトが変化していればパネル再整合とフレーム全再構築を予約する。
+    fn present_phase_layout(
+        &mut self,
+        window_width: usize,
+        window_height: usize,
+        profiler: &mut FrameProfiler,
+    ) {
         self.poll_background_tasks();
         let (canvas_width, canvas_height) = self.canvas_dimensions();
         let next_layout = profiler.measure("layout", || {
@@ -27,93 +49,93 @@ impl DesktopApp {
 
         if self.layout.as_ref() != Some(&next_layout) {
             self.layout = Some(next_layout.clone());
-            self.mark_panel_surface_dirty();
+            self.request_panel_reconcile();
             self.rebuild_present_frame();
         }
+    }
+
+    /// フェーズ 2: workspace_layout パネル用の登録パネル一覧を runtime に注入し、
+    /// dirty なパネルがあれば host state を構築して再描画同期を行う。
+    fn present_phase_panel_sync(&mut self, profiler: &mut FrameProfiler) {
+        // workspace_layout パネル用に、登録パネル一覧 (id/title/visible) を JSON 化して runtime に注入。
+        // 値が変わっていれば workspace-layout が dirty 扱いとなり次の sync_dirty_panels で再描画される。
+        let workspace_panels_json = self.build_workspace_panels_json();
+        self.panel_runtime
+            .set_workspace_panels_json(workspace_panels_json);
 
         if self.panel_runtime.has_dirty_panels() {
             profiler.record_value("ui_update_panels", self.panel_runtime.dirty_panel_count() as f64);
-            let can_undo = self.history.can_undo();
-            let can_redo = self.history.can_redo();
-            let active_jobs = self.io_state.pending_jobs.len();
-            let snapshot_count = self.snapshots.len();
+            let host_state = panel_runtime::HostState {
+                can_undo: self.paint.history.can_undo(),
+                can_redo: self.paint.history.can_redo(),
+                active_jobs: self.background_jobs.len(),
+                snapshot_count: self.snapshots.len(),
+            };
             let sync_t = Instant::now();
-            let changed = self.panel_runtime.sync_dirty_panels(
-                &self.document,
-                can_undo,
-                can_redo,
-                active_jobs,
-                snapshot_count,
-            );
+            let changed = self
+                .panel_runtime
+                .sync_dirty_panels(&self.document, host_state);
             profiler.record("ui_sync_panels", sync_t.elapsed());
             let reconcile_t = Instant::now();
-            self.panel_presentation
-                .reconcile_runtime_panels(&self.panel_runtime);
+            self.panel_workspace
+                .reconcile_panels(self.panel_runtime.panel_ids());
             profiler.record("ui_reconcile", reconcile_t.elapsed());
             if !changed.is_empty() {
-                self.panel_presentation.mark_runtime_panels_dirty(&changed);
-                self.mark_panel_surface_dirty();
+                self.request_panel_reconcile();
             }
         }
+    }
 
-        let mut panel_surface_refreshed = false;
-        if self.needs_panel_surface_refresh {
-            let panel_surface_size = self
-                .layout
-                .as_ref()
-                .map(|layout| (layout.window_rect.width, layout.window_rect.height))
-                .unwrap_or((1, 1));
-            let panel_surface = profiler.measure("panel_surface", || {
-                self.panel_presentation.render_panel_surface(
-                    &self.panel_runtime,
-                    panel_surface_size.0,
-                    panel_surface_size.1,
-                )
+    /// フェーズ 3: HTML パネルの hit / move handle / full rect テーブルを更新し、
+    /// 予約済みのパネル再整合を消化する。
+    fn present_phase_hit_tables(
+        &mut self,
+        window_width: usize,
+        window_height: usize,
+        profiler: &mut FrameProfiler,
+    ) {
+        // HTML パネルの hit / move handle / full rect テーブルを CPU 側で更新する。
+        // レイアウト解決は GPU 非依存 (`collect_panel_hits`) のため、GPU 提示の有無
+        // (headless テスト含む) にかかわらずフォーカス巡回・キーボード操作・
+        // pointer hit が機能する。GPU ループ (event_loop.rs) は quad 組み立てのみを担う。
+        profiler.measure("panel_hits", || {
+            self.refresh_panel_hit_tables(window_width, window_height);
+        });
+
+        if self.invalidation.needs_panel_reconcile {
+            profiler.measure("panel_reconcile", || {
+                self.panel_workspace
+                    .reconcile_panels(self.panel_runtime.panel_ids());
             });
-            let window_area = (window_width.max(1) * window_height.max(1)) as f64;
-            profiler.record_value(
-                "panel_surface_buffer_area_px",
-                (panel_surface.width * panel_surface.height) as f64,
-            );
-            profiler.record_value("panel_surface_buffer_width_px", panel_surface.width as f64);
-            profiler.record_value(
-                "panel_surface_buffer_height_px",
-                panel_surface.height as f64,
-            );
-            profiler.record_value(
-                "panel_surface_window_coverage_pct",
-                ((panel_surface.width * panel_surface.height) as f64 / window_area) * 100.0,
-            );
-            profiler.record_value(
-                "panel_surface_rasterized_panels",
-                self.panel_presentation.last_panel_rasterized_panels() as f64,
-            );
-            profiler.record_value(
-                "panel_surface_composited_panels",
-                self.panel_presentation.last_panel_composited_panels() as f64,
-            );
-            profiler.record_value(
-                "panel_surface_raster_ms",
-                self.panel_presentation.last_panel_raster_duration_ms(),
-            );
-            profiler.record_value(
-                "panel_surface_compose_ms",
-                self.panel_presentation.last_panel_compose_duration_ms(),
-            );
-            self.panel_surface = Some(panel_surface);
-            self.needs_panel_surface_refresh = false;
-            panel_surface_refreshed = true;
+            self.invalidation.needs_panel_reconcile = false;
         }
+    }
 
-        if self.needs_full_present_rebuild {
-            self.pending_canvas_dirty_rect = None;
-            self.pending_temp_overlay_dirty_rect = None;
-            self.pending_ui_panel_dirty_rect = None;
-            self.pending_canvas_transform_update = false;
-            self.needs_status_refresh = false;
-            self.needs_full_present_rebuild = false;
-            let bitmap = self.canvas_frame.as_ref();
-            let window_rect = render_types::PixelRect {
+    /// フェーズ 4: 保留 dirty rect と再構築フラグを消化し、提示フレーム更新指示を確定する。
+    fn present_phase_invalidation_drain(
+        &mut self,
+        window_width: usize,
+        window_height: usize,
+        profiler: &mut FrameProfiler,
+    ) -> PresentFrameUpdate {
+        let (canvas_width, canvas_height) = self.canvas_dimensions();
+
+        // BL-117 計測下地: 直前フレーム区間で発生した GPU 同期回数を profiler へ記録し、
+        // カウンタをリセットする。B8 の前後比較で差分同期の効果を観測するための土台。
+        let full_syncs = std::mem::take(&mut self.invalidation.gpu_sync_full_count);
+        let differential_syncs = std::mem::take(&mut self.invalidation.gpu_sync_differential_count);
+        profiler.record_value("gpu_sync_full_count", full_syncs as f64);
+        profiler.record_value("gpu_sync_differential_count", differential_syncs as f64);
+
+        if self.invalidation.needs_full_present_rebuild {
+            self.invalidation.canvas_dirty_rect = None;
+            self.invalidation.temp_overlay_dirty_rect = None;
+            self.invalidation.ui_panel_dirty_rect = None;
+            self.invalidation.canvas_transform_update = false;
+            self.invalidation.needs_status_refresh = false;
+            self.invalidation.needs_full_present_rebuild = false;
+            let bitmap = self.paint.cpu_canvas_snapshot.as_ref();
+            let window_rect = geometry::WindowRect {
                 x: 0,
                 y: 0,
                 width: window_width,
@@ -123,7 +145,7 @@ impl DesktopApp {
                 background_dirty_rect: Some(window_rect),
                 temp_overlay_dirty_rect: Some(window_rect),
                 ui_panel_dirty_rect: Some(window_rect),
-                canvas_dirty_rect: bitmap.map(|bitmap| app_core::CanvasDirtyRect {
+                canvas_dirty_rect: bitmap.map(|bitmap| geometry::PageDirtyRect {
                     x: 0,
                     y: 0,
                     width: bitmap.width,
@@ -134,26 +156,17 @@ impl DesktopApp {
             };
         }
 
-        let mut layer_dirty = render_types::LayerGroupDirtyPlan::default();
+        let mut layer_dirty = crate::present_quads::LayerDirtyAccumulator::default();
 
-        // パネルサーフェス更新 — Phase 9E-3 で GPU 経路に移行済み。dirty rect は
-        // GPU panel_quads の再描画範囲監視に使う。
-        if panel_surface_refreshed {
-            let panel_dirty_rect = self.panel_presentation.last_panel_surface_dirty_rect();
-            if let Some(panel_dirty_rect) = panel_dirty_rect {
-                layer_dirty.mark_ui_panel(panel_dirty_rect);
-            }
-        }
-
-        // ステータス更新 — HtmlPanelEngine 化されたため、毎フレーム
-        // status_panel.update() を呼んで snapshot を engine に流す（差分なら no-op）。
-        // 実際の GPU 描画は runtime.rs の RedrawRequested で行う。
-        if self.needs_status_refresh {
-            self.needs_status_refresh = false;
+        // ステータス更新 — HtmlPanelView 化されたため、毎フレーム
+        // status_bar.update() を呼んで snapshot を view に流す（差分なら no-op）。
+        // 実際の GPU 描画は event_loop.rs の RedrawRequested で行う。
+        if self.invalidation.needs_status_refresh {
+            self.invalidation.needs_status_refresh = false;
         }
 
         // 一時オーバーレイは GPU quad で毎フレーム描画されるため CPU 合成は不要。
-        if let Some(dirty_rect) = self.pending_temp_overlay_dirty_rect.take()
+        if let Some(dirty_rect) = self.invalidation.temp_overlay_dirty_rect.take()
             && dirty_rect.width > 0
             && dirty_rect.height > 0
         {
@@ -161,17 +174,17 @@ impl DesktopApp {
         }
 
         // UIパネル dirty
-        if let Some(dirty_rect) = self.pending_ui_panel_dirty_rect.take()
+        if let Some(dirty_rect) = self.invalidation.ui_panel_dirty_rect.take()
             && dirty_rect.width > 0
             && dirty_rect.height > 0
         {
             layer_dirty.mark_ui_panel(dirty_rect);
         }
 
-        let canvas_dirty_rect = self.pending_canvas_dirty_rect.take();
-        let canvas_transform_changed = std::mem::take(&mut self.pending_canvas_transform_update);
+        let canvas_dirty_rect = self.invalidation.canvas_dirty_rect.take();
+        let canvas_transform_changed = std::mem::take(&mut self.invalidation.canvas_transform_update);
         if let Some(canvas_dirty_rect) = canvas_dirty_rect {
-            use app_core::ClampToCanvasBounds;
+            use geometry::ClampToCanvasBounds;
             let dirty = canvas_dirty_rect.clamp_to_canvas_bounds(canvas_width, canvas_height);
             let canvas_area = (canvas_width.max(1) * canvas_height.max(1)) as f64;
             profiler.record_value("canvas_upload_area_px", (dirty.width * dirty.height) as f64);
@@ -204,8 +217,8 @@ impl DesktopApp {
             );
         }
         if canvas_dirty_rect.is_some() || canvas_transform_changed {
-            profiler.measure("prepare_canvas_scene", || {
-                let _ = self.canvas_scene();
+            profiler.measure("compute_canvas_view_geometry", || {
+                let _ = self.canvas_view_geometry();
             });
         }
 
@@ -216,6 +229,85 @@ impl DesktopApp {
             canvas_dirty_rect,
             canvas_transform_changed,
             canvas_updated: canvas_dirty_rect.is_some() || canvas_transform_changed,
+        }
+    }
+
+    /// HTML パネルの hit / move handle / full rect テーブルを更新する。
+    ///
+    /// パネル位置は workspace_layout、サイズは View の `panel_size` が権威。
+    /// hit 矩形は `collect_panel_hits` が GPU 描画と同一のクランプ規則で
+    /// レイアウト解決して返すため、実描画と常に一致する。
+    fn refresh_panel_hit_tables(&mut self, window_width: usize, window_height: usize) {
+        let all_panel_ids = self.panel_runtime.panel_ids_with_gpu();
+        let (panel_ids, hidden_ids): (Vec<String>, Vec<String>) = all_panel_ids
+            .into_iter()
+            .partition(|id| self.panel_workspace.is_panel_visible(id));
+        // 不可視パネルのジオメトリは掃除する
+        for id in &hidden_ids {
+            self.panel_workspace.remove_panel_geometry(id);
+        }
+        if panel_ids.is_empty() {
+            return;
+        }
+
+        let chrome_h = super::PANEL_CHROME_HEIGHT as usize;
+        let measured = self.panel_runtime.panel_sizes();
+        let mut sized: Vec<(String, u32, u32)> = Vec::with_capacity(panel_ids.len());
+        let mut panel_rects: Vec<geometry::WindowRect> = Vec::with_capacity(panel_ids.len());
+        for id in &panel_ids {
+            let (mw, mh) = measured
+                .iter()
+                .find(|(pid, _, _)| pid == id)
+                .map(|(_, w, h)| (*w, *h))
+                .unwrap_or((1, 1));
+            // 位置は workspace_layout の position を使う（サイズは measured で上書き）
+            let position_rect = self
+                .panel_workspace
+                .panel_rect(id, window_width, window_height)
+                .unwrap_or(geometry::WindowRect {
+                    x: 0,
+                    y: 0,
+                    width: mw as usize,
+                    height: mh as usize,
+                });
+            panel_rects.push(geometry::WindowRect {
+                x: position_rect.x,
+                y: position_rect.y,
+                width: mw as usize,
+                height: mh as usize,
+            });
+            // viewport はクランプ上限としてそのまま渡し、View 側でクランプさせる
+            sized.push((id.clone(), window_width as u32, window_height as u32));
+        }
+
+        let hits_by_panel = self.panel_runtime.collect_panel_hits(
+            &sized,
+            1.0,
+            super::PANEL_CHROME_HEIGHT,
+        );
+        for (panel_id, hits) in hits_by_panel {
+            let Some(index) = panel_ids.iter().position(|id| id == &panel_id) else {
+                continue;
+            };
+            let panel_rect = panel_rects[index];
+            let hit_rects: Vec<(String, geometry::WindowRect)> = hits
+                .into_iter()
+                .filter_map(|hit| {
+                    let element_id = hit.element_id?;
+                    Some((
+                        element_id,
+                        geometry::WindowRect {
+                            x: hit.rect.x as usize,
+                            y: hit.rect.y as usize,
+                            width: hit.rect.width as usize,
+                            height: hit.rect.height as usize,
+                        },
+                    ))
+                })
+                .collect();
+            // chrome/body 分割は panel-workspace 側で full_rect から導出される (BL-096)。
+            self.panel_workspace
+                .update_panel_geometry(&panel_id, panel_rect, chrome_h, hit_rects);
         }
     }
 }

@@ -1,0 +1,15 @@
+{
+  "id": "builtin.view-controls",
+  "title": "表示",
+  "default_size": { "width": 280, "height": 200 },
+  "subscribes": ["view"],
+  "layout": {
+    "anchor": "bottom-right",
+    "position": { "x": 376, "y": 24 }
+  },
+  "preset": {
+    "anchor": "bottom-right",
+    "position": { "x": 376, "y": 24 },
+    "size": { "width": 320, "height": 260 }
+  }
+}
