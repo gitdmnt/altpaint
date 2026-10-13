@@ -1,6 +1,6 @@
 # ADR 020: コードベース再建方針 — 骨格再建・選別移植方式
 
-- 作業日時: 2026-09-23 (調査開始 午前、初版の確定 17:07 JST、4 ファイルへの分割と Q1〜Q7 の回答の反映 22:15〜22:45 JST)、2026-10-13 (2 章の 8 番の根拠の訂正と、付録 H への追記)
+- 作業日時: 2026-09-23 (調査開始 午前、初版の確定 17:07 JST、4 ファイルへの分割と Q1〜Q7 の回答の反映 22:15〜22:45 JST)、2026-10-13 (2 章の 8 番の根拠の訂正、付録 H への追記、付録 G の追加)
 - 作業 Agent: Claude Opus 5.5 (claude-opus-5-5, Claude Code)。調査・検証・方針案はサブエージェント群 (監査 9、検証 6、方針 6) で作成し、本 ADR に統合した
 - ステータス: **Proposed** (Q1〜Q7 は回答済み (10 章)。Phase 1 の試行判定を経て Accepted にする)
 - 対象: ブランチ refactor/ui-theme-and-clipping の HEAD af4ec88。未コミットの ADR 019 作業は評価対象外
@@ -9,7 +9,7 @@
   - [020-architecture.md](020-architecture.md): 5 章 (目標アーキテクチャの決定事項)
   - [020-plan.md](020-plan.md): 6 章 (段階計画と撤退の手順)、11 章 (最初の約 3.5 週間でやること)
   - [020-process-rules.md](020-process-rules.md): 8 章 (プロセス規約)
-- 根拠と記録: [020-appendix-audit.md](020-appendix-audit.md) (付録 A〜F: 監査 141 件、再現検証 18 項目、反証レビュー 22 件、3 案と審査の記録、規模の内訳。付録 H: 運用記録)。付録 G (強制の設計) は Phase 0 で `020-appendix-enforcement.md` として作る
+- 根拠と記録: [020-appendix-audit.md](020-appendix-audit.md) (付録 A〜F: 監査 141 件、再現検証 18 項目、反証レビュー 22 件、3 案と審査の記録、規模の内訳。付録 H: 運用記録)。付録 G (強制の設計) は [020-appendix-enforcement.md](020-appendix-enforcement.md) にある
 
 ## 0. この ADR の位置づけ
 
