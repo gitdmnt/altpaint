@@ -29,7 +29,7 @@ altpaint は ADR 020 ([docs/adr/020-codebase-rebuild-strategy.md](docs/adr/020-c
 
 | 時点 | 環境 | passed / failed / ignored |
 |---|---|---|
-| B10 の記録 (docs/IMPLEMENTATION_STATUS.md:174、2026-06-14) | 記録なし | 568 / 0 / 9 |
+| B10 の記録 (`legacy-final` の時点の docs/IMPLEMENTATION_STATUS.md:174、2026-06-14) | 記録なし | 568 / 0 / 9 |
 | クリーンな clone での実測 (ADR 020 11 章 2.3、2026-10-12) | Windows 11、NVIDIA GeForce RTX 2070、rustc 1.94.0、上の手順 1〜3 のとおり | 568 / 0 / 9 |
 
 実測は B10 の記録と一致し、ずれは無かった。
