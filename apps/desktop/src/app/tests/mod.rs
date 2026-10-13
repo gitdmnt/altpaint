@@ -9,6 +9,7 @@ mod gpu_tests;
 mod interaction;
 mod panel_dispatch_tests;
 mod persistence;
+mod repro_nongpu_tests;
 mod service_dispatch_tests;
 
 use std::cell::RefCell;

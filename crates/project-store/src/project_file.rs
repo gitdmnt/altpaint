@@ -547,4 +547,58 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    /// 再現テスト (監査 R10): 保存が途中で失敗しても、既存のプロジェクトファイルは
+    /// 無傷で残るべき (アトミック保存)。失敗注入として PageId が重複したドキュメントを
+    /// 保存し、pages テーブルの PRIMARY KEY 制約違反でトランザクション途中に失敗させる。
+    #[test]
+    fn repro_failed_save_keeps_existing_project_file_intact() {
+        let path = temp_path("repro-atomic-save");
+        let mut original = small_document();
+        original.work.title = "Owner's manuscript".to_string();
+        draw_test_point(&mut original, 5, 6);
+        save_project_to_path(
+            &path,
+            &original,
+            &WorkspaceLayout::default(),
+            &BTreeMap::new(),
+        )
+        .expect("initial save should succeed");
+        let original_bytes = fs::read(&path).expect("read original file");
+        assert!(load_project_from_path(&path).is_ok());
+
+        // 失敗注入: 同一 PageId のページを 2 枚持つドキュメント。
+        let mut broken = small_document();
+        let duplicate_page = broken.work.pages[0].clone();
+        broken.work.pages.push(duplicate_page);
+        let save_result = save_project_to_path(
+            &path,
+            &broken,
+            &WorkspaceLayout::default(),
+            &BTreeMap::new(),
+        );
+        assert!(
+            save_result.is_err(),
+            "失敗注入が効いていない (保存が成功した)"
+        );
+
+        let after_bytes = fs::read(&path).unwrap_or_default();
+        let reload = load_project_from_path(&path);
+        let reload_summary = match &reload {
+            Ok(project) => format!("Ok(title={:?})", project.document.work.title),
+            Err(error) => format!("Err({error})"),
+        };
+        assert!(
+            after_bytes == original_bytes,
+            "保存失敗後に既存ファイルが書き換わった: before={} bytes, after={} bytes, reload={reload_summary}",
+            original_bytes.len(),
+            after_bytes.len()
+        );
+        assert_eq!(
+            reload.expect("既存プロジェクトは保存失敗後も読めるべき").document.work.title,
+            "Owner's manuscript"
+        );
+
+        let _ = fs::remove_file(path);
+    }
+
 }

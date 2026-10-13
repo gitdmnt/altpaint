@@ -213,4 +213,39 @@ mod tests {
         assert_eq!(edit.bitmap.width, 2);
         assert_eq!(edit.bitmap.height, 1);
     }
+
+    /// 再現テスト (監査 R13): 日本語テキストも可視画素として描画されるべき。
+    #[test]
+    fn repro_font8x8_renders_japanese_text_with_visible_pixels() {
+        let renderer = Font8x8Renderer;
+        let out = renderer.render("あいう", 16, [0, 0, 0, 255]);
+        let opaque = out.pixels.chunks_exact(4).filter(|px| px[3] > 0).count();
+        let ascii = renderer.render("abc", 16, [0, 0, 0, 255]);
+        let ascii_opaque = ascii.pixels.chunks_exact(4).filter(|px| px[3] > 0).count();
+        assert!(
+            opaque > 0,
+            "\"あいう\" の描画結果の不透明画素が 0 ({}x{})。比較: \"abc\" は {ascii_opaque} 画素",
+            out.width,
+            out.height
+        );
+    }
+
+    /// 再現テスト (監査 R13): 日本語テキストの BitmapEdit は何かを描くべき
+    /// (透明のみの edit を「描画成功」として返さない)。
+    #[test]
+    fn repro_render_text_edit_for_japanese_is_not_fully_transparent() {
+        let edit = render_text_to_bitmap_edit("あいう", 32, [0, 0, 0, 255], 0, 0);
+        match edit {
+            None => {}
+            Some(edit) => {
+                let opaque = edit.bitmap.pixels.chunks_exact(4).filter(|px| px[3] > 0).count();
+                assert!(
+                    opaque > 0,
+                    "Some(BitmapEdit {}x{}) が返ったが不透明画素は 0 (見えない描画を成功扱い)",
+                    edit.bitmap.width,
+                    edit.bitmap.height
+                );
+            }
+        }
+    }
 }

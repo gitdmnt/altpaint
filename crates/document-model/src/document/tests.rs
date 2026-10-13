@@ -1021,3 +1021,64 @@ fn tool_kind_display_labels_are_pascal_case() {
     assert_eq!(ToolKind::LassoBucket.display_label(), "LassoBucket");
     assert_eq!(ToolKind::KomaRect.display_label(), "KomaRect");
 }
+
+// --- 再現テスト (監査 R7): AddKoma のグリッド自動再配置が既存コマの画素を劣化させるか ---
+
+fn repro_paint_checkerboard(document: &mut Document) -> CanvasBitmap {
+    let koma = document.active_koma_mut().expect("active koma exists");
+    koma.with_layers_mut(|koma| {
+        let layer = &mut koma.layers[0];
+        let (width, height) = (layer.bitmap.width, layer.bitmap.height);
+        for y in 0..height {
+            for x in 0..width {
+                if (x + y) % 2 == 0 {
+                    let _ = layer.bitmap.set_pixel_rgba(x, y, [0, 0, 0, 255]);
+                }
+            }
+        }
+    });
+    koma.layers[0].bitmap.clone()
+}
+
+/// 既存コマに描いた 1px 市松模様は、コマを追加しても画素単位で保存されるべき。
+#[test]
+fn repro_add_koma_preserves_existing_koma_pixels() {
+    let mut document = Document::new(320, 240);
+    let before = repro_paint_checkerboard(&mut document);
+
+    document.apply(&DocumentCommand::AddKoma);
+
+    let after = &document.work.pages[0].komas[0].layers[0].bitmap;
+    assert_eq!(
+        (after.width, after.height),
+        (before.width, before.height),
+        "既存コマのレイヤー寸法が AddKoma で変わった (リサンプルされた)"
+    );
+    assert!(after.pixels == before.pixels, "既存コマの画素が AddKoma で変わった");
+}
+
+/// AddKoma → RemoveActiveKoma で元のレイアウト (1 コマ全面) に戻したとき、
+/// 既存コマの画素は元どおりであるべき (不可逆劣化が無いこと)。
+#[test]
+fn repro_add_then_remove_koma_round_trips_existing_koma_pixels() {
+    let mut document = Document::new(320, 240);
+    let before = repro_paint_checkerboard(&mut document);
+
+    document.apply(&DocumentCommand::AddKoma);
+    document.apply(&DocumentCommand::RemoveActiveKoma);
+
+    assert_eq!(document.active_page_koma_count(), 1);
+    let after = &document.work.pages[0].komas[0].layers[0].bitmap;
+    assert_eq!((after.width, after.height), (before.width, before.height));
+    let differing = after
+        .pixels
+        .chunks_exact(4)
+        .zip(before.pixels.chunks_exact(4))
+        .filter(|(a, b)| a != b)
+        .count();
+    assert_eq!(
+        differing, 0,
+        "AddKoma→RemoveActiveKoma の往復で {differing} / {} 画素が変化した",
+        before.width * before.height
+    );
+}
