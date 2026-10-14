@@ -1,0 +1,17 @@
+# スパイク (d): CPU のタイルを画素の正本にしたときの、再合成とダブ描画の時間を測る (A-SPK-d)。
+# 計測が終わったら捨てるコードで、main にはマージしない。
+[package]
+name = "spike-cpu-perf"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+rayon = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
