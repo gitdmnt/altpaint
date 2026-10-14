@@ -1,0 +1,12 @@
+# スパイク (b): ペンタブから、筆圧・報告レート・ホバー・消しゴム側・傾きが取れるかを確かめる (A-SPK-b)。
+# 確認が終わったら捨てるコードで、main にはマージしない。
+[package]
+name = "spike-pen-probe"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+winit = "=0.31.0-beta.3"
