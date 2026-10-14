@@ -200,7 +200,7 @@ pub fn analyze(events: &[PenEvent]) -> Report {
     let from_pen = events.iter().copied().filter(|e| e.source == Source::Pen);
     let pen: Vec<PenEvent> = from_pen.collect();
     let (strokes, hover) = strokes(&pen);
-    let (idle, idle_us, _) = rates(&strokes, Load::Idle);
+    let (idle, idle_us, idle_burst) = rates(&strokes, Load::Idle);
     let (busy, busy_us, burst) = rates(&strokes, Load::Busy);
 
     // 2 つの区間が終わった後の接触は、(1) の判定に入れない。
@@ -208,7 +208,7 @@ pub fn analyze(events: &[PenEvent]) -> Report {
     judged.retain(|e| e.load != Load::After);
     let (pressure, pressure_seen) = pressure_row(sources[0], &judged);
     let rate_seen = format!(
-        "個数から {:.0}Hz、間隔から {:.0}Hz、接触 {:.1} 秒 (位置は {:.0}Hz)",
+        "個数から {:.0}Hz、間隔から {:.0}Hz、接触 {:.1} 秒 (位置は {:.0}Hz、最大 {idle_burst} 件が同時)",
         idle.pressure.by_count,
         idle.pressure.by_interval,
         idle_us as f64 / 1e6,

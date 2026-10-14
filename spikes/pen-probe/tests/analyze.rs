@@ -294,3 +294,36 @@ fn contact_after_both_phases_does_not_change_the_verdicts() {
         report.idle
     );
 }
+
+#[test]
+fn the_rate_row_shows_how_many_samples_arrived_together_without_load() {
+    let alone = analyze(&stroke(0, 200.0, 5.0, ramp));
+    assert!(
+        observed(&alone, RATE).contains("最大 1 件が同時"),
+        "{}",
+        observed(&alone, RATE)
+    );
+
+    // 無負荷でも、2 件ずつ同じ筆圧でまとまって届く 160Hz。筆圧のサンプルは 80Hz になる。
+    let pairs = stroke(0, 160.0, 5.0, |i, _, e| {
+        let pair = (i - 1) / 2;
+        let t_us = 12_500 * (pair + 1) + (i - 1) % 2;
+        PenEvent {
+            t_us,
+            pressure: Some(0.05 + pair as f32 / 420.0),
+            ..e
+        }
+    });
+    let together = analyze(&pairs);
+    assert_eq!(together.verdict(RATE), "不合格");
+    assert!(
+        near(together.idle.position.by_count, 160.0),
+        "{:?}",
+        together.idle
+    );
+    assert!(
+        observed(&together, RATE).contains("最大 2 件が同時"),
+        "{}",
+        observed(&together, RATE)
+    );
+}
